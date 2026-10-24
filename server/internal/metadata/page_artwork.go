@@ -186,11 +186,14 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 	return seedLocalArtworkAlternatives(ctx, tx, t, entity, fence, now)
 }
 
-// localArtworkCandidatePage bounds one continuation page for a slot. Each
-// discovery call seeds at most this page and commits it, so a worker invocation
-// never walks an unbounded page stream; the committed candidate rows are the
-// continuation state for the next call.
-const localArtworkCandidatePage = 8
+// localArtworkCandidatePage bounds the materialization work of one discovery
+// call: at most this many candidates are written for a slot and committed. The
+// locate read may use the reader's full 128-tuple page so a restarted process
+// finds the first unseeded ordered tuple in a bounded number of index reads.
+const (
+	localArtworkCandidatePage   = 8
+	localArtworkCandidateLocate = 128
+)
 
 // seedLocalArtworkAlternatives seeds the numbered sidecar images the scan
 // accepted for a head's slot (inventory_artwork_candidates), after the primary
@@ -226,79 +229,62 @@ func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarge
 	return complete, nil
 }
 
-// seedLocalArtworkCandidateCall seeds one page for one slot and reports whether
-// that page was short (the slot has no more accepted keys). The cursor is the
-// last key this slot already committed, so a later call continues where this
-// one stopped without re-reading the pages before it. A newly accepted image
-// can sort below that cursor, so one bounded probe of the first page resets the
-// walk when it is not fully committed.
+// seedLocalArtworkCandidateCall materializes at most one page (eight) of the
+// ordered accepted images for one slot and reports whether that was the rest of
+// the stream. The committed candidate rows are the whole continuation state: a
+// later call (or a restarted process) rederives the first unseeded ordered tuple
+// from them, so no cursor column, filename guess or private position is stored.
 func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string) (bool, int, error) {
-	after, err := committedLocalArtworkCursor(ctx, tx, t, entity, role, fence)
+	materialized, err := localArtworkMaterializedKeys(ctx, tx, t, entity, role)
 	if err != nil {
 		return false, 0, err
 	}
-	if after != "" {
-		head, err := catalog.ReadLocalArtworkCandidatesTx(ctx, tx, t.Kind, entity, role, "", localArtworkCandidatePage)
+	var after *catalog.LocalArtworkCandidateCursor
+	page := []catalog.LocalArtworkCandidateCursor{}
+	index := -1
+	for {
+		page, err = catalog.ReadLocalArtworkCandidatePageTx(ctx, tx, t.Kind, entity, role, after, localArtworkCandidateLocate)
 		if err != nil {
 			return false, 0, err
 		}
-		if len(head) == localArtworkCandidatePage {
-			seeded, err := localArtworkCandidatesSeeded(ctx, tx, t, entity, role, head)
-			if err != nil {
-				return false, 0, err
-			}
-			for _, key := range head {
-				if !seeded[key] {
-					after = ""
-					break
-				}
+		for n, candidate := range page {
+			if !materialized[candidate.Key] {
+				index = n
+				break
 			}
 		}
+		if index >= 0 || len(page) < localArtworkCandidateLocate {
+			break
+		}
+		last := page[len(page)-1]
+		after = &last
 	}
-	keys, err := catalog.ReadLocalArtworkCandidatesTx(ctx, tx, t.Kind, entity, role, after, localArtworkCandidatePage)
-	if err != nil {
-		return false, 0, err
+	if index < 0 {
+		return true, 0, nil
 	}
-	for _, key := range keys {
-		origin := "local:" + key
+	remaining := len(page) - index
+	seed := remaining
+	if seed > localArtworkCandidatePage {
+		seed = localArtworkCandidatePage
+	}
+	for _, candidate := range page[index : index+seed] {
+		origin := "local:" + candidate.Key
 		if err = seedArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
 			return false, 0, err
 		}
 	}
-	return len(keys) < localArtworkCandidatePage, len(keys), nil
+	return len(page) < localArtworkCandidateLocate && remaining <= localArtworkCandidatePage, seed, nil
 }
 
-// committedLocalArtworkCursor is the last accepted key this slot already committed
-// under the current fence, ignoring the primary local_artwork image (which is
-// seeded before the walk and may sort anywhere in the accepted set).
-func committedLocalArtworkCursor(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence string) (string, error) {
-	var after string
-	err := tx.QueryRowContext(ctx, `SELECT COALESCE(max(substr(origin,7)),'') FROM artwork_candidates
- WHERE kind=? AND entity_id=? AND role=? AND provider='local' AND origin LIKE 'local:%' AND source_fence=?
- AND substr(origin,7)<>COALESCE((SELECT art_key FROM local_artwork WHERE library_id=(
-  SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=?
- ) AND kind=? AND entity_id=? AND role=?),'')`, t.Kind, entity, role, fence, entity, t.Kind, entity, role).Scan(&after)
-	return after, err
-}
-
-// localArtworkCandidatesSeeded reports which of keys already exist as this
-// slot's committed local candidates.
-func localArtworkCandidatesSeeded(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role string, keys []string) (map[string]bool, error) {
-	out := map[string]bool{}
-	if len(keys) == 0 {
-		return out, nil
-	}
-	args := []any{t.Kind, entity, role}
-	marks := make([]string, 0, len(keys))
-	for _, key := range keys {
-		marks = append(marks, "?")
-		args = append(args, "local:"+key)
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT origin FROM artwork_candidates WHERE kind=? AND entity_id=? AND role=? AND provider='local' AND origin IN (`+strings.Join(marks, ",")+`)`, args...)
+// localArtworkMaterializedKeys is this slot's committed provider='local' image
+// identity set: "local:hash" candidates already written for the accepted images.
+func localArtworkMaterializedKeys(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role string) (map[string]bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT origin FROM artwork_candidates WHERE kind=? AND entity_id=? AND role=? AND provider='local'`, t.Kind, entity, role)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	out := map[string]bool{}
 	for rows.Next() {
 		var origin string
 		if err = rows.Scan(&origin); err != nil {

@@ -368,3 +368,72 @@ func TestSeedLocalArtworkFollowsASourceRevision(t *testing.T) {
 		t.Fatalf("source revision changed the queued pick: %v then %v", jobs, got)
 	}
 }
+
+type namedCandidate struct {
+	name string
+	rank int64
+	key  string
+}
+
+// seedNamedAlternatives records accepted images with their source basename and
+// acceptance rank, as the collector does for addendum6.
+func seedNamedAlternatives(t *testing.T, db *sql.DB, library string, movie catalogtest.Item, role string, candidates []namedCandidate) {
+	t.Helper()
+	for _, candidate := range candidates {
+		mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key,source_name,source_rank) VALUES(?,?,?,'item',?,?,?,?,?)`,
+			"object-"+library, "r1", movie.Token, movie.ID, role, candidate.key, candidate.name, candidate.rank)
+	}
+}
+
+// The canonical basename is the default even when the numbered image was
+// accepted first: the ordered reader, not acceptance order, decides.
+func TestSeedLocalArtworkCanonicalNameDefaultSurvivesAcceptanceOrder(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altname")
+	canonical, numbered := strings.Repeat("c", 64), strings.Repeat("7", 64)
+	seedNamedAlternatives(t, db, "altname", movie, "poster", []namedCandidate{
+		{"poster-7.png", 1031, numbered},
+		{"poster.jpg", 16, canonical},
+	})
+	seedLocalArtworkToCompletion(t, db, "item", movie)
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(origins) != 2 || !containsOrigin(origins, canonical) || !containsOrigin(origins, numbered) {
+		t.Fatalf("materialized %v", origins)
+	}
+	if jobs := localArtworkJobs(t, db, movie.ID, "poster"); len(jobs) != 1 || jobs[0] != "local:"+canonical {
+		t.Fatalf("default %v, want the canonical poster.jpg", jobs)
+	}
+}
+
+// 130 named images cross the reader's 128-tuple locate page; the composite
+// (rank, name, key) cursor keeps every one materialized in bounded calls.
+func TestSeedLocalArtworkCompositeCursorAcrossReaderBound(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altbig")
+	candidates := make([]namedCandidate, 0, 130)
+	for n := 1; n <= 130; n++ {
+		candidates = append(candidates, namedCandidate{fmt.Sprintf("poster-%d.jpg", n), int64(1024 + n), fmt.Sprintf("%064x", n)})
+	}
+	seedNamedAlternatives(t, db, "altbig", movie, "poster", candidates)
+	calls := 0
+	for call := 0; call < 64; call++ {
+		done, _ := seedLocalArtworkCall(t, db, "item", movie)
+		calls++
+		if done {
+			break
+		}
+	}
+	if calls < 2 {
+		t.Fatal("130 named images were treated as one page")
+	}
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(origins) != len(candidates) {
+		t.Fatalf("materialized %d of %d named images", len(origins), len(candidates))
+	}
+	for _, candidate := range candidates {
+		if !containsOrigin(origins, candidate.key) {
+			t.Fatalf("named image %s was skipped", candidate.name)
+		}
+	}
+	if jobs := localArtworkJobs(t, db, movie.ID, "poster"); len(jobs) != 1 || jobs[0] != "local:"+candidates[0].key {
+		t.Fatalf("default %v, want the lowest rank", jobs)
+	}
+}
