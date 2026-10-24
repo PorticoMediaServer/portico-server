@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {setImmediate} from 'node:timers/promises';
 import {defaultI18n} from '../../packages/i18n/src/index.ts';
 import {routePath} from '../../packages/contracts/src/index.ts';
 import {createMusicMixesController} from '../src/screens/browse/music-mixes.ts';
@@ -61,7 +62,7 @@ test('Save uses the displayed canonical name and one captured operation receipt;
   try {
     await f.source.load();const row = f.source.getSnapshot().rows[1];
     const save = f.source.save(row, caller());await assert.rejects(f.source.save(row, caller()), {name: 'AbortError'});
-    await Promise.resolve();await Promise.resolve();
+    await setImmediate();
     assert.equal(f.calls.length, 2);assert.equal(f.calls[1].path, routePath('post_music_mixes_id_playlist', {id: row.mix.id}));
     assert.deepEqual(f.calls[1].body, {operationId, name: row.name});
     held.resolve(receipt());const result = await save;assert.equal(result?.playlistId, 'unit-playlist');assert.equal(result?.viewerFence, 'saved-only');
@@ -80,6 +81,21 @@ test('stale Save or Play 404 only refreshes this row and never retries a playlis
       assert.equal(f.source.contains(row), false);assert.equal(f.calls.filter(call => call.method === 'POST').length, action === 'save' ? 1 : 0);
     } finally {f.source.dispose();}
   }
+});
+
+test('an unknown copy outcome retains its original operation across refresh and never creates a replacement receipt', async () => {
+  let copies = 0, ids = 0;
+  const f = setup(async (_path, method) => {
+    if (method === 'GET') return page();
+    if (++copies === 1) throw new TypeError('unit connection interrupted');
+    return receipt();
+  }, {requestId: async () => {ids++;return operationId;}});
+  try {
+    await f.source.load();await assert.rejects(f.source.save(f.source.getSnapshot().rows[0], caller()));
+    await f.source.load();await f.source.save(f.source.getSnapshot().rows[0], caller());
+    const writes = f.calls.filter(call => call.method === 'POST');assert.equal(ids, 1);assert.equal(writes.length, 2);
+    assert.deepEqual(writes[0].body, writes[1].body);
+  } finally {f.source.dispose();}
 });
 
 test('Play sends only the genuine mix container through the original caller lifetime and same port', async () => {
@@ -108,7 +124,7 @@ test('retired authority discards a late copy receipt and cannot revive on Back',
   const held = deferred<unknown>(), f = setup(async (_path, method) => method === 'GET' ? page() : held.promise);
   try {
     await f.source.load();const row = f.source.getSnapshot().rows[0], save = f.source.save(row, caller());
-    await Promise.resolve();await Promise.resolve();f.authority(false);
+    await setImmediate();f.authority(false);
     assert.equal(f.source.getSnapshot().phase, 'retired');assert.equal(f.calls[1].signal?.aborted, true);
     f.authority(true);held.resolve(receipt());await assert.rejects(save, {name: 'AbortError'});
     assert.deepEqual(f.source.getSnapshot().rows, []);assert.equal(f.source.contains(row), false);assert.equal(f.calls.length, 2);

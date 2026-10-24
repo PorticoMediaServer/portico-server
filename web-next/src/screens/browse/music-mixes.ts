@@ -29,6 +29,7 @@ export function createMusicMixesController(options: Options) {
   const {requestId, signal, isCurrent, t} = options, life = new AbortController();
   const listeners = new Set<() => void>(), commands = new Set<AbortController>();
   const saves = new Map<MusicMixRow, Promise<PostMusicMixesIdPlaylistResponse | undefined>>();
+  const receipts = new Map<string, Promise<string>>();
   let closed = false, generation = 0, raw: readonly Immutable<Mix>[] = [], read: AbortController | undefined;
   let pending: Promise<void> | undefined, playing: AbortController | undefined;
   let state: MusicMixesSnapshot = Object.freeze({phase: 'idle', rows: Object.freeze([])});
@@ -37,7 +38,7 @@ export function createMusicMixesController(options: Options) {
   const retire = (silent = false) => {
     if (closed) return;
     closed = true;generation++;signal.removeEventListener('abort', dispose);life.abort();read?.abort();read = undefined;pending = undefined;
-    abortCommands();raw = [];
+    abortCommands();receipts.clear();raw = [];
     state = Object.freeze({phase: 'retired', rows: Object.freeze([])});
     try {if (!silent) for (const listener of [...listeners]) listener();} finally {listeners.clear();}
   };
@@ -112,13 +113,22 @@ export function createMusicMixesController(options: Options) {
       // A second caller never inherits the first caller's navigation lease.
       if (saves.has(row)) return Promise.reject(cancelled());
       const command = capture(row, caller);
+      const key = JSON.stringify([row.mix.id, row.name]);
+      let operation = receipts.get(key);
+      if (!operation) {
+        operation = Promise.resolve().then(requestId);receipts.set(key, operation);
+        const issued = operation;
+        void issued.catch(() => {if (receipts.get(key) === issued) receipts.delete(key);});
+      }
+      const issued = operation;
       const task = Promise.resolve().then(async () => {
         try {
-          const operationId = await requestId();command.assert();
+          const operationId = await issued;command.assert();
           const response = decodePostMusicMixesIdPlaylistResponse(await api.request<unknown>(routePath('post_music_mixes_id_playlist', {id: row.mix.id}),
             'POST', {operationId, name: row.name}, command.signal));
           command.assert();
           if (response.serverId !== principal.serverId || response.operationId !== operationId) throw invalid();
+          if (receipts.get(key) === issued) receipts.delete(key);
           return freeze(response);
         } catch (error) {if (await stale(error, command.isCurrent)) return undefined;throw error;}
         finally {command.finish();if (saves.get(row) === task) saves.delete(row);}
