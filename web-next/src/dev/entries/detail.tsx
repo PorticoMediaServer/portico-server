@@ -1,4 +1,5 @@
 import {createRoot} from 'react-dom/client';
+import {useEffect} from 'react';
 import {RouterProvider, createMemoryHistory} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library, LocalSession, Viewer} from '@core/index.ts';
@@ -21,6 +22,23 @@ import '../../bootstrap.css';
 if (!import.meta.env.DEV) throw new Error('Detail specimens require the development server.');
 const frame = new URLSearchParams(location.search).get('frame');
 if (frame !== null && frame !== '1') throw new Error('The detail specimen measures desktop frame 1 only.');
+
+/** The measured state includes every real artwork slot; wait for the genuine
+ *  images the screen mounts, never for a synthetic painting delay or a rewritten DOM. */
+function DetailReady() {
+  useEffect(() => {
+    let frame = 0, stopped = false;
+    const wait = () => {
+      if (stopped) return;
+      const images = [...document.querySelectorAll<HTMLImageElement>('#portico-content article img')];
+      if (images.length >= 18 && images.every(image => image.complete)) document.documentElement.dataset.detailReady = 'true';
+      else frame = requestAnimationFrame(wait);
+    };
+    wait();
+    return () => { stopped = true; cancelAnimationFrame(frame); delete document.documentElement.dataset.detailReady; };
+  }, []);
+  return null;
+}
 
 const specimen = createDetailSpecimen();
 const time = {t: defaultI18n.t, locale: 'en-US', timeZone: 'UTC'};
@@ -75,6 +93,7 @@ const context = contextBase;
 router.update({history: createMemoryHistory({initialEntries: [`/item/${specimen.itemId}`]})});
 createRoot(document.getElementById('root')!).render(
   <WebScreenProvider value={{binding, context}}>
+    <DetailReady />
     <IconSprite />
     <ShellBindingsProvider value={binding}>
       <RouterProvider router={router} />
