@@ -45,7 +45,7 @@ test('the full-page auth and compact fields keep their existing geometry', () =>
   assert.doesNotMatch(stylesheet, /\.field\[data-variant="account-panel"\][^{]*\{[^}]*height: (48|54|44)px/);
 });
 
-test('the account-panel code field is frame 46b's own box, and the full-page code box is unchanged', () => {
+test('the account-panel code field is the frame 46b box, and the full-page code box is unchanged', () => {
   for (const declaration of ['height: 58px', 'border-radius: 12px', 'padding: 0 16px', 'var(--color-ink) 62%', 'blur(16px)']) {
     assert.ok(declarations('.field[data-variant="account-panel-code"] .inputShell').includes(declaration), declaration);
   }
