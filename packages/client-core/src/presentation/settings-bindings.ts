@@ -414,7 +414,7 @@ export function readLibrarySettingsBinding(rowId:string,document:LibraryAdminDoc
  if(!document.eligibleControls.includes(rowId))return undefined;const current=libraryRowValue(rowId,document.settings,document);if(current===undefined)return undefined;
  return {current,effective:current,default:document.defaults?libraryRowValue(rowId,document.defaults,document):undefined,source:'library',configOnly:false};
 }
-/** One complete typed library draft; the facade applies its revision/operation fence on Save. */
+/** Read the separate Sonic domain through its current Library eligibility hint. */
 export function readLibrarySonicSettingsBinding(rowId:string,document:Pick<LibraryAdminDocument,'libraryId'|'libraryKind'|'eligibleControls'>,sonic:LibrarySonicDocument):SettingsBindingValue|undefined{
  if(document.libraryKind!=='music'||document.libraryId!==sonic.libraryId||!sonic.available||typeof sonic.defaultEnabled!=='boolean'||!document.eligibleControls.includes(rowId))return undefined;
  if(rowId==='libraries.sonicAnalysis')return {current:sonic.enabled,effective:sonic.enabled,default:sonic.defaultEnabled,source:'library',configOnly:false};
