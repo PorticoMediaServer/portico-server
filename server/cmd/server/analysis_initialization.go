@@ -30,7 +30,9 @@ func initializeAnalysis(db *sql.DB, state string, inputs *subtitlevideo.Runtime,
 		model = filepath.Join(filepath.Dir(helper), "musicnn-mtt")
 	}
 	var sonicError error
-	o.Sonic, sonicError = sonic.OpenRuntime(sonic.RuntimeOptions{Helper: helper, ModelDirectory: model, Supervisor: supervisor, Libraries: filepath.SplitList(os.Getenv("PORTICO_SONIC_LIBRARIES"))})
+	runtimeOptions := sonic.RuntimeOptions{Helper: helper, ModelDirectory: model, Supervisor: supervisor, Libraries: filepath.SplitList(os.Getenv("PORTICO_SONIC_LIBRARIES"))}
+	o.OpenSonic = func() (*sonic.Runtime, error) { return sonic.OpenRuntime(runtimeOptions) }
+	o.Sonic, sonicError = o.OpenSonic()
 	if sonicError != nil {
 		log.Printf("Sonic analysis unavailable: %v", sonicError)
 	}

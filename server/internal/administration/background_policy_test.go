@@ -3,6 +3,7 @@ package administration
 import (
 	"context"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/workpolicy"
 	"testing"
 	"time"
 )
@@ -38,19 +39,46 @@ func TestBackgroundPauseDurableAndIdempotent(t *testing.T) {
 	}
 }
 
-func TestMaintenanceWindowsOnlyOfferScheduledBackups(t *testing.T) {
-	service, _, _ := newService(t)
-	current, err := service.MaintenanceSettings(context.Background(), allow)
+func TestMaintenanceWindowsSaveRealHeavyAdmissionWithoutChangingBackup(t *testing.T) {
+	service, db, _ := newService(t)
+	ctx := context.Background()
+	current, err := service.MaintenanceSettings(ctx, allow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Tasks) != 1 || current.Tasks[0] != "backup" {
-		t.Fatal("inert scheduled jobs offered", current.Tasks)
+	if len(current.Tasks) != 3 {
+		t.Fatal("supported scheduling tasks missing", current.Tasks)
 	}
 	settings := current.Settings
-	settings.Windows[0].Tasks = []string{"analysis"}
-	if _, err = service.SaveMaintenanceSettings(context.Background(), allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: current.Revision, OperationID: "unsupported-schedule", Settings: settings}); err == nil {
-		t.Fatal("inert schedule saved")
+	var backup MaintenanceWindow
+	for i := range settings.Windows {
+		if settings.Windows[i].ID == "nightly" {
+			backup = settings.Windows[i]
+		}
+		if settings.Windows[i].ID == "heavy" {
+			settings.Windows[i].Enabled = true
+			settings.Windows[i].Timezone = "UTC"
+		}
+	}
+	saved, err := service.SaveMaintenanceSettings(ctx, allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: current.Revision, OperationID: "supported-heavy-schedule", Settings: settings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range saved.Settings.Windows {
+		if w.ID == "nightly" && (w.StartMinute != backup.StartMinute || w.DurationMinutes != backup.DurationMinutes || w.Enabled != backup.Enabled) {
+			t.Fatal("heavy edit changed backup", w, backup)
+		}
+	}
+	for _, hour := range []int{2, 12} {
+		gate := workpolicy.Service{DB: db, Now: func() time.Time { return time.Date(2026, 10, 19, hour, 0, 0, 0, time.UTC) }}
+		admitted, err := gate.Admit(ctx, nil, "analysis")
+		if err != nil || admitted != (hour == 2) {
+			t.Fatal("saved schedule did not control actual next batch", hour, admitted, err)
+		}
+	}
+	settings.Windows[0].Tasks = []string{"episode_thumbnail"}
+	if _, err = service.SaveMaintenanceSettings(ctx, allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: saved.Revision, OperationID: "unsupported-episode-schedule", Settings: settings}); err == nil {
+		t.Fatal("unsupported operation name became a scheduling task")
 	}
 }
 

@@ -206,7 +206,8 @@ func videoCodecString(p *DeliveryPlan) string {
 			if p.Trace.Video.DolbyVisionLevel <= 0 {
 				return ""
 			}
-			return fmt.Sprintf("dvh1.%02d.%02d", p.Trace.Video.DolbyVisionProfile, p.Trace.Video.DolbyVisionLevel)
+			profile, _ := deliveredDolbyVision(p)
+			return fmt.Sprintf("dvh1.%02d.%02d", profile, p.Trace.Video.DolbyVisionLevel)
 		}
 		level := 120
 		if p.VideoAction == "convert" {
@@ -346,9 +347,10 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 	if completeCodecs && len(codecs) > 0 {
 		fmt.Fprintf(&b, ",CODECS=\"%s\"", strings.Join(codecs, ","))
 	}
-	if hevcSampleEntry(p) == "dvh1" && p.Trace.Video.DolbyVisionProfile == 8 {
+	profile, compatibility := deliveredDolbyVision(p)
+	if hevcSampleEntry(p) == "dvh1" && profile == 8 {
 		brand := ""
-		switch p.Trace.Video.DolbyVisionCompatibility {
+		switch compatibility {
 		case 1:
 			brand = "db1p"
 		case 4:
@@ -760,7 +762,8 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 }
 
 func hevcSampleEntry(p *DeliveryPlan) string {
-	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.OutputRange == assets.RangeDolbyVision && (p.Trace.Video.DolbyVisionProfile == 5 || p.Trace.Video.DolbyVisionProfile == 8) {
+	profile, _ := deliveredDolbyVision(p)
+	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" && (profile == 5 || profile == 8) {
 		return "dvh1"
 	}
 	return "hvc1"
