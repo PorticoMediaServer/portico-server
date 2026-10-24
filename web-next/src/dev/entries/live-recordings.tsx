@@ -31,25 +31,25 @@ const recording = (id: string, state: Recording['state'], title: string, from: n
   programme: programme(title, from, to, programmeExtra), ruleId: '', options: {beforeSeconds: 0, afterSeconds: 0, priority: 0, retentionDays: 0, episodeLimit: 0},
   start: iso(from), end: iso(to), state, reason: '', keep: false, itemId: '', libraryId: '', coverageStart: '', coverageEnd: '', bytes: 0,
   conflicts: [], channel: channelFact, watched: null, ...extra});
-const pebble = channel('Pebble Kids', '401', 'PK'), atlas = channel('Atlas Documentaries', '501', 'AD'), summit = channel('Summit Sports Extra', '202', 'SSE');
-const conflict = recording('r-conflict', 'conflicted', 'Summit Football: Harbor City vs. Ridgeview', at(20, 0), at(21, 0), summit,
+const pebble = channel('Pebble Kids', '401', 'PK'), atlas = channel('Atlas Documentaries', '501', 'AD'), summit = channel('Summit Sports Extra', '202', 'SSE'); // lint-strings-allow fixture data
+const conflict = recording('r-conflict', 'conflicted', 'Summit Football: Harbor City vs. Ridgeview', at(20, 0), at(21, 0), summit, // lint-strings-allow fixture data
   {conflicts: [{start: iso(at(20, 0)), end: iso(at(20, 15)), demand: 3, capacity: 2}], ruleId: 'rule-2'}, {subtitle: t('next.live.example.football'), flags: {live: true}, episode: {season: 5, number: 9}});
 const active = recording('r-active', 'recording', 'Story Time Island', at(16, 0), at(16, 30), pebble, {watched: false},
-  {episode: {season: 3, number: 1}, subtitle: 'Homecoming', flags: {new: true}, description: 'Story Time Island on Pebble Kids.'});
+  {episode: {season: 3, number: 1}, subtitle: 'Homecoming', flags: {new: true}, description: 'Story Time Island on Pebble Kids.'}); // lint-strings-allow fixture data
 const later = recording('r-later', 'scheduled', 'The Clockmakers', at(16, 15), at(17, 0), atlas, {ruleId: 'rule-1'}, {episode: {season: 5, number: 9}, subtitle: t('next.live.example.crossed')});
 const later2 = recording('r-later2', 'waiting-source', 'Wild Plains', at(18, 45), at(19, 45), atlas);
 const detail: RecordingDetail = {recording: conflict, capacity: {known: true, effective: 2}, nextOverlap: '',
-  overlaps: [{id: 'o1', title: 'The Long Road North', start: iso(at(17, 53)), end: iso(at(20, 20)), priority: 0, state: 'recording'},
-    {id: 'o2', title: 'The Clockmakers', start: iso(at(19, 30)), end: iso(at(20, 15)), priority: 0, state: 'scheduled'}]};
+  overlaps: [{id: 'o1', title: 'The Long Road North', start: iso(at(17, 53)), end: iso(at(20, 20)), priority: 0, state: 'recording'}, // lint-strings-allow fixture data
+    {id: 'o2', title: 'The Clockmakers', start: iso(at(19, 30)), end: iso(at(20, 15)), priority: 0, state: 'scheduled'}]}; // lint-strings-allow fixture data
 const storage: RecordingStorage = {policy: {revision: 1, retentionDays: 30, episodeLimit: 10, floorBytes: 0, capBytes: 0},
   measurement: {freeBytes: 412e9, usedBytes: 64e9, reservedBytes: 0, writeHealthy: true, measuredAt: iso(NOW)},
   pendingDeleteBytes: 0, forecastBytes: 0, forecastHours: 230, forecastDescription: '', captureAvailable: true, warning: ''};
 const groupRecording = (title: string, channelFact: ReturnType<typeof channel>, recorded: number, extra: Partial<Recording> = {}) =>
   recording(`g-${title}`, 'completed', title, recorded, recorded + 30 * 60_000, channelFact, {watched: false, ...extra});
 const groups = {revision: 1, nextCursor: '', groups: [
-  {key: 'series:clockmakers', title: 'The Clockmakers', recordings: 6, unwatched: 2, kept: 1, exceptions: 0, latest: iso(at(16, 15)), recording: groupRecording('The Clockmakers', atlas, at(16, 15), {seriesId: 'clockmakers'})},
-  {key: 'series:story', title: 'Story Time Island', recordings: 3, unwatched: 1, kept: 0, exceptions: 0, latest: iso(at(16, 0)), recording: groupRecording('Story Time Island', pebble, at(16, 0), {seriesId: 'story'})},
-  {key: 'one:longroad', title: 'The Long Road North', recordings: 1, unwatched: 1, kept: 0, exceptions: 0, latest: iso(at(17, 53)), recording: groupRecording('The Long Road North', atlas, at(17, 53))}]};
+  {key: 'series:clockmakers', title: 'The Clockmakers', recordings: 6, unwatched: 2, kept: 1, exceptions: 0, latest: iso(at(16, 15)), recording: groupRecording('The Clockmakers', atlas, at(16, 15), {seriesId: 'clockmakers'})}, // lint-strings-allow fixture data
+  {key: 'series:story', title: 'Story Time Island', recordings: 3, unwatched: 1, kept: 0, exceptions: 0, latest: iso(at(16, 0)), recording: groupRecording('Story Time Island', pebble, at(16, 0), {seriesId: 'story'})}, // lint-strings-allow fixture data
+  {key: 'one:longroad', title: 'The Long Road North', recordings: 1, unwatched: 1, kept: 0, exceptions: 0, latest: iso(at(17, 53)), recording: groupRecording('The Long Road North', atlas, at(17, 53))}]}; // lint-strings-allow fixture data
 const snapshot: RecordingsSnapshot = {query: {view: 'upcoming'}, phase: 'ready',
   page: {recordings: [conflict, active, later, later2], rules: [], nextCursor: '', revision: 1, captureAvailable: true, captureUnavailableReason: '',
     deletionAvailable: true, usage: {bytes: 0, pendingDeleteBytes: 0, recordings: 4}},

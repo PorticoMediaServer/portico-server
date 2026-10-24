@@ -238,7 +238,7 @@ function StorageView({snapshot}: {snapshot: ReturnType<RecordingsController['get
       free={t('next.live.storageFree', {amount: Math.round(storage.measurement.freeBytes / 1e9)})}
       remaining={t('recordings.hoursLeft', {count: storage.forecastHours})} label={t('recordings.storage')}
       fraction={storage.measurement.usedBytes / Math.max(1, storage.measurement.usedBytes + storage.measurement.freeBytes)}/>
-    {storage.pendingDeleteBytes > 0 && <p>{t('recordings.pendingDelete', {size: `${Math.round(storage.pendingDeleteBytes / 1e9)} GB`})}</p>}
+    {storage.pendingDeleteBytes > 0 && <p>{t('next.live.pendingDelete', {amount: Math.round(storage.pendingDeleteBytes / 1e9)})}</p>}
     {storage.policy.retentionDays > 0 && <p>{t('recordings.retention', {count: storage.policy.retentionDays})}</p>}
     {!storage.measurement.writeHealthy && <Banner>{t('recordings.unavailableBody')}</Banner>}
   </div></div>;

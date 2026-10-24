@@ -4,11 +4,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--type-synopsis-size);
+  font-weight: var(--type-row-heading-weight);
   color: var(--color-healthy);
 }
 .failure {
-  font-size: 13px;
+  font-size: var(--type-caption-size);
   color: var(--color-record);
 }

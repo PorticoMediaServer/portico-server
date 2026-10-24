@@ -10,6 +10,7 @@ export const liveMessages = {
   'next.live.recordedCount': '{count} recorded so far',
   'next.live.storageUsed': '{amount} GB used',
   'next.live.storageFree': '{amount} GB free',
+  'next.live.pendingDelete': '{amount} GB waiting to be deleted',
   'next.live.storageLeft': 'About {hours} hours of recording space left',
   'next.live.storageLabel': 'Storage, {used} GB used, {free} GB free',
   'next.live.seriesRule': 'Series rule',

@@ -26,14 +26,14 @@
 }
 
 .name {
-  font-size: 15px;
-  font-weight: 650;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-strong-weight);
   overflow-wrap: anywhere;
 }
 
 .folder {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-micro-weight);
   color: var(--color-text-tertiary);
   overflow-wrap: anywhere;
 }
@@ -42,15 +42,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-body-strong-weight);
   color: var(--color-text-secondary);
 }
 
 .loading,
 .empty {
   padding: 16px 2px;
-  font-size: 14px;
+  font-size: var(--type-synopsis-size);
   color: var(--color-text-tertiary);
 }
 
@@ -79,7 +79,7 @@
 .formNote,
 .pickerNote {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--type-caption-size);
   color: var(--color-text-tertiary);
 }
 
@@ -119,15 +119,15 @@
   background: none;
   color: inherit;
   font: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--type-synopsis-size);
+  font-weight: var(--type-body-strong-weight);
   text-align: left;
   cursor: pointer;
 }
 
 .pickerRow small {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-micro-weight);
   color: var(--color-text-tertiary);
 }
 
