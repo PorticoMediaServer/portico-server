@@ -4,7 +4,7 @@ import {preferenceValue} from '@core/preferences.ts';
 import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult} from '@core/search.ts';
 import {SEARCH_CHIPS, orderedSearchGroups, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
 import {Button, Chip, TextField} from '../../kit/controls';
-import {PosterCard, SquareCard, CircleCard, EpisodeTile} from '../../kit/cards';
+import {PosterCard, SquareCard, CircleCard, EpisodeTile, LiveCard} from '../../kit/cards';
 import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
 import {Skeleton} from '../../kit/states';
@@ -118,8 +118,14 @@ function SearchLoading() {
 
 export function SearchResult({entry, binding, onCommit}: {entry: SearchEntry; binding: SearchBindings; onCommit: () => void}) {
   const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
+  const liveCards = useSyncExternalStore(binding.live.subscribe, binding.live.getSnapshot, binding.live.getSnapshot);
   const art = context.artwork.foreground(entry.posterUrl, 380, 2 / 3);
-  if (entry.kind === 'channel') return <button className={styles.channel} type="button" onClick={open}><Icon name="i-tv" size={24} /><b>{entry.title}</b>{entry.subtitle && <small>{entry.subtitle}</small>}</button>;
+  if (entry.kind === 'channel') {
+    const live = liveCards.get(entry.id);
+    if (live) return <LiveCard className={styles.liveCard} context="search" model={{title: live.programme?.title ?? entry.title, caption: []}} channel={live.channel}
+      programme={live.programme} tint={live.tint} results onNavigate={open} logo={live.channel.logoUrl ? context.artwork.foreground(live.channel.logoUrl, 68, 1) : undefined} />;
+    return <button className={styles.channel} type="button" onClick={open}><Icon name="i-tv" size={24} /><b>{entry.title}</b>{entry.subtitle && <small>{entry.subtitle}</small>}</button>;
+  }
   if (!('libraryId' in entry)) return <CircleCard context="search" model={{title: entry.title, caption: entry.subtitle ? [{id: 'caption', text: entry.subtitle, role: 'context'}] : []}} covers={art ? [art] : []}
     initials={entry.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} onNavigate={open} />;
   const model = entryCard(entry, {t, locale: locale()}, 'search'), playable = entry.available === true && !!entry.playback;
