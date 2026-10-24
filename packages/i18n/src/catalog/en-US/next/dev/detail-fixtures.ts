@@ -61,6 +61,8 @@ export const detailFixtureMessages = {
   "next.detail.fixture.fearRole": "Fear",
   "next.detail.fixture.docter": "Pete Docter",
   "next.detail.fixture.pixar": "Pixar",
+  "next.detail.fixture.leFauve": "Meg LeFauve",
+  "next.detail.fixture.cooley": "Josh Cooley",
   "next.detail.fixture.moreLikeInsideOut": "More like Inside Out",
   "next.detail.fixture.toyStory": "Toy Story",
   "next.detail.fixture.monsters": "Monsters, Inc.",

@@ -10,7 +10,7 @@ import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {serviceI18n, serviceText} from '@core/presentation/service-text.ts';
 import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
 import {preferenceValue} from '@core/preferences.ts';
-import {AmbientArt, PersonCircle} from '../../kit/artwork';
+import {AmbientArt, Artwork, PersonCircle} from '../../kit/artwork';
 import {Button, ResumeButton, Select, Tabs} from '../../kit/controls';
 import {Lockup, Shelf} from '../../kit/layout';
 import {CollectionBanner, PosterCard, SquareCard} from '../../kit/cards';
@@ -210,33 +210,56 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
 }
 
 export function TitleDetails({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
+  const phone = useShellWidth() < 1024;
   const {item, facts, metadata} = data, collection = data.collections?.[0], {artwork} = binding.context;
   const language = (code: string) => { try { return new Intl.DisplayNames(locale(), {type: 'language'}).of(code) ?? code; } catch { return code; } };
+  const number = (value: number) => new Intl.NumberFormat(locale(), {maximumFractionDigits: 1}).format(value);
   const directors = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director'), writers = metadata.credits.filter(credit => /writer|writing|screenplay|teleplay|novel/i.test(credit.role));
+  const ratings = metadata.ratings.map(rating => `${rating.provider} ${number(rating.value)}`).join(', ');
+  // The phone hero already keeps year, runtime and the content rating in view, so its
+  // Details avoids repeating them and puts the drawn credit lines under the people.
   const rows: (readonly [string, ReactNode])[] = [
     [t('title.releaseDate'), calendarDate(facts?.releaseDate, locale())],
-    [t('library.column.runtime'), titleFactParts({durationSeconds: item.duration}, env).find(part => part.id === 'duration')?.text],
+    ...(!phone ? [[t('library.column.runtime'), titleFactParts({durationSeconds: item.duration}, env).find(part => part.id === 'duration')?.text] as const] : []),
     [t('title.genres'), metadata.genres.length ? <GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /> : undefined],
-    [t('next.show.rated'), facts?.contentRating],
-    [t('title.directedByLabel'), directors.length ? <CreditNames binding={binding} data={data} credits={directors} /> : undefined],
-    [t('title.writtenByLabel'), writers.length ? <CreditNames binding={binding} data={data} credits={writers} /> : undefined],
+    ...(!phone ? [[t('next.show.rated'), facts?.contentRating] as const] : []),
+    [t('title.ratings'), ratings || undefined],
+    ...(!phone ? [
+      [t('title.directedByLabel'), directors.length ? <CreditNames binding={binding} data={data} credits={directors} /> : undefined] as const,
+      [t('title.writtenByLabel'), writers.length ? <CreditNames binding={binding} data={data} credits={writers} /> : undefined] as const,
+    ] : []),
     [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country], [t('title.edition'), facts?.edition],
-    [t('next.selection.language'), facts?.originalLanguage ? language(facts.originalLanguage) : undefined],
-    [t('title.audio'), data.languages.audio.map(language).join(', ')], [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')],
+    ...(!phone ? [
+      [t('next.selection.language'), facts?.originalLanguage ? language(facts.originalLanguage) : undefined] as const,
+      [t('title.audio'), data.languages.audio.map(language).join(', ')] as const, [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')] as const,
+    ] : []),
     [t('title.added'), instantDate(item.addedAt, locale())],
   ];
   return <div className={styles.details}><section><h2 className={styles.sectionHeading}>{t('next.show.about')}</h2><dl>{rows.filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
     {metadata.credits.length > 0 && <TitlePeople binding={binding} data={data} />}
-    {collection && <section className={styles.detailBanner} aria-label={t('next.detail.partOfCollection')}>
-      <CollectionBanner context="detail" model={{title: collection.name, caption: []}} kindLabel={t('next.detail.partOfCollection')}
-        description={collection.yearFrom && collection.yearTo
-          ? t('next.detail.collectionSummary', {count: collection.memberCount, from: collection.yearFrom, to: collection.yearTo})
-          : t('lib.count', {count: collection.memberCount, pivot: 'other'})}
-        actionLabel={t('next.home.openCollection')} actionVariant="glass" position="50% 38%"
-        artwork={artwork.foreground(collection.posterUrls[0], 1312 * devicePixelRatio, 16 / 9)}
-        covers={collection.posterUrls.slice(0, 4).flatMap(poster => { const art = artwork.foreground(poster, 64 * devicePixelRatio, 2 / 3); return art ? [art] : []; })}
-        onAction={() => openCollection(binding, data, collection)} onNavigate={() => openCollection(binding, data, collection)} />
-    </section>}
+    {phone && (directors.length > 0 || writers.length > 0) && <div className={styles.phoneCreditLines}>
+      {directors.length > 0 && <div><CreditLine message="title.directedBy" credits={directors} binding={binding} data={data} /></div>}
+      {writers.length > 0 && <div><CreditLine message="title.writtenBy" credits={writers} binding={binding} data={data} /></div>}
+    </div>}
+    {collection && (phone
+      ? <section className={styles.phoneCollectionWrap}>
+        <button type="button" className={styles.phoneCollection} aria-label={`${collection.name} ${t('next.detail.collection')}`} onClick={() => openCollection(binding, data, collection)}>
+          {collection.posterUrls[0] && <span className={styles.phoneCollectionGlow} aria-hidden="true"><Artwork source={artwork.foreground(collection.posterUrls[0], 780, 16 / 9)} alt="" /></span>}
+          {collection.posterUrls.length > 0 && <span className={styles.phoneCollectionFan} aria-hidden="true">{collection.posterUrls.slice(0, 2).map((poster, index) => <span key={`${poster}:${index}`}><Artwork source={artwork.foreground(poster, 96, 2 / 3)} alt="" /></span>)}</span>}
+          <span className={styles.phoneCollectionCopy}><i>{t('next.detail.collection')}</i><b>{collection.name}</b><small>{t('lib.count', {count: collection.memberCount, pivot: 'other'})}</small></span>
+          <Icon name="i-right" size={18} />
+        </button>
+      </section>
+      : <section className={styles.detailBanner} aria-label={t('next.detail.partOfCollection')}>
+        <CollectionBanner context="detail" model={{title: collection.name, caption: []}} kindLabel={t('next.detail.partOfCollection')}
+          description={collection.yearFrom && collection.yearTo
+            ? t('next.detail.collectionSummary', {count: collection.memberCount, from: collection.yearFrom, to: collection.yearTo})
+            : t('lib.count', {count: collection.memberCount, pivot: 'other'})}
+          actionLabel={t('next.home.openCollection')} actionVariant="glass" position="50% 38%"
+          artwork={artwork.foreground(collection.posterUrls[0], 1312 * devicePixelRatio, 16 / 9)}
+          covers={collection.posterUrls.slice(0, 4).flatMap(poster => { const art = artwork.foreground(poster, 64 * devicePixelRatio, 2 / 3); return art ? [art] : []; })}
+          onAction={() => openCollection(binding, data, collection)} onNavigate={() => openCollection(binding, data, collection)} />
+      </section>)}
   </div>;
 }
 
