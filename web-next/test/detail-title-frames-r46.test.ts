@@ -72,9 +72,10 @@ test('frame 3 draws About with Rated and the collection banner with honest membe
 test('the pinned bar carries the drawn Play or Resume and My List pair', async () => {
   const play = await detailData('3');
   try {
-    const body = text(renderToStaticMarkup(createElement(TitlePinnedActions, {binding: play.binding, data: play.data})));
+    const html = renderToStaticMarkup(createElement(TitlePinnedActions, {binding: play.binding, data: play.data})), body = text(html);
     assert.match(body, new RegExp(defaultI18n.t('next.controls.play')));
-    assert.match(body, new RegExp(defaultI18n.t('next.controls.myList')));
+    // My List is the drawn icon-only button; its name is the accessible label.
+    assert.match(html, new RegExp(`aria-label="${defaultI18n.t('next.controls.myList')}"`));
   } finally { play.service.dispose(); }
   const resume = await detailData('2');
   try {
