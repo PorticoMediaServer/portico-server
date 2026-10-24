@@ -25,7 +25,7 @@ func (l *layout) sonicBasePositionActive(position int64) bool {
 	return false
 }
 
-func (l *layout) sonicWindowSource(window int64) (sonicWindowKey, []int64, []int, []string, error) {
+func (l *layout) sonicWindowSource(window int64, readKeys bool) (sonicWindowKey, []int64, []int, []string, error) {
 	key := sonicWindowKey{queue: l.q.id, seed: l.q.seed, lap: l.q.lap, window: window}
 	if !validSonicWindowKey(key) || window > math.MaxInt64/sonic.SmoothWindowMax || window*sonic.SmoothWindowMax >= l.q.domain {
 		return key, nil, nil, nil, errSonicWindow
@@ -45,6 +45,9 @@ func (l *layout) sonicWindowSource(window int64) (sonicWindowKey, []int64, []int
 		snapshot := l.segments[segment].snapshot
 		ordinary[index] = source
 		sonicWindowMember(digest, source, snapshot+"-"+strconv.FormatInt(ordinal, 10))
+		if !readKeys {
+			continue
+		}
 		_, removed := slices.BinarySearch(l.removals[snapshot], ordinal)
 		if removed || !l.sonicBasePositionActive(position) {
 			continue // keep tombstones and explicit moved/source spans fixed
@@ -63,10 +66,14 @@ func (l *layout) sonicWindowSource(window int64) (sonicWindowKey, []int64, []int
 // Replays never consult current analysis; missing rows use one bounded current
 // profile/model read and atomically freeze either its order or ordinary order.
 func (s *Service) captureMusicWindowTx(ctx context.Context, tx *sql.Tx, caller Caller, l *layout, window int64) error {
-	if !l.musicQueue() {
+	readyMusic := l.musicQueue()
+	if !readyMusic && (!l.q.shuffle || len(l.building) == 0) {
 		return nil
 	}
-	key, ordinary, positions, ids, err := l.sonicWindowSource(window)
+	// Before a background snapshot completes, even its future keys may be
+	// unknown. Freeze the ordinary source ordinals without opening them or
+	// inferring that the completed queue will be music-only.
+	key, ordinary, positions, ids, err := l.sonicWindowSource(window, readyMusic)
 	if err != nil {
 		return err
 	}
