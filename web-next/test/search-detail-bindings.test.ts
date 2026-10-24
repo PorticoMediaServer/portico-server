@@ -117,9 +117,11 @@ test('paused or restarted Search never revives an original Play when the same qu
     const binding = createSearchBindings({...owner.context, effects: {...owner.context.effects, play: effect}});
     try {
       await binding.select('harbor', {groups: ['movies', 'shows']});
-      const entry = binding.service.getSnapshot().groups[0].items[0], play = binding.play(entry);
+      const entry = binding.service.getSnapshot().groups[0].items[0];
+      assert('libraryId' in entry && entry.libraryId);
+      const play = binding.context.effects.play({libraryId: entry.libraryId, itemId: entry.id, startSeconds: 0}, new AbortController().signal);
       assert.equal(guard?.(), true);
-      if (change === 'pause') binding.service.pause();
+      if (change === 'pause') {binding.service.pause();assert.equal(guard?.(), false);}
       if (change === 'round-trip') await binding.select('different', {groups: ['movies', 'shows']});
       await binding.select('harbor', {groups: ['movies', 'shows']});
       assert.equal(binding.service.getSnapshot().phase, 'ready');assert.equal(guard?.(), false, change);
