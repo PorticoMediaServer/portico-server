@@ -152,6 +152,10 @@ def package(helper, sdk, model, target, output, source_revision):
             if file.is_symlink():
                 entries.append({'path': file.relative_to(stage).as_posix(), 'link': os.readlink(file)})
             elif file.is_file():
+                # tarfile's safe data filter strips group/other write bits.
+                # Seal portable modes before hashing, independent of umask.
+                executable = file.name == 'portico-sonic' or file.parent.name == 'lib' or file.name == 'build-sonic-runtime.sh'
+                file.chmod(0o755 if executable else 0o644)
                 entries.append({'path': file.relative_to(stage).as_posix(), 'bytes': file.stat().st_size,
                                 'sha256': digest(file), 'mode': stat.S_IMODE(file.stat().st_mode)})
         manifest = {'schema': 1, 'target': target, 'releaseTag': runtime['releaseTag'],
