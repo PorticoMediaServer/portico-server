@@ -17,6 +17,7 @@ import {routePath, encodedRoutePath} from "../../../../contracts/src/routes.ts";
  * Not for production.
  */
 import {ShufflePermutation} from '../shuffle.ts';
+import {qualityLadder} from '../quality.ts';
 
 export type FakeResponse = Readonly<{status: number; headers: Readonly<Record<string, string>>; body?: unknown}>;
 export type FakeRequest = Readonly<{method: string; path: string; headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal}>;
@@ -407,7 +408,7 @@ export class FakePlaybackServer {
     // Automatic quality is a place on the ladder: a step moves from where the session is.
     const asked = body.quality as {mode?: string; id?: string; step?: string} | undefined;
     if (asked?.mode === 'automatic') {
-      const ladder = ['', '2160p', '1080p', '720p'], here = (s.quality as {mode?: string; id?: string} | undefined);
+      const ladder = ['', ...qualityLadder.map(rung => rung.id)], here = (s.quality as {mode?: string; id?: string} | undefined);
       const at = Math.max(0, ladder.indexOf(here?.mode === 'automatic' ? here.id ?? '' : ''));
       const next = asked.step === 'down' ? Math.min(ladder.length - 1, at + 1) : asked.step === 'up' ? Math.max(0, at - 1) : asked.id ? Math.max(0, ladder.indexOf(asked.id)) : at;
       body = {...body, quality: {mode: 'automatic', ...(ladder[next] ? {id: ladder[next]} : {})}};
