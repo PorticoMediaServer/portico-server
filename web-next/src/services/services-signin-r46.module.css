@@ -1,0 +1,5 @@
+/* auth.html frame 5's drawn composition, limited to the Services sign-in screen.
+   Page shell, heading, providers and fields remain the canonical Kit components. */
+.returnLink { margin-top: 14px; font-size: 15px; line-height: normal; font-weight: 700; }
+.returnLink a { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-secondary); text-decoration: none; }
+.submit { margin-top: 8px; }

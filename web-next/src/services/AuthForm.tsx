@@ -7,6 +7,7 @@ import {ServicesAuthFlow} from './auth-flow';
 import type {ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
+import signInStyles from './services-signin-r46.module.css';
 
 type Props = {account: ServicesAccount; onSignedIn: (gesture?: boolean) => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
 export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', initialUsername = '', embedded = false, invitation = false, heading, lead, before, after}: Props) {
@@ -47,7 +48,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
         <TextField variant="auth" label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required />
         <AuthPasswordField label={t('auth.password')} placeholder={t('auth.password')} name="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required />
-        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim() || !password}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
+        <div className={signInStyles.submit}><ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim() || !password}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions></div>
       </form>
       <AuthLinks>{state.options.recovery && <button type="button" disabled={busy} onClick={() => flow.go('forgot')}>{t('auth.forgotPassword')}</button>}{state.options.registration && <button type="button" disabled={busy} onClick={() => flow.go('create')}>{t('auth.createAccount')}</button>}</AuthLinks>
     </>}
