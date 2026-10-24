@@ -30,7 +30,7 @@ func validateConfig(config, remote string) error {
 	section := ""
 	found := false
 	typed := false
-	allowed := map[string]bool{"s3": true, "b2": true, "drive": true, "onedrive": true, "dropbox": true, "webdav": true, "http": true, "smb": true, "sftp": true, "crypt": true}
+	allowed := map[string]bool{"s3": true, "b2": true, "drive": true, "onedrive": true, "dropbox": true, "webdav": true, "http": true, "smb": true, "sftp": true, "crypt": true, "alias": true, "union": true, "combine": true, "chunker": true, "hasher": true, "compress": true, "cache": true}
 	for _, line := range strings.Split(config, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
