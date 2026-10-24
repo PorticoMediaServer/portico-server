@@ -26,6 +26,9 @@ const preferenceEffects = new Set([
      values to its own cue surface (preference-effects.ts -> subtitle-surface.ts). */
   'playback.preferredAudioLanguages', 'playback.preferredSubtitleLanguages', 'playback.subtitleMode',
   'playback.subtitleSize', 'playback.subtitleColor', 'playback.subtitleBackground', 'playback.subtitlePosition',
+  // The server's delivery policy reads both saved quality defaults for the network class it
+  // decided (preference lane home/remote); the client sends no quality on a plain start.
+  'quality.home', 'quality.remote',
 ]);
 function preferenceEffect(binding: SettingsBinding): boolean {
   if (preferenceEffects.has(binding.key) || binding.key.startsWith('subtitles.')) return true;
