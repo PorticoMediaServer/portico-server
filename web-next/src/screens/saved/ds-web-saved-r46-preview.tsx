@@ -63,7 +63,9 @@ function contentPage(view: 'watchlist' | 'favorites', shape: 'posters' | 'square
     revision: {catalog: 1, viewer: 1},
     heading: {key: view === 'favorites' ? 'saved.favorites' : 'saved.watchlist', fallback: view === 'favorites' ? 'Favorites' : 'My List'},
     navigation: [{id: 'watchlist', labelKey: 'saved.watchlist', view: 'watchlist'}, {id: 'favorites', labelKey: 'saved.favorites', view: 'favorites'}, {id: 'playlists', labelKey: 'saved.playlists', view: 'playlists'}],
-    query: {sort, direction, category: `${filter}:${shape}`, q: '', limit: 40, searchMode: 'none'},
+    // The saved parser requires the published filter alone. The current server appends ':shape'
+    // to this echo; that cross-package mismatch is reported, not reproduced here.
+    query: {sort, direction, category: filter, q: '', limit: 40, searchMode: 'none'},
     sorts: [
       {id: 'title', labelKey: 'sort.title', directions: ['asc', 'desc']},
       {id: 'added', labelKey: 'sort.added', directions: ['asc', 'desc']},
