@@ -27,7 +27,7 @@ export type LibraryPlaySelectionOptions = Readonly<{
   isCurrent: () => boolean;
   playback?: Pick<V1QueuePlayer, 'playSegments'>;
 }>;
-type Grant = {entry: ContentEntry; controller: AbortController; promise: Promise<SelectionItem>; resolve: (item: SelectionItem) => void; reject: (error: unknown) => void};
+type Grant = {entry: ContentEntry; pending: boolean; controller: AbortController; promise: Promise<SelectionItem>; resolve: (item: SelectionItem) => void; reject: (error: unknown) => void};
 type Window = {first: number; last: number; entries: readonly Readonly<{entry: ContentEntry; position: number}>[]; controller: AbortController; promise?: Promise<readonly LibraryPlayRow[]>; registrations: (() => void)[]};
 const cancelled = () => new DOMException('Library selection retired', 'AbortError');
 const unavailable = () => Object.assign(new Error('library-play-selection-unavailable'), {code: 'library-play-selection-unavailable'});
@@ -94,7 +94,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       active++;
       const lifetime = AbortSignal.any([signal, life.signal, grant.controller.signal]);
       void readCatalogueSelectionItem({api, scope, requestId, signal: lifetime,
-        isCurrent: () => current() && source.contains(grant.entry)}, grant.entry, {play: true}).then(grant.resolve, failure => {
+        isCurrent: () => current() && source.contains(grant.entry)}, grant.entry, {play: true}).then(item => {grant.pending = false;grant.resolve(item);}, failure => {
           if (grants.get(grant.entry) === grant) grants.delete(grant.entry);
           if (terminal(failure)) retire(failure);grant.reject(failure);
         }).finally(() => {active--;pump();});
@@ -108,7 +108,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     const cached = grants.get(entry);if (cached) return cached.promise;
     let resolve!: Grant['resolve'], reject!: Grant['reject'];
     const promise = new Promise<SelectionItem>((done, failed) => {resolve = done;reject = failed;});
-    const grant: Grant = {entry, controller: new AbortController(), promise, resolve, reject};
+    const grant: Grant = {entry, pending: true, controller: new AbortController(), promise, resolve, reject};
     grants.set(entry, grant);queued.push(grant);pump();return promise;
   };
   const prune = () => {
@@ -159,6 +159,10 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
         .flatMap(({entry, position}) => entry?.libraryId && source.contains(entry) ? [Object.freeze({entry, position})] : []);
       if (window?.first === first && window.last === last && window.entries.length === entries.length && window.entries.every((value, index) => value.entry === entries[index].entry)) return window.promise!;
       clearWindow();error = undefined;
+      const visible = new Set(entries.map(value => value.entry));
+      for (const [entry, grant] of grants) if (grant.pending && !visible.has(entry)) {
+        grants.delete(entry);grant.controller.abort();grant.reject(cancelled());
+      }
       const captured: Window = {first, last, entries, controller: new AbortController(), registrations: []};window = captured;
       captured.promise = Promise.resolve().then(async () => {
         if (!current() || window !== captured) throw cancelled();

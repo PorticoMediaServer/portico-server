@@ -92,6 +92,27 @@ test('replacement windows reject old row handles but explicit picks survive real
   } finally {owner.dispose();}
 });
 
+test('replacing the mounted window cancels its unfinished grants before admitting new rows', async () => {
+  const pending: {id: string; signal?: AbortSignal; finish: () => void}[] = [];
+  const owner = setup({playSegments: async () => queue}, (id, signal) => new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException('cancelled', 'AbortError'));
+    signal!.addEventListener('abort', abort, {once: true});
+    pending.push({id, signal, finish: () => {signal!.removeEventListener('abort', abort);resolve(detail(id));}});
+  }));
+  try {
+    await owner.load();
+    const first = assert.rejects(owner.selection.registerWindow(0, 9), {name: 'AbortError'});
+    await settle();assert.equal(pending.length, 4);
+    const next = owner.selection.registerWindow(10, 11);
+    await first;await settle();
+    assert(pending.slice(0, 4).every(value => value.signal!.aborted));
+    assert.deepEqual(pending.slice(4).map(value => value.id), ['movie-10', 'movie-11']);
+    for (const value of pending.slice(4)) value.finish();
+    const rows = await next;assert.deepEqual(rows.map(row => row.position), [10, 11]);
+    assert.equal(owner.detailReads(), 6);
+  } finally {owner.dispose();for (const value of pending) value.finish();}
+});
+
 test('selection and navigation cancel a pending real-port call; reselecting or Back cannot revive it', async () => {
   for (const navigate of [false, true]) {
     const held = deferred<QueueHeader>();let lifetime: {signal?: AbortSignal; isCurrent?: () => boolean} | undefined;
