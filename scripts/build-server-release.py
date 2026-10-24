@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,Ed25519PublicKey
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 RCLONE=runpy.run_path(str(ROOT/'scripts/rclone-bundle.py'))
+SONIC=runpy.run_path(str(ROOT/'scripts/sonic-bundle.py'))
 
 def official_root():
     path=pathlib.Path(os.environ.get('PORTICO_ROOT_PUBLIC_KEY_FILE',str(ROOT/'trust/hosted-root-public-key.pem')))
@@ -138,7 +139,12 @@ def verify_manifest(directory,expected_source,trusted_public_key):
     if settings.get('GOOS','')+'-'+settings.get('GOARCH','')!=manifest['target']:raise ValueError('Embedded target does not match release target')
     if component=='server':
         bundle=directory/'third_party/ffmpeg'
-        subprocess.run(['python3',str(ROOT/'scripts/verify-ffmpeg-manifest.py'),str(bundle)],check=True)
+        if manifest.get('sonicManifestSha256'):
+            target='linux-'+{'amd64':'x64','arm64':'arm64'}[manifest['target'].split('-')[1]]
+            SONIC['verify_installed'](bundle,target)
+            if SONIC['digest'](bundle/'bin/sonic-manifest.json')!=manifest['sonicManifestSha256']:raise ValueError('Sonic manifest changed')
+        else:
+            subprocess.run(['python3',str(ROOT/'scripts/verify-ffmpeg-manifest.py'),str(bundle)],check=True)
         if hashlib.sha256((bundle/'toolchain-manifest.json').read_bytes()).hexdigest()!=manifest.get('toolchainManifestSha256'):raise ValueError('Toolchain manifest changed')
         rclone=directory/'third_party/rclone'
         RCLONE['verify'](rclone,manifest['target'])
@@ -153,7 +159,7 @@ def release_version(value):
     return value
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--source-dir',type=pathlib.Path);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--sonic-bundle',type=pathlib.Path);parser.add_argument('--source-dir',type=pathlib.Path);args=parser.parse_args()
     key=signing_key()
     root_key,root_pem=official_root()
     if args.component=='server':
@@ -204,6 +210,10 @@ def main():
         if toolchain['target']!=target:raise SystemExit('FFmpeg bundle target does not match server')
         shutil.copytree(bundle,stage/'third_party/ffmpeg')
         manifest['toolchainManifestSha256']=hashlib.sha256((bundle/'toolchain-manifest.json').read_bytes()).hexdigest()
+        if args.sonic_bundle:
+            if args.os!='linux':raise SystemExit('Sonic bundles currently support Linux only')
+            SONIC['install'](args.sonic_bundle.resolve(),stage/'third_party/ffmpeg',target)
+            manifest['sonicManifestSha256']=SONIC['digest'](stage/'third_party/ffmpeg/bin/sonic-manifest.json')
         shutil.copytree(rclone_bundle,stage/'third_party/rclone')
         manifest['rcloneManifestSha256']=hashlib.sha256((rclone_bundle/'bundle-manifest.json').read_bytes()).hexdigest()
     (stage/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');(stage/'manifest.sig').write_bytes(key.sign((stage/'manifest.json').read_bytes()));verify_manifest(stage,snapshot,key.public_key().public_bytes_raw())
