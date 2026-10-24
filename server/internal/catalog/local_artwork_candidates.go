@@ -11,6 +11,22 @@ import (
 	"portico.local/server/internal/storage"
 )
 
+type orderedArtworkCarrier struct {
+	sidecarCarrier
+	name string
+	rank int64
+}
+
+func artworkCarrierBefore(a, b orderedArtworkCarrier) bool {
+	if a.rank != b.rank {
+		return a.rank < b.rank
+	}
+	if a.name != b.name {
+		return a.name < b.name
+	}
+	return a.key < b.key
+}
+
 func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sql.Tx, source LibrarySource, object, revision, asset, kind string, candidates []assets.LocalArtworkCandidate) error {
 	if tx == nil || object == "" || revision == "" || asset == "" || (kind != "movie" && kind != "tv" && kind != "anime") {
 		return ErrAdminQuery
@@ -26,7 +42,7 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 	if !current {
 		return storage.ErrInventoryChanged
 	}
-	carriers := []sidecarCarrier{}
+	byCarrier := map[sidecarCarrier]orderedArtworkCarrier{}
 	for _, candidate := range candidates {
 		raw, err := hex.DecodeString(candidate.Key)
 		if err != nil || len(raw) != 32 {
@@ -35,8 +51,18 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 		if !validVideoArtworkCandidateSlot(kind, candidate.Slot) {
 			return errors.New("invalid local artwork candidate slot")
 		}
+		name, rank, err := assets.NormalizeLocalArtworkSource(candidate.SourceName, candidate.SourceRank)
+		if err != nil {
+			return err
+		}
 		err = s.visitAssetSidecars(ctx, tx, source.LibraryID, kind, asset, map[string]string{candidate.Slot: candidate.Key}, func(_ context.Context, _ *sql.Tx, _ string, found []sidecarCarrier) error {
-			carriers = append(carriers, found...)
+			for _, c := range found {
+				value := orderedArtworkCarrier{c, name, rank}
+				old, exists := byCarrier[c]
+				if !exists || artworkCarrierBefore(value, old) {
+					byCarrier[c] = value
+				}
+			}
 			return nil
 		})
 		if err != nil {
@@ -46,10 +72,14 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 		// facts and omit the unattached image; never invent a parent or fail
 		// the whole import merely because the filename did not match.
 	}
+	carriers := make([]orderedArtworkCarrier, 0, len(byCarrier))
+	for _, c := range byCarrier {
+		carriers = append(carriers, c)
+	}
 	// Candidate-only changes have no local_artwork carrier trigger. Notify the
 	// affected old and new heads in this same transaction, including removals
 	// and reassociations; leave unchanged accepted observations quiet.
-	pending := make(map[sidecarCarrier]bool, len(carriers))
+	pending := make(map[orderedArtworkCarrier]bool, len(carriers))
 	for _, c := range carriers {
 		pending[c] = true
 	}
@@ -58,14 +88,14 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 		entity int64
 	}
 	dirty := map[head]bool{}
-	rows, err := tx.QueryContext(ctx, `SELECT source_revision,asset_id,kind,entity_id,role,art_key FROM inventory_artwork_candidates WHERE object_id=?`, object)
+	rows, err := tx.QueryContext(ctx, `SELECT source_revision,asset_id,kind,entity_id,role,art_key,source_name,source_rank FROM inventory_artwork_candidates WHERE object_id=?`, object)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var c sidecarCarrier
+		var c orderedArtworkCarrier
 		var oldRevision, oldAsset string
-		if err = rows.Scan(&oldRevision, &oldAsset, &c.kind, &c.entity, &c.role, &c.key); err != nil {
+		if err = rows.Scan(&oldRevision, &oldAsset, &c.kind, &c.entity, &c.role, &c.key, &c.name, &c.rank); err != nil {
 			rows.Close()
 			return err
 		}
@@ -92,7 +122,7 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 		return err
 	}
 	for _, c := range carriers {
-		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES(?,?,?,?,?,?,?)`, object, revision, asset, c.kind, c.entity, c.role, c.key); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key,source_name,source_rank) VALUES(?,?,?,?,?,?,?,?,?)`, object, revision, asset, c.kind, c.entity, c.role, c.key, c.name, c.rank); err != nil {
 			return err
 		}
 	}

@@ -199,51 +199,49 @@ func (s *Service) continueSave(ctx context.Context, profile, key string) (progre
 // one whose saver can no longer read it, "authority_revoked". nil windows and
 // no code: a snapshot is still building.
 func (s *Service) readSaveWindows(ctx context.Context, r saveRow, p identity.Principal) (windows []saveWindow, code string, err error) {
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
-	if err != nil {
-		return nil, "", err
-	}
-	defer done()
-	q, err := loadQueue(ctx, tx, r.queue)
-	if errors.Is(err, ErrNotFound) {
+	changed := false
+	err = s.withMusicLayout(ctx, Caller{Principal: p}, r.queue, func(l *layout) ([]int64, error) {
+		if l.orderDigest() != r.order || l.total() != r.total {
+			changed = true
+			return nil, ErrRevision
+		}
+		return l.sonicWindowsForRange(r.next, min(int64(saveStepEntries), max(0, r.total-r.next)))
+	}, func(l *layout) error {
+		windows = []saveWindow{}
+		for from := r.next; from < r.total && from < r.next+saveStepEntries; from += WindowMax {
+			n := min(int64(WindowMax), r.total-from)
+			entries, e := s.window(ctx, l, p, from, n)
+			if errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, identity.ErrNotVisible) {
+				windows, code = nil, "authority_revoked"
+				return nil
+			}
+			if e != nil {
+				return e
+			}
+			w := saveWindow{from: from, next: from + n, items: make([]string, 0, len(entries))}
+			for _, entry := range entries {
+				if entry.Kind == "pending" {
+					windows = nil
+					return nil
+				}
+				if entry.Available && entry.ItemID != "" {
+					w.items = append(w.items, entry.ItemID)
+				}
+			}
+			windows = append(windows, w)
+		}
+		return nil
+	})
+	if errors.Is(err, ErrNotFound) || changed {
 		return nil, "queue_changed", nil
 	}
-	if err != nil {
-		return nil, "", err
+	if errors.Is(err, ErrRevision) {
+		return nil, "", nil
+	} // concurrent playback; the existing worker retries
+	if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrNotVisible) || errors.Is(err, identity.ErrForbidden) {
+		return nil, "authority_revoked", nil
 	}
-	l, err := s.readLayout(ctx, tx, q)
-	if err != nil {
-		return nil, "", err
-	}
-	// Playing the queue moves its current position and revision; only a
-	// change to its order stops the copy.
-	if l.orderDigest() != r.order || l.total() != r.total {
-		return nil, "queue_changed", nil
-	}
-	windows = []saveWindow{}
-	for from := r.next; from < r.total && from < r.next+saveStepEntries; from += WindowMax {
-		n := min(int64(WindowMax), r.total-from)
-		entries, err := s.window(ctx, l, p, from, n)
-		if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrNotVisible) {
-			return nil, "authority_revoked", nil
-		}
-		if err != nil {
-			return nil, "", err
-		}
-		w := saveWindow{from: from, next: from + n, items: make([]string, 0, len(entries))}
-		for _, e := range entries {
-			if e.Kind == "pending" {
-				return nil, "", nil
-			}
-			// An entry the saver can no longer play is left out (SEC-02),
-			// as in the synchronous save.
-			if e.Available && e.ItemID != "" {
-				w.items = append(w.items, e.ItemID)
-			}
-		}
-		windows = append(windows, w)
-	}
-	return windows, "", nil
+	return windows, code, err
 }
 
 // sweepSaves ends saves whose request died before the playlist existed and
