@@ -8,7 +8,7 @@ import styles from './metadata.module.css';
 const t = defaultI18n.t;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
 type Draft = Readonly<Record<string, {value: string; locked: boolean}>>;
-type Tab = 'general' | 'artwork' | 'tags';
+type Tab = 'general' | 'artwork' | 'tags' | 'history';
 
 /** owner-metadata frames 6-8: one editor for a title, an episode, a show, an album or a book.
  * Every field and every choice comes from the server's schema and current snapshot; a change is
@@ -52,8 +52,8 @@ export function MetadataEditor({api, scope, target, onClose}: {
   return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
     <header className={styles.editorHead}><h2>{heading}</h2><Button size="small" onClick={onClose}>{t('action.close')}</Button></header>
     <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
-      {(['general', 'artwork', 'tags'] as const).map(id => <button key={id} type="button" aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
-        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : 'web.metadata.tabTags')}</button>)}
+      {(['general', 'artwork', 'tags', 'history'] as const).map(id => <button key={id} type="button" aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : 'web.metadata.tabHistory')}</button>)}
     </nav>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
     {state.error ? <HostedError error={state.error} /> : null}
@@ -63,8 +63,11 @@ export function MetadataEditor({api, scope, target, onClose}: {
       {tab === 'general' ? <General data={data} draft={draft} set={set} /> : null}
       {tab === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
       {tab === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
+        onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
-      {tab !== 'artwork' ? <footer className={styles.editorFooter}>
+      {tab === 'history' ? <History data={data} busy={state.phase === 'saving'} onUndo={historyId => void run({action: 'undo', historyId})}
+        onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
+      {tab !== 'artwork' && tab !== 'history' ? <footer className={styles.editorFooter}>
         <Button size="small" disabled={!changed.length || state.phase === 'saving'} onClick={() => setDraft({})}>{t('action.discard')}</Button>
         <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length} onClick={save}>
           {t('web.metadata.saveChanges')}{changed.length ? ` (${changed.length})` : ''}</Button>
@@ -110,14 +113,16 @@ function Tags({data, draft, set}: {data: RepairData; draft: Draft; set: (field: 
   </div>;
 }
 
-function Artwork({data, busy, onUse, onFindMore, onRefetch}: {
+function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch}: {
   data: RepairData; busy: boolean; onUse: (role: string, candidateId: string) => void;
-  onFindMore: (role: string) => void; onRefetch: (role: string) => void;
+  onLock: (role: string, subject: string, locked: boolean) => void; onFindMore: (role: string) => void; onRefetch: (role: string) => void;
 }) {
   return <div className={styles.artwork}>{data.artworkRoles.map(role => {
     const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
+    const chosen = data.snapshot.artwork.find(choice => choice.role === role);
     return <section key={role} className={styles.role}>
       <header><b>{role}</b>
+        {chosen ? <Button size="small" disabled={busy} aria-pressed={chosen.locked} onClick={() => onLock(role, chosen.subject, !chosen.locked)}>{t(chosen.locked ? 'web.metadata.unlock' : 'web.metadata.lock')}</Button> : null}
         <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>
         <Button size="small" onClick={() => onRefetch(role)} disabled={busy}>{t('web.metadata.refetchChosen')}</Button>
       </header>
@@ -129,4 +134,15 @@ function Artwork({data, busy, onUse, onFindMore, onRefetch}: {
       </figure>)}</div> : <p className={styles.working}>{t('web.metadata.noCandidates')}</p>}
     </section>;
   })}</div>;
+}
+
+function History({data, busy, onUndo, onAll}: {data: RepairData; busy: boolean; onUndo: (historyId: number) => void; onAll: (locked: boolean) => void}) {
+  return <div className={styles.fields}>
+    <div className={styles.editorFooter}><Button size="small" disabled={busy} onClick={() => onAll(true)}>{t('web.metadata.lockEverything')}</Button>
+      <Button size="small" disabled={busy} onClick={() => onAll(false)}>{t('web.metadata.unlockEverything')}</Button></div>
+    {data.history.length ? data.history.map(row => <div key={row.id} className={styles.historyRow}>
+      <span>{row.trigger}</span><small>{row.observedAt}</small>
+      <Button size="small" disabled={busy} onClick={() => onUndo(row.id)}>{t('web.metadata.undo')}</Button>
+    </div>) : <p className={styles.working}>{t('web.metadata.noHistory')}</p>}
+  </div>;
 }
