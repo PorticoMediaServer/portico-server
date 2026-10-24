@@ -142,6 +142,20 @@ export class ReaderController<P extends object> {
       // A replacement or explicit close can complete while failed resources
       // retire. That newer lifecycle owns the snapshot, including when closed.
       if (this.lifecycleVersion !== lifecycleVersion) return;
+      // Temporary P0-CBZ-RAW diagnostic (throwaway branch only): name, a bounded
+      // and redacted message, and the first three stack frames. No error object,
+      // cause, source, manifest or book content.
+      try {
+        const redact = (value: string) => value
+          .replace(/\b(?:blob|https?|file):\/\/[^\s"')]+/gi, '[url]')
+          .replace(/\b(bearer|token|grant|session)[=:\s]+[A-Za-z0-9._~+/=-]{8,}/gi, '$1 [redacted]')
+          .slice(0, 240);
+        const raw = error as {name?: unknown; message?: unknown; stack?: unknown};
+        const frames = String(raw?.stack ?? '').split('\n').slice(1, 4)
+          .map(line => (line.match(/([\w.-]+\.(?:ts|tsx|js|mjs)):(\d+):(\d+)/) ?? []).slice(1).join(':')).filter(Boolean);
+        console.info('P0-CBZ-RAW ' + JSON.stringify({marker: 'P0-CBZ-RAW', name: redact(String(raw?.name ?? '')),
+          message: redact(String(raw?.message ?? '')), frames}));
+      } catch { /* a diagnostic must never affect the reader */ }
       this.publish({status: 'error', error: readerErrorCode(error), selection: null});
     }
   }
