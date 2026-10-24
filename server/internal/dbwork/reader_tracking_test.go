@@ -211,3 +211,70 @@ func TestReaderLifetimeScopeIsolatesForeignFixture(t *testing.T) {
 		t.Fatalf("process-wide lifetime lost the foreign lease: %+v", stats)
 	}
 }
+
+func TestReaderLifetimeDirectTransactionCancellationLateRelease(t *testing.T) {
+	db := readerFixture(t)
+	scope := readerScopeForTest(t, db)
+	baseline := scope.stats().Snapshots
+	check := func(want int) {
+		t.Helper()
+		if stats := scope.stats(); stats.Snapshots != baseline+want {
+			t.Fatalf("snapshot lifetime: %+v, want%d", stats, baseline+want)
+		}
+	}
+
+	// A context that is already canceled must be refused before any connection
+	// admits a reader lease.
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if tx, err := db.BeginTx(cancelled, &sql.TxOptions{ReadOnly: true}); !errors.Is(err, context.Canceled) {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+		t.Fatalf("already-canceled BeginTx: tx=%v err=%v", tx, err)
+	}
+	check(0)
+
+	// Cancel after a successful read. database/sql releases the snapshot from
+	// its context goroutine; an explicit late Rollback/Commit must not touch the
+	// already-released lease or resurrect the count.
+	ctx, cancelTx := context.WithCancel(context.Background())
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM sample`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("canceled fixture read count%d, want2", count)
+	}
+	check(1)
+	cancelTx()
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
+	if err = tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		t.Fatalf("late rollback: %v", err)
+	}
+	check(0)
+	if err = tx.Commit(); !errors.Is(err, sql.ErrTxDone) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("late commit: %v", err)
+	}
+	check(0)
+
+	// The reverse race: release explicitly at the same moment the cancellation
+	// watchdog would. Either owner may win; the lease must still be released
+	// exactly once and the scope must neither leak nor go below its baseline.
+	ctx, cancelTx = context.WithCancel(context.Background())
+	tx, err = db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(1)
+	cancelTx()
+	if err = tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		t.Fatalf("racing rollback: %v", err)
+	}
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
+	check(0)
+}
