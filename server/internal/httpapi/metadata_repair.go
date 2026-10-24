@@ -87,6 +87,10 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 				return
 			}
 			out.Server = d.Identity.ID()
+			if err = d.readingMetadataResponseAuthorize(ctx, p, out); err != nil {
+				failure(w, err)
+				return
+			}
 			out.ViewerFence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))
 			write(w, 200, out)
 		})

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -76,5 +77,37 @@ func TestReadingOwnerMetadataUsesExistingRouteAndCurrentLibraryAuthority(t *test
 	}
 	if get(f.owner, b.Public).Snapshot.Fields["author"].Value != value {
 		t.Fatal("hidden target changed")
+	}
+	// A mixed receipt can replay without retrying its denied target.
+	w = f.call("POST", "/v1/metadata/bulk", admin.AccessToken, string(body))
+	if w.Code != 200 {
+		t.Fatal("mixed receipt replay", w.Code)
+	}
+	p, err := f.deps.Identity.Authenticate(admin.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured, err := f.deps.Metadata.RepairState(context.Background(), metadata.RepairTarget{Kind: "item", ID: a.Public}, func(tx *sql.Tx) error {
+		if err := f.deps.manualMetadataAuthorize(context.Background(), tx, p); err != nil {
+			return err
+		}
+		return f.deps.readingMetadataTargetAuthorize(context.Background(), tx, p, metadata.RepairTarget{Kind: "item", ID: a.Public})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dbwork.ExecWrite(context.Background(), f.deps.DB, dbwork.ClassSecurityFence, `UPDATE direct_memberships SET allowed_libraries='["hidden-read"]',revision=revision+1 WHERE account_id='admin'`); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.deps.readingMetadataResponseAuthorize(context.Background(), p, captured); err == nil {
+		t.Fatal("late library narrowing retained a read response")
+	}
+	admin, err = f.deps.Identity.Issue("admin", "admin-profile", "local", "admin", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = f.call("POST", "/v1/metadata/bulk", admin.AccessToken, string(body))
+	if w.Code != 401 && w.Code != 403 {
+		t.Fatal("revoked successful target replayed", w.Code)
 	}
 }

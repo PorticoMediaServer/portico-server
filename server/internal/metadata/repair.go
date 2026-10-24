@@ -76,19 +76,20 @@ type RepairSnapshot struct {
 	Artwork           []ArtworkChoice        `json:"artwork"`
 }
 type RepairState struct {
-	Tabs         []string          `json:"tabs"`
-	Target       RepairTarget      `json:"target"`
-	Library      string            `json:"libraryId"`
-	Server       string            `json:"serverId"`
-	ViewerFence  string            `json:"viewerFence"`
-	Revision     string            `json:"revision"`
-	Snapshot     RepairSnapshot    `json:"snapshot"`
-	Candidates   []RepairCandidate `json:"candidates"`
-	History      []RepairHistory   `json:"history"`
-	Artwork      ArtworkState      `json:"artwork"`
-	Cascades     []RepairCascade   `json:"cascades"`
-	Schema       []RepairFieldSpec `json:"schema"`
-	ArtworkRoles []string          `json:"artworkRoles"`
+	TargetItemKind string            `json:"-"`
+	Tabs           []string          `json:"tabs"`
+	Target         RepairTarget      `json:"target"`
+	Library        string            `json:"libraryId"`
+	Server         string            `json:"serverId"`
+	ViewerFence    string            `json:"viewerFence"`
+	Revision       string            `json:"revision"`
+	Snapshot       RepairSnapshot    `json:"snapshot"`
+	Candidates     []RepairCandidate `json:"candidates"`
+	History        []RepairHistory   `json:"history"`
+	Artwork        ArtworkState      `json:"artwork"`
+	Cascades       []RepairCascade   `json:"cascades"`
+	Schema         []RepairFieldSpec `json:"schema"`
+	ArtworkRoles   []string          `json:"artworkRoles"`
 }
 type RepairFieldEdit struct {
 	Value     *string   `json:"value,omitempty"`
@@ -287,6 +288,7 @@ func readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairSta
 		return out, err
 	}
 	out.Snapshot = snap
+	out.TargetItemKind = ent.itemKind
 	out.Library = ent.library
 	out.Schema = ent.schema
 	out.Tabs = repairSchemaTabs(ent.schema)

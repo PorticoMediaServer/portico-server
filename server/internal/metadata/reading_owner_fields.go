@@ -13,6 +13,14 @@ func readingAttributionField(field string) bool {
 	return field == "author" || field == "series" || field == "seriesNumber"
 }
 
+func readingAttributionSpec(field, label string) RepairFieldSpec {
+	spec := textSpec(field, label, "general", true)
+	if field != "seriesNumber" {
+		spec.MaxLength = 4096
+	}
+	return spec
+}
+
 // Reading attribution is scalar owner data. It never creates a person, an
 // audiobook Author/Book, or a provider/archive/artwork permission.
 func readReadingOwnerFields(ctx context.Context, tx *sql.Tx, entity int64) (map[string]string, error) {

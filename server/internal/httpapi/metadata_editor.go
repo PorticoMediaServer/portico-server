@@ -49,7 +49,7 @@ func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 			return
 		}
 		authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
-		out, err := d.Metadata.BulkEdit(ctx, body, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize, func(tx *sql.Tx, t metadata.RepairTarget) error {
+		out, err := d.Metadata.BulkEditWithTargetAuthorization(ctx, body, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize, func(tx *sql.Tx, t metadata.RepairTarget) error {
 			return d.readingMetadataTargetAuthorize(ctx, tx, p, t)
 		})
 		if err != nil {
@@ -164,6 +164,10 @@ func (d Dependencies) artworkUpload(w http.ResponseWriter, r *http.Request, rate
 
 func (d Dependencies) writeRepairState(w http.ResponseWriter, r *http.Request, ctx context.Context, p identity.Principal, out metadata.RepairState) {
 	if _, err := d.manualMetadataAdministrator(ctx, r); err != nil {
+		failure(w, err)
+		return
+	}
+	if err := d.readingMetadataResponseAuthorize(ctx, p, out); err != nil {
 		failure(w, err)
 		return
 	}

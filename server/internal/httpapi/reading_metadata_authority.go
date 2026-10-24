@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
@@ -32,4 +33,24 @@ func (d Dependencies) readingMetadataTargetAuthorize(ctx context.Context, tx *sq
 		return err
 	}
 	return d.resourceAuthorize(tx, p, library)
+}
+
+func (d Dependencies) readingMetadataResponseAuthorize(ctx context.Context, p identity.Principal, out metadata.RepairState) error {
+	if out.TargetItemKind != "ebook" && out.TargetItemKind != "comic" {
+		return nil
+	}
+	read, err := dbwork.BeginSnapshot(ctx, d.DB)
+	if err != nil {
+		return err
+	}
+	defer read.Rollback()
+	if err = d.manualMetadataAuthorize(ctx, read.Tx(), p); err != nil {
+		return err
+	}
+	var library string
+	err = read.Tx().QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND e.kind IN(20,21) AND e.retired=0 AND cl.retired=0`, out.Target.ID).Scan(&library)
+	if err != nil {
+		return err
+	}
+	return d.resourceAuthorize(read.Tx(), p, library)
 }

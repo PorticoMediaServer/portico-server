@@ -100,7 +100,15 @@ func validBulkEdit(m BulkEdit) error {
 
 // BulkEdit applies one edit to many targets. Replaying the same operationId
 // returns the stored receipt rather than editing anything a second time.
-func (s *Service) BulkEdit(ctx context.Context, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize ...BulkTargetAuthorize) (BulkReceipt, error) {
+func (s *Service) BulkEdit(ctx context.Context, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error) (BulkReceipt, error) {
+	return s.bulkEditAuthorized(ctx, m, actor, authorize)
+}
+
+func (s *Service) BulkEditWithTargetAuthorization(ctx context.Context, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize BulkTargetAuthorize) (BulkReceipt, error) {
+	return s.bulkEditAuthorized(ctx, m, actor, authorize, targetAuthorize)
+}
+
+func (s *Service) bulkEditAuthorized(ctx context.Context, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize ...BulkTargetAuthorize) (BulkReceipt, error) {
 	if actor.AccountID == "" || authorize == nil || len(targetAuthorize) > 1 {
 		return BulkReceipt{}, ErrRepairInput
 	}
@@ -120,9 +128,16 @@ func (s *Service) BulkEdit(ctx context.Context, m BulkEdit, actor MBActor, autho
 	}
 	stored, digest, err := operations.Receipt(tx, scope, m.OperationID, m, now)
 	if err == nil && stored != "" && len(targetAuthorize) == 1 {
-		for _, t := range m.Targets {
-			if err = targetAuthorize[0](tx, RepairTarget{Kind: t.Kind, ID: t.ID}); err != nil {
-				break
+		var prior BulkReceipt
+		if json.Unmarshal([]byte(stored), &prior) != nil {
+			err = ErrRepairInput
+		} else {
+			for _, t := range prior.Results {
+				if t.OK {
+					if err = targetAuthorize[0](tx, RepairTarget{Kind: t.Kind, ID: t.ID}); err != nil {
+						break
+					}
+				}
 			}
 		}
 	}
@@ -196,7 +211,7 @@ func (s *Service) bulkTarget(ctx context.Context, t RepairTarget, expected strin
 	if err = authorize(tx); err != nil {
 		return "", err
 	}
-	revision, err := s.ApplyBulkTargetTx(ctx, tx, t, expected, m, actor, authorize, targetAuthorize...)
+	revision, err := s.applyBulkTargetAuthorizedTx(ctx, tx, t, expected, m, actor, authorize, targetAuthorize...)
 	if err != nil {
 		return "", err
 	}
@@ -205,7 +220,11 @@ func (s *Service) bulkTarget(ctx context.Context, t RepairTarget, expected strin
 
 // ApplyBulkTargetTx lets the durable selector job commit an edit and its cursor
 // atomically. It preserves repair validation/history without an item receipt.
-func (s *Service) ApplyBulkTargetTx(ctx context.Context, tx *sql.Tx, t RepairTarget, expected string, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize ...BulkTargetAuthorize) (string, error) {
+func (s *Service) ApplyBulkTargetTx(ctx context.Context, tx *sql.Tx, t RepairTarget, expected string, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error) (string, error) {
+	return s.applyBulkTargetAuthorizedTx(ctx, tx, t, expected, m, actor, authorize)
+}
+
+func (s *Service) applyBulkTargetAuthorizedTx(ctx context.Context, tx *sql.Tx, t RepairTarget, expected string, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize ...BulkTargetAuthorize) (string, error) {
 	if authorize == nil {
 		return "", ErrRepairInput
 	}
