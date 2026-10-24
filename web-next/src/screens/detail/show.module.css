@@ -6,6 +6,16 @@
 
 .hide { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
 
+.layoutToggle { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+
+.layoutToggle button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-tertiary); cursor: pointer; }
+
+.layoutToggle button:hover { color: var(--color-text); }
+
+.layoutToggle button[aria-pressed="true"] { background: var(--color-raised-bright); color: var(--color-text); }
+
+.layoutToggle button:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: 1px; }
+
 .tiles { display: grid; grid-template-columns: repeat(var(--episode-columns),minmax(0,1fr)); gap: 28px 16px; align-items: start; }
 
 .tiles > * { width: 100%; }
@@ -34,6 +44,8 @@
 .progress { display: none; }
 
 .hide { margin-left: 0; }
+
+.layoutToggle { display: none; }
 
 .tiles { gap: 24px 12px; }
 
@@ -196,3 +208,42 @@
 .relatedRows { padding: 28px 0 96px; }
 
 .relatedRows > :first-child { margin-top: 0; }
+
+/* The drawn season menu: header with the real total and jump box, two-line season rows. */
+.seasonPopover { padding: 8px; }
+
+.seasonHeader { display: flex; align-items: center; gap: 12px; padding: 4px 6px 8px; }
+
+.seasonHeader b { font-size: var(--type-caption-strong-size); font-weight: var(--type-caption-strong-weight); color: var(--color-text-secondary); }
+
+.seasonJump { margin-left: auto; width: 176px; }
+
+.seasonList { display: flex; flex-direction: column; gap: 2px; max-height: min(52vh, 440px); overflow: auto; }
+
+.seasonRow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--color-text-secondary); text-align: left; font: inherit; cursor: pointer; }
+
+.seasonRow:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); color: var(--color-text); }
+
+.seasonRow:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: -2px; }
+
+.seasonRow[aria-selected="true"] { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-text); }
+
+.seasonName { display: grid; gap: 2px; min-width: 0; flex: 1; }
+
+.seasonName b { font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.seasonName small { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+
+.seasonFacts { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: var(--type-caption-size); color: var(--color-text-tertiary); white-space: nowrap; }
+
+.seasonWatched { display: inline-flex; align-items: center; gap: 4px; color: var(--color-accent-strong); }
+
+.seasonProgress { width: 64px; height: 4px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--color-text) 16%, transparent); }
+
+.seasonProgress i { display: block; height: 100%; background: var(--color-accent-strong); }
+
+.seasonPaging { display: flex; gap: 8px; padding: 8px 4px 2px; }
+
+.seasonPaging button { border: 0; padding: 6px 8px; border-radius: 8px; background: transparent; color: var(--color-text-secondary); font: inherit; font-size: var(--type-see-all-size); font-weight: var(--type-row-heading-weight); cursor: pointer; }
+
+.seasonPaging button:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 7%, transparent); }
