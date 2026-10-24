@@ -109061,6 +109061,16 @@ export const schemas = {
   },
   "GetMetadataSettingsResponse": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -109143,6 +109153,7 @@ export const schemas = {
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
+      "artworkMaxEdge",
       "tmdbCredentialConfigured",
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
@@ -185145,6 +185156,16 @@ export const schemas = {
   },
   "PutMetadataSettingsRequest": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -185183,6 +185204,16 @@ export const schemas = {
   },
   "PutMetadataSettingsResponse": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -185265,6 +185296,7 @@ export const schemas = {
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
+      "artworkMaxEdge",
       "tmdbCredentialConfigured",
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
