@@ -64,6 +64,7 @@ export class BrowserAccountEntry {
  private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
  private ownerReset?:OwnerResetCapture;private ownerResetTimer?:ReturnType<typeof setTimeout>;
  private moveProof?:Readonly<{code:string;revision:number;preview:MoveCodePreview}>;
+ private moveTicket?:Readonly<{ticket:string;revision:number;expiresAt:string}>;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
  getSnapshot=()=>this.state;
@@ -75,7 +76,7 @@ export class BrowserAccountEntry {
  private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
  private release(){
   this.stopAuthorityWatch();const api=this.api,registered=this.registered,ownerReturn=this.ownerReturn,reset=this.takeOwnerReset(),hadAuthority=!!this.session||!!this.challenge||!!registered||!!ownerReturn||!!reset;
-  this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;this.registered=undefined;this.registeredChallenge=undefined;this.ownerReturn=undefined;
+  this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;this.moveTicket=undefined;this.registered=undefined;this.registeredChallenge=undefined;this.ownerReturn=undefined;
   if(ownerReturn)void ownerReturn.cancel().catch(()=>{});
   if(registered)void registered.cancel().catch(()=>{});
   if(hadAuthority)this.retired();
@@ -247,7 +248,7 @@ export class BrowserAccountEntry {
  async previewMoveCode(code:string){
   const state=this.state,api=this.api;
   if(!api||!state.server||state.invitation||state.busy||!['password','portico','move-code','move-local','move-portico'].includes(state.phase))return;
-  const op=this.operation();this.moveProof=undefined;this.publish({...state,phase:'move-code',movePreview:undefined,busy:true,error:undefined});
+  const op=this.operation();this.moveProof=undefined;this.moveTicket=undefined;this.publish({...state,phase:'move-code',movePreview:undefined,busy:true,error:undefined});
   const client=new MemberAccountMoveClient(api,{serverId:state.server.id,isCurrent:op.current,retireLateGrant:session=>this.retire(api,session)});
   try{
    const revision=(await this.ports.store.read()).revision;if(!op.current())return;
@@ -259,6 +260,25 @@ export class BrowserAccountEntry {
    this.moveProof={code,revision,preview};
    this.publish({...state,phase:preview.signIn==='local'?'move-local':'move-portico',movePreview:preview,busy:false,error:undefined});
   }catch(error){if(op.current())this.publish({...state,phase:'move-code',movePreview:undefined,busy:false,error});}
+  finally{client.dispose();}
+ }
+ /** During the actual guided move the old password proves only this Waiting
+  * account. The one-use ticket stays private until the protected return owns it. */
+ async proveLocalMovePassword(username:string,password:string):Promise<boolean>{
+  const state=this.state,api=this.api;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.server.move!=='to_portico'||state.invitation||state.busy||!api)return false;
+  const op=this.operation();this.moveProof=undefined;this.moveTicket=undefined;this.publish({...state,busy:true,error:undefined});
+  const client=new MemberAccountMoveClient(api,{serverId:state.server.id,isCurrent:op.current,retireLateGrant:session=>this.retire(api,session)});
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!op.current())return false;
+   const proof=await client.password(username,password,op.signal);
+   if(!op.current())return false;
+   if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed.');
+   if(!op.current())return false;
+   if(Date.parse(proof.expiresAt)<=Date.now())throw new CodedError('move_code_invalid','The move proof expired.');
+   this.moveTicket={ticket:proof.ticket,expiresAt:proof.expiresAt,revision};
+   this.publish({...state,phase:'move-portico',busy:false,error:undefined});return true;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});return false;}
   finally{client.dispose();}
  }
  async redeemLocalMove(username:string,password:string){
@@ -451,15 +471,33 @@ export class BrowserAccountEntry {
   this.publish({phase:'challenge',server,origin:api.baseUrl,pin,busy:false});this.watchAuthority();
  }
  async preparePorticoSignIn(hostedOrigin:string):Promise<string|undefined>{
-  const state=this.state,api=this.api;
-  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.invitation||state.busy||!api||!state.origin||!this.ports.registered)return;
+  const state=this.state,api=this.api,proof=this.moveProof,ticket=this.moveTicket,moving=state.phase==='move-portico';
+  if(!['portico','move-portico'].includes(state.phase)||state.server?.signIn!=='portico'||state.invitation||state.busy||!api||!state.origin||!this.ports.registered)return;
+  // A move is never silently retried as ordinary sign-in. Its actual old-
+  // password ticket or owner-issued code must accompany the private prepare.
+  if(moving&&(state.server.move!=='to_portico'||(!proof&&!ticket)))return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  let preparing:RegisteredController|undefined;
+  const checkMove=async()=>{
+   if(!moving)return;
+   const revision=proof?.revision??ticket!.revision,expiresAt=proof?.preview.expiresAt??ticket!.expiresAt;
+   if(!op.current()||Date.parse(expiresAt)<=Date.now())throw new CodedError('move_code_invalid','The move proof expired.');
+   if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed.');
+   if(!op.current()||Date.parse(expiresAt)<=Date.now())throw new CodedError('cancelled','The account move request ended.');
+  };
   try{
+   await checkMove();if(!op.current())return;
    const previous=this.registered;this.registered=undefined;if(previous)await previous.cancel();if(!op.current())return;
-   const flow=this.ports.registered();this.registered=flow.controller;
-   const url=await flow.controller.prepare(api,state.origin,hostedOrigin,flow.installationId());
-   if(!op.current())return;this.publish({...state,busy:false,error:undefined});return url;
-  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+   await checkMove();if(!op.current())return;
+   const flow=this.ports.registered();preparing=this.registered=flow.controller;
+   const move=moving?(proof?{moveCode:proof.code}:{moveTicket:ticket!.ticket}):{};
+   const url=await flow.controller.prepare(api,state.origin,hostedOrigin,flow.installationId(),move);
+   await checkMove();if(!op.current())return;
+   this.publish({...state,busy:false,error:undefined});return url;
+  }catch(error){
+   if(preparing&&this.registered===preparing){this.registered=undefined;await preparing.cancel().catch(()=>{});}
+   if(op.current())this.publish({...state,busy:false,error});
+  }
  }
  async finishPorticoReturn(captured:CapturedPorticoReturn){
   // Cancel prior entry work BEFORE selecting an owner journal. Calling cancel
