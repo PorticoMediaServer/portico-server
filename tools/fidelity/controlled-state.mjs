@@ -3,10 +3,15 @@ import {colorDifference, parseColor} from './color.mjs';
 /** Ordinary browser input on an explicit public DEV specimen, never DOM rewrites. */
 export async function applyControlledState(browser, steps = []) {
   for (const step of steps) {
-    if (!['click', 'insertText'].includes(step.action) || typeof step.selector !== 'string' || !step.selector || step.action === 'insertText' && (typeof step.text !== 'string' || step.text.length > 1000)) throw new Error('Invalid controlled fixture interaction');
+    if (!['click', 'insertText', 'tab'].includes(step.action) || typeof step.selector !== 'string' || !step.selector || step.action === 'insertText' && (typeof step.text !== 'string' || step.text.length > 1000)) throw new Error('Invalid controlled fixture interaction');
     const target = await browser.evaluate(`(()=>{const nodes=document.querySelectorAll(${JSON.stringify(step.selector)});if(nodes.length!==1)return{count:nodes.length};const e=nodes[0],r=e.getBoundingClientRect();return{count:1,x:r.x+r.width/2,y:r.y+r.height/2,visible:r.width>0&&r.height>0,disabled:Boolean(e.disabled),focused:document.activeElement===e}})()`);
     if (target.count !== 1 || !target.visible || target.disabled) throw new Error('Controlled fixture target is missing, ambiguous or unavailable');
-    if (step.action === 'click') {
+    if (step.action === 'tab') {
+      await browser.call('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9});
+      await browser.call('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9});
+      const focused = await browser.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(step.selector)})`);
+      if (!focused) throw new Error('Ordinary Tab did not focus the declared fixture target');
+    } else if (step.action === 'click') {
       await browser.call('Input.dispatchMouseEvent', {type: 'mousePressed', button: 'left', clickCount: 1, x: target.x, y: target.y});
       await browser.call('Input.dispatchMouseEvent', {type: 'mouseReleased', button: 'left', clickCount: 1, x: target.x, y: target.y});
     } else {
