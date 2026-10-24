@@ -21,6 +21,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
   const [tab, setTab] = useState<Tab>('general'), [draft, setDraft] = useState<Draft>({}), [error, setError] = useState<unknown>();
   useEffect(() => {void service.load(target); return () => service.dispose();}, [service, target]);
   const data = state.data;
+  const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value)) : false;}) : false;
   const changed = useMemo(() => {
     if (!data) return [];
     return Object.entries(draft).filter(([field, value]) => {
@@ -68,11 +69,31 @@ export function MetadataEditor({api, scope, target, onClose}: {
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
       {tab !== 'artwork' && tab !== 'history' ? <footer className={styles.editorFooter}>
         <Button size="small" disabled={!changed.length || state.phase === 'saving'} onClick={() => setDraft({})}>{t('action.discard')}</Button>
-        <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length} onClick={save}>
+        <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length || invalid} onClick={save}>
           {t('web.metadata.saveChanges')}{changed.length ? ` (${changed.length})` : ''}</Button>
       </footer> : null}
     </> : null}
   </aside>;
+}
+
+
+/** The server's own bounds, checked beside the field as the frame draws them. */
+function fieldError(spec: RepairFieldSpec, value: string): string {
+  const label = t(spec.label as Parameters<typeof t>[0]);
+  if (spec.type === 'integer' || spec.type === 'number') {
+    if (value.trim() === '') return '';
+    const number = Number(value);
+    if (!Number.isFinite(number)) return t('web.metadata.wholeNumber', {label});
+    if (spec.type === 'integer' && !Number.isInteger(number)) return t('web.metadata.wholeNumber', {label});
+    if (spec.min !== undefined || spec.max !== undefined) {
+      if ((spec.min !== undefined && number < spec.min) || (spec.max !== undefined && number > spec.max)) return t('web.metadata.numberRange', {label, min: spec.min ?? '', max: spec.max ?? ''});
+    }
+    return '';
+  }
+  if (spec.type === 'date' && value && Number.isNaN(Date.parse(value))) return t('web.metadata.dateError', {label});
+  if (spec.type === 'enum' && value && spec.allowed && !spec.allowed.includes(value)) return t('web.metadata.enumError', {label});
+  if (spec.maxLength !== undefined && [...value].length > spec.maxLength) return t('web.metadata.textTooLong', {label, max: spec.maxLength});
+  return '';
 }
 
 function input(spec: RepairFieldSpec, value: string, set: (value: string) => void) {
@@ -83,13 +104,14 @@ function input(spec: RepairFieldSpec, value: string, set: (value: string) => voi
 }
 
 function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<{value: string; locked: boolean}>) => void}) {
-  const value = draft?.value ?? field?.value ?? '', locked = draft?.locked ?? field?.locked ?? false;
+  const value = draft?.value ?? field?.value ?? '', locked = draft?.locked ?? field?.locked ?? false, error = fieldError(spec, value);
   const changed = draft !== undefined && (draft.value !== (field?.value ?? '') || draft.locked !== (field?.locked ?? false));
   return <label className={styles.field} data-changed={changed || undefined}>
     <span className={styles.fieldLabel}>{t(spec.label as Parameters<typeof t>[0])}
       <button type="button" className={styles.lock} aria-pressed={locked} title={t(locked ? 'web.metadata.lockedTip' : 'web.metadata.unlockedTip')} onClick={() => set({locked: !locked})}>{locked ? t('web.metadata.locked') : t('web.metadata.unlocked')}</button>
     </span>
     {input(spec, value, next => set({value: next}))}
+    {error ? <small className={styles.fieldError} role="alert">{error}</small> : null}
     <small>{field?.source}{field && field.automaticValue !== field.value && !locked ? <button type="button" onClick={() => set({value: field.automaticValue})}>{t('web.metadata.useIt')}</button> : null}</small>
   </label>;
 }
