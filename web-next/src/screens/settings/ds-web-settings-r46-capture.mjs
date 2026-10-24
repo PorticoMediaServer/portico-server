@@ -126,7 +126,7 @@ try {
   const token = await json('/v1/setup/browser', {method: 'POST', body: {}, origin: base});
   if (token.status !== 200) throw new Error('setup token refused: ' + JSON.stringify(token.body));
   const created = await json('/v1/setup', {method: 'POST', origin: base, body: {requestId: randomUUID(), setupToken: token.body.setupToken,
-    username: credentials.username, password: credentials.password, name: 'Portico demo', authMode: 'local', recoverySaved: true, interactive: true}});
+    username: credentials.username, password: credentials.password, name: 'Portico demo', authMode: 'local', interactive: true}});
   if (created.status !== 201) throw new Error('owner creation refused: ' + JSON.stringify(created.body));
   note('setup ok: local owner, name "Portico demo"');
 
