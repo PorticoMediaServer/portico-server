@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -308,6 +309,10 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 			var extent [5]byte
 			if n, err := retained.ReadAt(extent[:], 0); err != nil || n != len(extent) {
 				t.Fatal("positive retained remote extent", n, err)
+			}
+			var tail [2]byte
+			if n, err := retained.ReadAt(tail[:], retained.Size-1); n != 1 || err != io.EOF {
+				t.Fatal("remote ReaderAt partial EOF contract", n, err)
 			}
 			before := readingRestrictionProgress(t, &readingFixture{f: f})
 			if err = f.id.UpdateDirectMember(context.Background(), owner.AccountToken, member.ID, identity.DirectMemberInput{Username: member.Username, Name: "Reader", ExpectedRevision: member.Revision, AllowedLibraries: []string{}}); err != nil {
