@@ -2,7 +2,7 @@ import type {HttpLocalApi} from '@core/index.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
 import type {ShellArtwork} from '../../shell/artwork';
-import {createArtworkRuntime} from '../../kit/artwork/source';
+import type {AmbientArtSource, ArtworkSource} from '../../kit/artwork/types';
 
 /**
  * The title page's public DEV facts. The frame's own artwork bytes never enter source: every
@@ -165,26 +165,15 @@ export function createDetailSpecimen() {
     return {status: 404, headers: {}, body: {error: {code: 'not_found'}}};
   };
 
-  const runtime = createArtworkRuntime({
-    scopeKey: 'detail-specimen',
-    classify: () => ({retryable: false}),
-    load: async ({url}, signal) => {
-      const response = await fetch(url, {signal});
-      const blob = await response.blob();
-      const bitmap = await createImageBitmap(blob);
-      const width = bitmap.width, height = bitmap.height; bitmap.close();
-      return {src: URL.createObjectURL(blob), bytes: blob.size, width, height};
-    },
-    release: imageValue => { try { URL.revokeObjectURL(imageValue.src); } catch { /* A closed page owns nothing. */ } },
-  });
+  // A ready public image slot: the production Artwork/AmbientArt components still own
+  // markup, fit, masking and failure states; only the bytes and their arrival are fixture data.
+  const readyImage = {src: image, bytes: 68, width: 1, height: 1, retain: () => () => {}};
+  const readyScheduler = {peek: () => readyImage, load: async () => readyImage, subscribe: () => () => {}};
+  const source = (key: string) => ({scheduler: readyScheduler, key, retain: () => () => {}}) as unknown as ArtworkSource;
   const artwork = {
-    ...runtime,
-    foreground(url: string | undefined) {
-      return url ? runtime.source({url: image, cacheKey: `foreground:${url}`}) : undefined;
-    },
-    ambient(url: string | undefined) {
-      return url ? runtime.ambient({url: image, cacheKey: `ambient:${url}`, variant: 'ambient-v1', maxEdge: 64, version: 'a'.repeat(64)}) : undefined;
-    },
+    foreground: (url: string | undefined) => url ? source(`foreground:${url}`) : undefined,
+    ambient: (url: string | undefined) => url ? ({...source(`ambient:${url}`), variant: 'ambient-v1', maxEdge: 64, version: 'a'.repeat(64)} as AmbientArtSource) : undefined,
+    dispose: () => {},
   } as unknown as ShellArtwork;
 
   const events = {
@@ -205,7 +194,7 @@ export function createDetailSpecimen() {
       const life = new AbortController();
       return {signal: life.signal, versions: async () => ({versions: []}), dispose: () => life.abort()};
     },
-    dispose: () => runtime.dispose(),
+    dispose: () => {},
   } as unknown as HttpLocalApi;
 
   return Object.freeze({
