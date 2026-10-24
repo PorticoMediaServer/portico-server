@@ -1,5 +1,5 @@
 import type {HttpLocalApi} from '@core/index.ts';
-import type {ContentScope} from '@core/library-content.ts';
+import type {ContentEntryKind, ContentScope} from '@core/library-content.ts';
 import type {SearchEntry} from '@core/search.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
@@ -7,6 +7,9 @@ import type {ShellArtwork} from '../../shell/artwork';
 import type {ShellIdentity} from '../../shell/Shell';
 import type {QueueBrowseSelector} from '@core/playback-v1/types.ts';
 import type {WatchVersionRequest} from '../watch/version-presentation';
+
+/** The one entry a shared picker, editor or delete dialog acts on. */
+export type EntryActionTarget = Readonly<{libraryId: string; itemId: string; kind: ContentEntryKind; title: string}>;
 
 /** Captured by the shell for one server/account/profile/role epoch. Not a wire DTO. */
 export type ScreenContext = Readonly<{
@@ -26,6 +29,11 @@ export type ScreenContext = Readonly<{
     openBrowse?: (selector: QueueBrowseSelector) => void;
     play: (target: Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string}>, signal: AbortSignal, isCurrent?: () => boolean) => Promise<void>;
     chooseVersion?: (request: WatchVersionRequest) => Promise<void>;
+    /** Shared surfaces owned by the shell; each resolves once it is open, not when it closes. */
+    addToPlaylist?: (item: EntryActionTarget) => Promise<void>;
+    addToCollection?: (item: EntryActionTarget) => Promise<void>;
+    editMetadata?: (item: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
+    deleteTitle?: (item: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
     reportError: (error: unknown) => void;
   }>;
 }>;

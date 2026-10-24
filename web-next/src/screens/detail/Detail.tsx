@@ -28,7 +28,7 @@ import {TitlePeople, CreditLine, CreditNames} from './People';
 import {FileManagement} from './FileManagement';
 import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
-import {runScreenCommand} from './context';
+import {runScreenCommand, type EntryActionTarget} from './context';
 import {DetailLoading} from './Loading';
 import {GenreNames} from './GenreNames';
 export {DetailLoading} from './Loading';
@@ -192,15 +192,28 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   };
   const differentVersion = versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1;
   const personal = (phone && offered('watched')) || offered('favorite') || offered('rating');
+  const effects = binding.context.effects, target: EntryActionTarget = {libraryId: data.scope.libraryId, itemId: data.item.id, kind: data.item.kind, title: data.item.title};
+  const organize = !!effects.addToPlaylist || !!effects.addToCollection;
+  const ownerRows = !!refreshPath || !!effects.editMetadata || !!effects.deleteTitle;
+  const ownerEffect = (effect?: (item: EntryActionTarget, anchor: HTMLElement) => Promise<void>) => {
+    if (!effect || !trigger.current) return;
+    void effect(target, trigger.current).catch(effects.reportError);
+  };
   return <>
     <Menu open={open} onOpenChange={setOpen} title={data.item.title} width={280} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} className={open ? styles.moreOpen : undefined} />}>
       {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
       {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
       {offered('rating') && <MenuItem icon="i-star" onSelect={() => setRating(true)}>{t('entry.rate')}</MenuItem>}
-      {personal && <MenuSeparator />}
+      {effects.addToPlaylist && <MenuItem icon="i-listadd" onSelect={() => { void effects.addToPlaylist!(target).catch(effects.reportError); }}>{t('entry.addToPlaylist')}</MenuItem>}
+      {effects.addToCollection && <MenuItem icon="i-layers" onSelect={() => { void effects.addToCollection!(target).catch(effects.reportError); }}>{t('entry.addToCollection')}</MenuItem>}
+      {(personal || organize) && <MenuSeparator />}
       {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
-      {refreshPath && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly><MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem></MenuGroup></>}
+      {ownerRows && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly>
+        {effects.editMetadata && <MenuItem icon="i-edit" onSelect={() => ownerEffect(effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}
+        {refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}
+        {effects.deleteTitle && <MenuItem icon="i-trash" destructive onSelect={() => ownerEffect(effects.deleteTitle)}>{t('entry.delete')}</MenuItem>}
+      </MenuGroup></>}
     </Menu>
     {rating && <TitleRating binding={binding} data={data} returnFocusRef={trigger} onClose={() => setRating(false)} />}
     {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}
