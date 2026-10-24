@@ -172,11 +172,12 @@ func (s *Service) withMusicLayout(ctx context.Context, caller Caller, id string,
 // read, repeated on every missing-window capture write, and preserved for the
 // accepting start writer. Returns the resolved item and whether this was the
 // initial (sessionless) path.
-func (s *Service) withMusicLayoutStart(ctx context.Context, caller Caller, id, entry string, selectWindows sonicWindowSelection, fn func(*layout) error) (string, bool, error) {
+func (s *Service) withMusicLayoutStart(ctx context.Context, caller Caller, id, entry string, selectWindows sonicWindowSelection, fn func(*layout) error) (string, bool, int64, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		var q queueRow
 		var item string
 		var initial bool
+		var revision int64
 		missing := []int64{}
 		err := func() error {
 			tx, done, err := dbwork.BeginRead(ctx, s.DB)
@@ -249,10 +250,14 @@ func (s *Service) withMusicLayoutStart(ctx context.Context, caller Caller, id, e
 			if len(missing) > 0 {
 				return nil
 			}
-			return fn(l)
+			if err = fn(l); err != nil {
+				return err
+			}
+			revision = q.revision
+			return nil
 		}()
 		if err != nil || len(missing) == 0 {
-			return item, initial, err
+			return item, initial, revision, err
 		}
 		for _, window := range missing {
 			err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
@@ -263,10 +268,15 @@ func (s *Service) withMusicLayoutStart(ctx context.Context, caller Caller, id, e
 				if !ownsQueue(caller, fresh) {
 					return ErrNotFound
 				}
-				// A concurrent start or adoption changes who owns the occurrence;
-				// reselect within the bounded attempts instead of capturing under it.
-				if fresh.session != "" {
-					return ErrRevision
+				// An initial start has no occurrence to adopt; if the queue gained a
+				// session meanwhile, reselect. An adopted queue keeps the generic
+				// occurrence authority for its capture write.
+				if initial {
+					if fresh.session != "" {
+						return ErrRevision
+					}
+				} else if err = s.castQueueAuthorityTx(ctx, tx, caller, id); err != nil {
+					return err
 				}
 				if fresh.revision != q.revision {
 					return ErrRevision
@@ -286,8 +296,10 @@ func (s *Service) withMusicLayoutStart(ctx context.Context, caller Caller, id, e
 				if current != item {
 					return ErrRevision
 				}
-				if err = s.castQueueStartAuthorityTx(ctx, tx, caller, id, entry, item); err != nil {
-					return err
+				if initial {
+					if err = s.castQueueStartAuthorityTx(ctx, tx, caller, id, entry, item); err != nil {
+						return err
+					}
 				}
 				return s.captureMusicWindowTx(ctx, tx, caller, l, window)
 			})
@@ -295,9 +307,9 @@ func (s *Service) withMusicLayoutStart(ctx context.Context, caller Caller, id, e
 				break
 			}
 			if err != nil {
-				return item, initial, err
+				return item, initial, revision, err
 			}
 		}
 	}
-	return "", false, ErrRevision
+	return "", false, 0, ErrRevision
 }

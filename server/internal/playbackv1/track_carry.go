@@ -135,7 +135,10 @@ type queueContinuationKey struct{}
 // queueInitialStart is the selected entry and resolved item an initial Cast
 // queue start bound. The accepting start writer rechecks exactly these facts
 // under its own transaction before inserting the session.
-type queueInitialStart struct{ queue, entry, item string }
+type queueInitialStart struct {
+	queue, entry, item string
+	revision           int64
+}
 type queueInitialStartKey struct{}
 
 // queueCarry carries choices only along an explicit continuation of the

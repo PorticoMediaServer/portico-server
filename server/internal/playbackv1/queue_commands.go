@@ -1407,7 +1407,7 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 	if err != nil || !ownsQueue(c, q) {
 		return SessionView{}, false, ErrNotFound
 	}
-	item, initial, err := s.withMusicLayoutStart(ctx, c, q.id, req.Queue.EntryID, sonicEntryWindow(req.Queue.EntryID), func(l *layout) error {
+	item, initial, revision, err := s.withMusicLayoutStart(ctx, c, q.id, req.Queue.EntryID, sonicEntryWindow(req.Queue.EntryID), func(l *layout) error {
 		q = l.q
 		return nil
 	})
@@ -1436,7 +1436,7 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 	if initial {
 		// The start writer rechecks these bound facts before it inserts; a queue
 		// that gained an occurrence meanwhile is refused.
-		startCtx = context.WithValue(ctx, queueInitialStartKey{}, queueInitialStart{queue: q.id, entry: req.Queue.EntryID, item: item})
+		startCtx = context.WithValue(ctx, queueInitialStartKey{}, queueInitialStart{queue: q.id, entry: req.Queue.EntryID, item: item, revision: revision})
 	}
 	view, preparing, err := s.startPresentation(startCtx, c, key, startDigest, req, row{kind: sessionKind, role: "local", item: item, version: req.VersionID, queueID: q.id, entryID: req.Queue.EntryID}, stored)
 	if err != nil {

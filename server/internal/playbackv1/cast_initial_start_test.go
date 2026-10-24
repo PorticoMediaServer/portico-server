@@ -6,7 +6,9 @@ import (
 	"errors"
 	"testing"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/sonic"
 )
 
 // An initial Cast start has no occurrence to adopt yet: the narrow start
@@ -47,9 +49,9 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 		admitted++
 		return nil
 	}
-	resolved, initial, err := s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil })
-	if err != nil || !initial || resolved != item {
-		t.Fatalf("initial start did not bind: item=%q initial=%v err=%v", resolved, initial, err)
+	resolved, initial, revision, err := s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil })
+	if err != nil || !initial || resolved != item || revision != q.revision {
+		t.Fatalf("initial start did not bind: item=%q initial=%v revision=%d err=%v", resolved, initial, revision, err)
 	}
 	if admitted == 0 {
 		t.Fatal("initial start never reached the start authority")
@@ -57,7 +59,7 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 
 	// The accepting writer repeats the bound facts and refuses a queue that
 	// gained a session while the start was in flight.
-	bound := queueInitialStart{queue: q.id, entry: entryID, item: item}
+	bound := queueInitialStart{queue: q.id, entry: entryID, item: item, revision: revision}
 	base := row{queueID: q.id, entryID: entryID, item: item}
 	check := func() error {
 		checkTx, err := c.DB.Begin()
@@ -74,10 +76,17 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 	if err = check(); !errors.Is(err, ErrRevision) {
 		t.Fatalf("gained session not refused at publication: %v", err)
 	}
-	if _, _, err = s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil }); !errors.Is(err, identity.ErrForbidden) {
+	if _, _, _, err = s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil }); !errors.Is(err, identity.ErrForbidden) {
 		t.Fatalf("session queue skipped the adopted-occurrence guard: %v", err)
 	}
 	c.Exec(`UPDATE queues_v1 SET session_id='' WHERE id='q_capture'`)
+	// A changed revision alone (order/source drift with the same selected entry and
+	// item) is refused by the accepting writer.
+	c.Exec(`UPDATE queues_v1 SET revision=revision+1 WHERE id='q_capture'`)
+	if err = check(); !errors.Is(err, ErrRevision) {
+		t.Fatalf("revision-only drift not refused: %v", err)
+	}
+	c.Exec(`UPDATE queues_v1 SET revision=revision-1 WHERE id='q_capture'`)
 	base.item = "other-item"
 	if err = check(); !errors.Is(err, ErrRevision) {
 		t.Fatalf("mismatched bound item not refused: %v", err)
@@ -87,7 +96,42 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 	s.CastQueueStartAuthority = func(context.Context, *sql.Tx, Caller, string, string, string) error {
 		return identity.ErrForbidden
 	}
-	if _, _, err = s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil }); !errors.Is(err, identity.ErrForbidden) {
+	if _, _, _, err = s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil }); !errors.Is(err, identity.ErrForbidden) {
 		t.Fatalf("refused start authority was ignored: %v", err)
+	}
+}
+
+// An already-adopted queue keeps the generic occurrence authority, so a new
+// Sonic window it needs can still be captured instead of looping to ErrRevision.
+func TestAdoptedShuffledQueueCapturesNewSonicWindow(t *testing.T) {
+	c, s, caller, q := sonicQueueFixture(t)
+	s.SmoothOrder = func(ctx context.Context, tx *sql.Tx, actor identity.Principal, ids []string) (catalog.MusicSmoothOrder, error) {
+		return catalog.MusicSmoothOrder{Positions: []int64{0, 4, 3, 2, 1}, BySound: true, Model: &sonic.Identity{ID: sonic.ModelID, Version: sonic.ModelVersion, SHA256: sonic.ModelSHA256}}, nil
+	}
+	c.Exec(`UPDATE queues_v1 SET session_id='ps_adopted' WHERE id='q_capture'`)
+	tx, err := c.DB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := s.readLayout(context.Background(), tx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entryID, item, ok := l.entryAt(0)
+	_ = tx.Rollback()
+	if !ok || item == "" {
+		t.Fatal("fixture queue has no first entry")
+	}
+	var captured int
+	resolved, initial, _, err := s.withMusicLayoutStart(context.Background(), caller, q.id, entryID, sonicEntryWindow(entryID), func(l *layout) error {
+		w, ok := l.sonicWindows[0]
+		if !ok || w.model == nil || len(w.ordinals) == 0 {
+			t.Fatal("projected before the missing window was captured")
+		}
+		captured++
+		return nil
+	})
+	if err != nil || initial || resolved != item || captured != 1 {
+		t.Fatalf("adopted capture: item=%q initial=%v captured=%d err=%v", resolved, initial, captured, err)
 	}
 }

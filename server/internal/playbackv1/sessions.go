@@ -1200,7 +1200,7 @@ func (s *Service) recheckInitialQueueStartTx(ctx context.Context, tx *sql.Tx, c 
 	if err != nil {
 		return ErrNotFound
 	}
-	if !ownsQueue(c, q) || q.session != "" {
+	if !ownsQueue(c, q) || q.session != "" || q.revision != bound.revision {
 		return ErrRevision
 	}
 	l, err := s.readLayout(ctx, tx, q)
