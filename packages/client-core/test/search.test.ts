@@ -50,6 +50,21 @@ test('pause cannot relabel a pending different query with old results',async()=>
  }finally{s.dispose();}
 });
 
+test('pause refuses a pending changed library or ordering but preserves a recording-only read',async()=>{
+ for(const change of [{libraryIds:['other']},{sort:'title' as const},{direction:'asc' as const},{record:true}]){
+  const held=deferred();let reads=0,path='';
+  const s=service(async p=>{path=p;return ++reads===1?result(p):held.promise;});
+  try{
+   await s.select('harbor',{group:'movies',libraryIds:['library']});const shown=s.getSnapshot().data;
+   const read=s.select('harbor',{group:'movies',libraryIds:['library'],...change});s.pause();
+   if('record' in change){assert.equal(s.getSnapshot().data,shown);assert.equal(s.getSnapshot().phase,'ready');}
+   else{assert.equal(s.getSnapshot().data,null);assert.equal(s.getSnapshot().phase,'idle');}
+   held.resolve(result(path));await read;
+   assert.equal(s.getSnapshot().data,'record' in change?shown:null);
+  }finally{s.dispose();}
+ }
+});
+
 test('pause aborts quiet revalidation and refuses its late replacement',async()=>{
  const held=deferred();let reads=0,path='';let signal:AbortSignal|undefined;
  const s=service(async(p,provided)=>{path=p;if(++reads===2){signal=provided;return held.promise;}return result(p);});
