@@ -33,7 +33,10 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
   };
   const sender = new WebCastSender({api, serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
     describe: async itemId => (await describeItem(itemId)).title});
-  const controller = new PlayOnController({sender, runtime: binding.runtime, airPlay: mediaAirPlayPort(video), isCurrent, describeItem, reportError: binding.reportError});
+  const controller = new PlayOnController({sender, runtime: binding.runtime, airPlay: mediaAirPlayPort(video, undefined, {
+    isCurrent: () => {const shown = binding.runtime.getSnapshot();return isCurrent() && !!shown.fence && binding.runtime.browserMediaReady(shown.fence);},
+    subscribe: binding.runtime.subscribe,
+  }), isCurrent, describeItem, reportError: binding.reportError});
   return {controller, item: (id: string) => isCurrent() ? items.get(id) : undefined,
     dispose: () => {life.abort();controller.dispose();items.clear();}};
 }
