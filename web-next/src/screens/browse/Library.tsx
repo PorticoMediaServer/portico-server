@@ -4,7 +4,7 @@ import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
 import type {Library} from '@core/index.ts';
 import {browseNameId} from '@core/presentation/browse-toolbar.ts';
 import {appliedFilterParts, browseToolbarModel, type TextEnvironment} from '@portico/client-core/kit-model';
-import {LibraryHeader, LibrarySwitcher, StickyBrowseHeader, BrowseToolbar, FilteredEmpty, type LibraryChoice, type BrowseLabels} from '../../kit/browse';
+import {LibraryHeader, LibrarySwitcher, StickyBrowseHeader, BrowseToolbar, type LibraryChoice, type BrowseLabels} from '../../kit/browse';
 import {Tabs} from '../../kit/controls';
 import {AmbientArt} from '../../kit/artwork';
 import {GridSkeleton, StateView} from '../../kit/states';
@@ -12,6 +12,7 @@ import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {BrowseResults} from './BrowseResults';
 import {BrowseFilters} from './Filters';
+import {BrowseFilteredEmpty} from './FilteredEmpty';
 import {BrowseScopeChips} from './ScopeChips';
 import type {BrowseController, BrowseMember} from './controller';
 import type {BrowseItemActions} from './EntryCard';
@@ -114,7 +115,8 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
       onRemoveFilter={id => setPredicates(state.predicates.filter(node => node !== model.applied[Number(id)]))} onClearFilters={() => setPredicates([])} selection={selection.toolbar}/>
     <BrowseResults controller={controller} label={library.name} view={view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
       reducedMotion={bindings.preferences?.reducedMotion ?? bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
-      empty={state.predicates.length ? <FilteredEmpty onClear={() => setPredicates([])}/> : bindings.empty}/>
+      empty={state.predicates.length ? <BrowseFilteredEmpty controller={controller} model={model} labels={browseLabels} predicates={state.predicates}
+        library={library.name} onDrop={setPredicates} onClear={() => setPredicates([])}/> : bindings.empty}/>
     <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={resultCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
   </>;
 }
