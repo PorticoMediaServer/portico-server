@@ -57,3 +57,37 @@ func TestMusicRadioRankingUsesCurrentProfileHistoryVisibilityAndArtists(t *testi
 		t.Fatal("seed scope widened", err)
 	}
 }
+
+func TestMusicRadioGenreFallbackSpansLibrariesWithoutHiddenSeedFacets(t *testing.T) {
+	c := catalogtest.Open(t)
+	seedLib := c.Library("seed-music", "Seed Music", "music", "/seed")
+	otherLib := c.Library("other-music", "Other Music", "music", "/other")
+	album := c.Album(c.Artist(seedLib, "Seed artist"), "Seed", 2026)
+	seed := c.Song(album, 1, "/seed/rock.flac", "Rock")
+	private := c.Song(album, 2, "/seed/jazz.flac", "Private jazz")
+	rock := c.Song(c.Album(c.Artist(otherLib, "Rock artist"), "Rock", 2026), 1, "/other/rock.flac", "Rock elsewhere")
+	jazz := c.Song(c.Album(c.Artist(otherLib, "Jazz artist"), "Jazz", 2026), 1, "/other/jazz.flac", "Jazz elsewhere")
+	c.Genres(seed.ID, "local", "Rock")
+	c.Genres(private.ID, "local", "Jazz")
+	c.Genres(rock.ID, "local", "Rock")
+	c.Genres(jazz.ID, "local", "Jazz")
+	c.Attributes(private.ID, "label", "private")
+	c.Drain()
+	viewer := Viewer{Profile: identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}), Libraries: []string{"seed-music", "other-music"}, Restrictions: identity.ContentRestrictions{BlockedLabels: []string{"private"}}}
+	s := New(c.DB)
+	request := RadioBatchRequest{Seed: album.Public, Exclude: []string{seed.Public}, Limit: 1, Now: time.Now()}
+	for cycle := int64(0); cycle < 16; cycle++ {
+		request.Cycle = cycle
+		batch, err := s.MusicRadioBatch(viewer, request)
+		if err != nil || len(batch.IDs) != 1 || batch.IDs[0] != rock.Public || batch.BySound {
+			t.Fatal("cross-library genre fallback", cycle, batch, err)
+		}
+	}
+	viewer.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"private", "blocked"}}
+	c.Attributes(rock.ID, "label", "blocked")
+	c.Drain()
+	batch, err := s.MusicRadioBatch(viewer, request)
+	if err != nil || len(batch.IDs) != 1 || batch.IDs[0] != jazz.Public {
+		t.Fatal("hidden cross-library candidate", batch, err)
+	}
+}

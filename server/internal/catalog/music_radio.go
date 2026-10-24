@@ -36,6 +36,7 @@ type radioCandidate struct {
 	sound    bool
 	score    float64
 	related  int
+	genres   int
 	recent   int64
 	excluded bool
 	tie      uint64
@@ -119,9 +120,37 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		return out, err
 	}
 	visible, args := viewer.itemVisibilitySQL("item.id")
+	// Derive genre evidence from this seed's permitted, available leaf songs.
+	// ListeningSimilar's co-listening pool is library-local; radio also ranges
+	// across other authorized Music libraries, so it must compare their real
+	// facets directly rather than falling through to an arbitrary tie order.
+	genres := []string{}
+	rows, err := s.read().Query(`SELECT facet.facet FROM catalog_entities item
+ JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
+ JOIN catalog_rec_facets facet ON facet.entity_id=item.id AND facet.facet LIKE 'g:%'
+ WHERE ((?=7 AND item.id=?) OR (?=6 AND song.album_id=?) OR (?=5 AND album.artist_id=?))
+ AND `+visible+` AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
+ GROUP BY facet.facet ORDER BY count(*) DESC,facet.facet LIMIT 8`, append([]any{kind, seed, kind, seed, kind, seed}, args...)...)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var genre string
+		if err = rows.Scan(&genre); err != nil {
+			break
+		}
+		genres = append(genres, genre)
+	}
+	if next := rows.Err(); err == nil {
+		err = next
+	}
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
 	recent := map[int64]int64{}
 	lastArtists := []int64{}
-	rows, err := s.read().Query(`SELECT item.id,h.started_ms,`+radioArtistsSQL+` FROM play_history h INDEXED BY play_history_listen_profile JOIN catalog_entities item ON item.id=h.item_id JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id WHERE h.authority=? AND h.account_id=? AND h.profile_id=? AND h.kind=7 AND h.watched_ms>0 AND h.started_ms>=? AND h.started_ms<=? AND `+visible+` ORDER BY h.started_ms DESC,h.id DESC LIMIT 256`, append([]any{actor.Authority, actor.AccountID, actor.ProfileID, request.Now.Add(-24 * time.Hour).UnixMilli(), request.Now.UnixMilli()}, args...)...)
+	rows, err = s.read().Query(`SELECT item.id,h.started_ms,`+radioArtistsSQL+` FROM play_history h INDEXED BY play_history_listen_profile JOIN catalog_entities item ON item.id=h.item_id JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id WHERE h.authority=? AND h.account_id=? AND h.profile_id=? AND h.kind=7 AND h.watched_ms>0 AND h.started_ms>=? AND h.started_ms<=? AND `+visible+` ORDER BY h.started_ms DESC,h.id DESC LIMIT 256`, append([]any{actor.Authority, actor.AccountID, actor.ProfileID, request.Now.Add(-24 * time.Hour).UnixMilli(), request.Now.UnixMilli()}, args...)...)
 	if err != nil {
 		return out, err
 	}
@@ -159,7 +188,7 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 			}
 		}
 	}
-	rows, err = s.read().Query(`SELECT item.id,pid(item.public_id),pid(album_item.public_id),pid(artist.public_id),`+radioArtistsSQL+`,CASE WHEN ? AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),1)=1 THEN `+currentSonicVectorSQL+` END
+	rows, err = s.read().Query(`SELECT item.id,pid(item.public_id),pid(album_item.public_id),pid(artist.public_id),`+radioArtistsSQL+`,(SELECT count(*) FROM catalog_rec_facets facet WHERE facet.entity_id=item.id AND facet.facet IN(SELECT value FROM json_each(?))),CASE WHEN ? AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),1)=1 THEN `+currentSonicVectorSQL+` END
  FROM catalog_entities item JOIN catalog_libraries library ON library.id=item.library_id
  JOIN libraries configured ON configured.id=library.library_id AND configured.kind='music'
  JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
@@ -167,7 +196,7 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
  JOIN catalog_entities artist ON artist.id=album.artist_id AND artist.retired=0
  WHERE item.kind=7 AND `+visible+` AND `+currentSonicEligibleSQL+`
  AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
-	 ORDER BY item.id`, append([]any{hasCenter, sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256}, args...)...)
+	 ORDER BY item.id`, append([]any{idsJSON(genres), hasCenter, sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256}, args...)...)
 	if err != nil {
 		return out, err
 	}
@@ -176,7 +205,7 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		var item radioCandidate
 		var album, artist, raw string
 		var data []byte
-		if err = rows.Scan(&item.id, &item.public, &album, &artist, &raw, &data); err != nil {
+		if err = rows.Scan(&item.id, &item.public, &album, &artist, &raw, &item.genres, &data); err != nil {
 			break
 		}
 		if err = json.Unmarshal([]byte(raw), &item.artists); err != nil {
@@ -219,6 +248,9 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		}
 		if a.sound && a.score != b.score {
 			return a.score > b.score
+		}
+		if a.genres != b.genres {
+			return a.genres > b.genres
 		}
 		if a.related != b.related {
 			return a.related > b.related
