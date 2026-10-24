@@ -5,22 +5,25 @@ import (
 	"database/sql"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 )
 
 // Metadata-only projection for rows already selected by the real library/title
 // predicate in this snapshot. One bounded query, never per-item Prepare or I/O.
-func readingOwnerProjectionTx(ctx context.Context, tx *sql.Tx, items []LibraryRow) error {
+func readingAttributionProjectionTx(ctx context.Context, tx *sql.Tx, items []LibraryRow) error {
 	ids := make([]int64, len(items))
 	for i := range items {
 		ids[i] = items[i].entity
 	}
-	values, err := compactcatalog.ReadingOwnerValuesTx(ctx, tx, ids)
+	values, err := compactcatalog.ReadingAcceptedValuesTx(ctx, tx, ids)
 	if err != nil {
 		return err
 	}
 	for i := range items {
 		v := values[items[i].entity]
 		items[i].Author = v.Author
+		items[i].Series = nil
 		if v.Series != nil {
 			s := &SeriesValue{ID: compactcatalog.ReadingSeriesID(items[i].LibraryID, v.Series.Value), Name: v.Series.Value, Source: v.Series.Source}
 			if v.SeriesNumber != nil {
@@ -31,4 +34,21 @@ func readingOwnerProjectionTx(ctx context.Context, tx *sql.Tx, items []LibraryRo
 		}
 	}
 	return nil
+}
+
+func (s *Service) publicationAttributions(ctx context.Context, p identity.Principal, selected Selection) (compactcatalog.ReadingValues, error) {
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return compactcatalog.ReadingValues{}, err
+	}
+	defer g.Rollback()
+	current, err := s.selectTx(ctx, g.Tx(), p, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return compactcatalog.ReadingValues{}, err
+	}
+	if current.Revision != selected.Revision {
+		return compactcatalog.ReadingValues{}, ErrChanged
+	}
+	values, err := compactcatalog.ReadingAcceptedValuesTx(ctx, g.Tx(), []int64{selected.Entity})
+	return values[selected.Entity], err
 }
