@@ -10,7 +10,7 @@ import type {QueueHeader} from '../src/playback-v1/types.ts';
 const scope = {serverId: 'server', viewerId: 'viewer'};
 const entry: ContentEntry = {id: 'movie', libraryId: 'movies', kind: 'movie', title: 'Movie'};
 const state = (revision = 0) => ({watchlisted: false, favorite: revision > 0, rating: null, revision});
-const detail = () => ({scope: {...scope, libraryId: 'movies', itemId: 'movie', viewerFence: 'detail-only'}, revision: {catalog: 3, viewer: 0}, item: {...entry, duration: 10, progressSeconds: 0, available: true}, personal: state(), actions: [{id: 'favorite', labelKey: 'favorite', enabled: true}], metadata: {status: 'unavailable', ratings: [], genres: [], credits: []}});
+const detail = () => ({scope: {...scope, libraryId: 'movies', itemId: 'movie', viewerFence: 'detail-only'}, revision: {catalog: 3, viewer: 0}, item: {...entry, durationMs: 10000, progressMs: 0, available: true}, personal: state(), actions: [{id: 'favorite', labelKey: 'favorite', enabled: true}], metadata: {status: 'unavailable', ratings: [], genres: [], credits: []}});
 function selected(kind: Exclude<SelectionKind, 'person' | 'channel'>, id = kind): SelectionItem {
   return {kind, id, libraryId: 'library', capabilities: selectionCapabilities(kind, {play: true, queue: true})};
 }
@@ -110,7 +110,7 @@ test('aggregate parent personal intent stays unavailable rather than mutating it
 
 const allPorts = {play: true, myList: true, favorite: true, watched: true};
 const offeredActions = () => [
-  {id: 'resume', labelKey: 'action.resume', enabled: true, playback: {itemId: entry.id, startSeconds: 2}},
+  {id: 'resume', labelKey: 'action.resume', enabled: true, playback: {itemId: entry.id, startMs: 2000}},
   ...['watchlist', 'favorite', 'watched', 'metadata_edit', 'delete'].map(id => ({id, labelKey: id, enabled: true})),
 ];
 function capabilityOptions(api: DetailApi) {
@@ -137,9 +137,9 @@ test('selected leaf capabilities intersect actual Detail actions with real execu
 test('disabled actions, unrelated playback, missing availability and music Watched grant nothing', async () => {
   for (const available of [true, false]) {
     const api: DetailApi = {request: async<T>(): Promise<T> => ({...detail(), item: {...detail().item, available}, actions: [
-      {id: 'play', labelKey: 'play', enabled: true, playback: {itemId: available ? 'other-item' : entry.id, startSeconds: 0}},
-      {id: 'start_over', labelKey: 'start', enabled: true, playback: {itemId: entry.id, startSeconds: 0}},
-      {id: 'unknown', labelKey: 'unknown', enabled: true, playback: {itemId: entry.id, startSeconds: 0}},
+      {id: 'play', labelKey: 'play', enabled: true, playback: {itemId: available ? 'other-item' : entry.id, startMs: 0}},
+      {id: 'start_over', labelKey: 'start', enabled: true, playback: {itemId: entry.id, startMs: 0}},
+      {id: 'unknown', labelKey: 'unknown', enabled: true, playback: {itemId: entry.id, startMs: 0}},
       ...['watchlist', 'favorite', 'watched'].map(id => ({id, labelKey: id, enabled: false})),
     ]}) as T};
     assert.deepEqual((await readCatalogueSelectionItem(capabilityOptions(api), entry, allPorts)).capabilities, selectionCapabilities('movie', {}));
