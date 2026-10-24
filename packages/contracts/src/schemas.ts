@@ -35423,6 +35423,10 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "seriesId": {
+              "pattern": "^[A-Za-z0-9_-]{43}$",
+              "type": "string"
+            },
             "value": {
               "type": "string"
             }
@@ -110608,6 +110612,10 @@ export const schemas = {
               "type": "boolean"
             },
             "label": {
+              "type": "string"
+            },
+            "seriesId": {
+              "pattern": "^[A-Za-z0-9_-]{43}$",
               "type": "string"
             },
             "value": {

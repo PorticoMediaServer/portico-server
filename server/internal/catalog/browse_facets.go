@@ -22,11 +22,20 @@ import (
 // through browse_entities, so retired DVR rows and rows outside the library are
 // excluded by construction, and the result is cached per catalog revision.
 
+// ReadingFacetSeriesID is the existing library-scoped opaque Reading identity.
+// It is an optional navigation fact, never the attribution filter value.
+type ReadingFacetSeriesID string
+
+func (ReadingFacetSeriesID) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}
+}
+
 type FacetValue struct {
-	Value             string `json:"value"`
-	Label             string `json:"label"`
-	Count             int    `json:"count"`
-	CountIsLowerBound bool   `json:"countIsLowerBound"`
+	SeriesID          ReadingFacetSeriesID `json:"seriesId,omitempty"`
+	Value             string               `json:"value"`
+	Label             string               `json:"label"`
+	Count             int                  `json:"count"`
+	CountIsLowerBound bool                 `json:"countIsLowerBound"`
 }
 type FacetPage struct {
 	// Private aggregate payload reuses the bounded revision/single-flight cache;

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/compactcatalog"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllFourSurfaces(t *testing.T)
 				t.Fatal("Reading advertised an unsupported whole-view selector")
 			}
 			if hidden {
-				for _, secret := range []string{r.item, r.source, "Protected Reading author", "Protected Reading series"} {
+				for _, secret := range []string{r.item, r.source, "Protected Reading author", "Protected Reading series", compactcatalog.ReadingSeriesID(r.library, "Protected Reading series")} {
 					if strings.Contains(w.Body.String(), secret) {
 						t.Fatalf("hidden Reading fact escaped through %s", target.path)
 					}

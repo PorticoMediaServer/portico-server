@@ -377,3 +377,13 @@ test('Reading facet windows use the admitted single-library offset',async()=>{
  assert.throws(()=>browseContextFacetsPath('reading','author','authors',undefined,'',1,-1));
  assert.throws(()=>browseContextFacetsPath(acrossLibraries,'author','authors',undefined,'',1,1));
 });
+
+test('Reading facets preserve full accepted values and only server-issued series navigation IDs',()=>{
+ const value='Accepted '+ 'a'.repeat(1000), seriesId='s'.repeat(43);
+ const page=parseBrowseFacets({field:'series',total:1,values:[{value,label:value,count:2,seriesId}]},'series');
+ assert.equal(page.values[0].value,value);assert.equal(page.values[0].label,value);assert.equal(page.values[0].seriesId,seriesId);
+ const authors=parseBrowseFacets({field:'author',total:1,values:[{value,label:value,count:2,seriesId}]},'author');
+ assert.equal(authors.values[0].seriesId,undefined);
+ const malformed=parseBrowseFacets({field:'series',total:1,values:[{value,label:value,count:2,seriesId:'invented'}]},'series');
+ assert.equal(malformed.values[0].seriesId,undefined);assert.equal(malformed.values[0].value,value);
+});

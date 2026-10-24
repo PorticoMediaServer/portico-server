@@ -53,7 +53,7 @@ export type BrowseSelectionType=Readonly<{kind:string;count:number;capabilities:
 export type BrowseWholeSelection=Readonly<{libraryId:string;pivot:string;filter:BrowseNode|null;sort:readonly BrowseSortSelection[];catalogRevision:string;total:number;types:readonly BrowseSelectionType[]}>;
 export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[];displayTargets?:readonly BrowseDisplayTarget[];wholeSelection?:BrowseWholeSelection}>;
 export type BrowseDisplayTarget=Readonly<{membershipId:string;entryId:string}>;
-export type BrowseFacetValue=Readonly<{value:string;label:string;count:number;countIsLowerBound?:boolean}>;
+export type BrowseFacetValue=Readonly<{value:string;label:string;count:number;countIsLowerBound?:boolean;seriesId?:string}>;
 export type BrowseFacetPage=Readonly<{field:string;total:number;values:readonly BrowseFacetValue[];totalIsLowerBound?:boolean;revision?:string}>;
 export type BrowseRequestBody=Readonly<{pivot?:string;query?:BrowseNode;sort?:readonly BrowseSortSelection[];limit?:number;cursor?:string;range?:BrowseRange;seek?:BrowseSeek;homeRowDisplay?:string}>;
 
@@ -369,8 +369,10 @@ export function formatBrowseAnchor(key:string,sortField:string,noValue=''):strin
 export function parseBrowseFacets(raw:unknown,expected?:string):BrowseFacetPage{
  if(!obj(raw)||!count(raw.total)||!id(raw.field)||(expected!==undefined&&raw.field!==expected))bad();
  const values=firstOfEach('browse','facets',keepReadable('browse','facets',rows(raw.values,200),v=>{
-  if(!obj(v)||!id(v.value)||!str(v.label??'',512))bad();
-  return {value:v.value,label:(v.label||v.value) as string,count:count(v.count)?v.count:0,...(v.countIsLowerBound===true?{countIsLowerBound:true}:{})};
+  const attribution=raw.field==='author'||raw.field==='series';
+  if(!obj(v)||!(attribution?str(v.value,4096)&&v.value.length>0&&!/[\r\n]/.test(v.value):id(v.value))||!str(v.label??'',attribution?4096:512))bad();
+  const seriesId=raw.field==='series'&&typeof v.seriesId==='string'&&/^[A-Za-z0-9_-]{43}$/.test(v.seriesId)?v.seriesId:undefined;
+  return {value:v.value as string,label:(v.label||v.value) as string,count:count(v.count)?v.count:0,...(v.countIsLowerBound===true?{countIsLowerBound:true}:{}),...(seriesId?{seriesId}:{})};
  }),v=>v.value);
  if(raw.total<values.length)bad();
  return freeze({field:raw.field,total:raw.total,values,...(raw.totalIsLowerBound===true?{totalIsLowerBound:true}:{}),...(id(raw.revision)?{revision:raw.revision}:{})});
