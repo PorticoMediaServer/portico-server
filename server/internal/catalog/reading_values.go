@@ -29,7 +29,8 @@ const (
 func readingDirectoryBindings(logical, directory, resolvedRoot, separator string) (base, lower, upper, rootPrefix string) {
 	base = directory
 	if logical != "" {
-		base = filepath.FromSlash(logical)
+		// The logical key is slash-normalized; the stored folder is native.
+		base = strings.ReplaceAll(logical, "/", separator)
 		lower = base + separator
 		// The next byte after the separator bounds only descendants: a sibling
 		// whose name continues the same text sorts below the separator.
