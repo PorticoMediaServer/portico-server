@@ -92,7 +92,8 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	origin := readingDAVFiles(t, root)
+	var originRequests atomic.Int64
+	origin := readingDAVFiles(t, root, &originRequests)
 	defer origin.Close()
 	principal, err := f.id.Authenticate(f.owner.AccessToken)
 	if err != nil {
@@ -172,6 +173,9 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 			// Observe the SAME first queued scan; do not retry a failed job or
 			// seed catalogue/observation rows to skip actual source publication.
 			readingScanWithin(t, f, library.ID, 120*time.Second)
+			if !savedProfile {
+				t.Log("actual default-profile first scan completed", "origin requests", originRequests.Load())
+			}
 			member, err := f.id.CreateDirectMember(context.Background(), owner.AccountToken, identity.DirectMemberCreate{Username: "reader-" + kind, Password: "different-test-password", Name: "Reader", AllowedLibraries: []string{library.ID}})
 			if err != nil {
 				t.Fatal(err)
@@ -190,7 +194,11 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 				if !savedProfile && item.Format != "epub" {
 					continue
 				}
+				started, beforeRequests := time.Now(), originRequests.Load()
 				w = readingHTTP(t, h, "POST", "/v1/reading/sessions", token, "", ReadingSessionRequest{item.ID, item.SourceID})
+				if !savedProfile {
+					t.Log("actual default-profile Prepare returned", "duration", time.Since(started), "origin requests", originRequests.Load()-beforeRequests, "status", w.Code)
+				}
 				var manifest ReadingSessionResponse
 				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &manifest) != nil || manifest.SessionID == "" || manifest.Sequential {
 					p, authErr := f.id.Authenticate(token)
@@ -546,9 +554,10 @@ func TestReadingRemoteSequentialPDF(t *testing.T) {
 
 // The DAV directory/document metadata is derived from actual fixture files;
 // finite206 is implemented by net/http against their real open descriptors.
-func readingDAVFiles(t *testing.T, root string) *httptest.Server {
+func readingDAVFiles(t *testing.T, root string, requests *atomic.Int64) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
 		relative := strings.TrimPrefix(r.URL.Path, "/")
 		if relative != "" && !filepath.IsLocal(relative) {
 			http.NotFound(w, r)
