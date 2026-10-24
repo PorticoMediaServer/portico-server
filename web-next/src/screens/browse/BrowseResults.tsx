@@ -63,17 +63,21 @@ export function BrowseResults(props: BrowseResultsProps) {
   }, [failed]);
   const range = useCallback((first: number, last: number) => {setVisible(before => before.first === first && before.last === last ? before : {first, last});onVisibleRange?.(first, last);}, [onVisibleRange]);
   const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
-  const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 1.9 : 1;
+  const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 16 / 9 : 1;
   const musicGenres = state.capabilities?.library.kind === 'music' && controller.source.pivot === 'genres';
-  const painted = size.width > 0 ? gridColumns(size.width, cardWidth, gridGap) : 1;
+  // Frame #collections draws three 16:9 series tiles at 24px: a page of about ten groups reads as
+  // banners, not as seven poster columns. Every other grid fills its columns to the gutter.
+  const tiles = shape === 'collection' && !list, gap = tiles ? 24 : gridGap;
+  const painted = tiles ? 3 : size.width > 0 ? gridColumns(size.width, cardWidth, gridGap) : 1;
   // Fill the grid's own content box so every row reaches the gutter. The hundredth of a pixel
   // keeps the canonical column count exactly `painted` when the grid re-derives it from this width.
   const overflow = size.grid > 0 ? Math.max(0, size.width - size.grid) : 0;
-  const width = list ? Math.max(1, size.grid || size.width) : size.grid > 0 ? (size.grid - (painted - 1) * gridGap) / painted - .01 : cardWidth;
+  const width = list ? Math.max(1, size.grid || size.width) : size.grid > 0 ? (size.grid - (painted - 1) * gap) / painted - .01 : cardWidth;
   const height = musicGenres ? 152 : width / ratio + (shape === 'collection' ? 0 : gridCaption);
   const gutter = {'--grid-overflow': `${overflow}px`} as CSSProperties;
   if (failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
-  return <div className={styles.results} ref={root} data-view={view} style={gutter}>
+  return <div className={styles.results} ref={root} data-view={view} data-shape={tiles ? 'collection' : undefined} style={gutter}>
+    {tiles && <p className={styles.collectionsNote}><Icon name="i-layers" size={18}/>{t('next.browse.collectionsAutomatic')}</p>}
     {list && <div className={styles.listHead} role="row">{columns.map(column => {
       const offered = state.capabilities?.sorts.find(sort => sort.id === column.id);
       return <div key={column.id} role="columnheader" aria-sort={state.sort?.field === column.id ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
@@ -81,11 +85,11 @@ export function BrowseResults(props: BrowseResultsProps) {
       </div>;
     })}<span aria-label={t('next.cards.watched')} role="columnheader"/><span/></div>}
     {snapshot.total === 0 ? props.empty : <WindowedGrid collection={controller.collection} ref={grid} label={props.label} height={size.height - (list ? 44 : 0)}
-      cardWidth={width} rowHeight={list ? 70 : height} gap={list ? 0 : gridGap} rowGap={list ? 0 : gridRowGap} reducedMotion={props.reducedMotion}
+      cardWidth={width} rowHeight={list ? 70 : height} gap={list ? 0 : gap} rowGap={list ? 0 : tiles ? 24 : gridRowGap} reducedMotion={props.reducedMotion}
       onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : musicGenres ? 152 : width / ratio} width={list ? '100%' : width}/>}
       renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
         width={width} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
-    {state.sort?.field === 'title' && anchors.length > 0 && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
+    {state.sort?.field === 'title' && anchors.length > 0 && !tiles && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
   </div>;
 }
 function BrowseListRow({member, index, artwork, env, actions}: BrowseResultsProps & {member: BrowseMember; index: number}) {
