@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/worker"
@@ -92,12 +93,42 @@ func TestRetiringOwnFlushWakePreservesPeerPublications(t *testing.T) {
 	}
 }
 
-// TestRetiringOwnFlushWakeWithoutAPublicationDoesNotRearm covers the pass that
-// publishes nothing at all: an empty outbox whose commit was not a publication.
-// No peer commit happened either, so the wake that was pending was already read
-// through by an earlier pass. Re-arming it is what turns the feed's two-second
+// TestEmptyFlushPublishesOneCommit ties the retirement rule to the actual write
+// gate. An outbox pass with nothing to send still commits one gated
+// transaction, and that commit is a publication, so a peer publication is
+// always separated from the pass's own by at least two. This is the load-bearing
+// fact TestHubStaysQuietWhenTheOutboxStartsEmpty observes at the real call site.
+func TestEmptyFlushPublishesOneCommit(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "emptyflush.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	before := dbwork.Publications()
+	count := -1
+	if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		var err error
+		count, err = apievents.Flush(ctx, tx, 64)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("empty outbox flushed %d hints", count)
+	}
+	if got := dbwork.Publications(); got != before+1 {
+		t.Fatalf("empty flush published %d transactions, want 1", got-before)
+	}
+}
+
+// TestRetiringOwnFlushWakeDefensiveZeroDeltaDoesNotRearm covers the defensive
+// branch directly: a delta of zero is not reachable through the current gate
+// (TestEmptyFlushPublishesOneCommit proves the empty pass publishes +1), but if
+// the gate ever stopped publishing a no-change commit, a still-pending wake was
+// already read through. Re-arming it is what would turn the feed's two-second
 // floor into an endless empty loop.
-func TestRetiringOwnFlushWakeWithoutAPublicationDoesNotRearm(t *testing.T) {
+func TestRetiringOwnFlushWakeDefensiveZeroDeltaDoesNotRearm(t *testing.T) {
 	signal := worker.NewSignal()
 	signal.Wake()
 	before := dbwork.Publications()
@@ -178,13 +209,17 @@ func startFeed(t *testing.T, db *sql.DB) (stop func()) {
 }
 
 // An idle server's feed must settle. Its startup pass reads an empty outbox and
-// publishes nothing that wakes it, so it must not schedule itself again.
+// publishes nothing that wakes it, so it must not schedule itself again. The
+// pass still commits one gated transaction, and that is the only publication:
+// this is the real empty-startup reproduction of the contract the retirement
+// rule depends on (see TestEmptyFlushPublishesOneCommit).
 func TestHubStaysQuietWhenTheOutboxStartsEmpty(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "empty.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	before := dbwork.Publications()
 	stop := startFeed(t, db)
 	defer stop()
 	waitForOutboxPasses(t, 1)
@@ -192,6 +227,9 @@ func TestHubStaysQuietWhenTheOutboxStartsEmpty(t *testing.T) {
 	time.Sleep(2300 * time.Millisecond)
 	if passes := outboxPasses(); passes != 1 {
 		t.Fatalf("an empty pass scheduled %d outbox passes", passes)
+	}
+	if got := dbwork.Publications(); got != before+1 {
+		t.Fatalf("empty startup pass published %d transactions, want exactly its own 1", got-before)
 	}
 }
 

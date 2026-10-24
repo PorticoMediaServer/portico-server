@@ -132,13 +132,14 @@ func (h *Hub) Run(ctx context.Context) {
 }
 
 // The flush commits one gated transaction and this pass reads through its
-// events. Consume the coalesced wake, then recheck the publication counter:
-// exactly one publication is the pass's own flush commit, so a wake still
-// pending for it is already covered. A pass that published nothing at all (an
-// empty outbox whose commit was not a publication) has nothing left to deliver
-// either, so re-arming that wake would ask for the same empty pass at the
-// feed's two-second floor forever. Anything beyond the pass's own commit is a
-// peer (including an unknown write scope), and its pass must stay pending. A
+// events. The write gate publishes every successful non-readOnly commit,
+// including an empty-outbox flush that changes no rows, so exactly one
+// publication between the sample and here is the pass's own batch; a wake still
+// pending for it is already covered. Anything beyond it is a peer (including an
+// unknown write scope), whose pass must stay pending. A zero delta is
+// defensive: no current path skips that publication, but if one ever did, a
+// still-pending wake was already read through by this pass, and re-arming it
+// would ask for the same empty pass at the feed's two-second floor forever. A
 // commit after this check wakes the signal normally, so no queued work is
 // swallowed.
 func retireOwnFlushWake(signal *worker.Signal, before uint64) {
