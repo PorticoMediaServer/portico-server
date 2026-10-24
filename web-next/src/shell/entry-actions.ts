@@ -28,7 +28,7 @@ export function deleteTitleEffect(ports: EntryActionPorts) {
   };
 }
 
-function deleteEnvelope(raw: unknown, serverId: string): unknown {
+export function deleteEnvelope(raw: unknown, serverId: string): unknown {
   const value = raw as {protocolVersion?: unknown; serverId?: unknown; result?: unknown};
   if (value?.protocolVersion !== '1.0' || value.serverId !== serverId) throw new Error('The delete answer did not match this server.');
   return value.result;

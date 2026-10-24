@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {parseDeletePreview, parseDeleteResult, type DeletePreview, type DeleteResult} from '@core/administration.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {DeleteMediaDialog} from '../kit/selection';
-import {entryActions, type EntryActionTarget} from './entry-actions';
+import {deleteEnvelope, entryActions, type EntryActionTarget} from './entry-actions';
 
 /** Mounted once by the shell. It renders nothing until a screen effect opens a surface. */
 export function EntryActionHost() {
