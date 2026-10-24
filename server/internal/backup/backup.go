@@ -1,13 +1,5 @@
-// Package backup implements the Plex-model server backup: plain files under
-// <state>/backups/<UTC timestamp>/ holding a consistent copy of the database
-// made with SQLite's online backup API while the server runs, the few other
-// state files needed to come back as the same server, and a manifest carrying
-// integrity hashes. No encryption, no keys, no archive format, no chunking.
-//
-// A backup is written into backups/.partial-<timestamp>/ and renamed into
-// place, so List never sees a half-written backup. A timestamp clash on the
-// same second takes a -2 suffix. Pre-restore copies live beside them as
-// <timestamp>-pre-restore. Startup deletes stale .partial-* folders.
+// Package backup creates consistent server snapshots with optional authenticated
+// encryption and crash-resumable, verified restore.
 package backup
 
 import (
@@ -17,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -97,6 +90,16 @@ type Info struct {
 	ServerVersion string `json:"serverVersion"`
 	Bytes         int64  `json:"bytes"`
 	Path          string `json:"path"`
+	Encrypted     bool   `json:"encrypted,omitempty"`
+}
+
+// BackupResult is the current process's last completed asynchronous job. Errors
+// are stable codes; filesystem paths and secret values never enter status.
+type BackupResult struct {
+	JobID     string `json:"jobId"`
+	BackupID  string `json:"backupId,omitempty"`
+	Outcome   string `json:"outcome"`
+	ErrorCode string `json:"errorCode,omitempty"`
 }
 
 // RunningJob is the in-progress backup the status endpoint reports.
@@ -238,6 +241,8 @@ func (j *Job) finish(err error) {
 // The zero value is unusable; construct with New.
 type Service struct {
 	state         string
+	policy        func(context.Context) (Snapshot, error)
+	settingsStore *PolicyStore
 	directory     string
 	db            *sql.DB
 	serverID      string
@@ -273,6 +278,7 @@ type Service struct {
 	jobs       map[string]*Job
 	operations map[string]string
 	running    *Job
+	lastBackup *BackupResult
 }
 
 // New opens the service on state. db is the live database handle the online
@@ -302,8 +308,8 @@ func (s *Service) SetDirectory(directory string) error {
 	if directory == "" {
 		return nil
 	}
-	if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
-		return ErrInvalid
+	if err := ValidateDirectory(s.state, directory); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
@@ -372,9 +378,18 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 	s.running = job
 	s.mu.Unlock()
 	supervise.Go("backup.job", func() {
-		_, err := s.create(dbwork.WithClass(context.WithoutCancel(ctx), dbwork.ClassMaintenance), job, job.kind)
+		backupID, err := s.create(dbwork.WithClass(context.WithoutCancel(ctx), dbwork.ClassMaintenance), job, job.kind)
 		job.finish(err)
 		s.mu.Lock()
+		result := &BackupResult{JobID: job.id, BackupID: backupID, Outcome: "completed"}
+		if err != nil {
+			result.Outcome = "failed"
+			result.ErrorCode = "internal"
+			if errors.Is(err, ErrInsufficientDisk) {
+				result.ErrorCode = "insufficient_disk"
+			}
+		}
+		s.lastBackup = result
 		if s.running == job {
 			s.running = nil
 		}
@@ -406,8 +421,13 @@ func (s *Service) databasePath() string { return storagepaths.Path(s.state, "ser
 
 // backupsDir creates the backups folder if needed and returns it.
 func (s *Service) backupsDir() (string, error) {
-	dir := s.backupRoot()
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	snapshot, err := s.snapshot(context.Background())
+	if err != nil {
+		return "", err
+	}
+	defer snapshot.clear()
+	dir := snapshot.BackupFolder
+	if err := canonicalDirectory(dir, true); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -434,11 +454,16 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	dir, err := s.backupsDir()
+	policy, err := s.snapshot(ctx)
 	if err != nil {
 		return "", err
 	}
-	estimate, err := s.estimate()
+	defer policy.clear()
+	dir := policy.BackupFolder
+	if err = ValidateDirectory(s.state, dir); err != nil {
+		return "", err
+	}
+	estimate, err := s.estimate(ctx, policy.IncludeArtwork)
 	if err != nil {
 		return "", err
 	}
@@ -449,21 +474,71 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	if err = checkFreeSpace(dir, estimate); err != nil {
 		return "", err
 	}
-	stamp := s.now().UTC().Format(timestampLayout)
-	id, partial := stamp, filepath.Join(dir, ".partial-"+stamp)
-	for n := 2; ; n++ {
-		if _, err = os.Lstat(partial); os.IsNotExist(err) {
-			if _, err = os.Lstat(filepath.Join(dir, id)); os.IsNotExist(err) {
-				break
-			}
-		} else if err != nil {
-			return "", err
-		}
-		id, partial = stamp+"-"+itoa(n), filepath.Join(dir, ".partial-"+stamp+"-"+itoa(n))
+	// The local snapshot and destination publication coexist until commit.
+	if estimate > int64(^uint64(0)>>1)/2 {
+		return "", ErrInsufficientDisk
 	}
-	if err = os.Mkdir(partial, 0700); err != nil {
+	if err = checkFreeSpace(s.state, estimate*2); err != nil {
 		return "", err
 	}
+	authorityBefore, err := authorityFingerprint(ctx, s.state)
+	if err != nil {
+		return "", err
+	}
+	root, err := openCanonicalRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	stamp := s.now().UTC().Format(timestampLayout)
+	id := stamp
+	for n := 2; ; n++ {
+		_, a := root.Lstat(".partial-" + id)
+		_, b := root.Lstat(id)
+		if os.IsNotExist(a) && os.IsNotExist(b) {
+			roots, e := s.destinations(ctx)
+			if e != nil {
+				return "", e
+			}
+			clash := false
+			for _, previous := range roots {
+				if previous == dir {
+					continue
+				}
+				if _, e = os.Lstat(filepath.Join(previous, id)); e == nil {
+					clash = true
+					break
+				} else if !os.IsNotExist(e) {
+					return "", e
+				}
+			}
+			if !clash {
+				break
+			}
+		}
+		if a != nil && !os.IsNotExist(a) {
+			return "", a
+		}
+		if b != nil && !os.IsNotExist(b) {
+			return "", b
+		}
+		id = stamp + "-" + itoa(n)
+	}
+	publication := ".partial-" + id
+	if err = root.Mkdir(publication, 0700); err != nil {
+		return "", err
+	}
+	defer root.RemoveAll(publication)
+	target, err := root.OpenRoot(publication)
+	if err != nil {
+		return "", err
+	}
+	defer target.Close()
+	partial, err := s.privateScratch("backup-snapshot-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(partial)
 	created := s.now().UTC()
 	report := func(done, total int64) {
 		if job != nil {
@@ -490,10 +565,15 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	if job != nil {
 		job.report("files", estimate, estimate)
 	}
-	entries, err := copyStateFiles(s.state, partial)
+	entries, err := copyStateFilesForBackup(ctx, s.state, partial, policy.IncludeArtwork)
 	if err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
+	}
+	authorityAfter, e := authorityFingerprint(ctx, s.state)
+	if e != nil || authorityBefore != authorityAfter {
+		_ = os.RemoveAll(partial)
+		return "", ErrIntegrity
 	}
 	entries = append(entries, database)
 	manifest := Manifest{
@@ -514,11 +594,23 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
-	if err = os.Rename(partial, filepath.Join(dir, id)); err != nil {
-		_ = os.RemoveAll(partial)
+	if policy.PassphraseProtected {
+		if policy.material == nil {
+			return "", ErrInvalid
+		}
+		if err = encryptFolder(ctx, partial, target, policy.material, manifest); err != nil {
+			return "", err
+		}
+	} else if err = publishPlain(ctx, partial, target, manifest); err != nil {
 		return "", err
 	}
-	if err = syncDirectory(dir); err != nil {
+	if err = syncRoot(target); err != nil {
+		return "", err
+	}
+	if err = root.Rename(publication, id); err != nil {
+		return "", err
+	}
+	if err = syncRoot(root); err != nil {
 		return "", err
 	}
 	return id, nil
@@ -535,10 +627,9 @@ func (s *Service) CreateKind(ctx context.Context, kind Kind) (string, error) {
 func (s *Service) List() ([]Info, error) {
 	out := []Info{}
 	seen := map[string]bool{}
-	local := storagepaths.Path(s.state, BackupsDir)
-	roots := []string{local}
-	if s.backupRoot() != local {
-		roots = append(roots, s.backupRoot())
+	roots, err := s.destinations(context.Background())
+	if err != nil {
+		return nil, err
 	}
 	for _, dir := range roots {
 		names, err := os.ReadDir(dir)
@@ -553,18 +644,22 @@ func (s *Service) List() ([]Info, error) {
 			if !name.IsDir() || checkID(id) != nil || seen[id] {
 				continue
 			}
-			manifest, err := readManifest(filepath.Join(dir, id))
+			folder := filepath.Join(dir, id)
+			manifest, err := readManifest(folder)
+			encrypted := false
+			if err != nil {
+				manifest, err = encryptedManifest(folder)
+				encrypted = err == nil
+			}
 			if err != nil {
 				continue
 			}
-			if dir == local && dir != s.backupRoot() && manifest.Kind != KindPreRestore {
-				continue
-			}
+
 			created := manifest.CreatedAt
 			if _, err = time.Parse(time.RFC3339, created); err != nil {
 				created = ""
 			}
-			out = append(out, Info{ID: id, CreatedAt: created, Kind: manifest.Kind, SchemaVersion: manifest.SchemaVersion, ServerVersion: manifest.ServerVersion, Bytes: backupBytes(filepath.Join(dir, id), manifest), Path: id})
+			out = append(out, Info{ID: id, CreatedAt: created, Kind: manifest.Kind, SchemaVersion: manifest.SchemaVersion, ServerVersion: manifest.ServerVersion, Bytes: backupBytes(filepath.Join(dir, id), manifest), Path: id, Encrypted: encrypted})
 			seen[id] = true
 		}
 	}
@@ -583,7 +678,7 @@ func backupBytes(folder string, manifest Manifest) int64 {
 		}
 		listed[entry.Name] = true
 	}
-	for _, name := range []string{DatabaseName, DatabaseName + "-wal", ManifestName} {
+	for _, name := range []string{DatabaseName, DatabaseName + "-wal", ManifestName, encryptedSummary, encryptedPayload} {
 		if listed[name] {
 			continue
 		}
@@ -613,7 +708,17 @@ func (s *Service) backupPath(id string) (string, error) {
 			return "", err
 		}
 	}
-	return filepath.Join(s.backupRoot(), id), nil
+	roots, err := s.destinations(context.Background())
+	if err != nil {
+		return "", err
+	}
+	for _, dir := range roots {
+		path := filepath.Join(dir, id)
+		if info, e := os.Lstat(path); e == nil && info.IsDir() {
+			return path, nil
+		}
+	}
+	return filepath.Join(roots[0], id), nil
 }
 
 func (s *Service) pruneRecoveryCopies() error {
@@ -655,7 +760,15 @@ func (s *Service) Delete(id string) error {
 	if !info.IsDir() {
 		return ErrNotFound
 	}
-	return os.RemoveAll(path)
+	root, err := openCanonicalRoot(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if err = root.RemoveAll(id); err != nil {
+		return err
+	}
+	return syncRoot(root)
 }
 
 // Prune keeps the newest keep scheduled backups, and the newest
@@ -722,23 +835,37 @@ func CleanupPartials(state string) error {
 }
 
 func cleanupPartialsDirectory(dir string) error {
-	names, err := os.ReadDir(dir)
+	root, err := openCanonicalRoot(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
-	for _, name := range names {
-		id := name.Name()
-		if !strings.HasPrefix(id, ".partial-") || checkID(strings.TrimPrefix(id, ".partial-")) != nil {
-			continue
+	defer root.Close()
+	f, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for {
+		entries, err := f.ReadDir(128)
+		for _, entry := range entries {
+			id := entry.Name()
+			if !strings.HasPrefix(id, ".partial-") || checkID(strings.TrimPrefix(id, ".partial-")) != nil {
+				continue
+			}
+			if e := root.RemoveAll(id); e != nil {
+				return e
+			}
 		}
-		if err = os.RemoveAll(filepath.Join(dir, id)); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
 			return err
 		}
 	}
-	return nil
 }
 
 func itoa(n int) string {
@@ -763,4 +890,21 @@ func max64(a, b int64) int64 {
 }
 
 // Directory is the destination currently used for backups.
-func (s *Service) Directory() string { return s.backupRoot() }
+func (s *Service) Directory() string {
+	p, e := s.snapshot(context.Background())
+	if e != nil {
+		return ""
+	}
+	defer p.clear()
+	return p.BackupFolder
+}
+
+func (s *Service) LastBackup() *BackupResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastBackup == nil {
+		return nil
+	}
+	out := *s.lastBackup
+	return &out
+}

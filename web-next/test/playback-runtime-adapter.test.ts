@@ -24,6 +24,7 @@ import type {PlayerOffersService} from '@core/player-offers.ts';
 import {transformTsx} from './transform-tsx.mjs';
 import {playbackPresentation} from '../src/shell/playback-model.ts';
 import {dockView} from '../src/kit/dock/model.ts';
+import {ControlledLocalMedia, localPreparation, localScope} from './local-media-fixture.ts';
 import type {DockAction} from '../src/kit/dock/types.ts';
 
 /**
@@ -217,7 +218,7 @@ class ChannelPort {
     return;
   }
 }
-function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}) {
+function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}, local?: WebPlaybackSource['localScope']) {
   const clock = manualClock(), server = new FakePlaybackServer({now: clock.now, audioItem: id => id.startsWith('song') || id.startsWith('book'), itemKind: id => id.startsWith('book') ? 'audiobook_file' : undefined}), inner = fakeHttp(server);
   const log: V1Request[] = [], callbacks = new Map<string, Set<(event: ServerEvent) => void>>();
   const hls = fakeHls(), video = new FakeVideo();
@@ -249,6 +250,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, e
   };
   const api = new HttpLocalApi('https://portico.test', '', fetcher as typeof fetch);
   const source: WebPlaybackSource = {
+    ...(local ? {localScope: local} : {}),
     api, authority: {...viewer, epoch: 1, viewerFence: homeViewerFence}, contentScope: {serverId: 'server', viewerId: 'local_account_profile'}, isCurrent: () => current,
     events: {on: (type, callback) => { let list = callbacks.get(type); if (!list) callbacks.set(type, list = new Set()); list.add(callback); return () => { list!.delete(callback); }; }},
     settings: {videoSpeed: () => 1, audiobookSpeed: () => 1.25, skipModes: () => ({intro: 'off', recap: 'off', credits: 'off'}), audioEffects: () => ({gapless: false, crossfadeSeconds: 0, normalization: 'off'}), webVolume: () => true, ...preferences},
@@ -2287,4 +2289,117 @@ test('Watch Feedback retains the actual item and full session fence and retires 
   assert.equal(watchFeedbackTarget(binding, {...f.runtime.getSnapshot(), session: {...f.runtime.getSnapshot().session!, itemId: 'foreign'}}), undefined);
   await f.runtime.playFromGuide(homeChannel.channel, {signal: new AbortController().signal, isCurrent: () => true});await f.arriveLive();
   assert.equal(watchFeedbackTarget(binding, f.runtime.getSnapshot()), undefined, 'a channel is not a fabricated title/session target');
+});
+
+test('a complete opaque local queue uses the same media owner and real local receipts without server sessions or first-track aliasing', async t => {
+  const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+  let releases = 0;
+  await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {releases++;}}, {signal: new AbortController().signal, isCurrent: () => true});
+  const shown = f.runtime.getSnapshot(), first = shown.fence!;
+  assert.equal(f.runtime.canPlayLocalQueue(), true);
+  assert.equal(first.kind, 'local');assert.equal(shown.session, undefined);assert.equal(shown.queueView, null);assert.equal(shown.offers, null);assert.equal(shown.options, null);
+  assert.equal(shown.presentation!.subject.kind, 'music');assert.equal(shown.presentation!.positionSeconds, 0);
+  assert.equal(shown.presentation!.controls.includes('volume'), false, 'the native local port has no browser-video volume capability');
+  await f.runtime.pause(first);assert.equal(f.runtime.getSnapshot().presentation!.playing, false);
+  await f.runtime.seek(first, 12);await f.runtime.skip(first, 3);assert.equal(f.runtime.getSnapshot().presentation!.positionSeconds, 15);
+  await f.runtime.resume(first);assert.equal(f.runtime.getSnapshot().presentation!.playing, true);
+  await f.runtime.next(first);const second = f.runtime.getSnapshot().fence!;
+  assert.notEqual(second.sessionId, first.sessionId);await assert.rejects(f.runtime.pause(first), /stale_playback_command/);
+  port.emit({state: 'ended', positionMs: 100000});await settle();
+  assert.equal(f.runtime.getSnapshot().local!.index, 2);assert.equal(f.runtime.getSnapshot().presentation!.positionSeconds, 0);
+  assert.deepEqual(port.loads.map(source => source.entryId), ['download_1', 'download_2', 'download_3']);
+  assert.equal(f.log.some(request => request.method === 'POST' && (request.path === '/v1/queues' || request.path === '/v1/playback/sessions')), false);
+  await f.runtime.stop(f.runtime.getSnapshot().fence!);await settle();assert.equal(releases, 1);assert.equal(f.runtime.getSnapshot().presentation, undefined);
+});
+
+test('local audio bookmarks keep their own verified preparation and restore paused through a fresh native acknowledgement', async t => {
+  const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+  let audioReleases = 0, videoReleases = 0, actionCurrent = true;
+  const action = new AbortController();
+  await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {audioReleases++;}}, {signal: action.signal, isCurrent: () => actionCurrent});
+  actionCurrent = false;action.abort();
+  assert.equal(port.contexts.at(-1)!.signal.aborted, false, 'the retired initiating action no longer owns the acknowledged native load');
+  assert.equal(port.contexts.at(-1)!.isCurrent(), true, 'the actual captured runtime owns playback after successful handoff');
+  const audio = f.runtime.getSnapshot().fence!;await f.runtime.seek(audio, 22);
+  const movie = localPreparation(), row = movie.items[0]!;
+  await f.runtime.playLocalQueue({preparation: {...movie, preparationId: 'movie_preparation', items: [{...row, title: {...row.title, kind: 'movie'}, itemId: 'stored_movie'}]},
+    release: async () => {videoReleases++;}}, {signal: new AbortController().signal, isCurrent: () => true});
+  assert.equal(audioReleases, 0);assert.deepEqual(f.runtime.getSnapshot().dock.parkedAudio!.fence, audio);
+  const restored = await f.runtime.restoreBookmark(audio);await settle();
+  assert.equal(restored.kind, 'local');assert.notEqual(restored.sessionId, audio.sessionId);assert.equal(f.runtime.getSnapshot().presentation!.playing, false);
+  assert.equal(f.runtime.getSnapshot().presentation!.positionSeconds, 22);assert.equal(port.loads.at(-1)!.autoplay, false);
+  assert.equal(port.loads.at(-1)!.preparationId, 'actual_preparation');assert.equal(port.loads.at(-1)!.generation, 1);
+  await f.runtime.stop(restored);await settle();assert.equal(audioReleases, 1);
+  f.runtime.dispose();await settle();assert.equal(videoReleases, 1);
+});
+
+
+test('an absent local media port refuses before replacing the real current server source and releases only the offered preparation', async t => {
+  const f = setup(t, {}, {}, localScope);await f.runtime.play('movie');await f.arrive();
+  const current = f.runtime.getSnapshot().fence!;let releases = 0;
+  assert.equal(f.runtime.canPlayLocalQueue(), false);
+  await assert.rejects(f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {releases++;}},
+    {signal: new AbortController().signal, isCurrent: () => true}), /local_playback_unavailable/);
+  assert.equal(releases, 1);assert.deepEqual(f.runtime.getSnapshot().fence, current);
+});
+
+
+test('the app local queue attachment captures the actual family, follows mounted support and retires with its runtime', async t => {
+  const port = new ControlledLocalMedia();
+  let attached: import('../src/platform/playback/types.ts').WebLocalQueueController | undefined;
+  let captured: WebPlaybackSource['localScope'], detached = 0, changes = 0, initialSupport: boolean | undefined;
+  const scope = {...localScope};
+  const f = setup(t, {}, {createPlayer: () => port, createRender: null, attachLocalQueue: (actual, controller) => {
+    captured = actual;attached = controller;initialSupport = controller.canPlayLocalQueue();controller.subscribe(() => {changes++;});
+    return () => {detached++;assert.equal(controller.canPlayLocalQueue(), false);};
+  }}, scope);
+  assert.deepEqual(captured, localScope);assert.notEqual(captured, scope);assert.ok(Object.isFrozen(captured));
+  scope.sessionFamilyId = 'replacement_family';assert.equal(captured!.sessionFamilyId, 'local_family');
+  assert.equal(initialSupport, false, 'registration does not advertise a native port before the persistent host mounts');
+  assert.equal(attached!.canPlayLocalQueue(), true);assert.ok(changes > 0);
+  let released = 0;
+  await attached!.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}}, {signal: new AbortController().signal, isCurrent: () => true});
+  assert.equal(f.runtime.getSnapshot().fence!.kind, 'local');
+  f.runtime.dispose();f.runtime.dispose();await settle();assert.equal(detached, 1);assert.equal(released, 1);
+  let staleReleased = 0;
+  await assert.rejects(attached!.playLocalQueue({preparation: localPreparation(), release: async () => {staleReleased++;}},
+    {signal: new AbortController().signal, isCurrent: () => true}), /playback_authority_retired/);
+  assert.equal(staleReleased, 1);assert.equal(attached!.canPlayLocalQueue(), false);
+});
+
+test('no app local attachment is installed without a genuine captured family', t => {
+  let attachments = 0;
+  setup(t, {}, {attachLocalQueue: () => {attachments++;return () => {};}});
+  assert.equal(attachments, 0);
+});
+
+
+test('late canceled local adoption releases only its own preparation and preserves the newer local queue', async t => {
+  const port = new ControlledLocalMedia(), pending = deferred();
+  port.gate = source => source.preparationId === 'actual_preparation' ? pending.hold() : Promise.resolve();
+  const f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+  const life = new AbortController();let oldReleased = 0, newReleased = 0;
+  const old = f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {oldReleased++;}}, {signal: life.signal, isCurrent: () => true});
+  await pending.started;
+  const rejected = assert.rejects(old, /retired|stale_selection_context/);
+  life.abort();
+  await f.runtime.playLocalQueue({preparation: {...localPreparation(), preparationId: 'replacement_preparation'}, release: async () => {newReleased++;}},
+    {signal: new AbortController().signal, isCurrent: () => true});
+  const current = f.runtime.getSnapshot().fence!, unloads = port.unloads;
+  pending.resolve();await rejected;await settle();
+  assert.deepEqual(f.runtime.getSnapshot().fence, current);assert.equal(port.unloads, unloads);
+  assert.equal(f.runtime.getSnapshot().presentation!.playing, true);assert.equal(oldReleased, 1);assert.equal(newReleased, 0);
+  f.runtime.dispose();await settle();assert.equal(newReleased, 1);
+});
+
+test('foreign-family or already canceled local preparations cannot replace current playback', async t => {
+  const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+  await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {}}, {signal: new AbortController().signal, isCurrent: () => true});
+  const current = f.runtime.getSnapshot().fence!, loads = port.loads.length;let released = 0;
+  await assert.rejects(f.runtime.playLocalQueue({preparation: {...localPreparation(), scope: {...localScope, sessionFamilyId: 'foreign_family'}}, release: async () => {released++;}},
+    {signal: new AbortController().signal, isCurrent: () => true}), /local_playback_unavailable/);
+  const life = new AbortController();life.abort();
+  await assert.rejects(f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}},
+    {signal: life.signal, isCurrent: () => true}), /stale_selection_context/);
+  assert.deepEqual(f.runtime.getSnapshot().fence, current);assert.equal(port.loads.length, loads);assert.equal(released, 2);
 });

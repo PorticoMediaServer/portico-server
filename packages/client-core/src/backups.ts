@@ -20,8 +20,11 @@ export async function getBackups(transport:BackupTransport,serverId:string,signa
 
 /** startBackup starts one backup. `operationId` is the caller's: one per logical submission,
  * reused on retry (M19). Progress appears in `running`, read back with getBackups. */
-export async function startBackup(transport:BackupTransport,serverId:string,operationId:string,signal?:AbortSignal):Promise<void>{
- await transport.request<unknown>(BACKUPS_PATH,'POST',{operationId},signal);
+export async function startBackup(transport:BackupTransport,serverId:string,operationId:string,signal?:AbortSignal):Promise<string>{
+ return parseEnvelope(await transport.request<unknown>(BACKUPS_PATH,'POST',{operationId},signal),serverId,v=>{
+  if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string'||!(v as {jobId:string}).jobId)throw new Error('Invalid backup receipt.');
+  return (v as {jobId:string}).jobId;
+ }).result;
 }
 
 /** deleteBackup removes one listed backup. */
@@ -32,8 +35,8 @@ export async function deleteBackup(transport:BackupTransport,serverId:string,bac
 /** restoreBackup stages a backup (by list id) or a server path (a backup folder or a `.db` file)
  * and answers `{staged, restartRequired}`. A 4xx refusal carries one of the spec §4 codes
  * (`isRestoreRefusalCode`), which the console maps to catalogue copy. */
-export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal):Promise<RestoreStaged>{
- const receipt=parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source},signal),serverId,v=>{
+export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal,passphrase?:string):Promise<RestoreStaged>{
+ const receipt=parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source,...(passphrase!==undefined?{passphrase}:{})},signal),serverId,v=>{
   if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string')throw new Error('Invalid restore receipt.');
   return (v as {jobId:string}).jobId;
  }).result;
@@ -66,7 +69,7 @@ export async function fixStatePermissions(transport:BackupTransport,serverId:str
  await transport.request<unknown>(STATE_PERMISSIONS_FIX_PATH,'POST',{operationId},signal);
 }
 
-export type BackupPollOptions=Readonly<{intervalMs?:number;timeoutMs?:number;signal?:AbortSignal;onProgress?:(doc:BackupsDocument)=>void}>;
+export type BackupPollOptions=Readonly<{expectedJobId?:string;intervalMs?:number;timeoutMs?:number;signal?:AbortSignal;onProgress?:(doc:BackupsDocument)=>void}>;
 
 function delay(ms:number,signal?:AbortSignal):Promise<void>{
  return new Promise<void>((resolve,reject)=>{
@@ -92,15 +95,22 @@ export function isAuthenticationFailure(e:unknown):boolean{
 }
 
 /** waitForBackupCompletion polls getBackups every 2 s until `running` clears, reporting each
- * read through `onProgress`. The caller stops polling by abandoning the promise (abort). */
+ * read through `onProgress`. Pass the start receipt as expectedJobId so a fast
+ * completion can be matched even before the first running observation. Idle
+ * state alone never proves completion. Abort stops polling. */
 export async function waitForBackupCompletion(get:()=>Promise<BackupsDocument>,options:BackupPollOptions={}):Promise<BackupsDocument>{
  const intervalMs=options.intervalMs??2000,timeoutMs=options.timeoutMs??600_000;
+ let expected=options.expectedJobId;
  const started=Date.now();
  for(;;){
   options.signal?.throwIfAborted();
   const doc=await get();
   options.onProgress?.(doc);
-  if(!doc.running)return doc;
+  expected??=doc.running?.jobId;
+  if(doc.lastBackup&&expected===doc.lastBackup.jobId){
+   if(doc.lastBackup.outcome==='failed')throw Object.assign(new Error('The backup could not be completed.'),{code:doc.lastBackup.errorCode??'internal'});
+   return doc;
+  }
   if(Date.now()-started>timeoutMs)throw Object.assign(new Error('The backup is still running.'),{code:'backup_progress_timeout'});
   await delay(intervalMs,options.signal);
  }
@@ -128,4 +138,29 @@ export async function waitForServerAnswer(get:()=>Promise<BackupsDocument>,optio
 /** Restart is owner-only and works for portable launches as well as services. */
 export async function restartServer(transport:BackupTransport,signal?:AbortSignal):Promise<void>{
  await transport.request<RouteResponse<"post_admin_restart">>(routePath("post_admin_restart"),'POST',routeBody("post_admin_restart", {}),signal);
+}
+
+export type BackupSettings=Readonly<{backupFolder:string;includeArtwork:boolean;passphraseProtected:boolean;passphraseSet:boolean}>;
+export type BackupSettingsPatch=Readonly<{backupFolder?:string;includeArtwork?:boolean;passphraseProtected?:boolean;passphrase?:string}>;
+function parseBackupSettings(v:unknown):BackupSettings{
+ if(typeof v!=='object'||v===null)throw new Error('Invalid backup settings.');
+ const s=v as Record<string,unknown>;
+ if(typeof s.backupFolder!=='string'||s.backupFolder.length>8192||typeof s.includeArtwork!=='boolean'||typeof s.passphraseProtected!=='boolean'||typeof s.passphraseSet!=='boolean')throw new Error('Invalid backup settings.');
+ return Object.freeze({backupFolder:s.backupFolder,includeArtwork:s.includeArtwork,passphraseProtected:s.passphraseProtected,passphraseSet:s.passphraseSet});
+}
+/** Secret write input is never retained or returned by the settings read facade. */
+export async function getBackupSettings(transport:BackupTransport,serverId:string,signal?:AbortSignal):Promise<BackupSettings>{
+ return parseEnvelope(await transport.request<unknown>(routePath('get_admin_backup_settings'),'GET',undefined,signal),serverId,parseBackupSettings).result;
+}
+export async function updateBackupSettings(transport:BackupTransport,serverId:string,patch:BackupSettingsPatch,signal?:AbortSignal):Promise<BackupSettings>{
+ return parseEnvelope(await transport.request<unknown>(routePath('put_admin_backup_settings'),'PUT',routeBody('put_admin_backup_settings',patch),signal),serverId,parseBackupSettings).result;
+}
+
+export type BackupSourceInspection=Readonly<{encrypted:boolean}>;
+/** Protection comes from captured bytes, never the source path's suffix. */
+export async function inspectBackupSource(transport:BackupTransport,serverId:string,source:RestoreSource,signal?:AbortSignal):Promise<BackupSourceInspection>{
+ return parseEnvelope(await transport.request<unknown>(routePath('post_admin_backups_inspect'),'POST',routeBody('post_admin_backups_inspect',{source}),signal),serverId,v=>{
+  if(typeof v!=='object'||v===null||typeof (v as {encrypted?:unknown}).encrypted!=='boolean')throw new Error('Invalid backup inspection.');
+  return Object.freeze({encrypted:(v as {encrypted:boolean}).encrypted});
+ }).result;
 }

@@ -60,11 +60,12 @@ export type UpdateReport=Readonly<{current:UpdateBuild;channel:string;feedConfig
 export type BackupKind='scheduled'|'manual'|'pre-restore';
 // TODO(be backups): switch to generated types once apigen publishes the spec §4 routes.
 // The shapes below are hand-written from `Spec — Backups (Plex model).md` §4 and §6.2.
-export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string}>;
+export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string;encrypted?:boolean}>;
 export type BackupRunning=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number}>;
 export type RestoreOutcome='restored'|'rolled_back';
 export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string;jobId?:string;schemaVersion?:number}>;
-export type BackupsDocument=Readonly<{backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
+export type BackupResult=Readonly<{jobId:string;backupId?:string;outcome:'completed'|'failed';errorCode?:string}>;
+export type BackupsDocument=Readonly<{lastBackup?:BackupResult;backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
 export type RestoreSource=Readonly<{backupId:string}|{path:string}>;
 export type RestoreProgress=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number;result?:RestoreStaged;errorCode?:string}>;
 export type RestoreStaged=Readonly<{staged:true;restartRequired:true;validation:Readonly<{schemaVersion:number;integrity:'ok'}>}>;
@@ -362,10 +363,15 @@ export function parseBackupsDocument(v:unknown):BackupsDocument{
  const backups=firstOfEach('administration','backups',keepReadable('administration','backups',list(v.backups,1000,'backups'),(entry):BackupSummary|undefined=>{
   if(!object(entry)||!filled(entry.id,128)||!text(entry.createdAt,64))invalid('backup');
   if(!backupKinds.includes(entry.kind as BackupKind))return undefined;
+  if(entry.encrypted!==undefined&&typeof entry.encrypted!=='boolean')invalid('backup encryption');
   if(!count(entry.schemaVersion)||!text(entry.serverVersion,64)||!count(entry.bytes)||!text(entry.path,8192))invalid('backup');
-  return Object.freeze({id:entry.id,createdAt:entry.createdAt,kind:entry.kind as BackupKind,schemaVersion:entry.schemaVersion,serverVersion:entry.serverVersion,bytes:entry.bytes,path:entry.path});
+  return Object.freeze({id:entry.id,createdAt:entry.createdAt,kind:entry.kind as BackupKind,schemaVersion:entry.schemaVersion,serverVersion:entry.serverVersion,bytes:entry.bytes,path:entry.path,...(entry.encrypted!==undefined?{encrypted:entry.encrypted as boolean}:{})});
  }),entry=>entry.id);
- const doc:{backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}={backups:Object.freeze(backups)};
+ const doc:{lastBackup?:BackupResult;backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}={backups:Object.freeze(backups)};
+ if(v.lastBackup!==undefined&&v.lastBackup!==null){
+  const r=v.lastBackup;
+  if(object(r)&&filled(r.jobId,128)&&(r.outcome==='completed'||r.outcome==='failed'))doc.lastBackup=Object.freeze({jobId:r.jobId,outcome:r.outcome,...(filled(r.backupId,128)?{backupId:r.backupId as string}:{}),...(filled(r.errorCode,128)?{errorCode:r.errorCode as string}:{})});
+ }
  if(v.running!==undefined&&v.running!==null){
   const r=v.running;
   if(object(r)&&filled(r.jobId,128)&&text(r.phase,128)&&count(r.bytesDone)&&count(r.bytesTotal))doc.running=Object.freeze({jobId:r.jobId,phase:r.phase,bytesDone:r.bytesDone,bytesTotal:r.bytesTotal});
