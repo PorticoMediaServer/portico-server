@@ -124404,6 +124404,30 @@ export const schemas = {
           "properties": {
             "item": {
               "properties": {
+                "author": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata",
+                        "file-name",
+                        "folder"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "source"
+                  ],
+                  "type": "object"
+                },
                 "format": {
                   "enum": [
                     "epub",
@@ -124420,6 +124444,39 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "series": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "name": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "number": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata",
+                        "file-name",
+                        "folder"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "source"
+                  ],
+                  "type": "object"
                 },
                 "sourceId": {
                   "type": "string"
@@ -124529,6 +124586,30 @@ export const schemas = {
       "items": {
         "items": {
           "properties": {
+            "author": {
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "enum": [
+                    "owner",
+                    "file-metadata",
+                    "file-name",
+                    "folder"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "source"
+              ],
+              "type": "object"
+            },
             "format": {
               "enum": [
                 "epub",
@@ -124545,6 +124626,39 @@ export const schemas = {
             },
             "libraryId": {
               "type": "string"
+            },
+            "series": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "number": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "source": {
+                  "enum": [
+                    "owner",
+                    "file-metadata",
+                    "file-name",
+                    "folder"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "source"
+              ],
+              "type": "object"
             },
             "sourceId": {
               "type": "string"
