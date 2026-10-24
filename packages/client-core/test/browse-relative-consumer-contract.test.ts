@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {decodeBrowseLibraryResponse} from '../../contracts/src/decoders.ts';
 import {schemas} from '../../contracts/src/schemas.ts';
-import {BrowseQueryBuilder, BrowseQueryError, parseBrowseNode, parseBrowseResult, validateBrowseQuery, type BrowseCapabilities, type BrowseFieldCapability, type BrowseNode} from '../src/browse.ts';
+import {BrowseQueryBuilder, BrowseQueryError, browseContextFacetsPath, browseCountsRequest, parseBrowseCapabilities, parseBrowseNode, parseBrowseResult, validateBrowseQuery, type BrowseCapabilities, type BrowseFieldCapability, type BrowseNode} from '../src/browse.ts';
+import {validateHomeSeeAll} from '../src/home.ts';
+import {parseContentSeeAll} from '../src/library-content.ts';
 
 /**
  * Relative recency (`within-last-days`) crosses four layers, and they do not all say
@@ -21,6 +23,11 @@ import {BrowseQueryBuilder, BrowseQueryError, parseBrowseNode, parseBrowseResult
  * contract cannot express is refused by (1) and (4); (2) and (3) tolerate it
  * because they only ever read server-sourced values, and failing a whole page over
  * one is not their call.
+ *
+ * The same window crosses every other server-sourced boundary verbatim — the
+ * published vocabulary and its quick filters, a See all destination, a Home row's
+ * See all, a counts request and a facet link — and none of them turns it into a
+ * date computed from the clock.
  */
 
 const OPERATOR = 'within-last-days';
@@ -152,4 +159,60 @@ test('every operator the published predicate shape can express is structurally r
     const value = presence.has(operator) ? null : list.has(operator) ? (operator === 'between' ? ['a', 'b'] : ['a']) : 'a';
     assert.doesNotThrow(() => parseBrowseNode({field: 'title', operator, value}), `${operator} is not read`);
   }
+});
+
+test('the published vocabulary keeps the relative operator and drops only what the grammar cannot read', () => {
+  const published = {
+    library: {id: 'library', name: 'Library', kind: 'movie', defaultView: 'browse'},
+    pivots: [{id: 'movies', labelKey: 'browse.pivot.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid'], browsable: true, filters: ['dateAdded', 'year']}],
+    fields: [
+      {id: 'dateAdded', labelKey: 'browse.field.dateAdded', type: 'date', controlHint: 'date-range', operators: [OPERATOR, 'within-last-weeks', 'at-least'], applicableKinds: ['movie']},
+      {id: 'year', labelKey: 'browse.field.year', type: 'number', controlHint: 'number-range', operators: ['at-least', 'between'], applicableKinds: ['movie']},
+    ],
+    sorts: [{id: 'added', labelKey: 'sort.added', directions: ['asc', 'desc'], defaultDirection: 'desc', applicableKinds: ['movie']}],
+    quickFilters: [
+      {id: 'recent', labelKey: 'filter.quick.recent', query: {field: 'dateAdded', operator: OPERATOR, value: 30}},
+      {id: 'invented', labelKey: 'filter.quick.invented', query: {field: 'dateAdded', operator: 'within-last-weeks', value: 4}},
+    ],
+    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 10000},
+  };
+  const caps = parseBrowseCapabilities(published);
+  // An operator this app does not know leaves the field's own list; the relative one stays.
+  assert.deepEqual(caps.fields.find(field => field.id === 'dateAdded')?.operators, [OPERATOR, 'at-least']);
+  // A quick filter carrying a relative window is offered with its query intact; one the
+  // grammar cannot read is left out alone and the rest of the vocabulary stays.
+  assert.deepEqual(caps.quickFilters.map(filter => filter.id), ['recent']);
+  assert.deepEqual(caps.quickFilters[0].query, {field: 'dateAdded', operator: OPERATOR, value: 30});
+  // Choosing that filter sends exactly what was published.
+  assert.deepEqual(new BrowseQueryBuilder(caps, 'movies').quickFilter('recent').build(), {pivot: 'movies', query: {field: 'dateAdded', operator: OPERATOR, value: 30}});
+});
+
+test('a See all destination keeps the relative window, and one that cannot be read is left out alone', () => {
+  const sort = [{field: 'added', direction: 'desc'}];
+  const relative = parseContentSeeAll({pivot: 'movies', sort, query: {field: 'releaseDate', operator: OPERATOR, value: 90}});
+  assert.deepEqual(relative?.query, {field: 'releaseDate', operator: OPERATOR, value: 90});
+  assert.deepEqual(relative?.sort, sort);
+  // An operator this app cannot read takes the destination only, never the section or row.
+  assert.equal(parseContentSeeAll({pivot: 'movies', sort, query: {field: 'releaseDate', operator: 'within-last-weeks', value: 4}}), undefined);
+  // A Home row's See all is the same canonical destination, read by the same rules.
+  const home = validateHomeSeeAll({type: 'library', libraryId: 'library', pivot: 'movies', sort, query: {field: 'dateAdded', operator: OPERATOR, value: 7}}) as {query?: unknown};
+  assert.deepEqual(home.query, {field: 'dateAdded', operator: OPERATOR, value: 7});
+  assert.throws(() => validateHomeSeeAll({type: 'library', libraryId: 'library', pivot: 'movies', sort, query: {field: 'dateAdded', operator: 'within-last-weeks', value: 4}}));
+});
+
+test('a counts or facets request carries the relative window unchanged, never a date computed from the clock', t => {
+  const node = {field: 'dateAdded', operator: OPERATOR, value: 30};
+  assert.deepEqual(browseCountsRequest('movies', [{id: 'recent', query: node}]).queries[0]?.query, node);
+  const facets = browseContextFacetsPath('library', 'genre', 'movies', node);
+  assert.deepEqual(JSON.parse(new URLSearchParams(facets.slice(facets.indexOf('?') + 1)).get('query') as string), node);
+
+  // The executed body is the same at any instant: a relative window is never frozen
+  // into the calendar date it happens to mean today.
+  t.mock.timers.enable({apis: ['Date'], now: new Date('2026-10-24T06:00:00Z')});
+  const first = new BrowseQueryBuilder(capabilities(), 'movies').where('dateAdded', OPERATOR, 30).sort('title').build();
+  t.mock.timers.tick(90 * 86400000);
+  const later = new BrowseQueryBuilder(capabilities(), 'movies').where('dateAdded', OPERATOR, 30).sort('title').build();
+  assert.deepEqual(later, first);
+  assert.equal(JSON.stringify(later).includes(OPERATOR), true);
+  assert.equal(/20\d\d-\d\d-\d\d/.test(JSON.stringify(later)), false);
 });
