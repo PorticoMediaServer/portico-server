@@ -135,7 +135,7 @@ func TestWebDocumentAuthorizesOnlyItsOwnScrollLockStyles(t *testing.T) {
 		if !strings.Contains(policy, "style-src 'self' 'nonce-"+nonce+"'") || strings.Contains(policy, "'unsafe-inline'") || strings.Contains(policy, "'unsafe-eval'") {
 			t.Fatalf("unsafe or mismatched policy: %s", policy)
 		}
-		if !strings.Contains(policy, "'wasm-unsafe-eval'") || !strings.Contains(policy, "frame-ancestors 'none'") {
+		if !strings.Contains(policy, "'wasm-unsafe-eval'") || !strings.Contains(policy, "frame-ancestors 'none'") || !strings.Contains(policy, "frame-src 'self' blob:;") {
 			t.Fatal("lost existing protections")
 		}
 		if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Last-Modified") != "" {

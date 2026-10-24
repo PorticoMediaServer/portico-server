@@ -16,7 +16,7 @@ import (
 	"portico.local/server/internal/mediaexec"
 )
 
-const webContentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
+const webContentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
 
 const styleNoncePlaceholder = "__PORTICO_STYLE_NONCE__"
 const maximumWebDocumentBytes = 1 << 20
