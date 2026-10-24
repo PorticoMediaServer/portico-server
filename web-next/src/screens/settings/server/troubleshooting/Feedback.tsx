@@ -1,0 +1,92 @@
+import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {defaultI18n, type MessageId} from '@i18n';
+import type {FeedbackReport, FeedbackStatus} from '@core/console.ts';
+import {Button} from '../../../../kit/controls';
+import {Dialog} from '../../../../kit/overlays/Dialog';
+import {SettingsAction} from '../../../../kit/settings';
+import type {SettingsFeedbackSource} from './feedback-source';
+import styles from './troubleshooting.module.css';
+
+const t = defaultI18n.t;
+
+export type FeedbackPanelProps = Readonly<{
+  source: SettingsFeedbackSource;
+  subscribe: (listener: () => void) => () => void;
+  reportError: (error: unknown) => void;
+}>;
+
+const STATUSES: readonly FeedbackStatus[] = Object.freeze(['open', 'in-progress', 'resolved', 'closed']);
+const CATEGORY: Readonly<Record<string, MessageId>> = Object.freeze({
+  playback: 'server.feedback.category.playback', metadata: 'server.feedback.category.metadata', subtitles: 'server.feedback.category.subtitles', other: 'server.feedback.category.other',
+});
+const STATUS: Readonly<Record<FeedbackStatus, MessageId>> = Object.freeze({open: 'server.feedback.status.open', 'in-progress': 'server.feedback.status.in-progress',
+  resolved: 'server.feedback.status.resolved', closed: 'server.feedback.status.closed'});
+const statusLabel = (status: FeedbackStatus) => t(STATUS[status]);
+const categoryLabel = (category: string) => t(CATEGORY[category] ?? 'server.feedback.category.other');
+const firstLine = (message: string) => message.split('\n').find(line => line.trim().length > 0)?.trim() ?? '';
+
+/** The drawn Feedback tab: the viewer feedback inbox and the report it opens. */
+export function FeedbackPanel(props: FeedbackPanelProps) {
+  const state = useSyncExternalStore(props.subscribe, props.source.getSnapshot, props.source.getSnapshot);
+  const [open, setOpen] = useState<FeedbackReport>();
+  useEffect(() => {void props.source.load();}, [props.source]);
+  if (state.phase === 'error') return <p className={styles.failure} role="alert"><span>{t('next.states.pageFailedBody')}</span><button type="button" onClick={() => {void props.source.retry();}}>{t('next.shell.tryAgain')}</button></p>;
+  if (state.phase === 'idle' || state.phase === 'loading' && !state.reports.length) return <p role="status">{t('next.settings.loading')}</p>;
+  return <div className={styles.reports}>
+    <section className={styles.panel}>
+      <div className={styles.panelHead}><h3>{t('settings.server.feedback')}</h3></div>
+      {state.reports.length ? <ul className={styles.rows}>{state.reports.map(report => <li key={report.id}>
+        <button type="button" className={styles.feedbackRow} onClick={() => setOpen(report)}>
+          <span className={styles.reportText}><b>{firstLine(report.message) || t('server.reports.empty')}</b>
+            <small>{t('web.feedback.rowSubtitle', {category: categoryLabel(report.category), when: defaultI18n.dateTime(report.createdAt), about: report.itemId ? 'yes' : 'no'})}</small></span>
+          <span className={styles.status} data-status={report.status}>{statusLabel(report.status)}</span>
+        </button>
+      </li>)}</ul> : <p className={styles.none}>{t('web.feedback.inboxEmpty')}</p>}
+      {state.next && <div className={styles.pager}><Button variant="glass" size="small" onClick={() => {void props.source.more();}}>{t('server.showMore')}</Button></div>}
+    </section>
+    {open && <TriageDialog report={open} source={props.source} onClose={() => setOpen(undefined)} reportError={props.reportError} />}
+  </div>;
+}
+
+function TriageDialog({report, source, onClose, reportError}: Readonly<{report: FeedbackReport; source: SettingsFeedbackSource; onClose: () => void; reportError: (error: unknown) => void}>) {
+  const [status, setStatus] = useState<FeedbackStatus>(report.status), [reply, setReply] = useState(''), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false);
+  const [loaded, setLoaded] = useState<FeedbackReport>(report), cancel = useRef<HTMLButtonElement>(null), request = useRef<AbortController | undefined>(undefined);
+  useEffect(() => {
+    const controller = new AbortController();
+    // Read the report again so the dialog shows what the server keeps now, not the list's copy.
+    void source.read(report.id, controller.signal).then(value => {if (!controller.signal.aborted) {setLoaded(value);setStatus(value.status);}}).catch(() => {});
+    return () => {controller.abort();request.current?.abort();};
+  }, [report.id, source]);
+  const save = async () => {
+    if (busy) return;
+    const controller = request.current = new AbortController();
+    setBusy(true);
+    try {
+      await source.triage(loaded, status, reply, controller.signal);
+      if (!controller.signal.aborted) {setSaved(true);onClose();}
+    } catch (error) {if (!controller.signal.aborted) reportError(error);}
+    finally {if (request.current === controller) request.current = undefined;setBusy(false);}
+  };
+  const meta = t('web.feedback.reportedMeta', {when: defaultI18n.dateTime(loaded.createdAt), status: statusLabel(loaded.status)});
+  return <Dialog open onOpenChange={value => {if (!value) onClose();}} size="lg" title={categoryLabel(loaded.category)} initialFocusRef={cancel}
+    footer={<><Button ref={cancel} size="small" onClick={onClose}>{t('next.settings.cancel')}</Button>
+      <SettingsAction size="small" appearance="primary" loading={busy} disabled={busy || saved} onClick={() => {void save();}}>{t('web.feedback.updateReport')}</SettingsAction></>}>
+    <p className={styles.reportMeta}>{meta}</p>
+    <p className={styles.message}>{loaded.message}</p>
+    {loaded.diagnostic && <p className={styles.reportMeta}>{t('server.feedback.sentFrom', {platform: loaded.diagnostic.platform, state: loaded.diagnostic.state, online: loaded.diagnostic.online ? 'yes' : 'no'})}</p>}
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>{t('web.feedback.status')}</span>
+      <div className={styles.statusChoice} role="radiogroup" aria-label={t('web.feedback.status')}>{STATUSES.map(value => <button key={value} type="button" role="radio" aria-checked={value === status}
+        className={styles.statusOption} data-status={value} disabled={busy} onClick={() => setStatus(value)}>{statusLabel(value)}</button>)}</div>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel} htmlFor="feedback-reply">{t('web.feedback.replyLabel')}</label>
+      <textarea id="feedback-reply" className={styles.reply} maxLength={2000} rows={4} value={reply} disabled={busy} onChange={event => setReply(event.currentTarget.value)} />
+      <p className={styles.help}>{t('web.feedback.replyHelp')}</p>
+    </div>
+    <details className={styles.technical}><summary>{t('web.capabilities.technical')}</summary>
+      <dl><dt>{t('server.feedback.field.report')}</dt><dd>{loaded.id}</dd><dt>{t('server.feedback.field.revision')}</dt><dd>{loaded.revision}</dd>
+        {loaded.itemId && <><dt>{t('server.feedback.field.item')}</dt><dd>{loaded.itemId}</dd></>}</dl>
+    </details>
+  </Dialog>;
+}

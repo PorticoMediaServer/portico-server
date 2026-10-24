@@ -1,7 +1,13 @@
-import type {ReactNode} from 'react';
+import {useState, type ReactNode} from 'react';
+import {defaultI18n, type MessageId} from '@i18n';
 import type {ReportTransport} from '@core/client-reports.ts';
+import {FeedbackPanel} from './Feedback';
 import {ReportsPanel} from './Reports';
+import {SettingsFeedbackSource} from './feedback-source';
 import {SettingsReportsSource} from './reports-source';
+import styles from './troubleshooting.module.css';
+
+const t = defaultI18n.t;
 
 export type TroubleshootingSurfacesOptions = Readonly<{
   transport: ReportTransport;
@@ -21,16 +27,44 @@ export type TroubleshootingSurfaces = Readonly<{
   dispose: () => void;
 }>;
 
+type View = 'feedback' | 'reports';
+const TABS: readonly Readonly<{id: View; label: MessageId}>[] = Object.freeze([
+  {id: 'feedback', label: 'next.settings.troubleshootingFeedback'},
+  {id: 'reports', label: 'next.settings.troubleshootingReports'},
+]);
+
 /**
- * Owner-only Troubleshooting. The frames draw a page with four tabs; this pass
- * draws Reports (frames 5-6), whose panels and dialog come from real producers.
- * Messages, Feedback and Support are not drawn yet, so their tabs are not offered.
+ * Owner-only Troubleshooting. The frames draw a page with four tabs; this pass draws
+ * Feedback (frames 3-4) and Reports (frames 5-6), so only those two tabs are offered.
+ * Messages and Support are not built yet and are not drawn as dead tabs.
  */
+export type TroubleshootingPageProps = Readonly<{
+  reports: SettingsReportsSource; feedback: SettingsFeedbackSource;
+  subscribe: (listener: () => void) => () => void; isCurrent: () => boolean; downloadBase: string; reportError: (error: unknown) => void;
+}>;
+
+/** The drawn tab strip, offering only the screens this pass actually draws. */
+export function TroubleshootingPage({reports, feedback, subscribe, isCurrent, downloadBase, reportError}: TroubleshootingPageProps) {
+  const [view, setView] = useState<View>('feedback');
+  return <div className={styles.page}>
+    <div className={styles.tabs} role="tablist">{TABS.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={tab.id === view}
+      className={styles.tab} onClick={() => setView(tab.id)}>{t(tab.label)}</button>)}</div>
+    {view === 'feedback'
+      ? <FeedbackPanel source={feedback} subscribe={subscribe} reportError={reportError} />
+      : <ReportsPanel source={reports} subscribe={subscribe} isCurrent={isCurrent} downloadBase={downloadBase} reportError={reportError} />}
+  </div>;
+}
+
 export function createTroubleshootingSurfaces(options: TroubleshootingSurfacesOptions): TroubleshootingSurfaces {
   const reports = new SettingsReportsSource(options.transport, options.serverId, options.viewerId, options.isCurrent);
+  const feedback = new SettingsFeedbackSource(options.transport, options.serverId, options.viewerId, options.isCurrent);
+  const subscribe = (listener: () => void) => {
+    const offs = [options.subscribe(listener), reports.subscribe(listener), feedback.subscribe(listener)];
+    return () => {for (const off of offs) off();};
+  };
   return {
-    render: () => options.isCurrent() ? <ReportsPanel source={reports} subscribe={options.subscribe} isCurrent={options.isCurrent}
+    render: () => options.isCurrent() ? <TroubleshootingPage reports={reports} feedback={feedback} subscribe={subscribe} isCurrent={options.isCurrent}
       downloadBase={options.downloadBase} reportError={options.reportError} /> : undefined,
-    dispose: () => reports.dispose(),
+    dispose: () => {reports.dispose();feedback.dispose();},
   };
 }
