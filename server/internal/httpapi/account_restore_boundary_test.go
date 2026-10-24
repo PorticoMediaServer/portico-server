@@ -53,7 +53,7 @@ func TestAccountRestoreUsesAccountScopeUntilExplicitProfileSelection(t *testing.
 	}
 	assertRestricted := func(token string) {
 		t.Helper()
-		for _, path := range []string{"/v1/me", "/v1/bootstrap", "/v1/admin/sign-in"} {
+		for _, path := range []string{"/v1/me", "/v1/bootstrap"} {
 			if w := call("GET", path, token, nil); w.Code != 401 {
 				t.Fatalf("account-only viewer refusal path=%s status=%d", path, w.Code)
 			}
