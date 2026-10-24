@@ -248,7 +248,7 @@ function Boundary({captured, view, onView, onGuide}: {captured: ProtectedLibrary
   const context = useLibraryScreenContext(captured);
   const [owned, setOwned] = useState<Readonly<{context: ScreenContext; controller: RecordingsController}>>();
   const [attempt, setAttempt] = useState(0);
-  const now = useMemo(() => Date.now(), [attempt]);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const life = screenLifetime(context);
     const controller = createRecordingsController({api: life.api, serverId: context.scope.serverId, requestId: randomHex, signal: life.signal(), isCurrent: life.current});
@@ -271,7 +271,7 @@ function Boundary({captured, view, onView, onGuide}: {captured: ProtectedLibrary
     {id: 'storage' as const, label: t('recordings.storage')},
   ];
   const [conflict, setConflict] = useState<{recording: Recording; detail?: RecordingDetail}>();
-  const retry = () => setAttempt(value => value + 1);
+  const retry = () => {setNow(Date.now());setAttempt(value => value + 1);};
   if (!owned || owned.context !== context || !snapshot) return null;
   const loading = snapshot.phase === 'loading' || snapshot.phase === 'idle';
   const body = loading ? <p role="status">{t('recordings.loading')}</p>
