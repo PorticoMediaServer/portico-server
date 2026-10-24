@@ -78,3 +78,38 @@ func TestPendingRequestSchemaRequiresNonNullFullStart(t *testing.T) {
 		t.Fatal("owner start can be omitted or normalized from null")
 	}
 }
+
+func TestPendingCountIsOwnerOnlyAndRetainsCompleteEnvelope(t *testing.T) {
+	key, claim, start, count, _ := ownerCountFixture(t)
+	original, signedStart, signedCount := signOwnerFixture(t, key, claim), signOwnerFixture(t, key, start), signOwnerFixture(t, key, count)
+	in := PendingRequest{Payload: original.Payload, Signature: original.Signature, OwnerStart: &signedStart, OwnerSwitchCount: &signedCount}
+	raw, e := json.Marshal(in)
+	var got PendingRequest
+	if e != nil || json.Unmarshal(raw, &got) != nil || got.OwnerSwitchCount == nil || *got.OwnerSwitchCount != signedCount || got.OwnerStart == nil || *got.OwnerStart != signedStart {
+		t.Fatal("count proof was not retained with its full parents")
+	}
+	base := `"payload":"claim","signature":"signature"`
+	owner := `,"ownerStart":{"payload":"start","signature":"signature"}`
+	for _, wire := range []string{
+		`{` + base + `,"ownerSwitchCount":{"payload":"count","signature":"signature"}}`,
+		`{` + base + owner + `,"ownerSwitchCount":null}`,
+		`{` + base + owner + `,"ownerSwitchCount":{}}`,
+		`{` + base + owner + `,"ownerSwitchCount":{"payload":"count"}}`,
+		`{` + base + owner + `,"ownerSwitchCount":{"payload":"count","signature":"signature","unknown":true}}`,
+		`{` + base + owner + `,"ownerSwitchCount":{"payload":"count","signature":"signature","payload":"other"}}`,
+		`{` + base + owner + `,"ownerSwitchCount":{"payload":"count","signature":"signature"},"ownerSwitchCount":{"payload":"other","signature":"signature"}}`,
+	} {
+		got = in
+		if json.Unmarshal([]byte(wire), &got) == nil || got.Payload != "" || got.OwnerStart != nil || got.OwnerSwitchCount != nil {
+			t.Fatal("ambiguous or non-owner count accepted or predecessor retained")
+		}
+	}
+	variants := (PendingRequest{}).JSONSchema()["oneOf"].([]any)
+	if _, ok := variants[0].(map[string]any)["properties"].(map[string]any)["ownerSwitchCount"]; ok {
+		t.Fatal("ordinary pending schema accepts owner count")
+	}
+	countSchema := variants[1].(map[string]any)["properties"].(map[string]any)["ownerSwitchCount"].(map[string]any)
+	if countSchema["type"] != "object" || countSchema["additionalProperties"] != false {
+		t.Fatal("optional count is not a complete nonnullable envelope")
+	}
+}
