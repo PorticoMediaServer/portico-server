@@ -215,6 +215,6 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
     {issued && <InvitationShortCodeDialog open={inviteOpen} onOpenChange={setInviteOpen}
       invitation={{id: issued.id, revision: issued.revision, state: invitationState(issued.state)!}}
       request={(operationId, signal, isCurrent) => bindings.invitations!.shortCode(issued, operationId, {signal, isCurrent})}
-      issueOnOpen returnFocusRef={inviteOpener} />}
+      isCurrent={bindings.authority.isCurrent} issueOnOpen returnFocusRef={inviteOpener} />}
   </>;
 }
