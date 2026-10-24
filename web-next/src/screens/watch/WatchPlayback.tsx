@@ -70,6 +70,23 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const expanded = !!snapshot?.dock.local?.expanded;
   const activeVideo = localVideoSurfaceActive(snapshot) && !remotePlaying;
   const fullscreen = useSyncExternalStore(subscribeFullscreen, fullscreenSnapshot, noFullscreen);
+  const [pipActive, setPipActive] = useState(false);
+  const pipAvailable = typeof document !== 'undefined' && document.pictureInPictureEnabled;
+  useEffect(() => {
+    const element = video.current;
+    if (!element || !pipAvailable) return;
+    const entered = () => setPipActive(document.pictureInPictureElement === element), left = () => setPipActive(false);
+    element.addEventListener('enterpictureinpicture', entered);
+    element.addEventListener('leavepictureinpicture', left);
+    return () => {element.removeEventListener('enterpictureinpicture', entered);element.removeEventListener('leavepictureinpicture', left);};
+  }, [pipAvailable, runtime]);
+  const togglePip = async () => {
+    const element = video.current;
+    if (!element) return;
+    if (document.pictureInPictureElement === element) await document.exitPictureInPicture();
+    else if (document.pictureInPictureElement) throw new DOMException('Another picture source is active', 'InvalidStateError');
+    else await element.requestPictureInPicture();
+  };
   const [controlsVisible, setControlsVisible] = useState(true), chrome = useRef<WindowChromePublisher | undefined>(undefined);
   useLayoutEffect(() => {
     if (!expanded || !activeVideo) return;
@@ -150,6 +167,10 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const visuals = binding ? {itemId: subject ? visualId : undefined, identity: subject ? playbackIdentity(subject, 'full', binding.environment) : undefined,
     artwork: subject ? binding.artwork.foreground(item?.posterUrl ?? item?.backdropUrl ?? source?.posterUrl ?? source?.backdropUrl, 256, 16 / 9, {group: 'playback', priority: 'high'}) : undefined,
     skipBackSeconds: binding.skips.back, skipForwardSeconds: binding.skips.forward} : undefined;
+  const windowPort = typeof document !== 'undefined' ? {
+    ...(document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : {}),
+    ...(pipAvailable ? {pictureInPicture: {active: pipActive, toggle: togglePip}} : {}),
+  } : undefined;
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host>
     {snapshot && dockBinding && <div className={styles.localDock} data-covered={!!remote}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
@@ -158,7 +179,7 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
     </MediaSurface>
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       surfaces={drawnSurfaces} geometry={geometry}
-      windowPort={typeof document !== 'undefined' && document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : undefined} />}
+      windowPort={windowPort} />}
     {cast && binding && visuals && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} /></div>}
   </div>;
 }
