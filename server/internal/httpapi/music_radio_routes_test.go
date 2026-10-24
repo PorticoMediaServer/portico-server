@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
 )
@@ -30,9 +32,13 @@ func radioHTTPFixture(t *testing.T) (*v1Fixture, []catalogtest.Item) {
 			t.Fatal(err)
 		}
 		item := c.Song(album, n+1, path, fmt.Sprintf("Radio song %d", n))
-		c.Exec(`UPDATE catalog_assets SET video_codec='',width=0,height=0 WHERE id=?`, item.Asset)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Exec(`UPDATE catalog_assets SET video_codec='',width=0,height=0,size=?,modified_ns=? WHERE id=?`, info.Size(), info.ModTime().UnixNano(), item.Asset)
 		c.Write(func(_ context.Context, tx *sql.Tx) error {
-			return assets.PersistStreams(tx, item.Token, 1000, 1, []assets.Stream{{Index: 0, Type: "audio", Codec: "aac", Channels: 2, Detail: assets.StreamDetail{SampleRate: 44100}, Default: true}})
+			return assets.PersistStreams(tx, item.Token, info.Size(), info.ModTime().UnixNano(), []assets.Stream{{Index: 0, Type: "audio", Codec: "aac", Channels: 2, Detail: assets.StreamDetail{SampleRate: 44100}, Default: true}})
 		})
 		c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT ?,src.id,a.token,src.incarnation,a.path,'r','{}',a.size,a.modified_ns FROM catalog_assets a JOIN library_sources src ON src.library_id='radio-music' WHERE a.id=? LIMIT 1`, fmt.Sprint(item.ID), item.Asset)
 		c.Exec(`INSERT INTO audio_render_facts(asset_id,size,modified_ns,container,codec,sample_rate,channels,bit_depth,raw_frames,duration_frames,start_frames,end_frames,trim_source,decoder_config,measured_ms) SELECT token,size,modified_ns,'mp4','aac',44100,2,0,238140000,238140000,0,0,'none','EhA=',1 FROM catalog_assets WHERE id=?`, item.Asset)
@@ -115,5 +121,28 @@ func TestMusicRadioHTTPAdvanceTransfersOneActualSessionAndHonorsRevocation(t *te
 	f.call("GET", base, nil, nil, 200, &unchanged)
 	if unchanged.Revision != before.Revision || unchanged.Current.EntryID != before.Current.EntryID {
 		t.Fatal("refusal changed authority", unchanged)
+	}
+}
+
+func TestMusicRadioHTTPRechecksSeedAuthorityAfterSelection(t *testing.T) {
+	f, items := radioHTTPFixture(t)
+	var q playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "radio-revocation-0001"}, map[string]any{"selector": map[string]any{"container": map[string]any{"kind": "radio", "id": items[0].Public}}}, 201, &q)
+	produce := f.v1.RadioKeys
+	f.v1.RadioKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, request catalog.RadioBatchRequest) (catalog.RadioBatch, error) {
+		batch, err := produce(ctx, tx, p, request)
+		if err == nil && !request.Start {
+			f.catalogTest.Exec(`UPDATE catalog_libraries SET retired=1 WHERE library_id='radio-music'`)
+		}
+		return batch, err
+	}
+	base := "/v1/queues/" + q.Queue.ID
+	if w := f.raw("POST", base+":advance", f.owner.AccessToken, map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"reason": "next"}); w.Code < 400 {
+		t.Fatal("mid-command source revocation ignored", w.Body.String())
+	}
+	var unchanged playbackv1.QueueView
+	f.call("GET", base, nil, nil, 200, &unchanged)
+	if unchanged.Revision != q.Queue.Revision || unchanged.Total != q.Queue.Total || unchanged.Current.EntryID != q.Queue.Current.EntryID {
+		t.Fatal("rejected batch changed queue", unchanged)
 	}
 }

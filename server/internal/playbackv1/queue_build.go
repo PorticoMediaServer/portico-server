@@ -100,7 +100,7 @@ func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principa
 		if err != nil {
 			return selectorKeys{}, err
 		}
-		if len(batch.IDs) == 0 {
+		if !validRadioBatch(batch.IDs, radioBatchSize) {
 			return selectorKeys{}, ErrNotFound
 		}
 		var label string

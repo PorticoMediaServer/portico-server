@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 )
 
@@ -23,6 +24,21 @@ func radioSegment(l *layout) int {
 		}
 	}
 	return -1
+}
+
+// The callback is a domain producer, not a second unbounded queue input.
+func validRadioBatch(ids []string, limit int) bool {
+	if len(ids) == 0 || len(ids) > limit {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if _, ok := entityid.Decode(id); !ok || seen[id] {
+			return false
+		}
+		seen[id] = true
+	}
+	return true
 }
 
 type radioRefill struct {
@@ -67,7 +83,7 @@ func (s *Service) prepareRadioRefill(ctx context.Context, c Caller, q queueRow) 
 			excluded = append(excluded, key)
 			last = key
 		}
-		room := s.queueKeyLimit() - l.total()
+		room := min(s.queueKeyLimit()-l.total(), MaxSnapshotKeys-built)
 		if room <= 0 {
 			return ErrQueueTooLarge
 		}
@@ -75,7 +91,7 @@ func (s *Service) prepareRadioRefill(ctx context.Context, c Caller, q queueRow) 
 		if err != nil {
 			return err
 		}
-		if len(batch.IDs) == 0 {
+		if !validRadioBatch(batch.IDs, min(radioBatchSize, int(room))) {
 			return ErrNotFound
 		}
 		out = &radioRefill{snapshot: g.snapshot, seed: source.Container.ID, built: built, ids: batch.IDs}
@@ -90,7 +106,7 @@ func (s *Service) appendRadioTx(ctx context.Context, tx *sql.Tx, l *layout, p id
 	if refill == nil {
 		return nil
 	}
-	if l.q.shuffle || l.total()+int64(len(refill.ids)) > s.queueKeyLimit() {
+	if l.q.shuffle || l.total()+int64(len(refill.ids)) > s.queueKeyLimit() || refill.built+int64(len(refill.ids)) > MaxSnapshotKeys {
 		return ErrQueueTooLarge
 	}
 	var built int64
