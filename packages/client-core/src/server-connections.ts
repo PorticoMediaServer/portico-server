@@ -27,7 +27,9 @@ export type RememberedServer = {
  * Anything else (locked, busy, timed out) is thrown as it is and means "not now". */
 export interface ServerConnectionStorage {
  read():Promise<RememberedServer|undefined>;
- change(update:(current:RememberedServer|undefined)=>RememberedServer|undefined):Promise<void>;
+ /** A supplied guard runs under the storage lock immediately before mutation,
+  * including after asynchronous encryption; a failed guard writes nothing. */
+ change(update:(current:RememberedServer|undefined)=>RememberedServer|undefined,beforeCommit?:()=>void):Promise<void>;
 }
 export type ConnectionEnvironment={storage:ServerConnectionStorage;fetcher?:typeof fetch;crypto?:RouteCrypto;discover?:(signal:AbortSignal)=>Promise<readonly DiscoveryRoute[]>};
 export type HostedConnectionSource={origin:string;accountId:string;request:<T>(path:string,signal:AbortSignal)=>Promise<T>};
@@ -100,7 +102,8 @@ export async function rememberNativeSession(api:HttpLocalApi,session:LocalSessio
  if(hosted&&parsed.viewer.authority==='hosted'&&parsed.viewer.accountId!==hosted.accountId)throw new RouteError('identity_mismatch','The native session belongs to another account.');
  const record:RememberedServer={version:'1',selectionId:routeBase64((env.crypto??webRouteCrypto).random(24)),logicalOrigin:connection.logicalOrigin,session:parsed,pin:{serverId:connection.pin.serverId,publicKey:connection.pin.publicKey,fingerprint:connection.pin.fingerprint},routes:memoryRecord(connection.getMemory()),...(hosted?{hosted}: {})};
  let previous:RememberedServer|undefined;
- await env.storage.change(current=>{if(!isCurrent())throw new RouteError('cancelled','The selected account or server changed.');previous=current;return record;});
+ const beforeCommit=()=>{if(!isCurrent())throw new RouteError('cancelled','The selected account or server changed.');};
+ await env.storage.change(current=>{beforeCommit();previous=current;return record;},beforeCommit);
  if(!isCurrent()){await env.storage.change(current=>sameSelection(current,record)?previous:current);throw new RouteError('cancelled','The selected account or server changed.');}
  // The storage acknowledgement itself may be delayed behind a newer selection.
  const saved=await env.storage.read();

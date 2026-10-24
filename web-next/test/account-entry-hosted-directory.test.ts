@@ -6,14 +6,16 @@ import {parseDirectSignIn} from '@core/profile-management.ts';
 import {rememberNativeSession} from '@core/server-connections.ts';
 import {BrowserAccountEntry} from '../src/platform/account-entry.ts';
 import type {AccountServerAccess} from '../src/platform/account-server-access.ts';
+import {browserAppSessions,observeBrowserSessionChanges} from '../src/platform/server-connections.ts';
+import {fakeIndexedDB} from './protected-store-fixture.ts';
 
 const origin='https://actual-server.test',serverId='srv_'+'A'.repeat(43),pin={serverId,publicKey:'p'.repeat(43),fingerprint:'f'.repeat(43)};
 const hint={id:serverId,name:'Directory name',baseUrl:origin,publicKey:pin.publicKey,policyRevision:3,presence:{lastSeenAt:null}};
-function fixture(){
+function fixture(selectedStore?:AppSessionStore){
   let raw:AppSessionRecord|undefined,live=true,kind='portico',challenge=false,foreign=false,remembers=0,disposed=0;
   let held:Promise<void>|undefined,entered!:()=>void,release!:()=>void,holdAt='';
   const calls:string[]=[],retired:string[]=[],listeners=new Set<()=>void>();
-  const store=new AppSessionStore({read:async()=>raw,change:async(update,beforeCommit)=>{const next=update(raw);beforeCommit?.();raw=next;}});
+  const store=selectedStore??new AppSessionStore({read:async()=>raw,change:async(update,beforeCommit)=>{const next=update(raw);beforeCommit?.();raw=next;}});
   const session=(family='new-server-family'):LocalSession=>({accessToken:'private-access-'+family,refreshToken:'private-refresh-'+family,sessionFamilyId:family,tokenGeneration:'1',installationId:'i'.repeat(43),deviceId:'actual-device',expiresAt:'2099-01-01T00:00:00Z',authorizationHorizon:'2099-02-01T00:00:00Z',viewer:{authority:'local',serverId,accountId:'server-member',profileId:'main',role:'account'}});
   const snapshot=()=>({authority:'local',serverId,canManage:false,twoStepSetupRequired:false,capabilities:{manageAccount:false,managePeople:false,manageServer:false,manageSignIn:false},
     account:{id:'server-member',username:'actual-member',hostedAccountId:foreign?'foreign-hosted':'actual-hosted',primaryProfileId:'main',role:'member',revision:1,disabled:false,allowedLibraries:[]},
@@ -66,4 +68,29 @@ test('Hosted family retirement clears a private MFA challenge without admitting 
 test('MFA completion retains Hosted route metadata and normal account-only profile selection',async()=>{
   const f=fixture();f.challenge();await f.entry.openHostedServer(hint,f.account);await f.entry.completeChallenge('123456');
   assert.equal(f.entry.getSnapshot().phase,'profiles');assert.equal((await f.store.selected())?.connection.hosted?.accountId,'actual-hosted');assert.equal(f.remembers(),1);f.entry.dispose();
+});
+test('actual encrypted admission cancelled before commit never publishes a record or retirement hint',async t=>{
+  const db=fakeIndexedDB(),page=new EventTarget(),sent:unknown[]=[],globals=new Map<string,PropertyDescriptor|undefined>();
+  let tail=Promise.resolve();
+  class Channel extends EventTarget{postMessage(value:unknown){sent.push(value);}close(){}}
+  const replacements={indexedDB:db.indexedDB,window:page,BroadcastChannel:Channel,navigator:{locks:{request:(_name:string,_options:unknown,work:()=>Promise<unknown>)=>{
+    const result=tail.then(work);tail=result.then(()=>{},()=>{});return result;
+  }}}};
+  for(const [name,value]of Object.entries(replacements)){globals.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{configurable:true,value});}
+  const store=browserAppSessions(),f=fixture(store);let heard=0;
+  const stop=observeBrowserSessionChanges(()=>{heard++;});
+  t.after(()=>{f.entry.dispose();stop();for(const [name,descriptor]of globals){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete(globalThis as Record<string,unknown>)[name];}});
+  let release!:()=>void,entered!:()=>void;
+  const waiting=new Promise<void>(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{entered=resolve;});
+  const encrypt=crypto.subtle.encrypt.bind(crypto.subtle);
+  t.mock.method(crypto.subtle,'encrypt',async(...args:Parameters<typeof encrypt>)=>{const cipher=await encrypt(...args);entered();await waiting;return cipher;});
+  const pending=f.entry.openHostedServer(hint,f.account);await started;
+  assert.equal(db.data.has('selected'),false);assert.equal(heard,0);assert.deepEqual(sent,[]);
+  f.replace();f.entry.cancel();const successor=f.successor();
+  release();assert.equal(await pending,false);await successor;
+  assert.deepEqual(f.retired,['new-server-family']);
+  assert.equal((await store.selected())?.connection.session.sessionFamilyId,'successor-family');
+  assert.equal((await store.read()).revision,1,'only the real successor committed; no cancelled admission or rollback');
+  assert.equal(heard,1,'only the successor emitted a same-tab hint');
+  assert.deepEqual(sent,['changed'],'only the successor emitted a cross-tab hint');
 });

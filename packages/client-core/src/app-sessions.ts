@@ -93,7 +93,7 @@ export class AppSessionStore {
     let previous: AppServerSession | undefined, accepted: RememberedServer | undefined;
     return {
       read: async () => (await this.read()).servers.find(v => v.connection.pin.serverId === serverId)?.connection,
-      change: async update => {
+      change: async (update, beforeCommit) => {
         await this.storage.change(raw => {
           const old = parseAppSessionRecord(raw), entry = old.servers.find(v => v.connection.pin.serverId === serverId);
           const connection = update(entry?.connection);
@@ -109,7 +109,7 @@ export class AppSessionStore {
           if (replacement && !rollback) { previous = entry; accepted = checked; }
           const result = next(old, [...old.servers.filter(v => v !== entry), {signIn, connection: checked}], replacement ? serverId : old.selectedServerId);
           return result;
-        });
+        }, beforeCommit);
         // An admission is single use. Rotation, route updates and cleanup need no admission.
         admitted = true;
       },
@@ -122,10 +122,10 @@ export class AppSessionStore {
     const resolve = () => captured ??= this.selected().then(value => value && this.connectionStorage(value.connection.pin.serverId));
     return {
       read: async () => (await resolve())?.read(),
-      change: async update => {
+      change: async (update, beforeCommit) => {
         const selected = await resolve();
         if (!selected) { if (update(undefined) !== undefined) cancelled(); return; }
-        await selected.change(update);
+        await selected.change(update, beforeCommit);
       },
     };
   }
