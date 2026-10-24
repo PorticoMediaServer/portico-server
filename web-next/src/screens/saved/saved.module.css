@@ -14,14 +14,19 @@
 .resourceSummary > span > em { margin-left: 6px; font-style: normal; font-weight: var(--type-micro-weight); color: var(--color-text-tertiary); }
 .resourceSummary > textarea { appearance: none; display: block; width: 100%; height: 72px; padding: 12px 14px; margin: 0; border: 0; border-radius: 10px; resize: none; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-secondary); font-family: var(--font); font-size: calc(var(--type-body-size) * 29 / 30); line-height: calc(var(--type-body-size) * 29 / 30 * 1.45); font-weight: var(--type-micro-weight); }
 .resourceSummary > textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-focus); }
-.wash { position: absolute; inset: 0 0 auto; height: 640px; pointer-events: none; overflow: hidden; mask-image: linear-gradient(180deg, var(--color-ink) 20%, transparent); }
+.wash { position: absolute; inset: 0 0 auto; height: 640px; pointer-events: none; overflow: hidden; }
 .wash > * { width: 100%; height: 100%; }
 .toolbar { position: relative; z-index: var(--layer-content); display: flex; align-items: center; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; }
+.separator { width: 1px; height: 24px; margin: 0 6px; background: var(--color-line); flex: none; }
+.resultCount { font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .toolbarEnd { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) * 14 / 13); }
 .directoryCount { color: var(--color-text-secondary); font-size: calc(var(--type-caption-size) * 29 / 26); font-weight: var(--type-caption-strong-weight); }
 .directoryHelp { color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) * 29 / 26); }
 .savedSection { position: relative; z-index: var(--layer-content); margin: 26px var(--shell-gutter, var(--gutter-desktop)) 0; min-width: 0; }
-.savedSection > h2 { margin: 18px 0 14px; font-size: var(--type-heading-size); font-weight: var(--type-row-heading-weight); }
+.savedSection + .savedSection { margin-top: 44px; }
+.sectionHeading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; min-height: 30px; }
+.sectionHeading h2 { margin: 0; font-size: var(--type-heading-size); font-weight: 700; letter-spacing: -.015em; }
+.sectionHeading > span { font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .resources { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 30px 16px; padding: 26px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .newTile { width: 172px; margin: 30px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .visibility { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 18px; font-size: var(--type-body-size); line-height: normal; font-weight: var(--type-row-heading-weight); }
@@ -55,7 +60,7 @@
 .historyRow small { display: block; margin-top: 3px; font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-tertiary); }
 .historyRow time { font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
 .header { position: relative; z-index: var(--layer-content); padding: 116px var(--shell-gutter, var(--gutter-desktop)) 0; }
-.header h1 { margin: 0; font-size: calc(var(--type-lockup-size) * 2 / 3); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); line-height: calc(var(--type-row-heading-size) * 28 / 11); }
+.header h1 { margin: 0; font-size: 56px; line-height: 1; font-weight: 800; letter-spacing: -.045em; }
 .tabs { position: relative; z-index: var(--layer-content); margin-top: 28px; }
 .tabsList { gap: 34px; padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
 .downloadColumns { position: relative; z-index: var(--layer-content); display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 0 48px; padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
