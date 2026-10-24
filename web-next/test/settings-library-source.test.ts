@@ -149,3 +149,65 @@ test('the existing Settings panel loads only its actual record and dispatches ch
     controller.change(row, 32, selected);assert.equal(calls.length, 2);
   } finally {controller.dispose();reader.dispose();}
 });
+
+const sonic = {libraryId: 'selected', available: true, enabled: false, revision: 3, policyAllows: false, state: 'disabled', done: 2, total: 4, policyRevision: 5, observedAtMs: 1000};
+test('Sonic requires both the producer hint and actual readiness, with no invented factory default', async () => {
+  for (const offered of [false, true]) for (const available of [false, true]) {
+    const calls: string[] = [];
+    const f = fixture(async <T>(path: string) => {
+      calls.push(path);
+      return (path.endsWith('/sonic-analysis') ? {...sonic, available} : {...document('selected'), libraryKind: 'music', eligibleControls: offered ? ['libraries.sonicAnalysis'] : []}) as T;
+    });
+    try {
+      await f.source.select('selected');
+      assert.equal(calls.filter(path => path.endsWith('/sonic-analysis')).length, offered ? 1 : 0);
+      const value = f.source.read('selected', 'libraries.sonicAnalysis');
+      assert.equal(!!value, offered && available);assert.equal(value?.default, undefined);
+      assert.equal(await f.source.reset('selected', 'libraries.sonicAnalysis'), false);
+      if (!offered || !available) assert.equal(await f.source.change('selected', 'libraries.sonicAnalysis', true), false);
+      assert.equal(calls.length, offered ? 2 : 1);
+    } finally {f.source.dispose();}
+  }
+});
+
+test('Sonic uses its own CAS and probe facade while leaving Library settings and mode untouched', async () => {
+  const calls: {path: string; method?: string; body?: unknown}[] = [];
+  let state = sonic;
+  const f = fixture(async <T>(path: string, method?: string, body?: unknown) => {
+    calls.push({path, method, body});
+    if (path.endsWith('/settings')) return {...document('selected'), libraryKind: 'music', eligibleControls: ['libraries.sonicAnalysis']} as T;
+    if (method === 'PUT') {assert.deepEqual(body, {enabled: true, expectedRevision: 3});state = {...sonic, enabled: true, revision: 4};}
+    if (path.endsWith('/retry')) assert.deepEqual(body, {});
+    return state as T;
+  });
+  try {
+    await f.source.select('selected');assert.equal(await f.source.change('selected', 'libraries.sonicAnalysis', true), true);
+    assert.equal(f.source.read('selected', 'libraries.sonicAnalysis')?.current, true);
+    assert.equal(f.source.document('selected')?.revision, 7);assert.deepEqual(f.source.document('selected')?.settings, settings);
+    assert.equal(await f.source.retrySonic('selected'), true);
+    assert.deepEqual(calls.map(call => [call.path, call.method]), [
+      ['/v1/admin/libraries/selected/settings', 'GET'], ['/v1/admin/libraries/selected/sonic-analysis', 'GET'],
+      ['/v1/admin/libraries/selected/sonic-analysis', 'PUT'], ['/v1/admin/libraries/selected/sonic-analysis/retry', 'POST'],
+    ]);
+  } finally {f.source.dispose();}
+});
+
+test('Sonic selection retirement suppresses a late answer and removal of its producer hint clears cached facts', async () => {
+  let release!: () => void, signal: AbortSignal | undefined, offered = true;
+  const f = fixture(async <T>(path: string, method?: string, body?: unknown, captured?: AbortSignal) => {
+    if (path.endsWith('/sonic-analysis')) {
+      if (method === 'PUT') {signal = captured;await new Promise<void>(resolve => {release = resolve;});return {...sonic, enabled: true, revision: 4} as T;}
+      return sonic as T;
+    }
+    if (method === 'PUT') offered = false;
+    return {...document('selected', method === 'PUT' ? 8 : 7), libraryKind: 'music', eligibleControls: ['libraries.cwWeeks', ...(offered ? ['libraries.sonicAnalysis'] : [])], settings: method === 'PUT' ? (body as {settings: LibrarySettings}).settings : settings} as T;
+  });
+  try {
+    await f.source.select('selected');
+    await f.source.change('selected', 'libraries.cwWeeks', 24);
+    assert.equal(f.source.getSnapshot().sonic, undefined);assert.equal(f.source.read('selected', 'libraries.sonicAnalysis'), undefined);
+    await f.source.select();offered = true;await f.source.select('selected');
+    const pending = f.source.change('selected', 'libraries.sonicAnalysis', true);await f.source.select();
+    assert.equal(signal?.aborted, true);release();assert.equal(await pending, false);assert.equal(f.source.getSnapshot().sonic, undefined);
+  } finally {f.source.dispose();}
+});
