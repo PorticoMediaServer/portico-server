@@ -44,13 +44,14 @@ class CacheBoundaryTests(unittest.TestCase):
         for root, contents in ((self.old / 'source', 'original'), (self.fresh, 'patched')):
             (root / 'libavformat/bluray.c').write_text(contents)
             (root / 'libavcodec/decode.c').write_text('unchanged')
+            (root / 'libavcodec/libx265.c').write_text('unchanged encoder')
             (root / 'config.h').write_text('same configure')
             receipt = {'sourceCommit': 'source', 'sourceSha256': 'archive', 'patches': [],
                        'postSeriesPatches': post[:2] if root != self.fresh else post,
                        'files': {name: cache.digest(root / name) for name in
-                                 ('libavformat/bluray.c', 'libavcodec/decode.c')}}
+                                 ('libavformat/bluray.c', 'libavcodec/decode.c', 'libavcodec/libx265.c')}}
             (root / 'portico-source-receipt.json').write_text(json.dumps(receipt))
-        for name in ('libavformat/bluray.o', 'libavformat/libavformat.a', 'libavcodec/decode.o'):
+        for name in ('libavformat/bluray.o', 'libavformat/libavformat.a', 'libavcodec/decode.o', 'libavcodec/libx265.o', 'libavcodec/libavcodec.a'):
             (self.old / 'source' / name).write_text('compiled')
         self.generated = patch.object(cache, 'GENERATED', ('config.h',))
         self.generated.start()
@@ -67,6 +68,21 @@ class CacheBoundaryTests(unittest.TestCase):
         self.assertFalse((self.fresh / 'libavformat/libavformat.a').exists())
         self.assertEqual(cache.fingerprint(self.old, self.lock, self.pair), self.expected)
 
+    def test_hdr_patch_rebuilds_encoder_object_and_archive(self):
+        self.lock['ffmpeg']['postSeriesPatches'].append({'path': 'third_party/ffmpeg/portico-x265-hdr10plus.patch'})
+        source = self.fresh / 'libavcodec/libx265.c'
+        source.write_text('patched HDR10+ encoder')
+        path = self.fresh / 'portico-source-receipt.json'
+        receipt = json.loads(path.read_text())
+        receipt['postSeriesPatches'] = self.lock['ffmpeg']['postSeriesPatches']
+        receipt['files']['libavcodec/libx265.c'] = cache.digest(source)
+        path.write_text(json.dumps(receipt))
+        self.expected = cache.fingerprint(self.old, self.lock, self.pair)
+        self.reuse()
+        self.assertFalse((self.fresh / 'libavcodec/libx265.o').exists())
+        self.assertFalse((self.fresh / 'libavcodec/libavcodec.a').exists())
+        self.assertTrue((self.fresh / 'libavcodec/decode.o').is_file())
+
     def test_replaced_object_refused(self):
         (self.old / 'source/libavcodec/decode.o').write_text('changed')
         with self.assertRaisesRegex(ValueError, 'changed before reuse'):
@@ -82,7 +98,7 @@ class CacheBoundaryTests(unittest.TestCase):
         receipt = json.loads(path.read_text())
         receipt['files']['libavcodec/decode.c'] = 'changed too'
         path.write_text(json.dumps(receipt))
-        with self.assertRaisesRegex(ValueError, 'Only the checked Blu-ray'):
+        with self.assertRaisesRegex(ValueError, 'Only the checked incremental'):
             self.reuse()
 
 
