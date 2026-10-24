@@ -301,7 +301,7 @@ func containsString(values []string, target string) bool {
 // the entity row or an EXISTS over the entity's member items, so the join
 // surface stays bounded no matter how deep the expression is.
 type browseCompiler struct {
-	reading *readingBrowseScope
+	reading      *readingBrowseScope
 	now          time.Time
 	restrictions identity.ContentRestrictions
 	profile      string
@@ -403,11 +403,13 @@ func placeholders(n int) string {
 
 func (c *browseCompiler) predicate(node BrowseNode) (string, error) {
 	if c.reading != nil {
-		if !readingBrowseField(node.Field) { return "",browseIssue("query.field","field is not published for Reading") }
+		if !readingBrowseField(node.Field) {
+			return "", browseIssue("query.field", "field is not published for Reading")
+		}
 		if node.Field == "author" || node.Field == "series" {
-			clause,args,err:=c.reading.predicate(node,"e.entity_id")
-			c.args=append(c.args,args...)
-			return clause,err
+			clause, args, err := c.reading.predicate(node, "e.entity_id")
+			c.args = append(c.args, args...)
+			return clause, err
 		}
 	}
 	field, ok := browseFieldByID(node.Field)
