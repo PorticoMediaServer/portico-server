@@ -19,6 +19,7 @@ import {canWriteDeviceSettings, readDeviceSettingsBinding, writeDeviceSettingsBi
 import {settingsPresetOptions} from './preset-options';
 import {SettingsSectionReads} from './section-loading';
 import {SettingsLibrarySource} from './library-source';
+import {SettingsLibraryFoldersSource} from './library-folders-source';
 import {SettingsBackupSource} from './backup-source';
 
 type DocumentForm = Readonly<{
@@ -70,6 +71,8 @@ export class SettingsController {
   private configuration?: SettingsConfiguration;
   private readonly sectionReads: SettingsSectionReads;
   private readonly library: SettingsLibrarySource;
+  /** The one folder source for the selected library; its headless port is `folders`. */
+  readonly folders: SettingsLibraryFoldersSource;
   readonly backups: SettingsBackupSource;
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
@@ -85,6 +88,8 @@ export class SettingsController {
     this.sectionReads = new SettingsSectionReads(this.current, () => {for (const listener of this.listeners) listener();});
     this.library = new SettingsLibrarySource(options.api, () => this.current() && options.mainProfile && options.capabilities.manageServer && options.role !== 'member', () => this.publish({}), options.reportError);
     const scope = {serverId: options.serverId, viewerId: options.viewerId};
+    // A folder read is tab-scoped: its headless port carries the error, so it never fails the whole section.
+    this.folders = new SettingsLibraryFoldersSource(options.api, scope, () => this.current(), () => this.publish({}), () => {});
     this.console = new ConsoleClient(options.api, scope);
     this.backups = new SettingsBackupSource(options.api, options.serverId, () => this.current() && !!this.forms.runtime, () => this.publish({}));
     this.preferencesReader = options.reader;
@@ -131,7 +136,10 @@ export class SettingsController {
     });
   };
   private libraryRow = (context?: SettingsContext) => context?.section.scope === 'server' && context.section.id === 'libraries' && context.panelId === 'library' && !!context.recordId;
-  loadContext = (context: SettingsContext) => this.library.select(this.libraryRow(context) && this.sectionVisible(context.section) ? context.recordId : undefined);
+  loadContext = (context: SettingsContext) => {
+    const libraryId = this.libraryRow(context) && this.sectionVisible(context.section) ? context.recordId : undefined;
+    return Promise.all([this.library.select(libraryId), this.folders.select(libraryId)]).then(() => undefined);
+  };
   private backupValue(rowId: string): SettingsBindingValue | undefined {
     const settings = this.backups.getSnapshot().settings;
     if (!settings) return undefined;
@@ -266,7 +274,7 @@ export class SettingsController {
   change = (row: SettingsRow, value: SettingsValue, context?: SettingsContext) => {void this.write(row, value, false, context);};
   reset = (row: SettingsRow, context?: SettingsContext) => {const value = this.read(row, context)?.default; if (value !== undefined) void this.write(row, value as SettingsValue, true, context);};
   dispose = () => {
-    this.closed = true; this.backups.dispose(); this.library.dispose(); this.sectionReads.dispose(); this.lifetime.abort(); this.offDevice?.(); this.console.dispose(); this.offPreferences();
+    this.closed = true; this.backups.dispose(); this.library.dispose(); this.folders.dispose(); this.sectionReads.dispose(); this.lifetime.abort(); this.offDevice?.(); this.console.dispose(); this.offPreferences();
     for (const form of Object.values(this.forms)) form.dispose();
     this.configuration = undefined; this.header = {facts: []}; this.rowErrors.clear(); this.listeners.clear();
   };
