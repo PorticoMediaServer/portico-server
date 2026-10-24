@@ -88,7 +88,6 @@ test('the pinned bar carries the drawn Play or Resume and My List pair', async (
 });
 
 test('a person with two credits draws one face under Cast and crew', async () => {
-  width(1440);
   const {data, binding, service} = await detailData('3');
   try {
     const body = text(renderToStaticMarkup(createElement(TitlePeople, {binding, data})));
