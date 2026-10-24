@@ -12,7 +12,7 @@ registerHooks({load(url, context, next) {
 }});
 const {defaultI18n} = await import('../../packages/i18n/src/index.ts');
 const {sourceReadPreset, sourceReadPresetName} = await import('../../packages/client-core/src/remote-sources.ts');
-const {RemoteSourcesPage} = await import('../src/screens/settings/remote-sources/RemoteSourcesPage.tsx');
+const {RemoteSourcesPage, remoteErrorText} = await import('../src/screens/settings/remote-sources/RemoteSourcesPage.tsx');
 
 test('the four reading choices are the server SourceReadPreset values', () => {
   assert.deepEqual(sourceReadPreset('list'), {scanDepth: 'file_list_only', wholeFileReads: false, connections: 2, requestsPerSecond: 2, bytesPerSecond: 0});
@@ -38,4 +38,13 @@ test('the source states and the blocked sentence have their drawn words', () => 
   assert.equal(defaultI18n.t('next.remoteSources.state.waiting'), 'Waiting');
   assert.equal(defaultI18n.t('next.remoteSources.state.limited'), 'Limited');
   assert.match(defaultI18n.t('next.remoteSources.problem.range_unsupported'), /read parts of a file/);
+});
+
+test('a hostile transport message is never shown; only a bounded source error is', () => {
+  const hostile = Object.assign(new Error('https://private-user:private-password@private.example/media/'), {code: 'remote_offline'});
+  const text = remoteErrorText(hostile);
+  assert.equal(text, defaultI18n.t('next.remoteSources.error.generic'));
+  assert.doesNotMatch(text, /private-user|private-password|private\.example/);
+  assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'remote_credentials_required'})), defaultI18n.t('next.remoteSources.problem.credentials_required'));
+  assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'refresh_failed'})), defaultI18n.t('next.remoteSources.error.refreshFailed'));
 });

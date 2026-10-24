@@ -15,6 +15,7 @@ import {existsSync} from 'node:fs';
 import {extname, join, resolve} from 'node:path';
 import {randomBytes, randomUUID} from 'node:crypto';
 import net from 'node:net';
+import {networkInterfaces} from 'node:os';
 
 const output = process.env.PORTICO_RUNNER_OUTPUT;
 const secondary = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
@@ -61,7 +62,11 @@ class Driver {
     this.ready = new Promise((resolve, reject) => {this.socket.onopen = resolve; this.socket.onerror = reject;});
     this.socket.onmessage = event => {
       const message = JSON.parse(event.data);
-      if (!message.id) return;
+      if (!message.id) {
+        if (message.method === 'Runtime.exceptionThrown') console.error('PAGE EXCEPTION', JSON.stringify(message.params.exceptionDetails).slice(0, 4000));
+        if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') console.error('PAGE CONSOLE', JSON.stringify(message.params.args).slice(0, 2000));
+        return;
+      }
       const task = this.pending.get(message.id); if (!task) return;
       this.pending.delete(message.id); clearTimeout(task.timer);
       if (message.error) task.reject(new Error(`${message.error.code}: ${message.error.message}`)); else task.resolve(message.result);
@@ -102,8 +107,11 @@ function davOrigin() {
     if (request.method === 'OPTIONS') { response.writeHead(200, {'DAV': '1,2', 'Allow': 'OPTIONS, PROPFIND, GET, HEAD', 'MS-Author-Via': 'DAV'}); response.end(); return; }
     if (request.method === 'PROPFIND') {
       const base = path.endsWith('/') ? path : path + '/';
+      const fileHref = `${base}sample.mp4`;
+      const prop = (href, collection) => `<D:response><D:href>${href}</D:href><D:propstat><D:prop><D:resourcetype>${collection ? '<D:collection/>' : ''}</D:resourcetype><D:displayname>${collection ? 'Archive' : 'sample.mp4'}</D:displayname><D:getcontentlength>${collection ? 0 : davBytes.length}</D:getcontentlength>${collection ? '' : '<D:getcontenttype>video/mp4</D:getcontenttype>'}<D:getetag>"${collection ? 'root' : 'sample'}"</D:getetag><D:getlastmodified>Sat, 24 Oct 2026 00:00:00 GMT</D:getlastmodified></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
+      const body = path === fileHref ? prop(fileHref, false) : prop(base, true) + prop(fileHref, false);
       response.writeHead(207, {'Content-Type': 'application/xml; charset=utf-8'});
-      response.end(`<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:"><D:response><D:href>${base}</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype><D:getcontentlength>0</D:getcontentlength><D:getlastmodified>Sat, 24 Oct 2026 00:00:00 GMT</D:getlastmodified></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response><D:response><D:href>${base}sample.mp4</D:href><D:propstat><D:prop><D:resourcetype/><D:getcontentlength>${davBytes.length}</D:getcontentlength><D:getcontenttype>video/mp4</D:getcontenttype><D:getlastmodified>Sat, 24 Oct 2026 00:00:00 GMT</D:getlastmodified></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>`);
+      response.end(`<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">${body}</D:multistatus>`);
       return;
     }
     if (request.method === 'HEAD') { response.writeHead(200, {'Content-Length': davBytes.length, 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes'}); response.end(); return; }
@@ -121,8 +129,9 @@ function davOrigin() {
   });
 }
 const dav = davOrigin();
-await new Promise(resolve => dav.listen(0, '127.0.0.1', resolve));
+await new Promise(resolve => dav.listen(0, '0.0.0.0', resolve));
 const davPort = dav.address().port;
+const davHost = Object.values(networkInterfaces()).flat().find(address => address && address.family === 'IPv4' && !address.internal)?.address ?? '127.0.0.1';
 const appPort = await freePort(), designPort = await freePort(), chromePort = await freePort();
 const state = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-state-'));
 const media = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-media-'));
@@ -171,22 +180,6 @@ try {
     if (response.status !== 201) note(`library ${name} refused: ${response.status} ${(await response.text()).slice(0, 160)}`);
   }
 
-  // A saved WebDAV source is the real row the page draws; the address is a
-  // public host so the server's endpoint policy can resolve it. No secret is used.
-  const operationId = `${Date.now()}-${randomUUID()}`;
-  const savedSource = await json('/v1/storage/sources/webdav', {method: 'POST', token: created.body.accessToken, origin: base,
-    body: {operationId, name: 'Archive', root: `http://127.0.0.1:${davPort}/`, username: '', password: '', insecureLocal: true}});
-  if (savedSource.status !== 200 || !savedSource.body.receipt?.source?.id) throw new Error('source creation refused: ' + JSON.stringify(savedSource.body));
-  const sourceId = savedSource.body.receipt.source.id;
-  const readProfile = await json(`/v1/storage/sources/${sourceId}/settings/read-profile`, {token: created.body.accessToken});
-  if (readProfile.status !== 200) throw new Error('read profile refused: ' + JSON.stringify(readProfile.body));
-  const profileOperation = `${Date.now()}-${randomUUID()}`;
-  const profileSaved = await json(`/v1/storage/sources/${sourceId}/settings/read-profile`, {method: 'PUT', token: created.body.accessToken, origin: base,
-    body: {operationId: profileOperation, expectedGeneration: readProfile.body.settings.generation, expectedRevision: readProfile.body.settings.revision,
-      values: {scanDepth: 'basic', wholeFileReads: false, connections: 4, requestsPerSecond: 4, bytesPerSecond: 0}}});
-  if (profileSaved.status !== 200) throw new Error('read profile save refused: ' + JSON.stringify(profileSaved.body));
-  note('saved WebDAV source Archive and its real once/every-preset reading profile');
-
   browser = spawn(chromium, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-background-networking',
     '--disable-component-update', '--disable-sync', '--disable-default-apps', '--no-first-run', '--no-default-browser-check', '--remote-allow-origins=*',
     '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1, EXCLUDE fonts.googleapis.com, EXCLUDE fonts.gstatic.com', '--remote-debugging-address=127.0.0.1',
@@ -217,7 +210,7 @@ try {
   await driver.waitFor(`document.querySelector('nav[aria-label="Main"]')`, 30000);
   await driver.navigate(`${base}/settings?scope=server&section=remote-sources`);
   await driver.waitFor(`[...document.querySelectorAll('main h1')].some(heading => heading.textContent === 'Remote sources')`, 30000);
-  await driver.waitFor(`[...document.querySelectorAll('main')].some(main => main.innerText.includes('Archive'))`, 30000);
+  await driver.waitFor(`[...document.querySelectorAll('main')].some(main => main.innerText.includes('No remote sources yet'))`, 30000);
   await driver.waitFor(`[...document.querySelectorAll('main')].some(main => main.innerText.includes('Add remote source'))`, 30000);
   await sleep(350);
   await driver.evaluate(`document.fonts.ready`);
@@ -225,6 +218,13 @@ try {
   await sleep(350);
   const buildShot = resolve(output, 'build.png');
   await driver.screenshot(buildShot);
+  await driver.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent?.includes('Add remote source'))?.click()`);
+  await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('WebDAV source')`, 15000);
+  const addFacts = await driver.evaluate(`(() => {const dialog = document.querySelector('[role="dialog"]');return {open: !!dialog, text: dialog?.innerText.slice(0, 1200), fields: dialog?.querySelectorAll('input').length ?? 0};})()`);
+  await driver.screenshot(resolve(output, 'add.png'));
+  note(`Add dialog opened: ${JSON.stringify(addFacts)}`);
+  await driver.evaluate(`document.querySelector('[role="dialog"] button[aria-label]')?.click()`);
+  await sleep(250);
   const buildFacts = await driver.evaluate(`(() => {
     const box = element => {const r = element.getBoundingClientRect(); return {x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100};};
     const style = element => {const s = getComputedStyle(element); return {fontSize: s.fontSize, lineHeight: s.lineHeight, fontFamily: s.fontFamily, fontWeight: s.fontWeight, color: s.color};};

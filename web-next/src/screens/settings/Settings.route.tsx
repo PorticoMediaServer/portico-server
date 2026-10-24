@@ -165,6 +165,10 @@ export function SettingsEntry() {
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
+      // The Remote sources page owns its own checked source reads; the generic
+      // server-section configuration read would replace that page with a failure.
+      getSnapshot: section => section.scope === 'server' && section.id === 'remote-sources' ? {loading: false} : source.getSnapshot(section),
+      load: section => section.scope === 'server' && section.id === 'remote-sources' ? Promise.resolve() : source.load(section),
       eligible: (row, selected) => server?.eligible(row) ?? (row.id === 'libraries.folders' ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
         const privacyState = privacy.rowState(row);
