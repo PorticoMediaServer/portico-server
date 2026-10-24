@@ -56,6 +56,17 @@ func inventoryReadRequest(ctx context.Context, path string) (InventoryRequest, *
 // RunScanCommand runs a media tool through the already-supervised helper. Unix
 // replaces the helper; Windows retains a locked input and owns a nested job.
 func RunScanCommand(ctx context.Context, binary string, args []string, path string, out io.Writer) (bool, error) {
+	return runScanCommand(ctx, binary, args, path, false, out)
+}
+
+// RunDiscScanCommand preserves only FFmpeg's closed bluray: input syntax while
+// retaining the same admitted regular file, root guard, helper and supervisor.
+// It adds no directory/remote/network authority or general URL substitution.
+func RunDiscScanCommand(ctx context.Context, binary string, args []string, path string, bluray bool, out io.Writer) (bool, error) {
+	return runScanCommand(ctx, binary, args, path, bluray, out)
+}
+
+func runScanCommand(ctx context.Context, binary string, args []string, path string, bluray bool, out io.Writer) (bool, error) {
 	r, input, err := inventoryReadRequest(ctx, path)
 	if err != nil {
 		return true, err
@@ -67,8 +78,15 @@ func RunScanCommand(ctx context.Context, binary string, args []string, path stri
 		return true, err
 	}
 	index := -1
+	prefix := ""
+	if bluray {
+		prefix = "bluray:"
+	}
 	for i, arg := range args {
-		if arg == path {
+		if arg == path || arg == "bluray:"+path {
+			if arg != prefix+path {
+				return true, errors.New("invalid scan input protocol")
+			}
 			if index != -1 {
 				return true, errors.New("ambiguous scan input")
 			}
@@ -90,7 +108,7 @@ func RunScanCommand(ctx context.Context, binary string, args []string, path stri
 	// The helper opens the admitted file and hands it over as descriptor 3; the
 	// tool (sandboxed, or with the baseline) never gets the path (mediaexec).
 	fdArgs := append([]string{}, args...)
-	fdArgs[index] = descriptorInput
+	fdArgs[index] = prefix + descriptorInput
 	argv, err := mediaexec.Argv(mediaexec.Job{Executable: binary, Args: fdArgs, Background: true, MaxCPUSeconds: scanCPUSeconds})
 	if err != nil {
 		return true, err
