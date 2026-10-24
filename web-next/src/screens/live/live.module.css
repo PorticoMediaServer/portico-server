@@ -13,8 +13,6 @@
 .onNow[data-reduced-motion] article, .onNow[data-reduced-motion] article > button { transition: none; }
 .onNow[data-reduced-motion] article:hover, .onNow[data-reduced-motion] article:focus-within { transform: none; }
 .facts { display: flex; flex-wrap: wrap; gap: 10px; color: var(--color-text-secondary); }
-}
-}
 /* ---- Guide screen: desktop-live.html#live-guide ---- */
 .guideScreen { min-height: 100vh; }
 .guideState { padding: 122px var(--shell-gutter, var(--gutter-desktop)) 72px; }
