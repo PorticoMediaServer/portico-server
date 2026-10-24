@@ -109,8 +109,9 @@ test('all four destinations read one canonical envelope with the existing DVR qu
     assert.equal(controller.getSnapshot().detail?.recording.id, hex(64, '4'));
     assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
     assert.ok(calls.every(call => call.method === 'GET' && call.body === undefined), 'reads never mutate');
-    assert.equal('act' in controller, false);
-    assert.equal('mutating' in controller.getSnapshot(), false);
+    assert.equal('act' in controller, false, 'the door exposes narrow commands, never an arbitrary work port');
+    assert.equal(controller.getSnapshot().mutating, false);
+    assert.equal(controller.getSnapshot().commandError, '');
   } finally { controller.dispose(); }
 });
 
@@ -768,6 +769,8 @@ test('a held cancel keeps the resident row until the ACK, then adopts the genuin
     await controller.load({view: 'recorded', cursor: 'page-two'});
     const row = controller.getSnapshot().page!.recordings[0];
     const pending = controller.cancel(row);
+    pending.catch(() => {});
+    await tick();
     assert.equal(controller.getSnapshot().mutating, true, 'the command is in flight');
     assert.equal(controller.getSnapshot().page?.recordings[0], row, 'no optimistic removal or rewrite');
     assert.equal(controller.contains(row), true, 'the row is still the resident object until the ACK');
@@ -849,6 +852,7 @@ test('a second command while one is in flight is busy and sends nothing', async 
     await controller.load({view: 'recorded'});
     const row = controller.getSnapshot().page!.recordings[0];
     const first = controller.cancel(row);
+    first.catch(() => {});
     const second = await controller.cancel(row);
     assert.deepEqual(second, {committed: false, refreshed: false, busy: true});
     assert.equal(calls.filter(call => call.method !== 'GET').length, 1, 'one click sends one command');
