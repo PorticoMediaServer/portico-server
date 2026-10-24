@@ -54,7 +54,8 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry}:
     const read = () => setHeight(Math.max(280, window.innerHeight - element.getBoundingClientRect().top));
     const observer = new ResizeObserver(read); observer.observe(element); window.addEventListener('resize', read); read();
     return () => {observer.disconnect(); window.removeEventListener('resize', read);};
-  }, [failed, reading.status]);
+    // The grid mounts only on Books (or when Discover has no rows); re-measure and observe it then.
+  }, [failed, reading.status, view]);
   useEffect(() => {resources.resume.collection.ensureRange(0, 11);}, [resources]);
   /** phone-read 1: the server's own recently-added row. An empty row draws nothing; a failed
    *  request is reported through the screen's error channel rather than pretending the library
