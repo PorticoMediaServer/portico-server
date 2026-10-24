@@ -16,6 +16,7 @@ import (
 // through the enforcing proxy; they never receive an invented private approval.
 type configuredBackend struct {
 	Kind    string
+	Remote  string
 	Native  remotemedia.NativeEndpoint
 	Origins []string
 }
@@ -111,6 +112,11 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 					}
 					member = value
 				}
+				if kind == "union" {
+					for _, tag := range []string{":ro", ":nc", ":writeback"} {
+						member = strings.TrimSuffix(member, tag)
+					}
+				}
 				if err := walk(member, depth+1); err != nil {
 					return err
 				}
@@ -135,9 +141,9 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 			if _, err := endpoint.Root(); err != nil {
 				return storage.ErrRemoteConfig
 			}
-			out = append(out, configuredBackend{Kind: kind, Native: endpoint})
+			out = append(out, configuredBackend{Kind: kind, Remote: remote, Native: endpoint})
 		case "s3", "b2", "drive", "onedrive", "dropbox", "webdav", "http":
-			leaf := configuredBackend{Kind: kind}
+			leaf := configuredBackend{Kind: kind, Remote: remote}
 			// Standard backend URL fields, including configured OAuth endpoints. Any
 			// unknown/dynamically discovered endpoint is still checked by the proxy.
 			for _, key := range []string{"url", "endpoint", "auth_url", "token_url", "root_url", "upload_url"} {

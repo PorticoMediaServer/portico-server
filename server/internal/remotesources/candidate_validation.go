@@ -194,16 +194,35 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	if err = check(life); err != nil {
 		return err
 	}
-	endpoint, err := process.Endpoint(life)
+	metadataClient, err := process.Metadata(life)
 	if err != nil {
 		return err
 	}
-	entry, err := endpoint.Stat(life, "", check)
-	if err == nil && !entry.Directory {
-		err = storage.ErrRemoteConfig
-	}
-	if err != nil {
+	if err = metadataClient.CheckRoot(life, check); err != nil {
 		return mapError(err)
+	}
+	leaves, err := configuredBackends(raw, input.Remote)
+	if err != nil {
+		return err
+	}
+	checked := map[string]bool{input.Remote: true}
+	for _, leaf := range leaves {
+		if checked[leaf.Remote] {
+			continue
+		}
+		checked[leaf.Remote] = true
+		client, err := remotemedia.NewRcloneMetadata(metadata, spec.Username, spec.Password, hold.Operations(), leaf.Remote)
+		if err != nil {
+			return err
+		}
+		err = client.CheckRoot(life, check)
+		client.Close()
+		if err != nil {
+			if life.Err() != nil {
+				return life.Err()
+			}
+			return mapError(err)
+		}
 	}
 	return check(life)
 }

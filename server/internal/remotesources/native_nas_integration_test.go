@@ -293,6 +293,24 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 				t.Fatal("imported source metadata did not reach actual origin", file.Size, err)
 			}
 		}
+		if backend == "http" || backend == "s3" {
+			bad := config(address)
+			if backend == "s3" {
+				bad = strings.Replace(bad, "secret_access_key=fixture-only", "secret_access_key=wrong-fixture-secret", 1)
+			} else {
+				bad = strings.Replace(bad, ":8080/", ":8080/missing-root/", 1)
+			}
+			if _, err := managed.Command(ctx, "actual-owner-nas", "", mounts.Command{OperationID: nativeSaveOperation(140), Action: "create", Name: "Refused fixture", Executable: program, Remote: remote, Config: bad}, authorize); err == nil {
+				t.Fatal("serve readiness published an unconnected backend")
+			}
+			var count int
+			if err := f.s.db.QueryRowContext(ctx, `SELECT count(*) FROM remote_sources WHERE kind='rclone'`).Scan(&count); err != nil || count != 1 {
+				t.Fatal("failed connection published approval/source", count, err)
+			}
+			if err := process.Check(ctx); err != nil {
+				t.Fatal("failed test retired saved source", err)
+			}
+		}
 		for i, host := range []string{"127.0.0.1", "169.254.169.254", "169.254.1.2"} {
 			if _, err := managed.Command(ctx, "actual-owner-nas", receipt.MountID, mounts.Command{OperationID: nativeSaveOperation(130 + i), Action: "configure", ExpectedRevision: receipt.ControlRevision, Config: config(host)}, authorize); err == nil {
 				t.Fatal("forbidden imported edit admitted", host)
