@@ -34,6 +34,8 @@ type PreparedRecipe struct {
 // the recipe: the picture's range and depth (and the Dolby Vision layers to
 // leave behind) and each audio track's channel count, in source order.
 type PreparedSource struct {
+	// WavPack can be lossless or hybrid; only an observed header fact resolves it.
+	AudioLossless                                   *bool
 	AudioSampleRate, AudioBitDepth, AudioBitrateBPS int
 	AudioCodec                                      string
 	DynamicRange                                    string
