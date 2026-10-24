@@ -105,7 +105,13 @@ export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, pa
     const target = local(spec, from);
     if (!target || reject(target, from, spec)) return;
     const file = extensions.map(extension => target + extension).find(candidate => existsSync(candidate) && statSync(candidate).isFile());
-    if (!file) { failures.push(`${relative(repo, from)}: unresolved local import ${spec}`); return; }
+    if (!file) {
+      // The DEV gallery consumes private design frames and artwork by relative
+      // path. Public source archives do not contain that sibling checkout; its
+      // absence is not a product UI boundary violation.
+      if (!existsSync(target) && /(?:^|[/\\])design-ui-v1[/\\]design[/\\]ui-v1[/\\]/.test(target)) return;
+      failures.push(`${relative(repo, from)}: unresolved local import ${spec}`); return;
+    }
     if (reject(file, from, spec)) return;
     if (!file.includes('/node_modules/')) visit(file);
   }

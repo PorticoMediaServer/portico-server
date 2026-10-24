@@ -63,6 +63,11 @@ test('model translation calls supply exactly the declared ICU arguments', () => 
 test('new models have a strict renderer/endpoint/state-free import boundary', async () => {
   const directory = new URL('../src/presentation/kit-model/', import.meta.url);
   const names = await readdir(directory);
+  // browse.ts orders its facets with the existing pure toolbar model. Keep that
+  // dependency honest: it may not become a renderer, endpoint or state module.
+  const toolbar = await readFile(new URL('../src/presentation/browse-toolbar.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(toolbar, /(?:from\s*|import\s*\()\s*['"][^'"]*(?:\.tsx|\.css|react|web\/|native\/|contracts\/)/, 'browse-toolbar.ts: pure model');
+  assert.doesNotMatch(toolbar, /\b(?:fetch|XMLHttpRequest|WebSocket|setTimeout|setInterval|require)\s*\(|\b(?:document|window|process|localStorage|sessionStorage)\s*\.|Date\.now\s*\(/, 'browse-toolbar.ts: pure model');
   for (const name of names) {
     assert.match(name, /^[a-z-]+\.ts$/, name);
     const source = await readFile(new URL(name, directory), 'utf8');
@@ -75,7 +80,7 @@ test('new models have a strict renderer/endpoint/state-free import boundary', as
         assert.equal([...source.matchAll(/['"]\.\.\/\.\.\/browse\.ts['"]/g)].length, 1, `${name}: no additional runtime import/reexport of browse`);
         continue;
       }
-      assert.ok(/^\.\/[a-z-]+\.ts$/.test(dependency!) || name === 'tracks.ts' && dependency === '../language.ts' || name === 'text.ts' && dependency === '../../../../i18n/src/catalog/en-US/next/shared.ts', `${name}: ${dependency}`);
+      assert.ok(/^\.\/[a-z-]+\.ts$/.test(dependency!) || name === 'tracks.ts' && dependency === '../language.ts' || name === 'text.ts' && dependency === '../../../../i18n/src/catalog/en-US/next/shared.ts' || name === 'browse.ts' && dependency === '../browse-toolbar.ts', `${name}: ${dependency}`);
     }
   }
   const language = await readFile(new URL('../src/presentation/language.ts', import.meta.url), 'utf8');

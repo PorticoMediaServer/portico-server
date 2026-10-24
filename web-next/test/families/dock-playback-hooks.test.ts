@@ -94,8 +94,8 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('/src/router.tsx')) return module(`export const router = globalThis.${bridgeKey}.router;`);
   if (url.endsWith('/src/shell/viewport.ts')) return module('export const useShellWidth = () => 1440;');
   if (url.endsWith('/kit/dock/index.ts')) return module("export const DockHost = 'dock-host', DockNotice = 'dock-notice', MediaSurface = 'media-surface';");
-  if (url.endsWith('/kit/controls/index.ts')) return module("export const Button = 'button';");
-  if (url.endsWith('/kit/artwork/index.ts')) return module("export const Artwork = 'artwork', AmbientArt = 'ambient-art';");
+  if (url.endsWith('/kit/controls/index.ts')) return module("export const Button = 'button', Slider = 'slider';");
+  if (url.endsWith('/kit/artwork/index.ts')) return module("export const Artwork = 'artwork', AmbientArt = 'ambient-art', ColourBackdrop = 'colour-backdrop', GeneratedArt = 'generated-art';");
   if (url.endsWith('/kit/dock/parts.tsx')) return module("export const Facts = 'facts', Control = 'dock-control', useDockActions = () => () => {}, playbackAction = () => 'pause', playbackIcon = () => 'i-pause', playbackLabel = () => 'Pause';");
   if (url.endsWith('.tsx')) {
     let source = transformTsx(url);
