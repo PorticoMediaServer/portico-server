@@ -159,6 +159,9 @@ type SessionView struct {
 	// ObservedPlayback is only the current renderer snapshot accepted by its
 	// device timeline. It is distinct from source, plan and capability facts.
 	ObservedPlayback *playback.ObservedPlayback `json:"observedPlayback,omitempty"`
+	// PlaybackInfo compares this media generation's committed source and target.
+	// Renderer/screen observations remain separately attributed above.
+	PlaybackInfo *playback.PlaybackInfo `json:"playbackInfo,omitempty"`
 }
 
 // SessionEnd is why a session ended and what the viewer is told.
@@ -1327,6 +1330,9 @@ func (s *Service) Get(ctx context.Context, c Caller, id string) (SessionView, er
 		view = s.view(current)
 		if current.ended == 0 {
 			view.ObservedPlayback, err = playback.ReadObservedPlayback(readCtx, tx, id, current.generation, view.Presentation.Generation)
+			if err == nil && current.kind == "vod" {
+				view.PlaybackInfo, err = playback.ReadPlaybackInfoTx(readCtx, tx, current.media, current.mediaGeneration, c.Principal)
+			}
 		}
 		return err
 	})

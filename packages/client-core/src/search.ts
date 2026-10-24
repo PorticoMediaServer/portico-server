@@ -180,6 +180,7 @@ export function searchPath(q:SearchQuery,limit:number,cursor?:string|null):strin
 }
 type Page=Readonly<{query:SearchQuery;cursor:string|null}>;
 type Operation=Page&{history:readonly Page[];fence?:SearchData};
+const sameReadQuery=(left:SearchQuery|null,right:SearchQuery)=>!!left&&JSON.stringify({...left,record:undefined})===JSON.stringify({...right,record:undefined});
 export class SearchService{
  private api:LibraryContentApi;private scope:ContentScope;private readonly pageSize:number;private readonly timeoutMs:number;private generation=0;private disposed=false;private controller?:AbortController;private pending?:Promise<void>;private key='';private operation?:Operation;private displayedOperation?:Operation;private revalidations=new Set<AbortController>();private listeners=new Set<()=>void>();private state:SearchSnapshot;
  constructor(options:{api:LibraryContentApi;scope:ContentScope;pageSize?:number;timeoutMs?:number}){this.api=options.api;this.scope=bound(options.scope);this.pageSize=options.pageSize??40;this.timeoutMs=options.timeoutMs??15000;if(!Number.isInteger(this.pageSize)||this.pageSize<1||this.pageSize>40||!Number.isFinite(this.timeoutMs)||this.timeoutMs<1||this.timeoutMs>60000)throw new Error('Invalid search bounds.');this.state=this.empty();}
@@ -222,9 +223,9 @@ export class SearchService{
  /** Stop reads when a retained Search view is hidden. Only a page that actually
   * arrived may remain ready, with that page's own query/cursor/history. A pending
   * replacement never supplies facts, and the caller still owns route authority. */
- pause(){this.active();const data=this.state.data,op=this.displayedOperation;this.stop();
-  if(!data||!op){this.operation=undefined;this.displayedOperation=undefined;this.publish(this.empty());return;}
-  this.operation=op;this.publish({generation:this.generation,query:op.query,phase:'ready',data,groups:data.groups,error:null,pagination:Object.freeze({cursor:op.cursor,canPrevious:op.history.length>0})});
+ pause(){this.active();const data=this.state.data,op=this.displayedOperation,phase=this.state.phase==='error'||this.state.phase==='refresh-required'?this.state.phase:'ready',error=phase==='ready'?null:this.state.error;this.stop();
+  if(!data||!op||!sameReadQuery(this.state.query,op.query)){this.operation=undefined;this.displayedOperation=undefined;this.publish(this.empty());return;}
+  this.operation=op;this.publish({generation:this.generation,query:op.query,phase,data,groups:data.groups,error,pagination:Object.freeze({cursor:op.cursor,canPrevious:op.history.length>0})});
  }
  cancel(){this.active();this.stop();this.operation=undefined;this.displayedOperation=undefined;this.publish(this.empty());}
  setScope(scope:ContentScope,api:LibraryContentApi){this.active();const checked=bound(scope);this.stop();this.scope=checked;this.api=api;this.operation=undefined;this.displayedOperation=undefined;this.publish(this.empty());}
