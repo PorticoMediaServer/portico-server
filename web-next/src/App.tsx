@@ -2,6 +2,7 @@ import {RouterProvider} from '@tanstack/react-router';
 import {useEffect, useSyncExternalStore} from 'react';
 import {IconSprite} from './kit/Icon';
 import {FreshnessProvider} from './platform/freshness';
+import {EntryActionHost} from './shell/entry-actions';
 import {bindWebAccountEntry} from './route-registry-lifecycle';
 import {WebScreenProvider, webScreens} from './route-registry-view';
 import type {ShellAssemblyContext} from './shell/bootstrap';
@@ -34,6 +35,7 @@ function BoundApp({binding, context, bootstrap, takeAccountReturn, takeAccountMo
     <IconSprite />
     <ShellBindingsProvider value={binding}><RouterProvider router={router} /></ShellBindingsProvider>
     <MediaHost binding={binding?.playback} />
+    <EntryActionHost />
   </>;
   return <WebScreenProvider value={{binding, context, bootstrap, takeAccountReturn, takeAccountMove}}>
     {viewer && binding ? <FreshnessProvider key={binding.scopeKey} api={binding.api} events={binding.events} serverId={viewer.serverId} viewerId={JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}>{content}</FreshnessProvider> : content}
