@@ -241,8 +241,8 @@ type HardwareDetector struct {
 
 const defaultProbeTimeout = 20 * time.Second
 
-// ffmpegIdentity hashes what actually decides capability: the resolved binary
-// path, its size and its modification time. Cheap, and it changes on upgrade.
+// ffmpegIdentity retains the legacy non-Linux inventory identity. Linux probes
+// use the native executable and resolved-library binding below.
 func ffmpegIdentity(executable string) (string, error) {
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable {
 		return "", ErrInvalidConfiguration
@@ -253,6 +253,24 @@ func ffmpegIdentity(executable string) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(executable + "\x00" + strconv.FormatInt(info.Size(), 10) + "\x00" + strconv.FormatInt(info.ModTime().UnixNano(), 10)))
 	return hex.EncodeToString(sum[:16]), nil
+}
+
+func hardwareRuntimeIdentity(ctx context.Context, executable string) (string, error) {
+	identity, complete, err := inventoryIdentity(ctx, executable)
+	if err != nil {
+		return "", err
+	}
+	if !complete || identity == "" {
+		return "", ErrInvalidConfiguration
+	}
+	return identity, nil
+}
+
+func invalidHardwareObservation(out HardwareProbe, reason string) HardwareProbe {
+	out.Available, out.Reason, out.Identity = false, reason, ""
+	out.NativeFilters, out.ScaleFilters, out.ToneMapFilters, out.DeinterlaceFilters = false, false, false, false
+	out.OutputEncoders, out.OutputQuality, out.DecodeCodecs = nil, nil, nil
+	return out
 }
 
 // probeCommand runs a hardware probe exactly as a hardware conversion runs:
@@ -355,7 +373,7 @@ func (d *HardwareDetector) probeVAAPIFilters(ctx context.Context, executable str
 }
 
 // Probe returns this host's verdict for one backend, running at most one bounded
-// encode per ffmpeg identity. A failed probe is cached too: a host without the
+// encode per native runtime identity. A failed probe is cached too: a host without the
 // hardware must not pay for a subprocess on every session.
 func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend HardwareBackend, device string) HardwareProbe {
 	out := HardwareProbe{Backend: backend, Reason: ProbeUnsupportedPlatform, Device: device}
@@ -364,7 +382,7 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		out.Reason = ProbeDisabled
 		return out
 	}
-	identity, err := ffmpegIdentity(executable)
+	identity, err := hardwareRuntimeIdentity(ctx, executable)
 	if err != nil {
 		out.Reason = ProbeEncodeFailed
 		return out
@@ -463,10 +481,13 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		out.DeinterlaceFilters = d.probeDeinterlace(ctx, executable, spec, backend, device, timeout)
 	}
 	if ctx.Err() != nil {
-		out.Available, out.Reason = false, ProbeTimedOut
-		out.OutputEncoders, out.OutputQuality, out.DecodeCodecs = nil, nil, nil
-		out.DeinterlaceFilters = false
-		return out // Cancelled/incomplete observations never enter the cache.
+		return invalidHardwareObservation(out, ProbeTimedOut)
+	}
+	// A replacement during any codec/filter probe cannot publish or memoize a
+	// result for the old executable or library generation.
+	current, err := hardwareRuntimeIdentity(ctx, executable)
+	if err != nil || current != identity {
+		return invalidHardwareObservation(out, ProbeEncodeFailed)
 	}
 	d.mu.Lock()
 	if d.cache == nil {
@@ -495,7 +516,7 @@ func (d *HardwareDetector) SelectCached(executable, configured, device string) H
 	if configured == string(BackendSoftware) {
 		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
 	}
-	identity, err := ffmpegIdentity(executable)
+	identity, err := hardwareRuntimeIdentity(context.Background(), executable)
 	if err != nil {
 		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed}
 	}
@@ -580,7 +601,7 @@ func (d *HardwareDetector) Select(ctx context.Context, executable, configured, d
 			return probe
 		}
 	}
-	identity, _ := ffmpegIdentity(executable)
+	identity, _ := hardwareRuntimeIdentity(ctx, executable)
 	return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed, Identity: identity}
 }
 

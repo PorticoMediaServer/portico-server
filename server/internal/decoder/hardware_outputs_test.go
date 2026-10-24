@@ -23,7 +23,9 @@ func supportedTestBackend(t *testing.T) HardwareBackend {
 func TestHardwareOutputsPromoteOnlyMeasuredCodecDepth(t *testing.T) {
 	backend := supportedTestBackend(t)
 	probe := HardwareProbe{Backend: backend, Available: true, Identity: "controlled-selected-device", OutputEncoders: map[string]bool{"h264:8": true, "hevc:10": true}}
-	out := AvailableConversionOutputsForHardware(targetFacts(), probe)
+	facts := targetFacts()
+	facts.Identity = probe.Identity
+	out := AvailableConversionOutputsForHardware(facts, probe)
 	if len(out.Video) != 5 || out.Video[0].Codec != "hevc" || out.Video[0].BitDepth != 10 || out.Video[1].Codec != "h264" || !out.Video[1].Hardware {
 		t.Fatal("hardware H264 did not outrank software AV1", out.Video)
 	}
@@ -37,13 +39,21 @@ func TestHardwareOutputsPromoteOnlyMeasuredCodecDepth(t *testing.T) {
 		t.Fatal("private planner hint escaped into a public output document", string(raw), err)
 	}
 	for _, invalid := range []HardwareProbe{{Backend: backend, Available: true, OutputEncoders: probe.OutputEncoders}, {Backend: backend, Identity: probe.Identity, OutputEncoders: probe.OutputEncoders}, {Backend: BackendSoftware, Available: true, Identity: probe.Identity, OutputEncoders: probe.OutputEncoders}} {
-		for _, output := range AvailableConversionOutputsForHardware(targetFacts(), invalid).Video {
+		for _, output := range AvailableConversionOutputsForHardware(facts, invalid).Video {
 			if output.Hardware {
 				t.Fatal("unqualified backend gained hardware output", invalid, output)
 			}
 		}
 	}
-	facts := targetFacts()
+	for _, identity := range []string{"", "different-selected-toolchain"} {
+		facts.Identity = identity
+		for _, output := range AvailableConversionOutputsForHardware(facts, probe).Video {
+			if output.Hardware {
+				t.Fatal("mismatched toolchain gained hardware ranking", identity, output)
+			}
+		}
+	}
+	facts.Identity = probe.Identity
 	delete(facts.Encoders, "libx264")
 	for _, output := range AvailableConversionOutputsForHardware(facts, probe).Video {
 		if output.Codec == "h264" {
