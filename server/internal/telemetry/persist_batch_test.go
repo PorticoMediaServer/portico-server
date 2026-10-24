@@ -2,16 +2,22 @@ package telemetry
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/worker"
 )
 
 func TestTelemetryPersistsOneBoundedSampleWithoutPerMetricStatements(t *testing.T) {
-	db := openTelemetryDatabase(t)
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "telemetry.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
 	clock := time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)
 	c := New(Options{Sampler: &fakeSampler{gpu: true}, DB: db, Now: func() time.Time { return clock }})
 	ctx := context.Background()
