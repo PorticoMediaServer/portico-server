@@ -7,17 +7,18 @@ import (
 )
 
 type EpisodeNaming struct {
-	Reading   naming.Reading
-	Part      int
-	Edition   string
-	Provider  []compactcatalog.ProviderIdentity
-	AirDate   string
-	ShowTitle string
-	Year      int
-	Season    int
-	Numbers   []int
-	Numbering string
-	Issue     string
+	Reading     naming.Reading
+	Part        int
+	Edition     string
+	ShowEdition string
+	Provider    []compactcatalog.ProviderIdentity
+	AirDate     string
+	ShowTitle   string
+	Year        int
+	Season      int
+	Numbers     []int
+	Numbering   string
+	Issue       string
 }
 
 // ParseEpisode reads the same source-relative evidence used by title attachment
@@ -33,6 +34,9 @@ func EpisodeFromReading(r naming.Reading) EpisodeNaming {
 	}
 	if len(r.Editions) > 0 {
 		out.Edition = r.Editions[0].Value
+	}
+	if edition, known := r.ShowFolderEdition(); known {
+		out.ShowEdition = edition.Value
 	}
 	out.ShowTitle, out.Year = r.PreferredTitle()
 	if len(r.Diagnostics) > 0 {
