@@ -129,8 +129,8 @@ export function ShowDetails({binding, data, owner}: {binding: ShowBindings; data
   const rows: (readonly [string, ReactNode])[] = [
     [t('next.show.firstAired'), calendarDate(facts.firstAired, locale())],
     [t('next.show.status'), facts.status],
-    [t('title.network'), facts.network],
-    [t('title.studio'), facts.studio],
+    [t('title.network'), facts.network ? <button type="button" className={styles.personLink} onClick={() => runScreenCommand(binding.context, () => binding.browseFacet(data, 'network', facts.network!))}>{facts.network}</button> : undefined],
+    [t('title.studio'), facts.studio ? <button type="button" className={styles.personLink} onClick={() => runScreenCommand(binding.context, () => binding.browseFacet(data, 'studio', facts.studio!))}>{facts.studio}</button> : undefined],
     [t('title.country'), facts.country],
     [t('title.genres'), facts.genres.length ? <GenreNames names={facts.genres} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /> : undefined],
     [t('next.show.createdBy'), facts.creators.length ? <ShowPersonLinks credits={facts.creators} binding={binding} data={data} /> : undefined],
