@@ -121,6 +121,10 @@ type repairEntity struct {
 	fields   map[string]string
 	schema   []RepairFieldSpec
 	stamp    string
+	// readingAutomatic is the genuine same-transaction automatic attribution
+	// for an ebook/comic; it is what "use automatic" restores and what a clear
+	// falls back to.
+	readingAutomatic map[string]string
 }
 
 func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairSnapshot, repairEntity, error) {
@@ -164,10 +168,15 @@ func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (Repair
 				f.Source = "manual"
 			}
 			if readingRepairKind(ent.itemKind) && readingAttributionField(k) {
+				genuine := a
+				if value, ok := ent.readingAutomatic[k]; ok {
+					genuine = value
+				}
+				f.Automatic = genuine
 				if locked && strings.TrimSpace(v) != "" {
 					f.Value, f.Source = v, "owner"
 				} else {
-					f.Value, f.Source = a, "automatic"
+					f.Value, f.Source = genuine, "automatic"
 				}
 			}
 			out.Fields[k] = f

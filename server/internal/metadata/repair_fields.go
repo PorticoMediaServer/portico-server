@@ -140,13 +140,14 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 		if retired {
 			return e, sql.ErrNoRows
 		}
-		values, err := readReadingOwnerFields(ctx, tx, entity)
+		values, automatic, err := readReadingOwnerFields(ctx, tx, entity)
 		if err != nil {
 			return e, err
 		}
 		for field, value := range values {
 			e.fields[field] = value
 		}
+		e.readingAutomatic = automatic
 	}
 	if _, ok := e.fields["seasonNumber"]; ok {
 		var number sql.NullInt64
