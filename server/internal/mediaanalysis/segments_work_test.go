@@ -19,6 +19,15 @@ import (
 	"portico.local/server/internal/segmentdetect/segmentsynth"
 )
 
+func readSegmentCatchupFile(ctx context.Context, db *sql.DB, object, revision string) (segmentFile, error) {
+	snapshot, err := dbwork.BeginSnapshot(ctx, db)
+	if err != nil {
+		return segmentFile{}, err
+	}
+	defer snapshot.Rollback()
+	return segmentFileTx(ctx, snapshot.Tx(), object, revision)
+}
+
 func TestSegmentCatchupEmptyServerDoesNotCreateChangingCommits(t *testing.T) {
 	c := catalogtest.Open(t)
 	s := &Service{db: c.DB}
@@ -54,7 +63,7 @@ func TestSegmentCatchupKeepsNewRevisionDurableAndCancellationSilent(t *testing.T
 		t.Fatal(err)
 	}
 	object := f.objects["one"]
-	old, err := segmentFileTx(ctx, f.c.DB, object, "r1")
+	old, err := readSegmentCatchupFile(ctx, f.c.DB, object, "r1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +79,7 @@ func TestSegmentCatchupKeepsNewRevisionDurableAndCancellationSilent(t *testing.T
 	if state, err := readSegmentCatchup(ctx, f.c.DB); err != nil || state != before || dbwork.ChangingCommits() != commits {
 		t.Fatal("cancellation consumed durable progress", state, err)
 	}
-	if _, err := segmentFileTx(ctx, f.c.DB, object, "r1"); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := readSegmentCatchupFile(ctx, f.c.DB, object, "r1"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("old generation/revision remained eligible", err)
 	}
 	// A replacement worker must resume the committed high-water mark and admit
@@ -79,7 +88,7 @@ func TestSegmentCatchupKeepsNewRevisionDurableAndCancellationSilent(t *testing.T
 	if more, err := restarted.segmentCatchup(ctx); err != nil || more {
 		t.Fatal(more, err)
 	}
-	current, err := segmentFileTx(ctx, f.c.DB, object, "r2")
+	current, err := readSegmentCatchupFile(ctx, f.c.DB, object, "r2")
 	if err != nil || current.Generation <= old.Generation || current.binding() == old.binding() {
 		t.Fatal("new current source tuple was not admitted", current, old, err)
 	}
