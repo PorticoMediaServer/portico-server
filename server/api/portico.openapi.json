@@ -35434,6 +35434,16 @@
                 "providerReleaseId": {
                   "type": "string"
                 },
+                "role": {
+                  "enum": [
+                    "album",
+                    "ep",
+                    "single",
+                    "compilation",
+                    "appearance"
+                  ],
+                  "type": "string"
+                },
                 "title": {
                   "type": "string"
                 },
@@ -218541,6 +218551,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -219054,6 +219067,9 @@
                 },
                 "permissions": {
                   "properties": {
+                    "canClaimHost": {
+                      "type": "boolean"
+                    },
                     "canControl": {
                       "type": "boolean"
                     },
@@ -220544,6 +220560,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -221056,6 +221075,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -221582,6 +221604,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -222176,6 +222201,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -222976,6 +223004,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -223707,6 +223738,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -224235,6 +224269,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -280115,6 +280152,16 @@
                           "providerReleaseId": {
                             "type": "string"
                           },
+                          "role": {
+                            "enum": [
+                              "album",
+                              "ep",
+                              "single",
+                              "compilation",
+                              "appearance"
+                            ],
+                            "type": "string"
+                          },
                           "title": {
                             "type": "string"
                           },
@@ -315146,6 +315193,9 @@
                           },
                           "permissions": {
                             "properties": {
+                              "canClaimHost": {
+                                "type": "boolean"
+                              },
                               "canControl": {
                                 "type": "boolean"
                               },
@@ -315778,6 +315828,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -316408,6 +316461,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -317023,6 +317079,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -317659,6 +317718,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -318431,6 +318493,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -319071,6 +319136,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -319994,6 +320062,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -321371,6 +321442,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
