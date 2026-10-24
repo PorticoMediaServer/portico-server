@@ -6,7 +6,7 @@ import type {HistoryPeriod, SavedIntent} from '@core/saved.ts';
 import {historyPeriods} from '@core/saved.ts';
 import {durationText} from '@portico/client-core/kit-model';
 import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
-import {Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
+import {AmbientArt, Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
 import {Button, Chip, Select, Switch} from '../../kit/controls';
 import {ViewToggle} from '../../kit/browse';
 import {Dialog, Menu} from '../../kit/overlays';
@@ -151,6 +151,13 @@ function historyDayLabel(date: Date): string {
 }
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
+  // The same canonical library wash, fed by the first titles the timeline shows.
+  const wash = useMemo(() => {
+    if (!bindings.presentation.backdrops) return [];
+    if (bindings.presentation.backdrop) return [bindings.presentation.backdrop];
+    const urls = snapshot.entries.flatMap(entry => { const media = entry.media, url = media && (media.backdropUrl ?? media.posterUrl); return url ? [url] : []; });
+    return [...new Set(urls)].slice(0, 3).flatMap(url => { const source = bindings.artwork.ambient(url); return source ? [source] : []; });
+  }, [bindings.presentation.backdrops, bindings.presentation.backdrop, bindings.artwork, snapshot.entries]);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
   const groups = new Map<string, {day: Date; entries: PersonalResourceEntry[]}>();
@@ -160,6 +167,7 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
     const key = date.toDateString(); let group = groups.get(key); if (!group) { group = {day: date, entries: []}; groups.set(key, group); } group.entries.push(entry);
   }
   return <>
+    {wash.length ? <div className={styles.wash} aria-hidden="true"><AmbientArt sources={wash} treatment="library" height={640} /></div> : null}
     <div className={styles.toolbar}>
       <div className={styles.periodChips} role="group" aria-label={t('web.saved.period')}>
         {historyPeriods.map(value => <Chip key={value} variant="toolbar" selected={period === value} onClick={() => bindings.effects.selectRoute({view: 'history', period: value})}>{periodLabel(value)}</Chip>)}
