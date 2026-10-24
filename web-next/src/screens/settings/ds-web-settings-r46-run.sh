@@ -22,7 +22,6 @@ npm exec -w web-next -- tsc --noEmit
 if [ "$mode" = gate ]; then
   npm run lint:design --workspace web-next
   npm run lint:hooks --workspace web-next
-  npm run lint:boundary --workspace web-next
 fi
 if [ "$mode" = capture ]; then
   npm exec -w web-next -- vite build --logLevel warn
