@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -20,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
@@ -31,7 +33,10 @@ const fixtureCertificateNamespace = "ptc-aaaaaaaaaaaaaaaaaaaa"
 
 func certificateFixture(t *testing.T) (*sqlFixture, *CertificateManager, context.Context) {
 	t.Helper()
-	f := fixtureSQL(t)
+	return certificateFixtureOn(t, fixtureSQL(t))
+}
+func certificateFixtureOn(t *testing.T, f *sqlFixture) (*sqlFixture, *CertificateManager, context.Context) {
+	t.Helper()
 	ctx := fixtureClaimContext(t)
 	v := f.retrieving(t)
 	result := resultFor(t, v)
@@ -83,7 +88,8 @@ func syntheticCertificate(t *testing.T, m *CertificateManager, csrDER []byte) []
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
 func installSyntheticCertificate(t *testing.T, m *CertificateManager, ctx context.Context) {
-	t.Helper()
+	// Keep failures on their exact step here. The cross-repository pair only
+	// exports static Go file:line diagnostics, never private response bodies.
 	_, q, _, e := m.snapshot(ctx)
 	if e != nil {
 		t.Fatal(e)
@@ -138,6 +144,67 @@ func installSyntheticCertificate(t *testing.T, m *CertificateManager, ctx contex
 		t.Fatal("incorrect certificate readiness", s, e)
 	}
 }
+
+// Production uses split NORMAL WAL readers/writer; a security fence restores
+// that policy after its own FULL transaction. Certificate issuance must acquire
+// FULL on its mutation, not depend on a manager-start pragma staying in force.
+func TestCertificatePublicationUsesDurableTransactionOnProductionPool(t *testing.T) {
+	f := fixtureSQL(t)
+	if err := f.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	pooled, err := dbwork.OpenHandle(f.path, dbwork.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pooled.Close() })
+	f.db = pooled
+	f.store = f.storeFor(t, pooled, f.cipher)
+	_, m, ctx := certificateFixtureOn(t, f)
+	// Model a claim/security commit after the certificate manager was created,
+	// as in a genuine Local-to-Portico installation. Do not change pool pragmas.
+	if err := dbwork.WithWriteTx(ctx, pooled, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE fixture_owners SET epoch=epoch`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertNormal := func() {
+		t.Helper()
+		w, err := dbwork.Begin(ctx, pooled, dbwork.ClassInteractive)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer w.Rollback()
+		var mode int
+		if err := w.Tx().QueryRowContext(ctx, `PRAGMA synchronous`).Scan(&mode); err != nil {
+			t.Fatal(err)
+		}
+		if mode != 1 {
+			t.Fatalf("ordinary writer durability=%d, want NORMAL", mode)
+		}
+	}
+	assertNormal()
+	installSyntheticCertificate(t, m, ctx)
+	_, q, _, err := m.snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.mutate(ctx, q.Scope, false, func(tx *sql.Tx, _ certificateState) error {
+		var mode int
+		if err := tx.QueryRowContext(ctx, `PRAGMA synchronous`).Scan(&mode); err != nil {
+			return err
+		}
+		if mode != 2 {
+			t.Errorf("certificate mutation durability=%d, want FULL", mode)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertNormal()
+}
+
 func TestCertificateConnectedLifecycleRestartAndAuthorityFencing(t *testing.T) {
 	f, m, ctx := certificateFixture(t)
 	installSyntheticCertificate(t, m, ctx)

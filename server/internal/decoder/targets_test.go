@@ -312,7 +312,7 @@ func TestBitmapBurnPreservesGlyphShapeOnCroppedVideo(t *testing.T) {
 }
 
 func TestSDRHardwareScaleDoesNotRequireToneMap(t *testing.T) {
-	g, err := BuildConversion(ConversionRequest{ConvertVideo: true, MaxHeight: 720, Probe: HardwareProbe{Backend: BackendNVENC, Available: true, ScaleFilters: true}, Toolchain: targetFacts()})
+	g, err := BuildConversion(ConversionRequest{ConvertVideo: true, MaxHeight: 720, SourceVideoCodec: "h264", SourceBitDepth: 8, Probe: HardwareProbe{Backend: BackendNVENC, Available: true, ScaleFilters: true, DecodeCodecs: map[string]bool{"h264:8": true}}, Toolchain: targetFacts()})
 	if err != nil || !strings.Contains(argValue(g.Video, "-vf"), "scale_cuda") || argValue(g.Input, "-hwaccel") != "cuda" {
 		t.Fatal(g, err)
 	}

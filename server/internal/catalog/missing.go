@@ -107,12 +107,12 @@ type MissingRule struct {
 // DefaultMissingRule keeps missing titles for thirty days.
 var DefaultMissingRule = MissingRule{Mode: "after_days", Days: 30}
 
-// MissingRule reads the owner's rule from the server settings document.
+// MissingRule reads the owner's rule from normalized server settings.
 func (s *Service) MissingRule(ctx context.Context) MissingRule {
 	rule := DefaultMissingRule
 	var mode sql.NullString
 	var days sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT json_extract(body,'$."library.missingTitles"'),json_extract(body,'$."library.missingTitlesDays"') FROM console_documents WHERE scope='server'`).Scan(&mode, &days); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT settings."library.missingTitles",settings."library.missingTitlesDays" FROM server_settings AS settings WHERE settings.singleton=1`).Scan(&mode, &days); err != nil {
 		return rule
 	}
 	switch mode.String {

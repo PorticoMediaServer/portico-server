@@ -29,7 +29,7 @@ function fixture() {
   let afterRequest = () => {};
   const transaction = 'srt_' + 'x'.repeat(32);
   const account = {service: {synchronize: async () => {}, accessSession: async () => session, getSnapshot: () => ({session})},
-    api: {send: async (path: string) => {calls.push(path); afterRequest(); return path.endsWith('/start') ? {transactionId: transaction} :
+    api: {origin, send: async (path: string) => {calls.push(path); afterRequest(); return path.endsWith('/start') ? {transactionId: transaction} :
       {location: facts.registrationOrigin + '/auth/portico-return#code=src_' + 'z'.repeat(32) + '&state=' + handoff.start.state + '&transaction=' + transaction};}}} as unknown as ServicesAccount;
   return {handoff, store, account, calls, navigations, saved: () => saved, href: buildHostedSignInStartURL(handoff),
     replaceFamily: () => {session = {...session, familyId: 'replacement'};}, after: (run: () => void) => {afterRequest = run;}};
@@ -68,4 +68,11 @@ test('invalid new context clears predecessor; cancellation and signed-name forge
   const raw = JSON.parse(Buffer.from(g.handoff.context.payload, 'base64url').toString()); raw.serverName = 'Forged';
   const forged = {...g.handoff, context: {...g.handoff.context, payload: Buffer.from(JSON.stringify(raw)).toString('base64url')}};
   await assert.rejects(restoreHostedSignIn(g.store, origin, {href: buildHostedSignInStartURL(forged)})); assert.equal(g.saved(), undefined);
+});
+test('the signed Hosted origin must be the canonical API origin before any bearer request', async () => {
+  const f = fixture(), pending = await restoreHostedSignIn(f.store, origin, {href: f.href});
+  Object.assign(f.account.api, {origin: 'https://different.example'});
+  await assert.rejects(continueHostedSignIn(f.account, pending!, {accountId: 'account', familyId: 'family'}, f.store,
+    new AbortController().signal, value => f.navigations.push(value)));
+  assert.equal(f.calls.length, 0); assert.equal(f.navigations.length, 0); assert(f.saved());
 });

@@ -13,6 +13,7 @@ import {browseCapabilitiesPath} from '@core/browse.ts';
 import {titleCreditsWindow} from '../src/screens/detail/credits-window.ts';
 import {setImmediate} from 'node:timers/promises';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
+import type {WatchVersionRequest} from '../src/screens/watch/version-presentation.ts';
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return {promise, resolve}; }
 function setup(handler: (path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<unknown>) {
@@ -227,6 +228,46 @@ test('manual versions use fresh Options resume and never carry the choice into o
     {itemId: 'one', libraryId: 'library', startSeconds: 0.1},
   ]);
   binding.dispose();
+});
+
+test('Title More passes original genuine Options to the single chooser and starts only a fresh offered exact version', async () => {
+  let captured: WatchVersionRequest | undefined, optionsReads = 0;
+  const closed = deferred<void>(), starts: unknown[] = [];
+  const page = {...detailPage('one'), actions: [{id: 'play', labelKey: 'title.play', enabled: true, playback: {itemId: 'one', startMs: 100}}]};
+  const owner = setup(async path => path.includes('/playback-options') ? {itemId: 'one', versions: [{id: 'first', durationMs: 1000}, {id: 'second', durationMs: 1000}], resume: {positionMs: ++optionsReads === 1 ? 0 : 700, partIndex: 0}} : page);
+  const binding = createDetailBindings({...owner.context, effects: {...owner.context.effects,
+    play: async target => {starts.push(target);}, chooseVersion: async request => {captured = request;await closed.promise;}}});
+  try {
+    await binding.select({itemId: 'one', libraryId: 'library'});
+    const data = binding.service.getSnapshot().data!, original = await binding.readVersions(data), signal = new AbortController();
+    await assert.rejects(binding.chooseVersion(data, {...original}, signal.signal), {name: 'AbortError'});
+    const showing = binding.chooseVersion(data, original, signal.signal);
+    assert.ok(captured);assert.equal(captured.options, original);assert.equal(captured.options.versions, original.versions);
+    assert.deepEqual(captured.subject, {libraryId: 'library', itemId: 'one', title: 'one'});
+    await captured.playVersion('second', signal.signal);
+    assert.deepEqual(starts, [{itemId: 'one', libraryId: 'library', startSeconds: .7, versionId: 'second'}]);
+    assert.equal(optionsReads, 2);
+    await binding.select({libraryId: 'library', itemId: 'one'});
+    const replacement = binding.service.getSnapshot().data!;
+    assert.notEqual(replacement, data);
+    await assert.rejects(binding.chooseVersion(replacement, original, signal.signal), {name: 'AbortError'});
+    assert.equal(captured.isCurrent(), false);
+    owner.retire();assert.equal(captured.isCurrent(), false);
+    const before = owner.requests();await assert.rejects(captured.playVersion('first', signal.signal), {name: 'AbortError'});assert.equal(owner.requests(), before);
+    closed.resolve();await showing;
+  } finally {closed.resolve();binding.dispose();}
+});
+
+test('a one-version title cannot open a chooser even when a presentation port is installed', async () => {
+  let opened = 0;
+  const owner = setup(async path => path.includes('/playback-options') ? {itemId: 'one', versions: [{id: 'only', durationMs: 1000}]}
+    : {...detailPage('one'), actions: [{id: 'play', labelKey: 'title.play', enabled: true, playback: {itemId: 'one', startMs: 0}}]});
+  const binding = createDetailBindings({...owner.context, effects: {...owner.context.effects, chooseVersion: async () => {opened++;}}});
+  try {
+    await binding.select({itemId: 'one', libraryId: 'library'});const data = binding.service.getSnapshot().data!;
+    await assert.rejects(binding.chooseVersion(data, await binding.readVersions(data), new AbortController().signal), {name: 'AbortError'});
+    assert.equal(opened, 0);
+  } finally {binding.dispose();}
 });
 
 test('the entry version command preserves nested authority and refuses a removed grouped version', async () => {

@@ -2062,6 +2062,7 @@ export * from './hosted-security.ts';
 export {DetailService,type DetailScope,type DetailTarget,type DetailApi,type PersonalState,type PersonalOfflineMutation,type PersonalConflict,type DetailAction,type DetailMetadata,type DetailEpisodeInfo,type DetailSongInfo,type DetailBookFileInfo,type DetailSource,type DetailItem,type DetailProjection,type PersonalIntent,type DetailError,type DetailSnapshot} from './detail.ts';
 export * from "./personal-saved.ts";
 export {SearchService,searchPath,parseSearchHistory,type SearchGroup,type SearchSort,type SearchDirection,type SearchGroupStatus,type SearchGroupErrorCode,type SearchQuery,type SearchEntry,type SearchGroupResult,type SearchGroupCapability,type SearchCapabilities,type SearchData,type SearchSnapshot,type SearchHistoryEntry,type SearchHistoryPage} from './search.ts';
+export {readSearchGenres, searchGenresPath, parseSearchGenres, type SearchGenreArt, type SearchGenre, type SearchGenrePage, type SearchGenreRequest} from './search-genres.ts';
 export * from './people.ts';
 export {savedListPath,personalHistoryPath,savedListFilters,savedListSorts,historyPeriods,type SavedListFilter,type SavedListSort,type HistoryPeriod,type SavedApi,type SavedScope,type SavedRoute,type SavedActor} from './saved.ts';
 export * from './browse.ts';
@@ -2148,6 +2149,8 @@ export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} fro
 export {videoPictureName, videoAudioFormatName, videoTrackName, videoTrackWords, formatVideoBytes} from './video-track-labels.ts';
 export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts';
 
+export {createReadingHost, connectReadingHost} from './reading-host.ts';
+export type {ReadingHostSession, ReadingHostTransport, ReadingGuest} from './reading-host.ts';
 export {readLibrarySettings,saveLibrarySettings,reorderLibraries,saveLibraryFolder,removeLibraryFolder} from './server-admin/libraries.ts';
 export {readLibraryInventoryConfig} from './library-inventory.ts';
 export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';

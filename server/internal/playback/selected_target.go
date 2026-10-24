@@ -62,6 +62,10 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 			}
 			t.DolbyVisionProfile, t.DolbyVisionCompatibility = video.DolbyVisionProfile, video.DolbyVisionCompatibility
 			t.CopyDolbyVision = t.DynamicRange == assets.RangeDolbyVision
+			if p.OutputContainer == "fmp4_hls" && profile81CopyPicture(video, client, facts) != nil {
+				t.DynamicRange, t.CopyDolbyVision = assets.RangeDolbyVision, true
+				t.DolbyVisionConversion = decoder.DolbyVisionProfile7To81
+			}
 		} else {
 			t.DolbyVisionProfile, t.DolbyVisionCompatibility = video.DolbyVisionProfile, video.DolbyVisionCompatibility
 			boundConvertedPicture(p, video, client.videoCodec(p.OutputVideoCodec))
@@ -112,6 +116,16 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 	}
 	p.ConversionTarget = &t
 	p.ConversionToolchain = facts
+	if t.DolbyVisionConversion == decoder.DolbyVisionProfile7To81 {
+		p.OutputRange = assets.RangeDolbyVision
+		if p.Trace != nil && p.Trace.Video != nil {
+			p.Trace.Video.OutputRange = assets.RangeDolbyVision
+			p.Trace.Notes = append(p.Trace.Notes, NoteDolbyVisionEnhancementDiscarded)
+			if video.DolbyVisionEnhancementType == "FEL" {
+				p.Trace.Notes = append(p.Trace.Notes, NoteDolbyVisionFELDiscarded)
+			}
+		}
+	}
 	if probe.Available {
 		copy := probe
 		p.ConversionProbe = &copy

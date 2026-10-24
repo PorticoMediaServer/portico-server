@@ -7,7 +7,7 @@ import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
 import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
 import {passwordStrength} from '@core/password-strength.ts';
-import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
+import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, ownerResetSecurity, finishOwnerResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
 import {MemberAccountMoveClient, type MoveCodePreview} from '@core/account-move.ts';
 import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
 import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
@@ -24,12 +24,14 @@ import {buildHostedSignInStartURL} from '@core/hosted-sign-in-start.ts';
 
 type RegisteredController=Pick<BrowserRegisteredSignIn,'prepare'|'finish'|'completeChallenge'|'cancel'>;
 type RegisteredCompletion=Awaited<ReturnType<RegisteredController['finish']>>;
+export type OwnerResetDetails=Readonly<{username:string;twoStepEnabled:boolean}>;
+type OwnerResetCapture=Readonly<{source:HttpLocalApi;api:HttpLocalApi;grant:Extract<DirectSignIn,{kind:'signed-in'}>;pin:ServerPin;revision:number}>;
 
 export type AccountEntryState = Readonly<{
- phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup';
+ phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup'|'owner-reset-password';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
- movePreview?:MoveCodePreview;
+ movePreview?:MoveCodePreview; ownerReset?:OwnerResetDetails;
  busy?:boolean; error?:unknown;
 }>;
 type EntryPorts = Readonly<{
@@ -56,6 +58,7 @@ export class BrowserAccountEntry {
  private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private challengeRevision?:number;private disposed=false;
  private registered?:RegisteredController;private registeredChallenge?:RegisteredController;
  private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
+ private ownerReset?:OwnerResetCapture;private ownerResetTimer?:ReturnType<typeof setTimeout>;
  private moveProof?:Readonly<{code:string;revision:number;preview:MoveCodePreview}>;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
@@ -67,10 +70,12 @@ export class BrowserAccountEntry {
  private stopAuthorityWatch(){const off=this.offSelection;this.offSelection=undefined;try{off?.();}catch{ /* Retirement must still clear the captured authority. */ }}
  private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
  private release(){
-  this.stopAuthorityWatch();const api=this.api,registered=this.registered,hadAuthority=!!this.session||!!this.challenge||!!registered;
+  this.stopAuthorityWatch();const api=this.api,registered=this.registered,reset=this.takeOwnerReset(),hadAuthority=!!this.session||!!this.challenge||!!registered||!!reset;
   this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;this.registered=undefined;this.registeredChallenge=undefined;
   if(registered)void registered.cancel().catch(()=>{});
-  if(hadAuthority)this.retired();api?.getRouteConnection()?.dispose();
+  if(hadAuthority)this.retired();
+  if(reset)void this.retire(reset.source,reset.grant.session).catch(()=>{}).finally(()=>api?.getRouteConnection()?.dispose());
+  else api?.getRouteConnection()?.dispose();
  }
  /** Read canonical selection after credential-free change hints. The private
   * captured grant defines this lifetime; no family id is added to public state. */
@@ -277,21 +282,92 @@ export class BrowserAccountEntry {
    this.publish({...state,busy:false});return location;
   }catch(error){if(op.current())this.publish({...state,busy:false,error});}
  }
+ /** Owner file proof is spent once. Only public security facts leave this
+  * controller; the original password-only grant never enters the saved selection. */
+ private takeOwnerReset(){const reset=this.ownerReset;this.ownerReset=undefined;clearTimeout(this.ownerResetTimer);this.ownerResetTimer=undefined;return reset;}
+ private async assertOwnerReset(reset:OwnerResetCapture,current:()=>boolean){
+  const captured=()=>{
+   const pin=reset.source.getRouteConnection()?.pin;
+   return current()&&this.ownerReset===reset&&this.api===reset.source&&!!pin&&sameServerPin(pin,reset.pin)&&Date.parse(reset.grant.session.expiresAt)>Date.now();
+  };
+  if(!captured())throw new CodedError('cancelled','The reset proof is no longer current.');
+  const saved=await this.ports.store.read();
+  if(!captured()||saved.revision!==reset.revision)throw new CodedError('cancelled','The server selection changed.');
+ }
+ private watchOwnerReset(reset:OwnerResetCapture){
+  this.stopAuthorityWatch();
+  const current=()=>!this.disposed&&this.ownerReset===reset;
+  const check=()=>{void this.assertOwnerReset(reset,current).catch(()=>{if(current())this.cancelLocalOwnerReset();});};
+  this.ownerResetTimer=setTimeout(()=>{if(current())this.cancelLocalOwnerReset();},Math.min(2147483647,Math.max(0,Date.parse(reset.grant.session.expiresAt)-Date.now())));
+  try{this.offSelection=this.ports.observeSelection?.(check);}catch{this.cancelLocalOwnerReset();return;}
+  check();
+ }
+ async verifyLocalOwnerReset(code:string):Promise<OwnerResetDetails|undefined>{
+  const state=this.state,source=this.api;
+  if(state.phase!=='password'||state.server?.signIn!=='local'||state.invitation||!source||state.busy||!code.trim())return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  let grant:Extract<DirectSignIn,{kind:'signed-in'}>|undefined,reset:OwnerResetCapture|undefined;
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!op.current())return;
+   const result=await verifyOwnerResetFile(source,code,false,op.signal);
+   if(result.kind!=='signed-in')throw new CodedError('invalid_response','The reset did not return a password-change session.');
+   grant=result;if(!op.current())return;
+   if(result.snapshot.serverId!==state.server.id||result.snapshot.account.disabled||result.session.viewer.role!=='account'||result.session.viewer.profileId!==result.snapshot.account.primaryProfileId)throw new CodedError('invalid_response','The reset did not match this account.');
+   const pin=source.getRouteConnection()?.pin;if(!pin||!state.pin||!sameServerPin(pin,state.pin))throw new CodedError('identity_mismatch','The server identity changed.');
+   reset={source,api:this.temporary(source,result.session),grant:result,pin:Object.freeze({...pin}),revision};this.ownerReset=reset;
+   await this.assertOwnerReset(reset,op.current);
+   const details=await ownerResetSecurity(reset.api,result,op.signal);
+   await this.assertOwnerReset(reset,op.current);
+   this.publish({...state,phase:'owner-reset-password',ownerReset:details,busy:false,error:undefined});this.watchOwnerReset(reset);
+   return this.ownerReset===reset?details:undefined;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+  finally{
+   if(grant&&!reset)await this.retire(source,grant.session).catch(()=>{});
+   else if(reset&&this.ownerReset===reset&&this.state.phase!=='owner-reset-password'){
+    this.takeOwnerReset();await this.retire(source,reset.grant.session).catch(()=>{});
+   }
+  }
+ }
+ cancelLocalOwnerReset(){
+  const state=this.state,reset=this.takeOwnerReset();
+  if(!reset&&!(state.phase==='password'&&state.busy))return;
+  this.operation();this.stopAuthorityWatch();this.retired();
+  if(reset)void this.retire(reset.source,reset.grant.session).catch(()=>{});
+  this.publish({...state,phase:'password',ownerReset:undefined,busy:false,error:undefined});
+ }
+ async finishLocalOwnerResetPassword(newPassword:string,turnOffTwoStep:boolean):Promise<boolean>{
+  const state=this.state,reset=this.ownerReset;
+  if(state.phase!=='owner-reset-password'||!reset||state.busy||!passwordStrength(newPassword).acceptable||typeof turnOffTwoStep!=='boolean')return false;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  try{
+   await this.assertOwnerReset(reset,op.current);
+   await finishOwnerResetPassword(reset.api,reset.grant,newPassword,turnOffTwoStep,op.signal);
+   await this.assertOwnerReset(reset,op.current);
+   this.takeOwnerReset();this.stopAuthorityWatch();this.retired();await this.retire(reset.source,reset.grant.session).catch(()=>{});
+   if(!op.current())return false;
+   this.publish({...state,phase:'password',ownerReset:undefined,busy:false,error:undefined});return true;
+  }catch(error){
+   if(this.ownerReset===reset){this.takeOwnerReset();this.stopAuthorityWatch();this.retired();await this.retire(reset.source,reset.grant.session).catch(()=>{});}
+   if(op.current())this.publish({...state,phase:'password',ownerReset:undefined,busy:false,error});return false;
+  }
+ }
  /** Code proof issues only a restricted transient family. Set its password,
   * retire it, then use ordinary sign-in and the existing durable admission. */
  async resetLocalPassword(proof:Readonly<{kind:'owner';code:string;turnOffTwoStep?:boolean}|{kind:'member';username:string;code:string}>,newPassword:string,secondFactorCode=''){
+  if(!passwordStrength(newPassword).acceptable)return;
+  if(proof.kind==='owner'){const details=await this.verifyLocalOwnerReset(proof.code);if(details&&await this.finishLocalOwnerResetPassword(newPassword,proof.turnOffTwoStep===true))await this.signIn(details.username,newPassword);return;}
   const state=this.state,api=this.api;
   if(state.phase!=='password'||state.server?.signIn!=='local'||state.invitation||!api||state.busy||!passwordStrength(newPassword).acceptable)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
   let restricted:Extract<DirectSignIn,{kind:'signed-in'}>|undefined;
   try{
    const revision=(await this.ports.store.read()).revision;if(!op.current())return;
-   const result=proof.kind==='owner'?await verifyOwnerResetFile(api,proof.code,proof.turnOffTwoStep===true,op.signal):await verifyMemberResetCode(api,proof.username,proof.code,op.signal);
+   const result=await verifyMemberResetCode(api,proof.username,proof.code,op.signal);
    if(result.kind!=='signed-in')throw new CodedError('invalid_response','The reset did not return a password-change session.');
    restricted=result;
    if(!op.current())return;
    if(result.snapshot.serverId!==state.server.id||result.resetFileOwnerSession||!result.passwordChangeRequired||result.session.refreshToken||
-     proof.kind==='owner'&&result.snapshot.account.role!=='owner'||proof.kind==='member'&&result.snapshot.account.role==='owner')throw new CodedError('invalid_response','The reset did not match this account.');
+     result.snapshot.account.role==='owner')throw new CodedError('invalid_response','The reset did not match this account.');
    await changeResetPassword(this.temporary(api,result.session),newPassword,secondFactorCode,op.signal);
    await this.retire(api,result.session);restricted=undefined;
    if(!op.current())return;

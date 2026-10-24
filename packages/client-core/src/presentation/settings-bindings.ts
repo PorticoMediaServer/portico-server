@@ -1,13 +1,15 @@
 import type {LibraryAdminDocument,LibrarySettings} from '../administration.ts';
 import {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from '../server-admin/library-policy.ts';
+import type {AccessMember,MemberLimits} from '../server-administration.ts';
+import type {SettingsBulkAccess} from '../settings-people.ts';
 import type {InventorySource,SourceSettings} from '../library-inventory.ts';
 import type {SettingsConfiguration, ConfigurationValue} from '../settings-configuration.ts';
-import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
+import {canonicalQualityLadder,canonicalMusicQualityLadder} from '../../../contracts/src/types.ts';
 import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,type PreferenceValue} from '../preferences.ts';
 import type {ReadingPreferences} from '../preference-effects.ts';
 
 export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
@@ -32,6 +34,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'updates.channel':{form:'runtime',key:'updates.releaseChannel'},
  'streaming.allowConversion':{form:'runtime',key:'conversionMode'},
  'streaming.outputFormat':{form:'runtime',key:'outputFormat'},
+ 'streaming.musicAwayQuality':{form:'runtime',key:'musicAwayQuality',codec:'music-quality-choice'},
  'streaming.downloadQuality':{form:'runtime',key:'downloadMaxQuality',codec:'video-quality-choice'},
  'streaming.uploadSpeed':{form:'connectivity',key:'uploadCapacityKbps',scale:1000},
  'streaming.awayQuality':{form:'connectivity',key:'remoteBitrateLimitKbps',codec:'away-quality'},
@@ -174,8 +177,22 @@ const source69PreferenceBindings:Readonly<Record<string,SettingsBinding>>={
  'quality.directStream':{form:'preferences',key:'delivery.directStream',scope:'profile-device-class'},
  'quality.transcode':{form:'preferences',key:'delivery.transcode',scope:'profile-device-class'},
 };
+// Runtime keys and scopes come from the published Music registry. CD is only
+// the drawn choice value; the canonical stored quality remains cd-quality.
+const musicPreferenceBindings:Readonly<Record<string,SettingsBinding>>={
+ 'music.audioNormalization':{form:'preferences',key:'music.audioNormalization',scope:'profile-server'},
+ 'music.crossfadeMs':{form:'preferences',key:'music.crossfadeMs',scope:'profile-server'},
+ 'music.gapless':{form:'preferences',key:'music.gapless',scope:'profile-server'},
+ 'music.neverBoost':{form:'preferences',key:'music.neverBoost',scope:'profile-server'},
+ 'music.smoothTransitions':{form:'preferences',key:'music.smoothTransitions',scope:'profile-server'},
+ 'music.dsdGainDb':{form:'preferences',key:'music.dsdGainDb',scope:'profile-server'},
+ 'music.qualityHome':{form:'preferences',key:'music.qualityHome',scope:'profile-device-class',codec:'music-quality-choice'},
+ 'music.qualityAway':{form:'preferences',key:'music.qualityAway',scope:'profile-device-class',codec:'music-quality-choice'},
+ 'music.qualityMobile':{form:'preferences',key:'music.qualityMobile',scope:'profile-device-class',codec:'music-quality-choice'},
+ 'music.downloadQuality':{form:'preferences',key:'music.qualityDownloads',scope:'profile-device-class',codec:'music-quality-choice'},
+};
 export function settingsBinding(rowId:string):SettingsBinding|undefined{
- for(const table of [bindings,libraryScalarBindings,source69PreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
+ for(const table of [bindings,libraryScalarBindings,source69PreferenceBindings,musicPreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
  return Object.hasOwn(preferenceKeys,rowId)?{form:'preferences',key:preferenceKeys[rowId]!}:undefined;
 }
 
@@ -196,6 +213,7 @@ const categories=['server','playback','scan','network','client'] as const;
 const cadences:Readonly<Record<string,readonly string[]>>={nightly:days,weekdays:days.slice(0,5),weekends:days.slice(5),weekly:['sunday']};
 function defaultFeed(sources:SettingsBindingSources):unknown{return sources.configuration?.fields.find(f=>f.id==='general.updateFeed')?.default;}
 function windows(sources:SettingsBindingSources):readonly Readonly<Record<string,unknown>>[]{const v=sources.forms?.maintenance?.windows;return Array.isArray(v)?v:[];}
+function matchingWindow(w:Readonly<Record<string,unknown>>,role:'heavy'|'backup'):boolean { const tasks=w.tasks;return Array.isArray(tasks)&&(role==='backup'?tasks.includes('backup'):tasks.includes('analysis')||tasks.includes('trickplay')); }
 function windowMode(binding:SettingsBinding,w:Readonly<Record<string,unknown>>):unknown{
  if(!w.enabled)return binding.window==='heavy'?'any':'never';
  if(binding.window==='heavy')return w.startMinute===60&&w.durationMinutes===300&&Array.isArray(w.days)&&w.days.length===7&&days.every(d=>(w.days as unknown[]).includes(d))&&!w.timezone?'overnight':'custom';
@@ -203,6 +221,7 @@ function windowMode(binding:SettingsBinding,w:Readonly<Record<string,unknown>>):
 }
 function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSources):unknown{
  if(v===undefined)return undefined;
+ if(binding.codec==='music-quality-choice')return typeof v==='string'&&canonicalMusicQualityLadder.some(q=>q.id===v)?(v==='cd-quality'?'cd':v):undefined;
  if(binding.codec==='video-quality-choice')return typeof v==='string'&&canonicalQualityLadder.some(q=>q.id===v)&&(binding.key!=='downloadMaxQuality'||v!=='automatic')?(v==='2160p'?'4k':v):undefined;
  if(binding.codec==='boolean')return typeof v==='boolean'?v:undefined;
  if(binding.codec==='surround')return typeof v==='boolean'?(v?'stereo':'asis'):undefined;
@@ -258,7 +277,7 @@ export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBind
  const alias=rowId==='general.updateChecks'?'general.updateFeed':rowId==='streaming.awayQuality'?'streaming.awayExact':rowId==='storage.backupKeep'?'storage.backupKeepExact':rowId;
  const fact:ConfigurationValue|undefined=alias?sources.configuration?.fields.find(f=>f.id===alias):undefined;
  if(fact){const display={...binding,scale:undefined,...(rowId==='streaming.awayQuality'?{scale:1/1000}:{})};const show=(v:unknown)=>rowId==='streaming.awayQuality'?presented(binding,typeof v==='number'?v*1000:v,sources):presented(display,v,sources);const current=show(fact.current),effective=show(fact.effective);if(current===undefined||effective===undefined)return undefined;return {current,effective,default:show(fact.default),source:fact.source,configOnly:fact.configOnly,applicationMode:fact.applicationMode};}
- const w=binding.window?windows(sources).find(w=>w.id===binding.window):undefined;
+ const w=binding.window?windows(sources).find(w=>matchingWindow(w,binding.window!)):undefined;
  const raw=binding.window?(binding.codec==='window-mode'?w&&windowMode(binding,w):w?.[binding.key]):at(binding.form==='device'?sources.device:sources.forms?.[binding.form],binding.key);if(raw===undefined)return undefined;
  const current=presented(binding,raw,sources);if(current===undefined)return undefined;return {current,effective:current,default:binding.form==='device'?presented(binding,at(sources.deviceDefaults,binding.key),sources):undefined,source:binding.form,configOnly:false};
 }
@@ -304,6 +323,10 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
   if(field?.type!=='integer')throw new Error('Invalid setting value.');
   raw=value==='server'||value===null?null:value;
  }
+ if(binding.codec==='music-quality-choice'){
+  if(typeof value!=='string'||value==='cd-quality'||!canonicalMusicQualityLadder.some(q=>(q.id==='cd-quality'?'cd':q.id)===value))throw new Error('Invalid setting value.');
+  raw=value==='cd'?'cd-quality':value;
+ }
  if(binding.codec==='video-quality-choice'){
   if(typeof value!=='string'||value==='2160p'||!canonicalQualityLadder.some(q=>(q.id==='2160p'?'4k':q.id)===value)||binding.key==='downloadMaxQuality'&&value==='automatic')throw new Error('Invalid setting value.');
   raw=value==='4k'?'2160p':value;
@@ -332,13 +355,13 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
  if(binding.scale)raw=value===null&&binding.key==='uploadCapacityKbps'?0:typeof raw==='number'?Math.round(raw*binding.scale):raw;
  if(typeof raw==='number'&&!Number.isFinite(raw)||raw===undefined)throw new Error('Invalid setting value.');
  if(binding.window){
-  const all=windows(sources),existing=all.find(w=>w.id===binding.window);if(!existing)throw new Error('Load maintenance settings before editing a window.');let change:Record<string,unknown>={[binding.key]:raw};
+  const all=windows(sources),existing=all.find(w=>matchingWindow(w,binding.window!));if(!existing)throw new Error('Load maintenance settings before editing a window.');let change:Record<string,unknown>={[binding.key]:raw};
   if(binding.codec==='window-mode'){
    if(binding.window==='heavy')change=value==='any'?{enabled:false}:value==='overnight'?{enabled:true,cadence:'nightly',startMinute:60,durationMinutes:300,days:[...days],timezone:''}:value==='custom'?{enabled:true}:{};
    else change=value==='never'?{enabled:false}:value==='custom'?{enabled:true}:typeof value==='string'&&cadences[value]?{enabled:true,cadence:value,days:[...cadences[value]!]}:{};
    if(!Object.keys(change).length)throw new Error('Invalid maintenance window.');
   }else if(binding.codec==='days')change={days:raw,cadence:'custom'};
-  return {form:binding.form,values:{windows:all.map(w=>w.id===binding.window?{...w,...change}:w)}};
+  return {form:binding.form,values:{windows:all.map(w=>w.id===existing.id?{...w,...change}:w)}};
  }
  return {form:binding.form,values:{[binding.key]:raw}};
 }
@@ -437,3 +460,35 @@ export function patchLibrarySourceSettingsBinding(rowId:string,value:unknown,dra
  else if(typeof value!=='string'||/[\u0000-\u001f]/.test(value))throw new Error('Invalid folder value.');
  return {...draft,[key]:raw};
 }
+
+function readPersonStreamChoice(mode: unknown, count: unknown): string {
+ if (mode === 'inherit' && count === 0) return 'default';
+ if (mode === 'unlimited' && count === 0) return 'unlimited';
+ if (mode === 'limit' && typeof count === 'number' && Number.isSafeInteger(count) && count >= 1 && count <= 1000) return String(count);
+ throw new Error('invalid_settings_stream_limit');
+}
+function personStreamPatch(choice: unknown): Pick<MemberLimits,'maxStreamsMode'|'maxStreams'> {
+ if (choice === 'default') return {maxStreamsMode:'inherit',maxStreams:0};
+ if (choice === 'unlimited') return {maxStreamsMode:'unlimited',maxStreams:0};
+ if (typeof choice === 'string' && /^[1-9][0-9]{0,3}$/.test(choice) && Number(choice) <= 1000) return {maxStreamsMode:'limit',maxStreams:Number(choice)};
+ throw new Error('invalid_settings_stream_limit');
+}
+/** Presentation only. Current server facts and the existing member/bulk CAS
+ * writers retain authority; zero never identifies inheritance or unlimited. */
+export const peopleStreamLimits = Object.freeze({
+ read(person: Pick<AccessMember,'limits'>): string {
+  return readPersonStreamChoice(person.limits.maxStreamsMode,person.limits.maxStreams);
+ },
+ patch(person: Pick<AccessMember,'limits'>,choice: unknown): MemberLimits {
+  return {...person.limits,...personStreamPatch(choice)};
+ },
+ readBulk(access: SettingsBulkAccess | undefined): string {
+  if (access?.maxStreamsMode === undefined && access?.maxStreams === undefined) return 'keep';
+  return readPersonStreamChoice(access?.maxStreamsMode,access?.maxStreams);
+ },
+ patchBulk(access: SettingsBulkAccess | undefined,choice: unknown): SettingsBulkAccess {
+  const next = {...access};
+  if (choice === 'keep') {delete next.maxStreamsMode;delete next.maxStreams;return next;}
+  return {...next,...personStreamPatch(choice)};
+ }
+});

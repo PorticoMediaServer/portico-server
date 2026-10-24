@@ -105,7 +105,7 @@ var BasicScanOperations = []string{"probe", "local_metadata", "subtitles"}
 // Intro and credits detection is not a scan stage: mediaanalysis runs it as
 // its own background work, compared across a show's episodes, under the
 // server's and each library's detection mode.
-var DeepScanOperations = []string{"checksum", "chapter_images", "trickplay", "waveform", "loudness", "fingerprint"}
+var DeepScanOperations = []string{"checksum", "chapter_images", "trickplay", "waveform", "loudness", "fingerprint", SonicOperation}
 
 // Complete prepares the navigation and audio features viewers can use. An owner
 // can explicitly request integrity reads or diagnostic fingerprints in Custom.
@@ -161,7 +161,7 @@ func ValidateScanPolicy(p ScanPolicy) (ScanPolicy, error) {
 		}
 		// Local extraction/subtitle timing requires a bounded probe. Do not silently
 		// broaden an owner's Custom content-read permission to satisfy dependencies.
-		if (seen["local_metadata"] || seen["subtitles"] || seen["chapter_images"] || seen["trickplay"] || seen["waveform"] || seen["loudness"] || seen["fingerprint"]) && !seen["probe"] {
+		if (seen["local_metadata"] || seen["subtitles"] || seen["chapter_images"] || seen["trickplay"] || seen["waveform"] || seen["loudness"] || seen["fingerprint"] || seen[SonicOperation]) && !seen["probe"] {
 			return p, ErrAdminQuery
 		}
 		if p.Operations == nil {
@@ -609,6 +609,25 @@ func musicLoudnessPolicy(ctx context.Context, q interface {
 	}
 	if kind == "music" && p.Tier != "file_list_only" && !p.Allows("loudness") {
 		p.Operations = append(append([]string{}, p.Operations...), "loudness")
+	}
+	if kind == "music" && p.Tier != "file_list_only" {
+		enabled := true
+		err := q.QueryRowContext(ctx, `SELECT enabled FROM library_sonic_settings WHERE library_id=?`, library).Scan(&enabled)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return p, err
+		}
+		if enabled && !p.Allows(SonicOperation) {
+			p.Operations = append(append([]string{}, p.Operations...), SonicOperation)
+		}
+		if !enabled && p.Allows(SonicOperation) {
+			kept := make([]string, 0, len(p.Operations))
+			for _, op := range p.Operations {
+				if op != SonicOperation {
+					kept = append(kept, op)
+				}
+			}
+			p.Operations = kept
+		}
 	}
 	return p, nil
 }

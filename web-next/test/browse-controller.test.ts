@@ -12,6 +12,31 @@ function payload(start: number, total = 50_000, revision = 'revision-one') {
  entries: Array.from({length: Math.min(60, total - start)}, (_, n) => ({id: `movie-${start + n}`, kind: 'movie', title: `Movie ${start + n}`, libraryId: 'lib', navigation: {view: 'item'}})),
  pageInfo: {start, total, totalIsLowerBound: false, revision, hasMore: start + 60 < total, nextCursor: ''}, positionIndex: [{key: 'Z', index: 49_980}]};
 }
+test('Save view requires a real filter or sort change, not merely loaded capabilities', async () => {
+ const predicate = {field: 'watched', operator: 'equals' as const, value: false};
+ const scoped = {...caps, fields: [{id: 'watched', labelKey: 'watched', type: 'boolean', operators: ['equals'], controlHint: 'toggle', applicableKinds: ['movie']}]};
+ let current = true;
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  return (path.includes('capabilities') ? scoped : payload((body as {range: {start: number}}).range.start, 1)) as T;
+ }}, {libraryId: 'lib', pivot: 'movies', base: [predicate]}, () => current);
+ try {
+  assert.equal(controller.canSaveView(), false);
+  await controller.load();
+  assert.equal(controller.canSaveView(), false, 'fixed source membership is not a user filter');
+  controller.setQuery([predicate]);assert.equal(controller.canSaveView(), true);
+  controller.setQuery([]);assert.equal(controller.canSaveView(), false);
+  controller.setQuery([], {field: 'title', direction: 'desc'});assert.equal(controller.canSaveView(), true);
+  controller.setQuery([], {field: 'title', direction: 'asc'});assert.equal(controller.canSaveView(), false);
+  controller.setQuery([predicate]);current = false;assert.equal(controller.canSaveView(), false);
+ } finally {controller.dispose();}
+});
+test('Save view retains a changed secondary sort even when the first sort is the default', async () => {
+ const scoped = {...caps, sorts: [...caps.sorts, {id: 'year', labelKey: 'sort.year', directions: ['asc', 'desc'], defaultDirection: 'asc', applicableKinds: ['movie']}]};
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  return (path.includes('capabilities') ? scoped : payload((body as {range: {start: number}}).range.start, 1)) as T;
+ }}, {libraryId: 'lib', pivot: 'movies', sorts: [{field: 'title', direction: 'asc'}, {field: 'year', direction: 'desc'}]}, () => true);
+ try {await controller.load();assert.equal(controller.canSaveView(), true);} finally {controller.dispose();}
+});
 test('linked predicates and all server sorts survive paging and filter edits', async () => {
  const predicate = {field: 'watched', operator: 'equals' as const, value: false};
  const sort = [{field: 'title', direction: 'asc' as const}, {field: 'year', direction: 'desc' as const}];

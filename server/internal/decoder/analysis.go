@@ -57,11 +57,15 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 	seekFrames := int64(0)
 	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-filter_threads", "1"}
 	preview := s.Kind == "image" || s.Kind == "trickplay" || s.Kind == "scenes" || s.Kind == "segment_frames"
-	region := s.Kind == "segment_audio" || s.Kind == "segment_frames"
+	sonicRegion := s.Kind == "sonic_pcm"
+	region := s.Kind == "segment_audio" || s.Kind == "segment_frames" || sonicRegion
 	if region && (s.RegionUS <= 0 || s.RegionUS > s.MaxDurationUS) {
 		return nil, ErrInvalidConfiguration
 	}
-	if preview || region {
+	if sonicRegion && s.RegionUS > s.MaxDurationUS-s.StartUS {
+		return nil, ErrInvalidConfiguration
+	}
+	if (preview || region) && !sonicRegion {
 		// A damaged packet costs a measurement a moment of a region, not
 		// the measurement.
 		args = append(args, "-max_error_rate", "0.05")
@@ -92,6 +96,10 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		args = append(args, "-t", fmt.Sprintf("%d.%06d", s.RegionUS/1000000, s.RegionUS%1000000))
 	}
 	switch s.Kind {
+	case "sonic_pcm":
+		// Sonic is a model input, never a playback conversion or gain claim.
+		// Fixed 16 kHz mono float preserves decoded precision before log-mel.
+		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", "aresample=16000:resampler=soxr:precision=28", "-ac", "1", "-ar", "16000", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1")
 	case "segment_audio":
 		// The fingerprint's input: the first audio track as 8 kHz mono, padded
 		// from the region's start so sample n is always StartUS + n/8000 s.

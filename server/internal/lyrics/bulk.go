@@ -187,7 +187,7 @@ func (b *Bulk) Cancel(ctx context.Context, id string) error {
 func (b *Bulk) Run(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "lyric_fetch_runs", "library_preferences", "lyric_provider_settings", "lyric_resources", "catalog_entities", "catalog_asset_links", "console_documents", "maintenance_*")
+	unregister := dbwork.WakeOnTables(wake, "lyric_fetch_runs", "library_preferences", "lyric_provider_settings", "lyric_resources", "catalog_entities", "catalog_asset_links", "server_settings", "console_settings_revision", "maintenance_*")
 	defer unregister()
 	worker.Run(ctx, "lyrics.bulk", wake, func(ctx context.Context) time.Duration {
 		for dbwork.Yield(ctx) {

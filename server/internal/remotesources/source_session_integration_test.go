@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -53,6 +54,19 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			modified := time.Unix(1700000000, 0).UTC()
 			var active, peak, gets atomic.Int32
 			var badAuth, providerBackoff atomic.Bool
+			type originGate struct {
+				started chan struct{}
+				release chan struct{}
+			}
+			var gatePointer atomic.Pointer[originGate]
+			blockOrigin := func() (*originGate, func()) {
+				gate := &originGate{make(chan struct{}, 1), make(chan struct{})}
+				gatePointer.Store(gate)
+				var once sync.Once
+				release := func() { once.Do(func() { gatePointer.Store(nil); close(gate.release) }) }
+				t.Cleanup(release)
+				return gate, release
+			}
 			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				n := active.Add(1)
 				defer active.Add(-1)
@@ -93,6 +107,17 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				}
 				if r.Method == http.MethodGet {
 					gets.Add(1)
+					if gate := gatePointer.Load(); gate != nil {
+						select {
+						case gate.started <- struct{}{}:
+						default:
+						}
+						select {
+						case <-gate.release:
+						case <-r.Context().Done():
+							return
+						}
+					}
 				}
 				w.Header().Set("ETag", `"origin-one"`)
 				if sequential {
@@ -107,7 +132,7 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				}
 				http.ServeContent(w, r, "film.mkv", modified, bytes.NewReader(payload))
 			}))
-			defer origin.Close()
+			t.Cleanup(origin.Close)
 			config, err := remotemedia.ValidateDAVConfig(ctx, remotemedia.DAVConfig{Root: origin.URL + "/media/", Username: "fixture", Password: "private-fixture", InsecureLocal: true}, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -291,6 +316,35 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				if err = input.Close(); err != nil {
 					t.Fatal(err)
 				}
+				errorView, err := dbwork.BeginSnapshot(ctx, f.s.db)
+				if err != nil {
+					t.Fatal(err)
+				}
+				failedSource, err := resolver.ResolveEpisodeReadSourceTx(ctx, errorView.Tx(), request, func() {})
+				errorView.Rollback()
+				if err != nil {
+					t.Fatal(err)
+				}
+				failedInput, err := failedSource.Open(ctx)
+				if err != nil {
+					failedSource.Close()
+					t.Fatal(err)
+				}
+				stopper, ok := failedInput.(interface{ StopAndRecheck(context.Context) error })
+				if !ok {
+					failedInput.Close()
+					failedSource.Close()
+					t.Fatal("actual Episode range input has no terminal recheck")
+				}
+				beforeFailureGets := gets.Load()
+				if err = stopper.StopAndRecheck(ctx); err != nil || gets.Load() != beforeFailureGets {
+					t.Fatal("Episode error recheck reopened media", err, gets.Load(), beforeFailureGets)
+				}
+				if err = failedInput.Validate(ctx); err == nil {
+					t.Fatal("failed Episode input remained usable")
+				}
+				failedInput.Close()
+				failedSource.Close()
 				publication, err := dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
 				if err != nil {
 					t.Fatal(err)
@@ -325,6 +379,32 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if first.Binding().Sequential != sequential || second.Binding().Profile.Limits.Connections != 1 {
 				t.Fatal(first.Binding(), second.Binding())
 			}
+			childContext, cancelChild := context.WithCancel(ctx)
+			if sequential {
+				child, err := first.OpenSequential(childContext)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cancelChild()
+				if n, err := child.Read(make([]byte, 16)); n != 0 || !errors.Is(err, context.Canceled) {
+					t.Fatal("canceled progressive child exposed bytes", n, err)
+				}
+				child.Close()
+			} else {
+				child, err := first.OpenRange(childContext)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cancelChild()
+				if n, err := child.ReadAt(childContext, make([]byte, 16), 0); n != 0 || !errors.Is(err, context.Canceled) {
+					t.Fatal("canceled range child exposed bytes", n, err)
+				}
+				child.Close()
+			}
+			if err := first.Check(ctx); err != nil {
+				t.Fatal("child cancellation killed its Reading session", err)
+			}
+			beforeReadGets := gets.Load()
 			if sequential {
 				if _, err = first.OpenRange(ctx); !errors.Is(err, storage.ErrRemoteRange) {
 					t.Fatal("sequential became ReadAt", err)
@@ -338,8 +418,8 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				if err != nil || !bytes.Equal(got, payload) {
 					t.Fatal("progressive bytes", len(got), err)
 				}
-				if gets.Load() != 1 {
-					t.Fatal("from-start body replayed", gets.Load())
+				if gets.Load() != beforeReadGets+1 {
+					t.Fatal("from-start body replayed", gets.Load(), beforeReadGets)
 				}
 			} else {
 				rangeReader, err := first.OpenRange(ctx)
@@ -369,6 +449,184 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			}
 			if counts := process.OperationCounts(); counts.Capacity != 1 || counts.Peak != 1 || counts.Active != 0 {
 				t.Fatal("actual source pools did not share cap1", counts)
+			}
+			if !sequential {
+				endpoint, err := process.Endpoint(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				entry, err := endpoint.Stat(ctx, "film.mkv", process.Check)
+				if err != nil {
+					t.Fatal(err)
+				}
+				beforeBaseline := gets.Load()
+				baseline, err := endpoint.ReadRange(ctx, "film.mkv", entry.ETag, int64(len(payload)), 456, 128, process.Check)
+				if err != nil || !bytes.Equal(baseline, payload[456:584]) {
+					t.Fatal("single-viewer origin baseline", baseline, err)
+				}
+				baselineGETs := gets.Load() - beforeBaseline
+				if baselineGETs < 1 {
+					t.Fatal("single-viewer baseline contacted no origin")
+				}
+				beforeShared, beforeGET := endpoint.CoalescedRanges(), gets.Load()
+				gate, unblockShared := blockOrigin()
+				read := func() <-chan error {
+					done := make(chan error, 1)
+					go func() {
+						data, e := endpoint.ReadRange(ctx, "film.mkv", entry.ETag, int64(len(payload)), 456, 128, process.Check)
+						if e == nil && !bytes.Equal(data, payload[456:584]) {
+							e = errors.New("shared source extent differs")
+						}
+						done <- e
+					}()
+					return done
+				}
+				leader := read()
+				select {
+				case <-gate.started:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				joiner := read()
+				deadline := time.NewTimer(2 * time.Second)
+				tick := time.NewTicker(time.Millisecond)
+				for endpoint.CoalescedRanges() == beforeShared {
+					select {
+					case <-deadline.C:
+						t.Fatal("same-file viewer did not join admitted transfer")
+					case <-tick.C:
+					}
+				}
+				tick.Stop()
+				deadline.Stop()
+				unblockShared()
+				if a, b := <-leader, <-joiner; a != nil || b != nil || gets.Load()-beforeGET != baselineGETs {
+					t.Fatal("same-file viewers duplicated the admitted origin workload", a, b, gets.Load()-beforeGET, baselineGETs)
+				}
+				t.Logf("shared_range_joiners=%d single_reader_origin_gets=%d shared_reader_origin_gets=%d admitted_peak=%d", endpoint.CoalescedRanges()-beforeShared, baselineGETs, gets.Load()-beforeGET, process.OperationCounts().Peak)
+
+				// The actual retained leases must share at cap1 too, rather
+				// than waiting behind a duplicate pre-read metadata request.
+				leaseA := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+				leaseB := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+				defer leaseA.Close()
+				defer leaseB.Close()
+				rangeA, e := leaseA.OpenRange(ctx)
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer rangeA.Close()
+				rangeB, e := leaseB.OpenRange(ctx)
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer rangeB.Close()
+				gate, releaseLeases := blockOrigin()
+				beforeLeaseGets, beforeJoiners := gets.Load(), f.s.sharedRangeJoiners.Load()
+				readLease := func(reader *SourceRange) <-chan error {
+					done := make(chan error, 1)
+					go func() {
+						data := make([]byte, 128)
+						n, e := reader.ReadAt(ctx, data, 456)
+						if e == nil && (n != len(data) || !bytes.Equal(data, payload[456:584])) {
+							e = errors.New("retained shared extent differs")
+						}
+						done <- e
+					}()
+					return done
+				}
+				leaderLease := readLease(rangeA)
+				select {
+				case <-gate.started:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				if n, e := rangeB.ReadAt(ctx, make([]byte, 128), 100); n != 0 || !errors.Is(e, storage.ErrBusy) {
+					t.Fatal("distinct retained extent escaped cap1", n, e)
+				}
+				if e := leaseB.Check(ctx); e != nil {
+					t.Fatal("resource contention retired retained authority", e)
+				}
+				joinerLease := readLease(rangeB)
+				limit := time.NewTimer(2 * time.Second)
+				tick = time.NewTicker(time.Millisecond)
+				for f.s.sharedRangeJoiners.Load() == beforeJoiners {
+					select {
+					case <-limit.C:
+						t.Fatal("retained viewer did not join at cap1")
+					case <-tick.C:
+					}
+				}
+				tick.Stop()
+				limit.Stop()
+				releaseLeases()
+				if a, b := <-leaderLease, <-joinerLease; a != nil || b != nil || gets.Load()-beforeLeaseGets != baselineGETs {
+					t.Fatal("retained viewers duplicated origin work", a, b, gets.Load()-beforeLeaseGets, baselineGETs)
+				}
+				t.Logf("retained_shared_joiners=%d origin_gets=%d admitted_peak=%d", f.s.sharedRangeJoiners.Load()-beforeJoiners, gets.Load()-beforeLeaseGets, process.OperationCounts().Peak)
+
+				// Closing an actual in-flight child must not retire its
+				// owner's retained lease. No synthetic physical epoch is used.
+				gate, releaseClosed := blockOrigin()
+				closing := readLease(rangeA)
+				select {
+				case <-gate.started:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				joinedBeforeClose := f.s.sharedRangeJoiners.Load()
+				otherReader := readLease(rangeB)
+				closeDeadline := time.NewTimer(2 * time.Second)
+				closeTick := time.NewTicker(time.Millisecond)
+				for f.s.sharedRangeJoiners.Load() == joinedBeforeClose {
+					select {
+					case <-closeDeadline.C:
+						t.Fatal("other retained viewer did not join before leader close")
+					case <-closeTick.C:
+					}
+				}
+				closeTick.Stop()
+				closeDeadline.Stop()
+				rangeA.Close()
+				releaseClosed()
+				if e := <-closing; e == nil {
+					t.Fatal("closed active child returned bytes")
+				}
+				if e := leaseA.Check(ctx); e != nil {
+					t.Fatal("closing active child retired parent", e)
+				}
+				if e := <-otherReader; e == nil {
+					t.Fatal("aborted shared transfer exposed bytes to another reader")
+				}
+				if e := leaseB.Check(ctx); e != nil {
+					t.Fatal("leader child-close retired another reader's authority", e)
+				}
+			}
+			for _, closedBeforeError := range []bool{false, true} {
+				failedReader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+				var child io.Closer
+				if sequential {
+					child, err = failedReader.OpenSequential(ctx)
+				} else {
+					child, err = failedReader.OpenRange(ctx)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if closedBeforeError {
+					child.Close()
+				}
+				beforeErrorGets := gets.Load()
+				if err = failedReader.StopAndRecheck(ctx); err != nil {
+					t.Fatal("decode-error metadata recheck", closedBeforeError, err)
+				}
+				if gets.Load() != beforeErrorGets || failedReader.Check(ctx) == nil {
+					t.Fatal("terminal recheck reopened media or retained authority", gets.Load(), beforeErrorGets)
+				}
+				child.Close()
+				if err = second.Check(ctx); err != nil {
+					t.Fatal("decode-error reader killed another session", err)
+				}
 			}
 			if !sequential {
 				metadata, err := process.Metadata(ctx)

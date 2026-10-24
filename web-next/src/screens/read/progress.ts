@@ -5,7 +5,7 @@ import type {ReaderMountAuthority} from './mount';
 /** Only observed engine locations enter the canonical CAS writer. A conflict
  * never overwrites a newer server position or manufactures saved progress. */
 export function bindReadingProgress({controller, session, initial, authority, reportError}: Readonly<{
-  controller: ReadingController; session: ReadingSession; initial: ReadingProgress;
+  controller: ReadingController; session: Pick<ReadingSession, 'manifest' | 'signal' | 'saveProgress'>; initial: ReadingProgress;
   authority: ReaderMountAuthority; reportError: (error: unknown) => void;
 }>) {
   let expectedRevision = initial.progress?.revision ?? 0;

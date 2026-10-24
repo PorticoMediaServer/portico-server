@@ -40,10 +40,23 @@ func readDRMAttribute(path string) string {
 // inventories are added only with their own measured producer; no fabricated
 // "default GPU" is returned for a platform without an implemented inventory.
 func DiscoverHardwareDevices(ctx context.Context) []HardwareDevice {
-	return discoverDRMDevices(ctx, "/sys", "/dev/dri", func(path string) bool {
+	drm := discoverDRMDevices(ctx, "/sys", "/dev/dri", func(path string) bool {
 		info, err := os.Stat(path)
 		return err == nil && info.Mode()&os.ModeDevice != 0 && info.Mode()&os.ModeCharDevice != 0
 	})
+	nvidia := discoverNVIDIADevices(ctx)
+	matched := map[string]bool{}
+	for _, device := range nvidia {
+		matched[device.PCIAddress] = true
+	}
+	out := append([]HardwareDevice{}, nvidia...)
+	for _, device := range drm {
+		if device.Vendor != "0x10de" || !matched[device.PCIAddress] {
+			out = append(out, device)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
 }
 
 func discoverDRMDevices(ctx context.Context, sysroot, devroot string, renderDevice func(string) bool) []HardwareDevice {
@@ -96,7 +109,7 @@ func discoverDRMDevices(ctx context.Context, sysroot, devroot string, renderDevi
 		}
 		// NVIDIA CUDA selectors require its own observed driver UUID/index
 		// association. A DRM node alone must never invent CUDA device zero.
-		out = append(out, HardwareDevice{ID: id, Name: name, Vendor: vendor, Driver: driver, Path: node, Backends: candidates})
+		out = append(out, HardwareDevice{ID: id, Name: name, Vendor: vendor, Driver: driver, PCIAddress: normalizedPCIAddress(filepath.Base(device)), Path: node, Backends: candidates})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out

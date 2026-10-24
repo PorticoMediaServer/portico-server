@@ -32,3 +32,40 @@ test('cancelled/offline/timed-out/late probes cannot reopen an old password form
   answer(Response.json(system('portico'))); await new Promise(resolve => setTimeout(resolve, 1));
   assert.equal(probe.getSnapshot().phase, 'error'); probe.dispose();
 });
+
+test('default browser fetch is not invoked with the probe as its receiver', async () => {
+  const original = globalThis.fetch;
+  const calls: unknown[][] = [];
+  globalThis.fetch = async function(this: unknown, input, init) {
+    // The browser's native fetch accepts a value call and rejects an arbitrary
+    // instance receiver. Node fetch alone would hide this production defect.
+    if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+    calls.push([this, input, init]);
+    return Response.json(system());
+  };
+  const probe = new ServerSignInProbe();
+  try {
+    assert.equal((await probe.inspect('https://server.test'))?.signIn, 'local');
+    assert.equal(probe.getSnapshot().phase, 'ready');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][1], 'https://server.test/v1/system');
+    const init = calls[0][2] as RequestInit;
+    assert.equal(init.credentials, 'omit');
+    assert.equal(init.redirect, 'error');
+    assert.equal(new Headers(init.headers).has('Authorization'), false);
+  } finally {probe.dispose(); globalThis.fetch = original;}
+});
+test('injected value and explicitly bound fetch transports preserve their invocation contract', async () => {
+  const receivers: unknown[] = [];
+  const transport: typeof fetch = async function(this: unknown) {
+    receivers.push(this);return Response.json(system('portico'));
+  };
+  const owner = {name: 'injected transport'};
+  for (const [fetcher, expected] of [[transport, undefined], [transport.bind(owner), owner]] as const) {
+    const probe = new ServerSignInProbe(fetcher);
+    try {
+      assert.equal((await probe.inspect('https://server.test'))?.signIn, 'portico');
+      assert.equal(receivers.at(-1), expected);
+    } finally {probe.dispose();}
+  }
+});

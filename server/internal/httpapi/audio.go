@@ -9,28 +9,15 @@ import (
 
 func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 	d.listeningRoutes(mux)
+	d.sonicAnalysisRoutes(mux)
 	d.httpHandle(mux, "GET /v1/items/{id}/similar", func(w http.ResponseWriter, r *http.Request) {
-		p, libraries, fence, e := d.homeScope(r)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		viewer, e := d.catalogViewer(r, p, libraries, fence)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		data, e := d.Catalog.WithContext(r.Context()).ListeningSimilar(viewer, r.PathValue("id"), limit)
-		if e == nil {
-			e = d.allowedLibrary(r.Context(), p, data.LibraryID)
-		}
+		out, e := d.sonicSimilarRequest(r)
 		if e != nil {
 			failure(w, e)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		write(w, 200, map[string]any{"scope": map[string]string{"serverId": d.Identity.ID(), "authority": p.Authority, "accountId": p.AccountID, "profileId": p.ProfileID}, "data": data})
+		write(w, 200, out)
 	})
 
 	d.httpHandle(mux, "GET /v1/books/{id}/timeline", func(w http.ResponseWriter, r *http.Request) {

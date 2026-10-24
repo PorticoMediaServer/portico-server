@@ -160,6 +160,34 @@ func (b *ownerPairBridge) RoundTrip(r *http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: out.Status, Header: out.Headers, Body: io.NopCloser(bytes.NewReader(payload)), ContentLength: int64(len(payload)), Request: r}, nil
 }
 
+var ownerPairDeniedReads = []struct{ id, path string }{
+	{"get_direct_account", "/v1/direct"},
+	{"get_sign_in_settings", "/v1/admin/sign-in"},
+	{"get_admin_access_members", "/v1/admin/access/members"},
+}
+
+// A missing route proves nothing about a narrowed family. Keep the actual
+// authority probes tied to the production registry even when the PG pair is
+// deliberately not enabled in the ordinary package run.
+func TestOwnerPairRefusalProbesUseRegisteredAccountRoutes(t *testing.T) {
+	registry, err := httpapi.FoundationRegistry(httpapi.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range ownerPairDeniedReads {
+		found := false
+		for _, route := range registry.Definitions() {
+			if route.ID == probe.id && route.Method == http.MethodGet && route.Path == probe.path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("owner refusal probe is not a registered account GET: %s", probe.id)
+		}
+	}
+}
+
 func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testing.T) {
 	b := newOwnerPairBridge(t)
 	initial := b.call(map[string]string{"Action": "snapshot"})
@@ -262,7 +290,14 @@ func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testin
 	api := httpapi.New(httpapi.Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Hosted: control, Networking: claims, Console: operations.New(db), Access: httpapi.AccessArea{Access: access.New(db)}, Origins: []string{"https://server.example"}})
 	request := func(method, path string, body any) *httptest.ResponseRecorder {
 		t.Helper()
-		raw, _ := json.Marshal(body)
+		var raw []byte
+		if body != nil {
+			var e error
+			raw, e = json.Marshal(body)
+			if e != nil {
+				t.Fatal("actual local request encoding failed")
+			}
+		}
 		defer clear(raw)
 		r := httptest.NewRequest(method, "https://server.example"+path, bytes.NewReader(raw))
 		r.Header.Set("Content-Type", "application/json")
@@ -311,9 +346,9 @@ func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testin
 	if status.State != "installed" || !status.InstallationAcknowledged || status.Operation == nil {
 		t.Fatal("actual approval did not install and ACK")
 	}
-	for _, path := range []string{"/v1/direct/account", "/v1/admin/sign-in", "/v1/admin/access/members"} {
-		if w := request("GET", path, nil); w.Code != 401 && w.Code != 403 {
-			t.Fatalf("narrow continuation reached unrelated authority: status=%d", w.Code)
+	for _, probe := range ownerPairDeniedReads {
+		if w := request("GET", probe.path, nil); w.Code != 401 && w.Code != 403 {
+			t.Fatalf("narrow continuation reached unrelated authority: route=%s status=%d", probe.id, w.Code)
 		}
 	}
 	origin, generation := networking.OwnerPairHTTPSForTest(t, claims)

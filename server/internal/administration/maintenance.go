@@ -284,7 +284,7 @@ func MaintenanceCadences() []MaintenanceCadence {
 }
 
 // MaintenanceTasks are the jobs a window may admit.
-var MaintenanceTasks = []string{"backup"}
+var MaintenanceTasks = []string{"backup", "analysis", "trickplay"}
 
 // RetentionCategories bounds legacy cache settings. Artwork has no age policy;
 // its owner retains referenced objects indefinitely.
@@ -307,7 +307,10 @@ type MaintenanceSettingsDocument struct {
 func DefaultMaintenanceSettings() MaintenanceSettingsDocument {
 	retention := map[string]int{"trickplay": 365, "prepared": 90, "conversions": 7, "subtitles": 365, "downloads": 30, "logs": 30}
 	return MaintenanceSettingsDocument{
-		Windows:         []MaintenanceWindow{{ID: "nightly", Name: "Overnight", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"backup"}}},
+		Windows: []MaintenanceWindow{
+			{ID: "nightly", Name: "Backups", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"backup"}},
+			{ID: "heavy", Name: "Heavy background work", Enabled: false, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 60, DurationMinutes: 300, Timezone: "", Tasks: []string{"analysis", "trickplay"}},
+		},
 		Retention:       retention,
 		BackupKeepCount: 7,
 		BackgroundSpeed: "normal",
@@ -346,7 +349,7 @@ func validateMaintenance(v *MaintenanceSettingsDocument) error {
 	if v.BackgroundSpeed != "gentle" && v.BackgroundSpeed != "normal" && v.BackgroundSpeed != "fast" {
 		fields = append(fields, "settings.backgroundSpeed")
 	}
-	if len(v.Windows) > 12 {
+	if len(v.Windows) != 2 {
 		fields = append(fields, "settings.windows")
 	}
 	cadences := map[string]bool{}
@@ -361,6 +364,25 @@ func validateMaintenance(v *MaintenanceSettingsDocument) error {
 			break
 		}
 		seen[window.ID] = true
+		if window.ID != "nightly" && window.ID != "heavy" {
+			fields = append(fields, "settings.windows.id")
+			break
+		}
+		expected := []string{"backup"}
+		if window.ID == "heavy" {
+			expected = []string{"analysis", "trickplay"}
+		}
+		if len(window.Tasks) != len(expected) {
+			fields = append(fields, "settings.windows.tasks")
+			break
+		}
+		for _, task := range expected {
+			if !oneOf(task, window.Tasks...) {
+				fields = append(fields, "settings.windows.tasks")
+				break
+			}
+		}
+
 		if !cadences[window.Cadence] {
 			fields = append(fields, "settings.windows.cadence")
 			break

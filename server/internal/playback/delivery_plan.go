@@ -301,7 +301,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	cfg := in.Config.Normalized()
 	outputs := currentConversionOutputs()
 	if in.Server != nil {
-		outputs = decoder.AvailableConversionOutputs(in.Server)
+		outputs = decoder.AvailableConversionOutputsForHardware(in.Server, in.Hardware)
 	}
 	if in.Outputs != nil {
 		outputs = *in.Outputs
@@ -554,8 +554,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		case !cfg.RemuxEnabled:
 			rejections = append(rejections, RouteRejection{RejectOwnerRemuxDisabled, ""})
 		}
-		transport, r := bestCopyTransport(transports, client, video, audio, in.Target.AllowHDR, true)
-		r = append(r, baseCopyRejections(video, client, in.Server)...)
+		transport, r := bestSourceCopyTransport(transports, client, video, audio, in.Target.AllowHDR, in.Server)
 		rejections = append(rejections, r...)
 		// remuxable describes the source and the device, not the preferences:
 		// it is what decides which refusal a closed policy is reported as.
@@ -571,8 +570,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	// Route 3: video copied, audio converted.
 	if !audioOnly {
 		rejections := excluded(DeliveryAudioConversion)
-		transport, r := bestAudioConversionTransport(transports, client, video, audio, in.Target, outputs)
-		r = append(r, baseCopyRejections(video, client, in.Server)...)
+		transport, r := bestSourceAudioConversionTransport(transports, client, video, audio, in.Target, outputs, in.Server)
 		converted := audioOutputFor(audio, client, in.Target, transportNamed(transports, transport), outputs)
 		rejections = append(rejections, serverConversionRejections(in.Server, in.Hardware, nil, audio, "", converted.Codec, false)...)
 		if audio != nil && converted.NoRate {
@@ -1017,6 +1015,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		MaxFrameRate:     p.MaxFrameRate,
 		Downmix:          p.Downmix == DownmixITULimited,
 		AudioSampleRate:  p.AudioSampleRate,
+		SourceVideoCodec: p.SourceVideoCodec,
 	}
 	if p.ConversionToolchain != nil {
 		request.Toolchain = p.ConversionToolchain
@@ -1082,6 +1081,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 	}
 	if p.Trace != nil && p.Trace.Video != nil {
 		v := p.Trace.Video
+		request.SourceBitDepth = v.BitDepth
 		request.DisableHardwareDecode = v.Rotation != 0 || v.SampleAspectRatio != "" && v.SampleAspectRatio != "1:1" && v.SampleAspectRatio != "0:1"
 		if request.Target != nil && request.Target.SourceRange == "" {
 			target := *request.Target

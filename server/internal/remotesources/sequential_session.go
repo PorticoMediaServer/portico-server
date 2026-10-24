@@ -11,9 +11,11 @@ import (
 	"portico.local/server/internal/storage"
 )
 
-// SequentialAdmission is interactive content-access authority supplied by the
-// retained Reading/playback session, never an automatic scan tier or pool label.
-// Missing callbacks fail closed. Metadata equality is not immutable identity.
+// SequentialAdmission binds one genuine from-start body to its real producer's
+// checks: retained Reading/playback content access, or a separately bounded
+// inventory metadata/configuration read. A scan tier or pool label cannot grant
+// interactive content access. Missing callbacks fail closed, and metadata
+// equality is not immutable identity.
 type SequentialAdmission struct {
 	Scan      remotemedia.FileObservation
 	Check     func(context.Context) error
@@ -188,6 +190,12 @@ func (s *SequentialSession) Read(ctx context.Context, p []byte) (int, error) {
 	n, err := io.ReadFull(s.body, data)
 	if err != nil {
 		s.body.Close()
+		if canceled := ctx.Err(); canceled != nil {
+			return 0, s.fail(canceled)
+		}
+		if canceled := s.life.Err(); canceled != nil {
+			return 0, s.fail(canceled)
+		}
 		err = errors.Join(storage.ErrRemoteRange, s.checkObservation(ctx))
 		return 0, s.fail(err)
 	}
