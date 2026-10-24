@@ -103,7 +103,7 @@ test('the drawn My List press is a real personal-state command with a canonical 
   assert.equal(data.personal.watchlisted, true);
   assert.equal(data.personal.revision, 2);
   const receipt = specimen.records.find(event => event.kind === 'personal-state');
-  assert.deepEqual(receipt?.value, {watchlisted: true, favorite: false, watched: false});
+  assert.deepEqual(receipt?.value, {watchlisted: true, favorite: false, watched: false, rating: null});
   assert.equal(specimen.records.some(event => event.kind === 'request' && (event.value as {method?: string}).method === 'PUT'), true);
   service.dispose();
 });
