@@ -124889,6 +124889,118 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetReadingSeriesItemsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSeriesItemsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "author": {
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "enum": [
+                    "owner",
+                    "file-metadata",
+                    "file-name",
+                    "folder"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "source"
+              ],
+              "type": "object"
+            },
+            "format": {
+              "enum": [
+                "epub",
+                "pdf",
+                "cbz"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inventoryAvailable": {
+              "type": "boolean"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "series": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "number": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "source": {
+                  "enum": [
+                    "owner",
+                    "file-metadata",
+                    "file-name",
+                    "folder"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "source"
+              ],
+              "type": "object"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "libraryId",
+            "title",
+            "format",
+            "sourceId",
+            "inventoryAvailable"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
   "GetReadingSessionsSessionIdAssetsRequest": {
     "properties": {},
     "required": [],
