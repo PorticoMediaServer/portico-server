@@ -66,13 +66,13 @@ function find(node: ReactNode, predicate: (element: ReactElement<Record<string, 
   }
 }
 
-test('compact owner Home has one statically labelled Activity glyph beside the avatar without mounting private Activity reads', () => {
+test('compact owner Home keeps only the wordmark and avatar, without a private Activity read', () => {
   for (const width of [390, 599]) {
     const {html, mounts} = render('owner', width);
     assert.equal(mounts, 0);
-    assert.match(html, /<header[^>]*>.*class="phoneTools".*aria-label="Server activity".*i-activity.*aria-label="Actual profile, account menu"/s);
-    assert.equal((html.match(/aria-label="Server activity"/g) ?? []).length, 1);
-    assert.doesNotMatch(html, /Owner-only reads|data-busy|streamCount|updateDot|Running normally|No streams/);
+    assert.match(html, /<header[^>]*>.*class="phoneTools".*aria-label="Actual profile, account menu"/s);
+    assert.equal((html.match(/aria-label="Actual profile, account menu"/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /phoneActivity|i-activity|aria-label="Server activity"|Owner-only reads|data-busy|streamCount|updateDot|Running normally|No streams/);
     assert.match(html, />Libraries<\/span>/);
   }
 });
@@ -113,10 +113,11 @@ test('real AccountMenu places its optional server action immediately after profi
   const noSlot = {...menu, serverAction: undefined};
   assert.equal(find(AccountMenu(noSlot), element => element === menu.serverAction), undefined);
 });
-test('header Activity exposes a plain named Dashboard action with no popover or status state', () => {
-  const {html} = render('owner');
-  assert.match(html, /<button type="button" class="phoneActivity" aria-label="Server activity"/);
-  assert.doesNotMatch(html.match(/<button type="button" class="phoneActivity"[^>]*>/)?.[0] ?? '', /aria-haspopup|aria-expanded|aria-pressed/);
+test('compact Home header has no Activity trigger or private status state', () => {
+  const {html, mounts} = render('owner');
+  assert.equal(mounts, 0);
+  assert.doesNotMatch(html, /phoneActivity|i-activity|aria-label="Server activity"|Owner-only reads/);
+  assert.doesNotMatch(html, /data-busy|streamCount|updateDot|Running normally|No streams/);
 });
 test('desktop retains only its existing real owner Activity component and non-Home mobile routes add no header glyph', () => {
   assert.equal(render('owner', 1024).mounts, 1);
