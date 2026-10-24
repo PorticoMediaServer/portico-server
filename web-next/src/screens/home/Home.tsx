@@ -223,7 +223,6 @@ function VisibleCollection({row, rowIndex, artwork, effects, selection, time, ap
     visible={interest.visible}
     selection={selection.collection(row)}
     artwork={appearance?.showBackdrops === false ? undefined : artwork.foreground(collection.backdropUrl, 1312 * devicePixelRatio, 16 / 9, {order: rowIndex * 1000, group: row.id})}
-    ambient={appearance?.showBackdrops === false ? undefined : artwork.ambient(collection.backdropUrl, {order: rowIndex * 1000, group: row.id})}
     covers={collection.members.slice(0, 4).flatMap((entry, index) => { const art = artwork.foreground(entry.posterUrl, 50 * devicePixelRatio, 2 / 3, {order: rowIndex * 1000 + index, group: row.id}); return art ? [art] : []; })}
     actionLabel={t('next.home.openCollection')} actionVariant="glass" onAction={open} onNavigate={open} /></div>;
 }
@@ -243,7 +242,6 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
   const ranked = row.id === 'community_watching' && !!row.period;
   const props = {model: ranked ? {...model, caption: []} : model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%'},
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
-    ambient: square && appearance?.showBackdrops !== false ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
     fallback: <GeneratedArt glyph={Array.from((entry.displayTitle ?? entry.title).trim())[0] ?? ''} />,
     onNavigate: () => effects.openEntry(entry),
     onPlay: target ? () => { void effects.play(entry, resume).catch(effects.reportError); } : undefined,
