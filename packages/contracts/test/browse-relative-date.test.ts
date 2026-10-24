@@ -6,8 +6,8 @@ import {schemas} from '../src/schemas.ts';
 /** The browse node is published inline wherever a query is accepted; the saved
  * resource definition is the stable one to inspect. */
 const node = () => {
-  const definition = (schemas.PostSavedResourcesRequest as {properties: Record<string, {properties: Record<string, unknown>}>}).properties.definition as {properties: {query: {anyOf: Array<{properties: Record<string, {description?: string}>}>}}};
-  return definition.properties.query.anyOf[0]!;
+  const definition = (schemas.PostSavedResourcesRequest as {properties: {definition: {properties: {query: {properties: Record<string, {description?: string}>}}}}}}).properties.definition;
+  return definition.properties.query;
 };
 
 test('the published browse-node contract declares the relative date operator and its value', () => {
