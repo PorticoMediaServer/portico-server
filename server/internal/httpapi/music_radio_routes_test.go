@@ -61,6 +61,9 @@ func TestMusicRadioHTTPRefillsPastChunkBoundaryAndReopens(t *testing.T) {
 	var q playbackv1.QueueReply
 	body := map[string]any{"selector": map[string]any{"container": map[string]any{"kind": "radio", "id": items[0].Public}}}
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "radio-create-00000001"}, body, 201, &q)
+	if q.Queue.DurationKnown || q.Queue.TotalDurationMs != nil {
+		t.Fatal("buffered radio songs were reported as a final duration", q.Queue)
+	}
 	if q.Queue.Current == nil || len(q.Window) == 0 || q.Window[0].ItemID != items[0].Public || q.Queue.Segments[0].Kind != "radio" {
 		t.Fatal(q)
 	}
