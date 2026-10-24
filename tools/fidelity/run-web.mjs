@@ -37,6 +37,17 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       const deterministicActual = JSON.stringify(actual) === JSON.stringify(await browser.measure(actualSelector, adapter.actual));
       const comparison = compareScreens(reference, actual, adapter), strings = compareCatalogueStrings(reference, actual, enUS, adapter), textMetrics = compareTextMetrics(reference, actual);
       const differences = [...comparison.differences, ...strings.differences];
+      for (const [side, screen] of [['reference', reference], ['actual', actual]]) {
+        const required = new Map(screen.strings.filter(value => value.style).map(value => [value.style.fontFamily + '|' + value.style.fontWeight, value.style]));
+        for (const style of required.values()) {
+          const family = style.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, ''), weight = Number(style.fontWeight);
+          if (['system-ui', 'sans-serif', 'serif', 'monospace'].includes(family)) continue;
+          if (!screen.fontFaces.some(face => {
+            const name = face.family.replace(/^['"]|['"]$/g, ''), range = face.weight.split(/\s+/).map(Number);
+            return name === family && face.status === 'loaded' && (range.length === 1 ? range[0] === weight : weight >= range[0] && weight <= range[1]);
+          })) differences.push({kind: 'font-not-loaded', label: `${side} ${family} ${weight}`});
+        }
+      }
       const password = actual.elements.find(node => node.frame === 'password-input');
       if (!password?.focused || password.input?.length !== 10) differences.push({kind: 'fixture-state', label: 'Real password focus and ten masked characters', focused: password?.focused, length: password?.input?.length});
       if (!deterministicReference || !deterministicActual) differences.push({kind: 'nondeterministic-extraction', label: 'Same-input determinism', reference: deterministicReference, actual: deterministicActual});
