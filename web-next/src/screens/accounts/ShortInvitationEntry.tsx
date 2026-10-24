@@ -40,12 +40,13 @@ export type ShortInvitationEntryProps = Readonly<{
 /** The ruling-10 initial Join step. The same entry instance carries the
  * verified origin into the existing local/Portico invitation acceptance. */
 export function ShortInvitationEntry(props: ShortInvitationEntryProps) {
+  const {createEntry} = props;
   const [entry, setEntry] = useState<BrowserAccountEntry>();
   useEffect(() => {
-    const current = (props.createEntry ?? (() => createBrowserAccountEntry({invitationDestination: 'server-origin'})))();
+    const current = (createEntry ?? (() => createBrowserAccountEntry({invitationDestination: 'server-origin'})))();
     setEntry(current);
     return () => current.dispose();
-  }, [props.createEntry]);
+  }, [createEntry]);
   return entry ? <ShortInvitationOperation {...props} entry={entry} /> : null;
 }
 

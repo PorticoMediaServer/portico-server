@@ -11,13 +11,7 @@ import styles from './invitation-short-code.module.css';
 const t = defaultI18n.t;
 export type ShortCodeInvitation = Readonly<{id: string; revision: number; state: 'pending' | 'accepted' | 'revoked' | 'expired'}>;
 export type ShortCodeRequest = (operationId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<ServerShortInvitation>;
-
-/**
- * The one explicit short-code issuance surface. A code is shown only from the
- * receipt that carries it; a replay without a code stays an absence and never
- * triggers a second operation. New code is the only thing that rotates it.
- */
-export function InvitationShortCodeDialog({open, onOpenChange, invitation, request, issueOnOpen = false, createOperationId, returnFocusRef}: {
+export type InvitationShortCodeDialogProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   invitation: ShortCodeInvitation;
@@ -26,13 +20,27 @@ export function InvitationShortCodeDialog({open, onOpenChange, invitation, reque
   issueOnOpen?: boolean;
   createOperationId?: () => string;
   returnFocusRef?: RefObject<HTMLElement | null>;
-}) {
-  const issuer = useMemo(() => new ShortCodeIssuer(createOperationId), [invitation.id, invitation.revision, createOperationId]);
+}>;
+
+/**
+ * The one explicit short-code issuance surface. A code is shown only from the
+ * receipt that carries it; a replay without a code stays an absence and never
+ * triggers a second operation. New code is the only thing that rotates it.
+ */
+export function InvitationShortCodeDialog(props: InvitationShortCodeDialogProps) {
+  const identity = `${props.invitation.id}/${props.invitation.revision}`;
+  return <IssuerDialog key={identity} {...props} identity={identity} />;
+}
+
+type IssuerDialogProps = InvitationShortCodeDialogProps & Readonly<{identity: string}>;
+function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createOperationId, returnFocusRef, identity}: IssuerDialogProps) {
+  const createRef = useRef(createOperationId);
+  createRef.current = createOperationId;
+  const issuer = useMemo(() => new ShortCodeIssuer(createRef.current), []);
   const state = useSyncExternalStore(issuer.subscribe, issuer.getSnapshot, issuer.getSnapshot);
   const [copied, setCopied] = useState(false);
   const alive = useRef(true), openRef = useRef(open), requestRef = useRef(request), runRef = useRef<ShortCodeRun>(() => Promise.reject(new Error('invitation_operation_unavailable')));
-  const autoIssued = useRef<string>();
-  const identity = `${invitation.id}/${invitation.revision}`;
+  const autoIssued = useRef<string | undefined>(undefined);
   openRef.current = open; requestRef.current = request;
   runRef.current = (operationId, signal) => requestRef.current(operationId, signal, () => alive.current && openRef.current);
 
