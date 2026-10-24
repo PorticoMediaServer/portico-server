@@ -23,4 +23,3 @@ export function fakeIndexedDB() {
   };
   return {data, indexedDB: {open}, failOpen: (times: number) => { failing = times; }};
 }
-
