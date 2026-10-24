@@ -46,6 +46,14 @@ dependency-source qualification, not ARM helper compilation or actual inference
 qualification. ARM inference and x86 CPUs without AVX2 still require their real
 out-of-process conformance runs; no installation becomes ready from this pin.
 
+The admitted general-job recipe `scripts/run-sonic-cpu-conformance.sh` stages
+those exact inputs and compares three real helper outputs against the native
+reference. Its default is pre-AVX Nehalem emulation. Set
+`PORTICO_SONIC_TEST_CPU=arm64` for a job-local cross-compiled helper and Cortex-A53
+emulation using the verified AArch64 SDK. The cross compiler and sysroot are
+extracted only into the job, with no host installation. An emulated pass does
+not qualify physical ARM hardware or an installed server/runtime closure.
+
 Conformance jobs supply `PORTICO_SONIC_HELPER_TEST` and
 `PORTICO_SONIC_MODEL_TEST` for actual supervised inference/cancellation tests.
 The media-tier `TestSonicActualConfinedCueDecodeAndSingleAllocation` additionally
