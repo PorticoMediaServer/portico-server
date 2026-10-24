@@ -21,7 +21,7 @@ const record = (kind: string, value?: string) => {document.documentElement.datas
 const frameSeen = (iso: string) => new Intl.DateTimeFormat('en-GB', {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(iso));
 function specimen() {
   const params = new URLSearchParams(location.search), frame = params.get('frame'), choice = params.get('state') ?? frame;
-  if (choice === '6b' || choice === 'waiting') return {attempt: {kind: 'waiting', row: rows[1]!, seconds: 20, total: 20} as MobileChooserAttempt};
+  if (choice === '6b' || choice === 'waiting') return {attempt: {kind: 'waiting', row: rows[1]!, seconds: 20, total: 33} as MobileChooserAttempt}; // the drawn ring is 61% at the 20-second caption
   if (choice === '6c' || choice === 'unreachable') return {attempt: {kind: 'unreachable', row: rows[2]!} as MobileChooserAttempt};
   if (choice === 'opening') return {attempt: {kind: 'opening', row: rows[1]!} as MobileChooserAttempt};
   if (choice === 'loading') return {attempt: {kind: 'loading'} as MobileChooserAttempt};
