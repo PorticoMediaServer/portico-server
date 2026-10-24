@@ -67,6 +67,19 @@ async function main() {
   const {browser, context, page, events} = await launch(playwright, {viewport: {width: 1440, height: 900}});
   const evidence = new Evidence(out);
   let verified = false;
+  // Submit evidence for Security: method, URL and status only. Never bodies or credentials.
+  const network = [];
+  page.on('request', request => {
+    if (request.method() === 'GET') return;
+    const url = new URL(request.url());
+    network.push({kind: 'request', method: request.method(), url: url.origin + url.pathname});
+  });
+  page.on('response', response => {
+    const url = new URL(response.url());
+    if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/v3/')) {
+      network.push({kind: 'response', status: response.status(), method: response.request().method(), url: url.origin + url.pathname});
+    }
+  });
 
   try {
     await report.check('hosted-reachable', async () => {
@@ -162,19 +175,34 @@ async function main() {
       await context.clearCookies();
       await page.goto(origin + '/sign-in', {waitUntil: 'domcontentloaded'});
       await settle(page, {quiet: 1500});
+      const beforeSubmitUrl = page.url();
+      const formShape = await page.evaluate(() => {
+        const form = document.querySelector('form');
+        return {action: form ? form.getAttribute('action') : null,
+          continueDisabled: (() => { const button = [...document.querySelectorAll('button')].find(b => /^(Continue|Sign in)$/.test((b.innerText || '').trim())); return button ? button.disabled : null; })()};
+      });
       const user = await findAny(page, [{css: 'input[autocomplete=username]'}, {css: 'input[type=text]'}, {role: 'textbox'}]);
       const pass = await findAny(page, [{css: 'input[type=password]'}]);
       assert(user && pass, 'the sign-in form is missing a username or password field');
       await user.fill(username, {timeout: 10000});
       await pass.fill(password, {timeout: 10000});
+      const mark = network.length;
       await clickAny(page, [{role: 'button', name: /^(Continue|Sign in)/}, {css: 'button[type=submit]'}], {label: 'Sign in'});
       await page.waitForTimeout(4500);
+      const submitCalls = network.slice(mark);
       await settle(page, {quiet: 1500});
       const state = await surfaceState(page);
-      assert(!/\/sign-in/.test(state.url), `sign-in did not leave the form (at ${state.url}): ${state.textHead.slice(0, 140)}`);
-      assert(!/\/v3\/signin/.test(state.url), `sign-in bounced to the identity provider at ${new URL(state.url).pathname} instead of opening the account; the just-verified account could not sign in`);
-      return {detail: `signed in through the browser form; now at ${new URL(state.url).pathname}`,
-        evidence: {screenshot: await evidence.shot(page, 'hosted-signed-in')}};
+      const text = await bodyText(page);
+      // The account home can render without the address leaving /sign-in, so judge the response
+      // and the drawn signed-in surface, not the path alone.
+      const sessionCall = submitCalls.find(call => call.kind === 'response' && call.method === 'POST' && call.url.endsWith('/v1/sessions'));
+      const signedInSurface = /Open your account|Sign out|No servers yet|Your servers/i.test(text);
+      assert(sessionCall && sessionCall.status >= 200 && sessionCall.status < 300,
+        `sign-in did not post a successful session: ${JSON.stringify(submitCalls).slice(0, 300)}`);
+      assert(signedInSurface, `sign-in answered ${sessionCall.status} but the signed-in surface never rendered (at ${new URL(state.url).pathname}): ${text.replace(/\n/g, ' ').slice(0, 200)}`);
+      assert(!/\/v3\/signin/.test(state.url), `sign-in bounced to the identity provider at ${new URL(state.url).pathname} instead of opening the account`);
+      return {detail: `signed in through the browser form: POST /v1/sessions ${sessionCall.status}; address stays ${new URL(state.url).pathname}; submit from ${new URL(beforeSubmitUrl).pathname}${formShape.action ? ' to ' + formShape.action : ' (script-handled form)'}`,
+        evidence: {screenshot: await evidence.shot(page, 'hosted-signed-in'), beforeSubmitUrl, formShape, submitCalls}};
     });
 
     await report.blocked('hosted-server-link',
