@@ -200,6 +200,11 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 const (
 	localArtworkCandidatePage   = 8
 	localArtworkCandidateLocate = 128
+	// localArtworkCandidateLocatePages bounds one call's locate reads. The
+	// current reader cannot exclude committed tuples, so a slot with more than
+	// this many accepted tuples keeps its dirty row and waits for the domain
+	// page that skips them; it never walks an unbounded page stream in one call.
+	localArtworkCandidateLocatePages = 8
 )
 
 // seedLocalArtworkAlternatives seeds the numbered sidecar images the scan
@@ -249,7 +254,16 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 	var err error
 	page := []catalog.LocalArtworkCandidateCursor{}
 	index := -1
-	for {
+	for read := 0; ; read++ {
+		if read == localArtworkCandidateLocatePages {
+			// Bounded: this call stops rather than reading the whole stream.
+			// The dirty row stays, and the domain page that skips committed
+			// tuples is the minimal way to finish larger slots.
+			if err = queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
+				return false, 0, err
+			}
+			return false, 0, nil
+		}
 		page, err = catalog.ReadLocalArtworkCandidatePageTx(ctx, tx, t.Kind, entity, role, after, localArtworkCandidateLocate)
 		if err != nil {
 			return false, 0, err
