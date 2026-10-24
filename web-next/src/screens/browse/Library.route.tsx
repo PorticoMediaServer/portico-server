@@ -61,7 +61,8 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const actions = (entry: ContentEntry) => ({onOpen: () => {if (!browse || resources.controller.contains(entry)) context.effects.openEntry(entry);},
     onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => {
       if (browse && !resources.controller.contains(entry)) return;
-      void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal()).catch(context.effects.reportError);
+      void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal(),
+        () => resources.life.current() && (!browse || resources.controller.contains(entry))).catch(context.effects.reportError);
     } : undefined});
   const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 190) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
   const header = {library, libraries: context.identity?.libraries ?? [], pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
