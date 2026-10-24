@@ -1,8 +1,8 @@
 import {useId, useReducer, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
-import {Icon} from '../../kit/Icon';
-import {Button, Chip, Segmented, Select, Switch, Tabs} from '../../kit/controls';
-import {SidePanel} from '../../kit/overlays';
+import {Icon} from '../../../kit/Icon';
+import {Button, Chip, Segmented, Select, Switch, Tabs} from '../../../kit/controls';
+import {SidePanel} from '../../../kit/overlays';
 import {
   airDayLabel, episodeLabel, initialSeriesRulesState, ruleNextLabel, ruleOptionLabels, ruleStatusLabel, ruleWithDraft,
   seriesRulesReducer, storageFraction, visibleAirings,
