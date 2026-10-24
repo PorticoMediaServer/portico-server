@@ -4,7 +4,7 @@ import {parsePreferenceSnapshot, type PreferenceSnapshot} from './preferences.ts
 import {decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse, decodePutReadingSessionsSessionIdProgressResponse} from '../../contracts/src/index.ts';
 
 /** Local trusted-app bridge only. No HTTP path, origin, credential or fetch port. */
-export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'>;
+export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'> & Partial<Pick<ReadingSession, 'openSequential'>>;
 export type ReadingHostTransport = Readonly<{send: (message: string) => void; subscribe: (listener: (message: string) => void) => () => void}>;
 type RecordValue = Record<string, unknown>;
 const record = (v: unknown): v is RecordValue => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -55,15 +55,29 @@ export function createReadingHost({session, channel, preferences, initialProgres
   if (!/^[A-Za-z0-9_-]{16,128}$/.test(channel)) fail();
   const manifest = session.manifest, life = new AbortController(), requests = new Map<number, AbortController>();
   let started = false, active = true, last = 0, binaryRequest = false, transfer: {id: number; bytes: Uint8Array; offset: number; timer: ReturnType<typeof setTimeout>} | undefined;
+  type Sequential = {id: number; life: AbortController; reader?: Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel' | 'releaseLock'>; total: number; pulling: boolean; timer?: ReturnType<typeof setTimeout>};
+  let sequential: Sequential | undefined;
   const valid = () => !life.signal.aborted && !session.signal.aborted && current() && session.manifest === manifest;
   const check = () => {if (!valid()) fail('cancelled');};
   const post = (value: RecordValue) => {if (valid()) send(JSON.stringify({v: 1, channel, ...value}));};
   const release = () => {if (transfer) clearTimeout(transfer.timer); transfer = undefined;};
+  const stopSequential = (value: Sequential, cancel = true) => {
+    if (sequential !== value) return;
+    sequential = undefined; clearTimeout(value.timer); value.life.abort();
+    const reader = value.reader;
+    if (reader) {
+      const unlock = () => {try {reader.releaseLock();} catch { /* cancelled pending read releases below */ }};
+      if (cancel) void reader.cancel().catch(() => {}).finally(unlock); else unlock();
+    }
+  };
+  const touchSequential = (value: Sequential) => {
+    clearTimeout(value.timer); value.timer = setTimeout(() => stopSequential(value), 30000);
+  };
   const dispose = () => {
     if (life.signal.aborted) return;
     // Retirement is local; it must not issue a cleanup request as another viewer.
     try {send(JSON.stringify({v: 1, channel, kind: 'retired', error: errorInfo(session.signal.reason)}));} catch { /* native surface already gone */ }
-    life.abort(); release(); for (const request of requests.values()) request.abort(); requests.clear();
+    life.abort(); release(); if (sequential) stopSequential(sequential); for (const request of requests.values()) request.abort(); requests.clear();
     session.signal.removeEventListener('abort', dispose);
   };
   session.signal.addEventListener('abort', dispose, {once: true});
@@ -81,6 +95,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
       started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress, active}); return;
     }
     if (!started || data.channel !== channel || !valid()) return;
+    if (data.kind === 'sequential-cancel' && sequential && data.stream === sequential.id) {stopSequential(sequential); release(); return;}
     if (data.kind === 'cancel' && integer(data.id, 1, last)) {requests.get(data.id)?.abort(); if (transfer?.id === data.id) release(); return;}
     if (data.kind !== 'request' || !integer(data.id, last + 1, Number.MAX_SAFE_INTEGER)) return;
     last = data.id; const id = data.id, method = data.method, args = record(data.args) ? data.args : {};
@@ -93,6 +108,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
       if (method === 'range' || method === 'asset' || method === 'page') {if (binaryRequest || transfer) fail('bridge_busy'); binaryRequest = true; ownsBinary = true;}
       if (method === 'head') value = await session.headPDF(request.signal) ?? null;
       else if (method === 'range') {
+        if (manifest.sequential) fail('invalid_format');
         if (!integer(args.start, 0, manifest.size - 1) || !integer(args.endExclusive, Number(args.start) + 1, manifest.size) || args.endExclusive - args.start > 65536) fail('invalid_range');
         if (transfer) fail('bridge_busy');
         value = stage(id, await session.readRange({start: args.start, endExclusive: args.endExclusive}, request.signal));
@@ -103,8 +119,41 @@ export function createReadingHost({session, channel, preferences, initialProgres
         if (!integer(args.index, 0, 4095) || !integer(args.width, 32, 2048) || transfer) fail('invalid_page');
         const page = await session.page(args.index, {width: args.width, signal: request.signal});
         value = stage(id, page.bytes, {index: page.index, name: page.name, mime: page.mime});
+      } else if (method === 'sequential-open') {
+        if (manifest.format !== 'pdf' || manifest.sequential !== true || !session.openSequential) fail('invalid_format');
+        if (sequential || binaryRequest || transfer) fail('sequential_busy');
+        const stream: Sequential = {id, life: new AbortController(), total: 0, pulling: false}; sequential = stream;
+        const aborted = () => stopSequential(stream); request.signal.addEventListener('abort', aborted, {once: true});
+        try {
+          const body = await session.openSequential(stream.life.signal);
+          if (sequential !== stream || stream.life.signal.aborted || request.signal.aborted || !valid()) {
+            void body.cancel().catch(() => {}); fail('cancelled');
+          }
+          stream.reader = body.getReader(); touchSequential(stream); value = {stream: stream.id};
+        } catch (error) {stopSequential(stream); throw error;}
+        finally {request.signal.removeEventListener('abort', aborted);}
+      } else if (method === 'sequential-read') {
+        const stream = sequential;
+        if (!stream || args.stream !== stream.id || !stream.reader) fail('cancelled');
+        if (stream.pulling || binaryRequest || transfer) fail('bridge_busy');
+        stream.pulling = true; binaryRequest = true; ownsBinary = true; touchSequential(stream);
+        const aborted = () => stopSequential(stream); request.signal.addEventListener('abort', aborted, {once: true});
+        try {
+          const next = await stream.reader.read();
+          check(); if (sequential !== stream || request.signal.aborted) fail('cancelled');
+          if (next.done) {
+            if (stream.total !== manifest.size) fail('response_size');
+            stopSequential(stream, false); value = {stream: stream.id, done: true};
+          } else {
+            if (!(next.value instanceof Uint8Array) || next.value.byteLength > 1 << 20 || stream.total + next.value.byteLength > manifest.size) fail('response_size');
+            stream.total += next.value.byteLength;
+            value = stage(id, next.value, {stream: stream.id, done: false});
+          }
+        } catch (error) {stopSequential(stream); throw error;}
+        finally {stream.pulling = false; request.signal.removeEventListener('abort', aborted);}
       } else if (method === 'chunk') {
         if (!transfer || args.transfer !== transfer.id || args.offset !== transfer.offset) fail();
+        if (sequential) touchSequential(sequential);
         const start = transfer.offset, end = Math.min(start + CHUNK, transfer.bytes.length);
         value = {offset: start, bytes: encode(transfer.bytes.subarray(start, end))}; transfer.offset = end;
         clearTimeout(transfer.timer);
@@ -137,12 +186,14 @@ export type ReadingGuest = Readonly<{
 export function connectReadingHost(transport: ReadingHostTransport): Readonly<{ready: Promise<ReadingGuest>; dispose: () => void}> {
   const life = new AbortController(), waiting = new Map<number, {resolve: (value: unknown) => void; reject: (error: unknown) => void}>();
   const listeners = new Set<() => void>(), activeListeners = new Set<(active: boolean) => void>();
+  let cancelSequential: ((reason: unknown) => void) | undefined;
   let channel: string | undefined, sequence = 0, snapshot: PreferenceSnapshot, initialized = false, active = true, binaryTail = Promise.resolve();
   let resolveReady!: (guest: ReadingGuest) => void, rejectReady!: (error: unknown) => void;
   const ready = new Promise<ReadingGuest>((resolve, reject) => {resolveReady = resolve; rejectReady = reject;});
   void ready.catch(() => {});
   const dispose = (reason: unknown = new ReadingError('cancelled')) => {
     if (life.signal.aborted) return;
+    cancelSequential?.(reason);
     life.abort(reason); clearTimeout(startDeadline); off(); rejectReady(reason);
     for (const pending of waiting.values()) pending.reject(reason);
     waiting.clear(); listeners.clear(); activeListeners.clear();
@@ -168,7 +219,8 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
       await predecessor;
       if (life.signal.aborted || signal?.aborted) fail('cancelled');
       const metadata = await call(method, args, signal);
-      if (!record(metadata) || !integer(metadata.transfer, 1, Number.MAX_SAFE_INTEGER) || !integer(metadata.length, 0, 32 * 1024 * 1024)) fail();
+      if (method === 'sequential-read' && record(metadata) && metadata.done === true) return {bytes: new Uint8Array(), metadata};
+      if (!record(metadata) || !integer(metadata.transfer, 1, Number.MAX_SAFE_INTEGER) || !integer(metadata.length, 0, method === 'sequential-read' ? 1 << 20 : 32 * 1024 * 1024)) fail();
       transfer = metadata.transfer; const bytes = new Uint8Array(metadata.length);
       for (let offset = 0; offset < bytes.length;) {
         const size = Math.min(CHUNK, bytes.length - offset), part = await call('chunk', {transfer, offset}, signal);
@@ -177,6 +229,47 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
       }
       return {bytes, metadata};
     } finally {if (transfer !== undefined && !life.signal.aborted) void call('release', {transfer}).catch(() => {}); unlock();}
+  }
+  async function openSequential(manifest: ReadingManifest, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+    if (manifest.format !== 'pdf' || manifest.sequential !== true) fail('invalid_format');
+    if (life.signal.aborted || signal?.aborted) fail('cancelled');
+    if (cancelSequential) fail('sequential_busy');
+    const child = new AbortController();
+    let stream: number | undefined, ended = false, total = 0, controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const cancelRemote = () => {if (stream !== undefined && !life.signal.aborted) {
+      try {transport.send(JSON.stringify({v: 1, channel, kind: 'sequential-cancel', stream}));} catch { /* host already retired */ }
+    }};
+    const end = (reason?: unknown, consumerCancel = false, eof = false) => {
+      if (ended) return;
+      ended = true; child.abort(); signal?.removeEventListener('abort', aborted);
+      if (cancelSequential === retire) cancelSequential = undefined;
+      if (!eof) cancelRemote();
+      if (!consumerCancel && controller) {if (eof) controller.close(); else controller.error(reason ?? new ReadingError('cancelled'));}
+    };
+    const retire = (reason: unknown) => end(reason);
+    const aborted = () => end(new ReadingError('cancelled'));
+    cancelSequential = retire; signal?.addEventListener('abort', aborted, {once: true});
+    try {
+      const opened = await call('sequential-open', {}, child.signal);
+      if (!record(opened) || !integer(opened.stream, 1, Number.MAX_SAFE_INTEGER)) fail();
+      stream = opened.stream;
+      if (ended || life.signal.aborted || signal?.aborted) {cancelRemote(); fail('cancelled');}
+      return new ReadableStream<Uint8Array>({
+        start(value) {controller = value;},
+        async pull() {
+          if (ended) return;
+          try {
+            const next = await binary('sequential-read', {stream}, child.signal);
+            if (ended) return;
+            if (next.metadata.stream !== stream || typeof next.metadata.done !== 'boolean') fail();
+            if (next.metadata.done) {if (total !== manifest.size) fail('response_size'); end(undefined, false, true); return;}
+            if (total + next.bytes.byteLength > manifest.size) fail('response_size');
+            total += next.bytes.byteLength; controller!.enqueue(next.bytes);
+          } catch (error) {end(error);}
+        },
+        cancel() {end(undefined, true);},
+      }, {highWaterMark: 0});
+    } catch (error) {end(error); throw error;}
   }
   const off = transport.subscribe(message => {
     try {
@@ -194,6 +287,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
         const session: ReadingHostSession = Object.freeze({manifest, signal: life.signal,
           headPDF: async signal => {await call('head', {}, signal);},
           readRange: async (range, signal) => (await binary('range', range, signal)).bytes,
+          openSequential: signal => openSequential(manifest, signal),
           readAsset: async (path, signal) => (await binary('asset', {path}, signal)).bytes,
           page: async (index, options): Promise<ReadingPage> => {
             const {bytes, metadata} = await binary('page', {index, width: options.width}, options.signal);
