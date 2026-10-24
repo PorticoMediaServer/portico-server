@@ -72,7 +72,7 @@ function source(x:unknown):RemoteSource{
  if(x.mountId!==undefined&&!text(x.mountId,256))invalid();
  return Object.freeze({id:x.id,kind:x.kind as RemoteSource['kind'],name:x.name,rootPath:x.rootPath,generation:x.generation,state:x.state,rangeSupport:oneOfOr('remote-sources','source.rangeSupport',x.rangeSupport,['unknown','conditional','unsupported','sequential'] as const,'unknown'),insecureLocal:x.insecureLocal,credentialPresent:x.credentialPresent,...(x.origin===undefined?{}:{origin:x.origin as string}),...(errorCode===undefined?{}:{errorCode}),...(x.mountId===undefined?{}:{mountId:x.mountId as string})});
 }
-const messages:Record<string,string>={remote_source_changed:'This source changed. Refresh before submitting a new configuration.',storage_command_conflict:'The source changed or this operation conflicts with a previous receipt.',storage_operation_expired:'The operation expired. Check the device clock and refresh.',remote_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',remote_invalid_configuration:'Check the endpoint, approved network access and configuration.',remote_range_unsupported:'The server cannot safely range-read this provider representation.',remote_binary_changed:'The approved rclone executable changed. Reapprove it in source configuration.',remote_budget_exceeded:'This operation exceeded the configured safety budget.',remote_rate_limited:'The provider or server is busy. Check the original receipt before retrying.',revision_mismatch:'This source changed. Refresh before saving.',idempotency_key_reused:'This operation was already used. Refresh and try again.',request_in_progress:'Another source change is in progress. Try again in a moment.',unauthorized:'Owner sign-in is required.',forbidden:'This viewer cannot manage sources.'};
+const messages:Record<string,string>={remote_source_changed:'This source changed. Refresh before submitting a new configuration.',storage_command_conflict:'The source changed or this operation conflicts with a previous receipt.',storage_operation_expired:'The operation expired. Check the device clock and refresh.',remote_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',remote_invalid_configuration:'Check the endpoint, approved network access and configuration.',remote_range_unsupported:'The server cannot safely range-read this provider representation.',remote_binary_changed:'The approved rclone executable changed. Reapprove it in source configuration.',remote_budget_exceeded:'This operation exceeded the configured safety budget.',remote_rate_limited:'The provider or server is busy. Check the original receipt before retrying.',revision_mismatch:'This source changed. Refresh before saving.',idempotency_key_reused:'This operation was already used. Refresh and try again.',request_in_progress:'Another source change is in progress. Try again in a moment.',refresh_failed:'The profile was saved, but the refreshed values could not be read.',unauthorized:'Owner sign-in is required.',forbidden:'This viewer cannot manage sources.'};
 const CONFLICT='storage_command_conflict';
 /**
  * An edit carried onto the share as it is now, after someone else changed it. What the owner left
@@ -157,12 +157,21 @@ export class RemoteSourceService{
  async policy(libraryId:string):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(libraryId)}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');return this.parsePolicy(raw,libraryId);}
  private parsePolicy(raw:unknown,id:string):AnalysisPolicy{this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==id||typeof raw.policy.enabled!=='boolean'||!integer(raw.policy.revision))invalid();if(raw.policy.effective!==undefined&&typeof raw.policy.effective!=='boolean')invalid();const scanTier=['file_list_only','basic','complete','custom'].includes(String(raw.policy.scanTier))?raw.policy.scanTier as string:undefined;if(raw.policy.scanTier!==undefined&&scanTier===undefined)noteSkipped('remote-sources','policy.scanTier');return Object.freeze({libraryId:id,enabled:raw.policy.enabled,revision:raw.policy.revision,...(raw.policy.effective===undefined?{}:{effective:raw.policy.effective as boolean}),...(scanTier===undefined?{}:{scanTier})});}
  async setPolicy(policy:AnalysisPolicy,enabled:boolean):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("put_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(policy.libraryId)}),'PUT',routeBody("put_libraries_id_strm_analysis_policy", {enabled,expectedRevision:policy.revision}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');return this.parsePolicy(raw,policy.libraryId);}
- async readProfile(id:string):Promise<SourceReadSettings>{
- const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_storage_source_read_profile",{"id":encodeURIComponent(id)}));
- if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
- this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
- const settings=sourceReadSettings(raw.settings);if(settings.sourceId!==id)invalid();
- return settings;
+ async readProfile(id:string,expectedGeneration?:string):Promise<SourceReadSettings>{
+ const epoch=this.epoch;
+ try{
+  const raw=await this.request(encodedRoutePath("get_storage_source_read_profile",{"id":encodeURIComponent(id)}));
+  if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+  this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
+  const settings=sourceReadSettings(raw.settings);
+  if(settings.sourceId!==id||expectedGeneration!==undefined&&settings.generation!==expectedGeneration)invalid();
+  return settings;
+ }catch(error){
+  if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+  if(error instanceof Error&&error.message==='Invalid remote source response.')throw error;
+  const code=record(error)&&typeof error.code==='string'?error.code:'internal';
+  throw Object.assign(new Error(safeError({code})),{code});
+ }
 }
 async saveProfile(profile:SourceReadSettings,values:SourceReadValues):Promise<SourceReadSettings>{
  if(this.disposed||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
@@ -180,17 +189,17 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues):Promise<So
   const receipt=this.parseReceipt(raw,op);
   if(receipt.source.id!==profile.sourceId)invalid();
   const next=record(raw)&&record(raw.receipt)&&raw.receipt.readSettings!==undefined?sourceReadSettings(raw.receipt.readSettings):undefined;
-  if(next&&next.sourceId!==profile.sourceId)invalid();
+  if(next&&(next.sourceId!==profile.sourceId||next.generation!==receipt.source.generation.toString()))invalid();
   accepted=true;this.publish({receipt,ambiguous:false});
   if(next)return next;
   try{return await this.readProfile(profile.sourceId);}
-  catch{throw Object.assign(new Error('The profile was saved, but the refreshed values could not be read.'),{code:'refresh_failed'});}
+  catch{throw Object.assign(new Error(safeError({code:'refresh_failed'})),{code:'refresh_failed'});}
  }catch(error){
   if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
   const code=record(error)&&typeof error.code==='string'?error.code:'';
   const rejected=['storage_command_conflict','storage_operation_expired','revision_mismatch','idempotency_key_reused','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden','not_permitted','invalid_request'].includes(code);
-  this.publish(accepted?{ambiguous:false,error:'The profile was saved, but the refreshed values could not be read.',errorCode:'refresh_failed'}:{ambiguous:submitted&&!rejected,error:safeError(error),errorCode:code});
-  throw error;
+  this.publish(accepted?{ambiguous:false,error:safeError({code:'refresh_failed'}),errorCode:'refresh_failed'}:{ambiguous:submitted&&!rejected,error:safeError(error),errorCode:code});
+  throw accepted?Object.assign(new Error(safeError({code:'refresh_failed'})),{code:'refresh_failed'}):Object.assign(new Error(safeError(error)),{code:code||'internal'});
  }finally{if(epoch===this.epoch)this.publish({busy:false});}
 }
 

@@ -233,7 +233,7 @@ test('read-profile reads the server values and the four drawn presets match its 
 test('saving a read profile sends the exact revisioned body and returns the receipt settings',async()=>{
  const settings={sourceId:'dav',generation:'7',revision:3,saved:true,values:{scanDepth:'complete' as const,wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0}};
  let body:any;
- const service=new RemoteSourceService(api(async(path,method,raw)=>{if(method==='GET')return list();assert.equal(path,'/v1/storage/sources/dav/settings/read-profile');assert.equal(method,'PUT');body=raw;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source(),readSettings:settings}};}),scope,async()=>op);
+ const service=new RemoteSourceService(api(async(path,method,raw)=>{if(method==='GET')return list();assert.equal(path,'/v1/storage/sources/dav/settings/read-profile');assert.equal(method,'PUT');body=raw;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source({generation:7}),readSettings:settings}};}),scope,async()=>op);
  await service.load();const value=await service.saveProfile({sourceId:'dav',generation:'7',revision:2,saved:true,values:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}},settings.values);
  assert.deepEqual(body,{operationId:op,expectedGeneration:'7',expectedRevision:2,values:settings.values});assert.deepEqual(value,settings);assert.equal(service.getSnapshot().receipt?.operationId,op);assert.equal(service.getSnapshot().busy,false);service.dispose();
 });
@@ -252,4 +252,15 @@ test('read-profile binds the returned source and a refresh failure never becomes
  const refresh=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}gets++;throw new Error('refresh failed');}),scope,async()=>op);
  await assert.rejects(refresh.saveProfile(before,sourceReadPreset('once')),/refreshed values could not be read/);
  assert.equal(puts,1);assert.equal(gets,1);assert.equal(refresh.getSnapshot().ambiguous,false);assert.equal(refresh.getSnapshot().errorCode,'refresh_failed');assert.equal(refresh.getSnapshot().receipt?.operationId,op);refresh.dispose();
+});
+
+test('read-profile and save transport failures never retain a hostile message',async()=>{
+ const secret='https://private-user:private-password@private.example/media/';
+ const read=new RemoteSourceService(api(async()=>{throw Object.assign(new Error(secret),{code:'remote_offline'});}),scope,async()=>op);
+ await assert.rejects(read.readProfile('dav'),error=>{const text=String(error);return !text.includes('private-user')&&!text.includes('private-password')&&!text.includes('private.example');});
+ assert(!JSON.stringify(read.getSnapshot()).includes('private-password'));read.dispose();
+ const save=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT')throw Object.assign(new Error(secret),{code:'remote_offline'});return list();}),scope,async()=>op);
+ const before={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ await assert.rejects(save.saveProfile(before,before.values),error=>!String(error).includes('private-password'));
+ assert(!JSON.stringify(save.getSnapshot()).includes('private-password'));save.dispose();
 });

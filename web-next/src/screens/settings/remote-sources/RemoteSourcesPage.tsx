@@ -61,8 +61,21 @@ function problemId(source: RemoteSource): MessageId | undefined {
 function SourceStatus({source}: {source: RemoteSource}) {
   return <span className={styles.badge} data-tone={stateTone(source)}>{t(stateId(source))}</span>;
 }
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : '';
+export function remoteErrorText(error: unknown): string {
+  const code = error && typeof error === 'object' && typeof (error as {code?: unknown}).code === 'string' ? (error as {code: string}).code : '';
+  switch (code) {
+    case 'remote_credentials_required': case 'source_credentials_required': return t('next.remoteSources.problem.credentials_required');
+    case 'remote_invalid_configuration': case 'invalid_request': return t('next.remoteSources.error.invalid');
+    case 'remote_range_unsupported': return t('next.remoteSources.problem.range_unsupported');
+    case 'remote_rate_limited': return t('next.remoteSources.problem.rate_limited');
+    case 'revision_mismatch': case 'storage_command_conflict': return t('next.remoteSources.error.changed');
+    case 'idempotency_key_reused': return t('next.remoteSources.error.reused');
+    case 'request_in_progress': return t('next.remoteSources.error.busy');
+    case 'unauthorized': return t('next.remoteSources.error.signIn');
+    case 'forbidden': case 'not_permitted': return t('next.remoteSources.error.forbidden');
+    case 'refresh_failed': return t('next.remoteSources.error.refreshFailed');
+    default: return t('next.remoteSources.error.generic');
+  }
 }
 function refreshFailure(error: unknown): boolean {
   return !!error && typeof error === 'object' && (error as {code?: string}).code === 'refresh_failed';
@@ -86,8 +99,8 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent}: RemoteSo
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const sources = snapshot.sources.filter(source => source.kind === 'webdav');
   const [notice, setNotice] = useState('');
-  const refresh = () => {setNotice('');void service.load();};
-  const recover = () => {setNotice('');void service.recover().catch(error => {if (isCurrent()) setNotice(errorText(error));});};
+  const refresh = () => {if (!isCurrent()) return;setNotice('');void service.load();};
+  const recover = () => {if (!isCurrent()) return;setNotice('');void service.recover().catch(error => {if (isCurrent()) setNotice(remoteErrorText(error));});};
   return <div className={styles.page}>
     <SettingsGroup title={t('next.settingsSpec.server.remote-sources.groups.0.title')}
       actions={<Button size="compact" variant="primary" icon="i-plus" onClick={() => setAdding(true)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.addLabel')}</Button>}>
@@ -120,29 +133,34 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('once'));
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
-  const reset = () => {setStep('connection');setDraft(emptyDraft);setResult(undefined);setError('');setCreated(undefined);setProfile(undefined);setValues(sourceReadPreset('once'));setBusy(false);setLoadingProfile(false);};
-  useEffect(() => {if (open) reset();}, [open]);
+  const testAttempt = useRef(0);
+  const reset = () => {setStep('connection');setDraft(emptyDraft);setResult(undefined);setError('');setCreated(undefined);setProfile(undefined);setValues(sourceReadPreset('once'));setBusy(false);setLoadingProfile(false);testAttempt.current++;};
+  const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
+  useEffect(() => {if (!open) reset();}, [open]);
   const test = async () => {
+    if (!isCurrent()) return;
+    const attempt = ++testAttempt.current, captured = {...draft};
     setError('');setResult(undefined);setBusy(true);
-    try {const next = await service.testConnection({name: draft.name.trim(), root: draft.root.trim(), username: draft.username, password: draft.password, insecureLocal: draft.insecureLocal});if (isCurrent()) setResult(next);}
-    catch (value) {if (isCurrent()) setError(errorText(value));}
-    finally {if (isCurrent()) setBusy(false);}
+    try {const next = await service.testConnection({name: captured.name.trim(), root: captured.root.trim(), username: captured.username, password: captured.password, insecureLocal: captured.insecureLocal});
+      if (isCurrent() && attempt === testAttempt.current) setResult(next);}
+    catch (value) {if (isCurrent() && attempt === testAttempt.current) setError(remoteErrorText(value));}
+    finally {if (isCurrent() && attempt === testAttempt.current) setBusy(false);}
   };
   const create = async () => {
-    if (!result) return;
+    if (!isCurrent() || !result) return;
     setError('');setBusy(true);
     try {
       await service.configure(null, davConfiguration(null, draft));
       const state = service.getSnapshot();
       if (state.error || !state.receipt) {if (isCurrent()) setError(state.error || 'The source was not confirmed.');return;}
-      const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(source.id);if (isCurrent()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
-      catch (value) {if (isCurrent()) setError(errorText(value));}
+      const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);setDraft(current => ({...current, password: ''}));
+      try {const next = await service.readProfile(source.id, String(source.generation));if (isCurrent()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      catch (value) {if (isCurrent()) setError(remoteErrorText(value));}
       finally {if (isCurrent()) setLoadingProfile(false);}
     } finally {if (isCurrent()) setBusy(false);}
   };
   const saveReading = async () => {
-    if (!profile) return;
+    if (!isCurrent() || !profile) return;
     setError('');setBusy(true);
     try {
       const next = await service.saveProfile(profile, values);
@@ -154,10 +172,10 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
     } catch (value) {
       if (!isCurrent()) return;
       const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
-      if (refreshFailure(value) && saved) onCreated(saved); else setError(errorText(value));
+      if (refreshFailure(value) && saved) onCreated(saved); else setError(remoteErrorText(value));
     } finally {if (isCurrent()) setBusy(false);}
   };
-  const close = () => {if (!busy) onClose();};
+  const close = () => {if (busy) return;setDraft(emptyDraft);setResult(undefined);setError('');onClose();};
   const footer = step === 'connection'
     ? <><Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !result} onClick={create}>{t('next.remoteSources.saveAndContinue')}</Button></>
     : <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>;
@@ -167,12 +185,12 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
     {step === 'connection' ? <>
       <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
       <p className={styles.note}>{t('next.remoteSources.kindsBlocked')}</p>
-      <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => setDraft({...draft, name: event.target.value})}/>
+      <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.0.control.placeholder')} disabled={busy}
-        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'}} onChange={event => setDraft({...draft, root: event.target.value})}/>
-      <TextField label={t('next.remoteSources.username')} value={draft.username} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.1.control.placeholder')} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => setDraft({...draft, username: event.target.value})}/>
-      <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.2.control.placeholder')} disabled={busy} onChange={event => setDraft({...draft, password: event.target.value})}/>
-      <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => setDraft({...draft, insecureLocal: value})}/></label>
+        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'}} onChange={event => updateDraft({root: event.target.value})}/>
+      <TextField label={t('next.remoteSources.username')} value={draft.username} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.1.control.placeholder')} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => updateDraft({username: event.target.value})}/>
+      <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.2.control.placeholder')} disabled={busy} onChange={event => updateDraft({password: event.target.value})}/>
+      <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
       <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.name.trim() || !draft.root.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
         {result && <span className={styles.testCard} data-tone={result.rangeSupport === 'unsupported' ? 'warning' : 'good'}><Icon name="i-check" size={18}/>{t(result.rangeSupport === 'unsupported' ? 'next.remoteSources.testedLimited' : 'next.remoteSources.tested', {origin: result.origin})}</span>}
       </div>
@@ -202,47 +220,63 @@ function ManageSourceDialog({service, source, isCurrent, onClose, onRemoved}: Re
   const [busy, setBusy] = useState(false);
   const [typed, setTyped] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const testAttempt = useRef(0);
+  const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {
     let active = true;
-    service.readProfile(source.id).then(next => {
+    service.readProfile(source.id, String(source.generation)).then(next => {
       if (!active || !isCurrent()) return;
       setProfile(next);
       setValues(next.saved ? next.values : sourceReadPreset('list'));
-    }).catch(value => {if (active && isCurrent()) setError(errorText(value));});
+    }).catch(value => {if (active && isCurrent()) setError(remoteErrorText(value));});
     return () => {active = false;};
   }, [service, source.id, isCurrent]);
-  const test = async () => {setError('');setResult(undefined);setBusy(true);try {const next = await service.testConnection({name: draft.name.trim(), root: draft.root.trim(), username: draft.username, password: draft.password, insecureLocal: draft.insecureLocal});if (isCurrent()) setResult(next);}catch (value) {if (isCurrent()) setError(errorText(value));}finally {if (isCurrent()) setBusy(false);}};
+  const test = async () => {
+    if (!isCurrent()) return;
+    const attempt = ++testAttempt.current, captured = {...draft};
+    setError('');setResult(undefined);setBusy(true);
+    try {const next = await service.testConnection({name: captured.name.trim(), root: captured.root.trim(), username: captured.username, password: captured.password, insecureLocal: captured.insecureLocal});
+      if (isCurrent() && attempt === testAttempt.current) setResult(next);}
+    catch (value) {if (isCurrent() && attempt === testAttempt.current) setError(remoteErrorText(value));}
+    finally {if (isCurrent() && attempt === testAttempt.current) setBusy(false);}
+  };
   const saveConnection = async () => {
+    if (!isCurrent()) return;
     setError('');setBusy(true);
     try {
       await service.configure(source.id, davConfiguration(source, draft), source);
+      if (!isCurrent()) return;
       const state = service.getSnapshot();
-      if (state.error) {if (isCurrent()) setError(state.error);return;}
-      if (isCurrent()) onClose();
+      if (state.error) {setError(state.error);return;}
+      close();
     } finally {if (isCurrent()) setBusy(false);}
   };
   const saveReading = async () => {
-    if (!profile) return;
+    if (!isCurrent() || !profile) return;
     setError('');setBusy(true);
     try {const next = await service.saveProfile(profile, values);if (!isCurrent()) return;if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}setProfile(next);}
-    catch (value) {if (!isCurrent()) return;if (refreshFailure(value)) onClose(); else setError(errorText(value));}
+    catch (value) {if (!isCurrent()) return;if (refreshFailure(value)) close(); else setError(remoteErrorText(value));}
     finally {if (isCurrent()) setBusy(false);}
   };
   const disconnect = async () => {
+    if (!isCurrent() || typed.trim() !== source.name) return;
+    const current = service.getSnapshot().sources.find(value => value.id === source.id && value.generation === source.generation);
+    if (!current) {setError(remoteErrorText({code: 'revision_mismatch'}));return;}
     setError('');setBusy(true);
-    try {await service.remove(source);const state = service.getSnapshot();if (state.error) {if (isCurrent()) setError(state.error);return;}if (isCurrent()) onRemoved();}
+    try {await service.remove(current);const state = service.getSnapshot();if (!isCurrent()) return;if (state.error) {setError(state.error);return;}onRemoved();}
     finally {if (isCurrent()) setBusy(false);}
   };
-  return <Dialog open onOpenChange={value => {if (!value && !busy) onClose();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={onClose}>{t('next.remoteSources.cancel')}</Button>}>
+  const close = () => {if (busy) return;setDraft(current => ({...current, password: ''}));setTyped('');onClose();};
+  return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
     <section className={styles.group}><h3>{t('next.remoteSources.connection')}</h3>
       <p className={styles.note}><SourceStatus source={source}/> {source.origin ?? ''}</p>
-      <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => setDraft({...draft, name: event.target.value})}/>
+      <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={source.origin ?? t('next.settingsSpec.server.remote-sources.panels.source.tabs.0.groups.0.rows.1.control.placeholder')} disabled={busy}
-        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'}} onChange={event => setDraft({...draft, root: event.target.value})}/>
-      <TextField label={t('next.remoteSources.username')} value={draft.username} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => setDraft({...draft, username: event.target.value})}/>
-      <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} disabled={busy} onChange={event => setDraft({...draft, password: event.target.value})}/>
-      <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => setDraft({...draft, insecureLocal: value})}/></label>
+        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'}} onChange={event => updateDraft({root: event.target.value})}/>
+      <TextField label={t('next.remoteSources.username')} value={draft.username} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => updateDraft({username: event.target.value})}/>
+      <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} disabled={busy} onChange={event => updateDraft({password: event.target.value})}/>
+      <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
       <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.name.trim() || !draft.root.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
         {result && <span className={styles.testCard} data-tone={result.rangeSupport === 'unsupported' ? 'warning' : 'good'}><Icon name="i-check" size={18}/>{t(result.rangeSupport === 'unsupported' ? 'next.remoteSources.testedLimited' : 'next.remoteSources.tested', {origin: result.origin})}</span>}
       </div>
