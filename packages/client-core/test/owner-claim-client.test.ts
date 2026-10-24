@@ -16,7 +16,7 @@ async function fixture(t: TestContext) {
   const binding = {pin: {serverId: claim.serverId, publicKey: claim.publicKey, fingerprint: routeBase64(await webRouteCrypto.sha256(routeBytes(claim.publicKey, 32)))},
     origin: claim.address, hostedOrigin: claim.audience, operationId: claim.operationId, localGeneration: claim.localGeneration,
     state: start.state, codeChallenge: start.codeChallenge, installationId: start.installationId};
-  const code = 'c'.repeat(49), transactionId = 'actual_owner_transaction';
+  const code = 'claim_' + 'K'.repeat(43), transactionId = 'actual_owner_transaction';
   const approvalUrl = claim.audience + '/claim#' + new URLSearchParams({code, operation: claim.operationId, server: claim.name});
   const raw = {state: 'prepared', identity: {serverId: claim.serverId, localGeneration: claim.localGeneration}, operation: {...expected}, accountId: 'account-unbound',
     installationAcknowledged: false, approvalRequired: true, actions: ['cancel', 'approve'], approvalUrl, claimCode: code,
