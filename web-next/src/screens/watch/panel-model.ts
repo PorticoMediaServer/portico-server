@@ -25,12 +25,14 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  if(snapshot.disposed||!fence||fence.kind!=='queue'||!session||!offers||!current||!options
   ||session.kind!=='vod'||session.id!==fence.sessionId||session.itemId!==fence.itemId||session.queue?.entryId!==fence.entryId
   ||session.presentation.generation!==fence.generation||options.itemId!==fence.itemId||offers.scope.itemId!==fence.itemId
-  ||offers.scope.serverId!==snapshot.authority.serverId||offers.scope.viewerFence!==snapshot.authority.viewerFence
+  ||offers.scope.serverId!==snapshot.authority.serverId
   ||current.sessionId!==fence.sessionId||current.generation!==fence.generation||current.sourceId!==fence.sourceId)return null;
  const version=options.versions.find(v=>v.id===session.versionId),source=offers.sources.find(s=>s.id===fence.sourceId);
  if(!version||!source||!source.available)return null;
+ // OffersService owns its detail viewer fence. The Home authority fence intentionally
+ // has a different scope and must never be compared with that opaque token.
  const words=videoTrackWords(i18n.t,i18n.locale),t=i18n.t;
- const isCurrent=()=>{const live=runtime.getSnapshot();return !live.disposed&&sameFence(live.fence,fence)&&live.session?.versionId===version.id&&live.session.revision===session.revision&&live.options===options&&live.offers===offers;};
+ const isCurrent=()=>{const live=runtime.getSnapshot();return !live.disposed&&live.authority===snapshot.authority&&sameFence(live.fence,fence)&&live.session?.versionId===version.id&&live.session.revision===session.revision&&live.options===options&&live.offers===offers;};
  const check=()=>{if(!isCurrent())throw new DOMException('Playback source retired','AbortError');};
  const audio=Object.freeze(version.audio.map(track=>{
   const name=videoTrackName(track,words),enabled=source.streams.some(s=>s.type==='audio'&&s.enabled&&s.index===audioStreamIndex(track.id));

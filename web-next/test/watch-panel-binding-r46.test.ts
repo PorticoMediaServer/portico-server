@@ -18,20 +18,20 @@ function fixture(){
   presentation:{generation:1,mode:'direct',url:'/v1/media/current',startPositionMs:0,subtitles:[],decision:{},audioTrackId:'a3',quality:{mode:'automatic',id:'720p-low'}}});
  const resource:SubtitleResource={id:'real-subtitle',sourceId:'source',revision:1,scope:'personal',language:'en',title:'',format:'srt',origin:'sidecar',rights:'owned',offsetUs:'-500000',canManage:true,enabled:true,renderer:'external_text',default:false,forced:false};
  const plan:SubtitlePlan={version:1,sessionId:'session',generation:1,sourceId:'source',revision:1,catalogRevision:1,renderer:'external_text',mode:'track',offAvailable:true,offsetUs:'-500000',selected:resource,resources:[resource,{...resource,id:'fractional',offsetUs:'500'}],discovered:[]};
- const offers:PlayerOffersData={scope:{serverId:'server',libraryId:'library',itemId:'movie',viewerFence:'viewer'},revision:'offers-1',preparedVersions:[],preparedOffersRevision:'',subtitlePlan:plan,subtitlePlanUnavailableReason:null,
+ const offers:PlayerOffersData={scope:{serverId:'server',libraryId:'library',itemId:'movie',viewerFence:'detail-viewer'},revision:'offers-1',preparedVersions:[],preparedOffersRevision:'',subtitlePlan:plan,subtitlePlanUnavailableReason:null,
   current:{sessionId:'session',generation:1,state:'playing',sourceId:'source',delivery:'direct',audioSelection:'platform_default',subtitleSelection:'track',qualityId:'720p-low'},
   sources:[{id:'source',available:true,container:'mkv',videoCodec:'h264',audioCodec:'ac3',width:1920,height:1080,duration:120,factsRevision:1,factsStatus:'known',relation:'unknown',boundary:'whole_source',enabled:false,reason:'source_selection_unavailable',
    streams:[{index:3,type:'audio',codec:'ac3',default:false,forced:false,enabled:true,reason:''},{index:4,type:'audio',codec:'aac',default:true,forced:false,enabled:false,reason:'track_selection_unavailable'}],
    qualities:[{id:'original',kind:'original',label:'Original',enabled:true},{id:'auto',kind:'automatic',label:'Automatic',enabled:true},{id:'720p-low',kind:'fixed',label:'720p',maxVideoBitrateBps:2000000,enabled:true},{id:'1080p-high',kind:'fixed',label:'1080p',enabled:false}]}],
   controls:[{id:'audio',enabled:true,reason:''},{id:'subtitles',enabled:true,reason:''},{id:'quality',enabled:true,reason:''}],markers:null,deliveryPolicy:null,offersRevision:'a'.repeat(64),transcodingEnabled:true};
- let live:WebPlaybackRuntimeSnapshot={authority:{...scope,epoch:1,viewerFence:'viewer'},sequence:1,disposed:false,fence,nativeVideoSurfaceActive:false,playback:{} as never,dock:{} as never,presentations:[],queueView:null,session,options,offers,presentation:{rate:1.5} as never};
+ let live:WebPlaybackRuntimeSnapshot={authority:{...scope,epoch:1,viewerFence:'home-viewer'},sequence:1,disposed:false,fence,nativeVideoSurfaceActive:false,playback:{} as never,dock:{} as never,presentations:[],queueView:null,session,options,offers,presentation:{rate:1.5} as never};
  const calls:unknown[][]=[];
  const runtime={getSnapshot:()=>live,speedChoices:()=>[.5,1,1.5],selectAudio:async(...args:unknown[])=>{calls.push(['audio',...args]);},selectSubtitle:async(...args:unknown[])=>{calls.push(['subtitle',...args]);},setQuality:async(...args:unknown[])=>{calls.push(['quality',...args]);},setSpeed:(...args:unknown[])=>{calls.push(['speed',...args]);}} as unknown as WebShellPlaybackRuntime;
  return {runtime,calls,get live(){return live;},set:(next:WebPlaybackRuntimeSnapshot)=>{live=next;},model:()=>watchPanelModel(runtime,live,defaultI18n)};
 }
 
 test('the parent uses the actual selected grouped version and selected stream, never its first/default track',()=>{
- const f=fixture(),model=f.model();assert.ok(model);
+ const f=fixture(),model=f.model();assert.ok(model,'detail and Home viewer fences are independent opaque scopes');
  assert.deepEqual(model.audio.map(r=>r.id),['a3','a4']);assert.equal(model.audio[0].primary,'English');assert.equal(model.audio[1].primary,'Commentary');
  assert.equal(model.audio[0].selected,true);assert.equal(model.audio[1].selected,false);assert.equal(model.audio[1].unavailable,true);
  assert.equal(model.audioLabel,'English');assert.equal(model.subtitles.find(row=>row.selected)?.id,'resource:real-subtitle');
@@ -51,6 +51,7 @@ test('real source choices dispatch exact wire identities and full fence through 
 test('unknown or foreign source/session/options facts produce no parent panel grant',()=>{
  for(const mutate of [
   (f:ReturnType<typeof fixture>)=>({...f.live,options:null}),
+  (f:ReturnType<typeof fixture>)=>({...f.live,offers:{...f.live.offers!,scope:{...f.live.offers!.scope,serverId:'foreign'}}}),
   (f:ReturnType<typeof fixture>)=>({...f.live,session:{...f.live.session!,versionId:'missing'}}),
   (f:ReturnType<typeof fixture>)=>({...f.live,session:{...f.live.session!,itemId:'foreign'}}),
   (f:ReturnType<typeof fixture>)=>({...f.live,session:{...f.live.session!,queue:{queueId:'queue',entryId:'foreign'}}}),
@@ -65,6 +66,7 @@ test('same-title replacement and refreshed original metadata invalidate old row 
   (f:ReturnType<typeof fixture>)=>({...f.live,session:{...f.live.session!,revision:'2'}}),
   (f:ReturnType<typeof fixture>)=>({...f.live,options:{...f.live.options!}}),
   (f:ReturnType<typeof fixture>)=>({...f.live,disposed:true}),
+  (f:ReturnType<typeof fixture>)=>({...f.live,authority:{...f.live.authority,viewerFence:'replaced-home-viewer'}}),
  ]){const f=fixture(),model=f.model()!;f.set(mutate(f));assert.equal(model.isCurrent(),false);await assert.rejects(model.selectAudio('a3'),{name:'AbortError'});assert.deepEqual(f.calls,[]);}
 });
 
