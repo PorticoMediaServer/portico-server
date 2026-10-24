@@ -137,4 +137,5 @@ function Preview() {
 // The screen's quiet refresh reads the shell's freshness runtime; this is the
 // same provider with a fixture-transport route snapshot and no event feed.
 const freshnessApi = {baseUrl: 'http://fixture.invalid', getRouteSnapshot: () => ({phase: 'ready'}), subscribeRoute: () => () => {}} as unknown as HttpLocalApi;
+(window as unknown as {__savedFixture: unknown}).__savedFixture = {runtime, api};
 createRoot(document.getElementById('root')!).render(<FreshnessProvider api={freshnessApi} viewerId="fixture-viewer" serverId="r46-saved" events={null}><IconSprite /><Preview /></FreshnessProvider>);
