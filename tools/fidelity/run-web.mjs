@@ -59,8 +59,17 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
         qualification: 'Native caret existence/focus, collapsed insertion point and CSS colour; platform governs x/width/blink. No pixel or blink-timing claim.'};
       if (!nativeCaret.focused || !nativeCaret.collapsedSelection || !nativeCaret.colorFollowsText) differences.push({kind: 'native-caret-state', label: 'Native input caret', ...nativeCaret});
       comparison.diagnostics.push({label: 'Native input caret illustration', scored: false, ruling: 27, properties: ['x', 'width', 'blink'], reason: 'Binding native-input illustration erratum; no fake caret or input metric compensation.'});
+      const classification = {adapter: 0, stateOrReadiness: 0, copyOrCatalogue: 0, geometry: 0, computedStyle: 0, unmatchedElement: 0};
+      for (const difference of differences) {
+        if (['anchor-cardinality', 'ambiguous-match', 'missing-content-slot'].includes(difference.kind)) classification.adapter++;
+        else if (['screen-state', 'fixture-state', 'nondeterministic-extraction', 'font-not-loaded', 'page-readiness', 'native-caret-state'].includes(difference.kind)) classification.stateOrReadiness++;
+        else if (difference.kind.includes('string') || difference.property === 'text') classification.copyOrCatalogue++;
+        else if (difference.property?.startsWith('box.')) classification.geometry++;
+        else if (difference.kind === 'measured-difference') classification.computedStyle++;
+        else classification.unmatchedElement++;
+      }
       return {version: 1, id: adapter.id, state: adapter.state, scope: 'screen', viewport, reference, actual,
-        comparison, strings, textMetrics, nativeCaret, differences, differenceCount: differences.length,
+        comparison, strings, textMetrics, nativeCaret, differences, differenceCount: differences.length, classification,
         deterministic: {reference: deterministicReference, actual: deterministicActual},
         network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
         verdict: differences.length ? 'FAIL' : 'PASS', qualification: 'Controlled genuine full-screen state, not a complete authentication flow. Artwork contents excluded; image slot geometry/style included. No screenshot files or private source URLs.'};

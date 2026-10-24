@@ -77,6 +77,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   for (const slot of contentSlots) {
     const a = reference.elements.find(node => node.frame === slot.reference), b = actual.elements.find(node => node.frame === slot.actual);
     if (!a || !b) {differences.push({kind: 'missing-content-slot', label: slot.reference}); continue;}
+    if (!b.input?.redacted && text(a) !== text(b)) differences.push({kind: 'measured-difference', label: slot.reference, property: 'text', expected: text(a), actual: text(b)});
     for (const property of textStyles.filter(property => !slot.nativeInput || !['lineHeight', 'textShadow', 'textAlign'].includes(property))) {
       if (a.style[property] !== b.style[property]) differences.push({kind: 'measured-difference', label: slot.reference, property, expected: a.style[property], actual: b.style[property]});
     }

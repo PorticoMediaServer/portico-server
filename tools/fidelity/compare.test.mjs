@@ -42,4 +42,5 @@ test('wrapped control label is a separate measured text part without descendant 
   assert.equal(result.verdict, 'PASS');
   const changed = {...label, style: {...label.style, fontSize: '34px'}};
   assert.ok(compareScreens(spec([button]), spec([shell, changed]), adapter).differences.some(value => value.property === 'fontSize'));
+  assert.ok(compareScreens(spec([button]), spec([shell, {...label, ownText: 'Undrawn'}]), adapter).differences.some(value => value.property === 'text'));
 });
