@@ -8,7 +8,7 @@ import {settingsBinding,readSettingsBinding,settingsBindingPatch} from '../src/p
 function snapshot(values:Record<string,PreferenceValue>={}){
  const qualities=['music.qualityHome','music.qualityAway','music.qualityMobile','music.qualityDownloads'];
  const fields=qualities.map(key=>({key,type:'string',default:key==='music.qualityHome'?'original':'320',allowedValues:canonicalMusicQualityLadder.map(q=>q.id),scopes:['profile-device-class'],group:'music',labelKey:'preferences.'+key}));
- return parsePreferenceSnapshot({deviceClass:'web',registryRevision:'music.2',registry:{revision:'music.2',fields},documents:[{scope:'profile-device-class',revision:7,digest:'a'.repeat(64),activeRevision:7,values}],effective:Object.fromEntries(fields.map(f=>[f.key,values[f.key]??f.default])),effectiveSource:Object.fromEntries(fields.map(f=>[f.key,Object.hasOwn(values,f.key)?'profile-device-class':'default'])),clampedFields:[]});
+ return parsePreferenceSnapshot({deviceClass:'web',registryRevision:'music.2',registry:{revision:'music.2',fields},documents:[{scope:'profile-server',revision:7,digest:'b'.repeat(64),activeRevision:7,values:{}},{scope:'profile-device-class',revision:7,digest:'a'.repeat(64),activeRevision:7,values}],effective:Object.fromEntries(fields.map(f=>[f.key,values[f.key]??f.default])),effectiveSource:Object.fromEntries(fields.map(f=>[f.key,Object.hasOwn(values,f.key)?'profile-device-class':'default'])),clampedFields:[]});
 }
 test('drawn CD choices write and read the canonical four-rung Music registry',()=>{
  assert.deepEqual(canonicalMusicQualityLadder.map(q=>q.id),['original','cd-quality','320','96']);
