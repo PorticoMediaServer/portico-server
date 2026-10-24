@@ -1,5 +1,6 @@
 import {decodeGetSearchGenresResponse} from '../../contracts/src/decoders.ts';
 import {routePath, type RouteResponse} from '../../contracts/src/routes.ts';
+import type {BrowseRequestBody} from './browse.ts';
 import type {LibraryContentApi} from './library-content.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 
@@ -69,4 +70,15 @@ export async function readSearchGenres(api: LibraryContentApi, request: SearchGe
   const raw = await api.request<RouteResponse<'get_search_genres'>>(searchGenresPath(request), 'GET', undefined, signal);
   current(signal);
   return parseSearchGenres(raw);
+}
+
+/** A tile opens the exact movie/show domain its count describes through the
+ * existing across-library browse read. Use this pivot for its capabilities
+ * and context facets as well; the parent retains viewer/cursor authority. */
+export const searchGenreBrowsePivot = 'video-titles';
+export function searchGenreBrowseRequest(value: string): BrowseRequestBody {
+  if (!text(value, 1024)) throw new Error('Invalid genre value.');
+  return Object.freeze({pivot: searchGenreBrowsePivot,
+    query: Object.freeze({field: 'genre', operator: 'equals', value}),
+    sort: Object.freeze([Object.freeze({field: 'title', direction: 'asc' as const})])});
 }

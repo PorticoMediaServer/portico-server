@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
 
@@ -85,6 +87,76 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 	}
 	if want := []string{"Crime", "Drama", "Sci-Fi & Fantasy", "No art", "No backdrop", "Quiet", "Repeat", "Television"}; !reflect.DeepEqual(values, want) {
 		t.Fatalf("video title counts/sort/restrictions: %v want %v", values, want)
+	}
+	// Opening a tile uses the same restricted movie/show membership, including
+	// a genuinely empty show. It never becomes a mixed music/title browse.
+	for _, genre := range page.Genres {
+		query := &BrowseNode{Field: "genre", Operator: "equals", Value: genre.Value}
+		opened, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "video-titles", Query: query, Limit: 1})
+		if err != nil || opened.PageInfo.Total != genre.Count {
+			t.Fatalf("genre %q counted %d but opened %+v: %v", genre.Value, genre.Count, opened.PageInfo, err)
+		}
+		entries := walkAcross(t, s, viewer, AcrossRequest{Pivot: "video-titles", Query: query, Limit: 1})
+		if len(entries) != genre.Count {
+			t.Fatalf("%s destination: %+v", genre.Value, entries)
+		}
+		for _, entry := range entries {
+			if entry.Kind != "movie" && entry.Kind != "show" {
+				t.Fatalf("non-video title: %+v", entry)
+			}
+		}
+	}
+	crime := &BrowseNode{Field: "genre", Operator: "equals", Value: "Crime"}
+	if _, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "titles", Query: crime}); !errors.Is(err, ErrBrowseAcrossGroup) {
+		t.Fatal("mixed titles silently acquired a genre-only group", err)
+	}
+	filtered := &BrowseNode{All: []BrowseNode{*crime, {Field: "title", Operator: "equals", Value: "b"}}}
+	opened, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "video-titles", Query: filtered})
+	if err != nil || len(opened.Entries) != 1 || opened.Entries[0].ID != items["b"].Public {
+		t.Fatal("additional filter lost", opened, err)
+	}
+	capabilities, err := s.BrowseAcrossCapabilities(viewer, "video-titles")
+	if err != nil || capabilities.ResolvedPivot == nil || !reflect.DeepEqual(capabilities.ResolvedPivot.EntityKinds, []string{"movie", "show"}) {
+		t.Fatal(capabilities, err)
+	}
+	foundGenre := false
+	for _, surface := range capabilities.Surfaces {
+		if surface.ID == "genre-titles" && surface.MembershipField == "genre" {
+			foundGenre = true
+		}
+	}
+	if !foundGenre {
+		t.Fatal("genre destination was not published", capabilities.Surfaces)
+	}
+	// Playing the genre resolves its actual complete member set, not the first
+	// displayed page. Empty shows remain visible but have no queue members.
+	tx, done, err := dbwork.BeginRead(context.Background(), c.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := s.QueueKeysTx(context.Background(), tx, viewer, ResourceActor{}, &QueueQuery{LibraryID: AcrossLibraries, Pivot: "video-titles", Query: crime}, "", nil)
+	if err != nil {
+		done()
+		t.Fatal(err)
+	}
+	rows, err := tx.QueryContext(context.Background(), plan.SQL, plan.Args...)
+	got := []string{}
+	if err == nil {
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				break
+			}
+			got = append(got, id)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+	}
+	done()
+	if err != nil || !reflect.DeepEqual(got, []string{items["a"].Public, items["b"].Public, items["c"].Public}) {
+		t.Fatal("genre queue diverged", got, err)
 	}
 	for value, count := range map[string]int{"Crime": 3, "Drama": 3, "Sci-Fi & Fantasy": 2, "Television": 1} {
 		if byValue[value].Count != count {
