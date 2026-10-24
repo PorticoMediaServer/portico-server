@@ -12,6 +12,7 @@ import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
+import type {LiveChromePort} from '../live/live-chrome-types';
 import {createWatchPlayOn, remotePictureKeepsCaptions, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
 import {createWindowChromePublisher, type WindowChromePublisher} from '../../platform/window-chrome';
 import {router} from '../../router';
@@ -23,7 +24,7 @@ import {PlaybackMediaOwner} from '../../shell/playback-media-owner';
 import {useShellWidth} from '../../shell/viewport';
 import styles from './playback-host.module.css';
 
-export type WatchPlaybackProps = Readonly<{binding?: WatchBindings; context?: WatchPlaybackContext; surfaces?: WatchSurfaces; geometry?: WatchGeometry}>;
+export type WatchPlaybackProps = Readonly<{binding?: WatchBindings; context?: WatchPlaybackContext; surfaces?: WatchSurfaces; geometry?: WatchGeometry; live?: LiveChromePort}>;
 const noSubscription = () => () => {};
 const noSnapshot = () => undefined;
 const noPresentations: readonly DockPresentation[] = Object.freeze([]);
@@ -123,7 +124,7 @@ export function createPictureInPictureOperations(input: Readonly<{
 
 
 /** This parent and its one video stay mounted through routes AND authority handovers. */
-export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlaybackProps) {
+export function WatchPlayback({binding, context, surfaces, geometry, live}: WatchPlaybackProps) {
   const runtime = binding?.runtime;
   const snapshot = useSyncExternalStore<WebPlaybackRuntimeSnapshot | undefined>(runtime?.subscribe ?? noSubscription, runtime?.getSnapshot ?? noSnapshot, runtime?.getSnapshot ?? noSnapshot);
   const canReport = useSyncExternalStore(subscribeFeedback, feedbackAvailable, () => false);
@@ -292,7 +293,7 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
       <video ref={video} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
-      surfaces={drawnSurfaces} geometry={geometry}
+      surfaces={drawnSurfaces} geometry={geometry} live={live}
       windowPort={windowPort} />}
     {cast && binding && visuals && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} /></div>}
   </div>;

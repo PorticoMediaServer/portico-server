@@ -141,3 +141,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .top, .bottom, .center, .shade, .control { transition: none; } }
 :global([data-reduce-motion='true']) .top, :global([data-reduce-motion='true']) .bottom, :global([data-reduce-motion='true']) .center, :global([data-reduce-motion='true']) .shade, :global([data-reduce-motion='true']) .control { transition: none; }
+
+/* The drawn live player branch; the generic VOD/phone chrome is unchanged when no live port exists. */
+.liveOverlay { position: absolute; inset: 0; pointer-events: none; transition: opacity var(--motion-standard) var(--ease-out); }
+.liveOverlay[data-visible='false'] { opacity: 0; visibility: hidden; pointer-events: none; }

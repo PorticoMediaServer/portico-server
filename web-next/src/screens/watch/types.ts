@@ -6,6 +6,7 @@ import type {PlaybackFence} from '../../../../packages/player-core/src/index.ts'
 import type {QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {TrickplayFrame} from '@core/trickplay.ts';
 import type {ArtworkSource} from '../../kit/artwork/types';
+import type {LiveChromePort} from '../live/live-chrome-types';
 
 /** Structurally matches the parent's binding. The screen never creates or mounts media. */
 export type WatchBindings = Readonly<{
@@ -74,6 +75,8 @@ export type WatchScreenProps = Readonly<{
   /** Empty bounds target for the SAME MediaSurface the parent already owns. */
   surfaceSlotRef: Ref<HTMLDivElement>;
   surfaces?: WatchSurfaces;
+  /** Genuine live channel facts and actions; absent for VOD or an unavailable guide. */
+  live?: LiveChromePort;
   windowPort?: WatchWindowPort;
   geometry?: WatchGeometry;
 }>;

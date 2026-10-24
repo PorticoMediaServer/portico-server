@@ -25,7 +25,7 @@ export type LiveChromeProps = Readonly<{
   onPlayPause: () => void;
   onSkip: (seconds: number) => void;
   onSeek: (seconds: number) => void;
-  onMore: () => void;
+  onMore: (anchor: HTMLButtonElement) => void;
   /** The unchanged generic right cluster: volume, subtitles/audio, quality, PiP and full screen. */
   right: ReactNode;
   onMiniGuideOpenChange?: (open: boolean) => void;
@@ -92,7 +92,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
       </div>
       <div className={styles.tools}>
         {channel.recordAvailable && programme && <Button className={styles.record} variant="glass" size="small" icon="i-rec" disabled={recordingBusy} onClick={record}>{liveRecordLabel(programme)}</Button>}
-        <LiveControl icon="i-more" label={t('player.more')} onClick={onMore}/>
+        <button type="button" className={styles.control} aria-label={t('player.more')} title={t('player.more')} onClick={event => onMore(event.currentTarget)}><Icon name="i-more" size={24}/></button>
         <LiveControl icon="i-close" label={t('player.close')} onClick={onStop}/>
       </div>
     </header>
