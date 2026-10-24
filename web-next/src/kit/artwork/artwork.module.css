@@ -40,6 +40,10 @@
 .library .ambientImage { inset: auto; top: -40%; left: calc(-10% + var(--art-order, 0) * 38%); width: 48%; height: 150%; filter: blur(110px) saturate(1.6); opacity: .42; }
 .library .ambientImage:nth-child(2 of .ambientImage) { opacity: .32; }
 .library .ambientImage:nth-child(3 of .ambientImage) { left: 62%; }
+/* Mobile-web See all (collections.html#47): one full-bleed image, 760px, softer mask. */
+.library-phone { bottom: auto; height: 760px; }
+.library-phone .washLayer { -webkit-mask-image: linear-gradient(180deg, #000 25%, transparent 100%); mask-image: linear-gradient(180deg, #000 25%, transparent 100%); }
+.library-phone .ambientImage { inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(60px) saturate(1.5); opacity: .42; transform: scale(1.3); }
 .artist { bottom: auto; height: 640px; }
 .artist .ambientImage { inset: -30%; width: 160%; height: 160%; filter: blur(100px) saturate(2); opacity: .85; }
 .artist .washLayer { -webkit-mask-image: none; mask-image: none; }
