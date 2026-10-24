@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/remotemedia"
 )
 
 // This child models process custody and authenticated readiness only. It is
@@ -283,5 +285,27 @@ func TestServeProcessSharedOperationsKeepOneBudgetAndLifetime(t *testing.T) {
 	}
 	if firstLease.released.Load() != 1 || secondLease.released.Load() != 1 {
 		t.Fatal("shared budget confused physical lease release", firstLease.released.Load(), secondLease.released.Load())
+	}
+}
+
+func TestServeProcessSharedBudgetRejectsUnknownCapacityAndExpiredLifetime(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		spec, lease, _ := serveProcessFixture(t, "ready")
+		life, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		spec.SharedOperations = remotemedia.NewOperationBudget(life, 1)
+		if expired {
+			spec.Connections = 1
+			cancel()
+		}
+		called := false
+		spec.Enforce = func(*exec.Cmd) error { called = true; return nil }
+		if process, err := StartServe(context.Background(), Program{Path: "/unused", Included: true}, spec, lease); !errors.Is(err, ErrServeConfiguration) || process != nil || called || lease.released.Load() != 1 {
+			t.Fatal("invalid shared resource reached a child boundary", process, err, called, lease.released.Load())
+		}
+		entries, err := os.ReadDir(spec.PrivateDirectory)
+		if err != nil || len(entries) != 0 {
+			t.Fatal("invalid shared resource created private configuration", entries, err)
+		}
 	}
 }

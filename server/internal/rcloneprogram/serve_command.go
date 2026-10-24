@@ -292,6 +292,9 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		}
 	}
 	if err == nil {
+		err = budget.Context().Err()
+	}
+	if err == nil {
 		// Bounds pipe inheritance even when a custom program starts descendants.
 		prepared.Command.WaitDelay = 100 * time.Millisecond
 		err = prepared.Command.Start()
@@ -394,6 +397,12 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 // physical custody/lifetime only, without DB snapshots, network or capacity waits.
 func (s *ServeProcess) CheckLocal(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.budget == nil || s.budget.Context() == nil {
+		return ErrServeConfiguration
+	}
+	if err := s.budget.Context().Err(); err != nil {
 		return err
 	}
 	if err := s.life.Err(); err != nil {
