@@ -327,7 +327,7 @@ func TestDiscScopedFFmpegInputs(t *testing.T) {
 			t.Fatal("disc input widened network authority")
 		}
 		if p.Kind == "bluray" {
-			if !strings.Contains(options, "-playlist 1 -angle 0 -f mpegts") || !strings.Contains(options, "-skip_initial_bytes 1346304") || in.TimestampOffsetMs != 37000 {
+			if !strings.Contains(options, "-min_playlist_length 60 -playlist 1 -angle 0 -f mpegts") || !strings.Contains(options, "-skip_initial_bytes 1346304") || in.TimestampOffsetMs != 37000 {
 				t.Fatalf("lost playlist/seek authority: %+v", in)
 			}
 		} else if !strings.Contains(options, "-protocol_whitelist file,pipe -format_whitelist dvdvideo,mpeg,ffmetadata") || !strings.Contains(options, "-f dvdvideo -title 1 -angle 1 -preindex 0 -ss 37.500") {
