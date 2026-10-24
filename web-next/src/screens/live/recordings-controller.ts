@@ -393,6 +393,14 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
       if (!keepable.includes(target.state)) throw notOffered();
       return command(() => model.client.keep(target));
     },
+    /** Resolve a tuner conflict in this recording's favour by raising its priority
+     * above every recording it actually overlaps. The server validates the value. */
+    async raisePriority(recording: Recording, priority: number): Promise<RecordingsCommandOutcome> {
+      const target = commandTarget(recording);
+      if (!mutableRecording(target) || !Number.isSafeInteger(priority)) throw notOffered();
+      const bounded = Math.min(1000, Math.max(-1000, priority));
+      return command(() => model.client.update(target, {...target.options, priority: bounded}));
+    },
     /** The server's own delete preview for the exact resident row, offered only by
      * the actual current page for a non-active recording. The returned object is
      * the only preview this door will confirm. */
