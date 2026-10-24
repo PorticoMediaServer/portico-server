@@ -15,7 +15,7 @@ registerHooks({load(url, context, next) {
 // Artwork pixel sizes are read from the browser global; the server render has no window.
 (globalThis as {devicePixelRatio?: number}).devicePixelRatio = 1;
 
-const {TitleActions, TitleDetails} = await import('../src/screens/detail/Detail.tsx');
+const {TitleActions, TitleDetails, TitlePinnedActions} = await import('../src/screens/detail/Detail.tsx');
 const {createDetailSpecimen} = await import('../src/dev/entries/detail-specimen.tsx');
 const {DetailService} = await import('@core/detail.ts');
 
@@ -67,4 +67,19 @@ test('frame 3 draws About with Rated and the collection banner with honest membe
     assert.match(body, new RegExp(defaultI18n.t('next.home.openCollection')));
     assert.match(body, new RegExp(defaultI18n.t('shelf.seeAllCount', {count: 64}).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   } finally { service.dispose(); }
+});
+
+test('the pinned bar carries the drawn Play or Resume and My List pair', async () => {
+  const play = await detailData('3');
+  try {
+    const body = text(renderToStaticMarkup(createElement(TitlePinnedActions, {binding: play.binding, data: play.data})));
+    assert.match(body, new RegExp(defaultI18n.t('next.controls.play')));
+    assert.match(body, new RegExp(defaultI18n.t('next.controls.myList')));
+  } finally { play.service.dispose(); }
+  const resume = await detailData('2');
+  try {
+    const body = text(renderToStaticMarkup(createElement(TitlePinnedActions, {binding: resume.binding, data: resume.data})));
+    assert.match(body, new RegExp(defaultI18n.t('next.controls.resume')));
+    assert.doesNotMatch(body, new RegExp(defaultI18n.t('next.controls.play')));
+  } finally { resume.service.dispose(); }
 });

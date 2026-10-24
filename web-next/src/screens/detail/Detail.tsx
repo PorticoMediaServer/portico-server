@@ -141,7 +141,7 @@ function TitleRating({binding, data, onClose, returnFocusRef}: {binding: DetailB
 }
 
 /** The pinned bar's own pair, as drawn once the title scrolls away: Play/Resume and My List. */
-function TitlePinnedActions({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
+export function TitlePinnedActions({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const primary = detailActions(data, {platform: 'web'}).primary;
   const action = data.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
   const watchlist = data.actions.find(value => value.id === 'watchlist' && value.enabled);
