@@ -5,6 +5,7 @@ import {bindWebAccountEntry} from './route-registry-lifecycle';
 import {WebScreenProvider, webScreens} from './route-registry-view';
 import type {ShellAssemblyContext} from './shell/bootstrap';
 import {router} from './router';
+import {LastResortBoundary} from './shell/Errors';
 import {ShellBindingsProvider, type ShellBindings} from './shell/bindings';
 import {bindShellRouteMotion} from './shell/route-motion';
 import {ShellBootstrapState} from './shell/BootstrapState';
@@ -13,7 +14,8 @@ import {PlaybackHost} from './shell/Playback';
 import type {TakeAccountReturn} from './route-registry-return';
 import type {TakeAccountMove} from './route-registry-arrival';
 export function App({binding, bootstrap, takeAccountReturn, takeAccountMove}: {binding?: ShellBindings; bootstrap?: ShellBootstrap; takeAccountReturn?: TakeAccountReturn; takeAccountMove?: TakeAccountMove} = {}) {
-  return bootstrap ? <RestoredApp bootstrap={bootstrap} takeAccountReturn={takeAccountReturn} takeAccountMove={takeAccountMove} /> : <BoundApp binding={binding} takeAccountReturn={takeAccountReturn} takeAccountMove={takeAccountMove} />;
+  // A failure in the app itself has no shell left to draw; keep the last-resort page outside every provider.
+  return <LastResortBoundary>{bootstrap ? <RestoredApp bootstrap={bootstrap} takeAccountReturn={takeAccountReturn} takeAccountMove={takeAccountMove} /> : <BoundApp binding={binding} takeAccountReturn={takeAccountReturn} takeAccountMove={takeAccountMove} />}</LastResortBoundary>;
 }
 function RestoredApp({bootstrap, takeAccountReturn, takeAccountMove}: {bootstrap: ShellBootstrap; takeAccountReturn?: TakeAccountReturn; takeAccountMove?: TakeAccountMove}) {
   const snapshot = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot, bootstrap.getSnapshot);

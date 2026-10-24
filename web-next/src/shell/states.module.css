@@ -1,0 +1,8 @@
+/* Full-page shell states. The drawn page sits under the fixed navigation, so the
+   layout owns the viewport height and the content keeps the frame's own top. */
+.page { min-height: 100dvh; }
+.detailsHeading { margin: 26px 0 -14px; font-size: 13.5px; font-weight: 700; color: var(--color-text-tertiary); }
+.toastWrap { position: fixed; z-index: var(--layer-notice); left: 64px; bottom: 28px; max-width: min(520px,calc(100vw - 32px)); }
+@media (max-width: 1023px) {
+  .toastWrap { left: 12px; right: 12px; bottom: 20px; max-width: none; }
+}

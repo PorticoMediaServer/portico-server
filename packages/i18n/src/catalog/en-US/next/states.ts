@@ -22,6 +22,7 @@ export const statesMessages = {
   'next.states.back': 'Back',
   'next.states.close': 'Close',
   'next.states.reload': 'Try again',
+  'next.states.reloadPage': 'Reload', // lint-glossary-allow states.html#24 last-resort page starts the app afresh
   'next.states.reportProblem': 'Report a problem',
   'next.states.sendOwner': 'Send it to the owner',
   'next.states.playbackInfo': 'Playback info',
@@ -100,6 +101,10 @@ export const statesMessages = {
   'next.states.browser': 'Browser',
   'next.states.where': 'Where',
   'next.states.reference': 'Reference',
+  'next.states.appVersion': 'Portico for web {version}',
+  'next.states.appUnversioned': 'Portico for web',
+  'next.states.browserOnSystem': '{browser} on {system}',
+  'next.states.unknownBrowser': 'A browser Portico could not name',
   'next.states.loading': 'Loading',
   'next.states.stillLoading': 'Still loading.',
   'next.states.slowConnection': 'Your connection to {server} is slow.',

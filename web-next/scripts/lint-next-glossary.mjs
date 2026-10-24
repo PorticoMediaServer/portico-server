@@ -8,6 +8,9 @@ const approvedStateCopy = {
   'next.overlays.reloadHelp': 'Reload to use the new version.',
   'next.overlays.reload': 'Reload',
   'next.states.reload': 'Reload',
+  // states.html#24 (crash recovery): the web's last-resort page reloads the app itself,
+  // where states.html#25 (the phone's) says Try again.
+  'next.states.reloadPage': 'Reload',
   'next.states.playbackInfo': 'Playback info',
 };
 // collections.html 24a/c/e/f and 26b explicitly use Reload for a conflicted Home layout.

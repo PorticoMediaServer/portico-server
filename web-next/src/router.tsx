@@ -5,13 +5,14 @@ import {browserEntryDestination, profileSettingsAliasPath, profileSettingsDestin
 import {gallerySearch} from './platform/gallery-search';
 import {accountReturnPath} from './route-registry-return';
 import {ShellRoot} from './shell/Root';
+import {NotFoundScreen} from './shell/NotFound';
 import {useShellBindings} from './shell/bindings';
 import {HomeScreen} from './screens/home/Home';
 import {librarySearch, searchQuery} from './shell/navigation';
 
 function BoundHome() { const binding = useShellBindings(); return binding ? <HomeScreen {...binding.home} /> : null; }
 
-export const rootRoute = createRootRoute({component: ShellRoot, notFoundComponent: () => null});
+export const rootRoute = createRootRoute({component: ShellRoot, notFoundComponent: NotFoundScreen});
 // Each screen owns its component/registration; the shared router owns only stable URLs.
 const screenSearch = (id: WebScreenId, fallback?: WebScreenSearchValidator) => (raw: Record<string, unknown>) => webScreens.validateSearch(id, raw, fallback);
 const screen = (id: WebScreenId) => function RegisteredScreen() {return <WebScreenOutlet id={id} />;};
