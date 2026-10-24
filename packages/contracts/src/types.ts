@@ -1435,6 +1435,8 @@ export type SyncDownloadProgressRequest = { "entries": Array<{ "ended"?: boolean
 export type SyncDownloadProgressResponse = { "applied": number; "conflicts": number; "entries": Array<{ "itemId": string; "observedAt"?: string; "outcome": string; "playId": string; "positionMs": number; "watched": boolean }> };
 export type TerminateAdminSessionRequest = { "message"?: string };
 export type TerminateAdminSessionResponse = {  };
+export type TestStorageSourceWebdavRequest = { "insecureLocal": boolean; "name": string; "password": string; "root": string; "username": string };
+export type TestStorageSourceWebdavResponse = { "result": { "origin": string; "rangeSupport": string }; "scope": { "serverId": string; "viewerFence": string } };
 export type TestWebhookRequest = {  };
 export type TestWebhookResponse = { "attempts": number; "createdAt": string; "durationMs": number; "error"?: string; "event": string; "finishedAt"?: string; "id": string; "nextAttemptAt"?: string; "state": string; "status": number };
 export type UndoContainerPersonalStateRequest = { "expectedRevision": number; "undoToken": string };
@@ -2162,6 +2164,7 @@ export type RouteContracts = {
 "stop_playback_session": { request: StopPlaybackSessionRequest; response: StopPlaybackSessionResponse };
 "sync_download_progress": { request: SyncDownloadProgressRequest; response: SyncDownloadProgressResponse };
 "terminate_admin_session": { request: TerminateAdminSessionRequest; response: TerminateAdminSessionResponse };
+"test_storage_source_webdav": { request: TestStorageSourceWebdavRequest; response: TestStorageSourceWebdavResponse };
 "test_webhook": { request: TestWebhookRequest; response: TestWebhookResponse };
 "undo_container_personal_state": { request: UndoContainerPersonalStateRequest; response: UndoContainerPersonalStateResponse };
 "update_queue": { request: UpdateQueueRequest; response: UpdateQueueResponse };

@@ -18193,6 +18193,26 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "test_storage_source_webdav",
+    "method": "POST",
+    "path": "/v1/storage/sources/webdav/test",
+    "summary": "Test a new WebDAV connection and bounded ranges without saving a source",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "source_credentials_required",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
     "id": "test_webhook",
     "method": "POST",
     "path": "/v1/admin/webhooks/{id}/test",
@@ -19006,6 +19026,7 @@ export const routePaths = {
   "stop_playback_session": "/v1/playback/sessions/{id}",
   "sync_download_progress": "/v1/downloads/progress",
   "terminate_admin_session": "/v1/admin/sessions/{id}:terminate",
+  "test_storage_source_webdav": "/v1/storage/sources/webdav/test",
   "test_webhook": "/v1/admin/webhooks/{id}/test",
   "undo_container_personal_state": "/v1/containers/{kind}/{id}/personal-state/undo",
   "update_queue": "/v1/queues/{id}",
