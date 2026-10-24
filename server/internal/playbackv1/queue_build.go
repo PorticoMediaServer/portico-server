@@ -223,12 +223,12 @@ func (sc *snapshotScan) writeBatch() error {
 					return err
 				}
 			}
-			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width) VALUES(?,?,?,?,'',0,0)`, snap.id, sc.queue, snap.kind, snap.selector); err != nil {
+			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,music_only) VALUES(?,?,?,?,'',0,0,1)`, snap.id, sc.queue, snap.kind, snap.selector); err != nil {
 				return err
 			}
 		}
 		for _, c := range snap.pending {
-			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?)`, snap.id, c.no, c.keys); err != nil {
+			if err := writeQueueChunkTx(ctx, w, snap.id, c.no, c.keys, false); err != nil {
 				return err
 			}
 		}
@@ -811,7 +811,7 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 	// Finish: the last chunks, the final count, ready; and the start that waited.
 	return dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassBackgroundMedia, func(ctx context.Context, w *sql.Tx) error {
 		for _, c := range snap.pending {
-			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?)`, id, c.no, c.keys); err != nil {
+			if err := writeQueueChunkTx(ctx, w, id, c.no, c.keys, false); err != nil {
 				return err
 			}
 		}

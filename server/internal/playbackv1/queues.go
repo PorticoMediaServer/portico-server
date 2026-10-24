@@ -219,6 +219,7 @@ func scanQueue(r scanner) (queueRow, error) {
 
 // segment is one queue_v1_segments row with its snapshot's kind and label.
 type segment struct {
+	musicOnly                          bool
 	id, snapshot, kind, label, sortKey string
 	sourceRevision                     string
 	first, count, removed              int64
@@ -249,14 +250,14 @@ type layout struct {
 
 func (s *Service) readLayout(ctx context.Context, tx *sql.Tx, q queueRow) (*layout, error) {
 	l := &layout{q: q, removals: map[string][]int64{}, chunks: map[string][]byte{}, tx: tx, ctx: ctx}
-	rows, err := tx.QueryContext(ctx, `SELECT g.id,g.snapshot_id,s.kind,s.label,g.sort_key,g.first_ordinal,g.count,g.removed,s.state,s.built,s.start<>'',s.hint_ordinal,s.hint_key,s.source_revision FROM queue_v1_segments g JOIN queue_v1_snapshots s ON s.id=g.snapshot_id WHERE g.queue_id=? ORDER BY g.sort_key`, q.id)
+	rows, err := tx.QueryContext(ctx, `SELECT g.id,g.snapshot_id,s.kind,s.label,g.sort_key,g.first_ordinal,g.count,g.removed,s.state,s.built,s.start<>'',s.hint_ordinal,s.hint_key,s.source_revision,s.music_only FROM queue_v1_segments g JOIN queue_v1_snapshots s ON s.id=g.snapshot_id WHERE g.queue_id=? ORDER BY g.sort_key`, q.id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var g segment
-		if err = rows.Scan(&g.id, &g.snapshot, &g.kind, &g.label, &g.sortKey, &g.first, &g.count, &g.removed, &g.state, &g.built, &g.waiting, &g.hint, &g.hintKey, &g.sourceRevision); err != nil {
+		if err = rows.Scan(&g.id, &g.snapshot, &g.kind, &g.label, &g.sortKey, &g.first, &g.count, &g.removed, &g.state, &g.built, &g.waiting, &g.hint, &g.hintKey, &g.sourceRevision, &g.musicOnly); err != nil {
 			return nil, err
 		}
 		g.waiting = g.waiting && g.state == "building"

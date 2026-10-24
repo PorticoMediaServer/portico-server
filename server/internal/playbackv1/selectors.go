@@ -277,12 +277,12 @@ func (s *Service) queueKeyLimit() int64 {
 // small one, the last chunks, the count and label) inside the queue command.
 func storeSnapshot(ctx context.Context, tx *sql.Tx, queue string, snap *snapshot) error {
 	if !snap.stored {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width) VALUES(?,?,?,?,?,0,0)`, snap.id, queue, snap.kind, snap.selector, ""); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,music_only) VALUES(?,?,?,?,?,0,0,1)`, snap.id, queue, snap.kind, snap.selector, ""); err != nil {
 			return err
 		}
 	}
 	for _, c := range snap.pending {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?)`, snap.id, c.no, c.keys); err != nil {
+		if err := writeQueueChunkTx(ctx, tx, snap.id, c.no, c.keys, false); err != nil {
 			return err
 		}
 	}
