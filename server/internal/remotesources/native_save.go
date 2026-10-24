@@ -62,12 +62,7 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 			}
 		}
 	}
-	webdavLeaves := 0
-	for _, leaf := range leaves {
-		if leaf.Kind == "webdav" {
-			webdavLeaves++
-		}
-	}
+	webdavLeaves := webDAVLeafCount(leaves)
 	digest := hex.EncodeToString(sha256Sum(raw))
 	var configuration any = importedSourceConfiguration{ConfigurationDigest: digest, Approvals: approvals}
 	backend, origin := "rclone", ""
