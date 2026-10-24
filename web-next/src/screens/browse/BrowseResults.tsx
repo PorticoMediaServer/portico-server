@@ -50,12 +50,14 @@ export function BrowseResults(props: BrowseResultsProps) {
   useLayoutEffect(() => {
     const element = root.current; if (!element) return;
     // The grid owns its scrollbar, so its content width — not the outer box — decides the fill.
-    const grids = new Set<Element>(), observer = new ResizeObserver(() => read());
-    function read() {
+    const grids = new Set<Element>();
+    let observer: ResizeObserver;
+    const read = () => {
       const bounds = element.getBoundingClientRect(), node = element.querySelector<HTMLElement>('[role="list"]');
       if (node && !grids.has(node)) {grids.add(node);observer.observe(node);}
       setSize({width: element.clientWidth, grid: node?.clientWidth ?? 0, height: Math.max(280, window.innerHeight - bounds.top)});
-    }
+    };
+    observer = new ResizeObserver(read);
     observer.observe(element); window.addEventListener('resize', read);read();
     return () => {observer.disconnect();window.removeEventListener('resize', read);};
   }, [failed]);
