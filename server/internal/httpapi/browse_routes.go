@@ -23,6 +23,10 @@ import (
 // browseFailure answers a validation error with the offending path so a client
 // can attach the message to the control that produced it.
 func browseFailure(w http.ResponseWriter, e error) {
+	if errors.Is(e, catalog.ErrReadingProjectionChanged) {
+		policyError(w, "revision_mismatch")
+		return
+	}
 	var issue *catalog.BrowseValidationError
 	if errors.As(e, &issue) {
 		write(w, 400, map[string]any{"error": map[string]any{"code": "invalid_query", "message": issue.Message, "field": issue.Path, "retryable": false}})
@@ -80,7 +84,8 @@ type browseRequestBody struct {
 
 func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "GET /v1/libraries/{id}/browse-capabilities", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := d.browseLibrary(w, r); !ok {
+		p, ok := d.browseLibrary(w, r)
+		if !ok {
 			return
 		}
 		for key, values := range r.URL.Query() {
@@ -89,10 +94,30 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
-		out, e := d.Catalog.WithContext(r.Context()).BrowseCapabilitiesFor(r.PathValue("id"), r.URL.Query().Get("pivot"))
+		var out catalog.BrowseCapabilities
+		var capabilityViewer catalog.Viewer
+		e := d.compose(r, identity.ContentRestrictions{}, func(cat *catalog.Service) error {
+			viewer, err := d.readingBrowseViewer(cat.Context(), p, r.PathValue("id"), catalog.Viewer{Libraries: []string{r.PathValue("id")}})
+			if err != nil {
+				return err
+			}
+			capabilityViewer = viewer
+			out, err = cat.BrowseCapabilitiesForViewer(viewer, r.PathValue("id"), r.URL.Query().Get("pivot"))
+			return err
+		})
 		if e != nil {
 			browseFailure(w, e)
 			return
+		}
+		if out.Library.Kind == "book" || out.Library.Kind == "comic" {
+			if err := d.browseAuthorityAfter(r, p, capabilityViewer); err != nil {
+				browseFailure(w, err)
+				return
+			}
+			if err := d.allowedLibrary(r.Context(), p, r.PathValue("id")); err != nil {
+				failure(w, err)
+				return
+			}
 		}
 		write(w, 200, out)
 	})
@@ -223,11 +248,15 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 	var out catalog.BrowseResult
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
+		viewer, composeErr := d.readingBrowseViewer(cat.Context(), p, r.PathValue("id"), viewer)
+		if composeErr != nil {
+			return composeErr
+		}
 		rows, composeErr := d.resolveHomeRows(r, p, viewer, query, cat)
 		if composeErr != nil {
 			return composeErr
 		}
-		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions, RowSources: rows})
+		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: viewer.Profile, ViewerFence: viewer.Fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: viewer.EffectiveRestrictions(), RowSources: rows})
 		if composeErr != nil {
 			return composeErr
 		}
@@ -257,7 +286,7 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	for key, values := range q {
-		if (key != "field" && key != "q" && key != "limit" && key != "pivot" && key != "query") || len(values) != 1 {
+		if (key != "field" && key != "q" && key != "limit" && key != "offset" && key != "pivot" && key != "query") || len(values) != 1 {
 			failure(w, catalog.ErrCursor)
 			return
 		}
@@ -270,6 +299,15 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		limit = min(parsed, 200)
+	}
+	offset := 0
+	if q.Has("offset") {
+		parsed, err := strconv.Atoi(q.Get("offset"))
+		if err != nil || parsed < 0 {
+			failure(w, catalog.ErrCursor)
+			return
+		}
+		offset = parsed
 	}
 	restrictions, _, e := d.viewerRestrictions(r, p)
 	restrictionFence, fenceErr := d.browseFence(r, p)
@@ -289,11 +327,15 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		var composeErr error
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: restrictionFence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
+		viewer, composeErr = d.readingBrowseViewer(cat.Context(), p, r.PathValue("id"), viewer)
+		if composeErr != nil {
+			return composeErr
+		}
 		rows, err := d.resolveHomeRows(r, p, viewer, query, cat)
 		if err != nil {
 			return err
 		}
-		out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, RowSources: rows, Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Restrictions: restrictions})
+		out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, RowSources: rows, Library: r.PathValue("id"), Profile: viewer.Profile, Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Offset: offset, Restrictions: viewer.EffectiveRestrictions()})
 		return composeErr
 	})
 	if e != nil {
@@ -350,7 +392,7 @@ func (d Dependencies) projectBrowseDisplay(r *http.Request, p identity.Principal
 
 func registerBrowseCountRoutes(registry *apikit.Registry, d Dependencies) error {
 	failures := []string{"invalid_request", "invalid_query", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}
-	if err := apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_library_counts", Method: "POST", Path: "/v1/libraries/{id}/browse/counts", Summary: "Read bounded counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: failures}, Serve: d.browseCountsHandler}); err != nil {
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_library_counts", Method: "POST", Path: "/v1/libraries/{id}/browse/counts", Summary: "Read bounded counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: append(append([]string{}, failures...), "revision_mismatch")}, Serve: d.browseCountsHandler}); err != nil {
 		return err
 	}
 	return apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_across_counts", Method: "POST", Path: "/v1/browse/counts", Summary: "Read bounded group counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: failures}, Serve: d.browseCountsHandler})
@@ -379,6 +421,13 @@ func (d Dependencies) browseCountsHandler(w http.ResponseWriter, r *http.Request
 	}
 	var out catalog.BrowseCountBatch
 	err = d.composeScope(r, viewer.Restrictions, func(ctx context.Context, cat *catalog.Service) error {
+		if library != "" {
+			var e error
+			viewer, e = d.readingBrowseViewer(ctx, p, library, viewer)
+			if e != nil {
+				return e
+			}
+		}
 		sources := map[string]catalog.HomeRowMembership{}
 		for _, q := range body.Queries {
 			rows, e := d.resolveHomeRows(r.WithContext(ctx), p, viewer, q.Query, cat)

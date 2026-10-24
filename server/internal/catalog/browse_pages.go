@@ -46,6 +46,7 @@ func scanBrowseRows(rows *sql.Rows) ([]browseRow, error) {
 
 // pageShape is everything browseSelect resolved that choosing a page needs.
 type pageShape struct {
+	reading bool
 	request BrowseRequest
 	sorts   []BrowseSortSelection
 	where   string
@@ -95,7 +96,7 @@ func (p pageShape) blocks() blockScope {
 // no posted query, one sort, one kind, and either no restriction or a
 // published class for it.
 func (p pageShape) positional() bool {
-	if p.request.Query != nil || len(p.sorts) != 1 || p.kind == 0 {
+	if p.reading || p.request.Query != nil || len(p.sorts) != 1 || p.kind == 0 {
 		return false
 	}
 	return p.summary.classKey != "" || !p.request.Restrictions.Active()
@@ -110,7 +111,7 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 	if primary.Ordering == -3 {
 		return s.groupOrderPage(p)
 	}
-	if p.request.Query != nil && p.start > 0 && len(p.seekKeys) == 0 {
+	if (p.reading || p.request.Query != nil) && p.start > 0 && len(p.seekKeys) == 0 {
 		return s.filteredRangePage(p)
 	}
 	if primary.Ordering == -2 {

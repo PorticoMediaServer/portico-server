@@ -85,6 +85,11 @@ func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, e
 		}
 		compiler.kinds = append(compiler.kinds, int(kind))
 	}
+	readingEligible, err := s.bindReadingBrowse(d.LibraryID, compiler)
+	if err != nil {
+		return homeSource{}, err
+	}
+	where += " AND " + readingEligible
 	clause, err := compiler.compile(d.Query)
 	if err != nil {
 		return homeSource{}, err

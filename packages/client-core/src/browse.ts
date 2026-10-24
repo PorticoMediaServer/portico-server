@@ -32,7 +32,7 @@ export type BrowseFieldCapability=Readonly<{id:string;labelKey:string;type:Brows
 /** `requiresGroup`: the group's own order (a playlist's, a season's, an album's), offered on a group's page and never on a library tab. */
 export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:readonly BrowseDirection[];defaultDirection:BrowseDirection;expensive:boolean;seeded?:boolean;requiresGroup?:boolean;ownerOnly?:boolean;applicableKinds:readonly string[]}>;
 /** `members`: a pivot read within one group (a book's parts), never a library tab. Paging is by key in a library and by position across libraries. */
-export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;members?:boolean;sorts?:readonly string[];filters?:readonly string[];paging?:BrowsePaging}>;
+export type BrowsePivotCapability=Readonly<{facetSource?:Readonly<{endpoint:string;field:string}>;id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;members?:boolean;sorts?:readonly string[];filters?:readonly string[];paging?:BrowsePaging}>;
 export type BrowsePaging='keyset'|'offset';
 export type BrowseQuickFilter=Readonly<{id:string;labelKey:string;query:BrowseNode}>;
 export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlMs:number}>;
@@ -158,7 +158,8 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  const pivot=(v:unknown):BrowsePivotCapability=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
   // A pivot that does not say it can be queried is not queried.
-  return {id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),sorts:known('pivot.sorts',v.sorts,64),filters:known('pivot.filters',v.filters,128),...(v.paging==='keyset'||v.paging==='offset'?{paging:v.paging}:{}),browsable:v.browsable===true,...(v.members===true?{members:true}:{}),...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
+  const facetSource=v.facetSource==null?undefined:obj(v.facetSource)&&v.facetSource.endpoint==='/v1/libraries/{id}/facets'&&(v.facetSource.field==='author'||v.facetSource.field==='series')?{endpoint:v.facetSource.endpoint,field:v.facetSource.field}:bad();
+  return {...(facetSource?{facetSource}:{}),id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),sorts:known('pivot.sorts',v.sorts,64),filters:known('pivot.filters',v.filters,128),...(v.paging==='keyset'||v.paging==='offset'?{paging:v.paging}:{}),browsable:v.browsable===true,...(v.members===true?{members:true}:{}),...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
  };
  const pivots=firstOfEach('browse','pivots',keepReadable('browse','pivots',rows(raw.pivots,32),pivot),p=>p.id);
  const fields=firstOfEach('browse','fields',keepReadable('browse','fields',rows(raw.fields,128),v=>{
@@ -488,9 +489,10 @@ export function parseBrowseCounts(raw:unknown,expected:readonly string[]):readon
 }
 /** Contextual facet URL; query includes current filters and immutable group.
  * The server leaves the counted field out and rechecks current authority. */
-export function browseContextFacetsPath(libraryId:string,field:string,pivot:string,query?:BrowseNode,q='',limit=200):string{
- if(!id(field)||!id(pivot)||!count(limit)||limit<1||limit>200||q.length>100)bad();
+export function browseContextFacetsPath(libraryId:string,field:string,pivot:string,query?:BrowseNode,q='',limit=200,offset=0):string{
+ if(!id(field)||!id(pivot)||!count(limit)||limit<1||limit>200||q.length>100||!count(offset)||(offset>0&&libraryId===acrossLibraries))bad();
  const params=new URLSearchParams({field,pivot,limit:String(limit)});
+ if(offset>0)params.set('offset',String(offset));
  if(query)params.set('query',JSON.stringify(parseBrowseNode(query)));
  if(q)params.set('q',q);
  return browseFacetsPath(libraryId)+'?'+params.toString();

@@ -126,6 +126,11 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 			}
 		}
 		compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: v.Profile, restrictions: v.EffectiveRestrictions()}
+		readingEligible, e := s.bindReadingBrowse(q.LibraryID, compiler)
+		if e != nil {
+			return "", e
+		}
+		scope += " AND " + readingEligible
 		filter, e := compiler.compile(node)
 		if e != nil {
 			return "", e
