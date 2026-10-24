@@ -14,10 +14,10 @@ function configuration(libraryId = 'selected', revision = 9, sources = [source('
   return {scope: {serverId: 'server', viewerFence: 'fence-7'}, libraryId, revision, sources, policy: {tier: 'basic', revision: 4, operations: ['probe']}};
 }
 function fixture(request: LibraryContentApi['request']) {
-  let current = true;
+  let current = true, notified = 0;
   const errors: unknown[] = [];
-  const folders = new SettingsLibraryFoldersSource({request}, scope, () => current, () => {}, error => {errors.push(error);});
-  return {folders, errors, retire: () => {current = false;}};
+  const folders = new SettingsLibraryFoldersSource({request}, scope, () => current, () => {notified++;}, error => {errors.push(error);});
+  return {folders, errors, notified: () => notified, retire: () => {current = false;}};
 }
 
 test('the folder configuration is inert until a library is explicitly selected', async () => {
@@ -201,4 +201,51 @@ test('an explicit refresh recovers from an error without duplicating a read alre
     assert.equal(f.folders.config('selected')?.revision, 43);
     assert.deepEqual(f.errors, [failure]);
   } finally {f.folders.dispose();}
+});
+
+test('two controllers over one transport keep independent state, aborts and scope fences', async () => {
+  let release!: (value: unknown) => void;
+  const held = new Promise(resolve => {release = resolve;});
+  const calls: {path: string; signal?: AbortSignal}[] = [];
+  const request = async <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => {
+    calls.push({path, signal});
+    if (path.includes('/held/')) return held as Promise<T>;
+    const libraryId = path.includes('/other/') ? 'other' : 'selected';
+    return configuration(libraryId, 5, [source('only', `/media/${libraryId}`, `/media/${libraryId}`, libraryId)]) as T;
+  };
+  const first = fixture(request), second = fixture(request), foreignErrors: unknown[] = [];
+  const foreign = new SettingsLibraryFoldersSource({request}, {serverId: 'another-server', viewerId: 'owner'}, () => true, () => {}, error => {foreignErrors.push(error);});
+  try {
+    const reading = first.folders.select('held');
+    await second.folders.select('other');
+    assert.equal(first.folders.getSnapshot().loading, true);assert.equal(first.folders.config('held'), undefined);
+    assert.equal(second.folders.config('other')?.sources[0].path, '/media/other');
+    assert.deepEqual(calls.map(call => call.path), ['/v1/admin/libraries/held/inventory-config', '/v1/admin/libraries/other/inventory-config']);
+    const firstNotified = first.notified(), secondNotified = second.notified();
+    second.folders.dispose();
+    assert.deepEqual(second.folders.getSnapshot(), {loading: false});
+    assert.equal(calls[0].signal?.aborted, false);
+    release(configuration('held', 8, [source('only', '/media/held', '/media/held', 'held')]));
+    await reading;
+    assert.equal(first.folders.config('held')?.revision, 8);
+    assert.equal(first.notified() > firstNotified, true);assert.equal(second.notified(), secondNotified);
+    await foreign.select('selected');
+    assert.equal(foreign.getSnapshot().error instanceof Error, true);
+    assert.equal('config' in foreign.getSnapshot(), false);
+    assert.equal(foreignErrors.length, 1);
+    assert.equal(first.folders.config('held')?.revision, 8);
+  } finally {first.folders.dispose();foreign.dispose();}
+});
+
+test('the controller keeps the caller scope it was constructed with', async () => {
+  const callerScope = {serverId: 'server', viewerId: 'owner'};
+  const errors: unknown[] = [];
+  const folders = new SettingsLibraryFoldersSource({request: async <T>() => configuration('selected', 2) as T}, callerScope, () => true, () => {}, error => {errors.push(error);});
+  try {
+    callerScope.serverId = 'another-server';
+    await folders.select('selected');
+    assert.equal(folders.config('selected')?.revision, 2);
+    assert.equal(folders.config('selected')?.scope.serverId, 'server');
+    assert.deepEqual(errors, []);
+  } finally {folders.dispose();}
 });
