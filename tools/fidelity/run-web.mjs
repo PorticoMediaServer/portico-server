@@ -29,7 +29,8 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
   // window. The shared extractor rejects scaled roots; no DOM/CSS is rewritten.
   const authoredReference = adapter.referenceWindowViewport ? await extractReference({url: referenceURL,
     selector: referenceSelector, windowViewport: adapter.referenceWindowViewport, viewport,
-    anchors: adapter.reference, repeats: adapter.repeats?.reference, component: adapter.component === true}) : undefined;
+    anchors: adapter.reference, repeats: adapter.repeats?.reference, component: adapter.component === true,
+    motion: adapter.referenceMotion, motionTimeoutMs: adapter.referenceMotionTimeoutMs}) : undefined;
   const vite = await createServer({root: join(root, 'web-next'), configFile: join(root, 'web-next/vite.config.ts'),
     cacheDir: join(process.env.TMPDIR, 'fidelity-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
   try {
@@ -37,13 +38,16 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
     const actualOrigin = `http://127.0.0.1:${vite.httpServer.address().port}`, actualURL = actualOrigin + entry;
     return await withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       viewport, allowedOrigins: [new URL(referenceURL).origin, actualOrigin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
-      if (!authoredReference) await browser.navigate(referenceURL, referenceSelector);
+      if (!authoredReference) {
+        await browser.navigate(referenceURL, referenceSelector);
+        if (adapter.referenceMotion === 'settled') await settleMotion(browser, {selector: referenceSelector, timeoutMs: adapter.referenceMotionTimeoutMs ?? 15000});
+      }
       const reference = authoredReference ?? await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference);
       const deterministicReference = !!authoredReference || JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference));
       await browser.navigate(actualURL, adapter.readySelector ?? actualSelector);
       await verifyGalleryEntry(browser, entry, viewport);
       await applyControlledState(browser, adapter.stateSteps);
-      if (adapter.motion === 'settled') await settleMotion(browser);
+      if (adapter.motion === 'settled') await settleMotion(browser, {selector: actualSelector});
       const measureActual = async () => {
         const measured = await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual);
         return adapter.component ? componentMeasurement(measured) : measured;

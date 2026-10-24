@@ -16,3 +16,17 @@ test('motion readiness observes animations rather than mutating the specimen', a
     assert.ok(!expression.includes('.style=') && !expression.includes('.pause(') && !expression.includes('.cancel('));
   }});
 });
+test('finite motion readiness is bounded and scoped to the selected frame, not other contact-sheet frames', async () => {
+  const target = {}, outside = {}, awaited = [];
+  const root = {contains: value => value === target};
+  const animation = (node, endTime) => ({playState: 'running', effect: {target: node, getComputedTiming: () => ({endTime})},
+    get finished() {awaited.push(node); return Promise.resolve();}});
+  const document = {querySelectorAll: selector => selector === '#selected' ? [root] : [], getAnimations: () => [animation(target, 11000), animation(outside, Infinity)]};
+  const browser = {evaluate: expression => Function('document', 'requestAnimationFrame', `return ${expression}`)(document, callback => queueMicrotask(callback))};
+  await settleMotion(browser, {selector: '#selected', timeoutMs: 15000});
+  assert.deepEqual(awaited, [target]);
+  await assert.rejects(settleMotion(browser, {selector: '#missing'}), /unique/);
+  await assert.rejects(settleMotion(browser, {selector: '#selected', timeoutMs: 30001}), /bounded/);
+  document.getAnimations = () => [animation(target, Infinity)];
+  await assert.rejects(settleMotion(browser, {selector: '#selected'}), /infinite/);
+});
