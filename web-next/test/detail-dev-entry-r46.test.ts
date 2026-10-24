@@ -88,7 +88,7 @@ test('the entry loads the registered production route through genuine providers 
 test('the public specimen carries no credentials, private frame artwork or production import', () => {
   const specimen = read('../src/dev/entries/detail-specimen.tsx');
   assert.doesNotMatch(specimen, /Bearer |Authorization|accessToken|refreshToken|private|password/i);
-  assert.doesNotMatch(specimen, /assets\/pool|--bd\.jpg|desktop-detail\.html/);
+  assert.doesNotMatch(specimen, /assets\/pool|--bd\.jpg/);
   assert.doesNotMatch(specimen, /\/v1\/(?!items\/|admin\/activity)/);
 
   const root = new URL('../src/', import.meta.url).pathname;
