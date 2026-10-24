@@ -44,7 +44,7 @@ const server = await createServer({root, configFile: path.join(root, 'vite.confi
   plugins: [{name: 'ds-web-saved-r46-design-assets', configureServer(context) { context.middlewares.use(assetMiddleware); }}],
   server: {host: '127.0.0.1', port: 0, strictPort: false}});
 
-const referenceSelectors = {
+const gridSelectors = {
   screen: '#saved', title: '#saved .phd h1', tabs: '#saved .tabs', tabSelected: '#saved .tab[aria-selected="true"]',
   toolbar: '#saved .tb', filters: '#saved .tb > .chip:nth-child(1)', quick: '#saved .tb > .chip:nth-child(3)',
   count: '#saved .tb .r', sort: '#saved .tb .r > .chip', segmented: '#saved .tb .seg',
@@ -52,6 +52,34 @@ const referenceSelectors = {
   cardTitle1: '#saved .grid .card:nth-child(1) .t', cardSub1: '#saved .grid .card:nth-child(1) .s',
   card8: '#saved .grid .card:nth-child(8)', art8: '#saved .grid .card:nth-child(8) .art',
   section: '#saved .sub2', sectionHeading: '#saved .sub2 .sh', squareArt: '#saved .sub2 .card .art',
+};
+const historySelectors = {
+  screen: '#saved', title: '#saved .phd h1', tabs: '#saved .tabs', tabSelected: '#saved .tab[aria-selected="true"]',
+  toolbar: '#saved .tb', filters: '#saved .tb > .chip:nth-child(1)', quick: '#saved .tb > .chip:nth-child(3)',
+  count: '#saved .tb .r', sort: '#saved .tb .r > .chip', segmented: '#saved .tb .seg',
+  grid: '#saved .day:nth-of-type(1)', card1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1)', art1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1) .a',
+  cardTitle1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1) b', cardSub1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1) small',
+  card8: null, art8: null, section: '#saved .day:nth-of-type(2)', sectionHeading: '#saved .day:nth-of-type(2) h3', squareArt: '#saved .day:nth-of-type(1) .hl:nth-of-type(2) .a',
+};
+const activeSelectors = scope === 'history' ? historySelectors : gridSelectors;
+const buildHistoryMeasure = () => {
+  const query = selector => document.querySelector(selector);
+  const byText = (selector, text) => [...document.querySelectorAll(selector)].find(element => element.textContent.trim() === text);
+  const days = [...document.querySelectorAll('main [class*="_historyDay_"]')], rows = [...document.querySelectorAll('main [class*="_historyRow_"]')];
+  const elements = {
+    screen: query('main'), title: query('main > header h1'), tabs: query('main [role="tablist"]'), tabSelected: query('main [role="tab"][aria-selected="true"]'),
+    toolbar: query('main [class*="_toolbar_"]'), filters: null, quick: byText('main button', 'Today'),
+    count: query('main [class*="_toolbarEnd_"]'), sort: null, segmented: null,
+    grid: days[0], card1: rows[0], art1: rows[0]?.querySelector('[class*="_historyArt_"]'),
+    cardTitle1: rows[0]?.querySelector('b'), cardSub1: rows[0]?.querySelector('small'),
+    card8: null, art8: null, section: days[1], sectionHeading: days[1]?.querySelector('h2'), squareArt: rows[1]?.querySelector('[class*="_historyArt_"]'),
+  };
+  const box = element => {
+    const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
+    return {x: +rect.x.toFixed(2), y: +rect.y.toFixed(2), width: +rect.width.toFixed(2), height: +rect.height.toFixed(2),
+      font: style.font, letterSpacing: style.letterSpacing, color: style.color, background: style.backgroundColor, radius: style.borderRadius};
+  };
+  return Object.fromEntries(Object.entries(elements).map(([name, element]) => [name, element ? box(element) : null]));
 };
 const buildMeasure = () => {
   const query = selector => document.querySelector(selector);
@@ -114,8 +142,8 @@ try {
 
   // The genuine screen over its controlled source fixture.
   await page.goto(`${origin}/src/screens/saved/ds-web-saved-r46-preview.html?${state}`, {waitUntil: 'domcontentloaded'});
-  await settle('article[data-card-kind]', 14, 'build');
-  report.build = await page.evaluate(buildMeasure);
+  await settle(scope === 'history' ? '[class*="_historyRow_"]' : 'article[data-card-kind]', scope === 'history' ? 7 : 14, 'build');
+  report.build = await page.evaluate(scope === 'history' ? buildHistoryMeasure : buildMeasure);
   report.artwork = await page.evaluate(() => [...document.querySelectorAll('[data-artwork-status]')].map(element => element.dataset.artworkStatus));
   report.buildText = (await page.evaluate(() => document.body.innerText)).split('\n').map(line => line.trim()).filter(Boolean);
   report.files.build = 'saved-build.png';
@@ -133,8 +161,8 @@ try {
   const referenceHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;background:#071018}.screen{overflow:visible}nav{visibility:hidden}</style></head><body class="p">${sprite}${source.slice(start, end)}</body></html>`;
   await page.route('**/__saved_reference__', route => route.fulfill({contentType: 'text/html', body: referenceHtml}));
   await page.goto(`${origin}/__saved_reference__`, {waitUntil: 'domcontentloaded'});
-  await settle('#saved .grid .card', 14, 'frame');
-  report.reference = await measure(referenceSelectors);
+  await settle(scope === 'history' ? '#saved .day .hl' : '#saved .grid .card', scope === 'history' ? 7 : 14, 'frame');
+  report.reference = await measure(activeSelectors);
   report.referenceText = (await page.evaluate(() => document.body.innerText)).split('\n').map(line => line.trim()).filter(Boolean);
   report.files.reference = 'saved-frame.png';
   await page.screenshot({path: `${output}/saved-frame.png`, fullPage: true});
