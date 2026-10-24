@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"portico.local/apikit"
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mounts"
@@ -34,9 +33,14 @@ func TestDAVConnectionHTTPChecksOwnerAndNeverPublishesBlockedTest(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
-	registerDAVConnectionTest(registry, d)
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, route := range registry.Definitions() {
+		if route.ID != "test_storage_source_webdav" {
+			continue
+		}
 		if spec := laneSpecs[route.Admission]; spec.budget != 0 || !spec.endsWithClient {
 			t.Fatal("bounded connection test was assigned a shorter request deadline")
 		}
