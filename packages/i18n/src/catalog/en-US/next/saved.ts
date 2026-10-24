@@ -2,6 +2,7 @@
 export const savedMessages = {
   'next.saved.optional': 'Optional',
   'next.saved.sections': 'Saved sections',
+  'next.saved.musicAndAudiobooks': 'Music and audiobooks',
   'next.saved.removedPlaylist': 'Removed “{title}” from the playlist.',
   'next.saved.savedViewsCount': '{count, plural, one {# saved view} other {# saved views}}',
   'next.saved.viewsHelp': 'Each one is re-run on the server, so it stays current as libraries change.',

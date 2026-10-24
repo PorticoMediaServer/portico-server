@@ -85,6 +85,17 @@ ENV PORTICO_DISC_FIXTURES=/fixtures/discs/manifest.json \
     TMPDIR=/tmp/portico-verify
 RUN mkdir -p "$TMPDIR" && bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
 
+# Sonic is independently verified before composition. Keep the sealed FFmpeg
+# inventory unchanged; the final installed union is checked by sonic-bundle.py.
+FROM ffmpeg AS media-tools
+ARG TARGETARCH
+COPY scripts/sonic-bundle.py scripts/verify-ffmpeg-manifest.py /src/scripts/
+COPY third_party/portico-sonic/runtime.lock.json /src/third_party/portico-sonic/runtime.lock.json
+COPY third_party/musicnn/model.lock.json /src/third_party/musicnn/model.lock.json
+COPY third_party/portico-sonic/bundle/ /sonic-bundles/
+RUN if [ "$TARGETARCH" = amd64 ]; then target=linux-x64; else target=linux-arm64; fi \
+ && python3 /src/scripts/sonic-bundle.py install /ffmpeg --bundle "/sonic-bundles/linux-${TARGETARCH}" --target "$target"
+
 # Fetch only the pinned architecture, verify the upstream signature and every payload byte.
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS rclone
 RUN apt-get update && apt-get install --yes --no-install-recommends python3 curl gnupg ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -136,7 +147,7 @@ COPY --from=web /out/web /opt/portico/web
 COPY --from=web /out/release.json /opt/portico/release.json
 # Supply the qualified bundle from the manual toolchain workflow (see the
 # ffmpeg stage above for where it goes).
-COPY --from=ffmpeg /ffmpeg/ /opt/portico/third_party/ffmpeg/
+COPY --from=media-tools /ffmpeg/ /opt/portico/third_party/ffmpeg/
 
 ENV PORTICO_WEB_DIR=/opt/portico/web \
     PORTICO_DATA_DIR=/config \

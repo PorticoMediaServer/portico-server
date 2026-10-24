@@ -63,16 +63,7 @@ func (s *Service) musicTags(ctx context.Context, w work, input subtitles.RenderI
 		return tags, e
 	}
 	if w.Source.Cue {
-		delete(tags.Values, "cuesheet")
-		delete(tags.Values, "cue_sheet")
-		var title string
-		var ordinal int
-		e := s.db.QueryRowContext(ctx, `SELECT e.title,v.ordinal FROM music_virtual_tracks v JOIN catalog_entities e ON e.id=v.entity_id WHERE v.asset_id=? AND e.public_id=pid_blob(?)`, w.Source.Asset, w.ItemID).Scan(&title, &ordinal)
-		if e != nil {
-			return tags, e
-		}
-		tags.Values["title"] = []string{title}
-		tags.Values["track"] = []string{strconv.Itoa(ordinal)}
+		return s.cueMusicTags(ctx, w, tags)
 	}
 	return tags, nil
 }

@@ -1,6 +1,7 @@
 {
   "name": "ONNX Runtime",
   "version": "1.20.1",
+  "releaseTag": "sonic-1.20.1-mtt-1",
   "license": "MIT",
   "source": "https://github.com/microsoft/onnxruntime/tree/v1.20.1",
   "packages": {

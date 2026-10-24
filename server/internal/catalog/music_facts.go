@@ -27,7 +27,7 @@ func persistMusicFacts(tx *sql.Tx, asset string, f assets.Facts) error {
 		if d.SampleRate <= 0 || s.Channels <= 0 {
 			return nil
 		}
-		_, e := tx.Exec(`INSERT INTO music_technical_facts(asset_id,size,modified_ns,codec,sample_rate,bit_depth,channels,lossless) SELECT token,size,modified_ns,?,?,?,?,? FROM catalog_assets WHERE token=? ON CONFLICT(asset_id) DO UPDATE SET size=excluded.size,modified_ns=excluded.modified_ns,codec=excluded.codec,sample_rate=excluded.sample_rate,bit_depth=excluded.bit_depth,channels=excluded.channels,lossless=excluded.lossless`, s.Codec, d.SampleRate, d.BitDepth, s.Channels, musicLossless(s.Codec, f), asset)
+		_, e := tx.Exec(`INSERT INTO music_technical_facts(asset_id,size,modified_ns,codec,sample_rate,bit_depth,channels,lossless) SELECT token,size,modified_ns,?,?,?,?,? FROM catalog_assets WHERE token=? ON CONFLICT(asset_id) DO UPDATE SET size=excluded.size,modified_ns=excluded.modified_ns,codec=excluded.codec,sample_rate=excluded.sample_rate,bit_depth=excluded.bit_depth,channels=excluded.channels,lossless=excluded.lossless`, s.Codec, d.SampleRate, d.BitsPerSample, s.Channels, musicLossless(s.Codec, f), asset)
 		return e
 	}
 	return nil

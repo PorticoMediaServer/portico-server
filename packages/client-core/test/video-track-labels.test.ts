@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {videoPictureName,videoAudioFormatName,videoTrackName,formatVideoBytes,type VideoTrackWords} from '../src/video-track-labels.ts';
+import {videoPictureName,videoAudioFormatName,videoTrackName,videoTrackWords,formatVideoBytes,type VideoTrackWords} from '../src/video-track-labels.ts';
+import {parseOptions} from '../src/playback-v1/types.ts';
+import {validateSubtitleCatalog} from '../src/subtitles.ts';
 import type {AudioStream,SubtitleStream,VideoStream} from '../src/playback-v1/types.ts';
-const words:VideoTrackWords={fourK:'4K',stereo:'Stereo',mono:'Mono',channels:n=>`${n} channels`,withAtmos:format=>`${format} with Atmos`,withDtsx:value=>`${value} (DTS:X)`,besideFile:format=>`${format}, beside the file`,language:tag=>(({en:'English',eng:'English',ja:'Japanese'} as Readonly<Record<string,string>>)[tag]??'')};
+const words:VideoTrackWords={fourK:'4K',stereo:'Stereo',mono:'Mono',channels:n=>`${n} channels`,withAtmos:format=>`${format} with Atmos`,withDtsx:value=>`${value} (DTS:X)`,besideFile:format=>`${format}, beside the file`,language:tag=>(({en:'English',eng:'English',ja:'Japanese'} as Readonly<Record<string,string>>)[tag]??''),subtitleFlags:{sdh:'SDH',forced:'forced'}};
 const audio=(facts:Partial<AudioStream>={}):AudioStream=>({id:'a1',codec:'truehd',atmos:false,default:true,commentary:false,visualImpaired:false,...facts});
 const video=(facts:Partial<VideoStream>={}):VideoStream=>({id:'v0',codec:'hevc',...facts});
 
@@ -40,6 +42,29 @@ test('subtitle origin is explicit and a missing download provider is not invente
  const downloaded=videoTrackName({...sub,format:'ass',source:'downloaded'},words);
  assert.equal(downloaded.rest,'ASS');assert.equal(downloaded.subtitleOrigin,'downloaded');
  assert.equal(videoTrackName({...sub,format:'hdmv_pgs_subtitle',source:'embedded'},words).rest,'PGS');
+});
+test('actual Options subtitle flags name the identity line without changing technical parts',()=>{
+ for(const flags of [{forced:true,sdh:false},{forced:false,sdh:true},{forced:true,sdh:true},{forced:false,sdh:false},{}]){
+  const track=parseOptions({itemId:'movie',kind:'movie',versions:[{id:'version',subtitles:[{id:'sub',format:'srt',source:'sidecar',language:'en',...flags}]}]}).versions[0]!.subtitles[0]!;
+  const suffix=flags.sdh?flags.forced?' (SDH, forced)':' (SDH)':flags.forced?' (forced)':'';
+  const parts=videoTrackName(track,words);
+  assert.equal(parts.first,`English${suffix}`);assert.equal(parts.label,`English${suffix}, SRT, beside the file`);
+  assert.equal(parts.rest,'SRT, beside the file');assert.equal(parts.format,'SRT');assert.equal(parts.subtitleOrigin,'sidecar');assert.equal(parts.language,'en');assert.equal(parts.title,undefined);
+ }
+});
+test('validated SubtitleResource hearing facts and actual catalogue words retain a title',()=>{
+ const resource=validateSubtitleCatalog({version:1,itemId:'movie',revision:1,canShare:false,provider:{id:'provider',enabled:false},sources:[{id:'source',durationUs:'1000000',inventoryRevision:1,available:true,timingKnown:true}],resources:[{id:'sub',sourceId:'source',revision:1,scope:'personal',language:'en',title:'Commentary',format:'srt',origin:'sidecar',rights:'own transcript',offsetUs:'0',canManage:true,enabled:true,forced:true,hearingImpaired:true}],discovered:[]}).resources[0]!;
+ const localized=videoTrackWords(id=>id==='next.kit.fileInfo.sdh'?'SME':id==='mediaInfo.forced'?'obligatoire':id,'en-US');
+ const parts=videoTrackName(resource,localized);
+ assert.equal(parts.first,'Commentary (SME, obligatoire)');assert.equal(parts.label,'Commentary (SME, obligatoire), SRT');
+ assert.equal(parts.title,'Commentary');assert.equal(parts.language,'en');assert.equal(parts.rest,'SRT');assert.equal(parts.subtitleOrigin,undefined);
+ assert.equal(resource.title,'Commentary');assert.equal(resource.forced,true);assert.equal(resource.hearingImpaired,true);assert(Object.isFrozen(resource));
+ assert.equal(videoTrackName({...resource,sdh:true},words).first,'Commentary (SDH, forced)');
+});
+test('subtitle flags are never inferred from language, format or the title',()=>{
+ const track=Object.freeze({format:'srt',language:'en',title:'SDH forced commentary',source:'sidecar' as const});
+ assert.equal(videoTrackName(track,words).first,track.title);
+ assert.equal(videoTrackName({...track,forced:false,hearingImpaired:false,sdh:false},words).first,track.title);
 });
 test('picture naming retains actual scan and HDR facts while unknown stays omitted',()=>{
  assert.equal(videoPictureName(video({height:1080,interlaced:false,hdr:'hdr10'}),words),'1080p HDR10');

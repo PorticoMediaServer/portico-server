@@ -4,7 +4,9 @@ import {createDetailBindings} from '../detail/bindings';
 import {createShowBindings} from '../detail/show-bindings';
 import {SEARCH_CHIPS} from '@core/presentation/search-model.ts';
 import type {SearchData, SearchGroupResult} from '@core/search.ts';
+import {defaultI18n} from '@i18n';
 import {SearchGenresController} from './genres';
+import {SearchOnNowController} from './on-now';
 
 /** Group narrowing shares counts only within the same actual base query.
  * Page size and recording do not change membership; library scope/order do. */
@@ -17,6 +19,9 @@ export function createSearchBindings(context: ScreenContext) {
   const life = screenLifetime(context);
   const service = new SearchService({api: life.api, scope: context.scope});
   const genres = new SearchGenresController({api: life.api, signal: life.signal(), isCurrent: life.current, slot: 'backdrop', limit: 8});
+  const onNow = new SearchOnNowController({api: life.api, serverId: context.scope.serverId,
+    timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    isCurrent: life.current, signal: life.signal(), limit: 4});
   let text = '', group: SearchGroup | undefined;
   let resultKey = '';
   let summary: Readonly<{key: string; groups: readonly Pick<SearchGroupResult, 'id' | 'status' | 'totalCount' | 'totalCountExact'>[]}> | undefined;
@@ -45,11 +50,11 @@ export function createSearchBindings(context: ScreenContext) {
   });
   const select = async (q: string, options: Omit<SearchQuery, 'q'> = {}) => {
     life.assert(); text = q; group = options.group;
-    if (q.trim()) genres.cancel();
+    if (q.trim()) { genres.cancel(); onNow.cancel(); }
     await service.select(q, options.group || options.groups ? options : {...options, groups: SEARCH_CHIPS.flatMap(chip => chip.id === 'all' ? [] : [chip.id])});
   };
   return {
-    context: commandContext, service, genres, select, topTitle, topShow,
+    context: commandContext, service, genres, onNow, select, topTitle, topShow,
     session: () => ({text, group}),
     summary: () => {
       const state = service.getSnapshot(), data = state.data;
@@ -67,7 +72,7 @@ export function createSearchBindings(context: ScreenContext) {
       if (service.getSnapshot().phase !== 'ready' || !visible.has(entry) || !('libraryId' in entry) || !entry.libraryId || !entry.playback || entry.available !== true) throw new DOMException('Search playback changed', 'AbortError');
       await commandContext.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId, startSeconds: entry.playback.startSeconds ?? 0}, life.signal(), () => visible.has(entry));
     },
-    dispose() { text = ''; group = undefined; summary = undefined; visible.clear(); off(); genres.dispose(); life.dispose(); topTitle.dispose(); topShow.dispose(); service.cancel(); service.dispose(); },
+    dispose() { text = ''; group = undefined; summary = undefined; visible.clear(); off(); genres.dispose(); onNow.dispose(); life.dispose(); topTitle.dispose(); topShow.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type SearchBindings = ReturnType<typeof createSearchBindings>;

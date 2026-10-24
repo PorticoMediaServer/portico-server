@@ -109,11 +109,14 @@ func episodeThumbnailRuntime(meta *metadata.Service, sources *remotesources.Serv
 		Sources: sources, Identities: identities, LocalStorage: local,
 		Episodes: episodeMetadataState{service: meta}, Analysis: episodeAnalysisSchedule{},
 	}
-	return &metadata.EpisodeThumbnailRuntime{
+	runtime := &metadata.EpisodeThumbnailRuntime{
 		Sources:        episodeSourceAdapter{resolver: resolver},
-		Decoder:        func(input mediaanalysis.Input) mediaanalysis.Decode { return inputs.AnalysisDecoder(input) },
 		ArtworkContext: meta.CaptureArtworkContext,
 	}
+	if inputs.AnalysisConfigured() {
+		runtime.Decoder = func(input mediaanalysis.Input) mediaanalysis.Decode { return inputs.AnalysisDecoder(input) }
+	}
+	return runtime
 }
 
 var _ metadata.EpisodeThumbnailSources = episodeSourceAdapter{}

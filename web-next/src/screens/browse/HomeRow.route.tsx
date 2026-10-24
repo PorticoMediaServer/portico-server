@@ -7,6 +7,7 @@ import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {GridSkeleton} from '../../kit/states';
+import type {AmbientArtSource} from '../../kit/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {ScreenProblem} from '../detail/ScreenProblem';
@@ -26,12 +27,29 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
   }, [context, row.id]);
   useEffect(() => () => {owner.life.dispose();owner.controller.dispose();}, [owner]);
   const state = useSyncExternalStore(owner.controller.subscribe, owner.controller.getSnapshot, owner.controller.getSnapshot);
+  const page = useSyncExternalStore(owner.controller.collection.subscribe, owner.controller.collection.getSnapshot, owner.controller.collection.getSnapshot);
+  // Frame #seeall draws the page's own art as a three-image wash behind the header; the
+  // sources are the titles actually on this page, so nothing is drawn before they arrive.
+  const ambient = useMemo(() => {
+    if (appearance.showBackdrops === false || !page.total) return undefined;
+    const seen = new Set<string>(), sources: AmbientArtSource[] = [];
+    for (const member of owner.controller.collection.residentItems()) {
+      const url = member.entry.posterUrl;
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      const source = context.artwork.ambient(url, {group: 'home-row', order: sources.length});
+      if (!source) continue;
+      sources.push(source);
+      if (sources.length === 3) break;
+    }
+    return sources;
+  }, [owner, context.artwork, appearance.showBackdrops, page]);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium');
   const library = context.identity?.libraries.find(library => library.id === row.libraryId);
   const browse: LibraryBrowseBindings = {controller: owner.controller, library: {id: '*', name: row.title, kind: library?.kind ?? ''},
     pivot: owner.controller.source.pivot, artwork: context.artwork,
-    appearance: {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 190) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size},
+    appearance: {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 170) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size},
     preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
     shape: row.artworkShape === 'square' ? 'square' : 'poster',
     onAppearanceChange: change => {if (!context.isCurrent()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);},
@@ -53,7 +71,7 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
       {signal: owner.life.signal(command.signal), isCurrent: current}, {shuffle})
       .catch(context.effects.reportError).finally(off);
   } : undefined;
-  return <HomeRowScreen row={row} browse={browse} onBack={() => {void router.navigate({to: '/'}).catch(context.effects.reportError);}}
+  return <HomeRowScreen row={row} browse={browse} ambient={ambient} onBack={() => {void router.navigate({to: '/'}).catch(context.effects.reportError);}}
     onPlay={play ? () => play(false) : undefined} onShuffle={play ? () => play(true) : undefined}/>;
 }
 function BoundHomeRow({captured, rowId}: {captured: ProtectedLibraryScreen; rowId: string}) {

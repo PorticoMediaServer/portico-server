@@ -10,6 +10,8 @@
 
 .collection { display: inline-flex; align-items: center; gap: 8px; color: var(--color-accent-strong); background: none; border: 0; border-radius: 6px; font: inherit; font-size: var(--type-body-size); font-weight: var(--type-button-weight); padding: 0; margin-bottom: 14px; cursor: pointer; }
 
+.collectionCount { color: var(--color-text-secondary); font-weight: var(--type-see-all-weight); }
+
 .tagline { font-size: var(--type-detail-heading-size); font-weight: var(--type-button-weight); letter-spacing: -.01em; color: var(--color-text); margin: 0 0 8px; }
 
 .copy .blurb[data-variant=hero] { max-width: 540px; font-size: var(--type-synopsis-size); line-height: var(--type-synopsis-line); color: var(--color-text-secondary); margin: 0 0 18px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

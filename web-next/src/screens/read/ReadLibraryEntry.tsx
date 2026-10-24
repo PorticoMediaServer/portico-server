@@ -55,13 +55,15 @@ function LibraryRows({resources, name, comic, onMore, onRetry}: {resources: Reso
   }, [failed, reading.status]);
   useEffect(() => {resources.resume.collection.ensureRange(0, 11);}, [resources]);
   const cardWidth = width < 600 ? 108 : 190;
+  /** The same rows at phone width take the handheld scale and gutters (phone-read 1). */
+  const platform = width < 600 ? 'phone-web' as const : 'desktop' as const;
   if (state.status === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: onRetry}}/>;
   const resume = reading.status === 'error' ? [] : resources.resume.collection.residentItems();
   if (state.total === 0 && resume.length === 0) return <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
   const rows: readonly ReadDiscoveryRow[] = resume.length > 0 ? [{id: 'continue', kind: 'resume', heading: t('next.cards.read'), items: resumeRows(resources, resume)}] : [];
   return <div className={styles.library}>
-    <ReadDiscovery rows={rows} platform="desktop" reducedMotion={reducedMotion}
+    <ReadDiscovery rows={rows} platform={platform} reducedMotion={reducedMotion}
       onVisibleRange={(_row, range) => resources.resume.collection.ensureRange(0, Math.max(0, range.last))}>
       {state.total === 0 ? null : <div ref={grid} className={styles.books} data-view="grid">
         <WindowedGrid collection={resources.books.collection} label={name}

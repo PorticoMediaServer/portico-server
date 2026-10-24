@@ -14,15 +14,29 @@
 
 .results { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 52px 40px; padding-top: 40px; }
 
+.empty { width: 100%; display: flex; flex-direction: column; gap: 48px; }
+
+.emptySection { width: 100%; }
+
+.genres { display: grid; grid-template-columns: repeat(4, minmax(0, 316px)); gap: 16px; }
+
+.genres > * { width: 100%; }
+
+.lives { display: grid; grid-template-columns: repeat(4, minmax(0, 316px)); gap: 16px; }
+
+.lives > * { width: 100%; }
+
 .section { flex: none; min-width: 0; }
 
-.section header,.recent header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; min-height: 30px; }
+.section header,.recent header,.emptySection header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; min-height: 30px; }
 
-.section header h2,.recent h2,.single h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); letter-spacing: var(--type-row-heading-tracking); margin: 0; }
+.section header h2,.recent h2,.single h2,.emptySection h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); letter-spacing: var(--type-row-heading-tracking); margin: 0; }
 
-.section header > span { font-size: var(--type-person-title-size); color: var(--color-text-tertiary); }
+.section header > span,.emptySection header > span { font-size: var(--type-person-title-size); color: var(--color-text-tertiary); }
 
-.section header > button,.recent header > button { margin-left: auto; }
+.section header > button,.recent header > button,.emptySection header > button { margin-left: auto; }
+
+.emptySection header > .trailingLink { flex-direction: row-reverse; }
 
 .cards { display: flex; gap: 16px; align-items: start; }
 
@@ -58,7 +72,8 @@
 
 .recent,.single,.partial { width: 100%; }
 
-.recent > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.recent > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.recent > div > button { color: var(--color-text-secondary); font-weight: var(--type-body-strong-weight); }
 .recent[data-compact] header { margin-bottom: 8px; }
 .recent[data-compact] header h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-row-heading-weight); }
 .recent > .recentList { display: block; overflow: hidden; border-radius: 14px; background: var(--color-raised); }
@@ -81,6 +96,14 @@
 @media(max-width:1023px) { .search { padding: 80px 20px 110px; }
 
 .results { gap: 30px 20px; padding-top: 24px; }
+
+.empty { gap: 30px; }
+
+.genres { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+
+.lives { display: flex; overflow-x: auto; }
+
+.lives > * { flex: none; width: 316px; }
 
 .hint { display: none; }
 
