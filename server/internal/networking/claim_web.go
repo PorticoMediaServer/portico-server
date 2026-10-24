@@ -17,6 +17,7 @@ import (
 )
 
 type localWebClaim struct {
+	ownerSwitchCount *claimweb.Signed `json:"-"`
 	Signed             claimweb.Signed  `json:"signed"`
 	OwnerStart         *claimweb.Signed `json:"ownerStart,omitempty"`
 	OwnerTransactionID string           `json:"ownerTransactionId,omitempty"`
