@@ -129,17 +129,21 @@ func TestLinearPlanUsesFragmentedMP4WhereItKeepsTheSignal(t *testing.T) {
 	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
 	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"hevc","profile":"Main","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1"},{"codec_type":"audio","codec_name":"flac","channels":2,"sample_rate":"48000"}]}`)
 	plan, err := linearPlan(raw, w, playback.LinearEither)
-	if err != nil || !plan.Fragmented || plan.ConvertVideo || plan.ConvertAudio || !plan.CopyHEVC {
+	if err != nil || !plan.Fragmented || plan.ConvertVideo || plan.ConvertAudio || !plan.CopyHEVC || plan.CopyAAC {
 		t.Fatalf("%+v %v", plan, err)
 	}
 	// The same device on a buffer that already holds MPEG-TS is planned for MPEG-TS.
 	if plan, err = linearPlan(raw, w, playback.LinearTSOnly); err == nil && plan.Fragmented {
 		t.Fatalf("%+v", plan)
 	}
-	// An ordinary H.264/AAC input stays MPEG-TS.
+	// An ordinary H.264/AAC input stays MPEG-TS, but carries the exact
+	// copied-audio fact if a client requires fragmented MP4.
 	raw = []byte(`{"streams":[{"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1"},{"codec_type":"audio","codec_name":"aac","profile":"LC","channels":2,"sample_rate":"48000"}]}`)
-	if plan, err = linearPlan(raw, w, playback.LinearEither); err != nil || plan.Fragmented {
+	if plan, err = linearPlan(raw, w, playback.LinearEither); err != nil || plan.Fragmented || !plan.CopyAAC {
 		t.Fatalf("%+v %v", plan, err)
+	}
+	if plan, err = linearPlan(raw, w, playback.LinearFragmentedOnly); err != nil || !plan.Fragmented || !plan.CopyAAC || plan.ConvertAudio {
+		t.Fatalf("fragmented AAC: %+v %v", plan, err)
 	}
 }
 
