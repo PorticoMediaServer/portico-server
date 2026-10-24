@@ -66,6 +66,10 @@ function ShortInvitationOperation({entry, onBack, onJoined, account, signedOutCo
     : errorKind === 'unavailable' ? <p className={styles.error} role="alert">{t('web.directJoin.entryUnavailable')}</p>
     : errorKind === 'typed' ? <AuthError error={state.error} /> : undefined;
   if (state.phase === 'joined') return null;
+  const codeStatus = state.error && typeof state.error === 'object' && 'code' in state.error ? state.error.code : undefined;
+  if (codeStatus === 'invitation_expired' || codeStatus === 'invitation_used' || codeStatus === 'invitation_for_another_account') {
+    return <InvitationUnavailable otherAccount={codeStatus === 'invitation_for_another_account'} onBack={back} onDifferentAccount={() => {if (busy) return;entry.cancel();onDifferentAccount?.();}} />;
+  }
   if (state.invitation && state.server) {
     const returnBack = () => {if (state.busy) return;entry.cancel();};
     if (state.invitation.signInMethod === 'local') return <LocalInvitationForm serverName={state.server.name} inviter={state.invitation.inviterUsername}
@@ -74,10 +78,6 @@ function ShortInvitationOperation({entry, onBack, onJoined, account, signedOutCo
     return <PorticoInvitation serverName={state.server.name} libraries={state.invitation.libraries} member={state.invitation.role === 'member'}
       account={account?.isCurrent() ? account : undefined} signedOutContent={signedOutContent} busy={state.busy} error={state.error}
       onJoin={() => {if (account?.isCurrent()) void entry.joinPortico(account);}} onDifferentAccount={() => {if (state.busy) return;entry.cancel();onDifferentAccount?.();}} />;
-  }
-  const codeStatus = state.error && typeof state.error === 'object' && 'code' in state.error ? state.error.code : undefined;
-  if (codeStatus === 'invitation_expired' || codeStatus === 'invitation_used' || codeStatus === 'invitation_for_another_account') {
-    return <InvitationUnavailable otherAccount={codeStatus === 'invitation_for_another_account'} onBack={back} onDifferentAccount={() => {if (state.busy) return;entry.cancel();onDifferentAccount?.();}} />;
   }
   const change = (apply: (value: string) => void) => (event: ChangeEvent<HTMLInputElement>) => {
     if (busy || state.error) entry.cancel();
