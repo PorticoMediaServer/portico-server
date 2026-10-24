@@ -5,7 +5,7 @@ import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES, type DashboardStatus} from
 import type {TelemetryReading} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
-import {Dialog, ToastHost, type ToastData} from '../../kit/overlays';
+import {ToastHost, type ToastData} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
 import type {DashboardAlert, DashboardBindings, DashboardSessions} from './bindings';
 import {fmtMbps, fmtPct} from './format';
@@ -105,17 +105,15 @@ const alertDestinations: Record<string, {section: string; label: MessageId}> = {
 type StatusState = ReadState<DashboardStatus> & {refresh: () => void};
 function Status({bindings: b, status}: {bindings: DashboardBindings; status: StatusState}) {
   const alerts = status.value?.alerts.filter(alert => alertCopy[alert.code] && (alert.code !== 'update_available' || !!alert.params.latest) && (alert.code !== 'upload_budget_exhausted' || alert.count !== undefined)) ?? [];
-  const [confirm, setConfirm] = useState<DashboardAlert | undefined>(), [busy, setBusy] = useState(false), [updating, setUpdating] = useState(false);
-  const run = async (alert: DashboardAlert) => {if (!b.effects.alert || busy) return; setBusy(true); try {await b.effects.alert(alert); if (b.isCurrent()) {setConfirm(undefined); if (alert.action.kind === 'update') setUpdating(true); status.refresh();}} catch (error) {b.effects.reportError(error);} finally {setBusy(false);}};
+  const [busy, setBusy] = useState<string | undefined>();
+  const retry = async (alert: DashboardAlert) => {if (!b.effects.retryCertificate || busy) return; setBusy(alert.code); try {await b.effects.retryCertificate(); if (b.isCurrent()) status.refresh();} catch (error) {b.effects.reportError(error);} finally {setBusy(undefined);}};
   return <>{(status.loading || status.failed || !!alerts.length) && <div data-dashboard-section="updates"><ReadFeedback height={56} openHome={b.effects.openHome} state={status} />{!!alerts.length && <section className={styles.alerts} aria-label={t('next.dashboard.alerts')}>{alerts.map((alert, index) => {
-    const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = update && updating ? t('next.dashboard.updating') : t(alertCopy[alert.code], {version: alert.params.latest ?? '', count: alert.count ?? 0});
-    return <div className={styles.alert} key={`${alert.code}-${index}`} data-major={alert.major || undefined}><span className={styles.alertIcon} data-info={update || undefined}><Icon name={update && updating ? 'i-refresh' : update ? 'i-arrow-up' : 'i-alert'} size={18} /></span><b>{text}</b>{alert.params.reason && <span>{alert.params.reason}</span>}{alert.params.subject && <span>{alert.params.subject}</span>}
-      {b.effects.alert && (update || alert.code === 'secure_renewal_failed') && !(update && updating) && <Button size="xs" variant={update ? 'primary' : 'glass'} disabled={busy} onClick={() => update ? setConfirm(alert) : void run(alert)}>{update ? t('next.dashboard.update') : t('next.dashboard.retry')}</Button>}
+    const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = t(alertCopy[alert.code], {version: alert.params.latest ?? '', count: alert.count ?? 0});
+    return <div className={styles.alert} key={`${alert.code}-${index}`} data-major={alert.major || undefined}><span className={styles.alertIcon} data-info={update || undefined}><Icon name={update ? 'i-arrow-up' : 'i-alert'} size={18} /></span><b>{text}</b>{alert.params.reason && <span>{alert.params.reason}</span>}{alert.params.subject && <span>{alert.params.subject}</span>}
+      {alert.code === 'secure_renewal_failed' && b.effects.retryCertificate && <Button size="xs" variant="glass" disabled={!!busy} onClick={() => void retry(alert)}>{t('next.dashboard.retry')}</Button>}
       {!update && <Button size="xs" onClick={() => b.effects.openSettings(destination.section)}>{t(destination.label)}<Icon name="i-right" size={16} /></Button>}
     </div>;
   })}</section>}</div>}
-
-    <Dialog open={!!confirm} onOpenChange={open => {if (!open && !busy) setConfirm(undefined);}} title={t('next.dashboard.updateTitle')} description={t('next.dashboard.updateDetail')} footer={<><Button size="compact" onClick={() => setConfirm(undefined)} disabled={busy}>{t('next.dashboard.cancel')}</Button><Button size="compact" variant="primary" loading={busy} onClick={() => {if (confirm) void run(confirm);}}>{t('next.dashboard.update')}</Button></>}>{null}</Dialog>
   </>;
 }
 
