@@ -39,7 +39,12 @@ export class ShortCodeIssuer {
   retry(run: ShortCodeRun) {return this.issue(false, run);}
   async issue(fresh: boolean, run: ShortCodeRun): Promise<void> {
     if (this.disposed || this.state.phase === 'issuing') return;
-    if (fresh || !this.operationId) this.operationId = this.createOperationId();
+    try {
+      if (fresh || !this.operationId) this.operationId = this.createOperationId();
+    } catch (error) {
+      this.publish({phase: 'failed', operationId: '', error});
+      return;
+    }
     if (!this.operationId) {this.publish({phase: 'failed', operationId: '', error: new Error('invitation_operation_required')});return;}
     const operationId = this.operationId, generation = ++this.generation;
     this.active?.abort();
