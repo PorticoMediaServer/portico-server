@@ -155,7 +155,7 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	}
 	defer finish()
 	life := hold.Context()
-	policy := remotemedia.Policy{Resolver: s.resolver}
+	policy := remotemedia.Policy{Resolver: s.resolver, SourceEndpoints: true}
 	for _, a := range approvals {
 		if len(a.Root) >= 4 && a.Root[:4] == "http" {
 			policy.Approvals = append(policy.Approvals, a)
@@ -194,11 +194,11 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	if err = check(life); err != nil {
 		return err
 	}
-	metadataClient, err := process.Metadata(life)
+	endpoint, err := process.Endpoint(life)
 	if err != nil {
 		return err
 	}
-	entry, err := metadataClient.Stat(life, "", check)
+	entry, err := endpoint.Stat(life, "", check)
 	if err == nil && !entry.Directory {
 		err = storage.ErrRemoteConfig
 	}

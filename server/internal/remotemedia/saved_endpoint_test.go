@@ -59,3 +59,33 @@ func TestSavedEndpointApprovalNeverListAndDNSChange(t *testing.T) {
 		t.Fatal("DNS change refreshed saved addresses")
 	}
 }
+
+func TestSavedEndpointProxyAdmitsPublicWithoutInferringPrivateApproval(t *testing.T) {
+	ctx := context.Background()
+	resolver := &nativePolicyResolver{ips: []netip.Addr{netip.MustParseAddr("192.168.42.7")}}
+	p := Policy{Resolver: resolver, SourceEndpoints: true}
+	approval, err := p.PrepareEndpointApproval(ctx, "https://nas.example/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Approvals = []Approval{approval}
+	if _, _, err = p.admit(ctx, "https://nas.example/object"); err != nil {
+		t.Fatal(err)
+	}
+	resolver.ips = []netip.Addr{netip.MustParseAddr("8.8.8.8")}
+	if _, _, err = p.admit(ctx, "https://nas.example/object"); err != nil {
+		t.Fatal("public resolution required private approval", err)
+	}
+	resolver.ips = []netip.Addr{netip.MustParseAddr("192.168.42.8")}
+	if _, _, err = p.admit(ctx, "https://nas.example/object"); err == nil {
+		t.Fatal("new private resolution reused approval")
+	}
+	if _, _, err = p.admit(ctx, "https://other.example/object"); err == nil {
+		t.Fatal("approval crossed source origin")
+	}
+	resolver.ips = []netip.Addr{netip.MustParseAddr("127.0.0.1")}
+	p.Approvals = []Approval{{Root: "https://nas.example:443/", Addresses: []string{"127.0.0.1"}}}
+	if _, _, err = p.admit(ctx, "https://nas.example/object"); err == nil {
+		t.Fatal("forbidden address admitted even when saved")
+	}
+}

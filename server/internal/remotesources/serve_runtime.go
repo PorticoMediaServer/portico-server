@@ -63,6 +63,7 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 			return out, err
 		}
 		out.Imported = &config
+		out.Policy.SourceEndpoints = true
 		for _, approval := range config.Approvals {
 			if strings.HasPrefix(approval.Root, "http://") || strings.HasPrefix(approval.Root, "https://") {
 				out.Policy.Approvals = append(out.Policy.Approvals, approval)
