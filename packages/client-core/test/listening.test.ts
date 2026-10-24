@@ -188,6 +188,52 @@ test('a long audiobook pause rewinds once, while short pauses and music do not',
  f.engine.update({intent:'paused'});f.setNow(300100);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);
 });
 
+test('same-item local replacement retires server book context, rate, timers and inactivity policy',async t=>{
+ const paths:string[]=[];
+ const f=setup(t,{preferences:{passoutMinutes:15},request:async path=>{paths.push(path);if(path==='/v1/listening/preferences')return wrapped({...prefs,passoutMinutes:15});return wrapped({itemId:'song',libraryId:'library',kind:'audiobook_file',bookId:'book'});}});
+ const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);
+ await settle();await f.service.setRate(2);await f.service.setTimer(15);
+ assert.equal(f.engine.rates.at(-1),2);
+ f.engine.update({intent:'paused'});f.setNow(1_000_000);
+ f.engine.update({mode:'local',intent:'playing',nativeListening:{timerStopped:true,expiredTimerRevision:999}});
+ assert.equal(f.service.getSnapshot().context,null);
+ assert.equal(f.service.getSnapshot().timer,null);
+ assert.equal(f.service.getSnapshot().rate,1);
+ assert.equal(f.service.getSnapshot().rewind,undefined);
+ assert.equal(f.engine.rates.at(-1),1);
+ assert.deepEqual(seeks,[]);
+ assert.equal(f.service.mayAdvance(),true);
+ assert.equal(f.service.mayTransition(60),true);
+ assert.equal(f.service.mayTransition(NaN),false);
+ f.service.tick();assert.equal(f.engine.pauses,0);
+ assert.deepEqual(f.engine.policies.at(-1).preferences,null);
+ assert.deepEqual(f.engine.policies.at(-1).timer,null);
+ f.engine.update({itemId:'file:private-local-item'});await settle();
+ assert.deepEqual(paths.filter(path=>path.includes('/items/')),['/v1/items/song/listening']);
+ f.engine.update({mode:'direct',itemId:'song',nativeListening:undefined});await settle();
+ assert.equal(f.service.getSnapshot().context?.kind,'audiobook_file');
+ assert.equal(f.service.getSnapshot().rate,1.5,'old per-playback held rate was not retained');
+ assert.equal(paths.filter(path=>path.includes('/items/')).length,2);
+});
+
+test('late server context and chapter responses cannot rebind a local source',async t=>{
+ let context!:(value:unknown)=>void;
+ const paths:string[]=[];
+ const f=setup(t,{request:async path=>{paths.push(path);if(path==='/v1/listening/preferences')return wrapped(prefs);return new Promise(resolve=>{context=resolve;});}});
+ await settle();f.engine.update({mode:'local'});
+ context(wrapped({itemId:'song',libraryId:'library',kind:'audiobook_file',bookId:'book'}));await settle();
+ assert.equal(f.service.getSnapshot().context,null);assert.equal(f.service.getSnapshot().rate,1);
+ assert.deepEqual(paths.filter(path=>path.includes('/items/')),['/v1/items/song/listening']);
+ const chapterPending:{resolve?:(value:unknown)=>void}={};
+ const g=setup(t,{request:async path=>{if(path==='/v1/listening/preferences')return wrapped(prefs);if(path.includes('/chapters'))return new Promise(resolve=>{chapterPending.resolve=resolve;});return wrapped({itemId:'song',libraryId:'library',kind:'audiobook_file',bookId:'book'});}});
+ await settle();const setting=g.service.setTimer('chapter');await settle();
+ assert.equal(g.service.getSnapshot().timerLoading,true);
+ g.engine.native=true;g.engine.update({mode:'local'});
+ chapterPending.resolve?.(chapterData());await setting;
+ assert.equal(g.service.getSnapshot().context,null);assert.equal(g.service.getSnapshot().timer,null);assert.equal(g.service.getSnapshot().timerLoading,false);
+ assert.equal(g.engine.policies.at(-1).preferences,null);assert.equal(g.engine.policies.at(-1).timer,null);
+});
+
 test('a listening journey keeps millisecond resume and drops only unknown actions',()=>{
  const result=parseListeningJourney({target:{libraryId:'library',kind:'book',id:'book'},actions:['play','future','play'],resume:{itemId:'part',positionMs:123500},resumeUnavailable:false},'library');
  assert.deepEqual(result.actions,['play']);
