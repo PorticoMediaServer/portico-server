@@ -9,6 +9,8 @@ import (
 	"errors"
 	"image"
 	"io"
+	"net/url"
+	"strings"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -33,6 +35,11 @@ func (s *Service) sharedArtwork(ctx context.Context, j artworkWork) (artworkInst
 	if err != nil {
 		return a, b, false, err
 	}
+	edge, _ := artworkEncodingLimits(ctx, artworkLargeEdge)
+	if max(a.width, a.height) < edge && fullArtworkOrigin(j.origin, j.provider) != j.origin {
+		// A retained provider thumbnail does not prove the original was small.
+		return a, b, false, nil
+	}
 	for _, o := range []*artworkInstalled{&a, &b} {
 		f, e := s.openArtworkObject(o.digest)
 		if e != nil {
@@ -56,7 +63,11 @@ func (s *Service) acquireArtworkObjects(ctx context.Context, j artworkWork) (art
 	if e != nil || held {
 		return a, b, e
 	}
-	raw, e := s.fetchArtwork(ctx, j.origin, j.provider)
+	origin := j.origin
+	if !j.preview {
+		origin = fullArtworkOrigin(origin, j.provider)
+	}
+	raw, e := s.fetchArtwork(ctx, origin, j.provider)
 	if e != nil {
 		return a, b, e
 	}
@@ -77,4 +88,29 @@ func (s *Service) acquireArtworkObjects(ctx context.Context, j artworkWork) (art
 		return a, b, errors.New("storage_unavailable")
 	}
 	return a, b, nil
+}
+
+// Use the original of the same admitted TMDB image, never a larger host/origin
+// permission. Candidate identity, source fence and stored origin are unchanged.
+// Small discovery previews keep their bounded provider representation.
+func fullArtworkOrigin(raw, provider string) string {
+	if provider != "tmdb" || !artworkURLAllowed(raw, provider) {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	parts := strings.SplitN(strings.TrimPrefix(u.Path, "/t/p/"), "/", 2)
+	if len(parts) != 2 || parts[1] == "" || len(parts[0]) < 2 || len(parts[0]) > 6 || (parts[0][0] != 'w' && parts[0][0] != 'h') || parts[0][1] < '1' || parts[0][1] > '9' {
+		return raw
+	}
+	for _, digit := range parts[0][1:] {
+		if digit < '0' || digit > '9' {
+			return raw
+		}
+	}
+	u.Path = "/t/p/original/" + parts[1]
+	u.RawPath = ""
+	return u.String()
 }
