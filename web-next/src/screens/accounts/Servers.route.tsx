@@ -206,14 +206,30 @@ function initialOf(name: string | undefined) {
 }
 /** A failed probe is a wait only when the transport said it could come back; everything
  * else is the honest can't-reach state with the real action. */
-export type ChooserFailureState = 'waiting' | 'unreachable' | 'refused' | 'unconfirmed';
-/** Map only the real failures the chooser can prove: a 403/removal is refused,
- * an identity disagreement is unconfirmed, and transport timeouts keep waiting. */
+export type ChooserFailureState = 'waiting' | 'unreachable' | 'refused';
+export type ProfileResume = 'entry' | 'refused' | 'error' | 'inspected';
+/** After a restored profile read, a terminal error is preserved before any anonymous
+ * fallback. Only a pre-credential inspect may follow a clean no-snapshot read. */
+export async function resumeAfterProfiles(
+  entry: Readonly<{getSnapshot: () => Readonly<{error?: unknown; snapshot?: unknown; server?: unknown}>; inspect: (origin: string) => Promise<unknown>}>,
+  selected: () => Promise<{connection: {pin: {serverId: string}}} | undefined>,
+  serverId: string, origin: string, isCurrent: () => boolean,
+): Promise<ProfileResume> {
+  const current = entry.getSnapshot();
+  if (current.error) return chooserFailureState(current.error) === 'refused' ? 'refused' : 'error';
+  if (current.snapshot || current.server) return 'entry';
+  const chosen = await selected();
+  if (!isCurrent() || chosen?.connection.pin.serverId !== serverId) return 'error';
+  await entry.inspect(origin);
+  return 'inspected';
+}
+/** Map only the real failures the chooser can prove: a 403/removal is refused and
+ * transport timeouts keep waiting. The drawn unconfirmed copy stays unwired until
+ * Accounts supplies a sanitized pre-credential stage fact; the view state remains static. */
 export function chooserFailureState(error: unknown): ChooserFailureState {
   if (!error || typeof error !== 'object') return retryableFailure(error) ? 'waiting' : 'unreachable';
   const value = error as {status?: unknown; code?: unknown};
   if (value.status === 403 || ['access_refused', 'forbidden', 'permission_changed', 'access_revoked', 'owner_required', 'remote_denied', 'remote_sign_in_not_allowed', 'outside_allowed_hours'].includes(String(value.code))) return 'refused';
-  if (['identity_mismatch', 'wrong_server', 'session_identity_mismatch', 'stale_continuation'].includes(String(value.code))) return 'unconfirmed';
   return retryableFailure(error) ? 'waiting' : 'unreachable';
 }
 function retryableFailure(error: unknown) {
@@ -302,7 +318,6 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
         setAttempt({kind: 'waiting', row, seconds, total: seconds});
         retryDelay.current = Math.min(seconds * 2, 300);
       } else if (state === 'refused') setAttempt({kind: 'refused', row});
-      else if (state === 'unconfirmed') setAttempt({kind: 'unconfirmed', row});
       else setAttempt({kind: 'unreachable', row});
     };
     try {
@@ -311,16 +326,18 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
       // All restoration/profile/factor checks remain in the one real Entry.
       await entry.loadProfiles();
       if (!alive.current || !lock.owns(token)) return;
-      const current = entry.getSnapshot();
       setOrigin(saved.connection.logicalOrigin);
-      if (!current.snapshot) {
-        const selected = await browserAppSessions().selected();
-        if (!alive.current || !lock.owns(token) || selected?.connection.pin.serverId !== row.id) return;
-        await entry.inspect(saved.connection.logicalOrigin);
-      }
+      const plan = await resumeAfterProfiles(entry, () => browserAppSessions().selected(), row.id, saved.connection.logicalOrigin,
+        () => alive.current && lock.owns(token));
       if (!alive.current || !lock.owns(token)) return;
-      const result = entry.getSnapshot();
-      if (result.snapshot || result.server) {setAttempt(undefined); setMode('entry');} else fail(result.error);
+      if (plan === 'entry') {setAttempt(undefined); setMode('entry'); return;}
+      if (plan === 'inspected') {
+        const result = entry.getSnapshot();
+        if (result.snapshot || result.server) {setAttempt(undefined); setMode('entry');} else fail(result.error);
+        return;
+      }
+      const error = entry.getSnapshot().error;
+      if (error) fail(error); else other();
     } catch (failure) {fail(failure);}
     finally {if (lock.settle(token) && alive.current) setWorking(false);}
   }, [entry, form]);

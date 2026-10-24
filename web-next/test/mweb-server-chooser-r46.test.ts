@@ -17,7 +17,7 @@ registerHooks({load(url, context, next) {
   if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
   return next(url, context);
 }});
-const {MobileServerChooser, AttemptLock, waitingStep, mobileChooserRows, chooserFailureState} = await import('../src/screens/accounts/Servers.route');
+const {MobileServerChooser, AttemptLock, waitingStep, mobileChooserRows, chooserFailureState, resumeAfterProfiles} = await import('../src/screens/accounts/Servers.route');
 
 const seenAt = new Date(2026, 9, 12, 12, 0, 0).toISOString();
 const rows: readonly MobileChooserRow[] = [
@@ -179,8 +179,8 @@ test('a cancelled durable selection cannot commit over its successor or advance 
 test('real permission and identity failures map to the drawn refused and unconfirmed states', () => {
   assert.equal(chooserFailureState({status: 403, code: 'forbidden'}), 'refused');
   assert.equal(chooserFailureState({code: 'access_refused'}), 'refused');
-  assert.equal(chooserFailureState({code: 'identity_mismatch'}), 'unconfirmed');
-  assert.equal(chooserFailureState({code: 'wrong_server'}), 'unconfirmed');
+  assert.equal(chooserFailureState({code: 'identity_mismatch'}), 'unreachable');
+  assert.equal(chooserFailureState({code: 'wrong_server'}), 'unreachable');
   assert.equal(chooserFailureState(new TypeError('network')), 'waiting');
   assert.equal(chooserFailureState({code: 'probe_timeout'}), 'waiting');
   assert.equal(chooserFailureState({status: 500, retryable: true}), 'waiting');
@@ -204,4 +204,31 @@ test('frame 5c unconfirmed state says nothing was sent and offers Try again plus
   assert.match(html, /Try again/);
   assert.match(html, /Choose another server/);
   assert.doesNotMatch(html, /<input|<form|Password|Refresh servers/);
+});
+
+test('a restored refusal is preserved before anonymous inspection and credential UI', async () => {
+  let inspected = 0, selected = 0;
+  const entry = {getSnapshot: () => ({error: {status: 403, code: 'access_refused'}}), inspect: async () => { inspected++; }};
+  const plan = await resumeAfterProfiles(entry, async () => { selected++; return undefined; }, 'server', 'https://server.test', () => true);
+  assert.equal(plan, 'refused');
+  assert.equal(inspected, 0, 'anonymous inspect must not overwrite a terminal refusal');
+  assert.equal(selected, 0, 'the saved selection is not reread after a preserved refusal');
+});
+
+test('only a clean no-snapshot profile read falls back to inspect; a snapshot enters directly', async () => {
+  let inspected = 0;
+  const selected = async () => ({connection: {pin: {serverId: 'server'}}});
+  const inspectedPlan = await resumeAfterProfiles({getSnapshot: () => ({}), inspect: async () => { inspected++; }}, selected, 'server', 'https://server.test', () => true);
+  assert.equal(inspectedPlan, 'inspected'); assert.equal(inspected, 1);
+  const entryPlan = await resumeAfterProfiles({getSnapshot: () => ({snapshot: {}}), inspect: async () => { inspected++; }}, selected, 'server', 'https://server.test', () => true);
+  assert.equal(entryPlan, 'entry'); assert.equal(inspected, 1);
+});
+
+test('post-auth identity failures stay generic and never use the pre-credential unconfirmed copy', async () => {
+  let inspected = 0;
+  const entry = {getSnapshot: () => ({error: {code: 'identity_mismatch'}}), inspect: async () => { inspected++; }};
+  const plan = await resumeAfterProfiles(entry, async () => undefined, 'server', 'https://server.test', () => true);
+  assert.equal(plan, 'error');
+  assert.equal(inspected, 0);
+  assert.equal(chooserFailureState({code: 'identity_mismatch'}), 'unreachable');
 });
