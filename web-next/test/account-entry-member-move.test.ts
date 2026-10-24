@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {AppSessionStore, type AppSessionRecord} from '@core/app-sessions.ts';
 import {HttpLocalApi} from '@core/index.ts';
+import {ServerSignInProbe} from '@core/sign-in.ts';
 import {BrowserAccountEntry} from '../src/platform/account-entry.ts';
 
 const origin='https://member.example',hostedOrigin='https://account.example';
@@ -27,7 +28,7 @@ async function fixture(move:'to_portico'|null='to_portico'){
   restore:async()=>{throw new Error('No generic restore for move proof');},inspect:async()=>pin,
   connect:(async()=>({api,connection})) as never,remember:async()=>{remembers++;},
   registered:()=>({controller,installationId:()=>installation}),
- },{inspect:async()=>system,cancel:()=>{},dispose:()=>{}} as never);
+ },new ServerSignInProbe(async()=>Response.json(system)));
  await entry.inspect(origin);assert.equal(entry.getSnapshot().phase,'portico');
  return {entry,store,calls,prepares,system,get cancels(){return cancels;},get remembers(){return remembers;},
   expire:()=>{expiresAt='2000-01-01T00:00:00Z';},
