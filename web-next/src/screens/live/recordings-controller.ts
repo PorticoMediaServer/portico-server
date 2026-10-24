@@ -66,11 +66,22 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   const requestId = input.requestId;
   const life = new AbortController();
   const listeners = new Set<() => void>();
+  /** The one armed command: its mutation HTTP may only leave while this exact
+   * destination generation and lease are still the live ones. Profile-wide reads
+   * (summary/groups/receipt) are deliberately outside this fence. */
+  let commandArmed: Readonly<{serial: number; lease: number; query: RecordingsQuery; fence: AbortController}> | undefined;
   const api: ChannelApi = {
     async request<T>(path: string, method?: string, body?: unknown, requestSignal?: AbortSignal): Promise<T> {
       if (!current()) throw cancelled();
-      const active = requestSignal ? AbortSignal.any([life.signal, requestSignal]) : life.signal;
-      const value = await sourceApi.request<T>(path, method, body, active);
+      const mutation = (method ?? 'GET') !== 'GET';
+      if (mutation) {
+        const armed = commandArmed;
+        if (!armed || armed.fence.signal.aborted || armed.serial !== loadSerial || armed.lease !== epoch) throw cancelled();
+      }
+      const signals: AbortSignal[] = [life.signal];
+      if (requestSignal) signals.push(requestSignal);
+      if (mutation && commandArmed) signals.push(commandArmed.fence.signal);
+      const value = await sourceApi.request<T>(path, method, body, AbortSignal.any(signals));
       if (!current()) throw cancelled();
       return value;
     },
@@ -126,10 +137,18 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   }
   const sameDestination = (left: RecordingsQuery, right: RecordingsQuery) => left.view === right.view
     && (left.cursor ?? '') === (right.cursor ?? '') && (left.recordingId ?? '') === (right.recordingId ?? '');
+  /** A destination load or a lease change disarms the armed command: its receipt
+   * may still be pending, but no mutation HTTP may leave for the old generation. */
+  function disarmCommand() {
+    if (!commandArmed) return;
+    commandArmed.fence.abort();
+    commandArmed = undefined;
+  }
   /** One authority change erases every private fact — page, detail, storage and
    * both aggregates — and fences anything already in flight. */
   function clearFacts(denied: boolean) {
     if (closed) return;
+    disarmCommand();
     epoch++;summarySerial++;groupsSerial++;
     dropResident();summary = groups = null;groupsSort = 'recent';
     deletion = undefined;accessDenied = denied;errorText = '';commandError = '';
@@ -154,35 +173,58 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     if (derive().phase !== 'ready' || !resident(recording)) throw staleRow();
     return recording;
   }
-  /** One command through the same private model: no retry, no rebase, no
-   * optimistic fact, and the ACK and its reload are reported separately. */
+  /** One command through the same private model. The mutation may only leave while
+   * its captured destination generation and lease are live, and a known ACK is
+   * never relabelled by what the later genuine reload does. */
   async function command(work: () => Promise<unknown>): Promise<RecordingsCommandOutcome> {
     if (!current()) throw cancelled();
     if (model.getSnapshot().mutating) return Object.freeze({committed: false, refreshed: false, busy: true});
     deletion = undefined;
-    const committed = await model.act(work);
-    if (!current()) throw cancelled();
-    const snapshot = model.getSnapshot();
-    if (snapshot.accessDenied) {
-      clearFacts(true);
-      return Object.freeze({committed: false, refreshed: false, busy: false});
+    const armed = Object.freeze({serial: loadSerial, lease: epoch, query, fence: new AbortController()});
+    commandArmed = armed;
+    let ack = false, failure: unknown;
+    let ran = false;
+    try {
+      ran = await model.act(async () => {
+        try { await work(); ack = true; }
+        catch (error) { failure = error; throw error; }
+      });
+    } finally {
+      if (commandArmed === armed) commandArmed = undefined;
     }
-    adoptFacts();
-    if (!committed) {
-      commandError = snapshot.error ?? '';
+    if (!current()) throw cancelled();
+    if (!ack) {
+      if (isAccessError(failure)) {
+        clearFacts(true);
+        return Object.freeze({committed: false, refreshed: false, busy: false});
+      }
+      adoptFacts();
+      if (!isCancelled(failure)) commandError = dvrMessage(failure);
       publish();
       return Object.freeze({committed: false, refreshed: false, busy: false});
     }
+    const after = model.getSnapshot();
     commandError = '';
-    errorText = snapshot.error ?? '';
+    adoptFacts();
+    if (after.accessDenied) {
+      clearFacts(true);
+      return Object.freeze({committed: true, refreshed: false, busy: false});
+    }
+    if (!ran) {
+      // The destination generation moved after the ACK; only the newer facts stay.
+      publish();
+      return Object.freeze({committed: true, refreshed: false, busy: false});
+    }
+    errorText = after.error ?? '';
     publish();
-    return Object.freeze({committed: true, refreshed: !snapshot.error, busy: false});
+    return Object.freeze({committed: true, refreshed: !after.error, busy: false});
   }
   /** Retires this captured viewer once. A silent retirement is for a snapshot read
    * inside a render; it still erases and unsubscribes. */
   function retire(silent = false) {
     if (closed) return;
     closed = true;life.abort();
+    disarmCommand();
     signal.removeEventListener('abort', onAbort);stopModel?.();stopModel = undefined;
     loadSerial++;epoch++;summarySerial++;groupsSerial++;
     model.dispose();
@@ -243,6 +285,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
       if (!current()) throw cancelled();
       const captured = checked(next);
       start();
+      disarmCommand();
       const serial = ++loadSerial;
       if (!sameDestination(captured, query)) {
         // A replacement is a new destination generation: the previous page,

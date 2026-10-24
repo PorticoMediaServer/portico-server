@@ -1119,7 +1119,8 @@ test('a command never outlives navigation, a replacement destination or disposal
   await tick();
   await replaced.load({view: 'history'});
   replacementReply.resolve(commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'}));
-  assert.deepEqual(await replacedCommand, {committed: false, refreshed: false, busy: false});
+  assert.deepEqual(await replacedCommand, {committed: true, refreshed: false, busy: false},
+    'a reply that already ACKed stays committed even though its reload never ran');
   const snapshot = replaced.getSnapshot();
   assert.equal(snapshot.query.view, 'history');
   assert.equal(snapshot.page?.revision, 2);
@@ -1174,4 +1175,140 @@ test('two controllers retry their own commands with their own receipts', async (
     assert.deepEqual(bodies.map(body => body.requestId), [hex(48, 'a'), hex(48, 'b')]);
     assert.deepEqual(bodies.map(body => body.expectedRevision), [1, 1]);
   } finally { first.dispose(); second.dispose(); }
+});
+
+// Reviewer fix A — an armed command dies with the destination generation it was
+// captured in, even before its receipt resolves.
+const heldCommand = () => {
+  const receipt = held<string>();
+  const state = {minted: 0};
+  return {receipt, state, requestId: () => { state.minted++; return receipt.promise; }};
+};
+const listCalls = (calls: readonly Call[]) => calls.filter(call => call.method !== 'GET');
+
+test('a held receipt cannot send a command after its destination was replaced', async () => {
+  const {receipt, state, requestId} = heldCommand();
+  let served = 0;
+  const {api, calls} = fixtureServer(call => {
+    if (call.method !== 'GET') return commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'});
+    served++;
+    return params(call).get('state') === 'history'
+      ? pageOf([commandRecording(hex(64, '9'))], '', 2) : pageOf([commandRecording(hex(64, '1'))], '', served);
+  });
+  const controller = controllerFor(api, {requestId});
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const pending = controller.cancel(row);
+    pending.catch(() => {});
+    await tick();
+    assert.equal(listCalls(calls).length, 0, 'the receipt is still pending');
+    await controller.load({view: 'history'});
+    const before = controller.getSnapshot();
+    receipt.resolve(hex(48, '7'));
+    assert.deepEqual(await pending, {committed: false, refreshed: false, busy: false});
+    assert.equal(listCalls(calls).length, 0, 'the stale command never leaves');
+    const after = controller.getSnapshot();
+    assert.equal(after.query.view, 'history');
+    assert.equal(after.page, before.page, 'the new destination facts are unchanged');
+    assert.equal(after.page?.revision, 2);
+    assert.equal(controller.contains(row), false);
+    assert.equal(state.minted, 1);
+  } finally { controller.dispose(); }
+});
+
+test('a held receipt cannot send a command across a same-destination refresh', async () => {
+  const {receipt, state, requestId} = heldCommand();
+  let served = 0;
+  const {api, calls} = fixtureServer(call => {
+    if (call.method !== 'GET') return commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'});
+    served++;
+    return pageOf([commandRecording(hex(64, '1'), {revision: served})], '', served);
+  });
+  const controller = controllerFor(api, {requestId});
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const pending = controller.cancel(row);
+    pending.catch(() => {});
+    await tick();
+    await controller.load({view: 'recorded'});
+    const before = controller.getSnapshot();
+    assert.equal(before.page?.revision, 2, 'the refresh republished a new page');
+    receipt.resolve(hex(48, '8'));
+    assert.deepEqual(await pending, {committed: false, refreshed: false, busy: false});
+    assert.equal(listCalls(calls).length, 0, 'the refreshed page fences the old command');
+    assert.equal(controller.getSnapshot().page, before.page);
+    assert.equal(controller.contains(row), false);
+    assert.equal(state.minted, 1);
+  } finally { controller.dispose(); }
+});
+
+test('A to B to A never revives a command captured in the first A', async () => {
+  const {receipt, state, requestId} = heldCommand();
+  let served = 0;
+  const {api, calls} = fixtureServer(call => {
+    if (call.method !== 'GET') return commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'});
+    served++;
+    return params(call).get('state') === 'history'
+      ? pageOf([commandRecording(hex(64, '9'))], '', 2)
+      : pageOf([commandRecording(hex(64, '1'), {revision: served})], '', served);
+  });
+  const controller = controllerFor(api, {requestId});
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const pending = controller.cancel(row);
+    pending.catch(() => {});
+    await tick();
+    await controller.load({view: 'history'});
+    await controller.load({view: 'recorded'});
+    const before = controller.getSnapshot();
+    assert.equal(before.page?.revision, 3, 'the return to A is a fresh generation');
+    receipt.resolve(hex(48, '9'));
+    assert.deepEqual(await pending, {committed: false, refreshed: false, busy: false});
+    assert.equal(listCalls(calls).length, 0);
+    assert.equal(controller.getSnapshot().page, before.page);
+    assert.equal(controller.contains(row), false, 'the first A row is not revived');
+    assert.equal(state.minted, 1);
+  } finally { controller.dispose(); }
+});
+
+// Reviewer fix B — a known ACK is committed even when the reload then loses authority.
+test('an ACK followed by a failed reload is committed and erases every private fact', async () => {
+  for (const status of [401, 403]) {
+    const {receipt, state, requestId} = heldCommand();
+    let served = 0;
+    const {api, calls} = fixtureServer(call => {
+      if (call.method !== 'GET') return commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'});
+      if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+      if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+      served++;
+      if (served > 1) throw {status};
+      return pageOf([commandRecording(hex(64, '1'))], '', 1);
+    });
+    const controller = controllerFor(api, {requestId});
+    try {
+      await controller.load({view: 'recorded'});
+      await controller.readSummary();
+      await controller.readGroups();
+      const row = controller.getSnapshot().page!.recordings[0];
+      const pending = controller.cancel(row);
+      pending.catch(() => {});
+      await tick();
+      receipt.resolve(hex(48, 'a'));
+      assert.deepEqual(await pending, {committed: true, refreshed: false, busy: false});
+      const snapshot = controller.getSnapshot();
+      assert.equal(snapshot.accessDenied, true);
+      assert.equal(snapshot.page, null, 'the ACK is not kept as an optimistic fact');
+      assert.equal(snapshot.detail, null);
+      assert.equal(snapshot.storage, null);
+      assert.equal(snapshot.summary, null);
+      assert.equal(snapshot.groups, null);
+      assert.equal(controller.contains(row), false);
+      assert.equal(listCalls(calls).length, 1, 'no retry after the ACK');
+      assert.equal(state.minted, 1, 'no second receipt');
+      assert.equal(calls.filter(call => pathname(call) === '/v1/dvr/summary').length, 1);
+    } finally { controller.dispose(); }
+  }
 });
