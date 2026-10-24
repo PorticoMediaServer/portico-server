@@ -19493,7 +19493,6 @@ export const schemas = {
   "DeleteStorageSourcesWebdavIdResponse": {
     "properties": {
       "receipt": {
-        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
@@ -145952,7 +145951,6 @@ export const schemas = {
   "GetStorageSourceOperationsIdResponse": {
     "properties": {
       "receipt": {
-        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
@@ -180774,7 +180772,6 @@ export const schemas = {
   "PostStorageSourcesWebdavResponse": {
     "properties": {
       "receipt": {
-        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
@@ -192217,7 +192214,6 @@ export const schemas = {
   "PutStorageSourceReadProfileResponse": {
     "properties": {
       "receipt": {
-        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
@@ -192441,7 +192437,6 @@ export const schemas = {
   "PutStorageSourcesWebdavIdResponse": {
     "properties": {
       "receipt": {
-        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"

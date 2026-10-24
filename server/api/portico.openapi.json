@@ -21165,7 +21165,6 @@
       "DeleteStorageSourcesWebdavIdResponse": {
         "properties": {
           "receipt": {
-            "additionalProperties": false,
             "properties": {
               "accepted": {
                 "type": "boolean"
@@ -150828,7 +150827,6 @@
       "GetStorageSourceOperationsIdResponse": {
         "properties": {
           "receipt": {
-            "additionalProperties": false,
             "properties": {
               "accepted": {
                 "type": "boolean"
@@ -199372,7 +199370,6 @@
       "PostStorageSourcesWebdavResponse": {
         "properties": {
           "receipt": {
-            "additionalProperties": false,
             "properties": {
               "accepted": {
                 "type": "boolean"
@@ -210989,7 +210986,6 @@
       "PutStorageSourceReadProfileResponse": {
         "properties": {
           "receipt": {
-            "additionalProperties": false,
             "properties": {
               "accepted": {
                 "type": "boolean"
@@ -211213,7 +211209,6 @@
       "PutStorageSourcesWebdavIdResponse": {
         "properties": {
           "receipt": {
-            "additionalProperties": false,
             "properties": {
               "accepted": {
                 "type": "boolean"
@@ -490194,7 +490189,6 @@
                 "schema": {
                   "properties": {
                     "receipt": {
-                      "additionalProperties": false,
                       "properties": {
                         "accepted": {
                           "type": "boolean"
@@ -490630,7 +490624,6 @@
                 "schema": {
                   "properties": {
                     "receipt": {
-                      "additionalProperties": false,
                       "properties": {
                         "accepted": {
                           "type": "boolean"
@@ -490929,7 +490922,6 @@
                 "schema": {
                   "properties": {
                     "receipt": {
-                      "additionalProperties": false,
                       "properties": {
                         "accepted": {
                           "type": "boolean"
@@ -491226,7 +491218,6 @@
                 "schema": {
                   "properties": {
                     "receipt": {
-                      "additionalProperties": false,
                       "properties": {
                         "accepted": {
                           "type": "boolean"
@@ -491725,7 +491716,6 @@
                 "schema": {
                   "properties": {
                     "receipt": {
-                      "additionalProperties": false,
                       "properties": {
                         "accepted": {
                           "type": "boolean"
