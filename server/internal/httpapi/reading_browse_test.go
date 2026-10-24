@@ -31,6 +31,9 @@ func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllFourSurfaces(t *testing.T)
 			if w.Code != status {
 				t.Fatalf("%s %s: %d %s", target.method, target.path, w.Code, w.Body.String())
 			}
+			if target.method == "POST" && target.path == base+"/browse" && strings.Contains(w.Body.String(), `"wholeSelection"`) {
+				t.Fatal("Reading advertised an unsupported whole-view selector")
+			}
 			if hidden {
 				for _, secret := range []string{r.item, r.source, "Protected Reading author", "Protected Reading series"} {
 					if strings.Contains(w.Body.String(), secret) {
