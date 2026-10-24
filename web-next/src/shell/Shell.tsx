@@ -20,7 +20,7 @@ import {DesktopNavigation} from './DesktopNavigation';
 import {usePageWindowChrome} from './window-chrome';
 
 export type ShellIdentity = Readonly<{
-  viewer: Viewer; signIn?:SignInKind; capabilities?:ManagementCapabilities; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string;
+  viewer: Viewer; signIn?:SignInKind; capabilities?:ManagementCapabilities; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string; serverVersion?: string;
   primaryProfile?: boolean; profiles: readonly ProfileIdentity[]; canManageProfiles: boolean; accountFacts: readonly FactPart[];
   libraries: readonly Library[]; liveAvailable: boolean; unread: number; showNotificationDot: boolean;
 }>;

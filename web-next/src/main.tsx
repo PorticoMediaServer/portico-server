@@ -9,8 +9,12 @@ import {assembleShellBindings} from './shell/assembly';
 import {initializeAppInstallation} from './platform/installation-provider';
 import {captureWebAccountArrival} from './route-registry-arrival';
 import {AppLifetime} from './AppLifetime';
+import {installSettingsPlatform, settingsPlatform} from './platform/settings-platform';
+import {webSettingsPlatform} from './platform/web-settings-platform';
 
 const accountArrival = captureWebAccountArrival(location, history);
+/** A native host installs its own device port before it imports this module; the browser is the fallback. */
+const retireSettingsPlatform = settingsPlatform() ? () => {} : installSettingsPlatform(webSettingsPlatform());
 const styleNonce = document.querySelector<HTMLMetaElement>('meta[name="portico-style-nonce"]')?.content;
 if (styleNonce && styleNonce !== '__PORTICO_STYLE_NONCE__') {
   (window as Window & {__webpack_nonce__?: string}).__webpack_nonce__ = styleNonce;
@@ -19,7 +23,7 @@ const lifetime = new AppLifetime();
 /** Desktop closes the real app before removing native brokers/platform ports.
  * This retires mounted owners, never signs out or clears protected credentials. */
 export function disposeApp(): void {
-  try { lifetime.dispose(); } finally { accountArrival.dispose(); }
+  try { lifetime.dispose(); } finally { try { retireSettingsPlatform(); } finally { accountArrival.dispose(); } }
 }
 // Core services own real effects; test their lifecycle directly instead of double mounting them.
 function start() { return lifetime.start(signal => initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '', signal), () => {

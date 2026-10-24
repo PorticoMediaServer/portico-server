@@ -23,6 +23,8 @@ import {hasWebPreferenceEffect} from './effects';
 import {PeopleScreen, type PeopleBindings} from './People';
 import {SignInSettingsSource} from './signin-source';
 import {SettingsOwnerSwitch} from './owner-switch';
+import {DeviceRowControl} from './device-rows';
+import {deviceRowState, isDeviceSyntheticRow} from './device-rows-model';
 import {browserAccountOrigin} from '../../platform/account-origin';
 import {SettingsInvitations} from './invitations';
 
@@ -99,12 +101,17 @@ export function SettingsEntry() {
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
-      special: row => row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null,
+      special: row => isDeviceSyntheticRow(row.id) ? <DeviceRowControl row={row} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>
+        : row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null,
       section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
     });
+    const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
-      eligible: (row, selected) => row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
-      rowState: (row, selected) => row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected),
+      eligible: (row, selected) => isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
+      rowState: (row, selected) => {
+        const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
+        return device ?? (row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
+      },
     };
     setFailure(false);setOwned({context, settings, dashboard});
     return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();controller.dispose();};

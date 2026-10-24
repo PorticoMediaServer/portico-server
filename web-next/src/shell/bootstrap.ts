@@ -93,7 +93,7 @@ async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: 
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
   await inbox.load();
   signal.throwIfAborted();
-  return {identity: {viewer: session.viewer, libraries: libraries.items, serverName: system.name, signIn:system.signIn, ...profile,
+  return {identity: {viewer: session.viewer, libraries: libraries.items, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
     accountFacts:[{id:'sign-in',role:'status',text:defaultI18n.t(signInLabelKey(system.signIn))}],
     liveAvailable: !!guide?.sources.length, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name};
 }
