@@ -94,14 +94,15 @@ func isCodeKind(k Kind) bool {
 	return k == Registration || k == OIDCContact || k == EmailChange
 }
 
-// codeTTLMinutes is the real code lifetime from the intent's expiry and the
+// ttlMinutes is the real link lifetime from the intent's expiry and the
 // outbox creation time (MAIL-05: never a hard-coded number). Both are set at
 // enqueue time from the challenge's expires_at, including resends shortened by
-// LEAST(expires_at, ...). A zero or inverted pair falls back to 10 so a
-// malformed delivery still renders; production rows always carry both.
-func codeTTLMinutes(d Delivery) int {
+// LEAST(expires_at, ...). A zero or inverted pair falls back to the kind's
+// documented lifetime so a malformed delivery still renders; production rows
+// always carry both.
+func ttlMinutes(d Delivery, fallback int) int {
 	if d.CreatedAt.IsZero() || d.ExpiresAt.IsZero() || !d.ExpiresAt.After(d.CreatedAt) {
-		return 10
+		return fallback
 	}
 	mins := int((d.ExpiresAt.Sub(d.CreatedAt) + 30*time.Second) / time.Minute)
 	if mins < 1 {
@@ -109,6 +110,9 @@ func codeTTLMinutes(d Delivery) int {
 	}
 	return mins
 }
+
+// codeTTLMinutes is the verification code lifetime (10 minutes drawn).
+func codeTTLMinutes(d Delivery) int { return ttlMinutes(d, 10) }
 
 func minutePhrase(mins int) string {
 	if mins == 1 {
@@ -161,12 +165,12 @@ func Render(d Delivery, from, replyTo string) ([]byte, error) {
 	case PasswordReset:
 		subject = "Reset your Portico password"
 		heading = "Choose a new password"
-		body = "Use this link to reset your password. If two-step verification is enabled, you will also need your authenticator or a recovery code."
+		body = "Use this link to reset your password. If two-step verification is on, you’ll also need your authenticator app or a recovery code."
 		button = "Reset password"
 	case EmailChange:
 		subject = "Verify your new Portico email"
 		heading = "Confirm your new email"
-		body = "Your previous email remains active until you confirm this address."
+		body = "Your previous email stays active until you confirm this address."
 		button = "Confirm email"
 	}
 	link := Link(d)
@@ -183,10 +187,25 @@ func Render(d Delivery, from, replyTo string) ([]byte, error) {
 	// origin-bound autofill line. The preheader lifetime comes from the
 	// code's real TTL.
 	preheader := ""
+	codeNote := ""
+	note := ""
+	if d.Kind == PasswordReset {
+		// Frame 19: the reset email leads with a preheader and one plain line
+		// carrying the link's real lifetime and the didn't-ask sentence.
+		mins := ttlMinutes(d, 15)
+		phrase := minutePhrase(mins)
+		preheader = "This link works once and expires in " + phrase + "."
+		note = "The link works once and expires in " + phrase + ". If you didn’t ask to reset your password, ignore this message and your password stays as it is."
+	}
 	text := ""
 	if isCodeKind(d.Kind) && code != "" {
 		mins := codeTTLMinutes(d)
-		preheader = "Enter it to confirm your email. It expires in " + minutePhrase(mins) + "."
+		phrase := minutePhrase(mins)
+		preheader = "Enter it to confirm your email. It expires in " + phrase + "."
+		// Frame 18 draws one line under the code, worded for the app, with the
+		// same real TTL as the hidden preheader; the plain-text twin keeps the
+		// preheader sentence.
+		codeNote = "Enter it in Portico. It expires in " + phrase + "."
 		autofill := "@" + WebHost() + " #" + code
 		text = code + "\n\n" + preheader + "\n\n" + heading + "\n\n" + body + "\n\n" + button + ": " + link + "\nValid until " + expiry + ".\n\nNever share this message. If you did not request a verification or password reset, ignore that request.\n" + autofill + "\n"
 		subject = "Your Portico code is " + code
@@ -195,10 +214,14 @@ func Render(d Delivery, from, replyTo string) ([]byte, error) {
 		if code != "" {
 			codeLine = "Or enter this code in Portico: " + code + "\n"
 		}
-		text = heading + "\n\n" + body + "\n\n" + button + ": " + link + "\n" + codeLine + "Valid until " + expiry + ".\n\nNever share this message. If you did not request a verification or password reset, ignore that request.\n"
+		text = heading + "\n\n" + body + "\n\n" + button + ": " + link + "\n" + codeLine + "Valid until " + expiry + ".\n\n"
+		if note != "" {
+			text += note + "\n\n"
+		}
+		text += "Never share this message. If you did not request a verification or password reset, ignore that request.\n"
 	}
 	var html bytes.Buffer
-	e := template.Must(template.New("mail").Parse(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><style>@media(prefers-color-scheme:light){body,.surface{background:#edf5fa!important;color:#071018!important}.card{background:#ffffff!important;color:#071018!important}.muted{color:#28404f!important}}@media(max-width:600px){.card{padding:24px!important}}</style></head><body style="margin:0;background:#071018;color:#edf5fa;font-family:Manrope,Arial,sans-serif">{{if .Preheader}}<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Preheader}}</div>{{end}}<table role="presentation" width="100%" class="surface" style="background:#071018"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" style="max-width:560px"><tr><td style="padding:0 0 24px"><img src="https://web.getportico.tv/assets/portico-wordmark-mono-white.svg" alt="Portico" width="128" style="display:block;background:#071018;padding:12px;border-radius:8px"></td></tr><tr><td class="card" style="padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px">{{if .Code}}<div style="font-size:32px;font-weight:800;letter-spacing:0.12em;font-family:ui-monospace,Menlo,monospace;margin:0 0 16px;word-break:break-all;">{{.Code}}</div>{{end}}<h1 style="margin:0 0 24px;font-size:28px;line-height:1.25">{{.Heading}}</h1>{{if .Preheader}}<p style="font-size:16px;line-height:1.7;margin:0 0 16px">{{.Preheader}}</p>{{end}}<p style="font-size:16px;line-height:1.7;margin:0 0 32px">{{.Body}}</p><a href="{{.Link}}" style="display:inline-block;background:#409fd4;color:#03121c;padding:14px 24px;border-radius:8px;font-weight:700;text-decoration:none">{{.Button}}</a>{{if .CodeFallback}}<p style="font-size:14px;line-height:1.6;margin:24px 0 0">Or enter this code in Portico:<br><span style="font-size:22px;font-weight:700;letter-spacing:0.12em;font-family:ui-monospace,Menlo,monospace">{{.CodeFallback}}</span></p>{{end}}<p class="muted" style="font-size:12px;line-height:1.6;color:#96a9b5;margin:32px 0 0">Valid until {{.Expiry}}.<br>Never share this message. If you did not request verification or a password reset, ignore that request.</p></td></tr></table></td></tr></table></body></html>`)).Execute(&html, map[string]string{"Heading": heading, "Body": body, "Button": button, "Link": link, "Expiry": expiry, "Code": codeFirstHTML(code, d.Kind), "CodeFallback": codeFallbackHTML(code, d.Kind), "Preheader": preheader})
+	e := template.Must(template.New("mail").Parse(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><style>@media(prefers-color-scheme:light){body,.surface,.em{background:#edf5fa!important;color:#071018!important}.em{box-shadow:none!important}.card{background:#ffffff!important;color:#071018!important;border-color:#d3dee6!important}.exp{color:#1c6f9e!important}.btn{background:#071018!important;color:#edf5fa!important}.small{color:#28404f!important}.muted{color:#28404f!important}}@media(max-width:480px){.card{padding:24px!important}}</style></head><body style="margin:0;background:#071018;color:#edf5fa;font-family:Manrope,Arial,sans-serif">{{if .Preheader}}<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Preheader}}</div>{{end}}<table role="presentation" width="100%" class="surface" style="background:#071018;border-collapse:collapse"><tr><td align="center" style="padding:0"><table role="presentation" width="100%" style="max-width:560px;border-collapse:collapse"><tr><td class="em" style="padding:32px 16px 36px;background:#071018;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(237,245,250,.06)"><img class="wmk" src="https://web.getportico.tv/assets/portico-wordmark-mono-white.svg" alt="Portico" width="128" style="display:block;width:128px;background:#071018;padding:12px;border-radius:8px;margin:0 0 24px"><table role="presentation" width="100%" style="border-collapse:separate;border-spacing:0"><tr><td class="card" style="padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px">{{if .Code}}<div style="font-size:46px;line-height:1;font-weight:800;letter-spacing:.14em;font-variant-numeric:tabular-nums;margin:0 0 8px;word-break:break-all;">{{.Code}}</div>{{end}}{{if .CodeNote}}<p class="exp" style="font-size:15px;font-weight:700;line-height:1.7;margin:0 0 26px;color:#5cb3e2">{{.CodeNote}}</p>{{end}}<h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;font-weight:800;letter-spacing:-.02em">{{.Heading}}</h1><p style="font-size:16px;line-height:1.7;margin:0 0 28px">{{.Body}}</p><a class="btn" href="{{.Link}}" style="display:inline-block;background:#edf5fa;color:#071018;padding:14px 24px;border-radius:8px;font-weight:800;font-size:16px;text-decoration:none">{{.Button}}</a>{{if .CodeFallback}}<p style="font-size:14px;line-height:1.6;margin:22px 0 0">Or enter this code in Portico:<br><span style="font-size:22px;font-weight:700;letter-spacing:.14em;font-variant-numeric:tabular-nums">{{.CodeFallback}}</span></p>{{end}}{{if .Note}}<p class="small" style="font-size:14px;line-height:1.6;margin:22px 0 0;color:#bdccd6">{{.Note}}</p>{{end}}<p class="foot muted" style="font-size:12px;line-height:1.6;color:#96a9b5;margin:32px 0 0">Valid until {{.Expiry}}.<br>Never share this message. If you did not request verification or a password reset, ignore that request.</p></td></tr></table></td></tr></table></td></tr></table></body></html>`)).Execute(&html, map[string]string{"Heading": heading, "Body": body, "Button": button, "Link": link, "Expiry": expiry, "Code": codeFirstHTML(code, d.Kind), "CodeNote": codeNote, "CodeFallback": codeFallbackHTML(code, d.Kind), "Note": note, "Preheader": preheader})
 	if e != nil {
 		return nil, e
 	}

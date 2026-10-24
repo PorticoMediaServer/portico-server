@@ -412,3 +412,147 @@ func TestInvitationEmailLiteralIsRetired(t *testing.T) {
 		t.Fatal("retired invitation link produced")
 	}
 }
+
+// Frame 18 (design/ui-v1 account.html#18, notes/account.md 18): the drawn code
+// email is one 560 px column with a wordmark chip and a rounded card, the code
+// set large and first with its real expiry on the line below it, the white
+// button (ink on light) instead of today's blue one, and a plain-text twin
+// that keeps the preheader sentence rather than the app-only line.
+func TestCodeEmailMatchesDrawnFrame18(t *testing.T) {
+	created := time.Date(2026, 9, 6, 12, 20, 0, 0, time.UTC)
+	d := Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: Registration, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: created.Add(10 * time.Minute), Payload: Payload{To: "recipient@example.test", Code: "482913"}}, CreatedAt: created}
+	raw, e := Render(d, "sender@example.test", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, text, html := decodeMailParts(t, raw)
+	for _, want := range []string{
+		`max-width:560px`,
+		`width:128px;background:#071018;padding:12px;border-radius:8px`,
+		`padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px`,
+		`font-size:46px;line-height:1;font-weight:800;letter-spacing:.14em`,
+		`class="exp" style="font-size:15px;font-weight:700;line-height:1.7;margin:0 0 26px;color:#5cb3e2">Enter it in Portico. It expires in 10 minutes.`,
+		`<h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;font-weight:800;letter-spacing:-.02em">Verify your email</h1>`,
+		`<p style="font-size:16px;line-height:1.7;margin:0 0 28px">Confirm your email address to finish creating your Portico Account.</p>`,
+		`background:#edf5fa;color:#071018;padding:14px 24px;border-radius:8px;font-weight:800;font-size:16px`,
+		`color:#96a9b5;margin:32px 0 0`,
+		// The light frame: ink button, lighter card edge, accent on the expiry.
+		`.exp{color:#1c6f9e!important}`,
+		`.btn{background:#071018!important;color:#edf5fa!important}`,
+		`.small{color:#28404f!important}`,
+		`border-color:#d3dee6!important`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("drawn frame 18 missing %q", want)
+		}
+	}
+	if strings.Contains(html, "#409fd4") {
+		t.Fatal("today's blue button survived")
+	}
+	last := -1
+	for _, marker := range []string{">482913<", "Enter it in Portico.", ">Verify your email<"} {
+		i := strings.Index(html, marker)
+		if i <= last {
+			t.Fatalf("drawn order broken at %q", marker)
+		}
+		last = i
+	}
+	if !strings.Contains(text, "Enter it to confirm your email. It expires in 10 minutes.") || strings.Contains(text, "Enter it in Portico.") {
+		t.Fatalf("plain-text twin wording changed: %q", text)
+	}
+	// The reset email keeps its own branch: no code, no expiry line.
+	reset := d
+	reset.Kind = PasswordReset
+	reset.Payload.Code = "reset_token_fixture"
+	rawReset, e := Render(reset, "sender@example.test", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, resetText, resetHTML := decodeMailParts(t, rawReset)
+	if strings.Contains(resetHTML, `class="exp"`) || strings.Contains(resetHTML, "Enter it in Portico.") {
+		t.Fatal("code line on the reset email")
+	}
+	if !strings.Contains(resetText, "Use this link to reset your password.") {
+		t.Fatal("reset plain text changed")
+	}
+}
+
+// Frame 18 panel 4: the new-address message keeps the drawn heading, body and
+// button, and the code block escapes markup while the text twin stays literal.
+func TestCodeEmailCopyAndEscaping(t *testing.T) {
+	d := fixtureDelivery()
+	d.Kind = EmailChange
+	d.Payload.Code = `<i>482913</i>`
+	raw, e := Render(d, "sender@example.test", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, text, html := decodeMailParts(t, raw)
+	for _, want := range []string{"Confirm your new email", "Your previous email stays active until you confirm this address.", "Confirm email"} {
+		if !strings.Contains(html, want) || !strings.Contains(text, want) {
+			t.Fatalf("drawn new-address copy missing %q", want)
+		}
+	}
+	if strings.Contains(html, "<i>482913</i>") || !strings.Contains(html, "&lt;i&gt;482913&lt;/i&gt;") {
+		t.Fatal("code block let markup through")
+	}
+	if !strings.Contains(text, "<i>482913</i>") {
+		t.Fatal("text part altered the code")
+	}
+}
+
+// Frame 19 (design/ui-v1 account.html#19, notes/account.md 19 and mail item 4):
+// the reset email carries no code. It gains the drawn preheader and one plain
+// line with the link's real lifetime and the didn't-ask sentence; the subject,
+// body, button and never-share footer stay as they are.
+func TestResetEmailMatchesDrawnFrame19(t *testing.T) {
+	created := time.Date(2026, 10, 22, 14, 32, 7, 0, time.UTC)
+	mk := func(mins int) Delivery {
+		return Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: PasswordReset, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: created.Add(time.Duration(mins) * time.Minute), Payload: Payload{To: "recipient@example.test", Code: "reset_token_fixture"}}, CreatedAt: created}
+	}
+	raw, e := Render(mk(15), "sender@example.test", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	message, text, html := decodeMailParts(t, raw)
+	if got := message.Header.Get("Subject"); got != "Reset your Portico password" {
+		t.Fatalf("subject %q", got)
+	}
+	note := "The link works once and expires in 15 minutes. If you didn’t ask to reset your password, ignore this message and your password stays as it is."
+	for _, want := range []string{
+		`<p class="small" style="font-size:14px;line-height:1.6;margin:22px 0 0;color:#bdccd6">` + note + `</p>`,
+		`display:none;max-height:0;overflow:hidden`,
+		"This link works once and expires in 15 minutes.",
+		"Choose a new password",
+		"Use this link to reset your password. If two-step verification is on, you’ll also need your authenticator app or a recovery code.",
+		">Reset password<",
+		"Valid until Thu, 22 Oct 2026 14:47:07 UTC.",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("drawn frame 19 missing %q", want)
+		}
+	}
+	if strings.Contains(html, `class="exp"`) || !strings.Contains(text, "Valid until Thu, 22 Oct 2026 14:47:07 UTC.") {
+		t.Fatal("reset email took the code branch")
+	}
+	last := -1
+	for _, marker := range []string{"Reset password: https://", "Valid until ", note, "Never share this message."} {
+		i := strings.Index(text, marker)
+		if i <= last {
+			t.Fatalf("drawn text order broken at %q", marker)
+		}
+		last = i
+	}
+	// The drawn line and preheader use the real lifetime, not the 15 drawn as text.
+	raw, e = Render(mk(12), "sender@example.test", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, text, html = decodeMailParts(t, raw)
+	if !strings.Contains(html, "This link works once and expires in 12 minutes.") || !strings.Contains(text, "The link works once and expires in 12 minutes.") {
+		t.Fatalf("reset lifetime not from the delivery: %q", text)
+	}
+	if strings.Contains(text, "15 minutes") || strings.Contains(html, "15 minutes") {
+		t.Fatal("hard-coded 15-minute reset lifetime")
+	}
+}
