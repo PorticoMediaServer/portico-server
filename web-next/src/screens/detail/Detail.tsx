@@ -81,7 +81,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
   return <header className={styles.hero}>
     {showBackdrops && <AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
     <div className={styles.copy}>
-      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}><Icon name="i-layers" size={18} />{data.collections[0].name}<span className={styles.collectionCount}>{t('lib.count', {count: data.collections[0].memberCount, pivot: 'movies'})}</span></button>}
+      {data.collections?.[0] && <CollectionLink collection={data.collections[0]} onOpen={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })} />}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
       <TitleFactsLine parts={parts} genres={genres} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
@@ -90,6 +90,13 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
       <TitleActions binding={binding} data={data} />
     </div>
   </header>;
+}
+
+/** The hero's collection link. Its total is every visible member the server counted, not
+    only films, so the count keeps that real total and names no member kind: the catalogue's
+    neutral collection noun already used for a collection's own entry count. */
+export function CollectionLink({collection, onOpen}: {collection: NonNullable<DetailProjection['collections']>[number]; onOpen: () => void}) {
+  return <button className={styles.collection} type="button" onClick={onOpen}><Icon name="i-layers" size={18} />{collection.name}<span className={styles.collectionCount}>{t('lib.count', {count: collection.memberCount, pivot: 'other'})}</span></button>;
 }
 
 export function TitleActions({binding, data, small = false, topResult = false}: {binding: DetailBindings; data: DetailProjection; small?: boolean; topResult?: boolean}) {
