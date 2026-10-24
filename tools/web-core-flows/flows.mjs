@@ -35,7 +35,12 @@ async function walk(page, viewportName) {
   const failedRequests = [];
   const attempted = [];
   const pageResponses = [];
-  page.on('request', request => { attempted.push(request.url()); if (attempted.length > 400) attempted.shift(); });
+  const adminRequests = [];
+  page.on('request', request => {
+    attempted.push(request.url()); if (attempted.length > 400) attempted.shift();
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/v1/admin/libraries/')) adminRequests.push(request.method() + ' ' + path.replace(/[^/]+/g, ':id'));
+  });
   page.on('response', response => {
     const path = new URL(response.url()).pathname;
     // Only reading session page/source answers, and only their shape: status,
@@ -209,9 +214,21 @@ async function walk(page, viewportName) {
     await foldersTab.waitFor({timeout: 15000});
     await foldersTab.click();
     await settle(3500);
-    const body = await text();
+    let body = await text();
     if (!body.includes(creds.bookPath)) throw new Error('the folders tab did not show the library folder: ' + excerpt(body, 300));
-    return {folder: creds.bookPath};
+    const before = adminRequests.length;
+    const menu = page.getByRole('button', {name: /^Actions$/i}).first();
+    await menu.click();
+    await page.getByText('Check availability', {exact: true}).first().click();
+    await settle(2500);
+    await menu.click();
+    await page.getByText('Scan this folder', {exact: true}).first().click();
+    await settle(3000);
+    const commands = adminRequests.slice(before);
+    if (!commands.some(value => value.endsWith('/check'))) throw new Error('Check availability sent no command: ' + JSON.stringify(commands));
+    if (!commands.some(value => value.endsWith('/scans'))) throw new Error('Scan this folder sent no command: ' + JSON.stringify(commands));
+    body = await text();
+    return {folder: creds.bookPath, commands};
   });
   await step('settings-account', async () => {
     await page.goto(base + '/settings?scope=account&section=playback', {waitUntil: 'domcontentloaded'});
