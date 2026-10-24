@@ -99,7 +99,7 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('/kit/dock/parts.tsx')) return module("export const Facts = 'facts', Control = 'dock-control', useDockActions = () => () => {}, playbackAction = () => 'pause', playbackIcon = () => 'i-pause', playbackLabel = () => 'Pause';");
   if (url.endsWith('.tsx')) {
     let source = transformTsx(url);
-    if (/\/(?:shell\/Playback|kit\/dock\/NowPlayingCard)\.tsx$/.test(url)) source = source.replace(/from (['"])react\1/g, `from ${JSON.stringify(hookModule)}`);
+    if (/\/(?:shell\/Playback|kit\/dock\/NowPlayingCard|screens\/watch\/WatchPlayback)\.tsx$/.test(url)) source = source.replace(/from (['"])react\1/g, `from ${JSON.stringify(hookModule)}`);
     return module(source);
   }
   return next(url, context);
@@ -153,13 +153,15 @@ test('host rerenders retain one media ref and presentations while actual authori
   const hooks = new HookFrame(), events: unknown[] = [], dock = new PlaybackDock(scope);
   const timers = new Map<number, () => void>(); let serial = 0;
   const originalTimers = {setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout};
+  const originalDocument = globalThis.document;
   Object.assign(globalThis, {setTimeout: (fn: () => void) => { timers.set(++serial, fn); return serial; }, clearTimeout: (id: number) => timers.delete(id)});
-  t.after(() => { hooks.unmount(); Object.assign(globalThis, originalTimers); });
+  Object.assign(globalThis, {document: {fullscreenElement: null, fullscreenEnabled: false, activeElement: null, pictureInPictureEnabled: false, pictureInPictureElement: null, addEventListener() {}, removeEventListener() {}}});
+  t.after(() => { hooks.unmount(); Object.assign(globalThis, originalTimers); Object.assign(globalThis, {document: originalDocument}); });
   let state: WebPlaybackRuntimeSnapshot;
   const snapshot = (playback: DockPlayback, title: string): WebPlaybackRuntimeSnapshot => ({dock: dock.getSnapshot(), fence: playback.fence,
     presentation: {fence: playback.fence, subject: playback.kind === 'music' ? {kind: 'music', item: {kind: 'song', id: 'song', title}} : {kind: 'video', item: {kind: 'movie', id: 'movie', title}}, kind: playback.kind === 'music' ? 'music' : 'video', durationSeconds: 100, positionSeconds: 12, controls: ['play', 'pause'], playing: true, expanded: false, finished: false, rate: 1.25, volume: .4, muted: true, policy: null},
   } as WebPlaybackRuntimeSnapshot);
-  const runtime = (id: string) => ({getSnapshot: () => state, subscribe: () => () => {}, dock, onAction: async () => {}, collapse() {}, mount(node: unknown) { events.push(['mount', id, node]); return () => events.push(['dispose', id]); }});
+  const runtime = (id: string) => ({getSnapshot: () => state, subscribe: () => () => {}, dock, onAction: async () => {}, policyAction: async () => {}, collapse() {}, mount(node: unknown) { events.push(['mount', id, node]); return () => events.push(['dispose', id]); }});
   const first = runtime('first'), second = runtime('second');
   const makeBinding = (runtime: unknown) => ({runtime, environment: {t: (key: string) => key}, artwork: {foreground: () => null, ambient: () => null}, skips: {back: 10, forward: 30}, reportError: (error: unknown) => { throw error; }} as unknown as ShellPlaybackBinding);
   let binding: ShellPlaybackBinding | undefined = makeBinding(first);
