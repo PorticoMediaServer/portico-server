@@ -43,12 +43,12 @@ export class SetupApprovalFlow {
     if (!session) {this.publish({phase: 'error', busy: false, error: changed()}); return;}
     let identity: AccountIdentity;
     try {identity = this.identity ?? Object.freeze(accountIdentity(session));}
-    catch (error) {this.publish({phase: 'error', busy: false, error}); return;}
+    catch (error) {this.publish({...this.state, phase: 'error', busy: false, error}); return;}
     const generation = ++this.epoch;
     this.publish({...this.state, busy: true, error: undefined});
     try {this.current(generation, identity); await work(generation, identity);}
     catch (error) {
-      if (!this.disposed && generation === this.epoch) this.publish({phase: 'error', busy: false, error});
+      if (!this.disposed && generation === this.epoch) this.publish({...this.state, phase: 'error', busy: false, error});
     } finally {
       if (!this.disposed && generation === this.epoch && this.state.busy) this.publish({...this.state, busy: false});
     }

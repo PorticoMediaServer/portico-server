@@ -27,7 +27,7 @@ async function fixture(t: TestContext) {
   const calls:{path:string;body:unknown}[]=[];
   let secure=true,claimCalls=0,initializes=0;
   const api=new HttpLocalApi(original.address,'');
-  const route={pin,logicalOrigin:original.address,getSnapshot:()=>({phase:'ready'}),getMemory:()=>({paired:new Set([original.address])}),setPersistence:()=>{},dispose:()=>{}};
+  const route={pin,logicalOrigin:original.address,getSnapshot:()=>({phase:'ready'}),getMemory:()=>({paired:new Set([original.address])}),setPersistence:()=>{},subscribe:()=>()=>{},fetch:async(input:string|URL|Request,init?:RequestInit)=>{calls.push({path:new URL(String(input)).pathname,body:init?.body});return new Response('{}',{headers:{'Content-Type':'application/json'}});},dispose:()=>{}};
   api.useRoutes(route as never);
   api.request=(async(path:string,_method:string,body:unknown)=>{
     calls.push({path,body});
