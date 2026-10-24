@@ -36,7 +36,7 @@ test('the parent uses the actual selected grouped version and selected stream, n
  assert.equal(model.audio[0].selected,true);assert.equal(model.audio[1].selected,false);assert.equal(model.audio[1].unavailable,true);
  assert.equal(model.audioLabel,'English');assert.equal(model.subtitles.find(row=>row.selected)?.id,'resource:real-subtitle');
  assert.equal(model.automatic,true);assert.equal(model.qualityLabel,'720p');assert.equal(model.quality.find(row=>row.selected)?.id,'auto');
- assert.equal(model.speed.find(row=>row.selected)?.id,'1.5');assert.deepEqual(f.calls,[]);
+ assert.equal(model.speed.find(row=>row.selected)?.id,'1.5');assert.equal(model.speed.find(row=>row.id==='1')?.label,'Normal');assert.deepEqual(f.calls,[]);
 });
 
 test('real source choices dispatch exact wire identities and full fence through the one runtime',async()=>{

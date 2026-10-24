@@ -3,7 +3,13 @@
 .columns > div + div { position: relative; }
 .columns > div + div::before { content: ''; position: absolute; left: -13px; top: 4px; bottom: 4px; width: 1px; background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .column h3 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; padding: 0 12px; font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
-.columns [data-section='speed'] { margin-top: 20px; }
+.columns [data-section='quality'] { margin-top: 20px; }
+.column h3 > span { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); }
+.speeds.speeds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 12px; padding: 0; border-radius: 11px; background: none; box-shadow: none; }
+.speeds.speeds > button { height: 36px; padding: 0 8px; border-radius: 8px; font-size: 13.5px; font-weight: 700; color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.speeds.speeds > button:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.speeds.speeds > button[data-state='checked'] { background: var(--color-text); color: var(--color-ink); }
+@media (prefers-reduced-motion: reduce) { .speeds.speeds > button { transition: none; } }
 .row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 6px 12px; border: 0; border-radius: 10px; text-align: left; font: inherit; font-size: 15px; font-weight: 600; color: var(--color-text-secondary); background: transparent; cursor: pointer; }
 .row > span { flex: 1; min-width: 0; }
 .row small { display: block; margin-top: 1px; font-size: 12.5px; font-weight: 500; color: var(--color-text-tertiary); }

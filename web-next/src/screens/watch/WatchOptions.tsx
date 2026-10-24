@@ -1,5 +1,6 @@
 import {useEffect,useLayoutEffect,useRef} from 'react';
 import type {I18n} from '@i18n';
+import {Segmented} from '../../kit/controls';
 import {TrackChoices} from '../../kit/media';
 import {Icon} from '../../kit/Icon';
 import {BottomSheet} from '../../kit/overlays';
@@ -36,10 +37,15 @@ export function WatchOptions({model,context,i18n,reportError}:{model:WatchPanelM
   else if(event.defaultPrevented&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))event.stopPropagation();
  }}>
   {model.subtitles.length>0&&<div data-section="subtitles"><TrackChoices title={t('player.opt.subtitles')} choices={model.subtitles} layout={context.layout} onSelect={model.selectSubtitle} reportError={reportError} t={t}/></div>}
-  {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={model.selectAudio} reportError={reportError} t={t}/></div>}
-  {(model.quality.length>0||model.speed.length>0)&&<div>
+  {(model.audio.length>0||model.quality.length>0)&&<div>
+   {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={model.selectAudio} reportError={reportError} t={t}/></div>}
    {model.quality.length>0&&<div data-section="quality"><RadioColumn title={t('player.opt.quality')} rows={model.quality} select={model.selectQuality} reportError={reportError}/></div>}
-   {model.speed.length>0&&<div data-section="speed"><RadioColumn title={t('player.opt.speed')} rows={model.speed} select={model.selectSpeed} reportError={reportError}/></div>}
+  </div>}
+  {model.speed.length>0&&<div data-section="speed" className={styles.column}>
+   <h3>{t('player.opt.speed')}<span>{model.speed.find(row=>row.selected)?.label}</span></h3>
+   <Segmented className={styles.speeds} aria-label={t('player.opt.speed')} value={model.speed.find(row=>row.selected)?.id??''}
+    items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
+    onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
   </div>}
  </div>;
  return context.layout==='phone'?<BottomSheet open title={t('next.dock.options')} onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}
