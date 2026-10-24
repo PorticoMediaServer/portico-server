@@ -29,7 +29,12 @@ function samePaint(a, b) {
 }
 
 /** Deterministic anchor -> role/text/order matching. Never widens policy to pass. */
-export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = {}, {referenceSelf = false} = {}) {
+export function compareScreens(reference, actual, options = {}, {referenceSelf = false} = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options) || 'comparison' in options || 'anchors' in options)
+    return {policy, matchedElements: 0, expectedElements: 0, actualElements: 0, matches: [], diagnostics: [],
+      differences: [{kind: 'invalid-adapter', label: 'Comparison recipe', reason: 'Pass the flat comparison recipe, not the public anchors/state envelope; use stateAdapter.comparison.'}],
+      unscoredProperties: unscored, referenceOnly: [], actualContentOnly: [], cascadeRoots: {reference: [], actual: []}, verdict: 'FAIL'};
+  const {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = options;
   const differences = [], diagnostics = [], ambiguous = [], matches = [], used = new Set(), itemMatches = new Map();
   if (actual.diagnostics?.fontScale !== undefined) diagnostics.push({label: 'screen', property: 'diagnostics.fontScale', actual: actual.diagnostics.fontScale, scored: false, reason: 'Actual system font scale is diagnostic metadata; measured font/run facts are never multiplied, divided or normalized by it.'});
   const unavailable = (screen, node, property) => screen.unavailable?.some(fact => fact.element === node?.id && fact.property === property);
@@ -57,8 +62,18 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     }
   }
   const exclude = new Set(referenceOnly);
-  const expected = reference.elements.filter(node => significant(node) && !exclude.has(node.frame) && !within(node.id, cascadeRoots.reference));
-  const observed = actual.elements.filter(node => significant(node) && !actualContentOnly.includes(node.frame) && !within(node.id, cascadeRoots.actual));
+  const canvasRoot = (node, screen) => node.parent == null && node.box?.x === 0 && node.box?.y === 0 &&
+    sameLogicalExtent(node.box?.width, screen.root?.width, screen.measurement) && sameLogicalExtent(node.box?.height, screen.root?.height, screen.measurement);
+  const referenceRoots = reference.elements.filter(node => canvasRoot(node, reference));
+  const referenceCanvas = referenceRoots.length === 1 && !referenceRoots[0].frame && !referenceRoots[0].repeat ? referenceRoots[0] : undefined;
+  const actualRoots = referenceCanvas ? actual.elements.filter(node => canvasRoot(node, actual) && !node.frame && !node.repeat) : [];
+  const actualCanvas = actualRoots.length === 1 ? actualRoots[0] : undefined;
+  if (referenceCanvas && !actualCanvas) {
+    differences.push({kind: 'anchor-cardinality', label: 'canonical-canvas-root', expected: 1, actual: actualRoots.length});
+    cascadeRoots.reference.push(referenceCanvas.id); cascadeRoots.actual.push(...actualRoots.map(node => node.id));
+  }
+  const expected = reference.elements.filter(node => (significant(node) || node === referenceCanvas) && !exclude.has(node.frame) && !within(node.id, cascadeRoots.reference));
+  const observed = actual.elements.filter(node => (significant(node) || node === actualCanvas) && !actualContentOnly.includes(node.frame) && !within(node.id, cascadeRoots.actual));
   const actualLogical = usesLogicalCoordinates(actual);
   const referenceSelfCanvas = referenceSelf && reference.measurement?.sourceRole === 'reference-frame' && actual.measurement?.sourceRole === 'reference-frame' &&
     JSON.stringify(reference.referencePresentation) === JSON.stringify(actual.referencePresentation) && JSON.stringify(reference.viewport) === JSON.stringify(actual.viewport);
@@ -76,6 +91,11 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   }
   const referenceNodes = new Map(reference.elements.map(node => [node.id, node])), actualNodes = new Map(actual.elements.map(node => [node.id, node]));
   const anchoredMatches = new Map();
+  if (referenceCanvas && actualCanvas) anchoredMatches.set(referenceCanvas.id, actualCanvas.id);
+  for (const node of expected.filter(node => node.frame)) {
+    const targets = observed.filter(other => other.frame === node.frame);
+    if (targets.length === 1) anchoredMatches.set(node.id, targets[0].id);
+  }
   const descendantOf = (node, ancestor) => {
     const seen = new Set();
     for (let parent = node.parent; parent && !seen.has(parent); parent = actualNodes.get(parent)?.parent) {
@@ -87,6 +107,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   for (const node of expected) {
     let candidates = observed.filter(other => !used.has(other.id)), method;
     if (referenceSelf) {candidates = candidates.filter(other => other.id === node.id); method = 'same-observation-id';}
+    else if (node === referenceCanvas) {candidates = candidates.filter(other => other === actualCanvas); method = 'canonical-canvas-root';}
     else if (node.repeat) {
       candidates = candidates.filter(other => other.repeat?.list === node.repeat.list && other.repeat?.part === node.repeat.part);
       if (node.repeat.part) candidates = candidates.filter(other => other.repeat.item === itemMatches.get(node.repeat.item));
@@ -97,6 +118,8 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
       method = 'list-role-text-order';
     } else if (node.frame) {candidates = candidates.filter(other => other.frame === node.frame); method = 'frame-anchor';}
     else {
+      // Explicit semantic/list anchors are reserved before any positional fallback.
+      candidates = candidates.filter(other => !other.frame && !other.repeat);
       // Wrapper depth may differ, but an unanchored child belongs to its nearest
       // already matched semantic anchor/list part, not an unrelated global row.
       const seen = new Set();
@@ -155,7 +178,8 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
       if (!difference || difference.deltaE2000 > policy.deltaE2000 || difference.alpha > policy.colorAlpha) add(property, a, b, difference);
     }
     if (node.image?.kind !== other.image?.kind) add('image-slot.kind', node.image?.kind, other.image?.kind);
-    if (node.image?.kind === 'image' && node.image.loaded !== other.image?.loaded) add('image-slot.loaded', node.image.loaded, other.image?.loaded);
+    if (node.image?.kind === 'image' && !unavailable(reference, node, 'image.loaded') && !unavailable(actual, other, 'image.loaded') && node.image.loaded !== other.image?.loaded)
+      add('image-slot.loaded', node.image.loaded, other.image?.loaded);
     if (node.image?.kind === 'icon' || other.image?.kind === 'icon') diagnostics.push({label, property: 'icon.identity/contents', scored: false, reason: 'Icon slot geometry/style is measured; SVG paths, sprite references and artwork contents are excluded. A matching slot does not establish glyph identity.'});
     for (const property of unscored) {
       const a = node[property] ?? node.style?.[property], b = other[property] ?? other.style?.[property];

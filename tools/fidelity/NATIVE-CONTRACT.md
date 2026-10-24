@@ -15,6 +15,12 @@ Output parents must exist outside public source. The CLI writes once and prints
 only verdict/count. Private reference data and actual frame comparisons stay on
 our machines, never public Actions. Public synthetic tests have no design data.
 
+`--adapter` and `compareMeasurements` take the flat comparison recipe. For the
+public frontdoor state descriptor use `frontdoorStateAdapters[platform].comparison`,
+not its `{anchors,comparison}` envelope. The envelope is rejected rather than
+silently ignoring its content slots. Public semantic ID bindings stay in `anchors`;
+they are a separate producer input. Comparison files are named `*-comparison.json`.
+
 The common top-level fields are `version:1`, `scope:'screen'`, `fullViewport`,
 `root:{x,y,width,height}`, `viewport:{width,height,deviceScaleFactor}`, `elements`,
 `strings`, `anchorIssues`, `repeatedLists`. The root is the whole selected screen,

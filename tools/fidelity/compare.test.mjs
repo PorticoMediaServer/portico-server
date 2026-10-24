@@ -5,6 +5,30 @@ import {compareScreens} from './compare.mjs';
 const node = (frame, patch = {}) => ({id: frame, frame, tag: 'h1', ownText: 'Public heading', box: {x: 10, y: 20, width: 100, height: 40}, style: {fontFamily: 'Example', fontSize: '32px', fontWeight: '800', opacity: '.7', color: 'rgb(46, 63, 73)'}, ...patch});
 const spec = elements => ({scope: 'screen', fullViewport: true, root: {width: 200, height: 100}, viewport: {deviceScaleFactor: 1}, anchorIssues: [], elements});
 
+test('canonical canvas pairing retains an unknown native root and cannot consume the anchored backdrop', () => {
+  const root = node(null, {id: '0', parent: null, tag: 'div', leaf: false, ownText: '', normalizedText: '',
+    box: {x: 0, y: 0, width: 200, height: 100}, style: {backgroundColor: 'rgb(7, 16, 24)'}});
+  const backdrop = node('backdrop', {id: '0.0', parent: '0', tag: 'div', ownText: '', normalizedText: '', box: {x: 0, y: 0, width: 200, height: 70}});
+  const actualRoot = {...root, id: 'native', style: {}};
+  const actual = {...spec([actualRoot, {...backdrop, id: 'native.0', parent: 'native'}]), unavailable: [{element: 'native', property: 'effectiveBackgroundColor', reason: 'native paint unknown'}]};
+  const result = compareScreens(spec([root, backdrop]), actual);
+  assert.deepEqual(result.matches.map(value => [value.reference, value.actual, value.method]), [['0', 'native', 'canonical-canvas-root'], ['0.0', 'native.0', 'frame-anchor']]);
+  assert.equal(result.differences.some(value => ['missing-element', 'ambiguous-match'].includes(value.kind)), false);
+  assert.ok(result.differences.some(value => value.kind === 'unavailable-measurement'));
+  const duplicate = {...actualRoot, id: 'other'};
+  const invalid = compareScreens(spec([root, backdrop]), {...actual, elements: [...actual.elements, duplicate]});
+  assert.equal(invalid.differences.filter(value => value.kind === 'anchor-cardinality').length, 1);
+  assert.equal(invalid.matches.some(value => value.reference === '0'), false);
+});
+
+test('unanchored fallbacks cannot steal explicit anchors that appear later in reference order', () => {
+  const plain = node(null, {id: 'plain', ownText: '', normalizedText: '', tag: 'div', style: {backgroundColor: 'rgb(7, 16, 24)'}});
+  const anchored = {...plain, id: 'anchored', frame: 'reserved'};
+  const result = compareScreens(spec([plain, anchored]), spec([anchored, plain]));
+  assert.equal(result.verdict, 'PASS');
+  assert.deepEqual(result.matches.map(value => [value.reference, value.actual]), [['plain', 'plain'], ['anchored', 'anchored']]);
+});
+
 test('transform origin is inactive only when both observed transforms are identity', () => {
   const left = node('title'); left.style.transform = 'none'; left.style.transformOrigin = '0px 0px';
   const right = structuredClone(left); right.style.transformOrigin = '50px 20px';
@@ -91,6 +115,20 @@ test('wrapped control label is a separate measured text part without descendant 
   const changed = {...label, style: {...label.style, fontSize: '34px'}};
   assert.ok(compareScreens(spec([button]), spec([shell, changed]), adapter).differences.some(value => value.property === 'fontSize'));
   assert.ok(compareScreens(spec([button]), spec([shell, {...label, ownText: 'Undrawn'}]), adapter).differences.some(value => value.property === 'text'));
+  const wrapped = compareScreens(spec([button]), spec([shell, label]), {anchors: {public: 'submit'}, comparison: adapter});
+  assert.equal(wrapped.verdict, 'FAIL');
+  assert.equal(wrapped.differences[0].kind, 'invalid-adapter');
+});
+
+test('an unknown native image decode fact is never inferred as loaded', () => {
+  const image = node('brand', {tag: 'img', ownText: '', normalizedText: '', image: {kind: 'image', loaded: true}});
+  const actual = {...image, image: {kind: 'image'}};
+  assert.ok(compareScreens(spec([image]), spec([actual])).differences.some(value => value.property === 'image-slot.loaded' && value.actual === undefined));
+  const declared = {...spec([actual]), unavailable: [{element: actual.id, property: 'image.loaded', reason: 'decode state unobserved'}]};
+  const result = compareScreens(spec([image]), declared);
+  assert.ok(result.differences.some(value => value.kind === 'unavailable-measurement'));
+  assert.equal(result.differences.some(value => value.property === 'image-slot.loaded'), false);
+  assert.ok(compareScreens(spec([image]), spec([{...actual, image: {kind: 'image', loaded: false}}])).differences.some(value => value.property === 'image-slot.loaded' && value.actual === false));
 });
 
 test('raw alignment/normal line height and raw background do not replace rendered/composited facts', () => {

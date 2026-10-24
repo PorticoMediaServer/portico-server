@@ -1,14 +1,14 @@
 /** Coverage failures are not product defects. Keep both counts visible. */
 export function assessDifferences(differences, {reference, actual} = {}) {
   const count = kinds => differences.filter(value => kinds.includes(value.kind)).length;
-  const observedProperties = /^(?:font|resolvedFontFamily$|letterSpacing|textTransform|textDecoration|textShadow|color$|effectiveOpacity$|effectiveBackgroundColor$|background|border|boxShadow$|filter$|backdropFilter$|transform|objectFit$)/;
+  const observedProperties = /^(?:font|resolvedFontFamily$|letterSpacing|textTransform|textDecoration|textShadow|color$|effectiveOpacity$|effectiveBackgroundColor$|background|border|boxShadow$|filter$|backdropFilter$|transform|objectFit$|image-slot\.loaded$)/;
   const missingObservation = value => value.kind === 'measured-difference' && observedProperties.test(value.property ?? '') &&
     (value.expected === undefined || value.actual === undefined);
   const coverage = {
     declaredUnavailable: {reference: reference?.unavailable?.length ?? 0, actual: actual?.unavailable?.length ?? 0},
     unavailableMeasurements: count(['unavailable-measurement']),
     missingObservedProperties: differences.filter(missingObservation).length,
-    invalidMeasurements: count(['invalid-measurement']),
+    invalidMeasurements: count(['invalid-measurement', 'invalid-adapter']),
     calibrationFailures: count(['calibration-failure']),
     stateFailures: count(['screen-state', 'fixture-state', 'nondeterministic-extraction', 'font-not-loaded', 'page-readiness', 'native-caret-state']),
   };
