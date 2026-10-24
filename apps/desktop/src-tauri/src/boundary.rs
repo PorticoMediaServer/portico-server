@@ -21,6 +21,7 @@ pub enum Error {
     InvalidReceipt,
     StorageFull,
     Unsupported,
+    DiscoveryUnavailable,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
