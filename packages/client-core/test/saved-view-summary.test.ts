@@ -7,10 +7,10 @@ import {savedViewSummary} from '../src/presentation/saved-view-summary.ts';
 import {orderToolbarPredicates, toolbarModel} from '../src/presentation/browse-toolbar.ts';
 import {browseToolbarModel} from '../src/presentation/kit-model/browse.ts';
 
-const field = (id: string, type: string, operators: readonly string[]) => ({id, type, operators, labelKey: `browse.field.${id}`, controlHint: type === 'set' ? 'facet-multi-select' : 'number-range', applicableKinds: ['movie']});
+const field = (id: string, type: string, operators: readonly string[]) => ({id, type, operators, labelKey: `browse.field.${id}`, controlHint: type === 'identity-set' ? 'facet-multi-select' : type === 'enum' ? 'select' : type === 'date' ? 'date-range' : 'number-range', ...(type === 'enum' ? {allowedValues: ['unplayed', 'in-progress', 'played']} : {}), applicableKinds: ['movie']});
 const caps = parseBrowseCapabilities({library: {id: 'actual-library', name: 'Movies', kind: 'movie', defaultView: 'browse'},
   pivots: [{id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid', 'list'], browsable: true}],
-  fields: [field('genre', 'set', ['contains-any', 'in']), field('year', 'number', ['between', 'at-least']), field('decade', 'number', ['equals', 'in']), field('playState', 'enum', ['equals']), field('durationMs', 'number', ['at-most', 'at-least', 'between']), field('communityRating', 'number', ['at-least']), field('dateAdded', 'date', ['at-least'])],
+  fields: [field('genre', 'identity-set', ['contains-any', 'in']), field('year', 'number', ['between', 'at-least']), field('decade', 'number', ['equals', 'in']), field('playState', 'enum', ['equals']), field('durationMs', 'number', ['at-most', 'at-least', 'between']), field('communityRating', 'number', ['at-least']), field('dateAdded', 'date', ['at-least'])],
   quickFilters: [{id: 'unwatched', labelKey: 'filter.unwatched', query: {field: 'playState', operator: 'equals', value: 'unplayed'}}, {id: 'in-progress', labelKey: 'filter.inProgress', query: {field: 'playState', operator: 'equals', value: 'in-progress'}}],
   sorts: ['title', 'added', 'duration', 'communityRating', 'lastPlayed'].map(id => ({id, labelKey: `sort.${id}`, directions: ['asc', 'desc'], defaultDirection: 'asc', applicableKinds: ['movie']})),
   queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 10000}});
@@ -38,7 +38,7 @@ test('§38 six drawn Saved tile summaries and conditions-only TV names are exact
 test('out-of-toolbar grammar, absent fields/operators and wrong library/pivot never expose wire text', () => {
   const leaf = node('genre', 'contains-any', ['Action']);
   const bad: SavedDefinition[] = [
-    definition({any: [leaf, node('year', 'at-least', 2000)]}), definition({not: leaf}), definition({all: [{all: [leaf]}]}),
+    definition({any: [leaf, node('year', 'at-least', 2000)]}), definition({not: leaf}), definition({all: [{all: [leaf]}]}), definition({all: []}),
     definition(node('unknown-wire-field', 'equals', 'secret-wire-value')), definition(node('genre', 'between', ['A', 'Z'])),
     {...definition(leaf), libraryId: 'other-library'}, {...definition(leaf), pivot: 'other-pivot'},
     {...definition(leaf), sort: [{field: 'unknown-sort', direction: 'asc'}]},

@@ -18,7 +18,7 @@ export function savedViewSummary(definition: SavedDefinition, capabilities: Brow
   try {
     if (definition.libraryId !== capabilities.library.id || capabilities.resolvedPivot && capabilities.resolvedPivot.id !== definition.pivot) return;
     const query = definition.query;
-    const nodes = !query ? [] : 'field' in query ? [query] : 'all' in query && query.all.every(node => 'field' in node) ? query.all : undefined;
+    const nodes = !query ? [] : 'field' in query ? [query] : 'all' in query && query.all.length > 0 && query.all.every(node => 'field' in node) ? query.all : undefined;
     if (!nodes) return;
     const conditions: Condition[] = [];
     for (const node of nodes) {if (!('field' in node)) return;conditions.push(node);}
@@ -61,13 +61,13 @@ export function savedViewSummary(definition: SavedDefinition, capabilities: Brow
         if (count) {words.push(text.t('savedView.summary.addedLastDays', {count: Number(count)}));own.forEach(value => consumed.add(value));continue;}
       }
       const decade = decadeValues(node);
-      if (decade) {words.push(text.t('savedView.summary.decade', {values: list.format(decade.map(value => text.t('savedView.summary.decadeValue', {decade: value})))}));continue;}
+      if (decade) {words.push(text.t('savedView.summary.decade', {values: list.format(decade.map(value => text.t('savedView.summary.decadeValue', {decade: String(value)})))}));continue;}
       if (node.operator === 'in' || node.operator === 'contains-any') {
         if (!Array.isArray(node.value) || !node.value.length) return;
         words.push(text.t('savedView.summary.fieldValues', {field: label, values: list.format(node.value.map(value => valueWords(field, value, text)))}));continue;
       }
       if (field.type === 'number' && node.operator === 'at-least' && typeof node.value === 'number') {
-        words.push(field.id === 'communityRating' ? text.t('savedView.summary.rating', {value: node.value}) : text.t('savedView.summary.atLeast', {field: label, value: node.value}));continue;
+        words.push(field.id === 'communityRating' ? text.t('savedView.summary.rating', {value: node.value}) : text.t('savedView.summary.atLeast', {field: label, value: field.id === 'year' ? String(node.value) : node.value}));continue;
       }
       const phrase = appliedFilterLabel(node, id => fieldName(id) ?? '', text.t);
       if (!phrase) return;
@@ -91,7 +91,7 @@ export function savedViewSummary(definition: SavedDefinition, capabilities: Brow
 function valueWords(field: BrowseFieldCapability, value: unknown, text: SavedViewSummaryText): string {
   if (typeof value === 'string') {
     // Metadata facet strings are labels as stored, including spelling/hyphens.
-    if (field.type === 'set') return value;
+    if (field.type === 'identity-set') return value;
     const key = `filter.value.${value}`;
     return text.has(key) ? text.t(key) : browseValueLabel(value);
   }
