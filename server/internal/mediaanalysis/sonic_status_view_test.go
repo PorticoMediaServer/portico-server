@@ -53,7 +53,7 @@ func TestSonicOwnerAvailabilityIsVerifiedAndIndependentOfLibraryChoice(t *testin
 					CanAnalyze: true, Runtime: runtime, Total: 10, Analyzed: 10,
 					Work: workpolicy.HeavyWorkFacts{ObservedAt: time.Now(), WindowOpen: true}}
 				view := status.OwnerView("music")
-				if view.Available != (runtime.State == "ready") || view.Enabled != enabled || view.PolicyAllows != policyAllows {
+				if view.DefaultEnabled != catalog.SonicDefaultEnabled() || view.Available != (runtime.State == "ready") || view.Enabled != enabled || view.PolicyAllows != policyAllows {
 					t.Fatalf("enabled=%v policy=%v runtime=%+v view=%+v", enabled, policyAllows, runtime, view)
 				}
 			}
