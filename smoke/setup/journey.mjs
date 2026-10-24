@@ -12,9 +12,9 @@
 // method/path/status of every /v1 and /auth request across both hosts. On the first unexpected
 // state it stops and reports exactly what it saw, so the protocol owner can diagnose before any
 // retry.
-import {readFileSync, mkdirSync, writeFileSync} from 'node:fs';
+import {readFileSync, mkdirSync, writeFileSync, chmodSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
-import {loadPlaywright, launch, Evidence, bodyText, settle} from '../lib/page.mjs';
+import {loadPlaywright, Evidence, settle} from '../lib/page.mjs';
 
 const origin = (process.env.SMOKE_SETUP_ORIGIN || 'https://demo.getportico.tv:8443').replace(/\/$/, '');
 const out = process.env.SMOKE_OUT || join(process.cwd(), 'setup-out');
@@ -24,8 +24,33 @@ const libraryPath = process.env.SMOKE_LIBRARY_PATH || '/srv/portico-review-r40/M
 mkdirSync(out, {recursive: true});
 
 const creds = credsPath ? JSON.parse(readFileSync(credsPath, 'utf8')) : null;
+const profileDir = process.env.SMOKE_PROFILE_DIR || '';
+
 const playwright = await loadPlaywright();
-const {browser, context, page, events} = await launch(playwright, {viewport: {width: 1280, height: 900}});
+
+// The setup flow resumes a protected draft from the browser profile, so a real run must use a
+// persistent profile the app owns. It lives under 0700 private storage and is NEVER deleted by
+// this script: on failure or success it stays until diagnosis closes. Nothing is exported from
+// it — no storage state, no cookies — and nothing is injected into it.
+let browser, context, page;
+if (profileDir) {
+  mkdirSync(profileDir, {recursive: true, mode: 0o700});
+  try { chmodSync(profileDir, 0o700); } catch {}
+  if (!existsSync(profileDir)) throw new Error(`cannot create the protected profile directory ${profileDir}`);
+  context = await playwright.chromium.launchPersistentContext(profileDir, {
+    executablePath: process.env.SMOKE_CHROMIUM || undefined,
+    channel: process.env.SMOKE_CHROMIUM ? undefined : (process.env.SMOKE_CHANNEL || undefined),
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    viewport: {width: 1280, height: 900},
+  });
+  browser = context.browser();
+  page = context.pages()[0] || await context.newPage();
+  console.log(`persistent profile: ${profileDir} (retained after this run)`);
+} else {
+  const launched = await (await import('../lib/page.mjs')).launch(playwright, {viewport: {width: 1280, height: 900}});
+  browser = launched.browser; context = launched.context; page = launched.page;
+  console.log('ephemeral context: a failure here cannot be resumed, as its profile is discarded');
+}
 const evidence = new Evidence(out);
 const steps = [];
 const net = [];
@@ -194,7 +219,12 @@ try {
   result = 'FAIL';
 } finally {
   writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, result}, null, 2));
-  await context.close();
-  await browser.close();
+  // A persistent profile is left intact on purpose; only ephemeral contexts are torn down.
+  if (!profileDir) {
+    await context.close();
+    await browser.close();
+  } else {
+    await context.close();
+  }
 }
 process.exit(result === 'PASS' ? 0 : 1);

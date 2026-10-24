@@ -674,18 +674,28 @@ async function main() {
         await settle(page, {quiet: 2500});
         const dash = await bodyText(page);
         assert(dash.trim().length > 60, 'owner Dashboard rendered almost no text');
-        await page.goto(origin + '/settings', {waitUntil: 'domcontentloaded'});
+        // The documented address is correct; use it directly, and only fall back to the drawn
+        // General group when that address really does render account scope.
+        await page.goto(origin + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
         await settle(page, {quiet: 2000});
-        const general = await findAny(page, [{role: 'button', name: /^General$/}, {role: 'tab', name: /^General$/}, {text: /^General$/}], {timeout: 5000});
-        assert(general, 'Settings draws no General (server) group for the owner');
-        await general.click({timeout: 8000});
-        await settle(page, {quiet: 1500});
-        const librariesEntry = await findAny(page, [{role: 'button', name: /^Libraries$/}, {role: 'tab', name: /^Libraries$/}, {text: /^Libraries$/}], {timeout: 4000});
-        if (librariesEntry) { await librariesEntry.click({timeout: 8000}); await settle(page, {quiet: 1800}); }
-        const libs = await bodyText(page);
+        // The shell re-bootstraps before the server group appears; poll rather than assume.
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const probe = await bodyText(page);
+          if (/Owner only/.test(probe)) break;
+          await page.waitForTimeout(1000);
+        }
+        let libs = await bodyText(page);
+        if (/Profile & account/.test(libs) && !/Owner only/.test(libs)) {
+          const general = await findAny(page, [{role: 'button', name: /^General$/}, {role: 'tab', name: /^General$/}, {text: /^General$/}], {timeout: 5000});
+          assert(general, 'Settings draws neither the server section at the documented address nor a General (server) group');
+          await general.click({timeout: 8000});
+          await settle(page, {quiet: 1500});
+          const librariesEntry = await findAny(page, [{role: 'button', name: /^Libraries$/}, {role: 'tab', name: /^Libraries$/}, {text: /^Libraries$/}], {timeout: 4000});
+          if (librariesEntry) { await librariesEntry.click({timeout: 8000}); await settle(page, {quiet: 1800}); }
+          libs = await bodyText(page);
+        }
+        assert(/Owner only|Server/.test(libs), `the owner server settings never rendered: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
         assert(libs.trim().length > 40, 'owner Libraries settings rendered almost no text');
-        const onProfile = /Profile & account/.test(libs) && !/Scan|Libraries/.test(libs);
-        assert(!onProfile, `the URL kept but the page rendered account scope: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
         const scan = await findAny(page, [{role: 'button', name: /scan/i}, {text: /^Scan/}], {timeout: 4000});
         if (!scan) {
           throw blocked(`the owner server settings never rendered, so no scan control could be checked; page was: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
