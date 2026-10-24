@@ -9,7 +9,7 @@ import {ProfileAvatarFace} from '../shell/AccountSurfaces';
 import styles from './services-auth.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
-export function ServicesAuthStage({children, variant = 'auth', legal = variant !== 'signup' && variant !== 'providerOnboarding'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'providerOnboarding' | 'reset' | 'state' | 'device' | 'deviceReview' | 'deviceSignIn'; legal?: boolean}) {
+export function ServicesAuthStage({children, variant = 'auth', legal = variant !== 'signup' && variant !== 'providerOnboarding'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'providerOnboarding' | 'reset' | 'state' | 'device' | 'deviceReview' | 'deviceSignIn' | 'ownerReview'; legal?: boolean}) {
   return <AuthStage service legal={legal} shape={variant === 'state' ? 'round' : 'side'} layout={variant === 'state' ? 'center' : 'column'}
     className={styles.stage} contentClassName={[styles.content, styles[variant]].join(' ')}>{children}</AuthStage>;
 }
