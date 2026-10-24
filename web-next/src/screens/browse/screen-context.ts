@@ -30,6 +30,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
     const reportError = (error: unknown) => {if (current()) binding.current.home.effects.reportError(error);};
     const navigate = (action: Promise<void>) => {void action.catch(reportError);};
     const entryPorts: EntryActionPorts = {api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, requestId: async () => crypto.randomUUID()};
+    const entryEffects = {addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'), addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'), ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {})};
     const value: ScreenContext = {
       api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
       scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current,
@@ -48,9 +49,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         openBrowse(selector) {assert();navigate(router.navigate({to: '/library/$libraryId', params: {libraryId: selector.libraryId},
           search: {pivot: selector.pivot, query: selector.query, sort: selector.sort}}));},
         play: createScreenPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
-        addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'),
-        addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'),
-        ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {}),
+        ...entryEffects,
         async chooseVersion(request) {
           assert();request.signal.throwIfAborted();
           await openWatchVersionChooser(context, {...request, isCurrent: () => current() && request.isCurrent()});
