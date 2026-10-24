@@ -24,34 +24,33 @@ func readingAttributionSpec(field, label string) RepairFieldSpec {
 }
 
 // readReadingOwnerFields returns the effective scalar owner values for Reading
-// attribution together with the genuine automatic values. An unlocked or empty
-// owner row falls back to the current source value; the recorded automatic
-// column is used only when no current source value carries the field, so a
-// clear restores what the writer actually holds rather than a stale copy.
+// attribution together with the genuine automatic values. The canonical source
+// is the whole automatic value: a field it omits is genuinely absent, so a
+// recorded automatic column never stands in for it. Locked owner values then
+// overlay that canonical base, whether or not an owner row exists at all.
 func readReadingOwnerFields(ctx context.Context, tx *sql.Tx, entity int64) (map[string]string, map[string]string, error) {
 	automatic, err := readingAutomaticOwnerValues(ctx, tx, entity)
 	if err != nil {
 		return nil, nil, err
 	}
-	out := map[string]string{}
-	rows, err := tx.QueryContext(ctx, `SELECT field,value,automatic_value,locked FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field IN('author','series','seriesNumber')`, entity)
+	out := map[string]string{"author": "", "series": "", "seriesNumber": ""}
+	for field, value := range automatic {
+		out[field] = value
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT field,value,locked FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field IN('author','series','seriesNumber')`, entity)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var field, value, recorded string
+		var field, value string
 		var locked bool
-		if err = rows.Scan(&field, &value, &recorded, &locked); err != nil {
+		if err = rows.Scan(&field, &value, &locked); err != nil {
 			return nil, nil, err
 		}
-		if !locked || strings.TrimSpace(value) == "" {
-			value = recorded
-			if genuine, ok := automatic[field]; ok {
-				value = genuine
-			}
+		if locked && strings.TrimSpace(value) != "" {
+			out[field] = value
 		}
-		out[field] = value
 	}
 	return out, automatic, rows.Err()
 }

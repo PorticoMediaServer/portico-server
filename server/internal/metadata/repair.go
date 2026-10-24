@@ -168,10 +168,9 @@ func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (Repair
 				f.Source = "manual"
 			}
 			if readingRepairKind(ent.itemKind) && readingAttributionField(k) {
-				genuine := a
-				if value, ok := ent.readingAutomatic[k]; ok {
-					genuine = value
-				}
+				// The canonical map is the whole automatic value: an omitted
+				// field is genuine absence, never the recorded column.
+				genuine := ent.readingAutomatic[k]
 				f.Automatic = genuine
 				if locked && strings.TrimSpace(v) != "" {
 					f.Value, f.Source = v, "owner"

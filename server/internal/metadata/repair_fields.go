@@ -145,7 +145,9 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 			return e, err
 		}
 		for field, value := range values {
-			e.fields[field] = value
+			if _, ok := e.fields[field]; ok {
+				e.fields[field] = value
+			}
 		}
 		e.readingAutomatic = automatic
 	}
