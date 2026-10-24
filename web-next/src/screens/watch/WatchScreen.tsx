@@ -55,7 +55,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const current = useRef({binding, snapshot, expanded});
   current.current = {binding, snapshot, expanded};
   const presentation = snapshot.presentation, fence = snapshot.fence;
-  const playbackKey = fence ? JSON.stringify(fence.playback) : '';
+  const playbackKey = fence ? JSON.stringify(fence.playback) : '', itemKey = fence?.itemId ?? '';
   const sourceKey = fence ? JSON.stringify(fence) : '';
   const valid = !snapshot.disposed && !!presentation && !!fence && sameFence(fence, presentation.fence)
     && snapshot.authority === binding.runtime.getSnapshot().authority && sameFence(binding.runtime.getSnapshot().fence, fence);
@@ -112,7 +112,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     return clearTimer;
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
-  useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
+  useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, itemKey]);
   const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => {
     const wasOpen = focusEdge.current; focusEdge.current = open;
