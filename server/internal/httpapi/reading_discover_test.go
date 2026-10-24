@@ -34,16 +34,16 @@ func TestReadingDiscoverRecentlyAddedFromCatalogueFacts(t *testing.T) {
 		}
 	}
 	// Order and membership are the catalogue's added_ms, never a made-up date.
-	previous := int64(-1 << 62)
+	previous, first := int64(0), true
 	for _, row := range out.Recent {
 		var added int64
 		if err := r.f.db.QueryRow(`SELECT added_ms FROM catalog_entities WHERE public_id=pid_blob(?)`, row.ID).Scan(&added); err != nil {
 			t.Fatal(err)
 		}
-		if added > previous {
+		if !first && added > previous {
 			t.Fatalf("recent order ignores added_ms at %s", row.ID)
 		}
-		previous = added
+		previous, first = added, false
 		if row.ID == one || row.ID == two {
 			if row.Author == nil || row.Author.Value != "Author" || row.Series == nil || row.Series.Name != "Series" {
 				t.Fatalf("attribution=%+v", row)
