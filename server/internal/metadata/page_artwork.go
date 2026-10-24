@@ -265,4 +265,3 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 	}
 	return len(page) < limit, seed, nil
 }
-
