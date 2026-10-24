@@ -5,6 +5,21 @@ import {compareScreens} from './compare.mjs';
 const node = (frame, patch = {}) => ({id: frame, frame, tag: 'h1', ownText: 'Public heading', box: {x: 10, y: 20, width: 100, height: 40}, style: {fontFamily: 'Example', fontSize: '32px', fontWeight: '800', opacity: '.7', color: 'rgb(46, 63, 73)'}, ...patch});
 const spec = elements => ({scope: 'screen', fullViewport: true, root: {width: 200, height: 100}, viewport: {deviceScaleFactor: 1}, anchorIssues: [], elements});
 
+test('unanchored parts stay within their matched semantic ancestor across wrapper depths', () => {
+  const heading = (id, parent) => node(null, {id, parent, tag: 'button', ownText: 'Edit'});
+  const reference = spec([node('first'), heading('first-label', 'first'), node('second'), heading('second-label', 'second')]);
+  const actual = spec([node('first', {id: 'a'}), {id: 'wrapper', parent: 'a', tag: 'div', leaf: false, style: {}},
+    heading('a-label', 'wrapper'), node('second', {id: 'b'}), heading('b-label', 'b')]);
+  const result = compareScreens(reference, actual);
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.matches.find(value => value.reference === 'first-label').actual, 'a-label');
+  assert.equal(result.matches.find(value => value.reference === 'second-label').actual, 'b-label');
+  const ambiguous = compareScreens(reference, {...actual, elements: [...actual.elements, heading('a-duplicate', 'a')]});
+  assert.ok(ambiguous.differences.some(value => value.kind === 'ambiguous-match' && value.reference === 'first-label'));
+  const outside = compareScreens(reference, {...actual, elements: actual.elements.filter(value => value.id !== 'a-label')});
+  assert.ok(outside.differences.some(value => value.kind === 'missing-element' && value.reference === 'first-label'));
+});
+
 test('matching icon slots never imply measured glyph identity', () => {
   const reference = spec([node('close', {image: {kind: 'icon'}, ownText: ''})]);
   const result = compareScreens(reference, structuredClone(reference));
