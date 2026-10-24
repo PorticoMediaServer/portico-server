@@ -5,7 +5,9 @@ export type EntryActionTarget = Readonly<{libraryId: string; itemId: string; kin
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
 export type EntryActionPorts = Readonly<{api: Api; serverId: string; viewerId: string; isCurrent: () => boolean; requestId: () => Promise<string>}>;
 type OpenDelete = Readonly<{kind: 'delete'; target: EntryActionTarget; anchor: HTMLElement | null; ports: EntryActionPorts}>;
-type Open = OpenDelete;
+export type EntryDestination = 'playlist' | 'collection';
+type OpenPicker = Readonly<{kind: 'picker'; destination: EntryDestination; target: EntryActionTarget; anchor: HTMLElement | null; ports: EntryActionPorts; canCreate: boolean}>;
+type Open = OpenDelete | OpenPicker;
 
 /** One shell-owned surface at a time; the effects open it with the captured authority and the
  * host owns the preview, the typed confirmation and the actual removal. */
@@ -14,6 +16,10 @@ export class EntryActionStore {
   private listeners = new Set<() => void>();
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => {this.listeners.delete(listener);}; };
   getSnapshot = (): Open | null => this.state;
+  openPicker(destination: EntryDestination, target: EntryActionTarget, anchor: HTMLElement | null, ports: EntryActionPorts, canCreate: boolean) {
+    if (!ports.isCurrent()) { this.close(); return; }
+    this.state = {kind: 'picker', destination, target, anchor, ports, canCreate}; this.emit();
+  }
   openDelete(target: EntryActionTarget, anchor: HTMLElement | null, ports: EntryActionPorts) {
     if (!ports.isCurrent()) { this.close(); return; }
     this.state = {kind: 'delete', target, anchor, ports}; this.emit();
@@ -30,5 +36,13 @@ export function deleteTitleEffect(ports: EntryActionPorts) {
   return async (target: EntryActionTarget, anchor: HTMLElement): Promise<void> => {
     if (!ports.isCurrent()) throw new DOMException('Screen authority changed', 'AbortError');
     entryActions.openDelete(target, anchor, ports);
+  };
+}
+
+/** A screen opens the shared destination picker for one title; it resolves once the picker is open. */
+export function addToDestinationEffect(ports: EntryActionPorts, destination: EntryDestination, canCreate = false) {
+  return async (target: EntryActionTarget, anchor: HTMLElement): Promise<void> => {
+    if (!ports.isCurrent()) throw new DOMException('Screen authority changed', 'AbortError');
+    entryActions.openPicker(destination, target, anchor, ports, canCreate);
   };
 }

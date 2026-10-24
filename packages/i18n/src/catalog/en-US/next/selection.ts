@@ -204,6 +204,8 @@ export const selectionMessages = {
   'next.selection.blockedLibrary': 'Deleting is turned off for the {library} library. Turn it on under Server › Libraries › Settings.',
   'next.selection.andMore': 'and {count, number} more',
   'next.selection.deleteResult': '{removed, number} removed; {failed, number} couldn’t be removed.',
+  'next.selection.pickerFailed': 'That list could not be updated.',
+  'next.selection.collectionOwnerOnly': 'Only the owner can create a collection.',
   'next.selection.deleteFailed': 'The title could not be deleted.',
   'next.selection.deleteNotReady': 'The delete preview changed. Reopen Delete to try again.',
   'next.selection.deleteUncertain': 'The delete is unconfirmed. Retry to check its receipt.',

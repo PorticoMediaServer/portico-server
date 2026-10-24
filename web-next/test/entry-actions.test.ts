@@ -24,3 +24,12 @@ test('a delete effect refuses a retired screen and opens for a current one', asy
   assert.equal(entryActions.getSnapshot()?.kind, 'delete');
   entryActions.close();
 });
+
+test('a playlist destination effect opens the shared picker only for a current screen', async () => {
+  entryActions.close();
+  await assert.rejects(addToDestinationEffect({...ports, isCurrent: () => false}, 'playlist')(target, null as never), {name: 'AbortError'});
+  assert.equal(entryActions.getSnapshot(), null);
+  await addToDestinationEffect(ports, 'playlist')(target, null as never);
+  assert.equal(entryActions.getSnapshot()?.kind, 'picker');
+  entryActions.close();
+});
