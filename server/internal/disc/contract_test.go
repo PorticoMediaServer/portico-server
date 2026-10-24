@@ -330,7 +330,7 @@ func TestDiscScopedFFmpegInputs(t *testing.T) {
 			if !strings.Contains(options, "-playlist 1 -angle 0 -f mpegts") || !strings.Contains(options, "-skip_initial_bytes 1346304") || in.TimestampOffsetMs != 37000 {
 				t.Fatalf("lost playlist/seek authority: %+v", in)
 			}
-		} else if !strings.Contains(options, "-f dvdvideo -title 1 -angle 1 -preindex 0 -ss 37.500") {
+		} else if !strings.Contains(options, "-protocol_whitelist file,pipe -format_whitelist dvdvideo,mpeg,ffmetadata") || !strings.Contains(options, "-f dvdvideo -title 1 -angle 1 -preindex 0 -ss 37.500") {
 			t.Fatalf("lost DVD reader semantics: %+v", in)
 		}
 		if _, err = p.FFmpegInput("relative", title, 0, nil); err == nil {
