@@ -240,7 +240,16 @@ async function walk(page, viewportName) {
     if (!path.startsWith('/read/')) throw new Error('comic reading did not open; at ' + path);
     const painted = await page.evaluate(() => !!document.querySelector('[data-reader-page] canvas, [data-reader-page], main canvas'));
     const body = await bookText();
-    if (!painted) throw new Error('the comic reader painted no page: ' + excerpt(body, 300));
+    if (!painted) {
+      const geometry = await page.evaluate(() => {
+        const root = document.querySelector('[data-reader-root]');
+        const surface = document.querySelector('[data-reader-page], canvas');
+        const host = root?.parentElement ?? null;
+        const box = node => node ? [node.clientWidth, node.clientHeight, node.hidden, getComputedStyle(node).display, getComputedStyle(node).visibility] : null;
+        return {viewport: [innerWidth, innerHeight, devicePixelRatio], root: box(root), host: box(host), surface: box(surface)};
+      });
+      throw new Error('the comic reader painted no page: ' + excerpt(body, 300) + ' | geometry=' + JSON.stringify(geometry));
+    }
     return {path};
   });
 
