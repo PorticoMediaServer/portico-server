@@ -117,6 +117,11 @@ docker_fixture=1
 docker build --network=host --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" \
     --iidfile "$fixture_scratch/samba-image" internal/rcloneprogram/testdata/smb
 export PORTICO_SAMBA_TEST_IMAGE="$(cat "$fixture_scratch/samba-image")"
+if test "${PORTICO_NATIVE_SAVE_ONLY_TEST:-}" = 1; then
+    go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
+        ./internal/remotesources -run '^TestNativeSavedNASConnectionAndForbiddenEdits$'
+    exit 0
+fi
 go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
     ./internal/rcloneprogram -run '^TestLocked(DAV|SFTP|SMB)MixedOperationBudget$'
 if test "${PORTICO_NATIVE_SAVE_TEST:-}" = 1; then
