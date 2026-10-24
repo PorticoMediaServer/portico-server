@@ -15,12 +15,12 @@ const preferences: PreferenceSnapshot = {deviceClass: 'web', registry: {revision
 
 function fixture(input: {owner?: boolean; readConfiguration?: SettingsControllerOptions['readConfiguration']; hold?: boolean; foreign?: boolean} = {}) {
   const calls: string[] = [], signals: AbortSignal[] = [];
-  let release!: () => void, current = true;
+  let release!: () => void, current = true, configurationSignal: AbortSignal | undefined;
   const gate = input.hold ? new Promise<void>(resolve => {release = resolve;}) : Promise.resolve();
   const api: SettingsControllerOptions['api'] = {request: async <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => {
     calls.push(path);if (signal) signals.push(signal);
     const scope = {serverId: input.foreign ? 'another-server' : serverId, viewerFence: fence};
-    if (path === '/v1/admin/settings/configuration') {await gate;return {scope, data: configuration} as T;}
+    if (path === '/v1/admin/settings/configuration') {configurationSignal = signal;await gate;return {scope, data: configuration} as T;}
     const name = path.split('/').at(-1)!;
     return {scope, data: {name, observedAt: 1000, freshUntil: 31000, facts: {}}} as T;
   }};
@@ -31,7 +31,7 @@ function fixture(input: {owner?: boolean; readConfiguration?: SettingsController
     environment: {platform: 'web', os: 'browser'}, eligibility: {hasEngine: () => false, library: () => undefined},
     reading: {read: () => {throw new Error('Unexpected Reading read');}, patch: () => {throw new Error('Unexpected Reading write');}},
   });
-  return {controller, calls, signals, release: () => release(), retire: () => {current = false;}, dispose: () => {controller.dispose();reader.dispose();}};
+  return {controller, calls, signals, configurationSignal: () => configurationSignal, release: () => release(), retire: () => {current = false;}, dispose: () => {controller.dispose();reader.dispose();}};
 }
 
 test('Settings reads canonical configuration through its captured ConsoleClient, once per successful scope', async () => {
@@ -50,7 +50,7 @@ test('Settings reads canonical configuration through its captured ConsoleClient,
 
 test('foreign configuration fails the real section read and is never searchable', async () => {
   const f = fixture({foreign: true});
-  try {await f.controller.load(section);assert.ok(f.controller.getSnapshot(section).error);assert.equal(f.controller.configurationMatches('integrations.max_webhooks'), undefined);}
+  try {await f.controller.load(section);assert.ok(f.controller.getSnapshot(section).error);assert.deepEqual(f.controller.configurationMatches('integrations.max_webhooks'), []);}
   finally {f.dispose();}
 });
 
@@ -58,8 +58,8 @@ test('disposal aborts the same console request and refuses a late configuration 
   const f = fixture({hold: true}), pending = f.controller.load(section);
   await new Promise(resolve => setImmediate(resolve));
   f.dispose();f.release();await pending;
-  assert.ok(f.signals.length > 0);assert.ok(f.signals.every(signal => signal.aborted));
-  assert.equal(f.controller.configurationMatches('integrations.max_webhooks'), undefined);
+  assert.equal(f.configurationSignal()?.aborted, true);
+  assert.deepEqual(f.controller.configurationMatches('integrations.max_webhooks'), []);
 });
 
 test('denied members start no owner reads; an injected reader retains the same lifetime boundary', async () => {
@@ -69,6 +69,6 @@ test('denied members start no owner reads; an injected reader retains the same l
   const f = fixture({readConfiguration: async captured => {signal = captured;return new Promise(resolve => {release = resolve;});}});
   const pending = f.controller.load(section);await new Promise(resolve => setImmediate(resolve));
   f.retire();release(configuration);await pending;
-  assert.equal(f.controller.configurationMatches('integrations.max_webhooks'), undefined);
+  assert.deepEqual(f.controller.configurationMatches('integrations.max_webhooks'), []);
   f.dispose();assert.equal(signal?.aborted, true);
 });
