@@ -480,8 +480,8 @@ func (s *Service) withNext(ctx context.Context, c Caller, v *QueueView, q queueR
 	}
 	v.Next = &next
 
-	// A growing capture has no invented duration total.
-	if len(l.building) == 0 {
+	// A growing capture or endless radio has no final duration total.
+	if len(l.building) == 0 && radioSegment(l) < 0 {
 		if summary, err := s.queueDuration(ctx, l, c.Principal); err == nil {
 			v.TotalDurationMs = &summary.ms
 			v.DurationKnown = summary.known

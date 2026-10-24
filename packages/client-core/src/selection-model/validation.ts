@@ -1,6 +1,6 @@
 import {selectionCapabilities, selectionCapabilityNames, selectionKinds, selectionKindAllowsCapability} from './capabilities.ts';
 import {summarizeQuerySelection} from './query-summary.ts';
-import type {SelectionCapabilities, SelectionContext, SelectionItem, SelectionKind, SelectionLimits, SelectionQuery, SelectionQueryType, WholeSelectionSelector} from './types.ts';
+import type {BrowseSelectionContext, SelectionCapabilities, SelectionContext, SelectionItem, SelectionKind, SelectionLimits, SelectionQuery, SelectionQueryType, WholeSelectionSelector} from './types.ts';
 
 export type SelectionInputErrorCode = 'invalid-context' | 'invalid-item' | 'invalid-window' | 'invalid-query' | 'invalid-limits' | 'registration-limit' | 'conflicting-windows';
 /** Diagnostic codes only. Renderers own catalogue-backed explanations. */
@@ -26,6 +26,19 @@ export function checkedContext(input: SelectionContext): SelectionContext {
   return Object.freeze({
     scope: Object.freeze({serverId: scope.serverId, authority: scope.authority, accountId: scope.accountId, profileId: scope.profileId, viewId: scope.viewId, privacyFence: scope.privacyFence}),
     revision: Object.freeze({catalogRevision: revision.catalogRevision, viewerRevision: revision.viewerRevision}),
+  });
+}
+
+export function checkedBrowseContext(input: BrowseSelectionContext): BrowseSelectionContext {
+  requireSelection(record(input) && record(input.scope) && record(input.revision), 'invalid-context');
+  const scope = input.scope, revision = input.revision;
+  requireSelection(['serverId', 'accountId', 'profileId', 'viewId'].every(key => selectionID(scope[key as keyof typeof scope]))
+    && (scope.authority === 'local' || scope.authority === 'hosted')
+    && Object.keys(scope).every(key => ['serverId', 'authority', 'accountId', 'profileId', 'viewId'].includes(key))
+    && Object.keys(revision).length === 1 && selectionID(revision.pageRevision), 'invalid-context');
+  return Object.freeze({
+    scope: Object.freeze({serverId: scope.serverId, authority: scope.authority, accountId: scope.accountId, profileId: scope.profileId, viewId: scope.viewId}),
+    revision: Object.freeze({pageRevision: revision.pageRevision}),
   });
 }
 

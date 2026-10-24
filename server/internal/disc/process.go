@@ -5,6 +5,7 @@ import (
 	"io"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/mediatools"
+	"portico.local/server/internal/storage"
 	"strconv"
 	"time"
 )
@@ -33,11 +34,20 @@ func (t Tool) run(ctx context.Context, path string, args ...string) ([]byte, err
 	if binary == "" {
 		binary = mediatools.Resolve("portico-disc")
 	}
+	out := &outputBuffer{}
+	// An inventory invocation already owns its admitted root/read guard. Reuse
+	// that actual confined helper acquisition rather than opening its pathname
+	// again. Remote and directory inputs remain closed by the existing adapter.
+	if handled, err := storage.RunScanCommand(ctx, binary, args, path, out); handled {
+		if err != nil {
+			return nil, err
+		}
+		return out.data, nil
+	}
 	cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: binary, Args: args, ReadPaths: []string{path}, MaxFileBytes: mediaexec.NoOutputFiles})
 	if err != nil {
 		return nil, err
 	}
-	out := &outputBuffer{}
 	cmd.Stdout = out
 	cmd.Stderr = io.Discard
 	cmd.WaitDelay = time.Second

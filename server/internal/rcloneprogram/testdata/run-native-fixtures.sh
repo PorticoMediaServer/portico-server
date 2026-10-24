@@ -52,44 +52,8 @@ trap 'exit 130' INT
 trap 'exit 143' HUP TERM
 
 export PORTICO_FIXTURE_SCRATCH="$fixture_scratch"
-python3 - <<'PY'
-import hashlib, json, os, pathlib, urllib.error, urllib.request, zipfile
-
-lock = json.loads(pathlib.Path('../third_party/rclone/bundle.lock.json').read_text())['targets']['linux-amd64']
-root = pathlib.Path(os.environ['PORTICO_FIXTURE_SCRATCH'])
-archive = root / 'rclone.zip'
-urls = [lock['url'], 'https://github.com/rclone/rclone/releases/download/v1.75.2/rclone-v1.75.2-linux-amd64.zip']
-for index, url in enumerate(urls):
-    try:
-        request = urllib.request.Request(url, headers={'User-Agent': 'Portico-test-dependency/1'})
-        with urllib.request.urlopen(request, timeout=60) as source, archive.open('xb') as target:
-            total = 0
-            while True:
-                chunk = source.read(1 << 20)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > 64 << 20:
-                    raise SystemExit('locked rclone archive exceeds 64 MiB')
-                target.write(chunk)
-        break
-    except urllib.error.HTTPError as error:
-        if error.code != 403 or index != 0:
-            raise
-        archive.unlink(missing_ok=True)
-        print('Canonical archive returned 403; using the same-hash official release asset.')
-if hashlib.sha256(archive.read_bytes()).hexdigest() != lock['sha256']:
-    raise SystemExit('locked rclone archive digest mismatch')
-with zipfile.ZipFile(archive) as package:
-    data = package.read(lock['archiveRoot'] + '/' + lock['binary'])
-    if hashlib.sha256(data).hexdigest() != lock['files'][lock['binary']]:
-        raise SystemExit('locked rclone executable digest mismatch')
-    target = root / 'rclone'
-    target.write_bytes(data)
-    target.chmod(0o700)
-archive.unlink()
-print('Official locked rclone archive and executable verified; no owner state used.')
-PY
+python3 -u internal/rcloneprogram/testdata/fetch_locked_rclone.py \
+    ../third_party/rclone/bundle.lock.json "$fixture_scratch"
 export PORTICO_RCLONE_TEST_PROGRAM="$fixture_scratch/rclone"
 
 # Other owned package fixtures use the same locked executable inside this exact
