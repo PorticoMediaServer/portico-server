@@ -109,11 +109,13 @@ impl Mpv {
         if handle.is_null() { return Err(Error::EngineUnavailable); }
         let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,retired:AtomicBool::new(false),current_generation:AtomicU64::new(0),loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:matches!(target,VideoTarget::NativeView(_)),native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(","),leveling_gain:Mutex::new(1.0),leveling_applied:AtomicBool::new(false)});
         engine.disable_script_engines()?;
+        // The server owns subtitle rendering until the constrained native broker
+        // exists. An original file's default track must not override "off".
         for (key,value) in [("config","no"),
             ("input-default-bindings","no"),("input-vo-keyboard","no"),("terminal","no"),("msg-level","all=no"),
             ("idle","yes"),("keep-open","yes"),("access-references","no"),("load-unsafe-playlists","no"),
             ("demuxer-lavf-o","protocol_whitelist=[http,https,tcp,tls,crypto]"),("hwdec","auto-safe"),
-            ("audio-client-name","Portico"),("sub-auto","no"),("audio-file-auto","no"),("autoload-files","no")] {
+            ("audio-client-name","Portico"),("sid","no"),("sub-auto","no"),("audio-file-auto","no"),("autoload-files","no")] {
             engine.option(key,value)?;
         }
         for (key,value) in output.options(std::env::consts::OS)? { engine.option(key,&value)?; }
@@ -400,7 +402,7 @@ impl Mpv {
     fn load(&self,source:&Source)->Result<()> {
         self.pending_autoplay.store(source.autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);
         self.set("pause","yes")?;
-        self.load_node(&source.url,&[("start",(source.start_position_ms/1000.0).to_string()),("demuxer-lavf-o","protocol_whitelist=[http,https,tcp,tls,crypto],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into())])
+        self.load_node(&source.url,&[("start",(source.start_position_ms/1000.0).to_string()),("sid","no".into()),("demuxer-lavf-o","protocol_whitelist=[http,https,tcp,tls,crypto],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into())])
     }
     /// Only the native download store can resolve this path. Fixed per-file options keep
     /// local demuxers from following a playlist/network reference and do not alter the
@@ -417,7 +419,7 @@ impl Mpv {
         self.clear_equalizer()?;self.clear_leveling()?;*self.leveling_gain.lock().map_err(|_|Error::EngineFailure)?=1.0;self.equalizer_route_pending.store(false,Ordering::Release);
         *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=path.to_str().ok_or(Error::InvalidSource)?.into();
         self.pending_autoplay.store(autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);self.set("pause","yes")?;
-        self.load_node(path.to_str().ok_or(Error::InvalidSource)?,&[("start",(start_ms/1000.0).to_string()),("demuxer-lavf-o","protocol_whitelist=[file],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into()),("access-references","no".into()),("load-unsafe-playlists","no".into())])?;
+        self.load_node(path.to_str().ok_or(Error::InvalidSource)?,&[("start",(start_ms/1000.0).to_string()),("sid","no".into()),("demuxer-lavf-o","protocol_whitelist=[file],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into()),("access-references","no".into()),("load-unsafe-playlists","no".into())])?;
         *generation=next_generation;self.current_generation.store(*generation,Ordering::Release);Ok(())
     }
     #[cfg(debug_assertions)]
@@ -550,17 +552,22 @@ mod local_source_tests {
         let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
         let fixture=std::env::var_os("PORTICO_TEST_SUBTITLE_FIXTURE").expect("owned subtitle fixture required");
         let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
-        engine.load_local(Path::new(&fixture),1,0.0,true).unwrap();
-        let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
-        loop {
-            let observed=engine.observation();assert_ne!(observed.state,"error");
-            if observed.position_ms>10.0{break}
-            assert!(std::time::Instant::now()<deadline,"owned default-track movie did not advance");
-            std::thread::sleep(std::time::Duration::from_millis(10));
+        for generation in [1,2]{
+            engine.load_local(Path::new(&fixture),generation,0.0,true).unwrap();
+            let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
+            loop {
+                let observed=engine.observation();assert_ne!(observed.state,"error");
+                if observed.position_ms>10.0{break}
+                assert!(std::time::Instant::now()<deadline,"owned default-track movie did not advance");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert_eq!(engine.property("track-list/1/type").as_deref(),Some("sub"));
+            assert_eq!(engine.property("track-list/1/default").as_deref(),Some("yes"));
+            assert_eq!(engine.property("sid").as_deref(),Some("no"));
+            // Simulate a previous explicit native choice; the next source owns
+            // a fresh decision and must not inherit it.
+            if generation==1{engine.set("sid","auto").unwrap();}
         }
-        assert_eq!(engine.property("track-list/1/type").as_deref(),Some("sub"));
-        assert_eq!(engine.property("track-list/1/default").as_deref(),Some("yes"));
-        assert_eq!(engine.property("sid").as_deref(),Some("no"));
         engine.retire().unwrap();
     }
     #[test]
