@@ -693,6 +693,16 @@ func (b *builder) run(s *Service) {
 		// Queue saves (NEW-37) come after every building snapshot, a step at a
 		// time, so a long copy never delays a queue's own build.
 		if profile, key, ok := s.nextSave(); ok {
+			// A hold must also stop a save step whose row appeared after this
+			// iteration passed the check at the top: a test that pauses before
+			// asking for a save must see the copy untouched until it resumes.
+			b.mu.Lock()
+			if s.PauseQueueBuilds {
+				b.running, b.again = false, false
+				b.mu.Unlock()
+				return
+			}
+			b.mu.Unlock()
 			progressed, err := s.continueSave(context.Background(), profile, key)
 			switch {
 			case err == nil && progressed:
