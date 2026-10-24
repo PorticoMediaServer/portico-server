@@ -84,7 +84,7 @@ func AvailableConversionOutputs(f *ToolchainFacts) ConversionOutputs {
 func AvailableConversionOutputsForHardware(f *ToolchainFacts, probe HardwareProbe) ConversionOutputs {
 	out := AvailableConversionOutputs(f)
 	spec, known := backendSpecs[probe.Backend]
-	if !probe.Available || probe.Identity == "" || !known || !spec.supported() || probe.Backend == BackendSoftware {
+	if f == nil || f.Identity == "" || f.Identity != probe.Identity || !probe.Available || !known || !spec.supported() || probe.Backend == BackendSoftware {
 		return out
 	}
 	for i := range out.Video {

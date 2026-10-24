@@ -1,5 +1,5 @@
 import {ApiError} from '@core/index.ts';
-import {parseHostedSignInStartURL, verifyHostedSignInStart} from '@core/hosted-sign-in-start.ts';
+import {buildHostedSignInStartURL, parseHostedSignInStartURL, verifyHostedSignInStart} from '@core/hosted-sign-in-start.ts';
 import {completeRegisteredReturn} from '@core/same-tab-return.ts';
 import {BrowserProtectedStore} from '../platform/server-connections';
 import {servicesTab} from './intake';
@@ -23,18 +23,23 @@ export function hostedSignInStore(): SignInStore {
   return new BrowserProtectedStore<Pending>('portico.services-sign-in.v1:' + servicesTab(), 16384, true);
 }
 export async function restoreHostedSignIn(store: SignInStore, origin: string, capture?: SignInCapture): Promise<HostedSignIn | undefined> {
-  if (capture) await store.change(() => undefined);
-  const saved = capture ? undefined : await store.read();
-  if (saved && saved.version !== 1) {await store.change(() => undefined); throw invalid();}
-  const href = capture ? capture.href : saved?.href;
-  if (!href) {if (capture) throw invalid(); return;}
+  // Claim this tab's pending slot before async signature work. A later capture
+  // supersedes it; neither a late success nor failure may replace that capture.
+  if (capture && (!capture.href || !parseHostedSignInStartURL(capture.href, origin))) {
+    await store.change(() => undefined); throw invalid();
+  }
+  const saved = capture ? {version: 1 as const, href: capture.href!} : await store.read();
+  if (!saved) return;
+  if (capture) await store.change(() => saved);
+  const mine = (current: Pending | undefined) => current?.version === saved.version && current?.href === saved.href;
   try {
-    const parsed = parseHostedSignInStartURL(href, origin);
+    if (saved.version !== 1) throw invalid();
+    const parsed = parseHostedSignInStartURL(saved.href, origin);
     if (!parsed) throw invalid();
     const verified = await verifyHostedSignInStart(parsed);
-    if (capture) await store.change(() => ({version: 1, href}));
+    if (!mine(await store.read())) throw invalid();
     return verified;
-  } catch (error) {await store.change(() => undefined); throw error;}
+  } catch (error) {await store.change(current => mine(current) ? undefined : current); throw error;}
 }
 
 /** The only answer-producing entry point. The view calls this on Continue;
@@ -43,12 +48,12 @@ export async function continueHostedSignIn(account: ServicesAccount, pending: Ho
   store: SignInStore, signal: AbortSignal, navigate: (location: string) => void) {
   const {handoff} = pending;
   if (account.api.origin !== handoff.hostedOrigin) throw invalid();
+  const href = buildHostedSignInStartURL(handoff);
   const current = async () => {
     signal.throwIfAborted();
     const saved = await store.read();
     const parsed = saved && parseHostedSignInStartURL(saved.href, handoff.hostedOrigin);
-    if (!parsed || parsed.context.payload !== handoff.context.payload || parsed.start.state !== handoff.start.state ||
-        parsed.start.codeChallenge !== handoff.start.codeChallenge || parsed.context.signature !== handoff.context.signature) throw invalid();
+    if (!parsed || saved?.version !== 1 || saved.href !== href) throw invalid();
     await verifyHostedSignInStart(parsed);
     signal.throwIfAborted();
   };
@@ -61,11 +66,12 @@ export async function continueHostedSignIn(account: ServicesAccount, pending: Ho
   await currentAccountWork(account, async () => {signal.throwIfAborted();}, expected);
   let cleared = false;
   await store.change(saved => {
-    if (saved && parseHostedSignInStartURL(saved.href, handoff.hostedOrigin)?.start.state === handoff.start.state) {cleared = true; return undefined;}
+    if (saved?.version === 1 && saved.href === href) {cleared = true; return undefined;}
     return saved;
   });
   if (!cleared) throw invalid();
   signal.throwIfAborted();
+  if (Date.parse(handoff.expiresAt) <= Date.now()) throw invalid();
   // No await between the final live-family check and same-tab navigation.
   const session = account.service.getSnapshot().session;
   if (!session || session.account.id !== expected.accountId || session.familyId !== expected.familyId) throw invalid();

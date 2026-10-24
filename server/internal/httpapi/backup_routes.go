@@ -11,8 +11,8 @@ import (
 	"portico.local/server/internal/persistence"
 )
 
-// Plex-model server backups (Spec — Backups, §4): plain database copies with
-// a manifest, listed, created, deleted and restored here. Every route is
+// Server backups: consistent snapshots with optional passphrase encryption,
+// listed, created, deleted and restored here. Every route is
 // owner-only and published with the API registry.
 
 // BackupsDocument is GET /v1/admin/backups.
@@ -21,6 +21,7 @@ type BackupsDocument struct {
 	Running     *backup.RunningJob    `json:"running,omitempty"`
 	Restore     *backup.RestoreJob    `json:"restore,omitempty"`
 	LastRestore *backup.RestoreResult `json:"lastRestore,omitempty"`
+	LastBackup  *backup.BackupResult  `json:"lastBackup,omitempty"`
 }
 
 // StartBackupRequest is POST /v1/admin/backups.
@@ -34,9 +35,14 @@ type StartBackupResponse struct {
 }
 
 // RestoreBackupRequest is POST /v1/admin/backups/restore.
+type InspectBackupSourceRequest struct {
+	Source backup.Source `json:"source"`
+}
+
 type RestoreBackupRequest struct {
 	OperationID string        `json:"operationId"`
 	Source      backup.Source `json:"source"`
+	Passphrase  string        `json:"passphrase,omitempty"`
 }
 
 // StatePermissionsDocument is POST /v1/admin/state-permissions:fix: whether
@@ -75,6 +81,12 @@ func backupRouteError(err error) error {
 }
 
 func registerBackups(registry *apikit.Registry, d Dependencies) error {
+	if err := registerBackupInspection(registry, d); err != nil {
+		return err
+	}
+	if err := registerBackupSettings(registry, d); err != nil {
+		return err
+	}
 	err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAdmin,
 		ID: "post_admin_restart", Method: "POST", Path: "/v1/admin/restart", Summary: "Restart the server", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, OptionalBody: true, BodyLimit: 4096, Status: 202, Errors: []string{"unauthorized", "administration_unavailable"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
@@ -111,6 +123,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 			return out, backupRouteError(err)
 		}
 		out.LastRestore = last
+		out.LastBackup = d.Backups.LastBackup()
 		out.Restore = d.Backups.RestoreProgress()
 		if _, err = d.ownerContext(ctx, r); err != nil {
 			return out, foundationAuthError(err)
@@ -167,7 +180,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 		if _, err := d.ownerContext(ctx, r); err != nil {
 			return StartBackupResponse{}, foundationAuthError(err)
 		}
-		id, err := d.Backups.StartRestore(ctx, body.Source, body.OperationID)
+		id, err := d.Backups.StartRestoreWithPassphrase(ctx, body.Source, body.OperationID, body.Passphrase)
 		if err != nil {
 			return StartBackupResponse{}, backupRouteError(err)
 		}
@@ -218,4 +231,58 @@ func validRestoreOperationID(v string) bool {
 		}
 	}
 	return true
+}
+
+func registerBackupSettings(registry *apikit.Registry, d Dependencies) error {
+	err := apikit.Register(registry, apikit.Route[struct{}, backup.Settings]{Metadata: apikit.Metadata{Admission: laneAdmin,
+		ID: "get_admin_backup_settings", Method: "GET", Path: "/v1/admin/backups/settings", Summary: "Read backup destination and protection", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "administration_unavailable", "internal"}},
+		Handler: func(ctx context.Context, r *http.Request, _ struct{}) (backup.Settings, error) {
+			if _, e := d.ownerContext(ctx, r); e != nil {
+				return backup.Settings{}, foundationAuthError(e)
+			}
+			if d.Backups == nil {
+				return backup.Settings{}, &apierror.Error{Code: "administration_unavailable"}
+			}
+			out, e := d.Backups.Settings(ctx)
+			if e != nil {
+				return out, backupRouteError(e)
+			}
+			return out, nil
+		}})
+	if err != nil {
+		return err
+	}
+	return apikit.Register(registry, apikit.Route[backup.SettingsPatch, backup.Settings]{Metadata: apikit.Metadata{Admission: laneAdmin,
+		ID: "put_admin_backup_settings", Method: "PUT", Path: "/v1/admin/backups/settings", Summary: "Set backup destination, artwork inclusion and passphrase protection", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 8192, Errors: []string{"unauthorized", "invalid_request", "administration_unavailable", "internal"}},
+		Handler: func(ctx context.Context, r *http.Request, body backup.SettingsPatch) (backup.Settings, error) {
+			if _, e := d.ownerContext(ctx, r); e != nil {
+				return backup.Settings{}, foundationAuthError(e)
+			}
+			if d.Backups == nil {
+				return backup.Settings{}, &apierror.Error{Code: "administration_unavailable"}
+			}
+			out, e := d.Backups.UpdateSettings(ctx, body)
+			if e != nil {
+				return backup.Settings{}, backupRouteError(e)
+			}
+			return out, nil
+		}})
+}
+
+// Inspection reports only captured protection bytes. It starts no job, creates
+// no staging state and does not grant restore authority.
+func registerBackupInspection(registry *apikit.Registry, d Dependencies) error {
+	return apikit.Register(registry, apikit.Route[InspectBackupSourceRequest, backup.SourceInspection]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "post_admin_backups_inspect", Method: "POST", Path: "/v1/admin/backups/inspect", Summary: "Inspect backup source protection", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "administration_unavailable", "restore_source_invalid", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body InspectBackupSourceRequest) (backup.SourceInspection, error) {
+		if _, err := d.ownerContext(ctx, r); err != nil {
+			return backup.SourceInspection{}, foundationAuthError(err)
+		}
+		if d.Backups == nil {
+			return backup.SourceInspection{}, &apierror.Error{Code: "administration_unavailable"}
+		}
+		out, err := d.Backups.InspectSource(ctx, body.Source)
+		if err != nil {
+			return backup.SourceInspection{}, backupRouteError(err)
+		}
+		return out, nil
+	}})
 }
