@@ -35,7 +35,11 @@ export function createRenderer() {
       if (!slot || slot.deps.length !== deps.length || deps.some((value, i) => value !== slot.deps[i])) f.slots[index] = {deps, value: run()};
       return f.slots[index].value;
     },
-    useCallback: run => run,
+    useCallback: (run, deps) => {
+      const f = fiber(path); const index = f.cursor++; const slot = f.slots[index];
+      if (!slot || deps === undefined || slot.deps.length !== deps.length || deps.some((value, i) => value !== slot.deps[i])) f.slots[index] = {deps, value: run};
+      return f.slots[index].value;
+    },
     useEffect: (run, deps) => { const f = fiber(path); pending.push({key: path, index: f.cursor++, run, deps}); },
     useLayoutEffect: (run, deps) => { const f = fiber(path); pending.push({key: path, index: f.cursor++, run, deps}); },
     useSyncExternalStore: (_subscribe, get) => get(),

@@ -15,6 +15,8 @@ import {all, createRenderer, one, textOf, tree} from './helpers/interaction-harn
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
 const REMOVED = 'portico:continue-removed';
 const events = new EventTarget();
+// Each mount adds one listener and the file mounts many screens; hosts without the guard just warn.
+if (typeof (events as any).setMaxListeners === 'function') (events as any).setMaxListeners(50);
 (globalThis as any).window = {addEventListener: (...args: any[]) => events.addEventListener(...args as [string, any]), removeEventListener: (...args: any[]) => events.removeEventListener(...args as [string, any])};
 
 const entry = (id: string, title: string, extra: any = {}) => ({
