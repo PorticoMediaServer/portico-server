@@ -52,8 +52,8 @@ func Inspect(f *Source) (Publication, error) {
 	return out, nil
 }
 
-// primaryPublicationSQL is the one availability-first primary-version rule the
-// List, Continue and Discover producers share.
+// primaryPublicationSQL is the one availability-first primary-version rule
+// the List and Discover producers share.
 const primaryPublicationSQL = `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=e.id
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=candidate.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND eligible.available=1) DESC,candidate.asset_id LIMIT 1)`
 

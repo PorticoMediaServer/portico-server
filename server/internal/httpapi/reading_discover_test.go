@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"testing"
 
 	"portico.local/server/internal/identity"
@@ -113,5 +115,56 @@ func TestReadingDiscoverHonorsCurrentProfileRestrictions(t *testing.T) {
 	}
 	if owner, err := r.s.Discover(ctx, r.p, r.library, reading.DiscoverLimits{}); err != nil || len(owner.Recent) == 0 {
 		t.Fatalf("owner discover=%+v %v", owner, err)
+	}
+}
+
+// The additive operation is a strict bounded page over the same projection: an
+// invalid or out-of-range limit is rejected, the default is 20, and the payload
+// carries rows of the existing public item shape only.
+func TestReadingDiscoverOperationStrictAndBounded(t *testing.T) {
+	r := newReadingFixture(t, "book", "pdf")
+	ctx := context.Background()
+	onePath := readingTreeFile(t, r, "Author/Series/One.epub")
+	readingTreeFile(t, r, "Author/Series/Two.epub")
+	readingScan(t, r.f, r.library)
+	one := readingPathItem(t, r, onePath)
+	h := New(r.d)
+	token := r.f.owner.AccessToken
+	get := func(query string) *ReadingDiscoverResponse {
+		t.Helper()
+		w := readingHTTP(t, h, "GET", "/v1/reading/discover"+query, token, "", nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s %d %s", query, w.Code, w.Body.String())
+		}
+		var out ReadingDiscoverResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || len(out.Rows) != 1 || out.Rows[0].Key != "recent" || out.Rows[0].Items == nil {
+			t.Fatalf("%s rows=%+v %v", query, out, err)
+		}
+		return &out
+	}
+	def := get("")
+	if len(def.Rows[0].Items) == 0 || len(def.Rows[0].Items) > 20 {
+		t.Fatalf("default page=%+v", def.Rows[0].Items)
+	}
+	limited := get("?limit=1&libraryId=" + r.library)
+	if len(limited.Rows[0].Items) != 1 {
+		t.Fatalf("bounded page=%+v", limited.Rows[0].Items)
+	}
+	found := false
+	for _, item := range limited.Rows[0].Items {
+		if item.ID == one {
+			found = item.Author != nil && item.Author.Value == "Author" && item.Series != nil && item.Series.Name == "Series"
+		}
+	}
+	if !found {
+		t.Fatalf("recent row does not reuse the item projection: %+v", limited.Rows[0].Items)
+	}
+	for _, query := range []string{"?limit=0", "?limit=101", "?limit=x", "?cursor=1", "?limit=1&limit=2", "?limit=1&unknown=2"} {
+		if w := readingHTTP(t, h, "GET", "/v1/reading/discover"+query, token, "", nil); w.Code != http.StatusBadRequest {
+			t.Fatalf("%s %d %s", query, w.Code, w.Body.String())
+		}
+	}
+	if w := readingHTTP(t, h, "GET", "/v1/reading/discover", "", "", nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous %d", w.Code)
 	}
 }
