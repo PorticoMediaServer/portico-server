@@ -25,7 +25,7 @@ export function defaultLibraryName(kind: SetupLibraryKind): string {
 /** A server left named "Portico" is indistinguishable from every other one; suggest the host. */
 export function defaultSetupServerName(current: string, hostname: string): string {
   if (current && current !== 'Portico') return current;
-  if (!hostname || /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[.*\])$/.test(hostname)) return 'My Portico server';
+  if (!hostname || /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[.*\])$/.test(hostname)) return defaultI18n.t('web.setup.defaultServerName');
   return hostname.replace(/\.(local|lan|home)$/i, '').replace(/[-_]+/g, ' ');
 }
 

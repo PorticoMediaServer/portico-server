@@ -2017,6 +2017,7 @@ export const webMessages = {
   'web.setup.welcome': 'Welcome to Portico',
   'web.setup.welcomeLede': 'Let\'s set up your server. It takes about a minute.',
   'web.setup.serverNameHelp': 'Shown on every device that connects.',
+  'web.setup.defaultServerName': 'My Portico server',
   'web.setup.howSignIn': 'How will people sign in?',
   'web.setup.recommended': 'Recommended',
   'web.setup.localAccounts': 'Keep accounts on this server',
