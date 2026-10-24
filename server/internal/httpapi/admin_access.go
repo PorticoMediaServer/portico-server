@@ -247,6 +247,25 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, out)
 	})
+	d.httpHandle(mux, "POST /v1/admin/access/invitations/{id}/short-code", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		var q access.InvitationShortRequest
+		if e = decodeLegacyRevision(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := store.IssueShortInvitation(r.Context(), d.accessAuthority(p, identity.TierAdmin), p, r.PathValue("id"), q)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		write(w, 200, out)
+	})
 	d.httpHandle(mux, "POST /v1/access/invitations/accept", func(w http.ResponseWriter, r *http.Request) {
 		var body InvitationAcceptRequest
 		if e := decodeLegacyRevision(w, r, &body); e != nil {
@@ -269,7 +288,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			out, e := store.AcceptPortico(r.Context(), access.PorticoAcceptance{Code: body.Code, AccountID: who.AccountID, Username: who.Username, DisplayName: who.DisplayName, Consent: who.Consent}, func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
+			out, e := store.AcceptPortico(r.Context(), access.PorticoAcceptance{Code: body.Code, ShortCode: body.ShortCode, AccountID: who.AccountID, Username: who.Username, DisplayName: who.DisplayName, Consent: who.Consent}, func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
 				return d.Identity.PorticoSignInTx(ctx, tx, who)
 			})
 			if e != nil {
@@ -326,13 +345,42 @@ type InvitationAcceptRequest struct {
 	PorticoIdentity *hosted.Signed `json:"porticoIdentity,omitempty"`
 }
 
+// The disjoint wire forms reject a second capability by presence, including
+// empty or null, and reject local credential fields on a Portico assertion.
+func (q *InvitationAcceptRequest) UnmarshalJSON(raw []byte) error {
+	fields, err := access.InvitationCapabilityFields(raw)
+	if err != nil {
+		return err
+	}
+	_, portico := fields["porticoIdentity"]
+	for field := range fields {
+		if field == "code" || field == "shortCode" || portico && field == "porticoIdentity" || !portico && (field == "username" || field == "password" || field == "name") {
+			continue
+		}
+		return errors.New("invalid invitation acceptance field")
+	}
+	type wire InvitationAcceptRequest
+	var value wire
+	if err = json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	if portico && value.PorticoIdentity == nil {
+		return errors.New("invalid invitation identity")
+	}
+	*q = InvitationAcceptRequest(value)
+	return nil
+}
 func (InvitationAcceptRequest) JSONSchema() map[string]any {
-	local, _ := apikit.Schema(reflect.TypeFor[access.Acceptance]())
-	portico, _ := apikit.Schema(reflect.TypeFor[struct {
+	local := (access.Acceptance{}).JSONSchema()["oneOf"].([]any)
+	porticoLong := access.InvitationCapabilityShape(reflect.TypeFor[struct {
 		Code            string        `json:"code"`
 		PorticoIdentity hosted.Signed `json:"porticoIdentity"`
 	}]())
-	return map[string]any{"oneOf": []any{local, portico}}
+	porticoShort := access.InvitationCapabilityShape(reflect.TypeFor[struct {
+		ShortCode       string        `json:"shortCode"`
+		PorticoIdentity hosted.Signed `json:"porticoIdentity"`
+	}]())
+	return map[string]any{"oneOf": append(local, porticoLong, porticoShort)}
 }
 
 type InvitationAcceptanceResponse json.RawMessage

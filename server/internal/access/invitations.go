@@ -76,7 +76,8 @@ type InvitationLibrary struct {
 }
 
 type InvitationPreviewRequest struct {
-	Code string `json:"code"`
+	Code      string `json:"code,omitempty"`
+	ShortCode string `json:"shortCode,omitempty"`
 }
 
 var ErrInvitationNotFound = errors.New("invitation not found")
@@ -124,14 +125,19 @@ func invitationNotes(raw *string) (*string, error) {
 // Preview treats an unknown, expired, revoked, or accepted code identically.
 // It does not mutate or reserve the invitation.
 func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview, err error) {
-	code = strings.TrimSpace(code)
-	if len(code) < 32 || len(code) > 128 {
-		return out, ErrInvitationNotFound
-	}
+	return s.PreviewCapability(ctx, InvitationPreviewRequest{Code: code})
+}
+
+func (s *Store) PreviewCapability(ctx context.Context, q InvitationPreviewRequest) (out InvitationPreview, err error) {
 	err = s.snapshot(ctx, nil, func(tx *sql.Tx) error {
+		selected, e := s.invitationCapabilityTx(ctx, tx, q.Code, q.ShortCode)
+		if e != nil {
+			return e
+		}
+
 		var id, libraries, bound string
 		var expiry int64
-		e := tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending' AND expires_ms>?`, digest(code), s.now()).Scan(&id, &out.Role, &libraries, &expiry, &bound)
+		e = tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE id=? AND state='pending' AND expires_ms>?`, selected, s.now()).Scan(&id, &out.Role, &libraries, &expiry, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrInvitationNotFound
 		}
@@ -141,9 +147,6 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 		var ids []string
 		if e = json.Unmarshal([]byte(libraries), &ids); e != nil {
 			return e
-		}
-		if !s.checkInvitationCode(id, code) {
-			return ErrInvitationNotFound
 		}
 		out.Libraries = []InvitationLibrary{}
 		for _, library := range ids {
@@ -428,10 +431,11 @@ type AcceptanceResult struct {
 	AllowedLibraries []string `json:"allowedLibraries"`
 }
 type Acceptance struct {
-	Code     string `json:"code"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Name     string `json:"name,omitempty"`
+	Code      string `json:"code,omitempty"`
+	ShortCode string `json:"shortCode,omitempty"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Name      string `json:"name,omitempty"`
 }
 
 // Accept redeems an invitation code and creates the account it describes. It is
@@ -441,10 +445,13 @@ type Acceptance struct {
 // hash is supplied by the caller so the password cost is paid outside the
 // database transaction, which holds the single SQLite writer.
 func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out AcceptanceResult, err error) {
-	code := strings.TrimSpace(q.Code)
-	if len(code) < 32 || len(code) > 128 {
+	if q.ShortCode != "" && q.Code != "" {
+		return out, invalid("code", "shortCode")
+	}
+	if q.ShortCode == "" && (len(strings.TrimSpace(q.Code)) < 32 || len(strings.TrimSpace(q.Code)) > 128) {
 		return out, invalid("code")
 	}
+
 	username := strings.ToLower(strings.TrimSpace(q.Username))
 	if len(username) < 3 || len(username) > 64 || !safeText(username, 64) || strings.ContainsAny(username, " \t\r\n@") {
 		return out, invalid("username")
@@ -460,11 +467,18 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Acce
 		if err := identity.RequireSignInKindTx(ctx, tx, identity.SignInLocal); err != nil {
 			return err
 		}
+		selected, e := s.invitationCapabilityTx(ctx, tx, q.Code, q.ShortCode)
+		if errors.Is(e, ErrInvitationNotFound) {
+			return ErrExpired
+		}
+		if e != nil {
+			return e
+		}
 
 		var id, role, libraries, bound string
 		var notes *string
 		var expires int64
-		e := tx.QueryRowContext(ctx, `SELECT id,notes,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &notes, &role, &libraries, &expires, &bound)
+		e = tx.QueryRowContext(ctx, `SELECT id,notes,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE id=? AND state='pending'`, selected).Scan(&id, &notes, &role, &libraries, &expires, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrExpired
 		}
@@ -472,7 +486,7 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Acce
 			return e
 		}
 		now := s.now()
-		if expires <= now || !s.checkInvitationCode(id, code) {
+		if expires <= now {
 			return ErrExpired
 		}
 		// An invitation made for one Portico Account cannot become a password
@@ -523,6 +537,7 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Acce
 // creates is linked to that identity and has no password; signIn runs in the
 // same transaction, so the invitee comes back signed in or not at all.
 type PorticoAcceptance struct {
+	ShortCode   string
 	Code        string
 	AccountID   string
 	Username    string
@@ -540,10 +555,13 @@ type PorticoAcceptance struct {
 // link opened by the wrong account must neither demote nor promote it; the
 // owner changes an active member through member management.
 func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn func(context.Context, *sql.Tx) (identity.DirectSignIn, error)) (out identity.DirectSignIn, err error) {
-	code := strings.TrimSpace(q.Code)
-	if len(code) < 32 || len(code) > 128 {
+	if q.ShortCode != "" && q.Code != "" {
+		return out, invalid("code", "shortCode")
+	}
+	if q.ShortCode == "" && (len(strings.TrimSpace(q.Code)) < 32 || len(strings.TrimSpace(q.Code)) > 128) {
 		return out, invalid("code")
 	}
+
 	if q.AccountID == "" || len(q.AccountID) > 128 || signIn == nil {
 		return out, identity.ErrUnauthorized
 	}
@@ -559,11 +577,18 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 		if err := identity.RequireSignInKindTx(ctx, tx, identity.SignInPortico); err != nil {
 			return err
 		}
+		selected, e := s.invitationCapabilityTx(ctx, tx, q.Code, q.ShortCode)
+		if errors.Is(e, ErrInvitationNotFound) {
+			return ErrExpired
+		}
+		if e != nil {
+			return e
+		}
 
 		var id, role, libraries, bound string
 		var notes *string
 		var expires, invited int64
-		e := tx.QueryRowContext(ctx, `SELECT id,notes,role,allowed_libraries,expires_ms,created_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &notes, &role, &libraries, &expires, &invited, &bound)
+		e = tx.QueryRowContext(ctx, `SELECT id,notes,role,allowed_libraries,expires_ms,created_ms,bound_username FROM access_invitations WHERE id=? AND state='pending'`, selected).Scan(&id, &notes, &role, &libraries, &expires, &invited, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrExpired
 		}
@@ -571,7 +596,7 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 			return e
 		}
 		now := s.now()
-		if expires <= now || !s.checkInvitationCode(id, code) {
+		if expires <= now {
 			return ErrExpired
 		}
 		if bound != "" && bound != strings.ToLower(strings.TrimSpace(q.Username)) {
