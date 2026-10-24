@@ -17,6 +17,9 @@ const preferenceEffects = new Set([
   'playback.passoutProtection', 'playback.passoutAfterEpisodes', 'playback.skipBackMs', 'playback.skipForwardMs', 'audiobooks.defaultSpeed',
   'accessibility.reducedMotion', 'appearance.motion', 'appearance.showBackdrops', 'appearance.cardSizePercent',
   'appearance.libraryView', 'appearance.episodesLayout', 'notifications.badges',
+  // `shellLanguage` builds the shell's one I18n from regionPreferences, so words, clock,
+  // formats, date order, week start and file sizes all have a real web consumer.
+  'region.locale', 'region.hourCycle', 'region.formats', 'region.dateOrder', 'region.firstDay', 'region.sizeUnits',
 ]);
 function preferenceEffect(binding: SettingsBinding): boolean {
   if (preferenceEffects.has(binding.key) || binding.key.startsWith('subtitles.')) return true;
