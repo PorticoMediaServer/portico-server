@@ -39,6 +39,7 @@ var acrossMaximum = 10000
 // titles themselves, or the things that are played one at a time.
 var acrossPivots = []browsePivot{
 	{ID: "titles", LabelKey: "library.titles", EntityKinds: []string{"movie", "show", "album", "book"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
+	{ID: "video-titles", LabelKey: "library.titles", EntityKinds: []string{"movie", "show"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
 	{ID: "items", LabelKey: "library.items", EntityKinds: []string{"movie", "episode", "song", "audiobook_file"}, SupportedViews: []string{"list", "grid"}, DefaultSort: titleAscending(), Browsable: true},
 }
 
@@ -93,6 +94,64 @@ func acrossAnchor(node *BrowseNode) *BrowseNode {
 	}
 	return nil
 }
+
+// A genre tile opens its counted video domain. Existing mixed groups retain
+// their original anchor precedence and semantics, regardless of filter order.
+func acrossAnchorForPivot(node *BrowseNode, pivot browsePivot) *BrowseNode {
+	if anchor := acrossAnchor(node); anchor != nil || pivot.ID != "video-titles" || node == nil {
+		return anchor
+	}
+	genre := func(n *BrowseNode) bool {
+		value, ok := n.Value.(string)
+		return n.Field == "genre" && n.Operator == "equals" && ok && value != ""
+	}
+	if genre(node) {
+		return node
+	}
+	for i := range node.All {
+		if genre(&node.All[i]) {
+			return &node.All[i]
+		}
+	}
+	return nil
+}
+
+func withoutSelectedGenreAnchor(query, anchor *BrowseNode) *BrowseNode {
+	if anchor == nil || anchor.Field != "genre" {
+		return query
+	}
+	if query == anchor {
+		return nil
+	}
+	copy := *query
+	copy.All = nil
+	for i := range query.All {
+		if &query.All[i] != anchor {
+			copy.All = append(copy.All, query.All[i])
+		}
+	}
+	if len(copy.All) == 0 {
+		return nil
+	}
+	return &copy
+}
+
+func (s *Service) acrossMembersForViewer(anchor *BrowseNode, viewer Viewer, rows map[string][]int64, sources ...map[string]HomeRowMembership) (string, []any, bool, error) {
+	if anchor.Field != "genre" {
+		return acrossMembers(anchor, viewer.Profile, rows, sources...)
+	}
+	// This source already checks every contributing member's restriction and
+	// limits titles to movie/show in authorized video libraries. Do not derive
+	// its members from a result page, or from hidden episodes of a visible show.
+	scope, args, _, err := s.browseMeasureScope(viewer, FacetRequest{Pivot: "video-titles"})
+	if err != nil {
+		return "", nil, false, err
+	}
+	prefix, bound := searchGenreMembership(scope, args, viewer)
+	return prefix + ` SELECT entity_id AS id,0 AS pos FROM genres WHERE value=?`, append(bound, anchor.Value), false, nil
+}
+
+const acrossVideoLibraryPredicate = `e.library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN libraries l ON l.id=cl.library_id WHERE cl.retired=0 AND l.kind IN('movie','tv','anime'))`
 
 // acrossMembers is SQL yielding (id, pos): the entities the group names, in
 // its own order where it has one. The relation has no total-source ceiling.
@@ -240,11 +299,12 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		return out, nil, browseIssue("sort[0].field", "For you ranks one library at a time")
 	}
 	out.Applied = BrowseApplied{Query: request.Query, Sort: sorts}
-	anchor := acrossAnchor(request.Query)
+	anchor := acrossAnchorForPivot(request.Query, pivot)
 	if anchor == nil {
 		return out, nil, ErrBrowseAcrossGroup
 	}
-	members, memberArgs, ordered, err := acrossMembers(anchor, request.profile, request.Rows, request.RowSources)
+	viewer := Viewer{Profile: request.profile, Fence: request.fence, Libraries: request.libraries, Restrictions: request.restriction}
+	members, memberArgs, ordered, err := s.acrossMembersForViewer(anchor, viewer, request.Rows, request.RowSources)
 	if err != nil {
 		return out, nil, err
 	}
@@ -277,9 +337,12 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	where := `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
+	if pivot.ID == "video-titles" {
+		where += ` AND ` + acrossVideoLibraryPredicate
+	}
 	args := append([]any{idsJSON(request.libraries)}, kinds...)
 	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
-	clause, err := compiler.compile(request.Query)
+	clause, err := compiler.compile(withoutSelectedGenreAnchor(request.Query, anchor))
 	if err != nil {
 		return out, nil, err
 	}
@@ -421,6 +484,9 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 		return out, nil, err
 	}
 	where := `personal.profile_id=? AND personal.last_played_at<>'' AND e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
+	if pivot.ID == "video-titles" {
+		where += ` AND ` + acrossVideoLibraryPredicate
+	}
 	args := append([]any{request.profile, idsJSON(request.libraries)}, kinds...)
 	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
 	clause, err := compiler.compile(request.Query)
@@ -634,6 +700,9 @@ func (s *Service) BrowseAcrossCapabilities(viewer Viewer, pivot string) (BrowseC
 	for _, surface := range acrossSurfaces {
 		out.Surfaces = append(out.Surfaces, BrowseSurfaceCapability{ID: surface.id, Endpoint: "/v1/browse", MembershipField: surface.field, Sorts: out.ResolvedPivot.Sorts, Filters: filters, Paging: "offset"})
 	}
+	if out.ResolvedPivot.ID == "video-titles" {
+		out.Surfaces = append(out.Surfaces, BrowseSurfaceCapability{ID: "genre-titles", Endpoint: "/v1/browse", MembershipField: "genre", Sorts: out.ResolvedPivot.Sorts, Filters: filters, Paging: "offset"})
+	}
 	return out, nil
 }
 
@@ -659,11 +728,11 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	if sorts[0].Field == "forYou" {
 		return QueueSelection{}, browseIssue("sort[0].field", "For you ranks one library at a time")
 	}
-	anchor := acrossAnchor(query.Query)
+	anchor := acrossAnchorForPivot(query.Query, pivot)
 	if anchor == nil {
 		return QueueSelection{}, ErrBrowseAcrossGroup
 	}
-	members, memberArgs, ordered, err := acrossMembers(anchor, viewer.Profile, rows)
+	members, memberArgs, ordered, err := s.acrossMembersForViewer(anchor, viewer, rows)
 	if err != nil {
 		return QueueSelection{}, err
 	}
@@ -675,9 +744,12 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 		return QueueSelection{}, err
 	}
 	where := `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
+	if pivot.ID == "video-titles" {
+		where += ` AND ` + acrossVideoLibraryPredicate
+	}
 	args := append([]any{idsJSON(viewer.Libraries)}, kinds...)
 	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
-	clause, err := compiler.compile(query.Query)
+	clause, err := compiler.compile(withoutSelectedGenreAnchor(query.Query, anchor))
 	if err != nil {
 		return QueueSelection{}, err
 	}
