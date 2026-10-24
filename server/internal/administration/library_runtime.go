@@ -120,6 +120,31 @@ func applyLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v Libr
 			seen[op] = true
 		}
 	}
+	// This form owns only its drawn analysis operations. Registered internal
+	// stages must survive an unrelated save without becoming new UI values.
+	// Explicit Complete gets the domain's Complete set; explicit lower depths
+	// withdraw deep admission without changing independent stored mode choices.
+	current, err := catalog.ScanPolicyTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	managed := map[string]bool{}
+	for _, op := range analysisRuntime {
+		managed[op] = true
+	}
+	internal := []string{}
+	if v.ScanDepth != "file_list_only" && (v.ScanDepth == "custom" || v.ScanDepth == scanDepthFor(current)) {
+		internal = append(internal, current.Operations...)
+	}
+	if v.ScanDepth == "complete" {
+		internal = append(internal, catalog.CompleteScanOperations...)
+	}
+	for _, op := range internal {
+		if !managed[op] && !seen[op] {
+			ops = append(ops, op)
+			seen[op] = true
+		}
+	}
 	if v.Navigation.VideoPreviewEnabled || v.Navigation.VideoPreviewMs != 30000 {
 		return invalid("settings.navigation.videoPreviewEnabled")
 	}

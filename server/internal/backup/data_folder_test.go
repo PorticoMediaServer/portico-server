@@ -15,7 +15,13 @@ import (
 )
 
 func TestBackupContainsOnlyConfigDatabaseMetadataAndKeys(t *testing.T) {
-	service, data, _ := testService(t)
+	service, data, db := testService(t)
+	policy := NewPolicyStore(db, data)
+	include := true
+	if _, err := policy.Update(context.Background(), SettingsPatch{IncludeArtwork: &include}); err != nil {
+		t.Fatal(err)
+	}
+	service.SetPolicyStore(policy)
 	for _, name := range []string{"portico.toml", "Metadata/artwork/poster.jpg", "Metadata/people/person.jpg", "Metadata/subtitles/subtitle.srt", "Metadata/analysis-artifacts/preview", "Keys/networking-keys/identity", "Keys/managed-storage/provider.conf", "Cache/derived", "Logs/messages.log", "Temp/work", "Transcode/segment.ts"} {
 		if err := writeTestFile(filepath.Join(data, filepath.FromSlash(name)), []byte(name), 0600); err != nil {
 			t.Fatal(err)

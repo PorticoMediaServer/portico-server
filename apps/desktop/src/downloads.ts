@@ -123,6 +123,7 @@ export class DesktopDownloadStore {
 
   private readonly listeners=new Set<()=>void>();
   private readonly folderCancels=new Set<()=>void>();
+  private readonly releasedPreparations=new WeakSet<PreparedLocalQueue>();
   private readonly preparations=new WeakMap<PreparedLocalQueue,{lease:string;retired:boolean}>();
   private constructor(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge){this.scope=checkScope(scope);this.isCurrent=isCurrent;this.bridge=bridge;}
   static async bind(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge=nativeDownloadsBridge,signal?:AbortSignal):Promise<DesktopDownloadStore>{
@@ -192,13 +193,13 @@ export class DesktopDownloadStore {
   }
   async releaseLocalQueue(prepared:PreparedLocalQueue):Promise<void>{
     const owned=this.preparations.get(prepared);
-    if(!owned)throw new Error('downloads_conflict');
+    if(!owned){if(this.releasedPreparations.has(prepared))return;throw new Error('downloads_conflict');}
     owned.retired=true;
     if(this.currentPreparation===prepared)this.currentPreparation=undefined;
     try{
       const reply=object(await this.bridge.command(owned.lease,{action:'releaseLocalQueue',preparationId:prepared.preparationId}));
       if(reply.kind!=='done')return invalid();
-      this.preparations.delete(prepared);
+      this.releasedPreparations.add(prepared);this.preparations.delete(prepared);
     }catch(error){throw downloadFailure(error);}
   }
   async loadLocal(prepared:PreparedLocalQueue,localSourceId:string,generation:number,startPositionMs:number,autoplay:boolean,signal:AbortSignal):Promise<NativeLocalLoadReceipt>{

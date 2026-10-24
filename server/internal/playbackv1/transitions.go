@@ -308,6 +308,17 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		s.cancelPrepared(ctx, "token", p.token, "access_changed")
 		return QueueReply{}, canceled("access_changed")
 	}
+	qBefore, err := loadQueue(ctx, s.DB, id)
+	if err != nil || !ownsQueue(c, qBefore) {
+		return QueueReply{}, ErrNotFound
+	}
+	if qBefore.revision != p.queueRevision {
+		return QueueReply{}, canceled("queue_changed")
+	}
+	refill, err := s.prepareRadioRefill(ctx, c, qBefore)
+	if err != nil {
+		return QueueReply{}, err
+	}
 	var reply QueueReply
 	var old row
 	var fence error
@@ -340,6 +351,12 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		}
 		if entry, _, found := l.entryAt(pos); !found || entry != p.entry {
 			return fail("queue_changed")
+		}
+		// Refill only after validating the exact held next occurrence. The
+		// existing commit transaction transfers its single authority and also
+		// persists the following bounded radio keys under that same revision.
+		if err := s.appendRadioTx(ctx, tx, l, c.Principal, refill); err != nil {
+			return err
 		}
 		switch err := s.Playback.ReleasePrivateTx(ctx, tx, c.Principal, p.media); {
 		case errors.Is(err, playback.ErrPreparationExpired):
