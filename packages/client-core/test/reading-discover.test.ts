@@ -19,7 +19,7 @@ test('Discover uses captured authority and the generated route, retaining unavai
   assert.equal(calls[0].url.pathname, routePath('get_reading_discover'));
   assert.equal(calls[0].url.search, '?libraryId=library&limit=2');
   assert.equal(calls[0].headers.get('Authorization'), 'Bearer original-token');
-  assert.deepEqual(out.rows[0].items, [item]);
+  assert.deepEqual(out.rows[0].items.map(row => ({...row})), [item]);
   assert.ok(Object.isFrozen(out.rows[0].items));
   api.setAccessToken('successor-token');
   await assert.rejects(client.discover(), coded('cancelled'));
