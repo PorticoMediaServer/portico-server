@@ -533,10 +533,22 @@ func TestSeedLocalArtworkKeepsDirtyUntilEverySlotCompletes(t *testing.T) {
 	if dirtyRows() != 1 {
 		t.Fatal("the dirty row was cleared before every slot completed")
 	}
+	// The first pass materializes the primary plus one bounded alternative page;
+	// every later pass materializes at most one page.
+	first, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(first) > localArtworkCandidatePage+1 {
+		t.Fatalf("first pass materialized %d candidates (primary plus page)", len(first))
+	}
+	previous := len(first)
 	for call := 0; call < 64; call++ {
 		if err := s.seedArtwork(context.Background()); err != nil {
 			t.Fatal(err)
 		}
+		committed, _ := localCandidates(t, db, movie.ID, "poster")
+		if grew := len(committed) - previous; grew > localArtworkCandidatePage {
+			t.Fatalf("call %d materialized %d candidates", call+2, grew)
+		}
+		previous = len(committed)
 		if dirtyRows() == 0 {
 			break
 		}
