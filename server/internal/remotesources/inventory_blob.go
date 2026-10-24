@@ -41,7 +41,7 @@ func (s *Service) captureInventoryBlobTx(ctx context.Context, tx *sql.Tx, source
 	file := filepath.Join(request.Root, request.RelativePath)
 	switch a.Purpose {
 	case storage.InventoryBlobAnalysisSidecar:
-		if a.ObjectID == "" || a.SourceRevision == "" || a.ListingID != "" || a.Member != (storage.Snapshot{}) || limit > 8<<20 && (a.Operation != "subtitles" || limit > 512<<20 || !strings.EqualFold(filepath.Ext(file), ".sup") && !strings.EqualFold(filepath.Ext(file), ".sub")) {
+		if a.ObjectID == "" || a.SourceRevision == "" || a.ListingID != "" || a.Member != (storage.Snapshot{}) || !inventorySidecarCandidate(a.Operation, file) || limit > 8<<20 && (a.Operation != "subtitles" || limit > 512<<20 || !strings.EqualFold(filepath.Ext(file), ".sup") && !strings.EqualFold(filepath.Ext(file), ".sub")) {
 			return nil, storage.ErrRemoteConfig
 		}
 		switch a.Operation {
@@ -117,6 +117,33 @@ func (s *Service) captureInventoryBlobTx(ctx context.Context, tx *sql.Tx, source
 		return nil, err
 	}
 	return c, nil
+}
+
+// These are the existing localmetadata and subtitle inventory readers' input
+// formats. An analysis operation cannot use a different media file as a
+// whole-file "sidecar", even when that file is smaller than the blob limit.
+func inventorySidecarCandidate(operation, file string) bool {
+	name := strings.ToLower(filepath.Base(file))
+	ext := strings.ToLower(filepath.Ext(file))
+	if operation == "subtitles" {
+		switch ext {
+		case ".srt", ".vtt", ".ass", ".ssa", ".sub", ".sup", ".idx", ".smi", ".sami", ".ttml", ".dfxp":
+			return true
+		}
+		return false
+	}
+	if operation != "probe" && operation != "local_metadata" {
+		return false
+	}
+	switch ext {
+	case ".nfo", ".opf", ".cue", ".jpg", ".jpeg", ".png", ".webp":
+		return true
+	case ".json":
+		return name == "metadata.json" || strings.HasSuffix(name, ".portico.json")
+	case ".txt":
+		return name == "desc.txt" || name == "reader.txt"
+	}
+	return false
 }
 
 // checkTx is DB/local-process-only. It never calls a storage read guard,
