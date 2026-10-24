@@ -53,6 +53,10 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	if mime == "" {
 		return RepairState{}, ErrArtworkUpload
 	}
+	ctx, checkPolicy, err := s.CaptureArtworkContext(ctx)
+	if err != nil {
+		return RepairState{}, err
+	}
 	// Decoding happens before any transaction is opened: a slow or hostile image
 	// never holds a database write lock.
 	original, thumb, w, h, err := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})
@@ -78,6 +82,12 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	tx := gated.Tx()
 	defer gated.Rollback()
 	if err = authorize(tx); err != nil {
+		return RepairState{}, err
+	}
+	if err = checkPolicy(ctx, tx); err != nil {
+		if errors.Is(err, ErrEpisodeThumbnailEncodingStale) {
+			return RepairState{}, ErrRepairConflict
+		}
 		return RepairState{}, err
 	}
 	before, ent, err := readRepairSnapshot(ctx, tx, t)
