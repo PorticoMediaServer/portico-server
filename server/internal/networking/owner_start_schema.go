@@ -31,6 +31,7 @@ func (ClaimActionRequest) JSONSchema() map[string]any {
 		"properties": map[string]any{
 			"expected": expected, "approvalEnvelope": map[string]any{"type": "string"},
 			"ownerStart": (ClaimOwnerStartRequest{}).JSONSchema(),
+			"setupStart": (ClaimSetupStartRequest{}).JSONSchema(),
 		},
 	}
 }
