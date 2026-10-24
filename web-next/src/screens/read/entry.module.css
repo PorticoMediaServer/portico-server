@@ -1,3 +1,9 @@
 .loading { min-height: 100dvh; background: var(--color-ink); }
 .host { position: fixed; inset: 0; z-index: var(--layer-menu); background: var(--color-ink); }
 .host[hidden] { display: none; }
+
+/* desktop-read 1/1b: the library's own rows and its bounded content share the
+   drawn row rhythm (the kit owns .rows/.row; only the grid's gutter is ours). */
+.library { position: relative; min-height: 100%; }
+.books { position: relative; margin: 0 var(--shell-gutter, var(--gutter-desktop)); }
+@media (max-width: 1023px) { .books { margin-inline: 20px; } }
