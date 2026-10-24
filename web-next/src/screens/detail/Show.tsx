@@ -1,19 +1,23 @@
 import {t, locale, environment as env} from './text';
-import {Fragment, useEffect, useState, useSyncExternalStore} from 'react';
+import {Fragment, useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
-import type {ShowWorkspaceRoute, ShowWorkspaceData} from '@core/show-workspace.ts';
+import type {ShowWorkspaceRoute, ShowWorkspaceData, ShowSettings, WorkspaceShowCredit} from '@core/show-workspace.ts';
 import {cardText, episodeLabel, titleFactParts, type FactPart} from '@core/presentation/kit-model';
-import {Button, Chip, Tabs, Segmented, Switch} from '../../kit/controls';
+import {Button, Chip, ResumeButton, Tabs, Segmented, Switch} from '../../kit/controls';
 import {AmbientArt} from '../../kit/artwork';
-import {Lockup, HeroFacts} from '../../kit/layout';
+import {Lockup} from '../../kit/layout';
 import {EpisodeTile} from '../../kit/cards';
-import {Menu, MenuItem} from '../../kit/overlays';
+import {Menu, MenuItem, Popover} from '../../kit/overlays';
+import {OwnerTag, ServerMark} from '../../kit/shell';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
-import {DetailLoading, ScreenFailure, TitleActions, TitleDetails, TitleRow} from './Detail';
+import {DetailLoading, ScreenFailure, TitleActions, TitleRow} from './Detail';
 import {titleRecommendationRows} from '@core/recommendations.ts';
-import {entryCard, entrySubject, titlePageFacts} from './model';
+import {SHOW_SETTING_ROWS} from '@core/presentation/title-page.ts';
+import {episodeCode} from '@core/presentation/card-caption.ts';
+import {entrySubject, titlePageFacts, calendarDate, instantDate} from './model';
 import type {ShowBindings} from './show-bindings';
+import {showDetailFacts} from './show-bindings';
 import styles from './show.module.css';
 import detail from './detail.module.css';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
@@ -52,6 +56,13 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
     {personal && <Button disabled={busy} icon={personal.watchlisted ? 'i-check' : 'i-plus'} aria-pressed={personal.watchlisted} onClick={() => { void binding.setMyList(data, !personal.watchlisted).catch(binding.context.effects.reportError); }}>{t('next.controls.myList')}</Button>}
     {personal && <Button disabled={busy} icon="i-check" iconOnly aria-label={t(personal.watched ? 'title.markUnwatched' : 'title.markWatched')} aria-pressed={personal.watched} onClick={() => { void binding.setWatched(data, !personal.watched).catch(binding.context.effects.reportError); }} />}
   </div>;
+  // The pinned bar carries the drawn Resume Sx Ey and My List controls once the hero is gone.
+  const pinAction = primary.data?.actions.find(action => action.enabled && action.playback && action.id !== 'start_over'), nextUp = data.nextUp;
+  const pinProgress = nextUp?.duration && nextUp.duration > 0 ? Math.min(1, Math.max(0, (nextUp.progressSeconds ?? 0) / nextUp.duration)) : 0;
+  const pin = nextUp?.seasonNumber !== undefined && nextUp.episodeNumber !== undefined && primary.data && pinAction
+    ? <ResumeButton size="small" progress={pinProgress} onClick={() => { const held = primary.data; if (held) void binding.primary.play(held, pinAction.id).catch(binding.context.effects.reportError); }}>{t('next.home.resumeEpisode', {season: nextUp.seasonNumber, episode: nextUp.episodeNumber})}</ResumeButton>
+    : primary.data ? <TitleActions binding={binding.primary} data={primary.data} small /> : null;
+  const owner = binding.canManage();
   const facts = titlePageFacts({year: show.year, seasonCount: data.seasonTotalCount, genres: show.genres, contentRating: show.contentRating}, env);
   // Phone frames always list episodes; retain the desktop choice across rotation.
   const episodeLayout = phone ? 'list' : layout, columns = 4;
@@ -60,7 +71,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
       {preferenceValue<boolean>(preferences, 'appearance.showBackdrops') && <AmbientArt className={detail.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(show.backdropUrl ?? show.posterUrl)} foreground={art.foreground(show.backdropUrl ?? show.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
       <div className={detail.copy}><Lockup title={show.title} platform={phone ? 'phone-web' : 'desktop'} /><TitleFactsLine parts={facts} genres={<GenreNames names={show.genres ?? []} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} />} />{show.overview && <TitleProse variant="hero" className={detail.blurb}>{show.overview}</TitleProse>}{actions}</div>
     </header> : <div className={detail.compactHeader}><h1>{show.title}</h1>{actions}</div>}
-    <TitleTabs title={show.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined}><Tabs value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'episodes' || value === 'related' || value === 'details') binding.view.tab(value); })} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></TitleTabs>
+    <TitleTabs title={show.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact ? <div className={`${detail.actions} ${styles.pinActions}`}>{pin}{personal && <Button size="small" disabled={busy} icon={personal.watchlisted ? 'i-check' : 'i-plus'} iconOnly aria-label={t('next.controls.myList')} title={t('next.controls.myList')} aria-pressed={personal.watchlisted} onClick={() => { void binding.setMyList(data, !personal.watchlisted).catch(binding.context.effects.reportError); }} />}</div> : undefined}><Tabs value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'episodes' || value === 'related' || value === 'details') binding.view.tab(value); })} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></TitleTabs>
     <div key={tab} className={detail.tabPanel}>
     {tab === 'episodes' && <section className={styles.episodes}>
       <div className={styles.toolbar}>
@@ -93,9 +104,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
       </div>
       <div className={styles.paging}>{snapshot.pagination.canPrevious && <Button size="compact" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.previousEpisodes(); })}>{t('title.previousPage')}</Button>}{snapshot.pagination.nextCursor && <Button size="compact" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.nextEpisodes(); })}>{t('title.nextPage')}</Button>}</div>
     </section>}
-    {tab === 'details' && <div className={detail.details}><section>{show.overview && <TitleProse className={detail.about}>{show.overview}</TitleProse>}<dl>{[[t('title.network'), show.network], [t('title.studio'), show.studio], [t('title.country'), show.country]].filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
-      {!!show.genres?.length && <div><dt>{t('title.genres')}</dt><dd><GenreNames names={show.genres} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /></dd></div>}
-    </dl></section><ShowPeople binding={binding} data={data} /></div>}
+    {tab === 'details' && <ShowDetails binding={binding} data={data} owner={owner} />}
     {tab === 'related' && (recommendations.phase === 'error' ? <ScreenFailure retry={() => { void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }} /> : recommendations.phase === 'loading' ? <DetailLoading /> : titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} binding={binding} heading={row.title} entries={row.entries} guard={() => binding.current(data)} />))}
     </div>
   </article>;
@@ -112,4 +121,84 @@ export function EpisodeBody({binding, data}: {binding: ShowBindings; data: ShowW
     facts={<TitleFactsLine parts={titleFactParts({durationSeconds: episode.item.duration, contentRating: episode.episodeDetails?.contentRating}, env)} />}
     synopsis={episode.item.overview} actions={<TitleActions binding={binding.episode} data={episode} />} adjacent={adjacent}
     credits={<TitlePeople binding={binding.episode} data={episode} episode />} />;
+}
+
+/** The drawn About column: the show's own stored facts, never a file fact. */
+export function ShowDetails({binding, data, owner}: {binding: ShowBindings; data: ShowWorkspaceData; owner: boolean}) {
+  const {show} = data, facts = showDetailFacts(show, data.seasonTotalCount, locale());
+  const onServer = facts.onServer ? [t('title.season', {number: facts.onServer.seasons}), facts.onServer.episodes !== undefined ? t('count.episodes', {count: facts.onServer.episodes}) : undefined].filter(Boolean).join(', ') : undefined;
+  const rows: (readonly [string, ReactNode])[] = [
+    [t('title.releaseDate'), calendarDate(facts.firstAired, locale())],
+    [t('web.general.status'), facts.status],
+    [t('title.network'), facts.network],
+    [t('title.studio'), facts.studio],
+    [t('title.country'), facts.country],
+    [t('title.genres'), facts.genres.length ? <GenreNames names={facts.genres} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /> : undefined],
+    [t('title.createdBy', {names: ''}).trim(), facts.creators.length ? <ShowPersonLinks credits={facts.creators} binding={binding} data={data} /> : undefined],
+    [t('library.column.rating'), facts.rating],
+    [t('next.selection.language'), facts.language],
+    [t('next.shell.server'), onServer],
+    [t('title.added'), instantDate(facts.addedAt, locale())],
+  ];
+  return <div className={styles.detailsTab} data-show-details>
+    <div className={styles.detailsGrid}>
+      <section>
+        <h2 className={styles.sectionHeading}>{t('filter.group.title')}</h2>
+        <dl className={styles.facts}>{rows.filter(row => !!row[1]).map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
+      </section>
+      <div className={styles.castBlock}><ShowPeople binding={binding} data={data} /></div>
+    </div>
+    {owner && <ShowSettingsPanel binding={binding} data={data} />}
+  </div>;
+}
+
+function ShowPersonLinks({credits, binding, data}: {credits: readonly WorkspaceShowCredit[]; binding: ShowBindings; data: ShowWorkspaceData}) {
+  return <>{credits.map((credit, index) => <Fragment key={`${credit.id ?? credit.name}:${credit.ordinal}`}>{index > 0 && ', '}{credit.id
+    ? <button type="button" className={styles.personLink} onClick={() => runScreenCommand(binding.context, () => {
+      binding.current(data);
+      binding.context.effects.openEntry({id: credit.id!, kind: 'person', title: credit.name, navigation: {view: 'person', entityId: credit.id!}});
+    })}>{credit.name}</button>
+    : credit.name}</Fragment>)}</>;
+}
+
+/** The owner's drawn Server panel. It carries no file facts; the four stored settings stay the source. */
+export function ShowSettingsPanel({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
+  const [open, setOpen] = useState(false), settings = data.settings;
+  const grouping = settings.ranges ? t('title.showSettings.ranges') : t('title.seasons');
+  return <section className={styles.owner} aria-label={t('next.shell.ownerOnly')}>
+    <div className={styles.ownerHeader}>
+      <ServerMark size={34} />
+      <div><b>{t('title.showSettings')}<OwnerTag /></b><small>{t('next.overlays.membersNeverSee')}</small></div>
+    </div>
+    <div className={styles.ownerRow}>
+      <div className={styles.ownerCell} data-show-settings>
+        <div className={styles.ownerLabel}>{t('title.episodeLayout')}</div>
+        <div className={styles.ownerBig}><span>{grouping}</span><span>{settings.newestFirst ? t('next.overlays.newest') : t('next.overlays.oldest')}</span></div>
+        <p>{t('title.showSettings.lede')}</p>
+        <Popover open={open} onOpenChange={setOpen} placement="top-end" sideOffset={8} alignOffset={18} width={540} className={styles.settingsMenu}
+          title={t('title.showSettings')} trigger={<Chip className={styles.changeChip} trailingIcon="i-down">{t('web.metadataLookup.change')}</Chip>}>
+          <ShowSettingsMenu binding={binding} data={data} />
+        </Popover>
+      </div>
+    </div>
+  </section>;
+}
+
+/** The drawn menu content: the four stored settings and a preview of one real episode. */
+export function ShowSettingsMenu({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
+  const settings = data.settings, preview = data.nextUp ?? data.episodes.sections[0]?.entries[0];
+  const code = preview ? episodeCode(preview, t) : undefined;
+  const save = (key: typeof SHOW_SETTING_ROWS[number]['key'], checked: boolean) => {
+    const next = {...settings, [key]: checked} as ShowSettings;
+    return binding.setSettings(data, next);
+  };
+  return <>
+    <div className={styles.menuHead}><b>{t('title.episodeLayout')}</b><span className={styles.menuTag}>{t('next.dashboard.everyone')}</span></div>
+    <p className={styles.menuLede}>{t('title.showSettings.lede')}</p>
+    {SHOW_SETTING_ROWS.map(row => <label key={row.key} className={styles.settingRow}>
+      <span><b>{t(row.label)}</b><small>{t(row.help)}</small></span>
+      <Switch checked={settings[row.key]} onCheckedChange={checked => runScreenCommand(binding.context, () => save(row.key, checked))} />
+    </label>)}
+    {preview && <div className={styles.preview}>{code && <b>{code}</b>}<span>{preview.title}</span></div>}
+  </>;
 }
