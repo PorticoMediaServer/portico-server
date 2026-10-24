@@ -64,7 +64,7 @@ test('the phone Details draws its short About, the real ratings and the credit l
     assert.match(body, /About/);
     assert.match(body, /Ratings/);
     assert.match(body, /TMDB 8\.1/);
-    assert.match(body, /Cast & crew/);
+    assert.match(body, /Cast &amp; crew/);
     assert.match(body, new RegExp(defaultI18n.t('shelf.seeAll')));
     assert.match(body, /Directed by/);
     assert.match(body, /Pete Docter/);
