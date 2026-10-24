@@ -506,3 +506,12 @@ func projectArtwork(i *Item) {
 }
 
 func (s *Service) SetStorage(client *storage.Client) { s.storage = client }
+
+// now is the catalogue's evaluation instant. Relative browse windows are
+// measured from it, and the injected clock lets tests move time.
+func (s *Service) now() time.Time {
+	if s.Clock != nil {
+		return s.Clock().UTC()
+	}
+	return time.Now().UTC()
+}

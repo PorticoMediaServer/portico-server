@@ -58,6 +58,9 @@ type FacetRequest struct {
 	Group      *BrowseNode
 	Rows       map[string][]int64
 	RowSources map[string]HomeRowMembership
+	// evaluatedAt pins a relative window to the instant whose page or row is
+	// being counted; zero takes the catalogue clock.
+	evaluatedAt time.Time
 }
 
 // facetSource describes how one facet is counted. Join is appended after
@@ -469,6 +472,10 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 	if request.Group != nil {
 		query = browseAnd(request.Group, query)
 	}
+	at := request.evaluatedAt
+	if at.IsZero() {
+		at = s.now()
+	}
 	var pivot browsePivot
 	var where string
 	var args []any
@@ -522,7 +529,7 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 			args = append(args, ma...)
 		}
 	}
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: request.Rows, rowSources: request.RowSources, itemPivot: playablePivot(pivot), count: s.countRows, ids: s.entityIDs}
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: request.Rows, rowSources: request.RowSources, itemPivot: playablePivot(pivot), count: s.countRows, ids: s.entityIDs, now: at}
 	for _, member := range entityKindMembers(pivot) {
 		if kind, err := compactcatalog.ParseKind(member); err == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))
@@ -537,7 +544,7 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 	visibility, va := EntityRestrictionSQL("e.entity_id", viewer.Restrictions)
 	where += " AND " + visibility
 	args = append(args, va...)
-	ar := AcrossRequest{Query: query, Rows: request.Rows, RowSources: request.RowSources, profile: viewer.Profile, fence: viewer.Fence + ":" + RestrictionFence(viewer.Restrictions), libraries: viewer.Libraries}
+	ar := AcrossRequest{Query: query, Rows: request.Rows, RowSources: request.RowSources, profile: viewer.Profile, fence: viewer.Fence + ":" + RestrictionFence(viewer.Restrictions), libraries: viewer.Libraries, evaluatedAt: at}
 	revision, err := s.acrossRevision(ar, pivot, titleAscending())
 	if err != nil {
 		return "", nil, "", err

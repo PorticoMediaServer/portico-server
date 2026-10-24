@@ -210,6 +210,9 @@ type AcrossRequest struct {
 	fence          string
 	libraries      []string
 	restriction    identity.ContentRestrictions
+	// evaluatedAt is the instant relative date windows are measured from; a
+	// cursor continuation reuses its first page's instant.
+	evaluatedAt time.Time
 }
 
 // acrossKinds is the pivot's kinds as compact kind numbers.
@@ -262,7 +265,7 @@ func (s *Service) BrowseAcross(viewer Viewer, request AcrossRequest) (BrowseResu
 		}
 		out.Entries = entries
 	}
-	out.PageInfo.DurationMs, out.PageInfo.DurationIsLowerBound, err = s.browseQueryDuration(viewer, FacetRequest{Pivot: out.Pivot, Query: request.Query, Rows: request.Rows, RowSources: request.RowSources})
+	out.PageInfo.DurationMs, out.PageInfo.DurationIsLowerBound, err = s.browseQueryDuration(viewer, FacetRequest{Pivot: out.Pivot, Query: request.Query, Rows: request.Rows, RowSources: request.RowSources, evaluatedAt: out.evaluatedAt})
 	if err != nil {
 		return out, err
 	}
@@ -279,6 +282,13 @@ func (s *Service) acrossRevision(request AcrossRequest, pivot browsePivot, sorts
 	group, err := s.browseGroupFence(request.Query, request.Rows, request.RowSources)
 	if err != nil {
 		return "", err
+	}
+	if browseUsesRelative(request.Query) {
+		at := request.evaluatedAt
+		if at.IsZero() {
+			at = s.now()
+		}
+		group += "\x00relative:" + strconv.FormatInt(at.UnixNano(), 10)
 	}
 	digest := sha256.Sum256([]byte(fmt.Sprintf("across\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s", pivot.ID, request.fence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), state.String, group)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
@@ -315,6 +325,22 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	if request.Cursor != "" && request.Range != nil {
 		return out, nil, browseIssue("range", "a direct range cannot include a cursor")
 	}
+	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: limit}
+	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
+	now := s.now()
+	var decoded cursorValue
+	if request.Cursor != "" {
+		decoded, err = s.decodeRevisionCursor(request.Cursor, scope, ContentRevision{})
+		if err != nil {
+			return out, nil, err
+		}
+		if decoded.EvaluatedAt != 0 {
+			now = time.Unix(0, decoded.EvaluatedAt).UTC()
+		}
+		expires = decoded.Expires
+	}
+	request.evaluatedAt = now
+	out.evaluatedAt = now
 	revision, err := s.acrossRevision(request, pivot, sorts)
 	if err != nil {
 		return out, nil, err
@@ -341,7 +367,7 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		where += ` AND ` + acrossVideoLibraryPredicate
 	}
 	args := append([]any{idsJSON(request.libraries)}, kinds...)
-	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
+	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources, now: request.evaluatedAt}
 	clause, err := compiler.compile(withoutSelectedGenreAnchor(request.Query, anchor))
 	if err != nil {
 		return out, nil, err
@@ -356,21 +382,15 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	scoped := append(append([]any{}, memberArgs...), args...)
 
 	start, total, counted := 0, 0, false
-	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: limit}
-	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
 	if request.Cursor != "" {
 		// The revision fingerprint stands for every library's revisions at once.
-		cursor, err := s.decodeRevisionCursor(request.Cursor, scope, ContentRevision{})
-		if err != nil {
-			return out, nil, err
-		}
-		if cursor.Fingerprint != revision {
+		if decoded.Fingerprint != revision {
 			return out, nil, ErrStaleContinuation
 		}
-		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
+		if start, err = strconv.Atoi(decoded.Value); err != nil || start < 0 {
 			return out, nil, ErrCursor
 		}
-		expires, total, counted = cursor.Expires, cursor.Total, cursor.Total > 0
+		expires, total, counted = decoded.Expires, decoded.Total, decoded.Total > 0
 	}
 	if request.Range != nil {
 		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
@@ -421,7 +441,11 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		out.PageInfo.HasMore = start+len(selected) < total
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(selected) > 0 {
-		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: revision, Total: total, Expires: expires}, ContentRevision{})
+		next := cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: revision, Total: total, Expires: expires}
+		if browseUsesRelative(request.Query) {
+			next.EvaluatedAt = now.UnixNano()
+		}
+		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(next, ContentRevision{})
 		if err != nil {
 			return out, nil, err
 		}
@@ -488,7 +512,7 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 		where += ` AND ` + acrossVideoLibraryPredicate
 	}
 	args := append([]any{request.profile, idsJSON(request.libraries)}, kinds...)
-	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
+	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources, now: request.evaluatedAt}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -558,7 +582,11 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 	}
 	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound, out.PageInfo.HasMore = total, capped && more, more
 	if more && request.Range == nil && len(selected) > 0 {
-		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: out.PageInfo.Revision, Total: total, Expires: expires}, ContentRevision{})
+		next := cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: out.PageInfo.Revision, Total: total, Expires: expires}
+		if browseUsesRelative(request.Query) {
+			next.EvaluatedAt = request.evaluatedAt.UnixNano()
+		}
+		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(next, ContentRevision{})
 		if err != nil {
 			return out, nil, err
 		}
@@ -748,7 +776,8 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 		where += ` AND ` + acrossVideoLibraryPredicate
 	}
 	args := append([]any{idsJSON(viewer.Libraries)}, kinds...)
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
+	now := s.now()
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows, now: now}
 	clause, err := compiler.compile(withoutSelectedGenreAnchor(query.Query, anchor))
 	if err != nil {
 		return QueueSelection{}, err
@@ -783,7 +812,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
  LEFT JOIN catalog_songs song ON song.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=song.album_id LEFT JOIN catalog_book_files part ON part.entity_id=i.id
  ORDER BY m.ordinal,COALESCE(season.number,1),COALESCE(ep.number,0),COALESCE(album.year,0),COALESCE(album.sort_key,''),COALESCE(album.id,0),COALESCE(song.disc_number,part.disc_number,1),COALESCE(song.track_number,part.part_number,0),i.id`
 	bound := append(append(append(append([]any{}, memberArgs...), orderArgs...), args...), visibleArgs...)
-	revision, err := s.acrossRevision(AcrossRequest{Query: query.Query, Rows: rows, profile: viewer.Profile, fence: viewer.Fence, libraries: viewer.Libraries}, pivot, sorts)
+	revision, err := s.acrossRevision(AcrossRequest{Query: query.Query, Rows: rows, profile: viewer.Profile, fence: viewer.Fence, libraries: viewer.Libraries, evaluatedAt: now}, pivot, sorts)
 	if err != nil {
 		return QueueSelection{}, err
 	}

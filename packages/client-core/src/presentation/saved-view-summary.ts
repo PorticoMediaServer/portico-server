@@ -1,7 +1,7 @@
 import {BrowseQueryBuilder, type BrowseCapabilities, type BrowseFieldCapability, type BrowseNode} from '../browse.ts';
 import type {SavedDefinition} from '../personal-saved.ts';
 import type {I18n} from '../../../i18n/src/index.ts';
-import {activeRangePreset, appliedFilterLabel, browseNameId, browseValueLabel, orderToolbarPredicates, rangePresets, sortDirectionKind} from './browse-toolbar.ts';
+import {appliedFilterLabel, browseNameId, browseValueLabel, orderToolbarPredicates, sortDirectionKind} from './browse-toolbar.ts';
 
 export type SavedViewSummaryText = Pick<I18n, 't' | 'has' | 'locale'>;
 export type SavedViewSummary = Readonly<{line: string; conditions: string; suggestedName: string}>;
@@ -55,10 +55,16 @@ export function savedViewSummary(definition: SavedDefinition, capabilities: Brow
         const phrase = lengthWords(own, text);
         if (phrase) {words.push(phrase);own.forEach(value => consumed.add(value));continue;}
       }
+      if (node.operator === 'within-last-days') {
+        if (typeof node.value !== 'number' || !Number.isInteger(node.value) || node.value < 1 || node.value > 36500) return;
+        words.push(field.id === 'dateAdded'
+          ? text.t('savedView.summary.addedLastDays', {count: node.value})
+          : text.t('savedView.summary.lastDays', {field: label, count: node.value}));
+        continue;
+      }
       if (field.id === 'dateAdded') {
-        const preset = activeRangePreset(rangePresets(field, new Date()), own);
-        const count = preset && /^last-(7|30|90|365)$/.exec(preset)?.[1];
-        if (count) {words.push(text.t('savedView.summary.addedLastDays', {count: Number(count)}));own.forEach(value => consumed.add(value));continue;}
+        const count = absoluteDatePresetCount(own);
+        if (count) {words.push(text.t('savedView.summary.addedLastDays', {count}));own.forEach(value => consumed.add(value));continue;}
       }
       const decade = decadeValues(node);
       if (decade) {words.push(text.t('savedView.summary.decade', {values: list.format(decade.map(value => text.t('savedView.summary.decadeValue', {decade: String(value)})))}));continue;}
@@ -96,6 +102,16 @@ function valueWords(field: BrowseFieldCapability, value: unknown, text: SavedVie
     return text.has(key) ? text.t(key) : browseValueLabel(value);
   }
   return typeof value === 'boolean' ? text.t(value ? 'lib.yes' : 'lib.no') : String(value);
+}
+/** The interim absolute-date rule from §38 clarification 3: only today's 7, 30, 90
+ * or 365-day boundary claims "in the last N days"; any other frozen date reads as a date. */
+function absoluteDatePresetCount(nodes: readonly Condition[]): number | undefined {
+  const one = nodes[0];
+  if (nodes.length !== 1 || !one || one.operator !== 'at-least' || typeof one.value !== 'string') return;
+  const now = Date.now();
+  for (const count of [7, 30, 90, 365]) {
+    if (one.value === new Date(now - count * 86_400_000).toISOString().slice(0, 10)) return count;
+  }
 }
 function decadeValues(node: Condition): readonly number[] | undefined {
   const values = Array.isArray(node.value) ? node.value : [node.value];

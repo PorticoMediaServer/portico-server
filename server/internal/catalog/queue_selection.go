@@ -97,7 +97,8 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 		return QueueSelection{}, err
 	}
 	where, args := browseScopeSQL(query.LibraryID, pivot)
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
+	now := s.now()
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows, now: now}
 	clause, err := compiler.compile(node)
 	if err != nil {
 		return QueueSelection{}, err
@@ -115,7 +116,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 	args = append(orderArgs, args...)
 	visible, values := viewer.itemVisibilitySQL("i.id")
 	args = append(args, values...)
-	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: node, Rows: rows}, pivot, sorts)
+	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: node, Rows: rows, evaluatedAt: now}, pivot, sorts)
 	if err != nil {
 		return QueueSelection{}, err
 	}

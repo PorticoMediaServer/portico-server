@@ -64,6 +64,9 @@ type cursorValue struct {
 	Value           string      `json:"value"`
 	ID              string      `json:"id"`
 	Expires         int64       `json:"expires"`
+	// EvaluatedAt is a relative query's evaluation instant in Unix nanoseconds.
+	// Its later pages use it so paging is one snapshot while the clock moves.
+	EvaluatedAt int64 `json:"evaluatedAt,omitempty"`
 }
 type Category struct {
 	ID    string `json:"id"`

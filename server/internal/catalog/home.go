@@ -23,6 +23,9 @@ type HomeRequest struct {
 	LiveAvailable bool
 	OnNow         func(HomeRowPage) (HomeRow, error)
 	Now           time.Time
+	// evaluatedAt pins relative saved-view rows to one evaluation instant. A
+	// row cursor carries it so later pages see the snapshot its first page saw.
+	evaluatedAt time.Time
 	// Restrictions is applied to every row by homeSource; see restrictions.go.
 	Restrictions identity.ContentRestrictions
 	// visibleShows, when set, is a first test of a started show (w.show_id)

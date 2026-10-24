@@ -189,7 +189,8 @@ export type RangePreset = Readonly<{id: string; label: Readonly<{id: MessageId; 
 
 /**
  * A range as choices a person makes ("Under 90 min", "8 or higher", "In the last 30 days"), never
- * two number boxes. `now` dates the recency windows.
+ * two number boxes. A date preset is relative (`within-last-days`), so a saved view keeps meaning
+ * "the last N days"; `now` remains the caller's clock for presets that need one.
  */
 export function rangePresets(field: BrowseFieldCapability, now: Date): readonly RangePreset[] {
   const id = field.id;
@@ -210,10 +211,12 @@ export function rangePresets(field: BrowseFieldCapability, now: Date): readonly 
   if (id === 'criticRating') return [90, 80, 70, 60].map(value => ({id: `critic-${value}`, label: {id: 'filter.preset.percent' as MessageId, values: {value}}, predicates: [atLeast(value)]}));
   if (field.type === 'number') return [9, 8, 7, 6, 5].map(value => ({id: `rating-${value}`, label: {id: 'filter.preset.atLeast' as MessageId, values: {value}}, predicates: [atLeast(value)]}));
   if (field.type === 'date') {
-    const since = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
+    // A saved view must keep meaning "the last N days": the server evaluates
+    // the relative window at read time, so the preset stores no date.
+    const lastDays = (days: number): ToolbarPredicate => ({field: id, operator: 'within-last-days', value: days});
     return [
-      ...[7, 30, 90].map(days => ({id: `last-${days}`, label: {id: 'filter.preset.lastDays' as MessageId, values: {count: days}}, predicates: [atLeast(since(days))]})),
-      {id: 'last-365', label: {id: 'filter.preset.lastYear'}, predicates: [atLeast(since(365))]},
+      ...[7, 30, 90].map(days => ({id: `last-${days}`, label: {id: 'filter.preset.lastDays' as MessageId, values: {count: days}}, predicates: [lastDays(days)]})),
+      {id: 'last-365', label: {id: 'filter.preset.lastYear'}, predicates: [lastDays(365)]},
     ];
   }
   return [];
@@ -240,6 +243,7 @@ export function appliedFilterLabel(p: ToolbarPredicate, fieldName: (fieldId: str
     case 'is-present': return t('filter.applied.has', {field: field.toLowerCase()});
     case 'is-missing': return t('filter.applied.missing', {field: field.toLowerCase()});
     case 'not-equals': case 'not-in': return t('filter.applied.not', {field, value});
+    case 'within-last-days': return Number(p.value) === 365 ? t('filter.preset.lastYear') : t('filter.preset.lastDays', {count: Number(p.value)});
     case 'at-least': case 'greater-than': return `${field} ≥ ${value}`;
     case 'at-most': case 'less-than': return `${field} ≤ ${value}`;
     case 'between': return t('filter.applied.is', {field, value: Array.isArray(p.value) ? `${one(p.value[0])}–${one(p.value[1])}` : value});

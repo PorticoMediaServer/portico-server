@@ -112,7 +112,8 @@ func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Vie
 			return out, jobInvalid("invalid preview filter")
 		}
 	}
-	compiler := &browseCompiler{profile: v.Profile, restrictions: v.EffectiveRestrictions(), count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
+	now := s.now()
+	compiler := &browseCompiler{profile: v.Profile, restrictions: v.EffectiveRestrictions(), count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), now: now}
 	for _, name := range entityKindMembers(pivot) {
 		if kind, e := compactcatalog.ParseKind(name); e == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))
@@ -127,7 +128,7 @@ func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Vie
 	out.SQL = `SELECT e.entity_id AS id FROM catalog_browse_rows e JOIN catalog_libraries l ON l.id=e.library_id WHERE ` + where + ` AND ` + filter + ` AND ` + visible
 	out.Args = append(args, compiler.args...)
 	out.Args = append(out.Args, bound...)
-	revision, err := s.browseRevision(BrowseRequest{Library: q.LibraryID, Profile: v.Profile, ViewerFence: v.Fence, Restrictions: v.EffectiveRestrictions(), Query: node}, pivot, sorts)
+	revision, err := s.browseRevision(BrowseRequest{Library: q.LibraryID, Profile: v.Profile, ViewerFence: v.Fence, Restrictions: v.EffectiveRestrictions(), Query: node, evaluatedAt: now}, pivot, sorts)
 	if err != nil {
 		return out, err
 	}

@@ -44,26 +44,38 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	// Groupings have no letter index; a carried letter jump leaves the
 	// ordinary page position unchanged and is absent from Applied.
 	request.Seek = nil
-	revision, err := s.browseRevision(request, pivot, sorts)
-	if err != nil {
-		return out, err
-	}
-	out.PageInfo.Revision = revision
 	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query), Limit: request.Limit}
-	key, id := "", ""
-	start := 0
 	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
+	now := s.now()
+	var decoded cursorValue
 	if request.Cursor != "" {
 		c, err := s.decodeCursor(request.Cursor, scope)
 		if err != nil {
 			return out, err
 		}
-		if len(c.Keys) != 1 {
+		if c.EvaluatedAt != 0 {
+			now = time.Unix(0, c.EvaluatedAt).UTC()
+		}
+		decoded, expires = c, c.Expires
+	}
+	request.evaluatedAt = now
+	out.evaluatedAt = now
+	revision, err := s.browseRevision(request, pivot, sorts)
+	if err != nil {
+		return out, err
+	}
+	out.PageInfo.Revision = revision
+	key, id := "", ""
+	start := 0
+	if request.Cursor != "" {
+		if browseUsesRelative(request.Query) && decoded.Fingerprint != "" && decoded.Fingerprint != revision {
+			return out, ErrStaleContinuation
+		}
+		if len(decoded.Keys) != 1 {
 			return out, ErrCursor
 		}
-		key, id = c.Keys[0], c.ID
-		expires = c.Expires
-		start, err = strconv.Atoi(c.Value)
+		key, id = decoded.Keys[0], decoded.ID
+		start, err = strconv.Atoi(decoded.Value)
 		if err != nil || start < 0 {
 			return out, ErrCursor
 		}
@@ -85,7 +97,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	pageCounts := false
 	var countGroups func(values []string) (map[string]int, error)
 	if request.Query != nil || request.Restrictions.Active() {
-		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, rows: request.Rows}
+		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, rows: request.Rows, now: now}
 		// The grouping's titles are the library's facet holders: a value-side
 		// candidate list is bounded by their kinds.
 		if lib, libErr := s.library(request.Library); libErr == nil {
@@ -291,7 +303,12 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(rows) > 0 {
 		last := rows[len(rows)-1]
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(rows)), ID: last.value, Keys: []string{last.key}, Total: total, Expires: expires})
+		next := cursorValue{Scope: scope, Value: strconv.Itoa(start + len(rows)), ID: last.value, Keys: []string{last.key}, Total: total, Expires: expires}
+		if browseUsesRelative(request.Query) {
+			next.Fingerprint = revision
+			next.EvaluatedAt = now.UnixNano()
+		}
+		out.PageInfo.NextCursor, err = s.encodeCursor(next)
 	}
 	return out, err
 }

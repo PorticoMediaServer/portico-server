@@ -34,8 +34,14 @@ func (s *Service) homeViewSpecs(r HomeRequest) []homeRowSpec {
 		if err != nil {
 			continue
 		}
+		// A relative view is evaluated when the row is read, so its client
+		// cache must not outlive the freshness window that evaluation promises.
+		ttl := 60
+		if browseUsesRelative(view.Definition.Query) {
+			ttl = 30
+		}
 		out = append(out, homeRowSpec{ID: id, Title: view.Name, Kind: "saved_view", ArtworkShape: homeArtwork(lib.Kind), LibraryID: view.Definition.LibraryID,
-			SeeAll: &HomeSeeAll{Type: "saved_view", ResourceID: view.ID}, Priority: 90 + i, CacheTTL: 60, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available", Direction: "asc"})
+			SeeAll: &HomeSeeAll{Type: "saved_view", ResourceID: view.ID}, Priority: 90 + i, CacheTTL: ttl, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available", Direction: "asc"})
 	}
 	return out
 }
@@ -67,8 +73,12 @@ func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, e
 	if err != nil {
 		return homeSource{}, err
 	}
+	at := r.evaluatedAt
+	if at.IsZero() {
+		at = s.now()
+	}
 	where, args := browseScopeSQL(d.LibraryID, pivot)
-	compiler := &browseCompiler{profile: r.Profile, restrictions: r.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
+	compiler := &browseCompiler{profile: r.Profile, restrictions: r.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), now: at}
 	for _, member := range entityKindMembers(pivot) {
 		kind, err := compactcatalog.ParseKind(member)
 		if err != nil {
@@ -105,12 +115,16 @@ func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, e
 			return homeSource{}, err
 		}
 	}
-	request := BrowseRequest{Library: d.LibraryID, Profile: r.Profile, ViewerFence: r.ViewerFence, Pivot: d.Pivot, Query: d.Query, Restrictions: r.Restrictions}
+	request := BrowseRequest{Library: d.LibraryID, Profile: r.Profile, ViewerFence: r.ViewerFence, Pivot: d.Pivot, Query: d.Query, Restrictions: r.Restrictions, evaluatedAt: at}
 	revision, err := s.browseRevision(request, pivot, sorts)
 	if err != nil {
 		return homeSource{}, err
 	}
-	return homeSource{base: `SELECT pid(ce.public_id) AS id,printf('%020d',ROW_NUMBER() OVER(ORDER BY ` + order + `)) AS ord FROM ` + from + ` WHERE ` + where, args: append(orderArgs, args...), selfRestricted: true, fingerprint: fmt.Sprintf("%d:%s", view.Revision, revision)}, nil
+	relative := int64(0)
+	if browseUsesRelative(d.Query) {
+		relative = at.UnixNano()
+	}
+	return homeSource{base: `SELECT pid(ce.public_id) AS id,printf('%020d',ROW_NUMBER() OVER(ORDER BY ` + order + `)) AS ord FROM ` + from + ` WHERE ` + where, args: append(orderArgs, args...), selfRestricted: true, fingerprint: fmt.Sprintf("%d:%s", view.Revision, revision), evaluatedAt: relative}, nil
 }
 
 func homeViewActor(profile string) (ResourceActor, bool) {

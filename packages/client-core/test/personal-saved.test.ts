@@ -66,6 +66,16 @@ test('saved query needs-review does not execute or normalize an unsupported defi
 test('pin uses its separate revision and remains available to a resource viewer',async()=>{
  let body:any;const s=setup(async(p,m,b)=>{if(m==='GET')return content(resource({role:'viewer',actions:['pin'],pinRevision:3}));assert.equal(p,'/v1/saved-pins/collection/collection');body=b;return {serverId:'server',viewerFence:'fence',operationId:b.operationId,resourceId:'collection',revision:1,pinRevision:4,pinned:true,deleted:false};});await s.select({view:'resource',resourceId:'collection'});assert(await s.mutate({action:'pin',pinned:true}));assert.equal(body.expectedRevision,3);assert.equal(body.pinned,true);s.dispose();
 });
+test('a saved view keeps the relative date operator verbatim through capture and reopen',async()=>{
+ const definition={libraryId:'library',pivot:'movies',query:{all:[{field:'dateAdded',operator:'within-last-days',value:30}]},sort:[{field:'added',direction:'desc'}],presentation:'grid'};
+ let written:any;
+ const s=setup(async(p,m,b)=>{if(m==='GET')return p.includes('/content')?content(resource({id:'query',kind:'view',definition,actions:['pin','update','delete']})):directory([resource({id:'query',kind:'view',definition})]);written=b;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'query',revision:2,deleted:false}};});
+ await s.select({view:'views'});
+ assert.deepEqual(s.getSnapshot().resources[0]?.definition,definition);
+ await s.mutate({action:'create',kind:'view',name:'New albums',definition:definition as never});
+ assert.deepEqual(written.definition,definition);
+ s.dispose();
+});
 test('scope navigation cancels stalled operation-ID acquisition without issuing a mutation',async()=>{
  const id=deferred();let writes=0;const s=new PersonalSavedService({request:async<T>(_p,m)=>{if(m!=='GET')writes++;return directory() as T;}},scope,()=>id.promise);await s.select({view:'collections'});const pending=s.mutate({action:'create',kind:'collection',name:'Name'});await s.select({view:'views'});assert.equal(await pending,false);id.resolve('00000000-0000-4000-8000-000000000001');await tick();assert.equal(writes,0);assert.equal(s.getSnapshot().pending,false);s.dispose();
 });

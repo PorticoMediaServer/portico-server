@@ -188,6 +188,9 @@ type homeSource struct {
 	// restriction itself, so the generic item wrap must not run again.
 	selfRestricted bool
 	fingerprint    string
+	// evaluatedAt is a relative saved-view row's evaluation instant as Unix
+	// nanoseconds; zero on every absolute row.
+	evaluatedAt int64
 	// candidates is an engine source's immutable ranking within this request.
 	// Recommended suppresses Trending's preview using this same scored list.
 	candidates []recCandidate
@@ -450,6 +453,9 @@ type homeCursor struct {
 	Catalog     int64  `json:"catalog"`
 	Revision    int64  `json:"revision"`
 	Expires     int64  `json:"expires"`
+	// EvaluatedAt is a relative saved-view row's evaluation instant in Unix
+	// nanoseconds, carried to every later page of that row.
+	EvaluatedAt int64 `json:"evaluatedAt,omitempty"`
 }
 
 func (s *Service) encodeHomeCursor(value homeCursor) (string, error) {
@@ -466,7 +472,10 @@ func (s *Service) encodeHomeCursor(value homeCursor) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
-func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision ContentRevision) (homeCursor, error) {
+// readHomeCursor verifies a row cursor's signature and reads its payload. It
+// deliberately validates no scope: a continuation's evaluation instant has to
+// be known before the row source it will be checked against is rebuilt.
+func (s *Service) readHomeCursor(raw string) (homeCursor, error) {
 	var out homeCursor
 	if len(raw) > 4096 {
 		return out, ErrCursor
@@ -491,6 +500,14 @@ func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision Con
 	mac.Write(data)
 	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, &out) != nil {
 		return out, ErrCursor
+	}
+	return out, nil
+}
+
+func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision ContentRevision) (homeCursor, error) {
+	out, e := s.readHomeCursor(raw)
+	if e != nil {
+		return out, e
 	}
 	if out.Row != expected.Row || out.Profile != expected.Profile || out.Viewer != expected.Viewer || out.Direction != expected.Direction || out.Limit != expected.Limit {
 		return out, ErrCursor
@@ -550,7 +567,7 @@ func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage,
 			return nil, 0, 0, "", "", e
 		}
 	}
-	base := homeCursor{Fingerprint: src.fingerprint, Row: spec.ID, Profile: profile, Viewer: viewer, Direction: spec.Direction, Limit: limit, Catalog: revision.Catalog, Revision: revision.Viewer}
+	base := homeCursor{Fingerprint: src.fingerprint, Row: spec.ID, Profile: profile, Viewer: viewer, Direction: spec.Direction, Limit: limit, Catalog: revision.Catalog, Revision: revision.Viewer, EvaluatedAt: src.evaluatedAt}
 	if page.Cursor != "" {
 		if page.Start != 0 || page.AnchorID != "" {
 			return nil, 0, 0, "", "", ErrCursor
@@ -1073,6 +1090,14 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	r = r.scoped()
 	if err := s.prepareViewer(r.Viewer); err != nil {
 		return HomeRow{}, err
+	}
+	// A row continuation keeps the instant its first page evaluated a relative
+	// saved-view window at; the row source is rebuilt against that instant so
+	// its fingerprint and membership are the same snapshot.
+	if page.Cursor != "" {
+		if cursor, err := s.readHomeCursor(page.Cursor); err == nil && cursor.EvaluatedAt != 0 {
+			r.evaluatedAt = time.Unix(0, cursor.EvaluatedAt).UTC()
+		}
 	}
 
 	r.Now = s.recommendationNow(r.Now)

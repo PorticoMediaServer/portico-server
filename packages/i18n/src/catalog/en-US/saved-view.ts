@@ -10,6 +10,7 @@ export const savedViewSummaryMessages = {
   'savedView.summary.atLeast': '{field} {value} and up',
   'savedView.summary.rating': 'Rating {value} and up',
   'savedView.summary.addedLastDays': 'Added in the last {count} days',
+  'savedView.summary.lastDays': '{field} in the last {count} days',
   'savedView.summary.alphaAscending': '{field} A to Z',
   'savedView.summary.alphaDescending': '{field} Z to A',
   'savedView.summary.lastPlayed': 'Last played first',

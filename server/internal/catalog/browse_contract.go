@@ -75,7 +75,10 @@ func stringOperators(set bool) []string {
 }
 
 var numberOperators = []string{"equals", "not-equals", "less-than", "at-most", "greater-than", "at-least", "between", "in", "not-in", "is-present", "is-missing"}
-var dateOperators = []string{"equals", "not-equals", "less-than", "at-most", "greater-than", "at-least", "between", "is-present", "is-missing"}
+
+// within-last-days is the relative recency form: its value is a whole number
+// of days, and the window is evaluated against the service clock at read time.
+var dateOperators = []string{"equals", "not-equals", "less-than", "at-most", "greater-than", "at-least", "between", "within-last-days", "is-present", "is-missing"}
 var enumOperators = []string{"equals", "not-equals", "in", "not-in"}
 
 const (

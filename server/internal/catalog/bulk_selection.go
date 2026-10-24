@@ -102,7 +102,8 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 			return "", nil, e
 		}
 		scope, values := browseScopeSQL(library, pivot)
-		c := &browseCompiler{profile: v.Profile, restrictions: v.EffectiveRestrictions()}
+		now := s.now()
+		c := &browseCompiler{profile: v.Profile, restrictions: v.EffectiveRestrictions(), now: now}
 		filter, e := c.compile(node)
 		if e != nil {
 			return "", nil, e
@@ -114,7 +115,7 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 		}
 		args = append(args, values...)
 		args = append(args, c.args...)
-		revision, e = s.browseRevision(BrowseRequest{Library: library, Profile: v.Profile, ViewerFence: v.Fence, Query: node}, pivot, sorts)
+		revision, e = s.browseRevision(BrowseRequest{Library: library, Profile: v.Profile, ViewerFence: v.Fence, Query: node, evaluatedAt: now}, pivot, sorts)
 		if e != nil {
 			return "", nil, e
 		}

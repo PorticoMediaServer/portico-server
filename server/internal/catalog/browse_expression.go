@@ -177,7 +177,50 @@ func parseBrowsePredicate(object map[string]any, path string, clauses *int) (*Br
 	return &BrowseNode{Field: id, Operator: operator, Value: value}, nil
 }
 
+// Relative recency windows carry a whole number of days, never a date.
+const (
+	browseRelativeDaysMinimum = 1
+	browseRelativeDaysMaximum = 36500
+)
+
+// browseRelativeDays reads a within-last-days operand: an integer of 1 to 36500
+// days, accepted as the decoder's json.Number and as the float64 a stored saved
+// view's definition unmarshals to.
+func browseRelativeDays(value any) (int, bool) {
+	var days int64
+	switch typed := value.(type) {
+	case int:
+		days = int64(typed)
+	case int64:
+		days = typed
+	case float64:
+		if math.Trunc(typed) != typed || typed < -1<<31 || typed > 1<<31-1 {
+			return 0, false
+		}
+		days = int64(typed)
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err != nil {
+			return 0, false
+		}
+		days = parsed
+	default:
+		return 0, false
+	}
+	if int64(int(days)) != days {
+		return 0, false
+	}
+	return int(days), true
+}
+
 func validateBrowseValue(field browseField, operator string, value any, path string) (any, error) {
+	if operator == "within-last-days" {
+		days, ok := browseRelativeDays(value)
+		if !ok || days < browseRelativeDaysMinimum || days > browseRelativeDaysMaximum {
+			return nil, browseIssue(path, "must be a whole number of days between 1 and 36500")
+		}
+		return days, nil
+	}
 	if operator == "is-present" || operator == "is-missing" {
 		if value != nil {
 			return nil, browseIssue(path, "must be null for a presence operator")
@@ -301,7 +344,11 @@ type browseCompiler struct {
 	restrictions identity.ContentRestrictions
 	profile      string
 	args         []any
-	groupSearch  bool
+	// now is the evaluation instant a relative date condition is measured
+	// from. Service paths set it from the catalogue clock; a compiler used
+	// outside a Service falls back to the system clock.
+	now         time.Time
+	groupSearch bool
 	// count, when set, lets the compiler ask how many member items a value
 	// matches before choosing to select them from the value side.
 	count func(query string, args ...any) (int, error)
@@ -331,6 +378,37 @@ const drivenMaximum = 20000
 // lists, where the per-title test fills a page at once; reading
 // drivenMaximum rows to learn that would cost every such list.
 const presenceProbe = 2000
+
+// instant is the instant a relative condition is measured from.
+func (c *browseCompiler) instant() time.Time {
+	if !c.now.IsZero() {
+		return c.now
+	}
+	return time.Now().UTC()
+}
+
+// browseUsesRelative reports whether a tree contains a relative recency window.
+// Revisions, cache keys and cursors fold in the evaluation instant only for
+// such a query, so absolute queries keep their existing fences.
+func browseUsesRelative(node *BrowseNode) bool {
+	if node == nil {
+		return false
+	}
+	if node.Field != "" && node.Operator == "within-last-days" {
+		return true
+	}
+	for i := range node.All {
+		if browseUsesRelative(&node.All[i]) {
+			return true
+		}
+	}
+	for i := range node.Any {
+		if browseUsesRelative(&node.Any[i]) {
+			return true
+		}
+	}
+	return browseUsesRelative(node.Not)
+}
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 	previous := c.groupSearch
@@ -488,27 +566,45 @@ var browseDateFraction = regexp.MustCompile(`:[0-9]{2}\.([0-9]+)`)
 // number of digits or none. Text order is time order for all of them except
 // the timestamps of the bound's own second whose fraction stops short of the
 // bound's ("…:11Z" and "…:11.5Z" against "…:11.501"): they sort after it and
-// are earlier, so they are named one by one in short.
+// are earlier, so they are named one by one in short. same names the writings
+// of the bound's own instant that sort after its text (a trailing Z or zero
+// fraction), which an inclusive upper bound must still admit.
 type browseDateBound struct {
 	text  string
 	short []any
+	same  []any
+}
+
+// sameInstantTexts is every text writing of one whole-second timestamp that
+// sorts after its plain form: a Z suffix, and a zero fraction of 1 to 9 digits.
+func sameInstantTexts(timestamp string) []any {
+	out := []any{timestamp, timestamp + "Z"}
+	for zeros := 1; zeros <= 9; zeros++ {
+		out = append(out, timestamp+"."+strings.Repeat("0", zeros)+"Z")
+	}
+	return out
 }
 
 func newBrowseDateBound(at time.Time) browseDateBound {
 	at = at.UTC()
 	second := at.Truncate(time.Second)
 	if at.Equal(second) {
+		timestamp := second.Format("2006-01-02T15:04:05")
 		// A stored date is its day's midnight.
 		if h, m, s := at.Clock(); h == 0 && m == 0 && s == 0 {
-			return browseDateBound{text: at.Format("2006-01-02")}
+			return browseDateBound{text: at.Format("2006-01-02"), same: sameInstantTexts(timestamp)}
 		}
-		return browseDateBound{text: at.Format("2006-01-02T15:04:05")}
+		return browseDateBound{text: timestamp, same: sameInstantTexts(timestamp)}
 	}
 	base := second.Format("2006-01-02T15:04:05")
 	fraction := strings.TrimRight(fmt.Sprintf("%09d", at.Nanosecond()), "0")
 	bound := browseDateBound{text: base + "." + fraction, short: []any{base + "Z"}}
 	for digits := 1; digits < len(fraction); digits++ {
 		bound.short = append(bound.short, base+"."+fraction[:digits]+"Z")
+	}
+	bound.same = append(bound.same, bound.text+"Z")
+	for zeros := 1; zeros <= 9-len(fraction); zeros++ {
+		bound.same = append(bound.same, bound.text+strings.Repeat("0", zeros)+"Z")
 	}
 	return bound
 }
@@ -533,6 +629,19 @@ func (c *browseCompiler) from(target string, bound browseDateBound) string {
 	return "(" + target + ">=? AND " + target + " NOT IN (" + placeholders(len(bound.short)) + "))"
 }
 
+// until renders "the stored date is this bound or earlier": the inclusive
+// upper end a relative window needs. Its earlier writings that sort after the
+// text (short) and its own instant's later-sorting writings (same) both match.
+func (c *browseCompiler) until(target string, bound browseDateBound) string {
+	c.args = append(c.args, bound.text)
+	extra := append(append([]any{}, bound.short...), bound.same...)
+	if len(extra) == 0 {
+		return target + "<=?"
+	}
+	c.args = append(c.args, extra...)
+	return "(" + target + "<=? OR " + target + " IN (" + placeholders(len(extra)) + "))"
+}
+
 // dateComparison renders an operator over a date field: equality is falling in
 // the operand's period, and an inclusive bound includes all of it.
 func (c *browseCompiler) dateComparison(expression, operator string, value any) (string, bool, error) {
@@ -548,6 +657,15 @@ func (c *browseCompiler) dateComparison(expression, operator string, value any) 
 			return "", true, browseIssue("query.value", "must use YYYY-MM-DD or RFC 3339")
 		}
 		return "(" + c.from(target, newBrowseDateBound(first)) + " AND " + c.before(target, newBrowseDateBound(last)) + ")", true, nil
+	}
+	if operator == "within-last-days" {
+		days, ok := browseRelativeDays(value)
+		if !ok || days < browseRelativeDaysMinimum || days > browseRelativeDaysMaximum {
+			return "", true, browseIssue("query.value", "must be a whole number of days between 1 and 36500")
+		}
+		now := c.instant()
+		lower := now.Add(-time.Duration(days) * 24 * time.Hour)
+		return "(" + c.from(target, newBrowseDateBound(lower)) + " AND " + c.until(target, newBrowseDateBound(now)) + ")", true, nil
 	}
 	start, end, ok := browseDatePeriod(value)
 	if !ok {
@@ -990,8 +1108,10 @@ func (BrowseNode) JSONSchema() map[string]any {
 	child := map[string]any{"type": "object", "required": []string{}, "properties": map[string]any{}, "additionalProperties": map[string]any{}}
 	group := map[string]any{"type": "array", "minItems": 1, "maxItems": BrowseMaximumClauses, "items": child}
 	return map[string]any{"type": "object", "required": []string{}, "additionalProperties": false, "properties": map[string]any{
-		"field": map[string]any{"type": "string"}, "operator": map[string]any{"type": "string"}, "value": map[string]any{},
-		"all": group, "any": group, "not": child,
+		"field":    map[string]any{"type": "string"},
+		"operator": map[string]any{"type": "string", "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match."},
+		"value":    map[string]any{"description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."},
+		"all":      group, "any": group, "not": child,
 	}, "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds."}
 }
 

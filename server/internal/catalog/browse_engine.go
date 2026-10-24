@@ -66,6 +66,9 @@ type BrowseResult struct {
 	PageInfo       BrowsePageInfo         `json:"pageInfo"`
 	PositionIndex  []BrowsePositionAnchor `json:"positionIndex"`
 	DisplayTargets []HomeDisplayTarget    `json:"displayTargets,omitempty"`
+	// evaluatedAt is the instant this result was evaluated at, so a count or
+	// duration read after it is measured against the same window.
+	evaluatedAt time.Time
 }
 
 // BrowseRequest is the whole of the POST body plus the authorized scope the
@@ -96,6 +99,10 @@ type BrowseRequest struct {
 	// scope overrides the cursor scope so the legacy GET surface keeps its
 	// existing continuation fencing.
 	scope *cursorScope
+	// evaluatedAt is the instant relative date windows are measured from. A
+	// first read sets it from the clock; a cursor continuation reuses the
+	// instant its first page recorded.
+	evaluatedAt time.Time
 }
 
 func canonicalSort(selection []BrowseSortSelection) string {
@@ -337,6 +344,16 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 		}
 		extra += "\x00" + fence
 	}
+	if browseUsesRelative(request.Query) {
+		// A relative window means a different list at a different instant.
+		// Folding the instant into the revision keeps every cache keyed by it
+		// fresh and lets a cursor's pages keep their first page's instant.
+		at := request.evaluatedAt
+		if at.IsZero() {
+			at = s.now()
+		}
+		extra += "\x00relative:" + strconv.FormatInt(at.UnixNano(), 10)
+	}
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
 }
@@ -398,7 +415,7 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		out.Entries = entries
 	}
 	if out.PageInfo.Revision != "" {
-		out.PageInfo.DurationMs, out.PageInfo.DurationIsLowerBound, err = s.browseQueryDuration(viewer, FacetRequest{Library: request.Library, Pivot: out.Pivot, Query: request.Query, Rows: request.Rows, RowSources: request.RowSources})
+		out.PageInfo.DurationMs, out.PageInfo.DurationIsLowerBound, err = s.browseQueryDuration(viewer, FacetRequest{Library: request.Library, Pivot: out.Pivot, Query: request.Query, Rows: request.Rows, RowSources: request.RowSources, evaluatedAt: out.evaluatedAt})
 		if err != nil {
 			return out, err
 		}
@@ -451,7 +468,28 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows, rowSources: request.RowSources}
+	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Search: seekPrefix(request.Seek), Limit: request.Limit}
+	if request.scope != nil {
+		scope = *request.scope
+	}
+	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
+	// A continuation keeps its first page's evaluation instant; a fresh read
+	// takes the catalogue clock's now.
+	now := s.now()
+	var decoded cursorValue
+	if request.Cursor != "" {
+		decoded, err = s.decodeCursor(request.Cursor, scope)
+		if err != nil {
+			return out, nil, err
+		}
+		if decoded.EvaluatedAt != 0 {
+			now = time.Unix(0, decoded.EvaluatedAt).UTC()
+		}
+		expires = decoded.Expires
+	}
+	request.evaluatedAt = now
+	out.evaluatedAt = now
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows, rowSources: request.RowSources, now: now}
 	for _, member := range entityKindMembers(pivot) {
 		if kind, err := compactcatalog.ParseKind(member); err == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))
@@ -523,28 +561,18 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	start := 0
-	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Search: seekPrefix(request.Seek), Limit: request.Limit}
-	if request.scope != nil {
-		scope = *request.scope
-	}
-	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
 	seekKeys := []string{}
 	seekAnchor := ""
 	if request.Cursor != "" {
-		cursor, err := s.decodeCursor(request.Cursor, scope)
-		if err != nil {
-			return out, nil, err
-		}
-		if cursor.Fingerprint != revision {
+		if decoded.Fingerprint != revision {
 			return out, nil, ErrStaleContinuation
 		}
-		expires = cursor.Expires
-		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
+		if start, err = strconv.Atoi(decoded.Value); err != nil || start < 0 {
 			return out, nil, ErrCursor
 		}
-		seekKeys, seekAnchor = cursor.Keys, cursor.ID
-		if !counted && cursor.Total > 0 {
-			total, counted = cursor.Total, true
+		seekKeys, seekAnchor = decoded.Keys, decoded.ID
+		if !counted && decoded.Total > 0 {
+			total, counted = decoded.Total, true
 		}
 	}
 	if !counted {
@@ -697,7 +725,11 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires})
+		next := cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires}
+		if browseUsesRelative(request.Query) {
+			next.EvaluatedAt = now.UnixNano()
+		}
+		out.PageInfo.NextCursor, err = s.encodeCursor(next)
 		if err != nil {
 			return out, nil, err
 		}
