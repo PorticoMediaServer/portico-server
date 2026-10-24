@@ -19493,12 +19493,90 @@ export const schemas = {
   "DeleteStorageSourcesWebdavIdResponse": {
     "properties": {
       "receipt": {
+        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
           },
           "operationId": {
             "type": "string"
+          },
+          "readSettings": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "values": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesPerSecond": {
+                    "anyOf": [
+                      {
+                        "const": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maximum": 1000000000,
+                        "minimum": 1000000,
+                        "multipleOf": 1000000,
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "connections": {
+                    "maximum": 32,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestsPerSecond": {
+                    "maximum": 50,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scanDepth": {
+                    "enum": [
+                      "file_list_only",
+                      "basic",
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  "wholeFileReads": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "scanDepth",
+                  "wholeFileReads",
+                  "connections",
+                  "requestsPerSecond",
+                  "bytesPerSecond"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "revision",
+              "saved",
+              "values"
+            ],
+            "type": "object"
           },
           "removed": {
             "type": "boolean"
@@ -145874,12 +145952,90 @@ export const schemas = {
   "GetStorageSourceOperationsIdResponse": {
     "properties": {
       "receipt": {
+        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
           },
           "operationId": {
             "type": "string"
+          },
+          "readSettings": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "values": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesPerSecond": {
+                    "anyOf": [
+                      {
+                        "const": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maximum": 1000000000,
+                        "minimum": 1000000,
+                        "multipleOf": 1000000,
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "connections": {
+                    "maximum": 32,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestsPerSecond": {
+                    "maximum": 50,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scanDepth": {
+                    "enum": [
+                      "file_list_only",
+                      "basic",
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  "wholeFileReads": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "scanDepth",
+                  "wholeFileReads",
+                  "connections",
+                  "requestsPerSecond",
+                  "bytesPerSecond"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "revision",
+              "saved",
+              "values"
+            ],
+            "type": "object"
           },
           "removed": {
             "type": "boolean"
@@ -145972,6 +146128,112 @@ export const schemas = {
     "required": [
       "scope",
       "receipt"
+    ],
+    "type": "object"
+  },
+  "GetStorageSourceReadProfileRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceReadProfileResponse": {
+    "properties": {
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "settings": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "saved": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": false,
+            "properties": {
+              "bytesPerSecond": {
+                "anyOf": [
+                  {
+                    "const": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maximum": 1000000000,
+                    "minimum": 1000000,
+                    "multipleOf": 1000000,
+                    "type": "integer"
+                  }
+                ]
+              },
+              "connections": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "requestsPerSecond": {
+                "maximum": 50,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "scanDepth": {
+                "enum": [
+                  "file_list_only",
+                  "basic",
+                  "complete"
+                ],
+                "type": "string"
+              },
+              "wholeFileReads": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "scanDepth",
+              "wholeFileReads",
+              "connections",
+              "requestsPerSecond",
+              "bytesPerSecond"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation",
+          "revision",
+          "saved",
+          "values"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "settings"
     ],
     "type": "object"
   },
@@ -180512,12 +180774,90 @@ export const schemas = {
   "PostStorageSourcesWebdavResponse": {
     "properties": {
       "receipt": {
+        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
           },
           "operationId": {
             "type": "string"
+          },
+          "readSettings": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "values": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesPerSecond": {
+                    "anyOf": [
+                      {
+                        "const": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maximum": 1000000000,
+                        "minimum": 1000000,
+                        "multipleOf": 1000000,
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "connections": {
+                    "maximum": 32,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestsPerSecond": {
+                    "maximum": 50,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scanDepth": {
+                    "enum": [
+                      "file_list_only",
+                      "basic",
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  "wholeFileReads": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "scanDepth",
+                  "wholeFileReads",
+                  "connections",
+                  "requestsPerSecond",
+                  "bytesPerSecond"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "revision",
+              "saved",
+              "values"
+            ],
+            "type": "object"
           },
           "removed": {
             "type": "boolean"
@@ -191801,6 +192141,261 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutStorageSourceReadProfileRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedGeneration": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "operationId": {
+        "pattern": "^([0-9]{13})-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+        "type": "string"
+      },
+      "values": {
+        "additionalProperties": false,
+        "properties": {
+          "bytesPerSecond": {
+            "anyOf": [
+              {
+                "const": 0,
+                "type": "integer"
+              },
+              {
+                "maximum": 1000000000,
+                "minimum": 1000000,
+                "multipleOf": 1000000,
+                "type": "integer"
+              }
+            ]
+          },
+          "connections": {
+            "maximum": 32,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "requestsPerSecond": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scanDepth": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete"
+            ],
+            "type": "string"
+          },
+          "wholeFileReads": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scanDepth",
+          "wholeFileReads",
+          "connections",
+          "requestsPerSecond",
+          "bytesPerSecond"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedGeneration",
+      "expectedRevision",
+      "values"
+    ],
+    "type": "object"
+  },
+  "PutStorageSourceReadProfileResponse": {
+    "properties": {
+      "receipt": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "readSettings": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "values": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesPerSecond": {
+                    "anyOf": [
+                      {
+                        "const": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maximum": 1000000000,
+                        "minimum": 1000000,
+                        "multipleOf": 1000000,
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "connections": {
+                    "maximum": 32,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestsPerSecond": {
+                    "maximum": 50,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scanDepth": {
+                    "enum": [
+                      "file_list_only",
+                      "basic",
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  "wholeFileReads": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "scanDepth",
+                  "wholeFileReads",
+                  "connections",
+                  "requestsPerSecond",
+                  "bytesPerSecond"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "revision",
+              "saved",
+              "values"
+            ],
+            "type": "object"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "enum": [
+                  "rclone",
+                  "webdav",
+                  "sftp",
+                  "smb"
+                ],
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
   "PutStorageSourcesWebdavIdRequest": {
     "properties": {
       "expectedGeneration": {
@@ -191846,12 +192441,90 @@ export const schemas = {
   "PutStorageSourcesWebdavIdResponse": {
     "properties": {
       "receipt": {
+        "additionalProperties": false,
         "properties": {
           "accepted": {
             "type": "boolean"
           },
           "operationId": {
             "type": "string"
+          },
+          "readSettings": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "values": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesPerSecond": {
+                    "anyOf": [
+                      {
+                        "const": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maximum": 1000000000,
+                        "minimum": 1000000,
+                        "multipleOf": 1000000,
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "connections": {
+                    "maximum": 32,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestsPerSecond": {
+                    "maximum": 50,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scanDepth": {
+                    "enum": [
+                      "file_list_only",
+                      "basic",
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  "wholeFileReads": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "scanDepth",
+                  "wholeFileReads",
+                  "connections",
+                  "requestsPerSecond",
+                  "bytesPerSecond"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "revision",
+              "saved",
+              "values"
+            ],
+            "type": "object"
           },
           "removed": {
             "type": "boolean"
