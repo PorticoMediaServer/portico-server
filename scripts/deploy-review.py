@@ -72,14 +72,13 @@ install -d -o portico -g portico -m700 "$2" "$2/cache-home"
                             "tar -xf - --no-same-owner -C " + shlex.quote(directory + "/web")], stdin=stream, check=True)
         remote(STAGE, directory, state, environment, args.commit, digest, args.runtime_root or "")
     else:
-        remote(ACTIVATE, directory, state, environment, args.commit, backup_cycle)
-        try:
-            subprocess.run(['python3', str(Path(__file__).with_name('smoke-review.py')), args.commit,
-                            '--repo', str(args.browser_repo), '--runner', str(args.runner),
-                            '--credentials', str(args.private_review), '--output', str(args.smoke_output), '--host', args.smoke_host], check=True)
-        except BaseException:
-            remote(ROLLBACK, backup_cycle)
-            raise
+        command = ['python3', str(Path(__file__).with_name('smoke-review.py')), args.commit,
+                   '--repo', str(args.browser_repo), '--runner', str(args.runner),
+                   '--credentials', str(args.private_review), '--output', str(args.smoke_output),
+                   '--host', args.smoke_host, '--activate-cycle', args.cycle]
+        if args.attempt:
+            command += ['--attempt', args.attempt]
+        subprocess.run(command, check=True)
 
 
 STAGE = r'''set -euo pipefail
