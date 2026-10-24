@@ -2,9 +2,12 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"image"
 	"path/filepath"
 	"testing"
+
+	"portico.local/server/internal/dbwork"
 )
 
 func TestArtworkLargerServingKeeps1920FixedAndReturnsStoredOriginalAtItsEdge(t *testing.T) {
@@ -87,5 +90,43 @@ func TestArtworkServingAboveStoredEdgeIgnoresSmallerCachedVariant(t *testing.T) 
 		if err != nil || cfg.Width != 1280 || name != source+".img" {
 			t.Fatal("larger request enlarged or substituted the stored picture", width, cfg, name, err)
 		}
+	}
+}
+
+func TestArtwork2560VariantPersistsFromLargerLegacyStoredSource(t *testing.T) {
+	s, db, target := repairFixture(t)
+	ctx := context.Background()
+	before, err := s.RepairState(ctx, target, allowAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.UploadArtwork(ctx, target, "poster", "", before.Revision, editorJPEG(t, 2700, 1080), editorActor(), allowAll); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := s.installArtworkFile(editorJPEG(t, 3000, 1200), 3000, 1200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		if err := recordArtworkObject(ctx, tx, legacy, "2020-01-01T00:00:00Z"); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE artwork_selections SET digest=?,revision=revision+1 WHERE role='poster'`, legacy.digest)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", 2560, legacy.digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := image.DecodeConfig(f)
+	f.Close()
+	if err != nil || cfg.Width != 2560 {
+		t.Fatal("legacy source did not produce a real 2560 variant", cfg, err)
+	}
+	var storedWidth int
+	if err = db.QueryRow(`SELECT o.width FROM artwork_variants v JOIN artwork_objects o ON o.digest=v.digest WHERE v.source_digest=? AND v.width=2560`, legacy.digest).Scan(&storedWidth); err != nil || storedWidth != 2560 {
+		t.Fatal("canonical variant relation did not retain 2560", storedWidth, err)
 	}
 }
