@@ -22,7 +22,7 @@ var ErrMoveCode = errors.New("This move code is no longer usable. Ask the server
 type AccountMove struct {
 	// Captured informational input for the separately signed owner-switch proof.
 	// It never appears as an unsigned field in the public move DTO.
-	otherPeopleCount   *int
+	otherPeopleCount   *int       `json:"-"`
 	ID                 string     `json:"id"`
 	From               SignInKind `json:"from"`
 	To                 SignInKind `json:"to"`
