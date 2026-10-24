@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/metadataprovider"
 )
 
@@ -35,7 +36,7 @@ func seedArtworkCandidate(ctx context.Context, tx *sql.Tx, t RepairTarget, role,
 		return err
 	}
 	var occupied bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND (actor<>'' OR provider='local') AND status IN('pending','running','retry'))`, t.Kind, entity, role, subject, fence, t.Kind, entity, role, subject).Scan(&occupied); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR a.actor<>'' OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND (actor<>'' OR provider='local') AND status IN('pending','running','retry'))`, t.Kind, entity, role, subject, fence, t.Kind, entity, role, subject).Scan(&occupied); err != nil {
 		return err
 	}
 	if occupied {
@@ -142,15 +143,18 @@ func (s *Service) tvdbPageArtwork(ctx context.Context, id int64) []discoveredArt
 // into provider='local' candidates: show posters, backdrops and logos,
 // season posters, artist portraits and backdrops, movie logos. Only rows whose
 // entity still exists seed anything, so deleted entities leave no candidates.
-func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, now string) error {
+// The primary upserts and the accepted-alternative page share one budget of
+// localArtworkCandidatePage candidate writes per call. It reports whether every
+// accepted slot reached a short page in this call.
+func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, now string) (bool, error) {
 	switch t.Kind {
 	case "show", "season", "artist", "item":
 	default:
-		return nil
+		return true, nil
 	}
 	entity, err := resolveEntity(ctx, tx, t.ID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT role,art_key FROM local_artwork WHERE kind=? AND entity_id=? AND (
 	 (?='show' AND EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=local_artwork.entity_id AND e.kind=2)) OR
@@ -158,7 +162,7 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 	 (?='artist' AND EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=local_artwork.entity_id AND e.kind=5)) OR
 	 (?='item' AND EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=local_artwork.entity_id)))`, t.Kind, entity, t.Kind, t.Kind, t.Kind, t.Kind)
 	if err != nil {
-		return err
+		return false, err
 	}
 	type local struct{ role, key string }
 	locals := []local{}
@@ -166,20 +170,98 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 		var v local
 		if err = rows.Scan(&v.role, &v.key); err != nil {
 			rows.Close()
-			return err
+			return false, err
 		}
 		locals = append(locals, v)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return err
+		return false, err
 	}
+	writes := 0
 	for _, v := range locals {
+		if writes >= localArtworkCandidatePage {
+			break
+		}
 		origin := "local:" + v.key
 		if err = seedArtworkCandidate(ctx, tx, t, v.role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
-			return err
+			return false, err
+		}
+		writes++
+	}
+	return seedLocalArtworkAlternatives(ctx, tx, t, entity, fence, now, localArtworkCandidatePage-writes)
+}
+
+// localArtworkCandidatePage bounds the materialization work of one discovery
+// call: at most this many candidates are written for a slot and committed,
+// including the primary upserts.
+const localArtworkCandidatePage = 8
+
+// seedLocalArtworkAlternatives seeds the numbered sidecar images the scan
+// accepted for a head's slot (inventory_artwork_candidates), after the primary
+// local_artwork images above. One worker call materializes at most one bounded
+// missing page for one slot; the caller keeps the target's dirty row until every
+// slot reports no missing accepted image, so later calls continue from committed
+// progress.
+func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, fence, now string, budget int) (bool, error) {
+	if t.Kind != "item" && t.Kind != "show" && t.Kind != "season" {
+		return true, nil
+	}
+	complete := true
+	seeded := false
+	for _, role := range []string{"poster", "backdrop", "logo"} {
+		if !seeded {
+			done, count, err := seedLocalArtworkCandidateCall(ctx, tx, t, entity, role, fence, now, budget)
+			if err != nil {
+				return false, err
+			}
+			if count > 0 {
+				seeded = true
+			}
+			if !done {
+				complete = false
+			}
+		} else {
+			// This role was not examined in this call; the dirty row keeps it
+			// for the next one.
+			complete = false
+		}
+		// Always let the central helper re-evaluate the preferred default: a
+		// rank/name-only change among already-materialized keys moves it even
+		// when no candidate is missing.
+		if err := queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
+			return false, err
 		}
 	}
-	return nil
+	return complete, nil
+}
+
+// seedLocalArtworkCandidateCall materializes one bounded page of the ordered
+// accepted images that have no current-fence local candidate yet, and reports
+// whether that was the whole missing page. The domain reader exempts committed
+// tuples, so one query per slot is enough: no history map, no locate loop and no
+// stored cursor, and a late accepted image below or inside the committed range
+// still surfaces first. It only records candidates; the checked ranked-default
+// helper (invoked by the caller for every slot) queues the preferred one.
+func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string, budget int) (bool, int, error) {
+	limit := budget
+	if limit < 1 {
+		limit = 1
+	}
+	page, err := catalog.ReadUnmaterializedLocalArtworkCandidatePageTx(ctx, tx, t.Kind, entity, role, fence, nil, limit)
+	if err != nil {
+		return false, 0, err
+	}
+	seed := 0
+	if budget > 0 {
+		seed = len(page)
+	}
+	for _, candidate := range page[:seed] {
+		origin := "local:" + candidate.Key
+		if _, err = insertArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, "", artworkAttribution("local"), fence, now, 0); err != nil {
+			return false, 0, err
+		}
+	}
+	return len(page) < limit, seed, nil
 }
