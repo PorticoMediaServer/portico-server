@@ -351,7 +351,7 @@ async fn desktop_equalizer_change(window:WebviewWindow,change:EqualizerChange)->
 }
 #[tauri::command]
 fn desktop_window_state(window:WebviewWindow,state:tauri::State<Arc<crate::window::ChromeState>>)->Result<crate::window::WindowSnapshot>{
-    caller(&window)?;crate::window::snapshot(&window,&state)
+    caller(&window)?;let result=crate::window::snapshot(&window,&state);crate::spike::record("window-state-confirmed",if result.is_ok(){0}else{-1});result
 }
 #[tauri::command]
 fn desktop_window_action(window:WebviewWindow,action:crate::window::WindowAction)->Result<()>{
