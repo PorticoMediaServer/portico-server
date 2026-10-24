@@ -30,7 +30,7 @@ export const selectionMessages = {
   'next.selection.playLaterDescription': 'At the end of the queue',
   'next.selection.playlist': 'Playlist',
   'next.selection.addToPlaylist': 'Add to playlist',
-  'next.selection.playlistAlbumPartial': 'The album wasn’t fully added. {count, plural, one {# song was added} other {# songs were added}}',
+  'next.selection.playlistAlbumPartial': 'The album wasn’t fully added. {count, plural, one {# song was added} other {# songs were added}}.',
   'next.selection.playlistAlbumProgress': 'Adding songs to {playlist}…',
   'next.selection.myList': 'My List',
   'next.selection.watched': 'Watched',
