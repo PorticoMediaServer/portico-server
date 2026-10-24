@@ -94,6 +94,8 @@ func TestInventoryBlobFencesActualJobMediaTargetAndSeparateCandidate(t *testing.
 		{"queue-revision", `UPDATE inventory_analysis_queue SET revision='new-media'`},
 		{"queue-complete", `UPDATE inventory_analysis_queue SET state='complete'`},
 		{"candidate-aba", `UPDATE remote_scan_observations SET revision=revision+2 WHERE relative_path='film.nfo'`},
+		{"media-observation-aba", `UPDATE remote_scan_observations SET revision=revision+2 WHERE relative_path='film.mkv'`},
+		{"media-observation-facts", `UPDATE remote_scan_observations SET modified_ns=modified_ns+1 WHERE relative_path='film.mkv'`},
 		{"profile-revision", `UPDATE remote_source_read_profiles SET revision=revision+1`},
 		{"source-generation", `UPDATE remote_sources SET generation=generation+1`},
 	} {

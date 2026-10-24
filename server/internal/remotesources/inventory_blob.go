@@ -30,11 +30,12 @@ type inventoryBlobCapture struct {
 	file       string
 	binding    SourceReadBinding
 	scan       ScanObservation
+	mediaRef   ObservationRef
 	listingRaw string
 }
 
 func (s *Service) captureInventoryBlobTx(ctx context.Context, tx *sql.Tx, source string, request storage.InventoryRequest, a storage.InventoryBlobAdmission, limit int64) (*inventoryBlobCapture, error) {
-	if s == nil || tx == nil || source == "" || source != a.LibrarySourceID || a.JobID == "" || a.LibraryID == "" || a.SourceGeneration < 1 || a.RootIncarnation == "" || a.RootIdentity == "" || a.PolicyRevision < 1 || !filepath.IsAbs(request.Root) || filepath.Clean(request.Root) != request.Root || request.RootIdentity != a.RootIdentity || request.RelativePath == "." || !filepath.IsLocal(request.RelativePath) || limit < 1 {
+	if s == nil || tx == nil || source == "" || source != a.LibrarySourceID || a.JobID == "" || a.LibraryID == "" || a.SourceGeneration < 1 || a.RootIncarnation == "" || a.RootIdentity == "" || a.PolicyRevision < 1 || !filepath.IsAbs(request.Root) || filepath.Clean(request.Root) != request.Root || request.RootIdentity != a.RootIdentity || request.RelativePath == "." || filepath.Clean(request.RelativePath) != request.RelativePath || !filepath.IsLocal(request.RelativePath) || limit < 1 {
 		return nil, storage.ErrRemoteConfig
 	}
 	file := filepath.Join(request.Root, request.RelativePath)
@@ -75,6 +76,18 @@ func (s *Service) captureInventoryBlobTx(ctx context.Context, tx *sql.Tx, source
 			return nil, err
 		}
 		c.scan, c.binding.Observation = recorded.Observation, recorded.Ref
+		var relative string
+		if err = tx.QueryRowContext(ctx, `SELECT relative_path FROM inventory_objects WHERE id=? AND source_id=?`, a.ObjectID, a.LibrarySourceID).Scan(&relative); err != nil {
+			return nil, err
+		}
+		if !filepath.IsLocal(relative) || relative == "." {
+			return nil, storage.ErrRemoteConfig
+		}
+		media, _, err := s.ScanSnapshotTx(ctx, tx, filepath.Join(request.Root, relative))
+		if err != nil {
+			return nil, err
+		}
+		c.mediaRef = media.Ref
 	} else {
 		var directory string
 		var ready bool
@@ -162,6 +175,14 @@ func (c *inventoryBlobCapture) checkTx(ctx context.Context, tx *sql.Tx) error {
 		}
 		if !filepath.IsLocal(relative) || relative == "." || filepath.Join(source.ResolvedPath, relative) == c.file {
 			return storage.ErrRemoteConfig // A bounded sidecar cannot read the media target wholesale.
+		}
+		media, snapshot, err := c.service.ScanSnapshotTx(ctx, tx, filepath.Join(source.ResolvedPath, relative))
+		if err != nil {
+			return err
+		}
+		revision, _, err := catalog.ObservationRevision(source, snapshot)
+		if err != nil || revision != a.SourceRevision || media.Ref != c.mediaRef {
+			return storage.ErrRemoteChanged
 		}
 		recorded, _, err := c.service.ScanSnapshotTx(ctx, tx, c.file)
 		if err != nil {
