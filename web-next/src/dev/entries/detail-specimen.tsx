@@ -75,6 +75,8 @@ const insideOutCredits: readonly FixtureCredit[] = [
   credit('phyllis-smith', 'next.detail.fixture.phyllis', 'next.detail.fixture.sadnessRole', acting),
   credit('richard-kind', 'next.detail.fixture.richard', 'next.detail.fixture.bingRole', acting),
   credit('bill-hader', 'next.detail.fixture.hader', 'next.detail.fixture.fearRole', acting),
+  credit('meg-lefauve', 'next.detail.fixture.leFauve', 'next.detail.fixture.screenplayRole', writing),
+  credit('josh-cooley', 'next.detail.fixture.cooley', 'next.detail.fixture.screenplayRole', writing),
 ];
 
 function basePersonal() {
@@ -91,7 +93,7 @@ function fixtures(frame: SpecimenFrame) {
       overview: fixtureText('next.detail.fixture.insideOutOverview'), rating: fixtureText('next.detail.fixture.rating'), tagline: fixtureText('next.detail.fixture.insideOutTagline'),
       releaseDate: '2015-06-19', studio: fixtureText('next.detail.fixture.pixar'), country: fixtureText('next.detail.fixture.country'),
       genres: [['animation', 'next.detail.fixture.animation'], ['family', 'next.detail.fixture.family']] as const,
-      credits: insideOutCredits, creditTotals: {cast: 4, crew: 1}, audio: ['en'], subtitles: ['en'],
+      credits: insideOutCredits, creditTotals: {cast: 4, crew: 24}, audio: ['en'], subtitles: ['en'],
       rows: [{id: 'more-like', title: fixtureText('next.detail.fixture.moreLikeInsideOut'), entries: moreLikeInsideOut}],
     } as const;
   }
@@ -211,7 +213,7 @@ function detailDocument(facts: DetailsFixture, personal: ReturnType<typeof baseP
       studio: facts.studio, ...('country' in facts ? {country: facts.country} : {}), originalLanguage: 'en',
     },
     metadata: {
-      status: 'available', ratings: [], attributions: [],
+      status: 'available', ratings: facts.itemId === 'inside-out' ? [{provider: 'TMDB', value: 8.1, max: 10, votes: 24810, sourceUrl: 'https://www.themoviedb.org/movie/150540', observedAt: '2026-10-17T00:00:00Z'}] : [], attributions: [],
       genres: facts.genres.map(([id, name]) => ({id, name: fixtureText(name), provider: 'specimen'})),
       credits: [...facts.credits], creditTotals: facts.creditTotals,
     },

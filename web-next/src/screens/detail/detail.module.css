@@ -81,6 +81,22 @@
 
 .detailBanner { grid-column: 1 / -1; margin-top: 48px; }
 
+.phoneCreditLines { margin-top: 18px; font-size: var(--type-starring-size); color: var(--color-text-tertiary); }
+.phoneCreditLines > div + div { margin-top: 4px; }
+.phoneCreditLines .inlineLink { box-shadow: none; }
+
+.phoneCollectionWrap { margin-top: 20px; }
+.phoneCollection { position: relative; width: 100%; min-height: 92px; display: flex; align-items: center; gap: 14px; padding: 14px; border: 0; border-radius: 14px; overflow: hidden; background: var(--color-raised); color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.phoneCollection:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: 2px; }
+.phoneCollectionGlow { position: absolute; inset: -20%; opacity: .32; filter: blur(24px) saturate(1.3); pointer-events: none; }
+.phoneCollectionFan { position: relative; display: flex; flex: none; width: 64px; }
+.phoneCollectionFan > span { width: 32px; height: 48px; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 6px color-mix(in srgb, var(--color-shadow) 45%, transparent); }
+.phoneCollectionFan > span + span { margin-left: -12px; }
+.phoneCollectionCopy { position: relative; display: grid; gap: 2px; flex: 1; min-width: 0; }
+.phoneCollectionCopy i { font-style: normal; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.phoneCollectionCopy b { font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phoneCollectionCopy small { font-size: var(--type-meta-size); color: var(--color-text-secondary); }
+
 .people { display: flex; gap: 22px; flex-wrap: wrap; }
 .creditGroups > section + section { margin-top: 26px; padding-top: 24px; border-top: 1px solid color-mix(in srgb, var(--color-line) 60%, transparent); }
 .peopleHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
