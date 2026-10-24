@@ -56,7 +56,11 @@ func readShowSettings(db settingsReader, show string) (ShowSettings, error) {
 	e := db.QueryRow(`SELECT hide_seasons,absolute_numbering,ranges,newest_first,revision FROM catalog_show_settings WHERE entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, show).
 		Scan(&out.HideSeasons, &out.AbsoluteNumbering, &out.Ranges, &out.NewestFirst, &out.Revision)
 	if errors.Is(e, sql.ErrNoRows) {
-		return out, nil
+		e = db.QueryRow(`SELECT COALESCE(p.episode_numbering,'season')='absolute' FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id LEFT JOIN library_preferences p ON p.library_id=cl.library_id WHERE e.public_id=pid_blob(?)`, show).Scan(&out.AbsoluteNumbering)
+		if errors.Is(e, sql.ErrNoRows) {
+			e = nil
+		}
+		return out, e
 	}
 	return out, e
 }

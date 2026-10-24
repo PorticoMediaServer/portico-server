@@ -721,7 +721,15 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 		}
 		path := filepath.Join(source.ResolvedPath, relative)
 		if manuallyLinked == 0 {
-			reading := naming.ReadWithEmbedded(relative, kind, f.VideoName)
+			prefs, err := LibraryPreferencesTx(ctx, tx, source.LibraryID)
+			if err != nil {
+				return err
+			}
+			embedded := f.VideoName
+			if prefs.TitleSource == "names" {
+				embedded = naming.Embedded{}
+			}
+			reading := naming.ReadWithEmbedded(relative, kind, embedded)
 			if kind == "movie" {
 				if err = s.reinterpretInventoryTx(ctx, tx, source, asset, path); err != nil {
 					return err

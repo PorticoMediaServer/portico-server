@@ -27,13 +27,14 @@ const list=(v:unknown,max:number):unknown[]=>{if(!Array.isArray(v)||v.length>max
 function assert(condition:unknown):asserts condition {if(!condition)throw new Error('Invalid inventory response.');}
 function scope(raw:unknown,expected:ContentScope){assert(record(raw)&&raw.serverId===expected.serverId&&id(raw.viewerFence));return Object.freeze({serverId:expected.serverId,viewerFence:raw.viewerFence});}
 function errorOf(e:unknown):InventoryError {return Object.freeze({code:record(e)&&id(e.code)?e.code:'request_failed',message:e instanceof Error?e.message:'Inventory request failed.'});}
+export function parseInventorySource(wire:unknown,libraryId:string):InventorySource{const v:unknown=wireDurations(wire,{intervalSeconds:'intervalMs'});assert(record(v)&&id(v.id)&&v.libraryId===libraryId&&text(v.kind,64)&&text(v.name,512)&&text(v.path)&&text(v.resolvedPath)&&['local','network'].includes(String(v.classification))&&integer(v.generation)&&text(v.health,128)&&typeof v.enabled==='boolean'&&typeof v.followSymlinks==='boolean'&&typeof v.identityConfirmed==='boolean'&&integer(v.intervalSeconds)&&text(v.nextScanAt,128)&&text(v.lastCompleteAt,128)&&text(v.lastProgressAt,128));return Object.freeze({...v}) as InventorySource;}
 function parseConfig(raw:unknown,bound:ContentScope,libraryId:string):InventoryConfig {
  assert(record(raw)&&raw.libraryId===libraryId&&integer(raw.revision)&&raw.revision>0&&record(raw.policy));
  const policy=raw.policy;assert(['file_list_only','basic','complete','custom'].includes(String(policy.tier))&&integer(policy.revision));
  // The scan policy is sent back when the owner changes it, so its tier stays exact; a step this app does not know is left out of what it shows, each known step once.
  const given=list(policy.operations,64),operations=[...new Set(given.filter(v=>scanOperations.includes(v as ScanOperation)))];if(operations.length!==given.length)noteSkipped('library-inventory','policy.operations',given.length-operations.length);
  // A folder that cannot be read is left out alone, and a repeated one keeps its first row.
- const sources=firstOfEach('library-inventory','sources',keepReadable('library-inventory','sources',list(raw.sources,64),wire=>{const v:unknown=wireDurations(wire,{intervalSeconds:'intervalMs'});assert(record(v)&&id(v.id)&&v.libraryId===libraryId&&text(v.kind,64)&&text(v.name,512)&&text(v.path)&&text(v.resolvedPath)&&['local','network'].includes(String(v.classification))&&integer(v.generation)&&text(v.health,128)&&typeof v.enabled==='boolean'&&typeof v.followSymlinks==='boolean'&&typeof v.identityConfirmed==='boolean'&&integer(v.intervalSeconds)&&text(v.nextScanAt,128)&&text(v.lastCompleteAt,128)&&text(v.lastProgressAt,128));return Object.freeze({...v}) as InventorySource;}),s=>s.id);
+ const sources=firstOfEach('library-inventory','sources',keepReadable('library-inventory','sources',list(raw.sources,64),wire=>parseInventorySource(wire,libraryId)),s=>s.id);
  return Object.freeze({scope:scope(raw.scope,bound),libraryId,revision:raw.revision,sources:Object.freeze(sources),policy:Object.freeze({tier:policy.tier as ScanTier,revision:policy.revision,operations:Object.freeze(operations as ScanOperation[])})});
 }
 function parseObjects(raw:unknown,bound:ContentScope,libraryId:string,filter:InventoryFilter):InventoryObjects {
@@ -74,7 +75,7 @@ export class LibraryInventoryService {
   try{await this.request(this.base()+path,method,body);if(this.disposed||epoch!==this.epoch)return false;await this.reconcile();if(this.disposed||epoch!==this.epoch)return false;this.publish({mutation:'complete'});return true;
   }catch(e){if(this.disposed||epoch!==this.epoch)return false;const error=errorOf(e);const definite=['invalid_request','source_busy','source_changed','source_already_configured','library_configuration_conflict','stale_continuation','not_found','forbidden','unauthorized'].includes(error.code);if(['unauthorized','forbidden'].includes(error.code)){this.epoch++;for(const c of this.controllers)c.abort();this.publish({config:null,objects:null,loading:false});}this.publish({error,mutation:definite?'error':'ambiguous'});return false;}finally{this.commandBusy=false;}
  }
- saveSource(sourceId:string|undefined,input:SourceSettings){assert(!sourceId||id(sourceId));assert(text(input.name,100)&&input.name.trim()&&text(input.path)&&input.path&&integer(input.expectedRevision)&&input.expectedRevision>0&&integer(input.intervalSeconds));return this.command('/sources'+(sourceId?'/'+encodeURIComponent(sourceId):''),sourceId?'PATCH':'POST',durationIntent(input,{intervalSeconds:'intervalMs'}));}
+ saveSource(sourceId:string|undefined,input:SourceSettings){assert(!sourceId||id(sourceId));assert(text(input.name,100)&&text(input.path)&&input.path&&integer(input.expectedRevision)&&input.expectedRevision>0&&integer(input.intervalSeconds));return this.command('/sources'+(sourceId?'/'+encodeURIComponent(sourceId):''),sourceId?'PATCH':'POST',durationIntent(input,{intervalSeconds:'intervalMs'}));}
  removeSource(sourceId:string,expectedRevision:number){assert(id(sourceId)&&integer(expectedRevision));return this.command('/sources/'+encodeURIComponent(sourceId),'DELETE',{expectedRevision});}
  scanSource(sourceId:string){assert(id(sourceId));return this.command('/sources/'+encodeURIComponent(sourceId)+'/scans','POST');}
  checkSource(sourceId:string){assert(id(sourceId));return this.command('/sources/'+encodeURIComponent(sourceId)+'/check','POST');}
@@ -221,4 +222,10 @@ export function inventoryStatusMessage(value:ViewerInventoryStatus):string {
  if(value.sources.some(s=>s.status==='complete_with_warnings'))return 'Scan completed with warnings. Some media may have limited details.';
  if(value.sources.every(s=>s.status==='not_scanned'))return 'This library has not been scanned yet.';
  return '';
+}
+
+/** Settings needs the bounded source/configuration snapshot, without inventory rows. */
+export async function readLibraryInventoryConfig(api:LibraryContentApi,bound:ContentScope,libraryId:string,signal?:AbortSignal):Promise<InventoryConfig>{
+ assert(id(libraryId));
+ return parseConfig(await api.request<unknown>(encodedRoutePath('get_admin_libraries_id_inventory_config',{id:encodeURIComponent(libraryId)}),'GET',undefined,signal),bound,libraryId);
 }
