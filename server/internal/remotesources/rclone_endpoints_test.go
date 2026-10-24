@@ -20,7 +20,7 @@ func TestConfiguredEndpointsFollowEveryWrapperToActualOrigin(t *testing.T) {
 		}
 		raw := fmt.Sprintf("[top]\ntype=%s\nupstreams=%s\n[a]\ntype=webdav\nurl=http://nas.example:80/\n[b]\ntype=s3\nendpoint=https://s3.example:9443/\n", wrapper, members)
 		leaves, err := configuredBackends([]byte(raw), "top:")
-		if err != nil || len(leaves) != 2 || leaves[0].Kind != "webdav" || leaves[1].Kind != "s3" {
+		if err != nil || len(leaves) != 3 || leaves[0].Kind != "webdav" || leaves[1].Kind != "s3" || leaves[2].Kind != "webdav" || leaves[0].Remote == leaves[2].Remote || webDAVLeafCount(leaves) != 2 {
 			t.Fatal(wrapper, leaves, err)
 		}
 	}

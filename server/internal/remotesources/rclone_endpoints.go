@@ -21,6 +21,16 @@ type configuredBackend struct {
 	Origins []string
 }
 
+func webDAVLeafCount(leaves []configuredBackend) int {
+	count := 0
+	for _, leaf := range leaves {
+		if leaf.Kind == "webdav" {
+			count++
+		}
+	}
+	return count
+}
+
 func parseServeConfiguration(raw []byte) (map[string]map[string]string, error) {
 	if len(raw) == 0 || len(raw) > 64<<10 {
 		return nil, storage.ErrRemoteConfig
@@ -71,7 +81,7 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 		if !ok || name == "" || strings.ContainsAny(name, ",/\\") || depth > 16 || active[name] || sections[name] == nil {
 			return storage.ErrRemoteConfig
 		}
-		if visited[name] {
+		if visited[remote] {
 			return nil
 		}
 		active[name] = true
@@ -169,7 +179,7 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 		default:
 			return storage.ErrRemoteConfig
 		}
-		visited[name] = true
+		visited[remote] = true
 		if len(visited) > 64 || len(out) > 32 {
 			return storage.ErrRemoteConfig
 		}
