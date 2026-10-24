@@ -70,6 +70,7 @@ def prepare(archive, output, lock):
         # These boundaries predate this release and must survive all patches.
         assertions = {
             'RELEASE': ['8.1.3'],
+            'libavcodec/libx265.c': ['libx265_add_hdr_plus', 'AV_FRAME_DATA_DYNAMIC_HDR_PLUS'],
             'libavcodec/bsf/dovi_rpu.c': ['ff_dovi_rpu_bsf'],
             'libavformat/movenc.c': ['info->complexity_index_type_a = hdr->complexity_index_type_a',
                                      'flag_eac3_extension_type_a'],

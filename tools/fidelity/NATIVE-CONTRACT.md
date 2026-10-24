@@ -48,10 +48,21 @@ Style fontFamily is the measured/resolved family, fontSize is a canonical
 facts rather than platform fallback guesses. Colours use computed `rgb(...)` or
 `rgba(...)`; opacity is numeric 0..1. Keep all actual flattened styles for
 diagnostics. Raw lineHeight/textAlign are unscored; rendered runs are scored.
+Curated, unresolved input styles belong only in the optional node field
+`diagnostics:{flattenedStyle:{fontSize:24,opacity:0.7}}`. This field never
+substitutes for `style`, effective paint or resolved fonts. Its scalar property
+allowlist is exported as `diagnosticStyleProperties` from `contract.mjs`; omit
+unsupported/animated objects, transforms, image references and arbitrary keys.
+Only finite numbers or strings without URL payloads are allowed. The comparator
+retains this field explicitly as unscored diagnostics. Producers must curate it
+before emission, not serialize raw props/styles and rely on later rejection.
 Do not use unavailable paint/font defaults. Declare missing facts as
 `unavailable:[{element:'stable-id',property:'textRects',reason:'...'}]`; the result
 is a measurement failure, not zero differences. FontFamily/fontSize/fontWeight/
 color and native text rectangles must either be measured or declared unavailable.
+Unobserved `focused` or `effectiveOpacity` may be null only with that exact
+unavailable declaration; do not substitute false or one. Such missing facts
+produce measurement failures without speculative focus/style differences.
 
 Images/icons are slots only: kind, bounds, fit, radius, load state. No artwork
 bytes, URLs, filenames, SVG paths or asset names. `strings` uses the same visible

@@ -38,3 +38,27 @@ test('invalid measured root or duplicate identities fails before comparison', ()
   assert.equal(result.verdict, 'FAIL'); assert.ok(result.differences.some(value => value.label === 'actual.root.viewport'));
   assert.ok(result.differences.some(value => value.label === 'actual.elements.1.id'));
 });
+test('curated flattened styles are retained as unscored diagnostics and never replace measured facts', () => {
+  const reference = fixture(), actual = fixture();
+  actual.elements[0].diagnostics = {flattenedStyle: {fontSize: 99, opacity: .1, backgroundColor: 'red'}};
+  assert.deepEqual(validateMeasurement(actual), []);
+  const report = compareMeasurements(reference, actual);
+  assert.equal(report.verdict, 'PASS');
+  assert.ok(report.comparison.diagnostics.some(value => value.property === 'diagnostics' && value.scored === false));
+  actual.elements[0].style.fontSize = '25px';
+  assert.equal(compareMeasurements(reference, actual).differences.filter(value => value.property === 'fontSize').length, 1);
+  actual.elements[0].diagnostics.flattenedStyle.source = 'private-prop';
+  assert.ok(validateMeasurement(actual).includes('elements.0.diagnostics.flattenedStyle'));
+  delete actual.elements[0].diagnostics.flattenedStyle.source;
+  actual.elements[0].diagnostics.flattenedStyle.backgroundColor = 'url(data:private)';
+  assert.ok(validateMeasurement(actual).includes('elements.0.diagnostics.flattenedStyle'));
+});
+test('unobserved native focus and opacity remain unavailable rather than becoming false or one', () => {
+  const reference = fixture(), actual = fixture(); actual.measurement = {renderer: 'react-native', platform: 'android', coordinateUnit: 'dp'};
+  actual.elements[0].focused = null; actual.elements[0].effectiveOpacity = null;
+  actual.unavailable = ['focused', 'effectiveOpacity'].map(property => ({element: '0', property, reason: 'Native observation not available'}));
+  assert.deepEqual(validateMeasurement(actual), []);
+  const result = compareMeasurements(reference, actual, {focus: {frame: 'title'}});
+  assert.equal(result.verdict, 'FAIL'); assert.equal(result.differenceCount, 2);
+  assert.ok(result.differences.every(value => value.kind === 'unavailable-measurement'));
+});

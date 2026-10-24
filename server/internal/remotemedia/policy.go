@@ -34,11 +34,12 @@ type Policy struct {
 	// SourceEndpoints applies the strict owner-saved source endpoint rules:
 	// public or this origin's saved private addresses; never special ranges.
 	// Descriptor/library approval behavior remains separate.
-	SourceEndpoints bool
-	UserAgent       string
-	ReadTimeout     time.Duration
-	Approvals       []Approval
-	Resolver        Resolver
+	SourceEndpoints   bool
+	SourcePrivateOnly bool
+	UserAgent         string
+	ReadTimeout       time.Duration
+	Approvals         []Approval
+	Resolver          Resolver
 }
 
 func ParseDescriptor(raw []byte) (string, error) {
@@ -297,6 +298,9 @@ func (s *scope) resolve(ctx context.Context, host string) ([]netip.Addr, error) 
 		allowed := !hardBlocked(ip) && (s.root != nil && s.addresses[ip] || s.root == nil && public(ip))
 		if s.policy.SourceEndpoints {
 			allowed = nativeAddressAllowed(ip) && (public(ip) || s.root != nil && s.addresses[ip])
+			if s.policy.SourcePrivateOnly {
+				allowed = allowed && nativePrivate(ip)
+			}
 		}
 		if !allowed {
 			// The addresses come back with the refusal so admit can tell a
