@@ -62,6 +62,12 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 			}
 		}
 	}
+	webdavLeaves := 0
+	for _, leaf := range leaves {
+		if leaf.Kind == "webdav" {
+			webdavLeaves++
+		}
+	}
 	digest := hex.EncodeToString(sha256Sum(raw))
 	var configuration any = importedSourceConfiguration{ConfigurationDigest: digest, Approvals: approvals}
 	backend, origin := "rclone", ""
@@ -163,10 +169,10 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 			if err != nil {
 				return err
 			}
-			result, err := tx.ExecContext(ctx, `INSERT INTO remote_sources(id,kind,name,root,generation,config,state,error_code,range_support,origin,credential_present,mount_id)
- VALUES(?,?,?,?,?,?,'ready','','unknown',?,1,?) ON CONFLICT(id) DO UPDATE SET
- kind=excluded.kind,name=excluded.name,generation=excluded.generation,config=excluded.config,state='ready',error_code='',range_support='unknown',origin=excluded.origin,credential_present=1
- WHERE remote_sources.root=excluded.root AND remote_sources.mount_id=excluded.mount_id AND remote_sources.removed=0 AND remote_sources.generation<=excluded.generation AND remote_sources.kind IN('rclone','sftp','smb')`, mount.ID, backend, mount.Name, root, generation, sealed, origin, mount.ID)
+			result, err := tx.ExecContext(ctx, `INSERT INTO remote_sources(id,kind,name,root,generation,config,state,error_code,range_support,origin,credential_present,mount_id,webdav_leaf_count)
+ VALUES(?,?,?,?,?,?,'ready','','unknown',?,1,?,?) ON CONFLICT(id) DO UPDATE SET
+ kind=excluded.kind,name=excluded.name,generation=excluded.generation,config=excluded.config,state='ready',error_code='',range_support='unknown',origin=excluded.origin,credential_present=1,webdav_leaf_count=excluded.webdav_leaf_count
+ WHERE remote_sources.root=excluded.root AND remote_sources.mount_id=excluded.mount_id AND remote_sources.removed=0 AND remote_sources.generation<=excluded.generation AND remote_sources.kind IN('rclone','sftp','smb')`, mount.ID, backend, mount.Name, root, generation, sealed, origin, mount.ID, webdavLeaves)
 			if err != nil {
 				return err
 			}
