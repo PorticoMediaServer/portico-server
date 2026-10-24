@@ -10,6 +10,7 @@
 .ownerReview { width: 600px; }
 .ownerReview .heading { font-size: 52px; }
 .ownerReview .facts > div { grid-template-columns: 136px 1fr; }
+.ownerReview .facts [data-fact="address"] dd { font-variant-numeric: tabular-nums; }
 .ownerReview .actions { flex-direction: row; align-items: center; }
 .ownerReview .actions > button { width: auto; }
 .ownerReview .notice { margin-bottom: 16px; }

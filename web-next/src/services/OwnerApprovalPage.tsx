@@ -26,7 +26,7 @@ export function OwnerApprovalReview({display, requested, approved = false, busy 
     ]} />
     {notice}
     <ServicesActions>{approved
-      ? <Button variant="primary" loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: display.name})}</Button>
+      ? <Button variant="primary" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: display.name})}</Button>
       : <><Button variant="primary" autoFocus loading={busy} disabled={busy} onClick={onApprove}>{t('web.claim.approve')}</Button>
         <Button disabled={busy} onClick={onDeny}>{t('web.claim.deny')}</Button></>}
     </ServicesActions>
@@ -67,7 +67,9 @@ export function OwnerApprovalPage({account, bootstrap}: {account: ServicesAccoun
   if (error || state.phase === 'expired') return <ServicesAuthStage variant="ownerReview">
     <ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading>
     {state.phase === 'expired' ? <ServicesLead>{t('web.claim.expired')}</ServicesLead> : <HostedError error={error} />}
-    <ServicesActions><Button onClick={() => {void flow?.start();}} disabled={!flow || state.phase === 'expired'}>{t('next.states.tryAgain')}</Button></ServicesActions>
+    <ServicesActions>{!flow || state.phase === 'expired'
+      ? <Button onClick={() => window.location.assign('/')}>{t('web.claim.backToPortico')}</Button>
+      : <Button onClick={() => {void flow.start();}}>{t('next.states.tryAgain')}</Button>}</ServicesActions>
   </ServicesAuthStage>;
   if (!state.display || state.phase === 'loading') return <ServicesAuthStage variant="ownerReview"><></></ServicesAuthStage>;
   const requested = Date.now() - Date.parse(state.display.requestedAt) < 45000 ? t('services.claim.justNow') : servicesRelativeTime(servicesI18n(), state.display.requestedAt);
