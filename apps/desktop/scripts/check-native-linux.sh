@@ -30,6 +30,7 @@ pkg-config --modversion gtk+-3.0 webkit2gtk-4.1 mpv
 ffmpeg -hide_banner -version
 dpkg-query -W libmpv2 libmpv-dev libwebkit2gtk-4.1-dev
 export PORTICO_TEST_MPV_LIBRARY=/usr/lib/x86_64-linux-gnu/libmpv.so.2
+export PORTICO_TEST_MUSIC_FORMATS_ROOT="$PWD/server/internal/decoder/testdata/music-formats-r29"
 export PORTICO_TEST_PCM_FIXTURE=/work/owned-48000-stereo.wav PORTICO_TEST_VIDEO_FIXTURE=/work/owned-vfr-6.mkv PORTICO_TEST_WAVPACK_FIXTURE=/work/owned-48000-stereo.wv PORTICO_TEST_SUBTITLE_FIXTURE=/work/owned-default-subtitle.mkv
 if [ "$PORTICO_NATIVE_CHECK" = retirement ]; then
   # Actual GTK object ownership, without a WebView, media engine or screen dump.

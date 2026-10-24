@@ -534,7 +534,7 @@ mod legacy_original_tests {
     #[ignore="explicit native libmpv and existing rights-verified APE/MPC fixtures; no physical output claim"]
     fn actual_ape_and_both_musepack_originals_play_without_external_references(){
         let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
-        let root=Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../server/internal/decoder/testdata/music-formats-r29");
+        let root=std::path::PathBuf::from(std::env::var_os("PORTICO_TEST_MUSIC_FORMATS_ROOT").expect("verified public fixtures required"));
         let manifest:serde_json::Value=serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
         let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
         let inventory=engine.decoder_inventory().unwrap();
