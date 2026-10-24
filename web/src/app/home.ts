@@ -11,6 +11,7 @@ import {currentI18n} from './i18n';
 import type {MessageId} from '@i18n';
 import {serverTextLabel} from '@core/presentation/index.ts';
 import type {ServerText} from '@core/home.ts';
+import type {HomeRowPager} from '@core/home-row-page.ts';
 
 /**
  * Home on the rows API: one document with every row the server composed for
@@ -97,3 +98,6 @@ export function homeRowTitle(id: string, serverTitle: string | undefined, librar
   const words = id.replace(/[_-]+/g, ' ').trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/** A failed first read has no cursor to continue; only a later page can read more. */
+export const retryHomeRow = (pager: Pick<HomeRowPager, 'load' | 'more'>, nextCursor: string): Promise<void> => nextCursor ? pager.more() : pager.load();

@@ -8,6 +8,7 @@ const app = await componentModule(new URL('../src/app/home.ts', import.meta.url)
   react: hooks().react, '@core/home.ts': {}, './session': {}, './viewer-scope': {}, './not-interested': {}, './i18n': {currentI18n: () => defaultI18n}, '@core/presentation/index.ts': presentation, '@i18n': {},
 });
 const homeRowTitle = app.homeRowTitle;
+const retryHomeRow = app.retryHomeRow;
 
 // P7: titleText first, then the catalogue by row id, then the server's title.
 const none = () => undefined;
@@ -20,4 +21,14 @@ test('Home rows are named by titleText, with the id table and server title as fa
   // Fixed rows without titleText keep their catalogue names.
   assert.equal(homeRowTitle('continue', 'Continue watching', none), 'Continue Watching');
   assert.equal(homeRowTitle('trending_now', undefined, none), 'Trending now');
+});
+
+test('a failed Home row try-again reloads without a cursor and reads more only with one', () => {
+  const calls: string[] = [];
+  const pager = {load: async () => { calls.push('load'); }, more: async () => { calls.push('more'); }};
+  retryHomeRow(pager, '');
+  assert.deepEqual(calls, ['load']);
+  calls.length = 0;
+  retryHomeRow(pager, 'cursor');
+  assert.deepEqual(calls, ['more']);
 });
