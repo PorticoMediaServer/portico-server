@@ -61,7 +61,7 @@ export function setupSteps(input: Readonly<{serverName: string; mode: SetupMode;
   if (input.mode === 'local') return [server, {id: 'library', state: input.phase === 'library' ? 'current' : 'next',
     title: defaultI18n.t('web.setup.stepLibrary'), body: input.phase === 'library' ? defaultI18n.t('web.setup.stepLibraryLater') : defaultI18n.t('web.setup.stepLibraryBody')}];
   return [server,
-    {id: 'account', state: input.phase === 'library' ? 'done' : 'current', title: defaultI18n.t('web.setup.stepAccount'),
+    {id: 'account', state: input.phase === 'library' ? 'done' : 'next', title: defaultI18n.t('web.setup.stepAccount'),
       body: input.phase === 'library' ? defaultI18n.t('web.setup.ownsServer') : defaultI18n.t('web.setup.stepAccountBody')},
     {id: 'library', state: input.phase === 'library' ? 'current' : 'next', title: defaultI18n.t('web.setup.stepLibrary'),
       body: input.phase === 'library' ? defaultI18n.t('web.setup.stepLibraryLater') : defaultI18n.t('web.setup.stepLibraryBody')}];

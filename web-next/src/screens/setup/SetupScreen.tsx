@@ -41,7 +41,7 @@ function SetupForm({flow, state, local}: {flow: SetupFlow; state: SetupSnapshot;
   return <form onSubmit={event => {event.preventDefault(); submit();}}>
     <h1 className={styles.one}>{t('web.setup.welcome')}</h1>
     <p className={styles.lede}>{t('web.setup.welcomeLede')}</p>
-    <div className={styles.field}><TextField variant="auth" label={t('web.general.serverName')} value={state.name} maxLength={80} required
+    <div className={styles.field}><TextField variant="auth" autoFocus label={t('web.general.serverName')} value={state.name} maxLength={80} required
       description={t('web.setup.serverNameHelp')} onChange={event => flow.setName(event.currentTarget.value)} disabled={state.busy}/></div>
     <div className={styles.legend}>{t('web.setup.howSignIn')}</div>
     <button type="button" role="radio" aria-checked={hosted} className={hosted ? styles.choice : styles.qopt} onClick={() => flow.setMode('hosted')} disabled={state.busy}>
