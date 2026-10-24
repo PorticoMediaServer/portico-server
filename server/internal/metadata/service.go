@@ -199,7 +199,7 @@ func (s *Service) Run(ctx context.Context) {
 func (s *Service) RunArtwork(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	var wg sync.WaitGroup
-	for i, step := range []func(context.Context) error{s.RepairMissingArtworkStep, s.ArtworkDiscoveryStep, s.ArtworkStep, s.CompactArtworkStep, s.RepairCascadeStep} {
+	for i, step := range []func(context.Context) error{s.RepairMissingArtworkStep, s.ArtworkDiscoveryStep, s.ArtworkStep, s.CompactArtworkStep, s.RepairCascadeStep, s.GlobalArtworkSizeStep} {
 		wg.Add(1)
 		supervise.Go("metadata.artwork-lane", func() {
 			run := step
@@ -208,7 +208,7 @@ func (s *Service) RunArtwork(ctx context.Context) {
 			urgent, unsubscribe := s.missingWake.Subscribe()
 			defer unsubscribe()
 			wake := worker.NewSignal()
-			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_runtime_settings", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
+			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_runtime_settings", "metadata_artwork_size_*", "screen_metadata_consent", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
 			defer unregister()
 			progress := worker.NewProgress(dbwork.ChangingCommits)
 			worker.RunWith(ctx, "metadata.artwork-lane", urgent, wake, func(ctx context.Context) time.Duration {
