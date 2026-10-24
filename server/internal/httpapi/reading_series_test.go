@@ -149,7 +149,7 @@ func TestReadingSeriesHTTPUsesTheExistingItemsProjection(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil || len(out.Items) != 1 || out.Items[0].ID != r.item || out.Items[0].Series == nil {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if w = readingHTTP(t, h, http.MethodGet, path+"&cursor="+url.QueryEscape(strings.Repeat("a", 215)), r.f.owner.AccessToken, "", nil); w.Code != 409 {
+	if w = readingHTTP(t, h, http.MethodGet, path+"&cursor="+url.QueryEscape(strings.Repeat("a", 215)), r.f.owner.AccessToken, "", nil); w.Code != http.StatusPreconditionFailed || bodyErrorCode(w.Body.String()) != "revision_mismatch" {
 		t.Fatal("invalid signed cursor", w.Code, w.Body.String())
 	}
 }
