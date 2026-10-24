@@ -12876,6 +12876,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -13013,6 +13028,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -35781,6 +35811,21 @@ export const schemas = {
                         "id": {
                           "type": "string"
                         },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
+                        },
                         "name": {
                           "type": "string"
                         },
@@ -35918,6 +35963,21 @@ export const schemas = {
                             "properties": {
                               "id": {
                                 "type": "string"
+                              },
+                              "mark": {
+                                "properties": {
+                                  "seed": {
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "seed"
+                                ],
+                                "type": "object"
                               },
                               "name": {
                                 "type": "string"
@@ -36347,6 +36407,21 @@ export const schemas = {
                     "id": {
                       "type": "string"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -36429,6 +36504,21 @@ export const schemas = {
                 "properties": {
                   "id": {
                     "type": "string"
+                  },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
                   },
                   "name": {
                     "type": "string"
@@ -36567,6 +36657,21 @@ export const schemas = {
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -36883,6 +36988,21 @@ export const schemas = {
                     "id": {
                       "type": "string"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -37020,6 +37140,21 @@ export const schemas = {
                         "properties": {
                           "id": {
                             "type": "string"
+                          },
+                          "mark": {
+                            "properties": {
+                              "seed": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "text",
+                              "seed"
+                            ],
+                            "type": "object"
                           },
                           "name": {
                             "type": "string"
@@ -37414,6 +37549,21 @@ export const schemas = {
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -126982,6 +127132,101 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSearchGenresRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSearchGenresResponse": {
+    "properties": {
+      "genres": {
+        "items": {
+          "properties": {
+            "backdrop": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "item",
+                    "show"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "path"
+              ],
+              "type": "object"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "covers": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "item",
+                      "show"
+                    ],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "path"
+                ],
+                "type": "object"
+              },
+              "maxItems": 2,
+              "type": "array"
+            },
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "value",
+            "label",
+            "count",
+            "covers"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "revision",
+      "genres"
+    ],
+    "type": "object"
+  },
   "GetSearchHistoryRequest": {
     "properties": {},
     "required": [],
@@ -146986,6 +147231,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -147123,6 +147383,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -160066,6 +160341,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -160203,6 +160493,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -160568,6 +160873,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -160705,6 +161025,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -179668,6 +180003,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -179805,6 +180155,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -180362,6 +180727,21 @@ export const schemas = {
                 "properties": {
                   "id": {
                     "type": "string"
+                  },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
                   },
                   "name": {
                     "type": "string"

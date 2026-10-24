@@ -7,6 +7,10 @@ import (
 )
 
 func registerBrowseHTTPContracts(registry *apikit.Registry) error {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SearchGenrePage](registry, apikit.Metadata{ID: "get_search_genres", Method: "GET", Path: "/v1/search/genres", Summary: "Read permitted video genres with selected representative artwork", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneExpensive, Cost: apikit.PageSized, Status: 200, Query: []string{"limit", "cursor"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/audio.go:11
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Artists    []catalog.Artist `json:"artists"`

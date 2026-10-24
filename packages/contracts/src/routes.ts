@@ -7563,6 +7563,32 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_search_genres",
+    "method": "GET",
+    "path": "/v1/search/genres",
+    "summary": "Read permitted video genres with selected representative artwork",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit",
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
     "id": "get_search_history",
     "method": "GET",
     "path": "/v1/search/history",
@@ -18403,6 +18429,7 @@ export const routePaths = {
   "get_saved_resources_id_content": "/v1/saved-resources/{id}/content",
   "get_saved_resources_id_share_candidates": "/v1/saved-resources/{id}/share-candidates",
   "get_scan_issues": "/v1/admin/libraries/{id}/scans/{job}/issues",
+  "get_search_genres": "/v1/search/genres",
   "get_search_history": "/v1/search/history",
   "get_seasons_id_episodes": "/v1/seasons/{id}/episodes",
   "get_server": "/v1/server",
