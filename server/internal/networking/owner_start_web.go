@@ -21,16 +21,15 @@ import (
 type OwnerSwitchCountSign func(context.Context, *sql.Tx, string, int64, int) (claimweb.Signed, error)
 
 type OwnerStartAuthority struct {
-	ExpiresAt time.Time
-	CaptureTx func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed) error
+	ExpiresAt          time.Time
+	CaptureTx          func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed) error
 	CaptureWithCountTx func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed, OwnerSwitchCountSign) (*claimweb.Signed, error)
-	BindTx    func(context.Context, *sql.Tx, string, string) error
+	BindTx             func(context.Context, *sql.Tx, string, string) error
 }
 
 type ownerStartSigner interface {
 	SignOwnerStart(context.Context, Binding, claimweb.Signed, claimweb.OwnerStart) (claimweb.Signed, error)
 }
-
 
 type ownerSwitchCountSigner interface {
 	SignOwnerSwitchCountTx(context.Context, *sql.Tx, Binding, string, claimweb.Signed, claimweb.Signed, claimweb.OwnerSwitchCount) (claimweb.Signed, error)
@@ -123,8 +122,12 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 			signCount = func(ctx context.Context, tx *sql.Tx, preview string, revision int64, people int) (claimweb.Signed, error) {
 				now := time.Now().UTC()
 				expires := now.Add(claimweb.OwnerStartLifetime)
-				if original.ExpiresAt.Before(expires) { expires = original.ExpiresAt }
-				if start.ExpiresAt.Before(expires) { expires = start.ExpiresAt }
+				if original.ExpiresAt.Before(expires) {
+					expires = original.ExpiresAt
+				}
+				if start.ExpiresAt.Before(expires) {
+					expires = start.ExpiresAt
+				}
 				count := claimweb.OwnerSwitchCount{Kind: claimweb.OwnerSwitchCountKind, ServerID: original.ServerID, PublicKey: original.PublicKey, OperationID: original.OperationID, Purpose: "switch", PreviewID: preview, PreviewRevision: revision, LocalGeneration: original.LocalGeneration, ClaimHash: start.ClaimHash, OtherPeopleCount: people, IssuedAt: now, ExpiresAt: expires}
 				return countSigner.SignOwnerSwitchCountTx(ctx, tx, v.Binding, transport.origin, out.Signed, *out.OwnerStart, count)
 			}
