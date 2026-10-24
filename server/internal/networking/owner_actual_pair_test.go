@@ -197,6 +197,20 @@ func TestOwnerPairRefusalProbesUseRegisteredAccountRoutes(t *testing.T) {
 	}
 }
 
+func TestOwnerPairLateACKUsesCanonicalTransportOrder(t *testing.T) {
+	// Exercise the same nested body encoding used by the private pipe command.
+	// The bytes come from the real public transport DTO, not a second verifier.
+	commit := networking.Commit{OperationID: "operation", ServerID: "server", ClaimGeneration: "1", CredentialGeneration: "2"}
+	raw, err := json.Marshal(map[string]any{"Action": "http", "Body": networking.OwnerPairCommitRequestForTest(commit)})
+	if err != nil {
+		t.Fatal("canonical ACK command encoding failed")
+	}
+	var command struct{ Body json.RawMessage }
+	if json.Unmarshal(raw, &command) != nil || string(command.Body) != `{"operationId":"operation","serverId":"server","claimGeneration":"1","credentialGeneration":"2"}` {
+		t.Fatal("nested ACK lost canonical producer field order")
+	}
+}
+
 func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testing.T) {
 	runActualOwnerContinuation(t, "success")
 }
@@ -492,7 +506,7 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 			}
 			var lateAck ownerPairReply
 			if e = lateResult.Credential.Use(func(token []byte) error {
-				lateAck = b.http("POST", "/v1/server-claims/ack", string(token), map[string]string{"operationId": lateResult.OperationID, "serverId": lateResult.ServerID, "claimGeneration": lateResult.ClaimGeneration, "credentialGeneration": lateResult.CredentialGeneration})
+				lateAck = b.http("POST", "/v1/server-claims/ack", string(token), networking.OwnerPairCommitRequestForTest(lateResult.Commit))
 				return nil
 			}); e != nil {
 				t.Fatal("late ACK proof unavailable")
