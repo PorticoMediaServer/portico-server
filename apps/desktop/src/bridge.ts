@@ -12,7 +12,11 @@ export function observation(value: unknown): NativeObservation {
       !['positionMs','rate','volume','droppedFrames'].every(key => typeof x[key] === 'number' && Number.isFinite(x[key]) && Number(x[key]) >= 0) || !['muted','nativeSurfaceActive','eqApplied','levelingApplied'].every(key=>typeof x[key]==='boolean')) throw new Error('engine_failure');
   // Explicit projection: no native fields can accidentally become UI/session telemetry.
   let output:Pick<ObservedPlayback,'audio'>={};
-  try{const value=parseObservedPlayback(x.observedPlayback);if(value?.audio)output={audio:value.audio};}catch{/* Invalid optional output never poisons playback or retains old facts. */}
+  try{
+    const audio=parseObservedPlayback(x.observedPlayback)?.audio;
+    if(audio?.handling==='pcm'&&(audio.sampleRate!==undefined||audio.channels!==undefined))output={audio:{handling:'pcm',
+      ...(audio.sampleRate!==undefined?{sampleRate:audio.sampleRate}:{}),...(audio.channels!==undefined?{channels:audio.channels}:{})}};
+  }catch{/* Invalid optional output never poisons playback or retains old facts. */}
   return {observedPlayback:Object.freeze(output),generation: Number(x.generation), state: x.state as NativeObservation['state'], positionMs: Number(x.positionMs), rate: Number(x.rate), volume: Number(x.volume), muted: x.muted as boolean, droppedFrames: Number(x.droppedFrames), nativeSurfaceActive: x.nativeSurfaceActive as boolean,eqApplied:x.eqApplied as boolean,levelingApplied:x.levelingApplied as boolean};
 }
 export const nativeBridge: Bridge = {

@@ -10,10 +10,11 @@ import type {LocalPlayerSource} from '../../../packages/client-core/src/playback
 const source = {url:'/v1/media/opaque',generation:1,mode:'direct' as const,startPositionMs:0,autoplay:true,subtitles:[]};
 test('only canonical measured audio leaves the native bridge; malformed or unsupported facts clear safely',()=>{
   const raw={generation:1,state:'playing',positionMs:1,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false};
-  const value=observation({...raw,observedPlayback:{audio:{handling:'pcm',sampleRate:48000,channels:2,path:'/private'},screen:{dynamicRange:'dolby_vision'},video:{width:1920},token:'SECRET'}});
+  const value=observation({...raw,observedPlayback:{audio:{handling:'pcm',sampleRate:48000,channels:2,codec:'truehd',bitDepth:24,objectAudio:'atmos',path:'/private'},screen:{dynamicRange:'dolby_vision'},video:{width:1920},token:'SECRET'}});
   assert.deepEqual(value.observedPlayback,{audio:{handling:'pcm',sampleRate:48000,channels:2}});
   assert.doesNotMatch(JSON.stringify(value),/private|SECRET|dolby_vision|1920/);
   assert.deepEqual(observation({...raw,observedPlayback:{audio:{sampleRate:NaN}}}).observedPlayback,{});
+  assert.deepEqual(observation({...raw,observedPlayback:{audio:{handling:'passthrough',sampleRate:192000,channels:2}}}).observedPlayback,{});
   assert.deepEqual(observation(raw).observedPlayback,{});
 });
 function harness(local?:DesktopLocalPlayback) {
