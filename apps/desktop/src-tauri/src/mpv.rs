@@ -528,6 +528,36 @@ impl Mpv {
 impl Drop for Mpv {fn drop(&mut self){unsafe{(self.api.destroy)(self.handle)}}}
 
 #[cfg(test)]
+mod pcm_original_tests {
+    use super::*;
+    #[test]
+    #[ignore="explicit native libmpv and owned WAV/AIFF; no physical or bit-perfect claim"]
+    fn actual_pcm_integer_and_float_inventory_and_original_containers(){
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
+        let root=std::path::PathBuf::from(std::env::var_os("PORTICO_TEST_PCM_FIXTURE").expect("owned fixture required"));
+        let root=root.parent().unwrap();
+        let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        let inventory=engine.decoder_inventory().unwrap();
+        for codec in ["pcm_u8","pcm_s16le","pcm_s16be","pcm_s24le","pcm_s24be","pcm_s32le","pcm_s32be","pcm_f32le","pcm_f32be","pcm_f64le","pcm_f64be"]{
+            assert!(inventory.iter().any(|value|value==codec),"required decoder missing: {codec}");
+        }
+        for (generation,name,codec) in [(1,"owned-24bit.wav","pcm_s24le"),(2,"owned-24bit.aiff","pcm_s24be")]{
+            engine.load_local(&root.join(name),generation,0.0,true).unwrap();
+            let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
+            loop {
+                let observed=engine.observation();assert_ne!(observed.state,"error");
+                if observed.position_ms>10.0{break}
+                assert!(std::time::Instant::now()<deadline,"original PCM did not advance");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert_eq!(engine.property("audio-codec-name").as_deref(),Some(codec));
+            assert_eq!(engine.audio_facts().source_rate,Some(48000));
+        }
+        engine.retire().unwrap();
+    }
+}
+
+#[cfg(test)]
 mod wavpack_tests {
     use super::*;
     #[test]

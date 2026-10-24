@@ -1,6 +1,16 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {desktopCapabilities} from '../src/capabilities.ts';
+test('canonical PCM requires the complete native integer/float decoder family, without output grants',()=>{
+ const required=['pcm_u8','pcm_s16le','pcm_s16be','pcm_s24le','pcm_s24be','pcm_s32le','pcm_s32be','pcm_f32le','pcm_f32be','pcm_f64le','pcm_f64be'];
+ for(const missing of [undefined,...required]){
+  const profile=desktopCapabilities({version:'mpv 0.41.0',decoders:['flac',...required.filter(codec=>codec!==missing)]},'linux','0.1.0');
+  assert.equal(profile.engines.native.audio?.some(value=>value.codec==='pcm'),missing===undefined);
+  assert.equal(profile.engines.native.transports?.[0]?.audio?.includes('pcm'),missing===undefined);
+  assert.equal(profile.audioOutput,undefined);
+  assert.doesNotMatch(JSON.stringify(profile.engines.native.audio?.find(value=>value.codec==='pcm')??{}),/lossless|bitPerfect|sampleRate|bitDepth|objectAudio/);
+ }
+});
 test('native decoder inventory never grants browser, hardware, HDR, object audio or passthrough facts',()=>{
  const document=desktopCapabilities({version:'mpv 0.41.0',decoders:['h264','hevc','aac','flac','dca','truehd'],path:'/private'},'linux','0.1.0');
  const engine=document.engines.native;
