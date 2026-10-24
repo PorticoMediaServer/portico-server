@@ -30,6 +30,9 @@ func TestPrepareServeRequiresOutboundEnforcementAndRemovesTransientConfig(t *tes
 		t.Fatal(err)
 	}
 	defer p.Loaded()
+	if !strings.Contains(strings.Join(p.Command.Args, " "), "--poll-interval=0") {
+		t.Fatal("autonomous polling can bypass source operation admission")
+	}
 	if !enforced {
 		t.Fatal("egress boundary not installed")
 	}
