@@ -11,6 +11,12 @@ import {SettingsPageFailure} from '../../kit/settings';
 import {peopleTableRow} from './people-table-row';
 import type {SettingsViewerScope} from '../../platform/settings-platform';
 import type {SettingsInvitations} from './invitations';
+import {InvitationShortCodeDialog} from '../../kit/accounts';
+import {randomId} from '@core/random-id.ts';
+import type {ServerInvitation} from '@core/direct-account.ts';
+
+const invitationStates = ['pending', 'accepted', 'revoked', 'expired'] as const;
+const invitationState = (value: string) => invitationStates.find(state => state === value);
 
 const t = defaultI18n.t, section = settingsSpec.find(section => section.scope === 'server' && section.id === 'people')!;
 const table = section.groups![0].rows[0].control, personSpec = section.panels!.person;
@@ -40,6 +46,24 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
 
 function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const {client} = bindings;
+  const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
+  const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => () => inviteLife.current.abort(), []);
+  /** The explicit Invite gesture: create once, then open the show-once dialog on
+   * that exact invitation. A replay without a short code is an absence, not a
+   * reason to issue again. */
+  const openInvite = async (opener: HTMLElement) => {
+    const invitations = bindings.invitations;
+    if (!invitations || !bindings.authority.isCurrent()) return;
+    inviteOpener.current = opener;
+    try {
+      const created = await invitations.create({role: 'member', allowedLibraries: [], expiresInHours: 168, operationId: randomId()},
+        {signal: inviteLife.current.signal, isCurrent: bindings.authority.isCurrent});
+      if (!invitationState(created.state)) throw new Error('invitation_state_unknown');
+      if (!bindings.authority.isCurrent()) return;
+      setIssued(created); setInviteOpen(true);
+    } catch (error) { if (bindings.authority.isCurrent()) bindings.reportError(error); }
+  };
   const live = useSyncExternalStore(bindings.authority.subscribe, bindings.authority.isCurrent, () => false);
   const [denied, setDenied] = useState(false);
   const [query, setQuery] = useState<TableQuery>(initialQuery), [page, setPage] = useState<SettingsPeoplePage>(), [error, setError] = useState<unknown>();
@@ -164,7 +188,8 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   };
   if (!live || denied) return null;
   return <>
-    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} disabled={!bindings.invite} onClick={event => {if (bindings.authority.isCurrent()) bindings.invite?.(event.currentTarget);}}>{t(table.addLabel!)}</Button>}>
+    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} disabled={!bindings.invite && !bindings.invitations}
+      onClick={event => { if (!bindings.authority.isCurrent()) return; if (bindings.invite) bindings.invite(event.currentTarget); else void openInvite(event.currentTarget); }}>{t(table.addLabel!)}</Button>}>
     {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => peopleTableRow(row, bindings.actor))} columns={table.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
       query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false, options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))}
@@ -187,5 +212,9 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
       {command.action === 'access' ? <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.awayAccess', 'bulk.maxRating'].includes(row.id) || row.id === 'bulk.maxStreams' && !!bindings.streamLimits, value: row.id === 'bulk.maxStreams' ? bindings.streamLimits?.readBulk(bulk) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none'})}
         change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
     </Dialog>}
+    {issued && <InvitationShortCodeDialog open={inviteOpen} onOpenChange={setInviteOpen}
+      invitation={{id: issued.id, revision: issued.revision, state: invitationState(issued.state)!}}
+      request={(operationId, signal, isCurrent) => bindings.invitations!.shortCode(issued, operationId, {signal, isCurrent})}
+      issueOnOpen returnFocusRef={inviteOpener} />}
   </>;
 }
