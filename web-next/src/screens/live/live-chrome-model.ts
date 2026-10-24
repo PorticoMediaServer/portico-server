@@ -9,9 +9,10 @@ const clamp = (value: number) => Math.min(100, Math.max(0, value));
  * retained window from tuning in to now, the dashed remainder is still ahead of the source. */
 export type LiveRail = Readonly<{gone: number; buffer: number; played: number; future: number; edge: number; knob: number}>;
 export function liveRail(window: LiveChromeWindow): LiveRail {
-  const span = window.programmeEndMs - window.programmeStartMs;
+  const from = window.programmeStartMs ?? window.seekStartMs, to = window.programmeEndMs ?? window.seekEndMs;
+  const span = to - from;
   if (!(span > 0)) return {gone: 0, buffer: 0, played: 0, future: 100, edge: 100, knob: 100};
-  const percent = (value: number) => clamp((value - window.programmeStartMs) / span * 100);
+  const percent = (value: number) => clamp((value - from) / span * 100);
   const start = percent(window.seekStartMs), position = percent(window.positionMs), edge = percent(window.liveEdgeMs);
   return {gone: start, buffer: Math.max(0, edge - start), played: Math.max(0, position - start), future: Math.max(0, 100 - edge), edge, knob: position};
 }
@@ -30,7 +31,7 @@ export function liveBehindLabel(seconds: number): string | undefined {
 }
 
 export function liveRecordLabel(programme: LiveChromePort['programme']): string {
-  return programme?.recording === 'recording' ? t('next.kit.recording') : t('guide.record');
+  return programme?.recording ? t('next.kit.recording') : t('guide.record');
 }
 
 export function liveNeighbour(port: LiveChromePort, direction: -1 | 1) {

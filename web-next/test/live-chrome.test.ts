@@ -26,6 +26,7 @@ test('behind live appears only beyond the live tolerance', () => {
   assert.equal(liveBehindLabel(1), undefined);
   assert.ok(liveBehindLabel(120));
   assert.equal(liveRecordLabel({...fixture, recording: 'recording'}), 'Recording');
+  assert.equal(liveRecordLabel({...fixture, recording: 'scheduled'}), 'Recording');
   assert.equal(liveRecordLabel(fixture), 'Record');
 });
 

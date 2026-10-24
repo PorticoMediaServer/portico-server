@@ -5,6 +5,8 @@ import type {ChannelPlaybackFence} from '../../../../packages/player-core/src/in
 export type LiveChromeChannel = Readonly<{
   id: string;
   sourceId: string;
+  kind: 'live-source' | 'library-channel';
+  generation: string;
   number: string;
   name: string;
   mark?: Readonly<{text: string; seed: string}>;
@@ -25,8 +27,9 @@ export type LiveChromeProgramme = Readonly<{
 }>;
 
 export type LiveChromeWindow = Readonly<{
-  programmeStartMs: number;
-  programmeEndMs: number;
+  /** Absent when the session has no programme facts; never inferred from the media window. */
+  programmeStartMs?: number;
+  programmeEndMs?: number;
   /** The actual retained stream window, not the programme's wall-clock span. */
   seekStartMs: number;
   seekEndMs: number;
@@ -43,6 +46,8 @@ export type LiveChromeGuideChannel = Readonly<{
   nextStartMs?: number;
 }>;
 
+export type LiveChromeGuideTarget = Readonly<{sourceId: string; channelId: string; generation: string; kind: 'live-source' | 'library-channel'}>;
+
 export type LiveChromePort = Readonly<{
   /** The exact channel fence this chrome belongs to. */
   fence: ChannelPlaybackFence;
@@ -58,11 +63,11 @@ export type LiveChromePort = Readonly<{
   skipForwardSeconds: number;
   /** Rechecks the runtime's active fence, authority and this channel's source generation. */
   isCurrent(): boolean;
-  /** Server-confirmed outcomes only. */
-  record(): Promise<'recorded' | 'cancelled'>;
+  /** The refreshed real DVR model owns the visible scheduled/recording/cancelled state. */
+  record(): Promise<void>;
   goLive(): Promise<void>;
   tune(direction: -1 | 1): Promise<void>;
-  tuneTo(channelId: string): Promise<void>;
+  tuneTo(target: LiveChromeGuideTarget): Promise<void>;
   openFullGuide(): void;
   openRecordings(): void;
 }>;

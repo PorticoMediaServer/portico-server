@@ -1126,6 +1126,17 @@ export class WebShellPlaybackRuntime {
     else if (!await this.groupTransport('play', fence)) stack.service.resume();
   }
   async toggle(fence: PlaybackFence): Promise<void> {this.require(fence);if (this.snapshot.presentation?.playing) await this.pause(fence);else await this.resume(fence);}
+  /** The existing channel service's Go Live intent. No seek-to-zero, no second controller and
+   * no ACK: the next published snapshot is the only source of the live-edge state. */
+  goLive(fence: PlaybackFence): void {
+    const stack = this.require(fence);
+    if (fence.kind !== 'channel') problem('playback_command_unavailable');
+    const live = stack.service.getSnapshot();
+    if (!live.channel || live.channel.kind !== fence.channelKind || live.channel.sourceId !== fence.sourceId
+      || live.channel.channelId !== fence.channelId || live.channel.generation !== fence.channelGeneration) problem('playback_command_unavailable');
+    stack.service.goLive();
+    if (this.current(stack)) this.sync();
+  }
   async seek(fence: PlaybackFence, seconds: number): Promise<void> {
     if (!validSeconds(seconds)) problem('invalid_playback_position');const stack = this.offered(fence, 'seek');
     if (fence.kind === 'local') stack.local!.controller.seek(fence, seconds);

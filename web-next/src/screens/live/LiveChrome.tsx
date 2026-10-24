@@ -3,7 +3,6 @@ import {defaultI18n} from '@i18n';
 import {ChannelMark} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Icon, type IconName} from '../../kit/Icon';
-import {Banner} from '../../kit/overlays';
 import {liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveTimeRange} from './live-chrome-model';
 import type {LiveChromePort} from './live-chrome-types';
 import styles from './live-chrome.module.css';
@@ -53,15 +52,15 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
     try { void work().catch(reportError); } catch (error) { reportError(error); }
   };
   const record = () => {
-    if (!port.isCurrent()) return;
-    void port.record().then(outcome => { if (!port.isCurrent()) return; setNotice(outcome === 'recorded'
-      ? t('guide.recordedShortcut', {title: programme?.title ?? channel.name}) : t('next.live.recordingCancelled')); }, reportError);
+    if (!port.isCurrent() || recordingBusy) return;
+    setRecordingBusy(true);
+    void port.record().then(() => {}, reportError).finally(() => setRecordingBusy(false));
   };
   const seekAt = (clientX: number) => {
     const element = rail.current;if (!element || !port.isCurrent()) return;
     const rect = element.getBoundingClientRect();if (!(rect.width > 0)) return;
-    const span = window.programmeEndMs - window.programmeStartMs;if (!(span > 0)) return;
-    const at = window.programmeStartMs + Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) * span;
+    const from = window.programmeStartMs ?? window.seekStartMs, to = window.programmeEndMs ?? window.seekEndMs, span = to - from;if (!(span > 0)) return;
+    const at = from + Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) * span;
     setScrub(Math.min(window.liveEdgeMs, Math.max(window.seekStartMs, at)));
   };
   const railKeys = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -92,12 +91,11 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         {(range || next) && <p>{range}{range && next && <i className={styles.gap}/>}{next}</p>}
       </div>
       <div className={styles.tools}>
-        {channel.recordAvailable && programme && <Button className={styles.record} variant="glass" size="small" icon="i-rec" onClick={record}>{liveRecordLabel(programme)}</Button>}
+        {channel.recordAvailable && programme && <Button className={styles.record} variant="glass" size="small" icon="i-rec" disabled={recordingBusy} onClick={record}>{liveRecordLabel(programme)}</Button>}
         <LiveControl icon="i-more" label={t('player.more')} onClick={onMore}/>
         <LiveControl icon="i-close" label={t('player.close')} onClick={onStop}/>
       </div>
     </header>
-    {notice && <Banner className={styles.notice} open>{notice}</Banner>}
     {miniGuide && <aside ref={guide} className={styles.miniGuide} aria-label={t('player.live.guide')} onKeyDown={guideKeys}>
       <div className={styles.miniHead}><b>{t('player.live.guide')}</b><span>{t('next.live.miniGuideHint')}</span></div>
       {port.miniGuide.map(item => {
@@ -105,7 +103,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         const facts = current ? programme : item.programme, from = facts?.startMs ?? window.programmeStartMs, to = facts?.endMs ?? window.programmeEndMs;
         const span = to - from, progress = span > 0 ? Math.min(100, Math.max(0, (window.liveEdgeMs - from) / span * 100)) : 0;
         return <button type="button" className={styles.miniRow} data-mini-row data-current={current || undefined} key={`${item.channel.sourceId}:${item.channel.id}`}
-          onClick={() => act(async () => {await port.tuneTo(item.channel.id);openGuide(false);})}>
+          onClick={() => act(async () => {await port.tuneTo({sourceId: item.channel.sourceId, channelId: item.channel.id, generation: item.channel.generation, kind: item.channel.kind});openGuide(false);})}>
           {item.channel.mark && <ChannelMark className={styles.miniMark} mark={{sourceId: item.channel.sourceId, id: item.channel.id, ...item.channel.mark}} size={34}/>}
           <span className={styles.miniCopy}>
             <span className={styles.miniChannel}>{item.channel.name}<i className={styles.gap}/>{item.channel.number}{current && <em className={styles.watching}>{t('next.live.watching')}</em>}</span>
