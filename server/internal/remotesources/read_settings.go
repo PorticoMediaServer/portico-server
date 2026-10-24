@@ -178,8 +178,10 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 // has ended. This bounded cleanup does only DB reads and cancellation: it never
 // opens a source or grants authority. Receipt replay retries it without a write.
 // Read the current profile, so an old receipt never retires its replacement.
-func (s *Service) finishReadSettings(ctx context.Context, source string, committedRevision int64) error {
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+// No request context values are inherited: they may hold an ended/stale SQL
+// snapshot. This cleanup has no actor admission or provider-I/O path.
+func (s *Service) finishReadSettings(_ context.Context, source string, committedRevision int64) error {
+	cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	snapshot, err := dbwork.BeginSnapshot(cleanup, s.db)
 	if err != nil {

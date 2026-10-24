@@ -68,7 +68,11 @@ func (s *Service) receipt(ctx context.Context, actor, op, fingerprint string) (R
 	return out, err
 }
 func (s *Service) Receipt(ctx context.Context, actor, op string) (Receipt, error) {
-	return s.receipt(ctx, actor, op, "")
+	receipt, err := s.receipt(ctx, actor, op, "")
+	if err == nil && receipt.ReadSettings != nil {
+		err = s.finishReadSettings(ctx, receipt.Source.ID, receipt.ReadSettings.Revision)
+	}
+	return receipt, err
 }
 func (s *Service) authorize(ctx context.Context, authorize func(*sql.Tx) error) error {
 	if authorize == nil {

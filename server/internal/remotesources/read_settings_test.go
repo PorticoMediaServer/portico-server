@@ -172,7 +172,8 @@ func TestSourceReadSettingsRetirementSurvivesRequestCancelAndReceiptReplay(t *te
 	secondReader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
 	defer secondReader.Close()
 	revision = commitWithoutNotification(revision, "everything")
-	replayed, err := f.s.SaveSourceReadSettings(ctx, identities, owner, "remote", input)
+	actor, _ := json.Marshal([]string{owner.Authority, owner.AccountID, owner.ProfileID})
+	replayed, err := f.s.Receipt(ctx, string(actor), input.OperationID)
 	if err != nil || replayed.ReadSettings == nil || *replayed.ReadSettings != *accepted.ReadSettings {
 		t.Fatal("receipt replay failed after missed notification", replayed, err)
 	}
