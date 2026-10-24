@@ -449,7 +449,8 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 					t.Fatal(err)
 				}
 				profile.Limits.RequestsPerSecond--
-				if _, err = remote.ApplySourceReadProfileTx(context.Background(), hold.Tx(), f.id, ownerPrincipal, remotesources.SourceReadProfileChange{SourceID: configured.Source.ID, Generation: "1", ExpectedRevision: profile.Revision, Profile: profile}); err != nil {
+				updated, err := remote.ApplySourceReadProfileTx(context.Background(), hold.Tx(), f.id, ownerPrincipal, remotesources.SourceReadProfileChange{SourceID: configured.Source.ID, Generation: "1", ExpectedRevision: profile.Revision, Profile: profile})
+				if err != nil {
 					t.Fatal(err)
 				}
 				if err = hold.Commit(); err != nil {
@@ -465,6 +466,23 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 				}
 				if after := readingRestrictionProgress(t, &readingFixture{f: f}); after != before {
 					t.Fatal("profile-fenced writer changed persisted reading progress")
+				}
+				// Complete the actual profile publisher's post-commit lifecycle.
+				// A NEW metadata admission may be Busy while the obsolete physical
+				// process retires; no old reading lease is reopened or retargeted.
+				if err = remote.ReadProfileCommitted(context.Background(), configured.Source.ID, updated.Profile.Revision); err != nil {
+					t.Fatal(err)
+				}
+				deadline = time.Now().Add(10 * time.Second)
+				for {
+					_, err = remote.InspectRoot(life, remoteRoot)
+					if err == nil {
+						break
+					}
+					if !errors.Is(err, storage.ErrBusy) || time.Now().After(deadline) {
+						t.Fatal("new metadata admission after profile publication", err)
+					}
+					time.Sleep(10 * time.Millisecond)
 				}
 			}
 			if kind == "comic" {
