@@ -146,11 +146,6 @@ func (f setupContinuationFixture) install(t *testing.T) {
 		if e != nil {
 			return e
 		}
-		request := identity.Token()
-		cancelRaw := []byte(fmt.Sprintf(`{"kind":"portico.claim.cancel","version":"1","audience":"https://hosted.example","operationId":%q,"serverId":%q,"accountId":%q,"publicKey":%q,"localGeneration":"0","requestId":%q,"mode":"intent"}`, v.OperationID, v.ServerID, v.AccountID, f.claim.PublicKey, request))
-		if _, e = f.store.ArmPreinstallCancellation(ctx, v, networking.Cancellation{Binding: v.Binding, RequestID: request, Proof: networking.SignedProof{Payload: cancelRaw, Signature: ed25519.Sign(f.key, cancelRaw)}}); e != nil {
-			return e
-		}
 		v, e = f.store.BeginFinalizing(ctx, v)
 		if e != nil {
 			return e
