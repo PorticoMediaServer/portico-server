@@ -16,7 +16,7 @@ const lifetime = 300000;
 const invalid = () => new ApiError(400, 'invalid_return', 'invalid_return', false);
 const changed = () => new ApiError(409, 'cancelled', 'cancelled', false);
 function same(a: HostedOwnerPending | undefined, b: HostedOwnerPending) {
-  return a?.attemptId === b.attemptId && a.capturedAt === b.capturedAt && a.request?.hostedOrigin === b.request.hostedOrigin &&
+  return a?.version === 1 && a.kind === 'owner-approval' && a.attemptId === b.attemptId && a.capturedAt === b.capturedAt && a.request?.hostedOrigin === b.request.hostedOrigin &&
     a.request?.code === b.request.code && a.request?.operation === b.request.operation && a.request?.nameHint === b.request.nameHint;
 }
 function checked(value: HostedOwnerPending, origin: string, now: number): HostedOwnerPending {
@@ -30,7 +30,7 @@ function checked(value: HostedOwnerPending, origin: string, now: number): Hosted
 /** Factory is inert. The canonical secure/native-lock guard runs before even
  * creating a tab locator; there is no HTTP/plaintext or legacy-store fallback. */
 export function hostedOwnerPendingStore(): HostedOwnerPendingStore {
-  return new SecurePendingStorage(() => new BrowserProtectedStore<HostedOwnerPending>('portico.services-owner-approval.v1:' + servicesTab(), 8192, true));
+  return new SecurePendingStorage<HostedOwnerPending>(() => new BrowserProtectedStore<HostedOwnerPending>('portico.services-owner-approval.v1:' + servicesTab(), 8192, true));
 }
 
 /** Persist only a scrubbed capture. Reload/provider navigation retains its
