@@ -66,7 +66,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   const facts = titlePageFacts({year: show.year, seasonCount: data.seasonTotalCount, genres: show.genres, contentRating: show.contentRating}, env);
   // Phone frames always list episodes; retain the desktop choice across rotation.
   const episodeLayout = phone ? 'list' : layout, columns = 4;
-  return <article className={detail.page} data-show-id={show.id} data-compact={compact || undefined}>
+  return <article className={`${detail.page} ${styles.showPage}`} data-show-id={show.id} data-compact={compact || undefined}>
     {!compact ? <header className={detail.hero}>
       {preferenceValue<boolean>(preferences, 'appearance.showBackdrops') && <AmbientArt className={detail.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(show.backdropUrl ?? show.posterUrl)} foreground={art.foreground(show.backdropUrl ?? show.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
       <div className={detail.copy}><Lockup title={show.title} platform={phone ? 'phone-web' : 'desktop'} /><TitleFactsLine parts={facts} genres={<GenreNames names={show.genres ?? []} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} />} />{show.overview && <TitleProse variant="hero" className={detail.blurb}>{show.overview}</TitleProse>}{actions}</div>
