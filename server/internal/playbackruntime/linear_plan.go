@@ -27,6 +27,24 @@ type linearProbeStream struct {
 	Layout        string `json:"channel_layout"`
 	Bitrate       string `json:"bit_rate"`
 	AudioDepth    string `json:"bits_per_raw_sample"`
+	videoDetail   *assets.StreamDetail
+}
+
+func (s *linearProbeStream) UnmarshalJSON(raw []byte) error {
+	type plain linearProbeStream
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	if decoded.Kind == "video" {
+		detail, err := assets.VideoStreamDetailFromProbeJSON(raw)
+		if err != nil {
+			return err
+		}
+		decoded.videoDetail = &detail
+	}
+	*s = linearProbeStream(decoded)
+	return nil
 }
 
 // Plan from probed elementary streams and the admitted engine's declarations.
@@ -119,6 +137,9 @@ func linearEnginePlan(raw []byte, w playback.LinearWork, packaging playback.Line
 func linearVideoSource(video *linearProbeStream) *playback.SourceVideo {
 	if video == nil {
 		return nil
+	}
+	if video.videoDetail != nil {
+		return &playback.SourceVideo{Codec: video.Codec, StreamDetail: *video.videoDetail}
 	}
 	fps, numerator, denominator := assets.VideoProbeFrameRate(video.FrameRate, video.RealFrameRate)
 	bitrate, _ := strconv.ParseInt(video.Bitrate, 10, 64)
