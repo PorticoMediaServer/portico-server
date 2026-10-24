@@ -47,7 +47,7 @@ export function SortMenu({sorts, value, onValueChange, label, open: controlledOp
     setOpen(false);
   };
   return <Popover returnFocusRef={triggerRef} open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
-    trigger={<Chip ref={triggerRef} variant="default" icon="i-sort" trailingIcon="i-down" className={styles.sortTrigger} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span>}</span></Chip>}>
+    trigger={<Chip ref={triggerRef} variant="default" icon="i-sort" iconSize={18} trailingIcon="i-down" trailingSize={16} className={styles.sortTrigger} data-saved={variant === 'saved' || undefined} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <>{variant === 'saved' && <span className={styles.orderSeparator} aria-hidden="true" />}<span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span></>}</span></Chip>}>
     <div className={styles.menuHeading}>{t('next.browse.sortBy')}</div>
     {sorts.map(sort => <MenuRow key={sort.id} selected={sort.id === value.field} onClick={() => pick(sort)} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow>)}
     {showOrder && <div className={styles.sortOrder}><div className={styles.menuHeading}>{t('next.browse.order')}</div>

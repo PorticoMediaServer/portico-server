@@ -16,9 +16,10 @@ export type ChipProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   trailingIcon?: IconName;
   phone?: boolean;
   iconSize?: number;
+  trailingSize?: number;
 };
 
-export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip({variant = 'default', selected, defaultSelected, onSelectedChange, count, countStyle = 'text', prefix, dim, retry, icon, trailingIcon, phone, iconSize = 16, type = 'button', children, className, onClick, ...props}, ref) {
+export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip({variant = 'default', selected, defaultSelected, onSelectedChange, count, countStyle = 'text', prefix, dim, retry, icon, trailingIcon, phone, iconSize = 16, trailingSize, type = 'button', children, className, onClick, ...props}, ref) {
   const [localSelected, setLocalSelected] = useState(defaultSelected ?? false);
   const checkbox = props.role === 'checkbox' || variant === 'facet';
   const toggle = checkbox || selected !== undefined || defaultSelected !== undefined || onSelectedChange !== undefined;
@@ -35,6 +36,6 @@ export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip({vari
     {count !== undefined && count !== null && <span className={countStyle === 'badge' ? styles.countBadge : styles.count}>{count}</span>}
     {trailing && (variant === 'applied'
       ? <span className={styles.removeGlyph}><Icon name={trailing} size={14} /></span>
-      : <Icon className={styles.trailing} name={trailing} size={variant === 'default' && !phone ? 18 : 16} />)}
+      : <Icon className={styles.trailing} name={trailing} size={trailingSize ?? (variant === 'default' && !phone ? 18 : 16)} />)}
   </button>;
 });
