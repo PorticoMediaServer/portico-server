@@ -1,4 +1,4 @@
-import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef} from 'react';
 import type {I18n} from '@i18n';
 import {Segmented} from '../../kit/controls';
 import {TrackChoices} from '../../kit/media';
@@ -35,7 +35,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings}:{open
  const root=useRef<HTMLDivElement>(null),rowRefs=useRef(new Map<Section,HTMLButtonElement>()),lastSection=useRef<Section|null>(null),t=i18n.t;
  const icons:Readonly<Record<Section,IconName>>=Object.freeze({subtitles:'i-cc',audio:'i-audio',quality:'i-quality',speed:'i-gauge'});
  const sections=phoneOptionRows(model,t).map(row=>({...row,icon:icons[row.id]}));
- const [section,setSection]=useState<Section|null>(()=>{const asked=sectionOf(context.panel);return asked&&sections.some(row=>row.id===asked)?asked:null});
+ const asked=sectionOf(context.panel),section=asked&&sections.some(row=>row.id===asked)?asked:null;
  useLayoutEffect(()=>{
   if(context.layout!=='phone')return;
   if(section){
@@ -63,7 +63,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings}:{open
  const sectionSelect=(id:Section,value:string)=>id==='subtitles'?model.selectSubtitle(value):id==='audio'?model.selectAudio(value):id==='quality'?model.selectQuality(value):model.selectSpeed(value);
  const sectionTitle=(id:Section)=>id==='subtitles'?t('player.opt.subtitles'):id==='audio'?t('player.opt.audio'):id==='quality'?t('player.opt.quality'):t('player.opt.speed');
  const subPanel=section?<div ref={root} data-section={section} className={styles.subBody} onKeyDown={event=>{
-  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();setSection(null);}
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.show('options');}
  }}>{section==='speed'?<div className={styles.column}>
    <Segmented className={styles.speeds} aria-label={sectionTitle('speed')} value={model.speed.find(row=>row.selected)?.id??''}
     items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
@@ -73,7 +73,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings}:{open
   <p className={styles.phoneNote}><Icon name="i-info" size={18}/><span>{t('player.opt.temporaryChanges')}{' '}{t('player.opt.defaultsUnchanged')}</span></p>
   {sections.map(row=><button key={row.id} type="button" className={styles.phoneRow}
    ref={node=>{if(node)rowRefs.current.set(row.id,node);else rowRefs.current.delete(row.id);}}
-   onClick={()=>setSection(row.id)}>
+   onClick={()=>context.show(row.id)}>
    <span className={styles.phoneIcon}><Icon name={row.icon} size={18}/></span>
    <span className={styles.phoneLabel}>{row.label}</span>
    <span className={styles.phoneValue}>{row.value}{row.detail&&<small>{row.detail}</small>}</span>
@@ -96,7 +96,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings}:{open
     onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
   </div>}
  </div><div className={styles.note}><Icon name="i-info" size={20}/><span><b>{t('player.opt.temporaryChanges')}</b>{' '}{t('player.opt.defaultsUnchanged')}</span><a href="/settings" onClick={event=>{if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();try{context.close();void Promise.resolve(openSettings()).catch(reportError);}catch(error){reportError(error);}}}>{t('next.reader.openSettings')}<Icon name="i-right" size={16}/></a></div></>;
- return context.layout==='phone'?<BottomSheet open title={section?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>setSection(null)}><Icon name="i-left" size={20}/></button><span>{sectionTitle(section)}</span></span>:t('next.dock.options')}
+ return context.layout==='phone'?<BottomSheet open title={section?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>context.show('options')}><Icon name="i-left" size={20}/></button><span>{sectionTitle(section)}</span></span>:t('next.dock.options')}
   headerAction={<button type="button" className={styles.done} onClick={context.close}>{t('action.done')}</button>} showCloseButton={false}
   onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}
   detents={[Math.max(1,(typeof window==='undefined'?context.phoneTop:window.visualViewport?.height??window.innerHeight)-context.phoneTop)]}>{section?subPanel:list}</BottomSheet>
