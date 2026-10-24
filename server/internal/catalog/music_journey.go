@@ -81,6 +81,11 @@ func (s *Service) MusicJourney(viewer Viewer, from, to string, length int) (Musi
 	if err != nil {
 		return out, err
 	}
+	// A Journey captures exactly the requested finite length. Sparse coverage
+	// is unavailable, never a shorter path or ordinary-selector fallback.
+	if len(ids) != length {
+		return out, sonic.ErrUnavailable
+	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id) FROM json_each(?) wanted JOIN catalog_entities item ON item.id=wanted.value WHERE item.retired=0 ORDER BY CAST(wanted.key AS INTEGER)`, idsJSON64(ids))
 	if err != nil {
 		return out, err

@@ -74,11 +74,15 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 			}
 		}
 	}
-	for _, name := range []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.webp", "folder.webp", "front.webp", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"} {
+	coverNames := []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.webp", "folder.webp", "front.webp", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"}
+	if kind == "music" {
+		coverNames = musicCoverNames()
+	}
+	for _, name := range coverNames {
 		if unlisted(ctx, filepath.Join(filepath.Dir(path), name)) {
 			continue
 		}
-		raw, err := s.storage.ReadSmall(ctx, library, filepath.Join(filepath.Dir(path), name), 4<<20)
+		raw, err := s.read(ctx, library, filepath.Join(filepath.Dir(path), name), 4<<20)
 		if err != nil {
 			continue
 		}
