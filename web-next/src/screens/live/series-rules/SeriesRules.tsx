@@ -1,4 +1,4 @@
-import {useId, useReducer, type CSSProperties} from 'react';
+import {useId, useReducer, useRef, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../../../kit/Icon';
 import {Button, Chip, Segmented, Select, Switch, Tabs} from '../../../kit/controls';
@@ -29,6 +29,7 @@ export type SeriesRulesScreenProps = Readonly<{
  *  a server-backed screen would lift the same reducer to its bindings and pass the callbacks. */
 export function SeriesRulesScreen({model, initialOpenRuleId, onSaveRule, onDeleteRule, onTabChange, onViewChange, onOpenStorage}: SeriesRulesScreenProps) {
   const [state, dispatch] = useReducer(seriesRulesReducer, initialSeriesRulesState(model, initialOpenRuleId));
+  const focusAnchor = useRef<HTMLSpanElement>(null);
   const panel = state.panel;
   const airings = panel ? visibleAirings(panel) : [];
   const used = defaultI18n.bytes(model.storage.usedBytes), free = defaultI18n.bytes(model.storage.freeBytes);
@@ -98,8 +99,9 @@ export function SeriesRulesScreen({model, initialOpenRuleId, onSaveRule, onDelet
       <p className={styles.hint}>{t('next.live.rules.hint')}</p>
     </div>
     <SidePanel open={state.selectedRuleId !== undefined && panel !== undefined} onOpenChange={open => {if (!open) dispatch({type: 'close'});}}
-      width={600} topInset={76} className={styles.sheet} accessibilityLabel={panel ? t('next.live.rules.panelLabel', {title: panel.title}) : undefined}
+      width={600} topInset={76} className={styles.sheet} initialFocusRef={focusAnchor} accessibilityLabel={panel ? t('next.live.rules.panelLabel', {title: panel.title}) : undefined}
       title={panel ? <>
+        <span ref={focusAnchor} className={styles.focusAnchor} tabIndex={-1} role="group" aria-label={t('next.live.rules.panelLabel', {title: panel.title})}/>
         <span className={styles.shKind}><Icon name="i-series" size={18}/>{t('next.live.rules.kind')}</span>
         <span className={styles.shName}>{panel.title}</span>
         <span className={styles.shGlow} aria-hidden="true" style={{'--tint': panel.art.tint} as CSSProperties}/>
