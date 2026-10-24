@@ -29,6 +29,10 @@ export type LibraryTab = Readonly<{
 
 const discover: LibraryTab = {id: 'discover', label: 'library.tab.discover', shows: 'rows'};
 const collections: LibraryTab = {id: 'collections', label: 'library.tab.collections', pivot: 'collections', shows: 'titles'};
+/** Reading libraries (Root §3): Books opens the bounded Reading list; Magazines, Newspapers,
+ * Authors and Series appear only where their accepted classification, facet route and producer
+ * exist, so they are not offered here as empty destinations. */
+const reading: readonly LibraryTab[] = [discover, {id: 'browse', label: 'library.tab.books', shows: 'titles'}];
 
 const TABS: Readonly<Record<string, readonly LibraryTab[]>> = {
   movie: [discover, {id: 'browse', label: 'library.tab.movies', pivot: 'movies', shows: 'titles'}, collections],
@@ -47,6 +51,8 @@ const TABS: Readonly<Record<string, readonly LibraryTab[]>> = {
     {id: 'authors', label: 'library.tab.authors', pivot: 'authors', shows: 'titles'},
     {id: 'series', label: 'library.tab.series', pivot: 'series', shows: 'titles', opens: {tab: 'browse', field: 'series'}},
   ],
+  book: reading,
+  comic: reading,
 };
 
 /** The public albums browse with its current attention-backed match filter.

@@ -45,3 +45,14 @@ test('a category this app does not know is left to the server', () => {
   assert.equal(categoryDestination('movie', 'genre:'), undefined);
   assert.equal(categoryDestination('movie', 'nothing'), undefined);
 });
+
+test('a reading library offers Discover and the bounded Books list, never empty facet tabs', () => {
+  for (const kind of ['book', 'comic']) {
+    assert.deepEqual(libraryTabs(kind).map(tab => tab.id), ['discover', 'browse']);
+    assert.equal(libraryTab(kind, 'browse').label, 'library.tab.books');
+    // Books reads the bounded Reading list, not the generic browse pivots.
+    assert.equal('pivot' in libraryTab(kind, 'browse'), false);
+    // Magazines, Newspapers, Authors and Series stay absent until their facts and routes exist.
+    assert.deepEqual(libraryTabs(kind).map(tab => tab.id), ['discover', 'browse']);
+  }
+});

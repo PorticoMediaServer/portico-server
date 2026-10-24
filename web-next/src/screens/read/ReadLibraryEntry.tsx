@@ -44,7 +44,7 @@ function resumeRows(resources: Resources, items: readonly ReadingContinueItem[])
   }}));
 }
 
-function LibraryRows({resources, libraryId, name, comic, onMore, onRetry}: {resources: Resources; libraryId: string; name: string; comic: boolean; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; onRetry: () => void}) {
+function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry}: {resources: Resources; libraryId: string; name: string; comic: boolean; view: 'discover' | 'books'; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; onRetry: () => void}) {
   const grid = useRef<HTMLDivElement>(null), width = useShellWidth(), reducedMotion = useReducedMotion(), [height, setHeight] = useState(600);
   const state = useSyncExternalStore(resources.books.collection.subscribe, resources.books.collection.getSnapshot, resources.books.collection.getSnapshot), failed = state.status === 'error';
   const reading = useSyncExternalStore(resources.resume.collection.subscribe, resources.resume.collection.getSnapshot, resources.resume.collection.getSnapshot);
@@ -81,10 +81,13 @@ function LibraryRows({resources, libraryId, name, comic, onMore, onRetry}: {reso
         play: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.id, entry.sourceId)).catch(resources.reportError);}}),
     }] : []),
   ];
+  /** Root §3: Discover draws the server's rows; Books draws the bounded Reading list. When no
+   *  authorized row exists there is nothing to draw on Discover, so the list stays reachable. */
+  const showGrid = view === 'books' || rows.length === 0;
   return <div className={styles.library}>
-    <ReadDiscovery rows={rows} platform={platform} reducedMotion={reducedMotion}
+    <ReadDiscovery rows={view === 'books' ? [] : rows} platform={platform} reducedMotion={reducedMotion}
       onVisibleRange={(_row, range) => resources.resume.collection.ensureRange(0, Math.max(0, range.last))}>
-      {state.total === 0 ? null : <div ref={grid} className={styles.books} data-view="grid">
+      {state.total === 0 || !showGrid ? null : <div ref={grid} className={styles.books} data-view="grid">
         <WindowedGrid collection={resources.books.collection} label={name}
           height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}
           renderItem={item => <CoverCard kind={comic ? 'comic' : 'book'} model={{title: item.title, caption: authorFacts(item.author)}} context="grid" density="grid" visible
@@ -98,12 +101,14 @@ function LibraryRows({resources, libraryId, name, comic, onMore, onRetry}: {reso
 }
 
 /** Primary Library registration supplies its drawn header/navigation. This
- * component supplies real bounded Read rows, not an audiobook projection. */
-export function ReadLibraryEntry({libraryId, header, onMore}: {libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void}) {
+ * component supplies real bounded Read rows, not an audiobook projection.
+ * `view` is the selected library tab: Discover draws the server's rows, Books
+ * draws the bounded Reading list (Root §3). */
+export function ReadLibraryEntry({libraryId, header, onMore, view = 'discover'}: {libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; view?: 'discover' | 'books'}) {
   const captured = useProtectedWebScreenContext();
-  return captured ? <BoundReadLibrary key={libraryId} captured={captured} libraryId={libraryId} header={header} onMore={onMore}/> : null;
+  return captured ? <BoundReadLibrary key={libraryId} captured={captured} libraryId={libraryId} header={header} onMore={onMore} view={view}/> : null;
 }
-function BoundReadLibrary({captured, libraryId, header, onMore}: {captured: Captured; libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void}) {
+function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured: Captured; libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; view: 'discover' | 'books'}) {
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const library = captured.context.facts.identity.libraries.find(library => library.id === libraryId);
   const isReading = library?.kind === 'book' || library?.kind === 'comic';
@@ -121,5 +126,5 @@ function BoundReadLibrary({captured, libraryId, header, onMore}: {captured: Capt
   if (!isReading || !library) return <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
   const again = () => setRetry(value => value + 1);
   return <>{header}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
-    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} onMore={onMore} onRetry={again}/> : <Skeleton height={320}/>}</>;
+    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={onMore} onRetry={again}/> : <Skeleton height={320}/>}</>;
 }

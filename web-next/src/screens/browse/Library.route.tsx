@@ -29,14 +29,17 @@ import {ReadLibraryEntry} from '../read';
 import {isReadingLibrary} from './reading-library';
 
 const t = defaultI18n.t;
-function ReadingLibrary({captured, library}: {captured: ProtectedLibraryScreen; library: Library}) {
+function ReadingLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot="" tabs={[]}
+  const tabs = libraryTabs(library.kind), selected = tabs.find(tab => tab.id === (search.view ?? 'discover')) ?? tabs[0]!;
+  const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot={selected.id}
+    tabs={tabs.map(tab => ({value: tab.id, label: t(tab.label)}))}
     appearance={{view: appearance.libraryView, cardWidth: width < 600 ? 108 : 190, cardSize: 'medium', backdrops: appearance.showBackdrops}}
     preferences={appearance} artwork={context.artwork} libraryMenu={undefined}
+    onPivot={id => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {view: id}}).catch(context.effects.reportError);}}
     onLibrary={libraryId => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}).catch(context.effects.reportError);}}
     onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
-  return <ReadLibraryEntry libraryId={library.id} header={header}/>;
+  return <ReadLibraryEntry libraryId={library.id} header={header} view={selected.id === 'browse' ? 'books' : 'discover'}/>;
 }
 function LibraryShow({context, libraryId, search}: {context: ScreenContext; libraryId: string; search: LibraryScreenSearch}) {
   const binding = useMemo(() => createShowBindings(context), [context]);
@@ -122,7 +125,7 @@ function LibraryRouteScreen() {
   const captured = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
   const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
   const library = captured?.context.facts.identity.libraries.find(library => library.id === libraryId);
-  return !captured ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={libraryId} captured={captured} library={library}/>
+  return !captured ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={libraryId} captured={captured} library={library} search={search}/>
     : <BoundLibrary key={libraryId} captured={captured} library={library} search={search}/>
     : <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
 }
