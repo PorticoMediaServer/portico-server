@@ -73,10 +73,11 @@ export function createSeriesRulesBindings(context: ScreenContext, env: Environme
     return Object.freeze({id: programme.id, time: formatTime(programme.start), day: today ? defaultI18n.t('guide.today')
       : new Intl.DateTimeFormat(env.locale, {weekday: 'long', timeZone: env.timezone}).format(at), channelId: programme.channelId,
       ...(rule.summary?.channel.id === programme.channelId ? {channel: rule.summary.channel.name} : {}), ...(episode ? {episode} : {}),
-      title: programme.subtitle ?? programme.title, isNew: programme.newEvidence === 'new'});
+      title: programme.subtitle ?? programme.title, isNew: programme.newEvidence === 'new',
+      ...(programme.recordingState ? {scheduled: programme.recordingState === 'scheduled'} : {})});
   };
   const model = (rule: RecordingRule): SeriesRule => {
-    const next = rule.summary?.next, channel = rule.summary?.channel, conflict = rule.summary ? rule.summary.conflicts > 0 : undefined;
+    const next = rule.summary?.next, channel = rule.summary?.channel, conflict = next?.recordingState ? next.recordingState === 'conflicted' : undefined;
     return freeze({id: rule.id, title: rule.config.name, glyph: Array.from(rule.config.name)[0] ?? '', channelId: channel?.id ?? '',
       ...(channel?.name ? {channelName: channel.name} : {}), actualCounts: true,
       ...(rule.summary ? {recorded: rule.summary.recorded, upcomingCount: rule.summary.upcoming, matchingTonight: rule.summary.matchingTonight, conflict} : {}),
