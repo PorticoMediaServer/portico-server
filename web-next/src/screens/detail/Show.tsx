@@ -13,7 +13,6 @@ import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {DetailLoading, ScreenFailure, TitleActions, TitleRow} from './Detail';
 import {titleRecommendationRows} from '@core/recommendations.ts';
-import {SHOW_SETTING_ROWS} from '@core/presentation/title-page.ts';
 import {episodeCode} from '@core/presentation/card-caption.ts';
 import {entrySubject, titlePageFacts, calendarDate, instantDate} from './model';
 import type {ShowBindings} from './show-bindings';
@@ -128,22 +127,22 @@ export function ShowDetails({binding, data, owner}: {binding: ShowBindings; data
   const {show} = data, facts = showDetailFacts(show, data.seasonTotalCount, locale());
   const onServer = facts.onServer ? [t('title.season', {number: facts.onServer.seasons}), facts.onServer.episodes !== undefined ? t('count.episodes', {count: facts.onServer.episodes}) : undefined].filter(Boolean).join(', ') : undefined;
   const rows: (readonly [string, ReactNode])[] = [
-    [t('title.releaseDate'), calendarDate(facts.firstAired, locale())],
-    [t('web.general.status'), facts.status],
+    [t('next.show.firstAired'), calendarDate(facts.firstAired, locale())],
+    [t('next.show.status'), facts.status],
     [t('title.network'), facts.network],
     [t('title.studio'), facts.studio],
     [t('title.country'), facts.country],
     [t('title.genres'), facts.genres.length ? <GenreNames names={facts.genres} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /> : undefined],
-    [t('title.createdBy', {names: ''}).trim(), facts.creators.length ? <ShowPersonLinks credits={facts.creators} binding={binding} data={data} /> : undefined],
-    [t('library.column.rating'), facts.rating],
+    [t('next.show.createdBy'), facts.creators.length ? <ShowPersonLinks credits={facts.creators} binding={binding} data={data} /> : undefined],
+    [t('next.show.rated'), facts.rating],
     [t('next.selection.language'), facts.language],
-    [t('next.shell.server'), onServer],
+    [t('next.show.onThisServer'), onServer],
     [t('title.added'), instantDate(facts.addedAt, locale())],
   ];
   return <div className={styles.detailsTab} data-show-details>
     <div className={styles.detailsGrid}>
       <section>
-        <h2 className={styles.sectionHeading}>{t('filter.group.title')}</h2>
+        <h2 className={styles.sectionHeading}>{t('next.show.about')}</h2>
         <dl className={styles.facts}>{rows.filter(row => !!row[1]).map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
       </section>
       <div className={styles.castBlock}><ShowPeople binding={binding} data={data} /></div>
@@ -164,19 +163,19 @@ function ShowPersonLinks({credits, binding, data}: {credits: readonly WorkspaceS
 /** The owner's drawn Server panel. It carries no file facts; the four stored settings stay the source. */
 export function ShowSettingsPanel({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
   const [open, setOpen] = useState(false), settings = data.settings;
-  const grouping = settings.ranges ? t('title.showSettings.ranges') : t('title.seasons');
+  const grouping = settings.ranges ? t('next.show.group.ranges') : settings.hideSeasons ? t('next.show.group.oneList') : t('next.show.group.bySeason');
   return <section className={styles.owner} aria-label={t('next.shell.ownerOnly')}>
     <div className={styles.ownerHeader}>
       <ServerMark size={34} />
-      <div><b>{t('title.showSettings')}<OwnerTag /></b><small>{t('next.overlays.membersNeverSee')}</small></div>
+      <div><b>{t('title.showSettings')}<OwnerTag /></b><small>{t('next.show.membersNeverSee')}</small></div>
     </div>
     <div className={styles.ownerRow}>
       <div className={styles.ownerCell} data-show-settings>
-        <div className={styles.ownerLabel}>{t('title.episodeLayout')}</div>
+        <div className={styles.ownerLabel}>{t('next.show.episodeDisplay')}</div>
         <div className={styles.ownerBig}><span>{grouping}</span><span>{settings.newestFirst ? t('next.overlays.newest') : t('next.overlays.oldest')}</span></div>
-        <p>{t('title.showSettings.lede')}</p>
+        <p>{t('next.show.howListed')}</p>
         <Popover open={open} onOpenChange={setOpen} placement="top-end" sideOffset={8} alignOffset={-18} width={540} className={styles.settingsMenu}
-          title={t('title.showSettings')} trigger={<Chip className={styles.changeChip} trailingIcon="i-down">{t('web.metadataLookup.change')}</Chip>}>
+          title={t('title.showSettings')} trigger={<Chip className={styles.changeChip} trailingIcon="i-down">{t('next.show.change')}</Chip>}>
           <ShowSettingsMenu binding={binding} data={data} />
         </Popover>
       </div>
@@ -184,21 +183,31 @@ export function ShowSettingsPanel({binding, data}: {binding: ShowBindings; data:
   </section>;
 }
 
-/** The drawn menu content: the four stored settings and a preview of one real episode. */
+/** The drawn Episode display menu: three authored controls over the four stored settings. */
 export function ShowSettingsMenu({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
   const settings = data.settings, preview = data.nextUp ?? data.episodes.sections[0]?.entries[0];
-  const code = preview ? episodeCode(preview, t) : undefined;
-  const save = (key: typeof SHOW_SETTING_ROWS[number]['key'], checked: boolean) => {
-    const next = {...settings, [key]: checked} as ShowSettings;
+  const group = settings.ranges ? 'ranges' : settings.hideSeasons ? 'oneList' : 'bySeason';
+  const numbering = settings.absoluteNumbering ? 'across' : 'bySeason';
+  const order = settings.newestFirst ? 'newest' : 'oldest';
+  const code = preview ? (settings.absoluteNumbering && preview.absoluteNumber ? t('next.kit.episode', {number: preview.absoluteNumber}) : episodeCode(preview, t)) : undefined;
+  const save = (patch: Partial<Pick<ShowSettings, 'hideSeasons' | 'ranges' | 'absoluteNumbering' | 'newestFirst'>>) => {
+    const next: ShowSettings = {...settings, ...patch};
     return binding.setSettings(data, next);
   };
   return <>
-    <div className={styles.menuHead}><b>{t('title.episodeLayout')}</b><span className={styles.menuTag}>{t('next.dashboard.everyone')}</span></div>
+    <div className={styles.menuHead}><b>{t('next.show.episodeDisplay')}</b><span className={styles.menuTag}>{t('next.show.forEveryone')}</span></div>
     <p className={styles.menuLede}>{t('title.showSettings.lede')}</p>
-    {SHOW_SETTING_ROWS.map(row => <label key={row.key} className={styles.settingRow}>
-      <span><b>{t(row.label)}</b><small>{t(row.help)}</small></span>
-      <Switch checked={settings[row.key]} onCheckedChange={checked => runScreenCommand(binding.context, () => save(row.key, checked))} />
-    </label>)}
-    {preview && <div className={styles.preview}>{code && <b>{code}</b>}<span>{preview.title}</span></div>}
+    <div className={styles.menuGrid}>
+      <span className={styles.menuLabel}>{t('next.show.groupEpisodes')}</span>
+      <Segmented className={styles.settingsSeg} value={group} aria-label={t('next.show.groupEpisodes')} items={[{value: 'bySeason', label: t('next.show.group.bySeason')}, {value: 'oneList', label: t('next.show.group.oneList')}, {value: 'ranges', label: t('next.show.group.ranges')}]}
+        onValueChange={value => { if (value === 'bySeason') runScreenCommand(binding.context, () => save({hideSeasons: false, ranges: false})); else if (value === 'oneList') runScreenCommand(binding.context, () => save({hideSeasons: true, ranges: false})); else if (value === 'ranges') runScreenCommand(binding.context, () => save({hideSeasons: false, ranges: true})); }} />
+      <span className={styles.menuLabel}>{t('next.show.numberThem')}</span>
+      <Segmented className={styles.settingsSeg} value={numbering} aria-label={t('next.show.numberThem')} items={[{value: 'bySeason', label: t('next.show.group.bySeason')}, {value: 'across', label: t('next.show.number.acrossSeasons')}]}
+        onValueChange={value => { if (value === 'bySeason' || value === 'across') runScreenCommand(binding.context, () => save({absoluteNumbering: value === 'across'})); }} />
+      <span className={styles.menuLabel}>{t('next.show.order')}</span>
+      <Segmented className={styles.settingsSeg} value={order} aria-label={t('next.show.order')} items={[{value: 'oldest', label: t('next.overlays.oldest')}, {value: 'newest', label: t('next.overlays.newest')}]}
+        onValueChange={value => { if (value === 'oldest' || value === 'newest') runScreenCommand(binding.context, () => save({newestFirst: value === 'newest'})); }} />
+    </div>
+    {preview && <div className={styles.preview}><span>{t('next.show.readsAs')}</span>{code && <b>{code}</b>}<span>{preview.title}</span></div>}
   </>;
 }

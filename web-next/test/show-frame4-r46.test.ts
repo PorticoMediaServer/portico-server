@@ -72,8 +72,8 @@ test('the drawn Details facts come from the stored show record and never from fi
 
 test('frame 4 renders the About facts, the stored cast and creators, and the owner Server panel', () => {
   const html = renderToStaticMarkup(createElement(ShowDetails, {binding, data, owner: true}));
-  assert.match(html, /About the title/);
-  for (const label of ['Released', 'Status', 'Network', 'Studio', 'Country', 'Genres', 'Created by', 'Rating', 'Language', 'Server', 'Added']) assert.match(html, new RegExp(`<dt>${label}</dt>`));
+  assert.match(html, /About</);
+  for (const label of ['First aired', 'Status', 'Network', 'Studio', 'Country', 'Genres', 'Created by', 'Rated', 'Language', 'On this server', 'Added']) assert.match(html, new RegExp(`<dt>${label}</dt>`));
   assert.match(html, /January 15, 2023/);
   assert.match(html, /October 17, 2026/);
   assert.match(html, /Season 1, 4 episodes/);
@@ -83,7 +83,7 @@ test('frame 4 renders the About facts, the stored cast and creators, and the own
   assert.match(html, /Craig Mazin/);
   assert.match(html, /Show settings/);
   assert.match(html, /Owner only/);
-  assert.match(html, /Episode layout/);
+  assert.match(html, /Episode display/);
   assert.match(html, />Change</);
   assert.doesNotMatch(html, /File info|File details|\/srv\/|Mbps|GB/);
 });
@@ -91,19 +91,20 @@ test('frame 4 renders the About facts, the stored cast and creators, and the own
 test('the owner Episode display menu opens the four stored settings with a real episode preview', () => {
   const panel = renderToStaticMarkup(createElement(ShowSettingsPanel, {binding, data}));
   assert.match(panel, /Members never see this\./);
-  assert.match(panel, /Seasons/);
+  assert.match(panel, /By season/);
   assert.match(panel, /Oldest first/);
-  assert.match(panel, /Episode layout/);
+  assert.match(panel, /Episode display/);
   assert.match(panel, />Change</);
   const html = renderToStaticMarkup(createElement(ShowSettingsMenu, {binding, data}));
-  for (const label of ['Hide seasons', 'Number episodes across seasons', 'Split into ranges of 100', 'Newest first']) assert.match(html, new RegExp(label));
-  assert.match(html, /Everyone/);
+  for (const label of ['Group episodes', 'Number them', 'Order', 'By season', 'In one list', 'Ranges of 100', 'Across seasons', 'Oldest first', 'Newest first']) assert.match(html, new RegExp(label));
+  assert.match(html, /For everyone/);
+  assert.match(html, /Reads as/);
   assert.match(html, /S1 E1/);
   assert.match(html, /When You’re Lost in the Darkness/);
 });
 
 test('a non-owner sees no Server panel and no settings command', () => {
   const html = renderToStaticMarkup(createElement(ShowDetails, {binding, data, owner: false}));
-  assert.doesNotMatch(html, /Show settings|Owner only|Episode layout|Change/);
+  assert.doesNotMatch(html, /Show settings|Owner only|Episode display|Change/);
   assert.match(html, /Cast and crew/);
 });

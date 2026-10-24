@@ -121,17 +121,21 @@
 
 .menuLede { margin: 6px 0 4px; font-size: var(--type-chip-size); line-height: var(--type-body-line); color: var(--color-text-tertiary); }
 
-.settingRow { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; align-items: center; margin-top: 14px; }
+.menuGrid { display: grid; grid-template-columns: 132px 1fr; gap: 10px 14px; align-items: center; margin-top: 16px; }
 
-.settingRow b { display: block; font-size: var(--type-chip-size); font-weight: var(--type-button-weight); color: var(--color-text-secondary); }
+.menuLabel { font-size: var(--type-chip-size); font-weight: var(--type-button-weight); color: var(--color-text-secondary); }
 
-.settingRow small { display: block; margin-top: 2px; font-size: var(--type-label-size); color: var(--color-text-tertiary); }
+.settingsSeg { display: flex; width: 100%; background: var(--color-raised); box-shadow: none; }
+
+.settingsSeg [role="radio"] { flex: 1; min-width: 0; padding: 0 10px; font-size: var(--type-chip-size); font-weight: var(--type-button-weight); white-space: nowrap; border-radius: 8px; }
+
+.settingsSeg [role="radio"][data-state="checked"] { background: var(--color-raised-bright); color: var(--color-text); box-shadow: 0 1px 2px color-mix(in srgb,var(--color-shadow) 30%,transparent); }
 
 .preview { margin-top: 18px; padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb,var(--color-ink) 45%,transparent); display: flex; gap: 10px; align-items: baseline; font-size: var(--type-chip-size); color: var(--color-text-tertiary); }
 
 .preview b { color: var(--color-text); font-weight: var(--type-lockup-weight); }
 
-.preview span { color: var(--color-text-secondary); font-weight: var(--type-caption-strong-weight); }
+.preview span + span { color: var(--color-text-secondary); font-weight: var(--type-caption-strong-weight); }
 
 @media(max-width:1023px) { .detailsTab { padding: 24px 20px 110px; }
 
