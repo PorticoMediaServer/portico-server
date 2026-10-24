@@ -58,7 +58,15 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
       reader = bindReadPreferences({adapters, preferences: bindings.preferences, authority: bindings.authority, reportError: code => reportError({code})});
       progress = bindReadingProgress({controller: reader.controller, session, initial: saved, authority: bindings.authority, reportError});
       setState({book: {session, publication, controller: reader.controller, authority: bindings.authority, location}});
-    })().catch(error => {if (alive && bindings.authority.isCurrent()) {reportError(error); setState({failed: true});} void dispose().catch(() => {});});
+    })().catch(error => {
+      const root = document.querySelector('[data-reader-root]') as HTMLElement | null, box = root?.getBoundingClientRect();
+      const detail = {code: (error as {code?: unknown})?.code, name: (error as {name?: unknown})?.name, message: (error as {message?: unknown})?.message,
+        stack: String((error as {stack?: unknown})?.stack ?? '').split('\n').slice(0, 6), alive, authority: bindings.authority.isCurrent(),
+        viewport: [window.innerWidth, window.innerHeight, window.devicePixelRatio], root: box ? [box.width, box.height, box.left, box.top] : null,
+        frames: Array.from(document.querySelectorAll('iframe')).map(frame => { try { return [frame.clientWidth, frame.clientHeight]; } catch { return null; } })};
+      console.debug('READENTRY_FAIL ' + JSON.stringify(detail));
+      if (alive && bindings.authority.isCurrent()) {reportError(error); setState({failed: true});} void dispose().catch(() => {});
+    });
     return () => {void dispose().catch(() => {});};
   }, [captured.context, itemId, sourceId, reportError, retry]);
   if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onOpenSettings={() => {void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}} onBack={onClose ?? (() => router.history.back())}/>;
