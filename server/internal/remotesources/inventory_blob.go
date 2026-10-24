@@ -18,6 +18,11 @@ import (
 
 var _ storage.RemoteInventoryBlobReader = (*Service)(nil)
 
+// ErrInventoryBlobSourceTier is a known automatic-operation ceiling, not a
+// provider failure, range capability, STRM permission or generic authorization.
+// It returns no bytes; unknown profile/job/target facts remain separate errors.
+var ErrInventoryBlobSourceTier = errors.New("inventory metadata exceeds the saved source scan tier")
+
 // inventoryBlobCapture binds a candidate metadata/configuration file separately
 // from the actual analysis target. Ignore candidates can precede catalogue
 // publication, so their evidence is the exact closed listing, never a fabricated
@@ -193,8 +198,11 @@ func (c *inventoryBlobCapture) checkTx(ctx context.Context, tx *sql.Tx) error {
 		return storage.ErrRemoteChanged
 	}
 	if a.Purpose == storage.InventoryBlobAnalysisSidecar {
-		if (profile.ScanDepth != "basic" && profile.ScanDepth != "complete") || !policy.Allows(a.Operation) {
-			return storage.ErrRemoteAnalysisDisabled
+		if profile.ScanDepth == "file_list_only" {
+			return ErrInventoryBlobSourceTier
+		}
+		if !policy.Allows(a.Operation) {
+			return context.Canceled
 		}
 		var relative string
 		if err = tx.QueryRowContext(ctx, `SELECT o.relative_path FROM inventory_objects o JOIN inventory_analysis_queue q ON q.object_id=o.id WHERE q.job_id=? AND q.object_id=? AND q.revision=? AND q.policy_revision=? AND q.state='pending' AND o.source_id=? AND o.revision=q.revision AND o.root_incarnation=? AND o.state='available' AND o.retired=0 AND o.unsupported_reason=''`, a.JobID, a.ObjectID, a.SourceRevision, a.PolicyRevision, source.ID, source.Incarnation).Scan(&relative); err != nil {

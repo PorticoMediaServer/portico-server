@@ -154,7 +154,9 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 
 // Loaded removes only this command's fresh transient configuration, both on
 // failed startup and after load. The retained source/auth configuration is owned
-// elsewhere and is never removed or rewritten by this helper.
+// elsewhere and is never removed or rewritten by this helper. Keep ownership of
+// the exact transient pathname until physical Wait: a child can recreate files
+// there after readiness, and final retirement must remove those copies too.
 func (p *PreparedServe) Loaded() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -164,7 +166,6 @@ func (p *PreparedServe) Loaded() error {
 	if err := os.RemoveAll(p.private); err != nil {
 		return err
 	}
-	p.private = ""
 	return nil
 }
 

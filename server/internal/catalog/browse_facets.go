@@ -472,6 +472,7 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 	var pivot browsePivot
 	var where string
 	var args []any
+	var anchor *BrowseNode
 	if request.Library != "" {
 		if !viewer.AllowsLibrary(request.Library) {
 			return "", nil, "", sql.ErrNoRows
@@ -508,8 +509,12 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 		}
 		where = `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(ks)) + `)`
 		args = append([]any{viewer.librariesJSON()}, ks...)
-		if anchor := acrossAnchor(query); anchor != nil {
-			members, ma, _, err := acrossMembers(anchor, viewer.Profile, request.Rows, request.RowSources)
+		if pivot.ID == "video-titles" {
+			where += ` AND ` + acrossVideoLibraryPredicate
+		}
+		anchor = acrossAnchorForPivot(query, pivot)
+		if anchor != nil {
+			members, ma, _, err := s.acrossMembersForViewer(anchor, viewer, request.Rows, request.RowSources)
 			if err != nil {
 				return "", nil, "", err
 			}
@@ -523,7 +528,7 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 			compiler.kinds = append(compiler.kinds, int(kind))
 		}
 	}
-	clause, err := compiler.compile(query)
+	clause, err := compiler.compile(withoutSelectedGenreAnchor(query, anchor))
 	if err != nil {
 		return "", nil, "", err
 	}

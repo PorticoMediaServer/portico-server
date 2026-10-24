@@ -2156,3 +2156,4 @@ export {readLibrarySettings,saveLibrarySettings,reorderLibraries,saveLibraryFold
 export {readLibraryInventoryConfig} from './library-inventory.ts';
 export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
 export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';
+export {readLibrarySonic,saveLibrarySonic,retryLibrarySonic,librarySonicAvailable,type LibrarySonicDocument,type LibrarySonicState} from './server-admin/library-sonic.ts';
