@@ -206,3 +206,17 @@ func TestReadingProjectionProductionWorkerSeparatesScanAndCleanupCommits(t *test
 	}
 	t.Fatal("production worker never committed the scan EOF transition")
 }
+
+func TestReadingProjectionAssetInvalidationUsesTheUniqueReadingPublication(t *testing.T) {
+	c, library, items := readingProjectionFixture(t, 1)
+	readingProjectionDrain(t, c)
+	readingProjectionGeneration(t, c, library, true)
+	movies := c.Library("movies", "Movies", "movie", t.TempDir())
+	video := c.Movie(movies, filepath.Join(t.TempDir(), "Movie.mp4"), "Movie", 2026)
+	c.Exec(`UPDATE catalog_assets SET available=0 WHERE id=?`, video.Asset)
+	readingProjectionGeneration(t, c, library, true)
+	c.Exec(`UPDATE catalog_assets SET available=0 WHERE id=(SELECT asset_id FROM reading_publications WHERE item_id=?)`, items[0].ID)
+	readingProjectionGeneration(t, c, library, false)
+	readingProjectionDrain(t, c)
+	readingProjectionGeneration(t, c, library, true)
+}

@@ -8427,10 +8427,10 @@ CREATE TRIGGER reading_attribution_source_update BEFORE UPDATE OF library_id,kin
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(OLD.library_id,NEW.library_id));
 END;
 CREATE TRIGGER reading_attribution_asset_delete BEFORE DELETE ON catalog_assets BEGIN
- UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE 1;
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT e.library_id FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id WHERE p.asset_id=OLD.id);
 END;
 CREATE TRIGGER reading_attribution_asset_update BEFORE UPDATE OF token,path,available,id ON catalog_assets BEGIN
- UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE 1;
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT e.library_id FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id WHERE p.asset_id IN(OLD.id,NEW.id));
 END;
 CREATE TRIGGER reading_attribution_dvr_insert BEFORE INSERT ON dvr_catalog_retirements BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
