@@ -117,6 +117,8 @@ export class DesktopDownloadStore {
   private readonly isCurrent:()=>boolean;
   private readonly bridge:NativeDownloadsBridge;
   private currentPreparation?:PreparedLocalQueue;
+  private readonly localLeases=new Map<number,string>();
+  private readonly localRetirements=new Map<number,Promise<void>>();
   private readonly listeners=new Set<()=>void>();
   private readonly folderCancels=new Set<()=>void>();
   private readonly preparations=new WeakMap<PreparedLocalQueue,{lease:string;retired:boolean}>();
@@ -203,7 +205,8 @@ export class DesktopDownloadStore {
     if(!owned||owned.retired||this.currentPreparation!==prepared||!member||!sameSavedDownloadsScope(prepared.scope,this.scope))throw new Error('downloads_conflict');
     if(!this.bridge.loadLocal||!this.bridge.retireLocal)throw new Error('unsupported');
     if(integer(generation)===0||!Number.isFinite(startPositionMs)||startPositionMs<0||startPositionMs>1e12||typeof autoplay!=='boolean')throw new Error('invalid_command');
-    const retire=()=>this.bridge.retireLocal!(owned.lease,generation);
+    if(this.localLeases.has(generation))throw new Error('downloads_conflict');
+    this.localLeases.set(generation,owned.lease);
     try{
       const raw=object(await this.bridge.loadLocal(owned.lease,{preparationId:prepared.preparationId,localSourceId,generation,startPositionMs,autoplay}));
       const scope=checkScope(object(raw.scope) as unknown as DownloadScope),artifact=object(raw.artifact),entryId=digest(raw.entryId),sessionId=text(raw.sessionId,256);
@@ -217,13 +220,22 @@ export class DesktopDownloadStore {
     }catch(error){
       // The native command may already have committed before cancellation or an
       // invalid/late reply. Retire only that exact private generation and lease.
-      await retire().catch(()=>{});this.guard(signal);throw downloadFailure(error);
+      await this.retireLocal(generation).catch(()=>{});this.guard(signal);throw downloadFailure(error);
     }
   }
   async retireLocal(generation:number):Promise<void>{
     if(integer(generation)===0)throw new Error('invalid_command');
+    const lease=this.localLeases.get(generation);if(!lease)return;
+    const pending=this.localRetirements.get(generation);if(pending)return pending;
     if(!this.bridge.retireLocal)throw new Error('unsupported');
-    await this.bridge.retireLocal(this.lease,generation);
+    // A failed acknowledgement retains this exact lease, even after dispose. Never
+    // derive a cleanup target from the current viewer or an unknown generation.
+    const task=(async()=>{
+      try{await this.bridge.retireLocal!(lease,generation);this.localLeases.delete(generation);}
+      catch(error){throw downloadFailure(error);}
+    })();
+    this.localRetirements.set(generation,task);
+    try{await task;}finally{this.localRetirements.delete(generation);}
   }
   async request<T>(operation:Readonly<Record<string,unknown>>,kind:string,parse:(value:unknown)=>T,signal?:AbortSignal):Promise<T>{
     this.guard(signal);
@@ -290,7 +302,9 @@ export class DesktopDownloadStore {
   acknowledgePlay(play:Pick<PendingPlay,'playId'|'observedMs'>,signal?:AbortSignal){return this.request({action:'acknowledgePlay',playId:id(play.playId),observedMs:integer(play.observedMs)},'done',()=>undefined,signal);}
   dispose(){if(this.disposed)return;this.disposed=true;for(const cancel of this.folderCancels)cancel();this.folderCancels.clear();this.listeners.clear();const lease=this.lease;this.lease='';
     if(!lease)return;
-    if(this.currentPreparation)void this.releaseLocalQueue(this.currentPreparation).catch(()=>{}).then(()=>this.bridge.release(lease)).catch(()=>{});
-    else void this.bridge.release(lease).catch(()=>{});
+    const prepared=this.currentPreparation;
+    const release=()=>prepared?this.releaseLocalQueue(prepared).catch(()=>{}).then(()=>this.bridge.release(lease)):this.bridge.release(lease);
+    if(this.localLeases.size)void Promise.allSettled([...this.localLeases.keys()].map(generation=>this.retireLocal(generation))).then(release).catch(()=>{});
+    else void release().catch(()=>{});
   }
 }

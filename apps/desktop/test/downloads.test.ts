@@ -165,3 +165,30 @@ test('mismatched native local receipt cannot be adopted, and the potentially com
   finally{store.dispose();}
  }
 });
+
+test('failed native retirement retries only its original lease after disposal; unknown generations do nothing',async()=>{
+ const calls:unknown[]=[],releases:string[]=[];let fail=true;
+ const native:NativeDownloadsBridge={...bridge(async(_,op)=>op.action==='prepareLocalQueue'?{kind:'localQueue',value:prepared()}:{kind:'done'}),
+  async release(value){releases.push(value)},async loadLocal(_,request){return localReceipt(request.generation)},
+  async retireLocal(value,generation){calls.push({lease:value,generation});if(fail)throw new Error('/private/never surface');}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,native),signal=new AbortController().signal;
+ const queue=await store.prepareLocalQueue(selection,signal);await store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal);
+ await store.retireLocal(10);assert.deepEqual(calls,[]);
+ await assert.rejects(store.retireLocal(9),/^Error: downloads_unavailable$/);
+ store.dispose();await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(releases,[lease]);fail=false;await store.retireLocal(9);await store.retireLocal(9);
+ assert.equal(calls.length,3);assert.ok(calls.every(call=>JSON.stringify(call)===JSON.stringify({lease,generation:9})));
+});
+
+test('concurrent retirement shares the genuine native acknowledgement and blocks generation reuse until ACK',async()=>{
+ let finish!:()=>void,calls=0;
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async(_,op)=>op.action==='prepareLocalQueue'?{kind:'localQueue',value:prepared()}:{kind:'done'}),
+  async loadLocal(_,request){return localReceipt(request.generation)},retireLocal:()=>{calls++;return new Promise(resolve=>{finish=resolve})}});
+ try{
+  const signal=new AbortController().signal,queue=await store.prepareLocalQueue(selection,signal);
+  await store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal);
+  const first=store.retireLocal(9),second=store.retireLocal(9);
+  await assert.rejects(store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal),/downloads_conflict/);
+  assert.equal(calls,1);finish();await Promise.all([first,second]);
+ }finally{store.dispose()}
+});
