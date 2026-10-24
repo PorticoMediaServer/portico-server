@@ -29,7 +29,7 @@ func TestOwnerReturnPublicRequestKeepsStrictSeparateExtendedNormalVariant(t *tes
 			t.Fatal("mixed/non-strict return accepted")
 		}
 	}
-	if shape := (porticoReturnRequest{}).JSONSchema(); len(shape["oneOf"].([]any)) != 2 {
+	if shape := (porticoReturnRequest{}).JSONSchema(); len(shape["oneOf"].([]any)) != 3 {
 		t.Fatal("public variants collapsed")
 	}
 }
