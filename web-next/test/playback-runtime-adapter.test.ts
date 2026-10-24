@@ -2338,3 +2338,33 @@ test('an absent local media port refuses before replacing the real current serve
     {signal: new AbortController().signal, isCurrent: () => true}), /local_playback_unavailable/);
   assert.equal(releases, 1);assert.deepEqual(f.runtime.getSnapshot().fence, current);
 });
+
+
+test('the app local queue attachment captures the actual family, follows mounted support and retires with its runtime', async t => {
+  const port = new ControlledLocalMedia();
+  let attached: import('../src/platform/playback/types.ts').WebLocalQueueController | undefined;
+  let captured: WebPlaybackSource['localScope'], detached = 0, changes = 0, initialSupport: boolean | undefined;
+  const scope = {...localScope};
+  const f = setup(t, {}, {createPlayer: () => port, createRender: null, attachLocalQueue: (actual, controller) => {
+    captured = actual;attached = controller;initialSupport = controller.canPlayLocalQueue();controller.subscribe(() => {changes++;});
+    return () => {detached++;assert.equal(controller.canPlayLocalQueue(), false);};
+  }}, scope);
+  assert.deepEqual(captured, localScope);assert.notEqual(captured, scope);assert.ok(Object.isFrozen(captured));
+  scope.sessionFamilyId = 'replacement_family';assert.equal(captured!.sessionFamilyId, 'local_family');
+  assert.equal(initialSupport, false, 'registration does not advertise a native port before the persistent host mounts');
+  assert.equal(attached!.canPlayLocalQueue(), true);assert.ok(changes > 0);
+  let released = 0;
+  await attached!.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}}, {signal: new AbortController().signal, isCurrent: () => true});
+  assert.equal(f.runtime.getSnapshot().fence!.kind, 'local');
+  f.runtime.dispose();f.runtime.dispose();await settle();assert.equal(detached, 1);assert.equal(released, 1);
+  let staleReleased = 0;
+  await assert.rejects(attached!.playLocalQueue({preparation: localPreparation(), release: async () => {staleReleased++;}},
+    {signal: new AbortController().signal, isCurrent: () => true}), /playback_authority_retired/);
+  assert.equal(staleReleased, 1);assert.equal(attached!.canPlayLocalQueue(), false);
+});
+
+test('no app local attachment is installed without a genuine captured family', t => {
+  let attachments = 0;
+  setup(t, {}, {attachLocalQueue: () => {attachments++;return () => {};}});
+  assert.equal(attachments, 0);
+});

@@ -139,6 +139,20 @@ export class WebShellPlaybackRuntime {
       browser.addEventListener('pagehide', leaving);
       this.lifecycle.push(() => browser.removeEventListener('pagehide', leaving));
     }
+    if (localScope && environment.attachLocalQueue) {
+      let attached = true;
+      try {
+        const detach = environment.attachLocalQueue(localScope, Object.freeze({
+          canPlayLocalQueue: () => attached && this.canPlayLocalQueue(),
+          playLocalQueue: async (resource: WebLocalQueueResource, lifetime: WebPlaybackScreenLifetime) => {
+            if (!attached) {await resource.release();problem('playback_authority_retired');}
+            await this.playLocalQueue(resource, lifetime);
+          },
+          subscribe: (listener: () => void) => attached ? this.subscribe(listener) : () => {},
+        }));
+        this.lifecycle.push(() => {attached = false;detach();});
+      } catch (error) {attached = false;this.dispose();throw error;}
+    }
   }
 
   getSnapshot = (): WebPlaybackRuntimeSnapshot => this.snapshot;

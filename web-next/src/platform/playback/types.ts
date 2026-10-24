@@ -19,7 +19,7 @@ import type {DockState, DockTransition, PlaybackFence, PolicyView, SkipMode} fro
 import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts';
 import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
 import type {LocalPlaybackScope} from '../../../../packages/player-core/src/index.ts';
-import type {WebLocalQueueSnapshot} from './local-queue.ts';
+import type {WebLocalQueueSnapshot, WebLocalQueueResource} from './local-queue.ts';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
@@ -46,7 +46,16 @@ export type WebPlaybackSource = Readonly<{
   events: Pick<EventsClient, 'on'>; isCurrent: () => boolean;
   settings: WebPlaybackSettings;
 }>;
+/** Bound to one runtime and its captured five-field local authority. The app registers
+ * this controller without starting playback; actual native support may mount later. */
+export type WebLocalQueueController = Readonly<{
+  canPlayLocalQueue(): boolean;
+  playLocalQueue(resource: WebLocalQueueResource, lifetime: WebPlaybackScreenLifetime): Promise<void>;
+  subscribe(listener: () => void): () => void;
+}>;
 export type WebPlaybackEnvironment = Readonly<{
+  /** App-private preparation/Saved bridge. Cleanup retires only this attachment. */
+  attachLocalQueue?: (scope: LocalPlaybackScope, controller: WebLocalQueueController) => () => void;
   /** The app's one device store, shared by Settings and the player shortcut. */
   equalizerPort?: EqualizerPort;
   /** Build-time platform injection. null disables the browser music engine. */
