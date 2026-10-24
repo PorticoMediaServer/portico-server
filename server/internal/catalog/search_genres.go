@@ -92,23 +92,7 @@ func (s *Service) SearchGenres(viewer Viewer, request SearchGenreRequest) (Searc
 			return out, ErrCursor
 		}
 	}
-	memberVisible, memberArgs := viewer.itemVisibilitySQL("member.item_id")
-	prefix := `WITH targets AS MATERIALIZED (
-	 SELECT target.* FROM (` + scope + `) target
-	 JOIN catalog_browse_rows title ON title.entity_id=target.entity_id AND title.kind IN(1,2)
-	 JOIN catalog_libraries library ON library.id=target.library_id AND library.retired=0
-	 JOIN libraries public_library ON public_library.id=library.library_id AND public_library.kind IN('movie','tv','anime')
-	 ), e AS MATERIALIZED (
-	 SELECT DISTINCT target.entity_id,member.item_id FROM targets target
-	 JOIN catalog_browse_memberships member ON member.entity_id=target.entity_id WHERE ` + memberVisible + `
-	 UNION SELECT target.entity_id,target.entity_id FROM targets target
-	 WHERE NOT EXISTS(SELECT 1 FROM catalog_browse_memberships member WHERE member.entity_id=target.entity_id)
-	 ), genres AS MATERIALIZED (
-	 SELECT DISTINCT e.entity_id,CAST(COALESCE(ts.label_override,mg.label) AS TEXT) value
-	 FROM e ` + facetSources["genre"].Join + `
-	 WHERE COALESCE(ts.label_override,mg.label) IS NOT NULL AND COALESCE(ts.label_override,mg.label)<>''
-	 )`
-	bound := append(append([]any{}, args...), memberArgs...)
+	prefix, bound := searchGenreMembership(scope, args, viewer)
 	key := fmt.Sprintf("search-genres:%s:%s:%d:%d", out.Revision, viewer.Profile, request.Limit, offset)
 	counted, hit := s.state.facetCache.get(key, 0)
 	if !hit {
@@ -240,4 +224,27 @@ func (s *Service) SearchGenres(viewer Viewer, request SearchGenreRequest) (Searc
 		}
 	}
 	return out, nil
+}
+
+// searchGenreMembership is shared by the counted tiles and their existing
+// across-library destination, so an opened genre contains the titles it counted.
+func searchGenreMembership(scope string, args []any, viewer Viewer) (string, []any) {
+	memberVisible, memberArgs := viewer.itemVisibilitySQL("member.item_id")
+	prefix := `WITH targets AS MATERIALIZED (
+	 SELECT target.* FROM (` + scope + `) target
+	 JOIN catalog_browse_rows title ON title.entity_id=target.entity_id AND title.kind IN(1,2)
+	 JOIN catalog_libraries library ON library.id=target.library_id AND library.retired=0
+	 JOIN libraries public_library ON public_library.id=library.library_id AND public_library.kind IN('movie','tv','anime')
+	 ), e AS MATERIALIZED (
+	 SELECT DISTINCT target.entity_id,member.item_id FROM targets target
+	 JOIN catalog_browse_memberships member ON member.entity_id=target.entity_id WHERE ` + memberVisible + `
+	 UNION SELECT target.entity_id,target.entity_id FROM targets target
+	 WHERE NOT EXISTS(SELECT 1 FROM catalog_browse_memberships member WHERE member.entity_id=target.entity_id)
+	 ), genres AS MATERIALIZED (
+	 SELECT DISTINCT e.entity_id,CAST(COALESCE(ts.label_override,mg.label) AS TEXT) value
+	 FROM e ` + facetSources["genre"].Join + `
+	 WHERE COALESCE(ts.label_override,mg.label) IS NOT NULL AND COALESCE(ts.label_override,mg.label)<>''
+	 )`
+	bound := append(append([]any{}, args...), memberArgs...)
+	return prefix, bound
 }

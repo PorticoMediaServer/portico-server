@@ -15,6 +15,7 @@ export * from './route-identity.ts';
 export * from './identity-restrictions.ts';
 export * from './identity-devices.ts';
 export * from './account-notifications.ts';
+export * from './owner-claim-client.ts';
 export * from './route-connection.ts';
 export * from './known-servers.ts';
 export * from './portico-servers.ts';
@@ -407,18 +408,19 @@ export class HttpLocalApi {
   /** Keep this transport's access token alive: refresh before expiry and once on a 401. */
   setAuthRecovery(auth: AuthRecovery | undefined) { this.auth = auth; }
   private send(path: string, method: string, body: unknown, signal: AbortSignal | undefined, token: string, extra?: Readonly<Record<string, string>>, keepalive = false) {
+    const ownerStart = method === 'POST' && path === routePath('post_networking_claim_web_approval');
     return this.fetcher(this.baseUrl + path, {
       method,
       signal,
       ...(keepalive ? {keepalive: true} : {}),
       // Credential/profile proof exchanges must never follow an HTTP redirect.
-      ...(/^\/v1\/(?:direct(?:\/|$)|auth\/|hosted\/(?:attach|profiles\/offline-select))/.test(path)?{redirect:'error' as const,credentials:'omit' as const}:{}),
+      ...(ownerStart || /^\/v1\/(?:direct(?:\/|$)|auth\/|hosted\/(?:attach|profiles\/offline-select))/.test(path)?{redirect:'error' as const,credentials:'omit' as const}:{}),
       headers: {
         Accept: "application/json",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...this.deliveryHeaders(),
-        ...(issuesCredentials(path, method) ? installationHeaders() : {}),
+        ...(ownerStart || issuesCredentials(path, method) ? installationHeaders() : {}),
         // Per-request protocol headers (If-Match, Idempotency-Key, merge-patch Content-Type); never Authorization.
         ...Object.fromEntries(Object.entries(extra ?? {}).filter(([k]) => k.toLowerCase() !== 'authorization')),
       },
@@ -2152,3 +2154,8 @@ export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts
 export {createReadingHost, connectReadingHost} from './reading-host.ts';
 export type {ReadingHostSession, ReadingHostTransport, ReadingGuest} from './reading-host.ts';
 export {savedViewSummary, type SavedViewSummary, type SavedViewSummaryText} from './presentation/saved-view-summary.ts';
+export {readLibrarySettings,saveLibrarySettings,reorderLibraries,saveLibraryFolder,removeLibraryFolder} from './server-admin/libraries.ts';
+export {readLibraryInventoryConfig} from './library-inventory.ts';
+export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
+export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';
+export {readLibrarySonic,saveLibrarySonic,retryLibrarySonic,librarySonicAvailable,type LibrarySonicDocument,type LibrarySonicState} from './server-admin/library-sonic.ts';

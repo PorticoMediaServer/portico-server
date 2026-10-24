@@ -32,3 +32,50 @@ test('viewer/operation retirement after native commit retires that exact load be
   current=false;complete(receipt(107));await assert.rejects(pending,{name:'AbortError'});assert.deepEqual(h.retired,[107]);
  }finally{await h.broker.dispose();h.store.dispose();}
 });
+
+test('release retains failed load custody, still releases preparation, and retries without duplicate preparation release',async()=>{
+ let fail=true;const retired:unknown[]=[],released:string[]=[];
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{async bind(){return lease},async release(){},
+  async command(_,operation){if(operation.action==='prepareLocalQueue')return {kind:'localQueue',value:{preparationId,scope,selectionRevision:'4',items:[member]}};released.push(String(operation.preparationId));return{kind:'done'}},
+  async loadLocal(_,request){return receipt(request.generation)},async retireLocal(value,generation){retired.push({value,generation});if(fail)throw new Error('failed')}});
+ const broker=new DesktopLocalPlaybackBroker(),prepared=await store.prepareLocalQueue({kind:'entry',entryId,expectedRevision:4},new AbortController().signal);broker.retain(store,prepared);
+ try{
+  await broker.load(source,101,{signal:new AbortController().signal,isCurrent:()=>true});
+  await assert.rejects(broker.release(prepared),/downloads_unavailable/);assert.deepEqual(released,[preparationId]);
+  await assert.rejects(broker.load(source,102,{signal:new AbortController().signal,isCurrent:()=>true}),/downloads_conflict/);
+  fail=false;await broker.dispose();await broker.dispose();
+  assert.deepEqual(released,[preparationId]);assert.deepEqual(retired,[{value:lease,generation:101},{value:lease,generation:101}]);
+ }finally{fail=false;await broker.dispose();store.dispose()}
+});
+
+test('prepared resource preserves native order and transfers lifetime beyond the initiating action',async()=>{
+ const h=await setup(async(_,request)=>receipt(request.generation));await h.broker.release(h.prepared);h.released.length=0;
+ try{
+  const abort=new AbortController(),resource=await h.broker.prepare(h.store,{kind:'entry',entryId,expectedRevision:4},{signal:abort.signal,isCurrent:()=>true});
+  assert.equal(Object.isFrozen(resource),true);assert.equal(resource.preparation.items[0].localSourceId,localSourceId);abort.abort();assert.deepEqual(h.released,[]);
+  await h.broker.load(source,101,{signal:new AbortController().signal,isCurrent:()=>true});
+  await Promise.all([resource.release(),resource.release()]);await resource.release();
+  assert.deepEqual(h.released,[preparationId]);assert.deepEqual(h.retired,[101]);
+ }finally{await h.broker.dispose();h.store.dispose()}
+});
+
+test('late preparation fence failure keeps cleanup retryable until native acknowledges release',async()=>{
+ let current=true,fail=true,releases=0;
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{async bind(){return lease},async release(){},async command(_,operation){
+  if(operation.action==='prepareLocalQueue'){current=false;return{kind:'localQueue',value:{preparationId,scope,selectionRevision:'4',items:[member]}};}
+  releases++;if(fail)throw new Error('failed');return{kind:'done'};
+ }}),broker=new DesktopLocalPlaybackBroker();
+ try{
+  await assert.rejects(broker.prepare(store,{kind:'entry',entryId,expectedRevision:4},{signal:new AbortController().signal,isCurrent:()=>current}),{name:'AbortError'});
+  assert.equal(releases,1);fail=false;await broker.dispose();assert.equal(releases,2);
+ }finally{fail=false;await broker.dispose();store.dispose()}
+});
+
+test('runtime release after captured store disposal recognizes the actual native preparation ACK',async()=>{
+ const h=await setup(async(_,request)=>receipt(request.generation));
+ try{
+  await h.broker.load(source,101,{signal:new AbortController().signal,isCurrent:()=>true});
+  h.store.dispose();await new Promise(resolve=>setImmediate(resolve));
+  await h.broker.release(h.prepared);assert.deepEqual(h.released,[preparationId]);assert.deepEqual(h.retired,[101]);
+ }finally{await h.broker.dispose();h.store.dispose()}
+});

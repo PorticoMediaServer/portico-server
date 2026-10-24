@@ -40,6 +40,11 @@ type ServeCommandSpec struct {
 	Connections           int
 	RequestsPerSecond     int
 	BytesPerSecond        int64
+	// SharedOperations keeps a provisional connection test within the current
+	// source's one operation budget. Its capacity must match Connections and
+	// its lifetime also owns this process. This conveys no operation authority;
+	// the independent process lease and Enforce checks remain mandatory.
+	SharedOperations *remotemedia.OperationBudget
 	// SequentialReads disables VFS chunk reopens for known start-only sources.
 	// This is transport behavior, never operation permission or fake ReadAt.
 	SequentialReads bool
@@ -75,6 +80,9 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if shared := spec.SharedOperations; shared != nil && (shared.Counts().Capacity != spec.Connections || shared.Context() == nil || shared.Context().Err() != nil) {
+		return nil, ErrServeConfiguration
 	}
 	if spec.MetadataPort < 0 || spec.MetadataPort > 65535 || spec.MetadataPort != 0 && spec.MetadataPort == spec.Port {
 		return nil, ErrServeConfiguration
@@ -154,7 +162,9 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 
 // Loaded removes only this command's fresh transient configuration, both on
 // failed startup and after load. The retained source/auth configuration is owned
-// elsewhere and is never removed or rewritten by this helper.
+// elsewhere and is never removed or rewritten by this helper. Keep ownership of
+// the exact transient pathname until physical Wait: a child can recreate files
+// there after readiness, and final retirement must remove those copies too.
 func (p *PreparedServe) Loaded() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -164,7 +174,6 @@ func (p *PreparedServe) Loaded() error {
 	if err := os.RemoveAll(p.private); err != nil {
 		return err
 	}
-	p.private = ""
 	return nil
 }
 
@@ -209,6 +218,15 @@ func (s *ServeProcess) OperationCounts() remotemedia.OperationCounts {
 	return s.budget.Counts()
 }
 
+// SharedOperations returns only current resource custody for a separately
+// authorized source connection test. It never admits an actor or media read.
+func (s *ServeProcess) SharedOperations(ctx context.Context) (*remotemedia.OperationBudget, error) {
+	if err := s.Check(ctx); err != nil {
+		return nil, err
+	}
+	return s.budget, nil
+}
+
 func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lease ServeProcessLease) (*ServeProcess, error) {
 	if lease == nil {
 		return nil, ErrServeConfiguration
@@ -226,14 +244,21 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		return nil, err
 	}
 	life, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(lease.Context(), cancel)
+	stopLease := context.AfterFunc(lease.Context(), cancel)
+	stopBudget := func() bool { return false }
+	stop := func() { stopLease(); stopBudget() }
 	prepared, err := PrepareServe(life, program, spec)
 	if err != nil {
 		stop()
 		cancel()
 		return nil, err
 	}
-	budget := remotemedia.NewOperationBudget(life, spec.Connections)
+	budget := spec.SharedOperations
+	if budget == nil {
+		budget = remotemedia.NewOperationBudget(life, spec.Connections)
+	} else {
+		stopBudget = context.AfterFunc(budget.Context(), cancel)
+	}
 	endpoint, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, budget)
 	if err != nil {
 		_ = prepared.Loaded()
@@ -265,6 +290,9 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		if !program.Included {
 			err = checkServeProgram(program, spec.ApprovedProgramDigest)
 		}
+	}
+	if err == nil {
+		err = budget.Context().Err()
 	}
 	if err == nil {
 		// Bounds pipe inheritance even when a custom program starts descendants.
@@ -369,6 +397,12 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 // physical custody/lifetime only, without DB snapshots, network or capacity waits.
 func (s *ServeProcess) CheckLocal(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.budget == nil || s.budget.Context() == nil {
+		return ErrServeConfiguration
+	}
+	if err := s.budget.Context().Err(); err != nil {
 		return err
 	}
 	if err := s.life.Err(); err != nil {

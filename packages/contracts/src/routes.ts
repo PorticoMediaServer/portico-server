@@ -1370,8 +1370,9 @@ export const routes = [
     "method": "POST",
     "path": "/v1/admin/missing-titles/empty",
     "summary": "Remove missing titles and missing files now, whatever the owner's rule says; call again while more is true",
-    "access": "owner",
-    "requires": "library",
+    "access": "admin_scope",
+    "adminScope": "libraries",
+    "requires": "admin",
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 4096,
@@ -1620,6 +1621,24 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_backup_settings",
+    "method": "GET",
+    "path": "/v1/admin/backups/settings",
+    "summary": "Read backup destination and protection",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
     "admission": "admin"
   },
   {
@@ -9394,8 +9413,9 @@ export const routes = [
     "method": "GET",
     "path": "/v1/admin/missing-titles",
     "summary": "List titles whose files are no longer on disk, oldest first, with when each will be removed",
-    "access": "owner",
-    "requires": "library",
+    "access": "admin_scope",
+    "adminScope": "libraries",
+    "requires": "admin",
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 0,
@@ -10074,6 +10094,25 @@ export const routes = [
     ],
     "status": 202,
     "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_backups_inspect",
+    "method": "POST",
+    "path": "/v1/admin/backups/inspect",
+    "summary": "Inspect backup source protection",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "administration_unavailable",
+      "restore_source_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "post_admin_backups_restore",
@@ -14002,6 +14041,25 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_backup_settings",
+    "method": "PUT",
+    "path": "/v1/admin/backups/settings",
+    "summary": "Set backup destination, artwork inclusion and passphrase protection",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
     "admission": "admin"
   },
   {
@@ -18177,6 +18235,7 @@ export const routePaths = {
   "get_admin_activity": "/v1/admin/activity",
   "get_admin_analysis_operations": "/v1/admin/analysis-operations",
   "get_admin_attention": "/v1/admin/attention",
+  "get_admin_backup_settings": "/v1/admin/backups/settings",
   "get_admin_backups": "/v1/admin/backups",
   "get_admin_console_accounts": "/v1/admin/console/accounts",
   "get_admin_console_alerts": "/v1/admin/console/alerts",
@@ -18525,6 +18584,7 @@ export const routePaths = {
   "post_admin_access_members_bulk": "/v1/admin/access/members/bulk",
   "post_admin_background_pause": "/v1/admin/maintenance/background-pause",
   "post_admin_backups": "/v1/admin/backups",
+  "post_admin_backups_inspect": "/v1/admin/backups/inspect",
   "post_admin_backups_restore": "/v1/admin/backups/restore",
   "post_admin_console_alerts_id_acknowledge": "/v1/admin/console/alerts/{id}/acknowledge",
   "post_admin_console_diagnostics_capture": "/v1/admin/console/diagnostics/capture",
@@ -18700,6 +18760,7 @@ export const routePaths = {
   "put_admin_access_member_notes": "/v1/admin/access/members/{id}/notes",
   "put_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
   "put_admin_access_members_id_role": "/v1/admin/access/members/{id}/role",
+  "put_admin_backup_settings": "/v1/admin/backups/settings",
   "put_admin_console_schedules": "/v1/admin/console/schedules",
   "put_admin_dvr_recording_groups_id": "/v1/admin/dvr/recording-groups/{id}",
   "put_admin_dvr_recording_permissions": "/v1/admin/dvr/recording-permissions",

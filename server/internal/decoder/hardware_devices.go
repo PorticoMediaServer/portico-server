@@ -77,7 +77,7 @@ func (d *HardwareDetector) SelectDevice(ctx context.Context, executable, selecti
 			if err := ctx.Err(); err != nil {
 				return HardwareProbe{}, err
 			}
-			probe := probeDetector.Probe(ctx, executable, backend, device.Path)
+			probe := probeDetector.Reprobe(ctx, executable, backend, device.Path)
 			if err := ctx.Err(); err != nil {
 				return HardwareProbe{}, err
 			}

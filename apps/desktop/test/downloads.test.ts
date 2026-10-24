@@ -37,6 +37,23 @@ test('artwork is a native byte Blob or null; raw errors never reach UI',async()=
  const blob=await store.getArtwork(rowId);assert.equal(blob?.type,'image/png');assert.deepEqual([...new Uint8Array(await blob!.arrayBuffer())],[137,80,78,71]);store.dispose();
  assert.equal(downloadFailure(new Error('/private/path?secret=hidden')).message,'downloads_unavailable');assert.equal(downloadFailure('downloads_conflict').message,'downloads_conflict');
 });
+test('native folder read exposes only its deliberate display path; cancellation before begin ACK never opens a dialog',async()=>{
+ let finish!:(value:unknown)=>void;const cancelled:string[]=[],effects:string[]=[];
+ const folder:NonNullable<NativeDownloadsBridge['folder']>={async location(){return{displayPath:'/owned/Portico',private:'not projected'}},begin:()=>new Promise(resolve=>{finish=resolve}),async choose(token){effects.push(token)},async open(token){effects.push(token)},async cancel(token){cancelled.push(token)}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async()=>null),folder});
+ try{
+  assert.deepEqual(await store.folderLocation(new AbortController().signal),{displayPath:'/owned/Portico'});
+  const controller=new AbortController(),task=store.chooseFolder(controller.signal);controller.abort();finish('f'.repeat(64));
+  await assert.rejects(task,{name:'AbortError'});assert.deepEqual(effects,[]);assert.deepEqual(cancelled,['f'.repeat(64)]);
+ }finally{store.dispose()}
+});
+test('disposing a folder operation retires its exact native token and never publishes a late completion',async()=>{
+ let finish!:()=>void;const cancelled:string[]=[];let notices=0;
+ const folder:NonNullable<NativeDownloadsBridge['folder']>={async location(){return{displayPath:'/owned'}},async begin(){return'f'.repeat(64)},choose:()=>new Promise(resolve=>{finish=resolve}),async open(){},async cancel(token){cancelled.push(token)}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async()=>null),folder});store.subscribe(()=>++notices);
+ const task=store.chooseFolder(new AbortController().signal);await new Promise(resolve=>setImmediate(resolve));store.dispose();finish();
+ await assert.rejects(task,{name:'AbortError'});assert.equal(notices,0);assert.ok(cancelled.every(token=>token==='f'.repeat(64)));assert.ok(cancelled.length>0);
+});
 
 test('MAIN group facts are complete native aggregates without first-row metadata or guessed access',async()=>{
  const revision='d'.repeat(64);let actual:Record<string,unknown>={kind:'songs',parentId:'album',groupId:'disc',count:4,bytes:32,bytesDone:16,revision,offlineAccess:'needsCheckIn'};
@@ -147,4 +164,43 @@ test('mismatched native local receipt cannot be adopted, and the potentially com
   try{const signal=new AbortController().signal,queue=await store.prepareLocalQueue(selection,signal);await assert.rejects(store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal),/downloads_unavailable/);assert.deepEqual(retired,[9]);}
   finally{store.dispose();}
  }
+});
+
+test('failed native retirement retries only its original lease after disposal; unknown generations do nothing',async()=>{
+ const calls:unknown[]=[],releases:string[]=[];let fail=true;
+ const native:NativeDownloadsBridge={...bridge(async(_,op)=>op.action==='prepareLocalQueue'?{kind:'localQueue',value:prepared()}:{kind:'done'}),
+  async release(value){releases.push(value)},async loadLocal(_,request){return localReceipt(request.generation)},
+  async retireLocal(value,generation){calls.push({lease:value,generation});if(fail)throw new Error('/private/never surface');}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,native),signal=new AbortController().signal;
+ const queue=await store.prepareLocalQueue(selection,signal);await store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal);
+ await store.retireLocal(10);assert.deepEqual(calls,[]);
+ await assert.rejects(store.retireLocal(9),/^Error: downloads_unavailable$/);
+ store.dispose();await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(releases,[lease]);fail=false;await store.retireLocal(9);await store.retireLocal(9);
+ assert.equal(calls.length,3);assert.ok(calls.every(call=>JSON.stringify(call)===JSON.stringify({lease,generation:9})));
+});
+
+test('concurrent retirement shares the genuine native acknowledgement and blocks generation reuse until ACK',async()=>{
+ let finish!:()=>void,calls=0;
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async(_,op)=>op.action==='prepareLocalQueue'?{kind:'localQueue',value:prepared()}:{kind:'done'}),
+  async loadLocal(_,request){return localReceipt(request.generation)},retireLocal:()=>{calls++;return new Promise(resolve=>{finish=resolve})}});
+ try{
+  const signal=new AbortController().signal,queue=await store.prepareLocalQueue(selection,signal);
+  await store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal);
+  const first=store.retireLocal(9),second=store.retireLocal(9);
+  await assert.rejects(store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal),/downloads_conflict/);
+  assert.equal(calls,1);finish();await Promise.all([first,second]);
+ }finally{store.dispose()}
+});
+
+test('retirement cannot acknowledge cleanup before an outstanding native load commits',async()=>{
+ let finish!:(value:unknown)=>void;const retired:number[]=[];
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async(_,op)=>op.action==='prepareLocalQueue'?{kind:'localQueue',value:prepared()}:{kind:'done'}),
+  loadLocal:()=>new Promise(resolve=>{finish=resolve}),async retireLocal(_,generation){retired.push(generation)}});
+ try{
+  const abort=new AbortController(),queue=await store.prepareLocalQueue(selection,abort.signal);
+  const load=store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,abort.signal);
+  abort.abort();const retirement=store.retireLocal(9);await Promise.resolve();assert.deepEqual(retired,[]);
+  finish(localReceipt());await assert.rejects(load,{name:'AbortError'});await retirement;assert.deepEqual(retired,[9]);
+ }finally{store.dispose()}
 });

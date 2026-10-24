@@ -18,6 +18,13 @@ func (s *Service) sonicRuntime() *sonic.Runtime {
 	return s.options.Sonic
 }
 
+// SonicRuntimeAvailable is the same verified readiness fact published as
+// SonicStatusView.available. It reads only the current runtime's cached state:
+// no database, model loading, inference, scheduling or library-policy decision.
+func (s *Service) SonicRuntimeAvailable() bool {
+	return s.sonicRuntime().Availability().State == "ready"
+}
+
 // RetrySonic reloads only the server's immutable installation options. It
 // accepts no client path or model and starts no worker. A single fixed numeric
 // patch verifies the actual CPU loader; it is not a song result or progress.

@@ -204,7 +204,7 @@ func upsertEntity(ctx context.Context, tx *sql.Tx, e Entity, update bool) (id in
 	}
 	added := addedMillis(e.Added)
 	err = tx.QueryRowContext(ctx, `INSERT INTO catalog_entities(public_id,library_id,kind,parent_id,title,sort_title,metadata_language,sort_key,sort_head,year,added_ms)
- VALUES(?1,?2,?3,?4,?5,?6,?7,portico_sort_title(?5,?6,?7),substr(portico_sort_title(?5,?6,?7),1,1),?8,?9) RETURNING id`,
+ VALUES(?1,?2,?3,?4,?5,?6,?7,portico_sort_title(?5,CASE WHEN COALESCE((SELECT p.sort_ignore_articles FROM library_preferences p JOIN catalog_libraries cl ON cl.library_id=p.library_id WHERE cl.id=?2),1)=0 AND ?6='' THEN ?5 ELSE ?6 END,?7),substr(portico_sort_title(?5,CASE WHEN COALESCE((SELECT p.sort_ignore_articles FROM library_preferences p JOIN catalog_libraries cl ON cl.library_id=p.library_id WHERE cl.id=?2),1)=0 AND ?6='' THEN ?5 ELSE ?6 END,?7),1,1),?8,?9) RETURNING id`,
 		public, e.Library, int(e.Kind), parent, e.Title, e.SortTitle, e.Language, e.Year, added).Scan(&id)
 	if err != nil {
 		return 0, false, err
@@ -564,7 +564,7 @@ func writeFacts(ctx context.Context, tx *sql.Tx, table string, id int64, values 
 		}
 		n, _ := res.RowsAffected()
 		if n > 0 {
-			_, err = tx.ExecContext(ctx, `UPDATE catalog_entities SET sort_key=portico_sort_title(title,sort_title,metadata_language),sort_head=substr(portico_sort_title(title,sort_title,metadata_language),1,1) WHERE id=?`, id)
+			_, err = tx.ExecContext(ctx, `UPDATE catalog_entities SET sort_key=portico_sort_title(title,CASE WHEN COALESCE((SELECT p.sort_ignore_articles FROM library_preferences p JOIN catalog_libraries cl ON cl.library_id=p.library_id WHERE cl.id=catalog_entities.library_id),1)=0 AND sort_title='' THEN title ELSE sort_title END,metadata_language),sort_head=substr(portico_sort_title(title,CASE WHEN COALESCE((SELECT p.sort_ignore_articles FROM library_preferences p JOIN catalog_libraries cl ON cl.library_id=p.library_id WHERE cl.id=catalog_entities.library_id),1)=0 AND sort_title='' THEN title ELSE sort_title END,metadata_language),1,1) WHERE id=?`, id)
 		}
 		return n, err
 	}

@@ -40,7 +40,7 @@ func (p Probe) FFmpegInput(path string, t Title, positionMs int64, seek *Seek) (
 		if t.Playlist == nil {
 			return Input{}, ErrProtocol
 		}
-		args := []string{"-protocol_whitelist", "file,pipe,bluray", "-format_whitelist", "mpegts,ffmetadata", "-playlist", strconv.Itoa(*t.Playlist), "-angle", "0", "-f", "mpegts"}
+		args := []string{"-protocol_whitelist", "file,pipe,bluray", "-format_whitelist", "mpegts,ffmetadata", "-min_playlist_length", "60", "-playlist", strconv.Itoa(*t.Playlist), "-angle", "0", "-f", "mpegts"}
 		offset := int64(0)
 		if positionMs > 0 {
 			if seek == nil || seek.Schema != Schema || seek.Playlist != *t.Playlist || seek.RequestedMs != positionMs || seek.ByteOffset < 0 || seek.TitleTimeMs < 0 || seek.TitleTimeMs > positionMs {

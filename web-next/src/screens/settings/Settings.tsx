@@ -36,6 +36,7 @@ export type SettingsBindings = Readonly<{
   configurationMatches?: (query: string) => readonly SettingsConfigurationMatch[];
   panel?: (context: SettingsContext) => Readonly<{title?: string; description?: string; create?: SettingsPanelProps['create']}>;
   load: (section: SettingsSection) => Promise<void>;
+  loadContext?: (context: SettingsContext) => Promise<void>;
   openHome: () => void;
 }>;
 
@@ -77,6 +78,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     setAdvanced(false); setCompactPage(true);
   };
   useEffect(() => {void bindings.load(section);}, [bindings, section]);
+  useEffect(() => {void bindings.loadContext?.({section, panelId: panel?.id, recordId: panel?.recordId});}, [bindings, section, panel?.id, panel?.recordId]);
   useEffect(() => {
     const found = selected.row && settingsRowIndex.get(selected.row);
     if (!found) return;

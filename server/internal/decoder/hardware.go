@@ -219,9 +219,14 @@ func SoftwareToneMap(algorithm string) string {
 	return "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=" + algorithm + ":desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
 }
 
-// HardwareDetector probes backends once per ffmpeg identity and caches the
-// verdict. The cache key is the ffmpeg binary identity plus backend and device,
-// so replacing ffmpeg re-probes without a restart.
+type hardwareProbeCell struct {
+	backend HardwareBackend
+	device  string
+}
+
+// HardwareDetector caches measured backend/device results by FFmpeg runtime
+// identity. Replacing that runtime or explicitly reproving a cell retires its
+// prior observation without invalidating peer devices.
 type HardwareDetector struct {
 	// Devices supplies physical discovery only; candidates still require probes.
 	Devices func(context.Context) []HardwareDevice
@@ -234,15 +239,16 @@ type HardwareDetector struct {
 	// child directly, because a synthetic clip borrows no source custody.
 	Run func(ctx context.Context, cmd *exec.Cmd) error
 
-	mu      sync.Mutex
-	cache   map[string]HardwareProbe
-	warming map[string]bool
+	mu               sync.Mutex
+	cache            map[string]HardwareProbe
+	warming          map[string]bool
+	probeGenerations map[hardwareProbeCell]uint64
 }
 
 const defaultProbeTimeout = 20 * time.Second
 
-// ffmpegIdentity hashes what actually decides capability: the resolved binary
-// path, its size and its modification time. Cheap, and it changes on upgrade.
+// ffmpegIdentity retains the legacy non-Linux inventory identity. Linux probes
+// use the native executable and resolved-library binding below.
 func ffmpegIdentity(executable string) (string, error) {
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable {
 		return "", ErrInvalidConfiguration
@@ -253,6 +259,24 @@ func ffmpegIdentity(executable string) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(executable + "\x00" + strconv.FormatInt(info.Size(), 10) + "\x00" + strconv.FormatInt(info.ModTime().UnixNano(), 10)))
 	return hex.EncodeToString(sum[:16]), nil
+}
+
+func hardwareRuntimeIdentity(ctx context.Context, executable string) (string, error) {
+	identity, complete, err := inventoryIdentity(ctx, executable)
+	if err != nil {
+		return "", err
+	}
+	if !complete || identity == "" {
+		return "", ErrInvalidConfiguration
+	}
+	return identity, nil
+}
+
+func invalidHardwareObservation(out HardwareProbe, reason string) HardwareProbe {
+	out.Available, out.Reason, out.Identity = false, reason, ""
+	out.NativeFilters, out.ScaleFilters, out.ToneMapFilters, out.DeinterlaceFilters = false, false, false, false
+	out.OutputEncoders, out.OutputQuality, out.DecodeCodecs = nil, nil, nil
+	return out
 }
 
 // probeCommand runs a hardware probe exactly as a hardware conversion runs:
@@ -355,16 +379,45 @@ func (d *HardwareDetector) probeVAAPIFilters(ctx context.Context, executable str
 }
 
 // Probe returns this host's verdict for one backend, running at most one bounded
-// encode per ffmpeg identity. A failed probe is cached too: a host without the
+// encode per native runtime identity. A failed probe is cached too: a host without the
 // hardware must not pay for a subprocess on every session.
 func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend HardwareBackend, device string) HardwareProbe {
+	return d.probe(ctx, executable, backend, device, false, 0)
+}
+
+// Reprobe refreshes exactly one existing backend/device cell. It bypasses that
+// cell's cached result and cooldown, while retiring observations already in
+// flight for it. Peer devices and backend families keep their own verdicts.
+func (d *HardwareDetector) Reprobe(ctx context.Context, executable string, backend HardwareBackend, device string) HardwareProbe {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if ctx.Err() != nil {
+		return HardwareProbe{Backend: backend, Device: device, Reason: ProbeTimedOut}
+	}
+	d.mu.Lock()
+	if d.probeGenerations == nil {
+		d.probeGenerations = map[hardwareProbeCell]uint64{}
+	}
+	cell := hardwareProbeCell{backend, device}
+	d.probeGenerations[cell]++
+	generation := d.probeGenerations[cell]
+	for key, cached := range d.cache {
+		if cached.Backend == backend && cached.Device == device {
+			delete(d.cache, key)
+		}
+	}
+	d.mu.Unlock()
+	return d.probe(ctx, executable, backend, device, true, generation)
+}
+
+func (d *HardwareDetector) probe(ctx context.Context, executable string, backend HardwareBackend, device string, force bool, generation uint64) HardwareProbe {
 	out := HardwareProbe{Backend: backend, Reason: ProbeUnsupportedPlatform, Device: device}
 	spec, ok := backendSpecs[backend]
 	if !ok || backend == BackendSoftware {
 		out.Reason = ProbeDisabled
 		return out
 	}
-	identity, err := ffmpegIdentity(executable)
+	identity, err := hardwareRuntimeIdentity(ctx, executable)
 	if err != nil {
 		out.Reason = ProbeEncodeFailed
 		return out
@@ -373,14 +426,20 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	if !spec.supported() {
 		return out
 	}
-	if deviceCircuitOpen(backend, device) {
+	if !force && deviceCircuitOpen(backend, device) {
 		out.Reason = ProbeCircuitOpen
 		return out
 	}
 	recovery := deviceNeedsProbe(backend, device)
 	key := identity + "/" + string(backend) + "/" + device
+	cell := hardwareProbeCell{backend, device}
 	d.mu.Lock()
-	if cached, ok := d.cache[key]; ok && !recovery {
+	if force && d.probeGenerations[cell] != generation {
+		d.mu.Unlock()
+		return invalidHardwareObservation(out, ProbeWarming)
+	}
+	generation = d.probeGenerations[cell]
+	if cached, ok := d.cache[key]; ok && !recovery && !force {
 		d.mu.Unlock()
 		return cached
 	}
@@ -463,12 +522,19 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		out.DeinterlaceFilters = d.probeDeinterlace(ctx, executable, spec, backend, device, timeout)
 	}
 	if ctx.Err() != nil {
-		out.Available, out.Reason = false, ProbeTimedOut
-		out.OutputEncoders, out.OutputQuality, out.DecodeCodecs = nil, nil, nil
-		out.DeinterlaceFilters = false
-		return out // Cancelled/incomplete observations never enter the cache.
+		return invalidHardwareObservation(out, ProbeTimedOut)
+	}
+	// A replacement during any codec/filter probe cannot publish or memoize a
+	// result for the old executable or library generation.
+	current, err := hardwareRuntimeIdentity(ctx, executable)
+	if err != nil || current != identity {
+		return invalidHardwareObservation(out, ProbeEncodeFailed)
 	}
 	d.mu.Lock()
+	if d.probeGenerations[cell] != generation {
+		d.mu.Unlock()
+		return invalidHardwareObservation(out, ProbeWarming)
+	}
 	if d.cache == nil {
 		d.cache = map[string]HardwareProbe{}
 	}
@@ -495,7 +561,7 @@ func (d *HardwareDetector) SelectCached(executable, configured, device string) H
 	if configured == string(BackendSoftware) {
 		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
 	}
-	identity, err := ffmpegIdentity(executable)
+	identity, err := hardwareRuntimeIdentity(context.Background(), executable)
 	if err != nil {
 		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed}
 	}
@@ -580,7 +646,7 @@ func (d *HardwareDetector) Select(ctx context.Context, executable, configured, d
 			return probe
 		}
 	}
-	identity, _ := ffmpegIdentity(executable)
+	identity, _ := hardwareRuntimeIdentity(ctx, executable)
 	return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed, Identity: identity}
 }
 
@@ -733,7 +799,10 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 	}
 	backend := BackendSoftware
 	spec := backendSpec{}
-	if r.Probe.Available && r.Probe.Backend != BackendSoftware {
+	// Persisted hardware results from another selected runtime cannot execute
+	// its graph. Legacy argument-only callers may omit toolchain facts.
+	mismatchedRuntime := r.Toolchain != nil && r.Toolchain.Identity != "" && r.Probe.Identity != "" && r.Toolchain.Identity != r.Probe.Identity
+	if !mismatchedRuntime && r.Probe.Available && r.Probe.Backend != BackendSoftware {
 		if s, ok := backendSpecs[r.Probe.Backend]; ok && s.supported() {
 			backend, spec = r.Probe.Backend, s
 		}

@@ -2,8 +2,10 @@ package ingestion
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
+	"portico.local/server/internal/dbwork"
 	"testing"
 
 	"portico.local/server/internal/assets"
@@ -25,12 +27,18 @@ func TestEpisodeThumbnailScanCallbackKeepsExistingJobPendingUntilSettled(t *test
 			c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state,analysis_revision) SELECT 'object',id,?,incarnation,'Show.S01E01.mkv','revision-a','{}',1000,1,'available','revision-a' FROM library_sources WHERE id='episodes'`, episode.Token)
 			cat := catalog.New(c.DB)
 			scanner := New(c.DB, cat, assets.Probe{})
+			if err := dbwork.WithWriteTx(context.Background(), c.DB, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+				return catalog.ApplyScanPolicyTx(context.Background(), tx, "episodes", catalog.ScanPolicy{Tier: "custom", Operations: []string{"probe", catalog.EpisodeThumbnailOperation}})
+			}); err != nil {
+				t.Fatal(err)
+			}
+
 			job, err := scanner.QueueContext(context.Background(), "episodes", "episodes", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			c.Exec(`UPDATE jobs SET status='running' WHERE id=?`, job.ID)
-			c.Exec(`INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,'object','revision-a',1,'pending')`, job.ID)
+			c.Exec(`INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) SELECT ?,'object','revision-a',revision,'pending' FROM library_scan_policies WHERE library_id='episodes'`, job.ID)
 			generic, err := mediaanalysis.New(mediaanalysis.Options{DB: c.DB, Directory: t.TempDir(), Open: func(context.Context, string, string) (mediaanalysis.Input, error) {
 				t.Fatal("unrelated source opened")
 				return nil, nil
@@ -53,9 +61,9 @@ func TestEpisodeThumbnailScanCallbackKeepsExistingJobPendingUntilSettled(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			// The integration point is tested before the steward activates the new
-			// registered operation. Generic analysis still reads the real saved policy.
-			p.Operations = append(p.Operations, catalog.EpisodeThumbnailOperation)
+			if !p.Allows(catalog.EpisodeThumbnailOperation) {
+				t.Fatal("saved registered operation missing", p)
+			}
 			calls := 0
 			if outcome != "missing" {
 				scanner.EpisodeThumbnails = func(ctx context.Context, j, s, o, r string, rev int64) (bool, string, error) {
