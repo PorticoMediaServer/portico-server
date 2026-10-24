@@ -33162,6 +33162,16 @@ export const schemas = {
             "providerReleaseId": {
               "type": "string"
             },
+            "role": {
+              "enum": [
+                "album",
+                "ep",
+                "single",
+                "compilation",
+                "appearance"
+              ],
+              "type": "string"
+            },
             "title": {
               "type": "string"
             },
@@ -199649,6 +199659,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -200114,6 +200127,9 @@ export const schemas = {
             },
             "permissions": {
               "properties": {
+                "canClaimHost": {
+                  "type": "boolean"
+                },
                 "canControl": {
                   "type": "boolean"
                 },
@@ -201520,6 +201536,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -201984,6 +202003,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -202462,6 +202484,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -203008,6 +203033,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -203748,6 +203776,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -204419,6 +204450,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -204899,6 +204933,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
