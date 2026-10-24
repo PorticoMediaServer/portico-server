@@ -252,20 +252,22 @@ test('a saved view is transport for the query it stores, and rendering withholds
   assert.equal(savedViewSummary(definition as never, parseBrowseCapabilities(vocabulary), defaultI18n), undefined);
 });
 
-test('a nested applied query is echoed without a capability cross-check, and the capability check names each offending node', () => {
+test('a nested applied query is echoed without a capability cross-check, and the capability check stops at the first offending node with its path', () => {
   const nested = {all: [
     {field: 'dateAdded', operator: OPERATOR, value: 30},
-    {any: [{field: 'year', operator: OPERATOR, value: 7}, {not: {field: 'mood', operator: 'equals', value: 'calm'}}]},
+    {any: [{field: 'year', operator: OPERATOR, value: 7}]},
   ]};
   // Reading a page is structural: the applied query is kept exactly, including a window on
-  // a field the capabilities do not offer and a field they do not publish at all. The
-  // consumer that holds both the page and the vocabulary does not compare them here.
+  // a field the capabilities do not offer. The consumer that holds both the page and the
+  // vocabulary does not compare them here.
   assert.deepEqual(parseBrowseResult(page(nested as BrowseNode)).applied.query, nested);
   assert.doesNotThrow(() => decodeBrowseLibraryResponse(page(nested as BrowseNode)));
-  // The capability check refuses the same nested nodes, at their own paths.
+  // The capability check names the nested node, at its own path, and stops there.
   assert.throws(() => validateBrowseQuery(capabilities(), nested as BrowseNode), queryError('query.all[1].any[0].operator'));
-  assert.throws(() => validateBrowseQuery(capabilities(), nested as BrowseNode), queryError('query.all[1].any[1].not.field'));
-  // The consistent reading of the same shape passes, so the paths above name the nodes only.
+  // A field the vocabulary does not publish at all is refused at its own path in its own tree.
+  const unpublished = {all: [{any: [{not: {field: 'mood', operator: 'equals', value: 'calm'}}]}]};
+  assert.throws(() => validateBrowseQuery(capabilities(), unpublished as BrowseNode), queryError('query.all[0].any[0].not.field'));
+  // The consistent reading of the same shape passes, so the paths above name the node only.
   const consistent = {all: [{field: 'dateAdded', operator: OPERATOR, value: 30}, {any: [{field: 'releaseDate', operator: OPERATOR, value: 90}]}]};
   assert.doesNotThrow(() => validateBrowseQuery(capabilities(), consistent as BrowseNode));
 });
