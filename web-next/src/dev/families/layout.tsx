@@ -10,16 +10,9 @@ import {SongRow, type TrackRowData} from '../../kit/browse';
 import {SelectionCircle} from '../../kit/selection';
 import {AlphabetRail, FlowSections, FocusPreviewHero, Hero, HeroFacts, HeroProgress, Lockup, Shelf, type HeroCandidate, type HeroRenderContext, type LayoutPlatform, type WindowedGridHandle, WindowedGrid} from '../../kit/layout';
 import {defineGalleryFamily} from '../gallery-registry';
+import {loadGalleryInputs} from 'virtual:portico-kit-families';
 import styles from '../../kit/layout/gallery.module.css';
-import referenceHtml from '../../../../../../design-ui-v1/design/ui-v1/mock.html?raw';
-import searchHtml from '../../../../../../design-ui-v1/design/ui-v1/desktop-search.html?raw';
-import tvHtml from '../../../../../../design-ui-v1/design/ui-v1/tv.html?raw';
-import phoneHtml from '../../../../../../design-ui-v1/design/ui-v1/phone-app.html?raw';
 import manifestJson from '../../../../../../design-ui-v1/design/ui-v1/assets/pool/manifest.json?raw';
-import browseJson from '../../../../../../design-ui-v1/design/ui-v1/raw/browse_movies.json?raw';
-import browseHtml from '../../../../../../design-ui-v1/design/ui-v1/desktop-browse.html?raw';
-import readHtml from '../../../../../../design-ui-v1/design/ui-v1/desktop-read.html?raw';
-import phoneReadHtml from '../../../../../../design-ui-v1/design/ui-v1/phone-read.html?raw';
 import severance from '../../../../../../design-ui-v1/design/ui-v1/assets/bd-sev.jpg';
 import spirited from '../../../../../../design-ui-v1/design/ui-v1/assets/bd-spirited.jpg';
 import spiderverse from '../../../../../../design-ui-v1/design/ui-v1/assets/bd-spiderverse.jpg';
@@ -45,6 +38,8 @@ import continueSolo from '../../../../../../design-ui-v1/design/ui-v1/assets/bd-
 import tvInsideOut from '../../../../../../design-ui-v1/design/ui-v1/assets/pool/movies/inside-out--bd.jpg';
 import tvRick from '../../../../../../design-ui-v1/design/ui-v1/assets/pool/tv/rick-and-morty--bd.jpg';
 import tvSolo from '../../../../../../design-ui-v1/design/ui-v1/assets/pool/anime/solo-leveling--bd.jpg';
+
+const {referenceHtml, searchHtml, tvHtml, phoneHtml, browseJson, browseHtml, readHtml, phoneReadHtml} = await loadGalleryInputs('layout');
 
 // Reference content is dev-only. Production discovery emits an empty family list.
 export type LayoutArtworkEvidence = Readonly<{ambients: Readonly<Record<string, AmbientArtSource>>}>;
