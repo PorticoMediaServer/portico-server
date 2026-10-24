@@ -150,13 +150,13 @@ func TestReadingDiscoverOperationStrictAndBounded(t *testing.T) {
 		t.Fatalf("bounded page=%+v", limited.Rows[0].Items)
 	}
 	found := false
-	for _, item := range limited.Rows[0].Items {
+	for _, item := range def.Rows[0].Items {
 		if item.ID == one {
 			found = item.Author != nil && item.Author.Value == "Author" && item.Series != nil && item.Series.Name == "Series"
 		}
 	}
 	if !found {
-		t.Fatalf("recent row does not reuse the item projection: %+v", limited.Rows[0].Items)
+		t.Fatalf("recent row does not reuse the item projection: %+v", def.Rows[0].Items)
 	}
 	for _, query := range []string{"?limit=0", "?limit=101", "?limit=x", "?cursor=1", "?limit=1&limit=2", "?limit=1&unknown=2"} {
 		if w := readingHTTP(t, h, "GET", "/v1/reading/discover"+query, token, "", nil); w.Code != http.StatusBadRequest {
