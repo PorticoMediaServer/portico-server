@@ -77,4 +77,9 @@ export const settingsMessages = {
   'next.settings.addHours': 'Add hours',
   'next.settings.configOnly.before': 'Set in the config file:',
   'next.settings.configOnly.after': '. It isn’t a setting in the app.',
+  'next.settings.audioSubtitles.search': 'Search languages',
+  'next.settings.audioSubtitles.addHint': 'It goes at the end of the list. You can move it afterwards.',
+  'next.settings.audioSubtitles.noMatch': 'No language matches that.',
+  'next.settings.audioSubtitles.allAdded': 'Every language is already in the list.',
+  'next.settings.audioSubtitles.previewLabel': 'Preview of a subtitle on a still frame: {text}',
 } as const;
