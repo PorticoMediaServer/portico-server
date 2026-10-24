@@ -112,3 +112,15 @@ test('move links preserve the genuine optional expected identity and scrub befor
  assert.throws(()=>consumeAccountMoveFragment({pathname:'/sign-in',search:'?id='+id,hash:'#code='+code},history));
  assert.throws(()=>accountMoveLink('https://server.test',code,'srv_'+'B'.repeat(43)));
 });
+
+test('move-link query refusal uses original live Location values after synchronous history scrubbing',()=>{
+ const id='srv_'+'A'.repeat(43);
+ let current=new URL('https://server.test/sign-in?id='+id+'#code='+code);
+ const location={get pathname(){return current.pathname;},get search(){return current.search;},get hash(){return current.hash;}};
+ const history={replaceState:(_state:unknown,_title:string,path?:string|URL|null)=>{current=new URL(String(path),current);}};
+ assert.throws(()=>consumeAccountMoveFragment(location,history));
+ assert.equal(current.href,'https://server.test/sign-in');
+ current=new URL('https://server.test/sign-in#code='+code+'&id='+id);
+ assert.deepEqual(consumeAccountMoveFragment(location,history),{code,id});
+ assert.equal(current.href,'https://server.test/sign-in');
+});

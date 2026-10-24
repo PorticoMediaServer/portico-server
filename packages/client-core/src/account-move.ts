@@ -68,7 +68,7 @@ export type MoveCodeLink=Readonly<{code:string;id?:string}>;
  * The optional public id is an expectation for the existing first-contact proof,
  * never authority to redeem a code or a replacement for that proof. */
 export function consumeAccountMoveFragment(location:Pick<Location,'pathname'|'search'|'hash'>,history:Pick<History,'replaceState'>):MoveCodeLink|undefined{
- const raw=location.hash;history.replaceState(null,'',location.pathname);if(location.search)invalid();if(!raw)return;
+ const raw=location.hash,search=location.search,path=location.pathname;history.replaceState(null,'',path);if(search)invalid();if(!raw)return;
  const params=new URLSearchParams(raw.slice(1)),code=params.get('code'),id=params.get('id');
  if(!secret(code)||params.getAll('code').length!==1||params.getAll('id').length>1||[...params.keys()].some(key=>!['code','id'].includes(key)))invalid();
  if(id!==null){try{identityCode(id);}catch{invalid();}}
