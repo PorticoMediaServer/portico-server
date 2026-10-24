@@ -62,6 +62,13 @@ func ClassifyExtraFor(kind, root, path string) (ExtraClassification, bool) {
 // publishExtraTx records an extra as an ordinary item so it plays through the
 // normal item path, plus one relationship row naming its owning media folder.
 func (s *Service) publishExtraTx(ctx context.Context, tx *sql.Tx, source LibrarySource, asset, path string, extra ExtraClassification) error {
+	preferences, err := LibraryPreferencesTx(ctx, tx, source.LibraryID)
+	if err != nil {
+		return err
+	}
+	if !preferences.FindExtras {
+		return nil
+	}
 	relative, err := filepath.Rel(source.ResolvedPath, path)
 	if err != nil {
 		return err

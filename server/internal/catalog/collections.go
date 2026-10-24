@@ -536,6 +536,13 @@ func (s *Service) SyncAutomaticCollections(ctx context.Context) (bool, error) {
 		if removed {
 			return nil
 		}
+		var enabled bool
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT group_collections FROM library_preferences p WHERE p.library_id=cl.library_id),1) FROM catalog_libraries cl WHERE cl.id=?`, library).Scan(&enabled); err != nil {
+			return err
+		}
+		if !enabled {
+			return nil
+		}
 		var count int
 		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_automatic_members m JOIN catalog_entities e ON e.id=m.item_id WHERE m.library_id=? AND m.provider=? AND m.provider_id=? AND e.retired=0`, library, provider, key).Scan(&count); err != nil {
 			return err

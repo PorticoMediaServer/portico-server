@@ -1,3 +1,5 @@
+import type {LibraryAdminDocument,LibrarySettings} from '../administration.ts';
+import {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from '../server-admin/library-policy.ts';
 import type {AccessMember,MemberLimits} from '../server-administration.ts';
 import type {SettingsBulkAccess} from '../settings-people.ts';
 import type {InventorySource,SourceSettings} from '../library-inventory.ts';
@@ -106,6 +108,26 @@ const preferenceKeys:Readonly<Record<string,string>>={
  'playback.autoplayNext':'playback.autoplayNext','playback.upNextCountdownMs':'playback.upNextCountdownMs','playback.startNextDuringCredits':'playback.startNextDuringCredits','playback.skipBackMs':'playback.skipBackMs','playback.skipForwardMs':'playback.skipForwardMs','playback.playedThresholdPercent':'playback.playedThresholdPercent','playback.startedThresholdPercent':'playback.startedThresholdPercent',
  'appearance.backdrops':'appearance.showBackdrops','appearance.cardSizeExact':'appearance.cardSizePercent','appearance.notificationDot':'notifications.badges',
 };
+const libraryScalarBindings:Readonly<Record<string,SettingsBinding>>={
+ 'libraries.collections':{form:'library',key:'groupCollections'},
+ 'libraries.allowDelete':{form:'library',key:'allowMediaDeletion'},
+ 'libraries.localTags':{form:'library',key:'localTags'},
+ 'libraries.lyrics':{form:'library',key:'lyricsSource'},
+ 'libraries.watch':{form:'library',key:'monitorChanges'},
+ 'libraries.scrubSpacing':{form:'library',key:'navigation.trickplayIntervalMs',scale:1000},
+ 'libraries.scrubWidth':{form:'library',key:'navigation.trickplayTileWidth'},
+ 'libraries.titleSource':{form:'library',key:'titleSource'},
+ 'libraries.episodeNumbering':{form:'library',key:'episodeNumbering'},
+ 'libraries.extras':{form:'library',key:'findExtras'},
+ 'libraries.sortArticles':{form:'library',key:'sortIgnoreArticles'},
+ 'libraries.refreshMode':{form:'library',key:'refreshMode'},
+ 'libraries.acoustid':{form:'library',key:'acoustidEnabled'},
+ 'libraries.cwWeeks':{form:'library',key:'continueWatching.weeks'},
+ 'libraries.cwMax':{form:'library',key:'continueWatching.maximumItems'},
+ 'libraries.cwPremieres':{form:'library',key:'continueWatching.includeSeasonPremieres'},
+ 'libraries.cwWatched':{form:'library',key:'continueWatching.videoPlayedThreshold',codec:'number-choice'},
+ 'libraries.cwRule':{form:'library',key:'continueWatching.videoCompletion'},
+};
 const source69PreferenceBindings:Readonly<Record<string,SettingsBinding>>={
  'appearance.backdrops':{form:'preferences',key:'appearance.showBackdrops',scope:'profile-device-class'},
  'appearance.textSize':{form:'preferences',key:'appearance.textSize',scope:'profile-device'},
@@ -170,7 +192,7 @@ const musicPreferenceBindings:Readonly<Record<string,SettingsBinding>>={
  'music.downloadQuality':{form:'preferences',key:'music.qualityDownloads',scope:'profile-device-class',codec:'music-quality-choice'},
 };
 export function settingsBinding(rowId:string):SettingsBinding|undefined{
- for(const table of [bindings,source69PreferenceBindings,musicPreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
+ for(const table of [bindings,libraryScalarBindings,source69PreferenceBindings,musicPreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
  return Object.hasOwn(preferenceKeys,rowId)?{form:'preferences',key:preferenceKeys[rowId]!}:undefined;
 }
 
@@ -368,6 +390,54 @@ export const resetPreset=presetPatch;
 export function changedFromDefault(current:unknown,defaultValue:unknown):boolean{return !equal(current,defaultValue);}
 
 export {searchConfiguration} from '../settings-configuration.ts';
+
+function libraryProviderMediaKind(kind:string):string{return kind==='tv'||kind==='anime'?'show':kind==='audiobook'?'book':kind;}
+const libraryAnalysisRows=['local_metadata','subtitle_discovery','checksum','waveform','loudness','audio_fingerprint','trickplay','chapter_images'] as const;
+function libraryRowValue(rowId:string,settings:LibrarySettings,doc:LibraryAdminDocument):unknown{
+ const binding=libraryScalarBindings[rowId];if(binding)return presented(binding,at(settings,binding.key),{});
+ switch(rowId){
+ case 'libraries.scanDepth':return libraryScanDepth(settings);
+ case 'libraries.analysisSteps':return Object.fromEntries(libraryAnalysisRows.filter(id=>doc.analysisMatrix.operations.some(op=>op.id===id)).map(id=>[id,settings.analysis.includes(id)?'run':'skip']));
+ case 'libraries.scrub':{if(!settings.analysis.includes('trickplay'))return 'off';const n=settings.navigation;return n.trickplayIntervalMs===10000&&n.trickplayTileWidth===320?'standard':n.trickplayIntervalMs===5000&&n.trickplayTileWidth===320?'smooth':n.trickplayIntervalMs===20000&&n.trickplayTileWidth===240?'compact':'custom';}
+ case 'libraries.chapterPictures':return settings.analysis.includes('chapter_images')&&settings.navigation.chapterThumbnailMode==='generated'?'generated':!settings.analysis.includes('chapter_images')&&settings.navigation.chapterThumbnailMode==='embedded'?'embedded':'custom';
+ case 'libraries.scrubMax':{const hours=settings.navigation.trickplayMaxTiles*settings.navigation.trickplayIntervalMs/3600000;return [1,2,3,4,6].includes(hours)?String(hours):'custom';}
+ case 'libraries.titlesFrom':return settings.providers.find(p=>p.mediaKind===libraryProviderMediaKind(doc.libraryKind))?.provider;
+ case 'libraries.language':return settings.providers.find(p=>p.mediaKind===libraryProviderMediaKind(doc.libraryKind))?.language;
+ case 'libraries.region':return settings.providers.find(p=>p.mediaKind===libraryProviderMediaKind(doc.libraryKind))?.region;
+ default:return undefined;
+ }
+}
+/** Only producer-eligible rows are exposed. Defaults require the producer's own defaults DTO. */
+export function readLibrarySettingsBinding(rowId:string,document:LibraryAdminDocument&Readonly<{defaults?:LibrarySettings}>):SettingsBindingValue|undefined{
+ if(!document.eligibleControls.includes(rowId))return undefined;const current=libraryRowValue(rowId,document.settings,document);if(current===undefined)return undefined;
+ return {current,effective:current,default:document.defaults?libraryRowValue(rowId,document.defaults,document):undefined,source:'library',configOnly:false};
+}
+/** One complete typed library draft; the facade applies its revision/operation fence on Save. */
+export function patchLibrarySettingsBinding(rowId:string,value:unknown,document:LibraryAdminDocument):LibrarySettings{
+ if(!document.eligibleControls.includes(rowId))throw new Error('This library does not offer that setting.');if(value==='custom')throw new Error('Custom is derived.');const settings=document.settings,binding=libraryScalarBindings[rowId];
+ if(binding)return applySettingsBindingPatch(settings,settingsBindingPatch(binding,value));
+ switch(rowId){
+ case 'libraries.scanDepth':if(value==='file_list_only'||value==='basic'||value==='complete')return setLibraryScanDepth(settings,value);break;
+ case 'libraries.scrub':if(value==='off'||value==='standard'||value==='smooth'||value==='compact')return setLibrarySeekPreviews(settings,value);break;
+ case 'libraries.chapterPictures':if(value==='generated'||value==='embedded')return setLibraryAnalysis(settings,document.analysisMatrix,'chapter_images',value==='generated');break;
+ case 'libraries.scrubMax':{const n=Number(value);if(n===1||n===2||n===3||n===4||n===6)return setLibraryPreviewHours(settings,n);break;}
+ case 'libraries.analysisSteps':{
+  if(!value||typeof value!=='object'||Array.isArray(value))break;let next=settings;
+  const entries=Object.entries(value);if(entries.some(([id,mode])=>!libraryAnalysisRows.includes(id as typeof libraryAnalysisRows[number])||!document.analysisMatrix.operations.some(op=>op.id===id)||mode!=='run'&&mode!=='skip'))break;
+  // Disable dependent operations before adding the enabled dependency chains.
+  for(const [id,mode] of entries)if(mode==='skip')next=setLibraryAnalysis(next,document.analysisMatrix,id,false);
+  for(const [id,mode] of entries)if(mode==='run')next=setLibraryAnalysis(next,document.analysisMatrix,id,true);
+  return next;
+ }
+ case 'libraries.titlesFrom':case 'libraries.language':case 'libraries.region':{
+  if(typeof value!=='string')break;const index=settings.providers.findIndex(p=>p.mediaKind===libraryProviderMediaKind(document.libraryKind));if(index<0)throw new Error('Load this library’s provider selection before editing it.');
+  if(rowId==='libraries.titlesFrom'&&!document.availableProviders.some(p=>p.id===value&&p.mediaKinds.includes(libraryProviderMediaKind(document.libraryKind))))break;
+  const field=rowId==='libraries.titlesFrom'?'provider':rowId==='libraries.language'?'language':'region';return {...settings,providers:settings.providers.map((p,i)=>i===index?{...p,[field]:value}:p)} as LibrarySettings;
+ }
+ }
+ throw new Error('Invalid library setting value.');
+}
+
 
 export const libraryCreateKinds=Object.freeze([
  {choice:'movies',kind:'movie'},{choice:'tv',kind:'tv'},{choice:'anime',kind:'anime'},{choice:'music',kind:'music'},
