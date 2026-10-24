@@ -83,7 +83,7 @@
 
 .showPage [class*="pinnedDesktopTitle"]::after { content: ""; display: block; width: 1px; height: 24px; margin-left: 26px; background: var(--color-line-strong); }
 
-.showPage [class*="pinnedDesktopTitle"] { font-size: var(--type-detail-heading-size); line-height: var(--type-detail-heading-line); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-detail-heading-tracking); }
+.showPage [class*="pinnedDesktopTitle"] { font-size: calc(var(--type-detail-heading-size) + 2px); line-height: var(--type-detail-heading-line); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-detail-heading-tracking); }
 
 .pinActions { gap: 10px; }
 
@@ -109,7 +109,7 @@
 
 .ownerCell > button { position: absolute; right: 14px; top: 14px; }
 
-.changeChip { padding: 0 12px; gap: 7px; }
+.changeChip { padding: 0 8px; gap: 7px; }
 
 .changeChip[aria-expanded="true"] { background: var(--color-raised-bright); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--color-text) 14%,transparent); }
 
