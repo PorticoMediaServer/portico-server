@@ -16,6 +16,16 @@ func (s *Service) castQueueAuthorityTx(ctx context.Context, tx *sql.Tx, c Caller
 	}
 	return s.CastQueueAuthority(ctx, tx, c, queue)
 }
+func (s *Service) castQueueStartAuthorityTx(ctx context.Context, tx *sql.Tx, c Caller, queue, entry, item string) error {
+	if c.Principal.Grant != identity.GrantCastTarget {
+		return nil
+	}
+	if s.CastQueueStartAuthority == nil || tx == nil {
+		return identity.ErrForbidden
+	}
+	return s.CastQueueStartAuthority(ctx, tx, c, queue, entry, item)
+}
+
 func (s *Service) castQueueAuthority(ctx context.Context, c Caller, queue string) error {
 	if c.Principal.Grant != identity.GrantCastTarget {
 		return nil

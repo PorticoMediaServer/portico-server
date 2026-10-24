@@ -45,6 +45,7 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		return nil
 	}
 	s.CastQueueAuthority = d.castQueueAuthorityTx
+	s.CastQueueStartAuthority = d.castQueueStartAuthorityTx
 	// Queue sources and windows are authorized like every other catalog read:
 	// library access, then the item's restrictions (SEC-02).
 	s.QueryKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, source playbackv1.Selector) (catalog.QueueSelection, error) {
