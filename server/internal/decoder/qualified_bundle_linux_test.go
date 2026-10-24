@@ -135,6 +135,22 @@ func TestQualifiedBundleRequiresSelectedPairAndAllEvidence(t *testing.T) {
 	}
 }
 
+func TestQualifiedBundleRetiresUnqualifiedHDR10PlusFact(t *testing.T) {
+	for _, cancelled := range []bool{false, true} {
+		ff, fp, facts, _ := qualifiedBundleFixture(t, nil)
+		facts.HDR10PlusLibX265Encode = true
+		ctx, cancel := context.WithCancel(context.Background())
+		if cancelled {
+			cancel()
+		}
+		got, err := qualifyToolchainBundle(ctx, ff, fp, facts, nil, qualifiedOptionRunner(t, nil))
+		cancel()
+		if got.HDR10PlusLibX265Encode || (cancelled && !errors.Is(err, context.Canceled)) || (!cancelled && err != nil) {
+			t.Fatal("unqualified incoming HDR10+ fact survived retirement", got, err)
+		}
+	}
+}
+
 func TestQualifiedBundleRejectsIncompleteTargetProof(t *testing.T) {
 	for name, edit := range map[string]func(map[string]any, map[string]any){
 		"packet count":    func(p, v map[string]any) { p["packetTests"].(map[string]any)["convertedPackets"] = 95 },
