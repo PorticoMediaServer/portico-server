@@ -3,7 +3,7 @@ import {summarizeQuerySelection} from './query-summary.ts';
 import {catalogueID, checkedBrowseContext, checkedContext, checkedItem, checkedLimits, checkedQuery, requireSelection, selectionCount, SelectionInputError} from './validation.ts';
 import type {
   BrowseSelectionContext, ExplicitSelectionTarget, SelectedItem, SelectionChange, SelectionContext, SelectionLimits,
-  SelectionKind, SelectionOperation, SelectionQuery, SelectionRange, SelectionReadTicket, SelectionRegistration,
+  SelectionItem, SelectionKind, SelectionOperation, SelectionQuery, SelectionRange, SelectionReadTicket, SelectionRegistration,
   SelectionSnapshot, SelectionTarget, SelectionWindow,
 } from './types.ts';
 
