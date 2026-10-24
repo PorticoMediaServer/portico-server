@@ -89,6 +89,8 @@ async fn desktop_capabilities(window:WebviewWindow,state:tauri::State<'_,EngineS
 }
 fn request_shutdown(app:&tauri::AppHandle){
     if app.state::<ShutdownState>().0.compare_exchange(0,1,Ordering::AcqRel,Ordering::Acquire).is_err(){return}
+    app.state::<Arc<crate::folder_operations::FolderOperations>>().cancel_all();
+    crate::folder_ui::cancel_all();
     let app=app.clone();
     tauri::async_runtime::spawn_blocking(move||{
         crate::spike::record("close-started",0);
@@ -126,16 +128,82 @@ fn request_shutdown(app:&tauri::AppHandle){
         app.exit(if clean{0}else{1});
     });
 }
+#[derive(serde::Serialize)]
+#[serde(rename_all="camelCase")]
+struct DownloadFolderLocation{display_path:String}
 #[tauri::command]
-async fn desktop_downloads_bind(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,engine:tauri::State<'_,EngineState>,scope:crate::download_commands::ViewerScope)->Result<String>{
+async fn desktop_download_folder_location(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,lease:String)->Result<DownloadFolderLocation>{
+    caller(&window)?;let state=state.0.clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let guard=state.lock().map_err(|_|Error::DownloadsUnavailable)?;let session=guard.as_ref().map_err(|error|*error)?;
+        let path=session.folder_path(&lease)?.to_str().ok_or(Error::DownloadsUnavailable)?.to_owned();Ok(DownloadFolderLocation{display_path:path})
+    }).await.map_err(|_|Error::DownloadsUnavailable)?
+}
+#[tauri::command]
+async fn desktop_download_folder_begin(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,operations:tauri::State<'_,Arc<crate::folder_operations::FolderOperations>>,lease:String)->Result<String>{
+    caller(&window)?;let state=state.0.clone();let operations=operations.inner().clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let guard=state.lock().map_err(|_|Error::DownloadsUnavailable)?;guard.as_ref().map_err(|error|*error)?.folder_path(&lease)?;operations.begin(&lease)
+    }).await.map_err(|_|Error::DownloadsUnavailable)?
+}
+#[tauri::command]
+fn desktop_download_folder_cancel(window:WebviewWindow,operations:tauri::State<'_,Arc<crate::folder_operations::FolderOperations>>,token:String)->Result<()>{
+    caller(&window)?;operations.cancel(&token);operations.finish(&token);
+    window.run_on_main_thread(move||crate::folder_ui::cancel(&token)).map_err(|_|Error::WindowUnavailable)
+}
+#[tauri::command]
+async fn desktop_download_folder_choose(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,operations:tauri::State<'_,Arc<crate::folder_operations::FolderOperations>>,token:String)->Result<()>{
+    caller(&window)?;let state=state.0.clone();let operations=operations.inner().clone();
+    let result=async{
+        let operation=operations.get(&token)?;let current=operation.clone();let store=state.clone();
+        let initial=tauri::async_runtime::spawn_blocking(move||{
+            if !current.current(){return Err(Error::DownloadsConflict)}
+            let guard=store.lock().map_err(|_|Error::DownloadsUnavailable)?;Ok(guard.as_ref().map_err(|error|*error)?.folder_path(&current.lease)?.to_path_buf())
+        }).await.map_err(|_|Error::DownloadsUnavailable)??;
+        let (send,receive)=std::sync::mpsc::sync_channel(1);let panel=window.clone();let current=operation.clone();let key=token.clone();
+        window.run_on_main_thread(move||{
+            if !current.current(){let _=send.send(Ok(None));return}
+            if let Err(error)=crate::folder_ui::choose(&panel,&key,&initial,send.clone()){let _=send.send(Err(error));}
+        }).map_err(|_|Error::WindowUnavailable)?;
+        tauri::async_runtime::spawn_blocking(move||{
+            let selected=receive.recv().map_err(|_|Error::DownloadsUnavailable)??;
+            if !operation.current(){return Err(Error::DownloadsConflict)}
+            let Some(selected)=selected else{return Ok(())};
+            let mut guard=state.lock().map_err(|_|Error::DownloadsUnavailable)?;
+            guard.as_mut().map_err(|error|*error)?.relocate_folder(&operation.lease,&selected,||operation.current())
+        }).await.map_err(|_|Error::DownloadsUnavailable)?
+    }.await;
+    operations.finish(&token);result
+}
+#[tauri::command]
+async fn desktop_download_folder_open(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,operations:tauri::State<'_,Arc<crate::folder_operations::FolderOperations>>,token:String)->Result<()>{
+    caller(&window)?;let state=state.0.clone();let operations=operations.inner().clone();
+    let result=async{
+        let operation=operations.get(&token)?;let current=operation.clone();
+        let path=tauri::async_runtime::spawn_blocking(move||{
+            if !current.current(){return Err(Error::DownloadsConflict)}
+            let guard=state.lock().map_err(|_|Error::DownloadsUnavailable)?;Ok(guard.as_ref().map_err(|error|*error)?.folder_path(&current.lease)?.to_path_buf())
+        }).await.map_err(|_|Error::DownloadsUnavailable)??;
+        let (send,receive)=std::sync::mpsc::sync_channel(1);
+        window.run_on_main_thread(move||{let _=send.send(if operation.current(){crate::folder_ui::open(&path)}else{Err(Error::DownloadsConflict)});}).map_err(|_|Error::WindowUnavailable)?;
+        tauri::async_runtime::spawn_blocking(move||receive.recv().unwrap_or(Err(Error::DownloadsUnavailable))).await.map_err(|_|Error::DownloadsUnavailable)?
+    }.await;
+    operations.finish(&token);result
+}
+#[tauri::command]
+async fn desktop_downloads_bind(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,engine:tauri::State<'_,EngineState>,operations:tauri::State<'_,Arc<crate::folder_operations::FolderOperations>>,scope:crate::download_commands::ViewerScope)->Result<String>{
     caller(&window)?;
     let state=state.0.clone();
+    let operations=operations.inner().clone();
     let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
-    tauri::async_runtime::spawn_blocking(move||{
+    let (lease,changed)=tauri::async_runtime::spawn_blocking(move||{
         let mut guard=state.lock().map_err(|_|Error::DownloadsUnavailable)?;let session=guard.as_mut().map_err(|e|*e)?;
-        if session.binding_changes(&scope)?{retire_offline(session,native.as_ref())?;}
-        session.bind(scope)
-    }).await.map_err(|_|Error::DownloadsUnavailable)?
+        let changed=session.binding_changes(&scope)?;
+        if changed{operations.cancel_all();retire_offline(session,native.as_ref())?;}
+        Ok::<_,Error>((session.bind(scope)?,changed))
+    }).await.map_err(|_|Error::DownloadsUnavailable)??;
+    if changed{let _=window.run_on_main_thread(crate::folder_ui::cancel_all);}
+    Ok(lease)
 }
 #[tauri::command]
 async fn desktop_downloads_release(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,lease:String)->Result<()>{
@@ -326,11 +394,12 @@ pub fn run() {
         .manage(InstallationState(Mutex::new(Err(Error::PreferencesUnavailable))))
         .manage(DownloadsState(Arc::new(Mutex::new(Err(Error::DownloadsUnavailable)))))
         .manage(ShutdownState::default())
+        .manage(Arc::new(crate::folder_operations::FolderOperations::default()))
         .manage(Arc::new(crate::window::ChromeState::default()))
         .on_window_event(|window,event|{
             if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_shutdown(window.app_handle());}}
         })
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire])
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire,desktop_download_folder_location,desktop_download_folder_begin,desktop_download_folder_cancel,desktop_download_folder_choose,desktop_download_folder_open])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");

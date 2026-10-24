@@ -3249,7 +3249,7 @@ CREATE TABLE networking_claim_authority(
 CREATE TABLE networking_claim_schema(singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL CHECK(version=3)) STRICT;
 CREATE TABLE "artwork_variants"(
  source_digest TEXT NOT NULL REFERENCES artwork_objects(digest) ON DELETE CASCADE,
- width INTEGER NOT NULL CHECK(width IN(400,800,1920)),
+ width INTEGER NOT NULL CHECK(width IN(400,800,1920,2560)),
  digest TEXT NOT NULL REFERENCES artwork_objects(digest),
  PRIMARY KEY(source_digest,width)
 ) STRICT;
