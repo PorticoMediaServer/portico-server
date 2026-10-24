@@ -15,7 +15,7 @@ const {createLibrarySelection} = await import('../src/screens/browse/selection.t
 const capabilities = {play: true, queue: true, playlist: true, myList: true, watched: true, collection: true, favorite: true, download: false, edit: true, refresh: true, delete: true};
 const entry = {id: 'm1', kind: 'movie', title: 'Alpha', libraryId: 'a'};
 const row = {entry, position: 0, key: 'key-0', capabilities};
-const target = {mode: 'explicit' as const, context: {}, items: [{key: 'key-0', item: {kind: 'movie', id: 'm1', libraryId: 'a', capabilities}}], displayItems: []};
+const target = {mode: 'explicit' as const, context: {}, items: [{key: 'key-0', item: {kind: 'movie', id: 'm1', libraryId: 'a', capabilities}}], displayItems: [{key: 'key-0', item: {kind: 'movie', id: 'm1', libraryId: 'a', capabilities}}]};
 const fake = (over: Record<string, unknown> = {}, host: Record<string, unknown> = {}) => {
   const calls: string[] = [];
   const snapshot = {
@@ -154,4 +154,42 @@ test('Play is offered for explicit picks only until a whole view can be queued',
   const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
   assert.match(html, /48,000 selected/);
   assert.doesNotMatch(html, />Play</);
+});
+
+
+test('Queue and the destination pickers take the explicit leaf ids in order', async () => {
+  const calls: unknown[] = [];
+  let queued: {items: readonly string[]; placement: string; signal: AbortSignal; isCurrent: () => boolean} | undefined;
+  const enqueue = async (input: typeof queued) => { queued = input; };
+  const destinations = {playlist: async (items: readonly string[], anchor: HTMLElement) => { calls.push(['playlist', items, anchor]); },
+    collection: async (items: readonly string[], anchor: HTMLElement) => { calls.push(['collection', items, anchor]); }};
+  const {selection} = fake();
+  const adapter = createLibrarySelection({playSelection: selection, enqueue, destinations, reportError: () => {}});
+  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  assert.match(html, />Add to queue</);
+  assert.match(html, />Add to playlist</);
+  const anchor = {} as HTMLElement;
+  await adapter.queue('end');
+  await adapter.addToPlaylist(anchor);
+  await adapter.addToCollection(anchor);
+  assert.deepEqual(queued?.items, ['m1']);
+  assert.equal(queued?.placement, 'end');
+  assert.ok(queued?.signal instanceof AbortSignal);
+  assert.equal(typeof queued?.isCurrent, 'function');
+  assert.deepEqual(calls, [['playlist', ['m1'], anchor], ['collection', ['m1'], anchor]]);
+});
+
+test('container and whole-view picks are offered no Queue or destination action', async () => {
+  const enqueue = async () => { throw new Error('must not run'); };
+  const destinations = {playlist: async () => { throw new Error('must not run'); }};
+  const containerTarget = {...target, items: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities}}],
+    displayItems: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities}}]};
+  const container = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
+    selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: containerTarget}});
+  const adapter = createLibrarySelection({playSelection: container.selection, enqueue, destinations, reportError: () => {}});
+  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  assert.doesNotMatch(html, />Add to queue</);
+  assert.doesNotMatch(html, />Add to playlist</);
+  await assert.rejects(adapter.queue('next'), /leaf-explicit-selection-required/);
+  await assert.rejects(adapter.addToPlaylist({} as HTMLElement), /leaf-explicit-selection-required/);
 });

@@ -20,12 +20,22 @@ export type LibrarySelectionHost = LibraryPlaySelection & Readonly<{
   preview?: (row: LibraryPlayRow) => boolean;
 }>;
 
+/** A browse-safe queue add. Items are the explicit display ids in order. */
+export type LibraryEnqueueInput = Readonly<{items: readonly string[]; placement: 'next' | 'end'; signal: AbortSignal; isCurrent: () => boolean}>;
+/** The shared shell picker takes the explicit ids and the anchoring button. */
+export type LibraryDestinations = Readonly<{
+  playlist?: (items: readonly string[], anchor: HTMLElement) => Promise<unknown>;
+  collection?: (items: readonly string[], anchor: HTMLElement) => Promise<unknown>;
+}>;
+
 export type LibrarySelectionOptions = Readonly<{
   playSelection: LibrarySelectionHost;
   /** The server's optional descriptor for this exact page, when the controller holds one. */
   descriptor?: () => BrowseWholeSelection | undefined;
   /** The real job ports. Absent means the bar offers no personal action at all. */
   actions?: SelectionActionsOptions;
+  enqueue?: (input: LibraryEnqueueInput) => Promise<unknown>;
+  destinations?: LibraryDestinations;
   reportError: (error: unknown) => void;
 }>;
 
@@ -35,8 +45,21 @@ export type LibrarySelection = Readonly<{
   registerWindow: (first: number, last: number) => void;
   /** The one path the bar's personal buttons use; also the test seam. */
   personal: (action: PersonalSelectionAction) => Promise<void>;
+  /** Queue and the destination pickers, offered for leaf explicit picks only. */
+  queue: (placement: 'next' | 'end') => Promise<void>;
+  addToPlaylist: (anchor: HTMLElement) => Promise<void>;
+  addToCollection: (anchor: HTMLElement) => Promise<void>;
   playSelection: LibraryPlaySelection;
 }>;
+
+/** Leaf explicit picks are the only target every add path can act on correctly:
+ * a container's add would either become a container entry or a different command. */
+function explicitLeafItems(selection: {target: {mode: string; displayItems?: readonly {item: {id: string}}[]} | null} | undefined): readonly string[] | undefined {
+  const target = selection?.target;
+  if (!target || target.mode !== 'explicit' || !target.displayItems?.length) return undefined;
+  if (!personalTargetIsLeaf(target as never)) return undefined;
+  return target.displayItems.map(pick => pick.item.id);
+}
 
 /** A personal action is offered only when the model says every selected title has
  * it and the target can carry a personal job at all (leaf picks or a leaf view). */
@@ -46,8 +69,8 @@ function personalOffers(selection: {summary: {every: {watched: boolean; myList: 
   return {watched: usable && selection.summary.every.watched, myList: usable && selection.summary.every.myList, favorite: usable && selection.summary.every.favorite};
 }
 
-function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (action: PersonalSelectionAction) => Promise<void>}) {
-  const {playSelection, descriptor, actions, personal, reportError} = props;
+function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (action: PersonalSelectionAction) => Promise<void>; queue: (placement: 'next' | 'end') => Promise<void>; addToPlaylist: (anchor: HTMLElement) => Promise<void>; addToCollection: (anchor: HTMLElement) => Promise<void>}) {
+  const {playSelection, descriptor, actions, enqueue, destinations, personal, queue, addToPlaylist, addToCollection, reportError} = props;
   const current = useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
   if (current.phase !== 'ready' || !current.selection?.active) return null;
   const summary = current.selection.summary, whole = descriptor?.(), selectWhole = playSelection.selectWhole;
@@ -57,7 +80,9 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
   // Whole-view Select all N is offered only with the server's exact descriptor and
   // a model that can hold it; never as a local guess from the loaded window.
   const selectAll = whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
-  const offers = personalOffers(current.selection, actions);
+  const offers = personalOffers(current.selection, actions), leafItems = explicitLeafItems(current.selection);
+  const canQueue = !!leafItems && !!enqueue && summary.every.queue, canPlaylist = !!leafItems && !!destinations?.playlist && summary.every.playlist,
+    canCollection = !!leafItems && !!destinations?.collection && summary.every.collection;
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
@@ -65,6 +90,9 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
       ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
       ...(offers.favorite ? {onFavorite: () => { void personal({favorite: true}); }} : {}),
+      ...(canQueue ? {onQueue: (placement: 'next' | 'end') => { void queue(placement); }} : {}),
+      ...(canPlaylist ? {onPlaylist: (anchor: HTMLElement) => { void addToPlaylist(anchor); }} : {}),
+      ...(canCollection ? {onCollection: (anchor: HTMLElement) => { void addToCollection(anchor); }} : {}),
     }}
     selectAll={selectAll}
     onSelectAll={selectAll ? () => { try { void Promise.resolve(selectWhole!(wholeViewQuery(whole!))).catch(reportError); } catch (error) { reportError(error); } } : undefined}
@@ -72,7 +100,25 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
     sticky />;
 }
 
-export function createLibrarySelection({playSelection, descriptor, actions, reportError}: LibrarySelectionOptions): LibrarySelection {
+export function createLibrarySelection({playSelection, descriptor, actions, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
+  const leafItems = () => {
+    const items = explicitLeafItems(playSelection.getSnapshot().selection);
+    if (!items) throw new Error('leaf-explicit-selection-required');
+    return items;
+  };
+  const queue = async (placement: 'next' | 'end') => {
+    if (!enqueue) throw new Error('selection-queue-unavailable');
+    const items = leafItems();
+    await enqueue({items, placement, signal: actions?.signal ?? new AbortController().signal, isCurrent: actions?.isCurrent ?? (() => true)});
+  };
+  const addToPlaylist = async (anchor: HTMLElement) => {
+    if (!destinations?.playlist) throw new Error('selection-playlist-unavailable');
+    await destinations.playlist(leafItems(), anchor);
+  };
+  const addToCollection = async (anchor: HTMLElement) => {
+    if (!destinations?.collection) throw new Error('selection-collection-unavailable');
+    await destinations.collection(leafItems(), anchor);
+  };
   const personal = async (action: PersonalSelectionAction) => {
     const target = playSelection.getSnapshot().selection?.target;
     if (!actions) throw new Error('selection-actions-unavailable');
@@ -92,7 +138,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, repo
     }
   };
   return {
-    toolbar: <LibrarySelectionToolbar playSelection={playSelection} descriptor={descriptor} actions={actions} reportError={reportError} personal={personal} />,
+    toolbar: <LibrarySelectionToolbar playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />,
     entry: (member, index) => {
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
@@ -105,7 +151,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, repo
       };
     },
     registerWindow: (first, last) => { void playSelection.registerWindow(first, last).catch(reportError); },
-    personal,
+    personal, queue, addToPlaylist, addToCollection,
     playSelection,
   };
 }
