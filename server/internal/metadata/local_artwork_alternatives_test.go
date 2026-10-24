@@ -21,7 +21,7 @@ func TestSeedLocalArtworkAddsScannedAlternativesAfterThePrimary(t *testing.T) {
 	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	mustExec(t, db, `INSERT INTO local_artwork(library_id,kind,entity_id,role,art_key,observed_at) VALUES('alt1','item',?,'poster',?,'now')`, movie.ID, primary)
 	seedScannedAlternatives(t, db, "alt1", movie, "poster", first, second)
-	fence := seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	fence := seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, fences := localCandidates(t, db, movie.ID, "poster")
 	want := []string{"local:" + first, "local:" + second, "local:" + primary}
 	if len(origins) != len(want) {
@@ -48,7 +48,7 @@ func TestSeedLocalArtworkQueuesTheFirstScannedAlternativeWhenNothingHoldsTheSlot
 	db, movie := openAlternativesFixture(t, "alt2")
 	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	seedScannedAlternatives(t, db, "alt2", movie, "poster", second, first)
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
 	if len(origins) != 2 {
 		t.Fatalf("candidates %v", origins)
@@ -68,7 +68,7 @@ func TestSeedLocalArtworkKeepsALockedOwnerChoice(t *testing.T) {
 	mustExec(t, db, `INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owner-pick','item',?,'poster','local','owner','local:owner-pick','Local file','older-fence','now')`, movie.ID)
 	mustExec(t, db, `INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('item',?,'poster','owner-pick',?,?,1,'owner','now')`, movie.ID, digest, digest)
 	seedScannedAlternatives(t, db, "alt3", movie, "poster", strings.Repeat("a", 64))
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
 	if len(origins) != 2 {
 		t.Fatalf("candidates %v", origins)
@@ -109,9 +109,9 @@ func seedScannedAlternatives(t *testing.T, db *sql.DB, library string, movie cat
 	}
 }
 
-// seedLocalArtworkAlternativesNow runs the real seeding path in one transaction
-// and returns the fence the candidates were seeded under.
-func seedLocalArtworkAlternativesNow(t *testing.T, db *sql.DB, kind string, target catalogtest.Item) string {
+// seedLocalArtworkCall runs one real discovery call in its own transaction and
+// reports whether the target's slots reached a short page.
+func seedLocalArtworkCall(t *testing.T, db *sql.DB, kind string, target catalogtest.Item) (bool, string) {
 	t.Helper()
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
@@ -124,13 +124,28 @@ func seedLocalArtworkAlternativesNow(t *testing.T, db *sql.DB, kind string, targ
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = seedLocalArtwork(ctx, tx, repairTarget, fence, "now"); err != nil {
+	complete, err := seedLocalArtwork(ctx, tx, repairTarget, fence, "now")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	return fence
+	return complete, fence
+}
+
+// seedLocalArtworkToCompletion runs bounded discovery calls until every slot
+// reached a short page, as the worker would across its own invocations.
+func seedLocalArtworkToCompletion(t *testing.T, db *sql.DB, kind string, target catalogtest.Item) string {
+	t.Helper()
+	for call := 0; call < 64; call++ {
+		done, fence := seedLocalArtworkCall(t, db, kind, target)
+		if done {
+			return fence
+		}
+	}
+	t.Fatal("accepted candidates did not converge")
+	return ""
 }
 
 func localCandidates(t *testing.T, db *sql.DB, entity int64, role string) (origins, fences []string) {
@@ -207,7 +222,7 @@ func TestSeedLocalArtworkSeedsEveryAcceptedAlternativeAcrossPages(t *testing.T) 
 	db, movie := openAlternativesFixture(t, "alt9")
 	keys := alternativesKeys(9)
 	seedScannedAlternatives(t, db, "alt9", movie, "poster", keys...)
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
 	if len(origins) != len(keys) {
 		t.Fatalf("seeded %d of %d accepted images", len(origins), len(keys))
@@ -228,7 +243,7 @@ func TestSeedLocalArtworkContinuationCrossesTheReaderBound(t *testing.T) {
 	db, movie := openAlternativesFixture(t, "alt130")
 	keys := alternativesKeys(130)
 	seedScannedAlternatives(t, db, "alt130", movie, "poster", keys...)
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
 	if len(origins) != len(keys) {
 		t.Fatalf("seeded %d of %d accepted images", len(origins), len(keys))
@@ -242,49 +257,41 @@ func TestSeedLocalArtworkContinuationCrossesTheReaderBound(t *testing.T) {
 	}
 }
 
-// An interruption after one page must leave the following pass with the same
-// final set as an uninterrupted pass, without duplicate or skipped candidates.
-func TestSeedLocalArtworkRestartsAnInterruptedContinuation(t *testing.T) {
+// A call that commits only its first page is the required interruption case:
+// the next call must resume from that committed progress and reach the same
+// final set as an uninterrupted sequence, without duplicate or skipped keys.
+func TestSeedLocalArtworkResumesCommittedPageProgress(t *testing.T) {
 	cleanDB, cleanMovie := openAlternativesFixture(t, "altclean")
 	cleanKeys := alternativesKeys(130)
 	seedScannedAlternatives(t, cleanDB, "altclean", cleanMovie, "poster", cleanKeys...)
-	seedLocalArtworkAlternativesNow(t, cleanDB, "item", cleanMovie)
+	seedLocalArtworkToCompletion(t, cleanDB, "item", cleanMovie)
 
 	db, movie := openAlternativesFixture(t, "altrestart")
 	keys := alternativesKeys(130)
 	seedScannedAlternatives(t, db, "altrestart", movie, "poster", keys...)
-	// Simulate a pass that stopped after its first page: the transaction rolls
-	// back, so no partial progress is durable and the dirty row would stay.
-	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
+	// One bounded call commits a single page and reports the target incomplete;
+	// the dirty row would stay for the next invocation.
+	if done, _ := seedLocalArtworkCall(t, db, "item", movie); done {
+		t.Fatal("a 130-key slot completed in one bounded call")
 	}
-	target := RepairTarget{Kind: "item", ID: movie.Public}
-	fence, err := artworkFence(ctx, tx, target)
-	if err != nil {
-		t.Fatal(err)
+	committed, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(committed) != localArtworkCandidatePage {
+		t.Fatalf("the first call committed %d keys, want one page", len(committed))
 	}
-	if _, done, err := seedLocalArtworkCandidatePage(ctx, tx, target, movie.ID, "poster", "", fence, "now"); err != nil || done {
-		t.Fatalf("first page done=%v err=%v", done, err)
-	}
-	if err = tx.Rollback(); err != nil {
-		t.Fatal(err)
-	}
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 
 	restarted, _ := localCandidates(t, db, movie.ID, "poster")
 	clean, _ := localCandidates(t, cleanDB, cleanMovie.ID, "poster")
 	if len(restarted) != len(keys) || len(clean) != len(keys) {
-		t.Fatalf("restarted %d, clean %d of %d", len(restarted), len(clean), len(keys))
+		t.Fatalf("resumed %d, clean %d of %d", len(restarted), len(clean), len(keys))
 	}
 	for n := range clean {
 		if restarted[n] != clean[n] {
-			t.Fatalf("restarted set differs at %d: %q vs %q", n, restarted[n], clean[n])
+			t.Fatalf("resumed set differs at %d: %q vs %q", n, restarted[n], clean[n])
 		}
 	}
 	if got, want := localArtworkJobs(t, db, movie.ID, "poster"), localArtworkJobs(t, cleanDB, cleanMovie.ID, "poster"); len(got) != 1 || len(want) != 1 || got[0] != want[0] {
-		t.Fatalf("restarted jobs %v, clean jobs %v", got, want)
+		t.Fatalf("resumed jobs %v, clean jobs %v", got, want)
 	}
 }
 
@@ -294,10 +301,10 @@ func TestSeedLocalArtworkRepeatDirtyIsStable(t *testing.T) {
 	db, movie := openAlternativesFixture(t, "altrepeat")
 	keys := alternativesKeys(20)
 	seedScannedAlternatives(t, db, "altrepeat", movie, "poster", keys...)
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	first, _ := localCandidates(t, db, movie.ID, "poster")
 	firstJobs := localArtworkJobs(t, db, movie.ID, "poster")
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	second, _ := localCandidates(t, db, movie.ID, "poster")
 	secondJobs := localArtworkJobs(t, db, movie.ID, "poster")
 	if len(first) != len(second) {
@@ -320,7 +327,7 @@ func TestSeedLocalArtworkFollowsASourceRevision(t *testing.T) {
 	db, movie := openAlternativesFixture(t, "altrev")
 	keys := alternativesKeys(3)
 	seedScannedAlternatives(t, db, "altrev", movie, "poster", keys...)
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	jobs := localArtworkJobs(t, db, movie.ID, "poster")
 	if len(jobs) != 1 {
 		t.Fatalf("initial queued slot %v", jobs)
@@ -331,7 +338,7 @@ func TestSeedLocalArtworkFollowsASourceRevision(t *testing.T) {
 	for _, key := range fresh {
 		mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES('object-altrev','r2',?,'item',?,'poster',?)`, movie.Token, movie.ID, key)
 	}
-	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
 	for _, key := range fresh {
 		if !containsOrigin(origins, key) {

@@ -137,8 +137,10 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 			}
 		}
 		// Sidecar images the scan recorded for this entity, as local
-		// candidates (Spec — Page Content §0.5).
-		if e = seedLocalArtwork(ctx, tx, t, fence, now); e != nil {
+		// candidates (Spec — Page Content §0.5). The dirty row stays until the
+		// bounded continuation has seeded every accepted page for every slot.
+		complete, e := seedLocalArtwork(ctx, tx, t, fence, now)
+		if e != nil {
 			return e
 		}
 		if e = seedMusicAlbumBackdrop(ctx, tx, t, entity, fence, now); e != nil {
@@ -197,8 +199,10 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 				return err
 			}
 		}
-		if _, err = tx.ExecContext(ctx, `DELETE FROM artwork_dirty WHERE kind=? AND entity_id=?`, t.Kind, entity); err != nil {
-			return err
+		if complete {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM artwork_dirty WHERE kind=? AND entity_id=?`, t.Kind, entity); err != nil {
+				return err
+			}
 		}
 	}
 	return gated.Commit()

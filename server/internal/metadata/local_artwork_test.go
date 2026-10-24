@@ -39,10 +39,10 @@ func TestSeedLocalArtworkCandidatesFromCarriers(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = seedLocalArtwork(context.Background(), tx, RepairTarget{"show", show.Public}, showFence, now); e != nil {
+	if _, e = seedLocalArtwork(context.Background(), tx, RepairTarget{"show", show.Public}, showFence, now); e != nil {
 		t.Fatal(e)
 	}
-	if e = seedLocalArtwork(context.Background(), tx, RepairTarget{"season", season.Public}, seasonFence, now); e != nil {
+	if _, e = seedLocalArtwork(context.Background(), tx, RepairTarget{"season", season.Public}, seasonFence, now); e != nil {
 		t.Fatal(e)
 	}
 	if e = tx.Commit(); e != nil {
