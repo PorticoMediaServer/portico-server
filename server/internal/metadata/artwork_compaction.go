@@ -20,15 +20,20 @@ func (s *Service) CompactArtworkStep(ctx context.Context) error {
 	if s.cacheRoot == "" {
 		return nil
 	}
-	var old string
-	// The literals match the partial index artwork_objects_compaction (0103):
-	// the step reads only candidates, never the whole object table.
-	err := s.db.QueryRowContext(ctx, `SELECT o.digest FROM artwork_objects o INDEXED BY artwork_objects_compaction WHERE o.status='ready' AND (o.bytes>500000 OR o.width>1920 OR o.height>1920) AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY o.bytes DESC,o.digest LIMIT 1`).Scan(&old)
+	encoded, _, err := s.CaptureArtworkContext(ctx)
+	if err != nil {
+		return err
+	}
+	policy := encoded.Value(artworkEncodingPolicyKey{}).(artworkEncodingPolicy)
+	old, err := s.nextArtworkCompaction(ctx, policy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if old == "" {
+		return nil
 	}
 	if err = s.compactArtworkObject(ctx, old); err != nil && ctx.Err() == nil {
 		var bad *artworkCompactionFailure
@@ -46,6 +51,10 @@ type artworkCompactionFailure struct{ reason string }
 func (e *artworkCompactionFailure) Error() string { return "artwork compaction: " + e.reason }
 
 func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
+	ctx, checkPolicy, err := s.CaptureArtworkContext(ctx)
+	if err != nil {
+		return err
+	}
 	fail := func(reason string) error { return &artworkCompactionFailure{reason} }
 	f, err := s.openArtworkObject(old)
 	if err != nil {
@@ -75,8 +84,7 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err != nil {
 		return fail("undecodable")
 	}
-	var small bool
-	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections WHERE thumbnail_digest=?) OR EXISTS(SELECT 1 FROM artwork_previews WHERE digest=?) OR EXISTS(SELECT 1 FROM artwork_uploads WHERE thumbnail_digest=?)`, old, old, old).Scan(&small)
+	derivedEdge, err := s.artworkDerivedEdge(ctx, old)
 	if err != nil {
 		return err
 	}
@@ -84,8 +92,8 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 		return err
 	}
 	edge := artworkLargeEdge
-	if small {
-		edge = artworkSmallEdge
+	if derivedEdge > 0 {
+		edge = derivedEdge
 	}
 	data, w, h, err := encodeDisplayArtworkContext(ctx, decoded, edge, format == "jpeg")
 	if err != nil {
@@ -96,12 +104,18 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err != nil {
 		return err
 	}
+	if installed.digest == old {
+		return nil
+	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return err
 	}
 	defer gated.Rollback()
 	tx := gated.Tx()
+	if err = checkPolicy(ctx, tx); err != nil {
+		return err
+	}
 	var exists bool
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_objects WHERE digest=? AND status='ready')`, old).Scan(&exists); err != nil || !exists {
 		return err
@@ -110,11 +124,17 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err = recordArtworkObject(ctx, tx, installed, now); err != nil {
 		return err
 	}
+	// Retain all existing bucket links before the old source's ON DELETE
+	// CASCADE runs. The new 800 bucket was encoded from the new full image.
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_variants(source_digest,width,digest) SELECT ?,width,CASE WHEN digest=? THEN ? ELSE digest END FROM artwork_variants WHERE source_digest=? ON CONFLICT(source_digest,width) DO NOTHING`, installed.digest, old, installed.digest, old); err != nil {
+		return err
+	}
 	// Closed registry: every relational reference and both undo snapshots must
 	// switch in the same transaction. Unknown future FK references fail closed.
 	for _, ref := range []struct{ table, column string }{
 		{"artwork_selections", "digest"}, {"artwork_selections", "thumbnail_digest"},
 		{"artwork_previews", "digest"}, {"artwork_uploads", "digest"}, {"artwork_uploads", "thumbnail_digest"},
+		{"artwork_variants", "digest"},
 	} {
 		suffix := ""
 		if ref.table == "artwork_selections" {
