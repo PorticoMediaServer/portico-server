@@ -2593,7 +2593,7 @@ test('Info advertises no VOD report for an audio session or an already canceled 
  const f=setup(t);await f.runtime.play('movie',0);await f.arrive();let fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')throw Error('missing queue fence');
  const abort=new AbortController();abort.abort();let before=f.log.length;
  assert.equal(await f.runtime.readPlaybackInfo(fence,abort.signal),null);assert.equal(f.log.length,before);
- const old=fence;await f.runtime.play('song-one',0);fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')throw Error('missing audio queue fence');
+ const old=fence;await f.runtime.play('song-one',0);await f.arrive();fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')throw Error('missing audio queue fence');
  before=f.log.length;assert.equal(await f.runtime.readPlaybackInfo(fence,new AbortController().signal),null);assert.equal(f.log.length,before);
  await assert.rejects(f.runtime.readPlaybackInfo(old,new AbortController().signal),/stale_playback_command/);
 });
