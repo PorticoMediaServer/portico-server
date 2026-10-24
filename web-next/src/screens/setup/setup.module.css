@@ -2,7 +2,7 @@
    the colour backdrop, wordmark and legal line; these are the setup column and
    its right-hand steps. */
 .host { position: relative; }
-.content { width: 560px; padding-top: 104px; }
+.content { width: 560px; padding-top: 104px; justify-content: flex-start; }
 .contentLibrary { width: 600px; padding-top: 112px; justify-content: flex-start; }
 .one { white-space: nowrap; }
 .lede { font-size: 17px; line-height: 1.5; color: var(--color-text-secondary); margin: 0 0 28px; }
