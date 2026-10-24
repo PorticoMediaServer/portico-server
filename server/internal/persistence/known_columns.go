@@ -7,7 +7,17 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `access_invitations.accepted_ms
+const knownSchemaColumns = `
+access_invitation_short_codes.binding_hash
+access_invitation_short_codes.expires_ms
+access_invitation_short_codes.invitation_id
+access_invitation_short_codes.invitation_revision
+access_invitation_short_codes.kind_revision
+access_invitation_short_codes.lookup_hash
+access_invitation_short_codes.purpose
+access_invitation_short_codes.server_id
+access_invitation_short_codes.sign_in_kind
+access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -5451,4 +5461,5 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url`
+webhooks.url
+`
