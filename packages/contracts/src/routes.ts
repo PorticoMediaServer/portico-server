@@ -2272,6 +2272,32 @@ export const routes = [
     "admission": "admin-heavy"
   },
   {
+    "id": "get_admin_libraries_id_sonic_analysis",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/sonic-analysis",
+    "summary": "Read current library sound analysis status",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "invalid_analysis",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "library_configuration_conflict",
+      "analysis_conflict",
+      "analysis_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
     "id": "get_admin_library_channels",
     "method": "GET",
     "path": "/v1/admin/library-channels",
@@ -5332,13 +5358,15 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
-      "limit"
+      "limit",
+      "by"
     ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
+      "stale_continuation",
       "internal"
     ],
     "status": 200,
@@ -7325,6 +7353,7 @@ export const routes = [
     "status": 206,
     "responseContentType": "application/pdf",
     "responseStatuses": [
+      200,
       416
     ],
     "http": true,
@@ -7533,6 +7562,32 @@ export const routes = [
     ],
     "status": 200,
     "admission": "browsing"
+  },
+  {
+    "id": "get_search_genres",
+    "method": "GET",
+    "path": "/v1/search/genres",
+    "summary": "Read permitted video genres with selected representative artwork",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit",
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
   },
   {
     "id": "get_search_history",
@@ -10279,6 +10334,32 @@ export const routes = [
       200,
       204
     ],
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_libraries_id_sonic_analysis_retry",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/sonic-analysis/retry",
+    "summary": "Retry the installed sound analysis engine",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 1024,
+    "errors": [
+      "invalid_request",
+      "invalid_analysis",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "library_configuration_conflict",
+      "analysis_conflict",
+      "analysis_unavailable",
+      "internal"
+    ],
+    "status": 200,
     "http": true,
     "admission": "admin-heavy"
   },
@@ -13049,7 +13130,7 @@ export const routes = [
     "summary": "Open an authorized reading publication",
     "access": "device",
     "requires": "playback",
-    "lane": "browsing",
+    "lane": "media",
     "cost": "page_sized",
     "bodyLimit": 4096,
     "errors": [
@@ -13065,7 +13146,7 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
-    "admission": "browsing"
+    "admission": "media-body"
   },
   {
     "id": "post_saved_resources",
@@ -14051,6 +14132,32 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "put_admin_libraries_id_sonic_analysis",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/{id}/sonic-analysis",
+    "summary": "Save library sound analysis with its current revision",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "invalid_analysis",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "library_configuration_conflict",
+      "analysis_conflict",
+      "analysis_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
     "id": "put_admin_libraries_order",
     "method": "PUT",
     "path": "/v1/admin/libraries/order",
@@ -14722,7 +14829,7 @@ export const routes = [
     "summary": "Save the selected publication's location with compare and swap",
     "access": "device",
     "requires": "playback",
-    "lane": "browsing",
+    "lane": "media",
     "cost": "page_sized",
     "bodyLimit": 8192,
     "headers": [
@@ -14741,7 +14848,7 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
-    "admission": "browsing"
+    "admission": "media-body"
   },
   {
     "id": "put_saved_pins_kind_id",
@@ -18099,6 +18206,7 @@ export const routePaths = {
   "get_admin_libraries": "/v1/admin/libraries",
   "get_admin_libraries_id": "/v1/admin/libraries/{id}",
   "get_admin_libraries_id_inventory_config": "/v1/admin/libraries/{id}/inventory-config",
+  "get_admin_libraries_id_sonic_analysis": "/v1/admin/libraries/{id}/sonic-analysis",
   "get_admin_library_channels": "/v1/admin/library-channels",
   "get_admin_library_channels_block_presets": "/v1/admin/library-channels/block-presets",
   "get_admin_library_channels_criteria": "/v1/admin/library-channels/criteria",
@@ -18322,6 +18430,7 @@ export const routePaths = {
   "get_saved_resources_id_content": "/v1/saved-resources/{id}/content",
   "get_saved_resources_id_share_candidates": "/v1/saved-resources/{id}/share-candidates",
   "get_scan_issues": "/v1/admin/libraries/{id}/scans/{job}/issues",
+  "get_search_genres": "/v1/search/genres",
   "get_search_history": "/v1/search/history",
   "get_seasons_id_episodes": "/v1/seasons/{id}/episodes",
   "get_server": "/v1/server",
@@ -18428,6 +18537,7 @@ export const routePaths = {
   "post_admin_feedback_reports_id_status": "/v1/admin/feedback/reports/{id}/status",
   "post_admin_ingestion_jobs_id_action": "/v1/admin/ingestion/jobs/{id}/{action}",
   "post_admin_libraries_id_inventory_object_action": "/v1/admin/libraries/{id}/inventory/{object}/{action}",
+  "post_admin_libraries_id_sonic_analysis_retry": "/v1/admin/libraries/{id}/sonic-analysis/retry",
   "post_admin_libraries_id_sources": "/v1/admin/libraries/{id}/sources",
   "post_admin_libraries_id_sources_source_check": "/v1/admin/libraries/{id}/sources/{source}/check",
   "post_admin_libraries_id_sources_source_scans": "/v1/admin/libraries/{id}/sources/{source}/scans",
@@ -18596,6 +18706,7 @@ export const routePaths = {
   "put_admin_dvr_settings": "/v1/admin/dvr/settings",
   "put_admin_libraries_id_scan_policy": "/v1/admin/libraries/{id}/scan-policy",
   "put_admin_libraries_id_shows_show_settings": "/v1/admin/libraries/{id}/shows/{show}/settings",
+  "put_admin_libraries_id_sonic_analysis": "/v1/admin/libraries/{id}/sonic-analysis",
   "put_admin_libraries_order": "/v1/admin/libraries/order",
   "put_admin_library_channels_block_presets_id": "/v1/admin/library-channels/block-presets/{id}",
   "put_admin_live_sources_id_channel_map": "/v1/admin/live-sources/{id}/channel-map",

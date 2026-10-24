@@ -83,7 +83,8 @@ func syntheticCertificate(t *testing.T, m *CertificateManager, csrDER []byte) []
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
 func installSyntheticCertificate(t *testing.T, m *CertificateManager, ctx context.Context) {
-	t.Helper()
+	// Keep failures on their exact step here. The cross-repository pair only
+	// exports static Go file:line diagnostics, never private response bodies.
 	_, q, _, e := m.snapshot(ctx)
 	if e != nil {
 		t.Fatal(e)

@@ -866,6 +866,7 @@ func run() (runErr error) {
 	if e = meta.SetArtworkDirectory(storagepaths.Path(state, "artwork")); e != nil {
 		return e
 	}
+	meta.EpisodeThumbnails = episodeThumbnailRuntime(meta, sources, ident, storeIO, subtitleRenderer)
 	// Bind the same configured metadata service before the scanner can call it.
 	// Generation remains closed until its retained source runtime is composed.
 	scanner.EpisodeThumbnails = meta.ScanEpisodeThumbnails
