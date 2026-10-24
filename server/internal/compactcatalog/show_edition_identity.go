@@ -24,7 +24,7 @@ func findClaimProviderTx(ctx context.Context, tx *sql.Tx, library int64, kind Ki
 	}
 	var id int64
 	err := tx.QueryRowContext(ctx, `SELECT e.id FROM catalog_external_ids x INDEXED BY catalog_external_ids_lookup
- JOIN catalog_entities e ON e.id=x.entity_id JOIN catalog_shows s ON s.entity_id=e.id
+ CROSS JOIN catalog_entities e ON e.id=x.entity_id CROSS JOIN catalog_shows s ON s.entity_id=e.id
  WHERE x.provider=? AND x.provider_kind=? AND x.provider_id=? AND e.library_id=? AND e.kind=? AND s.source_edition=? ORDER BY e.id LIMIT 1`, p.Provider, p.Kind, p.ID, library, int(Show), edition).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
