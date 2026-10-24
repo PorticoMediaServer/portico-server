@@ -13,7 +13,8 @@ export async function extractReference({url, selector, windowViewport, viewport,
     await browser.navigate(url, selector);
     const first = await browser.measure(selector, anchors, repeats), second = await browser.measure(selector, anchors, repeats);
     if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error('Reference extraction is nondeterministic');
-    if (browser.blocked.length || browser.pageErrors.length || fontReadiness(first, 'reference').length) throw new Error('Reference resources or fonts are not ready');
+    const readiness = {blocked: browser.blocked, pageErrors: browser.pageErrors, fonts: fontReadiness(first, 'reference')};
+    if (readiness.blocked.length || readiness.pageErrors.length || readiness.fonts.length) throw new Error('Reference readiness: ' + JSON.stringify(readiness));
     const screen = authoredReferenceScreen(first, viewport), errors = validateMeasurement(screen, {reference: true});
     if (errors.length) throw new Error('Invalid reference measurement: ' + errors.join(', '));
     return screen;

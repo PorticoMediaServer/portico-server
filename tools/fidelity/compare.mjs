@@ -63,7 +63,8 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   }
   for (const node of expected) {
     let candidates = observed.filter(other => !used.has(other.id)), method;
-    if (node.repeat) {
+    if (referenceSelf) {candidates = candidates.filter(other => other.id === node.id); method = 'same-observation-id';}
+    else if (node.repeat) {
       candidates = candidates.filter(other => other.repeat?.list === node.repeat.list && other.repeat?.part === node.repeat.part);
       if (node.repeat.part) candidates = candidates.filter(other => other.repeat.item === itemMatches.get(node.repeat.item));
       else {
