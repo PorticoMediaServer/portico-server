@@ -41,27 +41,27 @@ cdp.on('Debugger.scriptParsed', event => {
   try { scripts.set(event.scriptId, new URL(event.url).pathname.split('/').pop()); } catch { scripts.set(event.scriptId, ''); }
 });
 cdp.on('Debugger.paused', async event => {
-  // Always resume, whatever happens while summarising.
+  // Playwright CDP shape: {callFrames[], reason, data} where data is the exception RemoteObject
+  // (className/objectId), NOT a Runtime.exceptionThrown ExceptionDetails record.
   try {
-    if (summaries.length < MAX_SUMMARIES) {
-      // Structure only: some pauses carry ExceptionDetails at the top level, others nest it.
-      const details = (event && event.data && typeof event.data === 'object') ? event.data : (event || {});
-      const topFrame = details.callFrames && details.callFrames[0] ? details.callFrames[0] : null;
-      const location = typeof details.scriptId === 'string'
-        ? {scriptId: details.scriptId, line: details.lineNumber, column: details.columnNumber}
-        : (topFrame ? {scriptId: topFrame.location.scriptId, line: topFrame.location.lineNumber, column: topFrame.location.columnNumber} : {});
+    if (summaries.length < MAX_SUMMARIES && event) {
+      const frames = Array.isArray(event.callFrames) ? event.callFrames : [];
+      const top = frames[0] || null;
+      const exception = event.data && typeof event.data === 'object' ? event.data : null;
+      const location = top && top.location ? top.location : null;
       const summary = {
         at: new Date().toISOString(),
-        reason: typeof details.reason === 'string' ? details.reason.slice(0, 24) : null,
-        shape: {dataKeys: Object.keys(details).slice(0, 12), exceptionKeys: details.exception ? Object.keys(details.exception).slice(0, 8) : null},
-        name: details.exception && details.exception.className ? String(details.exception.className).slice(0, 40) : null,
-        script: scripts.get(location.scriptId) || null,
-        line: typeof location.line === 'number' ? location.line + 1 : null,
-        column: typeof location.column === 'number' ? location.column + 1 : null,
-        function: topFrame && typeof topFrame.functionName === 'string' && PLAIN_NAME.test(topFrame.functionName) ? topFrame.functionName : null,
+        reason: typeof event.reason === 'string' ? event.reason.slice(0, 24) : null,
+        name: exception && typeof exception.className === 'string' ? exception.className.slice(0, 40) : null,
+        script: location && scripts.get(location.scriptId) ? scripts.get(location.scriptId) : null,
+        line: location && typeof location.lineNumber === 'number' ? location.lineNumber + 1 : null,
+        column: location && typeof location.columnNumber === 'number' ? location.columnNumber + 1 : null,
+        function: top && typeof top.functionName === 'string' && PLAIN_NAME.test(top.functionName) ? top.functionName : null,
+        frames: frames.length,
       };
-      if (details.exception && details.exception.objectId) {
-        // Bounded property read: only an enum-shaped code, and only the anchored cause key.
+      if (exception && exception.objectId) {
+        // Bounded property read on the exception object: an enum-shaped code and the anchored
+        // preference key only. No description, no stack, no arbitrary property.
         const probe = `
           function () {
             var result = {code: null, preferenceKey: null};
@@ -78,7 +78,7 @@ cdp.on('Debugger.paused', async event => {
             return result;
           }`;
         const answer = await cdp.send('Runtime.callFunctionOn', {
-          objectId: details.exception.objectId, functionDeclaration: probe, returnByValue: true, silent: true,
+          objectId: exception.objectId, functionDeclaration: probe, returnByValue: true, silent: true,
         }).catch(() => null);
         const value = answer && answer.result && answer.result.value;
         if (value) { summary.code = value.code; summary.preferenceKey = value.preferenceKey; }
