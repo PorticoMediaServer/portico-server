@@ -4,6 +4,7 @@ import {createServer} from 'vite';
 import {withMeasurementBrowser} from './browser.mjs';
 import {comparePixels} from './png.mjs';
 import {compareStrings} from './strings.mjs';
+import {compareTextMetrics} from './text-metrics.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -28,12 +29,12 @@ export async function compareWebScreen({referenceURL, referenceSelector, entry, 
         if (publicFixtureText !== undefined) await browser.call('Input.insertText', {text: publicFixtureText});
       } else if (publicFixtureText !== undefined) throw new Error('Public fixture text requires an explicit focused control');
       const actual = await browser.measure(actualSelector), actualPixels = await browser.raster(actualSelector);
-      const raster = comparePixels(expectedPixels, actualPixels), strings = compareStrings(reference, actual);
+      const raster = comparePixels(expectedPixels, actualPixels), strings = compareStrings(reference, actual), textMetrics = compareTextMetrics(reference, actual);
       return {version: 1, scope: 'screen', viewport,
         reference: {selector: referenceSelector, measurement: reference},
         actual: {entry, selector: actualSelector, measurement: actual},
         state: {focusRequested: Boolean(focus), typedPublicFixtureCharacters: publicFixtureText?.length ?? 0},
-        raster, strings, network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
+        raster, strings, textMetrics, network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
         verdict: !actual.fullViewport || browser.blocked.length || browser.pageErrors.length ? 'invalid' :
           raster.changedPixels || strings.differences.length ? 'different' : 'exact',
         qualification: 'Controlled full-screen measurement; not an application flow, native or hardware result. No implicit caret mask or tolerance.'};
