@@ -47,6 +47,7 @@ elif [ "$PORTICO_NATIVE_CHECK" = engine ]; then
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib -- --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::local_source_tests -- --ignored --test-threads=1
   cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::wavpack_tests -- --ignored --test-threads=1
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::pcm_original_tests -- --ignored --test-threads=1
 else
   python3 apps/desktop/test/native-fixtures.py
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features shell --lib -- --test-threads=1
