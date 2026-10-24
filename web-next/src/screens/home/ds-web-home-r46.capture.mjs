@@ -215,6 +215,9 @@ if (only !== 'actual') {
   report.reference.ranked = await evaluate(`(()=>{const first=document.querySelector('#home .rows > .row:nth-child(6) .ranked');if(!first)return null;
     const number=first.querySelector('.n'),card=first.querySelector('.card');
     return {wrapper:first.getBoundingClientRect().toJSON(),number:number?.getBoundingClientRect().toJSON()??null,card:card?.getBoundingClientRect().toJSON()??null}})()`);
+  report.reference.listen = await evaluate(`(()=>{const row=[...document.querySelectorAll('#home .rows > .row')].find(value=>value.querySelector('h2')?.textContent==='Listen next');if(!row)return null;
+    const cards=row.querySelectorAll('.track .card'),card=cards[0],second=cards[1],r=n=>n?n.getBoundingClientRect().toJSON():null;
+    return {row:r(row),head:r(row.querySelector('.row-head')),track:r(row.querySelector('.track')),card:r(card),art:r(card?.querySelector('.art')),progress:r(card?.querySelector('.prog')),title:r(card?.querySelector('.t')),subtitle:r(card?.querySelector('.s')),secondArt:r(second?.querySelector('.art'))}})()`);
   report.reference.hero = await evaluate(`(()=>{const h=document.querySelector('#home .hero'),c=h.querySelector('.copy'),th=h.querySelector('.upnext');const r=n=>n?n.getBoundingClientRect().toJSON():null;
     return {hero:r(h),copy:r(c),thumbs:r(th),firstArt:r(h.querySelector('.slide.on .bd'))}})()`);
 }
@@ -229,7 +232,7 @@ if (only !== 'reference') {
     return {total:all.length,counts,images:document.images.length,fetches:fetches.length,first:fetches.slice(0,3),sample:all.slice(0,3).map(node=>({status:node.dataset.artworkStatus,hasImage:!!node.querySelector('img')}))}})()`);
   report.actual.collection = await evaluate(`(()=>{const el=document.querySelector('[data-home-document] [data-card-kind="collectionBanner"]');if(!el)return null;const r=el.getBoundingClientRect();
     const copy=el.querySelector('[class*="collectionCopy"]'),minis=el.querySelector('[class*="collectionMinis"]');
-    const action=el.querySelector('[class*="collectionAction"]');
+    const action=el.querySelector('[class*="collectionAction"] button');
     return {rect:r.toJSON(),copy:copy?.getBoundingClientRect().toJSON()??null,minis:minis?.getBoundingClientRect().toJSON()??null,action:action?.getBoundingClientRect().toJSON()??null}})()`);
   report.actual.poster = await evaluate(`(()=>{const card=[...document.querySelectorAll('[data-home-document] [data-card-kind="poster"]')].find(el=>el.closest('section'));
     if(!card)return null;const art=card.querySelector('[class*="art"]'),title=card.querySelector('[class*="title"]'),cap=card.querySelector('[class*="caption"]'),sub=card.querySelector('[class*="subtitle"]');
@@ -237,6 +240,9 @@ if (only !== 'reference') {
   report.actual.ranked = await evaluate(`(()=>{const first=[...document.querySelectorAll('[data-home-document] [class*="scaledRanked"]')][0];if(!first)return null;
     const number=first.children[0]?.children[0],card=first.querySelector('[data-card-kind="poster"]');
     return {wrapper:first.getBoundingClientRect().toJSON(),number:number?.getBoundingClientRect().toJSON()??null,card:card?.getBoundingClientRect().toJSON()??null}})()`);
+  report.actual.listen = await evaluate(`(()=>{const section=[...document.querySelectorAll('[data-home-document] section[data-platform]')].find(value=>value.querySelector('h2')?.textContent==='Listen next');if(!section)return null;
+    const cards=section.querySelectorAll('article[data-card-kind="square"]'),card=cards[0],second=cards[1],r=n=>n?n.getBoundingClientRect().toJSON():null;
+    return {row:r(section),head:r(section.querySelector('header')),track:r(section.querySelector('div[class*="track"]')),card:r(card),art:r(card?.querySelector('button > span[class*="art"]')),progress:r(card?.querySelector('button > [class*="progress"]')),title:r(card?.querySelector('[class*="title"]')),subtitle:r(card?.querySelector('[class*="subtitle"]')),secondArt:r(second?.querySelector('button > span[class*="art"]'))}})()`);
   report.actual.rows = await evaluate(`[...document.querySelectorAll('[data-home-document] section[data-platform]')].map(row=>{const r=row.getBoundingClientRect(),track=row.querySelector('div[class*="track"]'),head=row.querySelector('header');
     return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), headBox:head?Math.round(head.getBoundingClientRect().height):null, trackPadding:track?getComputedStyle(track).paddingLeft:null,
       firstCard:track?.firstElementChild?Math.round(track.firstElementChild.getBoundingClientRect().width):null, cards:track?.children.length??0, link:head?.querySelector('a,button')?.textContent??null, linkOpacity:head?.querySelector('a,button')?getComputedStyle(head.querySelector('a,button')).opacity:null}})`.replace(/\n/g, ' '));

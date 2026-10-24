@@ -58,12 +58,12 @@ const solo = episode('ep-solo', "I'm Used to It", 'Solo Leveling', 'show-solo', 
 
 const newOnServer = [
   movie('mv-toy-story-5', 'Toy Story 5', 2026, 'pool/movies/toy-story-5.jpg', {new: true}),
-  show('show-stranger-things-85', "Stranger Things: Tales from '85", 1, 'pool/tv/stranger-things.jpg', {new: true}),
+  show('show-stranger-things-85', "Stranger Things: Tales from '85", 1, 'p-st85.jpg', {new: true}),
   movie('mv-odyssey', 'The Odyssey', 2026, 'pool/movies/the-odyssey.jpg', {new: true}),
   show('show-severance', 'Severance', 1, 'pool/tv/severance.jpg'),
   movie('mv-amziah-king', 'The Rivals of Amziah King', 2026, 'pool/movies/the-rivals-of-amziah-king.jpg'),
   show('show-monster-lizzie', 'Monster: The Lizzie Borden Story', 1, 'pool/tv/monster-the-lizzie-borden-story.jpg'),
-  show('show-jujutsu', 'JUJUTSU KAISEN', 1, 'pool/tv/jujutsu-kaisen.jpg', {genres: ['Anime']}),
+  show('show-jujutsu', 'JUJUTSU KAISEN', 1, 'p-jjk.jpg', {genres: ['Anime']}),
   movie('mv-practical-magic-2', 'Practical Magic 2', 2026, 'pool/movies/practical-magic-2.jpg'),
   show('show-neagley', 'Neagley', 1, 'pool/tv/neagley.jpg'),
 ];

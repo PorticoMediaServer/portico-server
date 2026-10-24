@@ -196,7 +196,9 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
   const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
   const ranked = row.id === 'community_watching' && !!row.period;
   const scale = cardScale(bindings.appearance);
-  const cardWidth = (ranked ? platform === 'desktop' ? 262 : 186 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118) * scale;
+  // The ranked slot is the number plus the poster less the drawn overlap:
+  // 240px on desktop and 170px on phone (92+170-22 / 70+116-16), matching the frame slot.
+  const cardWidth = (ranked ? platform === 'desktop' ? 240 : 170 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118) * scale;
   const live = currentHomeLive(row.live, nowMs);
   if (row.live) {
     if (!live) return null;
