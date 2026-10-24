@@ -60,8 +60,9 @@ try {
   console.log(JSON.stringify({browser: version.Browser, scope: 'Controlled desktop auth columns, reference left/build right,720x900 each; no backend/reset grant/full-screen acceptance'}));
   for (const frame of ['20b', '20c']) {
     const ref = `.frame[data-f="${frame}"] .screen`;
-    await navigate(`${referenceOrigin}/auth.html`, ref);
+    await navigate(`${referenceOrigin}/auth.html?frame=${frame}`, ref);
     await evaluate(`document.querySelector(${JSON.stringify(ref)}).scrollIntoView({block:'start',inline:'start'})`);
+    await waitFor(`document.querySelector(${JSON.stringify(ref)}).getBoundingClientRect().width===1440`);
     const bounds = await evaluate(`(() => {const r=document.querySelector(${JSON.stringify(ref)}).getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY};})()`);
     const referenceMetrics = await metrics(`${ref} .au h1`, ref);
     const left = await screenshot({...bounds, width: 720, height: 900});
@@ -70,7 +71,7 @@ try {
       // Thirteen real input characters match the frame's bullet count. The
       // canonical strength result remains real, even if that differs from Strong.
       for (const selector of ['input[name="new-password"]', 'input[name="confirm-password"]']) {
-        await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);await page.send('Input.insertText', {text: 'drawnAB123!xyz'});
+        await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);await page.send('Input.insertText', {text: 'drawAB123!xyz'});
       }
       await evaluate('document.querySelector(\'input[name="new-password"]\').focus()');
     }

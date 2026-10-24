@@ -73,7 +73,7 @@ export function AccountSignInView({entry, form, takeReturn, initialize = true, i
     onChange={(current, next) => {form.clear(); void entry.changePassword(current, next);}} onCancel={cancel} />;
   if (state.phase === 'challenge') return <ServerChallenge key={input.inputEpoch} busy={busy} error={failure} onCode={code => void form.completeChallenge(code)} onBack={reauthenticate} />;
   if (state.phase === 'password' && state.server?.signIn === 'local') return <LocalServerSignIn key={input.inputEpoch} serverName={state.server.name} initialUsername={input.username}
-    busy={busy} error={failure} onForgotPassword={username => {++recoveryRun.current;form.clear();setRecovery({username});setError(undefined);}} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} />;
+    busy={busy} error={failure} onForgotPassword={username => {++recoveryRun.current;form.setUsername(username);form.clear();setRecovery({username});setError(undefined);}} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={() => {
     const epoch = input.inputEpoch, serverId = state.server?.id, origin = state.origin;
     if (!serverId) return;
