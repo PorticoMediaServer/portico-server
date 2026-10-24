@@ -217,7 +217,8 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
   const first = section.entries[0], media = first && mediaEntry(first), square = first?.kind === 'playlist' || media && shapeFor(media.kind) === 'square';
   const ratio = square ? 1 : 2 / 3, rowHeight = presentation.view === 'list' ? 90 : presentation.cardWidth / ratio + 48;
   const columns = presentation.view === 'list' ? 1 : Math.max(1, Math.floor((width + 16) / (presentation.cardWidth + 16)));
-  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil(section.entries.length / columns) * (rowHeight + 16)));
+  const rows = Math.ceil(section.entries.length / columns);
+  const height = Math.max(rowHeight, Math.min(window.innerHeight, rows * rowHeight + Math.max(0, rows - 1) * 16));
   return <section className={styles.savedSection} ref={root}>
     {bindings.heading && <div className={styles.sectionHeading}><h2>{bindings.heading.label}</h2>{bindings.heading.count !== undefined && <span>{defaultI18n.number(bindings.heading.count)}</span>}</div>}
     <WindowedGrid collection={collection} label={bindings.heading?.label ?? serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 16} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
