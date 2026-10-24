@@ -111,7 +111,7 @@ function showWorkspace() {
       status: 'Continuing', firstAired: '2023-01-15', originalLanguage: 'en', addedAt: '2026-10-17T00:00:00Z', episodeCount: episodes.length,
       posterUrl: artPath(showId, 'poster', 'w=600'), backdropUrl: artPath(showId, 'backdrop', 'w=1920'),
       genres: ['Drama']}, // lint-strings-allow
-    showCredits: credits.map(credit => ({...credit, portraitUrl: imageArt('portrait', credit.id)})),
+    showCredits: credits.map(credit => ({...credit})),
     seasons: [{id: seasonId, showId, number: 1, title: 'Season 1', episodeCount: episodes.length, watchedCount: 0, unwatchedCount: episodes.length, // lint-strings-allow
       firstAired: '2023-01-15', lastAired: '2023-02-05'}],
     seasonTotalCount: 1, nextSeasonCursor: '', groups: [],

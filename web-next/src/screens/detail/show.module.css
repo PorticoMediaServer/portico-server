@@ -53,7 +53,7 @@
 
 .sectionHeading { margin: 0 0 16px; display: flex; align-items: baseline; gap: 12px; font-size: var(--type-detail-heading-size); line-height: var(--type-detail-heading-line); font-weight: var(--type-detail-heading-weight); letter-spacing: var(--type-detail-heading-tracking); }
 
-.facts { display: grid; grid-template-columns: 124px 1fr; gap: 12px 16px; margin: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.facts { display: grid; grid-template-columns: 124px 1fr; gap: 12px 16px; margin: 0; font-size: var(--type-body-size); line-height: calc(var(--type-body-size) * 1.45); }
 
 .facts dt { color: var(--color-text-tertiary); }
 
@@ -75,7 +75,7 @@
 
 .castBlock button { width: 120px; }
 
-.castBlock button > span:first-child { width: 96px; height: 96px; }
+.castBlock button > span:first-child { display: block; width: 96px; height: 96px; }
 
 .castBlock button b { margin-top: 10px; font-size: var(--type-person-title-size); font-weight: var(--type-person-title-weight); line-height: normal; }
 
