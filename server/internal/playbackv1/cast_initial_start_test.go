@@ -104,8 +104,23 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 
 // An already-adopted queue keeps the generic occurrence authority, so a new
 // Sonic window it needs can still be captured instead of looping to ErrRevision.
+// The initial-only start authority must never run on this path.
 func TestAdoptedShuffledQueueCapturesNewSonicWindow(t *testing.T) {
 	c, s, caller, q := sonicQueueFixture(t)
+	cast := caller
+	cast.Principal.Grant = identity.GrantCastTarget
+	adopted := 0
+	s.CastQueueAuthority = func(ctx context.Context, tx *sql.Tx, got Caller, queue string) error {
+		if tx == nil || got.Principal != cast.Principal || queue != q.id {
+			t.Fatalf("adopted authority lost its transaction or binding: %v %v %q", tx, got.Principal, queue)
+		}
+		adopted++
+		return nil
+	}
+	s.CastQueueStartAuthority = func(context.Context, *sql.Tx, Caller, string, string, string) error {
+		t.Fatal("initial-only start authority used for an adopted queue")
+		return identity.ErrForbidden
+	}
 	s.SmoothOrder = func(ctx context.Context, tx *sql.Tx, actor identity.Principal, ids []string) (catalog.MusicSmoothOrder, error) {
 		return catalog.MusicSmoothOrder{Positions: []int64{0, 4, 3, 2, 1}, BySound: true, Model: &sonic.Identity{ID: sonic.ModelID, Version: sonic.ModelVersion, SHA256: sonic.ModelSHA256}}, nil
 	}
@@ -124,7 +139,7 @@ func TestAdoptedShuffledQueueCapturesNewSonicWindow(t *testing.T) {
 		t.Fatal("fixture queue has no first entry")
 	}
 	var captured int
-	resolved, initial, _, err := s.withMusicLayoutStart(context.Background(), caller, q.id, entryID, sonicEntryWindow(entryID), func(l *layout) error {
+	resolved, initial, _, err := s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(l *layout) error {
 		w, ok := l.sonicWindows[0]
 		if !ok || w.model == nil || len(w.ordinals) == 0 {
 			t.Fatal("projected before the missing window was captured")
@@ -134,5 +149,8 @@ func TestAdoptedShuffledQueueCapturesNewSonicWindow(t *testing.T) {
 	})
 	if err != nil || initial || resolved != item || captured != 1 {
 		t.Fatalf("adopted capture: item=%q initial=%v captured=%d err=%v", resolved, initial, captured, err)
+	}
+	if adopted == 0 {
+		t.Fatal("adopted capture never took the generic occurrence authority")
 	}
 }
