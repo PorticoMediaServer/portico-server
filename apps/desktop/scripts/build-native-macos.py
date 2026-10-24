@@ -72,6 +72,25 @@ try:
  native=app/'apps/desktop';deps=args.dependency_prefix
  python=str(args.build_tools/'python3.14');meson=str(args.build_tools/'meson');ninja=str(args.build_tools/'ninja');pkg=str(args.pkg_config)
  prefix=job/'prefix';prefix.mkdir();(job/'build').mkdir()
+ locked=json.loads((native/'native-deps.lock.json').read_text())['ffmpeg']
+ assert sha(contract/'third_party/ffmpeg/sources.lock.json')==locked['sourceLockSha256']
+ assert sha(contract/'scripts/prepare-ffmpeg-source.py')==locked['preparerSha256']
+ assert sha(args.prepared_source_archive)==locked['preparedArchiveSha256']
+ unpack(args.prepared_source_archive,job/'ffmpeg-input');prepared=job/'ffmpeg-input/ffmpeg'
+ receipt=prepared/'portico-source-receipt.json';assert sha(receipt)==locked['preparedReceiptSha256']
+ # Verify every canonical source byte/symlink before configuring. Never normalize
+ # a platform-generated patch tree or waive the producer's immutable receipt.
+ verify="""import importlib.util,json,pathlib,sys
+contract=pathlib.Path(sys.argv[1]);source=pathlib.Path(sys.argv[2])
+spec=importlib.util.spec_from_file_location('canonical_source',contract/'scripts/prepare-ffmpeg-source.py')
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+receipt=json.loads((source/'portico-source-receipt.json').read_text());lock=json.loads((contract/'third_party/ffmpeg/sources.lock.json').read_text())
+assert receipt['sourceCommit']==lock['ffmpeg']['commit']
+assert receipt['patches']==lock['ffmpeg']['patches'] and receipt['postSeriesPatches']==lock['ffmpeg']['postSeriesPatches']
+assert receipt['files']==module.tree_files(source)
+print('EXACT_102_CANONICAL_SOURCE_INVENTORY_PASS')
+"""
+ run([python,'-c',verify,contract,prepared])
  cmake_archive=job/'tools/cmake-3.31.12-macos-universal.tar.gz'
  run(['/usr/bin/curl','--silent','--show-error','--fail','--location','--proto','=https','--proto-redir','=https','--max-time','240','--max-filesize','79954716','https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-macos-universal.tar.gz','-o',cmake_archive])
  assert cmake_archive.stat().st_size==79954716 and sha(cmake_archive)=='799af7fd545db9bf1b9cfe72f8095880e727a2d4e0df0e3dffc3bc7b95c2d3b0'
@@ -95,25 +114,6 @@ try:
  run([cmake,'-S',soxr,'-B',soxr_build,'-G','Ninja','-DCMAKE_MAKE_PROGRAM='+ninja,'-DCMAKE_C_COMPILER='+compiler,'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_OSX_ARCHITECTURES=arm64','-DCMAKE_OSX_SYSROOT='+sdk,'-DCMAKE_INSTALL_PREFIX='+str(prefix),'-DBUILD_SHARED_LIBS=ON','-DWITH_OPENMP=OFF','-DWITH_LSR_BINDINGS=OFF','-DWITH_AVFFT=OFF','-DBUILD_TESTS=ON','-DBUILD_EXAMPLES=OFF','-DWITH_DEV_TRACE=OFF'])
  run([cmake,'--build',soxr_build,'--parallel','1']);run([ctest,'--test-dir',soxr_build,'-R','^1-delay-clear$','--no-tests=error','--output-on-failure']);run([cmake,'--install',soxr_build])
  print('SOXR_SHARED_ARM64_BUILD_PASS',flush=True)
- locked=json.loads((native/'native-deps.lock.json').read_text())['ffmpeg']
- assert sha(contract/'third_party/ffmpeg/sources.lock.json')==locked['sourceLockSha256']
- assert sha(contract/'scripts/prepare-ffmpeg-source.py')==locked['preparerSha256']
- assert sha(args.prepared_source_archive)==locked['preparedArchiveSha256']
- unpack(args.prepared_source_archive,job/'ffmpeg-input');prepared=job/'ffmpeg-input/ffmpeg'
- receipt=prepared/'portico-source-receipt.json';assert sha(receipt)==locked['preparedReceiptSha256']
- # Verify every canonical source byte/symlink before configuring. Never normalize
- # a platform-generated patch tree or waive the producer's immutable receipt.
- verify="""import importlib.util,json,pathlib,sys
-contract=pathlib.Path(sys.argv[1]);source=pathlib.Path(sys.argv[2])
-spec=importlib.util.spec_from_file_location('canonical_source',contract/'scripts/prepare-ffmpeg-source.py')
-module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-receipt=json.loads((source/'portico-source-receipt.json').read_text());lock=json.loads((contract/'third_party/ffmpeg/sources.lock.json').read_text())
-assert receipt['sourceCommit']==lock['ffmpeg']['commit']
-assert receipt['patches']==lock['ffmpeg']['patches'] and receipt['postSeriesPatches']==lock['ffmpeg']['postSeriesPatches']
-assert receipt['files']==module.tree_files(source)
-print('EXACT_102_CANONICAL_SOURCE_INVENTORY_PASS')
-"""
- run([python,'-c',verify,contract,prepared])
  ffbuild=job/'build/ffmpeg';ffbuild.mkdir()
  run([prepared/'configure','--prefix='+str(prefix),'--cc='+compiler,'--cxx='+cxx,'--pkg-config='+pkg,'--arch=arm64','--target-os=darwin','--enable-shared','--disable-static','--disable-programs','--disable-doc','--disable-debug','--enable-gpl','--enable-version3','--disable-autodetect','--enable-network','--enable-securetransport','--enable-libsoxr','--enable-libass','--enable-videotoolbox','--enable-audiotoolbox','--enable-zlib','--disable-protocols','--enable-protocol=file,pipe,http,https,tcp,tls,data','--optflags=-O2','--extra-cflags=-I'+str(prefix/'include'),'--extra-ldflags=-L'+str(prefix/'lib')],cwd=ffbuild)
  run(['/usr/bin/make','-s','-j1'],cwd=ffbuild);run(['/usr/bin/make','-s','install'],cwd=ffbuild)
