@@ -29,7 +29,9 @@ const held = <T>() => {
   const promise = new Promise<T>((done, failed) => { resolve = done; reject = failed; });
   return {promise, resolve, reject};
 };
-const params = (call: Call) => new URL(call.path, 'http://portico.invalid').searchParams;
+const url = (call: Call) => new URL(call.path, 'http://portico.invalid');
+const params = (call: Call) => url(call).searchParams;
+const pathname = (call: Call) => url(call).pathname;
 const tick = () => new Promise<void>(done => setTimeout(done, 0));
 
 /** The canonical envelope every DVR read has to receive, with a per-test reply. */
@@ -70,10 +72,10 @@ test('all four destinations read one canonical envelope with the existing DVR qu
   const history = pageOf([recording(hex(64, '3'))], '', 5);
   const detail = detailFact(hex(64, '4'));
   const {api, calls} = fixtureServer(call => {
-    if (call.path === '/v1/dvr/summary') return summaryFact;
-    if (call.path === '/v1/dvr/groups') return groupsFact('recent', '');
-    if (call.path === '/v1/dvr/storage') return storageFact();
-    if (call.path.startsWith('/v1/dvr/recordings/')) return detail;
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    if (pathname(call) === '/v1/dvr/storage') return storageFact();
+    if (pathname(call).startsWith('/v1/dvr/recordings/')) return detail;
     const state = params(call).get('state');
     return state === 'upcoming' ? upcoming : state === 'recorded' ? recorded : history;
   });
@@ -98,12 +100,12 @@ test('all four destinations read one canonical envelope with the existing DVR qu
     assert.deepEqual(controller.getSnapshot().page?.recordings.map(value => value.id), [hex(64, '3')]);
 
     await controller.load({view: 'storage'});
-    assert.equal(calls.at(-1)!.path, '/v1/dvr/storage');
+    assert.equal(pathname(calls.at(-1)!), '/v1/dvr/storage');
     assert.deepEqual(controller.getSnapshot().storage, storageFact());
     assert.equal(controller.getSnapshot().page, null);
 
     await controller.load({view: 'recorded', recordingId: hex(64, '4')});
-    assert.equal(calls.at(-1)!.path, '/v1/dvr/recordings/' + hex(64, '4'));
+    assert.equal(pathname(calls.at(-1)!), '/v1/dvr/recordings/' + hex(64, '4'));
     assert.equal(controller.getSnapshot().detail?.recording.id, hex(64, '4'));
     assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
     assert.ok(calls.every(call => call.method === 'GET' && call.body === undefined), 'reads never mutate');
@@ -132,8 +134,8 @@ test('an opaque cursor is carried forward exactly and the reply nextCursor is th
 });
 
 test('genuine aggregates are the server counts, never the loaded page', async () => {
-  const {api, calls} = fixtureServer(call => call.path === '/v1/dvr/summary' ? summaryFact
-    : call.path === '/v1/dvr/groups' ? groupsFact(params(call).get('sort') ?? 'recent', 'group-next')
+  const {api, calls} = fixtureServer(call => pathname(call) === '/v1/dvr/summary' ? summaryFact
+    : pathname(call) === '/v1/dvr/groups' ? groupsFact(params(call).get('sort') ?? 'recent', 'group-next')
     : pageOf([recording(hex(64, '1'))], '', 1));
   const controller = controllerFor(api);
   try {
@@ -208,8 +210,8 @@ test('a superseded view load settles without republishing its page', async () =>
 
 test('navigation and authority loss retire every fact and refuse further reads', async () => {
   let live = true;
-  const {api, calls} = fixtureServer(call => call.path === '/v1/dvr/summary' ? summaryFact
-    : call.path === '/v1/dvr/groups' ? groupsFact('recent', '') : pageOf([recording(hex(64, '1'))], 'next', 1));
+  const {api, calls} = fixtureServer(call => pathname(call) === '/v1/dvr/summary' ? summaryFact
+    : pathname(call) === '/v1/dvr/groups' ? groupsFact('recent', '') : pageOf([recording(hex(64, '1'))], 'next', 1));
   const controller = controllerFor(api, {isCurrent: () => live});
   try {
     await controller.load({view: 'recorded'});
@@ -266,8 +268,8 @@ test('a page 403 clears page, detail, storage and both aggregates', async () => 
   let deny = false;
   const {api} = fixtureServer(call => {
     if (deny) throw {status: 403};
-    if (call.path === '/v1/dvr/summary') return summaryFact;
-    if (call.path === '/v1/dvr/groups') return groupsFact('recent', '');
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
     return pageOf([recording(hex(64, '1'))], '', 1);
   });
   const controller = controllerFor(api);
@@ -296,9 +298,9 @@ test('a page 403 clears page, detail, storage and both aggregates', async () => 
 test('a summary 401 clears every fact and fences the aggregate read', async () => {
   let deny = false;
   const {api} = fixtureServer(call => {
-    if (deny && call.path === '/v1/dvr/summary') throw {status: 401};
-    if (call.path === '/v1/dvr/summary') return summaryFact;
-    if (call.path === '/v1/dvr/groups') return groupsFact('recent', '');
+    if (deny && pathname(call) === '/v1/dvr/summary') throw {status: 401};
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
     return pageOf([recording(hex(64, '1'))], '', 1);
   });
   const controller = controllerFor(api);
@@ -374,7 +376,7 @@ test('a foreign envelope is refused and leaves no private facts', async () => {
 
 test('contains accepts only the exact resident objects of this generation', async () => {
   const resident = recording(hex(64, '1')), copy = {...resident};
-  const {api} = fixtureServer(call => call.path.startsWith('/v1/dvr/recordings/') ? detailFact(hex(64, '2')) : pageOf([resident], '', 1));
+  const {api} = fixtureServer(call => pathname(call).startsWith('/v1/dvr/recordings/') ? detailFact(hex(64, '2')) : pageOf([resident], '', 1));
   const controller = controllerFor(api);
   try {
     await controller.load({view: 'recorded'});
