@@ -1,6 +1,8 @@
 /** Existing genuine DEV entry; only selectors, catalogue keys and public data slots. */
 export const auth4 = {
   id: 'auth4', state: 'local-server-password-focused-10-masked', viewport: {width: 1440, height: 900, deviceScaleFactor: 1},
+  stateSteps: [{action: 'click', selector: 'input[name=password]'}, {action: 'insertText', selector: 'input[name=password]', text: '0123456789'}],
+  expectations: [{frame: 'password-input', focused: true, input: {type: 'password', length: 10}, nativeCaret: {selection: 10}}],
   referenceSelector: '.frame[data-f="4"] > .screen', actualSelector: '[data-account-specimen] > section', entry: '/src/dev/entries/accounts.html?frame=4',
   reference: {
     screen: '$root', backdrop: '.gen', brand: '.mark-tl', content: '.au', eyebrow: '.why', title: '.au h1', lede: '.au > .lede',

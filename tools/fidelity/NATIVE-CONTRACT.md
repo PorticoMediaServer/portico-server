@@ -21,9 +21,26 @@ The common top-level fields are `version:1`, `scope:'screen'`, `fullViewport`,
 at zero origin, equal to the declared logical viewport; do not crop a component.
 Native adds `measurement:{renderer:'react-native',platform:'android'|'ios'|'tvos',
 coordinateUnit:'dp'|'pt'}`. Keep actual physical deviceScaleFactor unchanged.
-DOM remains CSS px/DPR1. Root-relative logical coordinates are compared directly
-only at the same logical viewport. No screenshot scaling, synthetic DPI, offsets,
-font compensation or fabricated layout defaults.
+DOM declares `measurement:{renderer:'dom',coordinateUnit:'css-px'}` and keeps
+its actual positive deviceScaleFactor, including Retina DPR2/3. DOM rectangles
+come unchanged from getBoundingClientRect/Range and the viewport from
+innerWidth/innerHeight: these APIs already report CSS logical pixels. RN window
+and layout APIs report Android dp or Apple pt; use those actual logical values.
+Do not divide either producer's logical rectangles by density a second time.
+Only genuinely physical measurements may be converted by their producer using
+its measured physical-to-logical API relationship; never infer that relationship
+from a frame or use a per-frame scale/offset. If the source units are unknown,
+report unavailable instead of selecting a conversion.
+
+The reference is extracted at its authored viewport/DPR1. Actual root and viewport
+must equal those logical dimensions without normalization. The legacy policy
+name boxPixels means two logical units, unchanged. Exact font facts and Range/
+actual native line bounds are compared in these same units, preserving fractional
+values. Actual font scaling must be measured, not reset or inferred from declared
+style. DPR metadata never rescales fontSize or tolerances. Wrong logical viewport
+is a failure; unsupported unit declarations are invalid. Pre-metadata v1 DOM
+measurements retain their DPR1-only restriction. No screenshot scaling, synthetic
+DPI, offsets, zoom, display-setting changes or fabricated layout defaults.
 
 Each visible native element supplies stable `id`, `parent` (null at root),
 semantic `frame` anchor when mapped, `tag`, `role`, `leaf`, `ownText`,
