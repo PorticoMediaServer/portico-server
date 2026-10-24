@@ -81,6 +81,7 @@ PYARM
     binutils-aarch64-linux-gnu libc6-dev-arm64-cross libc6-arm64-cross \
     libstdc++6-arm64-cross libgcc-s1-arm64-cross linux-libc-dev-arm64-cross)
   for package in "$work"/cross-download/*.deb; do dpkg-deb -x "$package" "$work/cross"; done
+  LD_LIBRARY_PATH="$work/cross/usr/lib/x86_64-linux-gnu:$work/cross/usr/lib" \
   "$work/cross/usr/bin/aarch64-linux-gnu-g++-$major" --sysroot="$work/cross" \
     -B"$work/cross/usr/lib/gcc-cross/aarch64-linux-gnu/$major/" -B"$work/cross/usr/bin/" \
     -idirafter "$work/cross/usr/aarch64-linux-gnu/include" \
