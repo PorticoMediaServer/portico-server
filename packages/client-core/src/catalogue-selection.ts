@@ -1,36 +1,70 @@
-import type {DetailApi, DetailScope} from './detail.ts';
-import {MediaSelectionService} from './media-selection.ts';
+import {DetailService, type DetailApi, type DetailScope} from './detail.ts';
+import {MediaSelectionService, selectionItem} from './media-selection.ts';
+import {validateContentEntry, type ContentEntry} from './library-content.ts';
 import type {SegmentInput} from './playback-v1/queue.ts';
 import type {QueueHeader} from './playback-v1/types.ts';
 import type {V1QueuePlayer} from './playback-v1/v1-queue-player.ts';
-import type {SelectionItem} from './selection-model/types.ts';
+import type {SelectionCapabilities, SelectionItem} from './selection-model/types.ts';
 import {checkedItem} from './selection-model/validation.ts';
+import {selectionCapabilities} from './selection-model/capabilities.ts';
 
 /** The caller captures its own source continuity and principal/route authority.
  * Search/Saved fences and opaque Browse revisions remain in their own domains. */
 export type CatalogueSelectionLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
+export type CatalogueSelectionOptions = Readonly<{api: DetailApi; scope: DetailScope; requestId(): Promise<string>}> & CatalogueSelectionLifetime;
+/** Actual caller execution ports, never role-derived grants. Missing means unavailable. */
+export type CatalogueSelectionPorts = Readonly<Partial<Pick<SelectionCapabilities, 'play' | 'myList' | 'favorite' | 'watched'>>>;
 const unavailable = () => Object.assign(new Error('catalogue-selection-unavailable'), {code: 'catalogue-selection-unavailable'});
 function requireCurrent(lifetime: CatalogueSelectionLifetime): void {
   if (lifetime.signal.aborted || !lifetime.isCurrent()) throw Object.assign(new Error('cancelled'), {name: 'AbortError', code: 'cancelled'});
+}
+function capturedApi(api: DetailApi, lifetime: CatalogueSelectionLifetime): DetailApi {
+  return {request: async<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
+    requireCurrent(lifetime);
+    const value = await api.request<T>(path, method, body, signal);
+    requireCurrent(lifetime);
+    return value;
+  }};
+}
+
+/** Read only a selected loaded leaf's real Detail actions. Its own fence stays
+ * in Detail: no comparison with Search/Saved/Home fences or Browse revisions.
+ * Aggregate parent actions need their own authority; no first-child expansion. */
+export async function readCatalogueSelectionItem(options: CatalogueSelectionOptions, input: ContentEntry, ports: CatalogueSelectionPorts = {}): Promise<SelectionItem> {
+  const {api, scope, requestId, signal, isCurrent} = options, lifetime = {signal, isCurrent};
+  const availablePorts = Object.freeze({...ports});
+  requireCurrent(lifetime);
+  const entry = validateContentEntry(input), target = selectionItem(entry);
+  if (!target || target.itemId !== entry.id) throw unavailable();
+  const service = new DetailService({api: capturedApi(api, lifetime), scope: Object.freeze({...scope}), requestId});
+  const stop = () => service.dispose();
+  signal.addEventListener('abort', stop, {once: true});
+  try {
+    await service.select(target);requireCurrent(lifetime);
+    const state = service.getSnapshot(), data = state.data;
+    if (state.phase !== 'ready' || !data) throw state.error ?? unavailable();
+    if (data.item.id !== entry.id || data.item.libraryId !== target.libraryId || data.item.kind !== entry.kind) throw unavailable();
+    const enabled = (id: string) => data.actions.some(action => action.id === id && action.enabled);
+    const play = data.actions.some(action => action.enabled && (action.id === 'play' || action.id === 'resume') && action.playback?.itemId === entry.id);
+    return checkedItem({kind: entry.kind, id: entry.id, libraryId: target.libraryId, capabilities: selectionCapabilities(entry.kind, {
+      play: availablePorts.play === true && data.item.available === true && play,
+      myList: availablePorts.myList === true && enabled('watchlist'),
+      favorite: availablePorts.favorite === true && enabled('favorite'),
+      watched: availablePorts.watched === true && enabled('watched'),
+    })});
+  } finally {signal.removeEventListener('abort', stop);service.dispose();}
 }
 
 /** Loaded leaf personal actions use the existing revision/idempotency owner.
  * Retain this binding for retries; aggregates stay unavailable, never expanded
  * into a different parent My List/Favorite intent. Construction performs no I/O. */
-export function createCataloguePersonalSelection(options: Readonly<{
-  api: DetailApi; scope: DetailScope; requestId(): Promise<string>;
-}> & CatalogueSelectionLifetime): Readonly<{service: MediaSelectionService; dispose(): void}> {
-  const {api: capturedApi, requestId, signal, isCurrent} = options;
+export function createCataloguePersonalSelection(options: CatalogueSelectionOptions): Readonly<{service: MediaSelectionService; dispose(): void}> {
+  const {api: sourceApi, requestId, signal, isCurrent} = options;
   const scope = Object.freeze({...options.scope});
   let disposed = false;
   const lifetime = {signal, isCurrent: () => !disposed && isCurrent()};
   requireCurrent(lifetime);
-  const api: DetailApi = {request: async<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
-    requireCurrent(lifetime);
-    const value = await capturedApi.request<T>(path, method, body, signal);
-    requireCurrent(lifetime);
-    return value;
-  }};
+  const api = capturedApi(sourceApi, lifetime);
   const service = new MediaSelectionService({api, scope, requestId: async () => {
     requireCurrent(lifetime);
     const id = await requestId();

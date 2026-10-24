@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {catalogueSelectionSegments, createCataloguePersonalSelection, playCatalogueSelection} from '../src/catalogue-selection.ts';
+import {catalogueSelectionSegments, createCataloguePersonalSelection, playCatalogueSelection, readCatalogueSelectionItem} from '../src/catalogue-selection.ts';
 import {selectionCapabilities, type SelectionItem, type SelectionKind} from '../src/selection-model/index.ts';
 import {mediaSelectionKey} from '../src/media-selection.ts';
 import type {ContentEntry} from '../src/library-content.ts';
@@ -106,4 +106,88 @@ test('aggregate parent personal intent stays unavailable rather than mutating it
   await binding.service.apply('favorite', true);
   assert.equal(requests, 0);
   binding.dispose();
+});
+
+const allPorts = {play: true, myList: true, favorite: true, watched: true};
+const offeredActions = () => [
+  {id: 'resume', labelKey: 'action.resume', enabled: true, playback: {itemId: entry.id, startSeconds: 2}},
+  ...['watchlist', 'favorite', 'watched', 'metadata_edit', 'delete'].map(id => ({id, labelKey: id, enabled: true})),
+];
+function capabilityOptions(api: DetailApi) {
+  return {api, scope, requestId: async () => {throw new Error('A read must not issue a mutation ID');}, signal: new AbortController().signal, isCurrent: () => true};
+}
+
+test('selected leaf capabilities intersect actual Detail actions with real executor availability', async () => {
+  const requests: string[] = [];
+  const api: DetailApi = {request: async<T>(path: string, method = 'GET'): Promise<T> => {
+    assert.equal(method, 'GET');requests.push(path);
+    return {...detail(), actions: offeredActions()} as T;
+  }};
+  const selected = await readCatalogueSelectionItem(capabilityOptions(api), entry, allPorts);
+  assert.deepEqual(selected, {kind: 'movie', id: 'movie', libraryId: 'movies', capabilities: selectionCapabilities('movie', allPorts)});
+  assert.equal(requests.length, 1);
+  assert.equal(selected.capabilities.edit, false);
+  assert.equal(selected.capabilities.delete, false);
+  assert.equal(selected.capabilities.queue, false);
+  assert.equal(selected.capabilities.download, false);
+  const noPorts = await readCatalogueSelectionItem(capabilityOptions(api), entry);
+  assert.deepEqual(noPorts.capabilities, selectionCapabilities('movie', {}));
+});
+
+test('disabled actions, unrelated playback, missing availability and music Watched grant nothing', async () => {
+  for (const available of [true, false]) {
+    const api: DetailApi = {request: async<T>(): Promise<T> => ({...detail(), item: {...detail().item, available}, actions: [
+      {id: 'play', labelKey: 'play', enabled: available, playback: {itemId: 'other-item', startSeconds: 0}},
+      {id: 'start_over', labelKey: 'start', enabled: true, playback: {itemId: entry.id, startSeconds: 0}},
+      {id: 'unknown', labelKey: 'unknown', enabled: true, playback: {itemId: entry.id, startSeconds: 0}},
+      ...['watchlist', 'favorite', 'watched'].map(id => ({id, labelKey: id, enabled: false})),
+    ]}) as T};
+    assert.deepEqual((await readCatalogueSelectionItem(capabilityOptions(api), entry, allPorts)).capabilities, selectionCapabilities('movie', {}));
+  }
+  const song = {...entry, kind: 'song' as const};
+  const api: DetailApi = {request: async<T>(): Promise<T> => ({...detail(), item: {...detail().item, kind: 'song'}, actions: offeredActions()}) as T};
+  const result = await readCatalogueSelectionItem(capabilityOptions(api), song, allPorts);
+  assert.equal(result.capabilities.play, true);
+  assert.equal(result.capabilities.watched, false);
+});
+
+test('capability read captures identity, transport and available ports before asynchronous work', async () => {
+  let release!: (raw: unknown) => void;
+  const api: DetailApi = {request: <T>() => new Promise<T>(resolve => {release = raw => resolve(raw as T);})};
+  const options = capabilityOptions(api), ports = {...allPorts, favorite: false}, input = {...entry};
+  const pending = readCatalogueSelectionItem(options, input, ports);
+  ports.favorite = true;input.id = 'replacement';
+  options.api = {request: async () => {throw new Error('Must retain captured principal');}};
+  release({...detail(), actions: offeredActions()});
+  const result = await pending;
+  assert.equal(result.id, entry.id);
+  assert.equal(result.capabilities.favorite, false);
+  assert.equal(result.capabilities.myList, true);
+});
+
+test('capability read refuses aggregates, redirected leaves and wrong Detail identity or kind', async () => {
+  let reads = 0;
+  const options = capabilityOptions({request: async<T>(): Promise<T> => {reads++;return detail() as T;}});
+  for (const input of [
+    {id: 'show', libraryId: 'tv', kind: 'show' as const, title: 'Show', playback: {itemId: 'first-episode'}},
+    {...entry, navigation: {view: 'item' as const, entityId: 'other-item'}},
+  ]) await assert.rejects(readCatalogueSelectionItem(options, input, allPorts), {code: 'catalogue-selection-unavailable'});
+  assert.equal(reads, 0);
+  for (const item of [{...detail().item, id: 'other-item'}, {...detail().item, kind: 'episode'}]) {
+    await assert.rejects(readCatalogueSelectionItem(capabilityOptions({request: async<T>(): Promise<T> => ({...detail(), item}) as T}), entry, allPorts));
+  }
+});
+
+test('source retirement or original abort refuses a late capability response without writes', async () => {
+  for (const abort of [false, true]) {
+    let current = true, writes = 0;
+    const controller = new AbortController();
+    const api: DetailApi = {request: async<T>(_path: string, method = 'GET'): Promise<T> => {
+      if (method !== 'GET') writes++;
+      if (abort) controller.abort();else current = false;
+      return {...detail(), actions: offeredActions()} as T;
+    }};
+    await assert.rejects(readCatalogueSelectionItem({...capabilityOptions(api), signal: controller.signal, isCurrent: () => current}, entry, allPorts), {name: 'AbortError'});
+    assert.equal(writes, 0);
+  }
 });
