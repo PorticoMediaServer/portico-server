@@ -192,3 +192,15 @@ test('concurrent retirement shares the genuine native acknowledgement and blocks
   assert.equal(calls,1);finish();await Promise.all([first,second]);
  }finally{store.dispose()}
 });
+
+test('retirement cannot acknowledge cleanup before an outstanding native load commits',async()=>{
+ let finish!:(value:unknown)=>void;const retired:number[]=[];
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async(_,op)=>op.action==='prepareLocalQueue'?{kind:'localQueue',value:prepared()}:{kind:'done'}),
+  loadLocal:()=>new Promise(resolve=>{finish=resolve}),async retireLocal(_,generation){retired.push(generation)}});
+ try{
+  const abort=new AbortController(),queue=await store.prepareLocalQueue(selection,abort.signal);
+  const load=store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,abort.signal);
+  abort.abort();const retirement=store.retireLocal(9);await Promise.resolve();assert.deepEqual(retired,[]);
+  finish(localReceipt());await assert.rejects(load,{name:'AbortError'});await retirement;assert.deepEqual(retired,[9]);
+ }finally{store.dispose()}
+});

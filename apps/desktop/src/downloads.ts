@@ -119,6 +119,7 @@ export class DesktopDownloadStore {
   private currentPreparation?:PreparedLocalQueue;
   private readonly localLeases=new Map<number,string>();
   private readonly localRetirements=new Map<number,Promise<void>>();
+  private readonly localLoads=new Map<number,Promise<unknown>>();
   private readonly listeners=new Set<()=>void>();
   private readonly folderCancels=new Set<()=>void>();
   private readonly preparations=new WeakMap<PreparedLocalQueue,{lease:string;retired:boolean}>();
@@ -208,7 +209,9 @@ export class DesktopDownloadStore {
     if(this.localLeases.has(generation))throw new Error('downloads_conflict');
     this.localLeases.set(generation,owned.lease);
     try{
-      const raw=object(await this.bridge.loadLocal(owned.lease,{preparationId:prepared.preparationId,localSourceId,generation,startPositionMs,autoplay}));
+      const pending=this.bridge.loadLocal(owned.lease,{preparationId:prepared.preparationId,localSourceId,generation,startPositionMs,autoplay});
+      this.localLoads.set(generation,pending);
+      const raw=object(await pending);
       const scope=checkScope(object(raw.scope) as unknown as DownloadScope),artifact=object(raw.artifact),entryId=digest(raw.entryId),sessionId=text(raw.sessionId,256);
       const suffix=sessionId.startsWith(`local:${entryId}:`)?sessionId.slice(`local:${entryId}:`.length):'';
       if(raw.kind!=='local'||!sameSavedDownloadsScope(scope,this.scope)||raw.preparationId!==prepared.preparationId||raw.localSourceId!==localSourceId||raw.generation!==generation
@@ -231,7 +234,13 @@ export class DesktopDownloadStore {
     // A failed acknowledgement retains this exact lease, even after dispose. Never
     // derive a cleanup target from the current viewer or an unknown generation.
     const task=(async()=>{
-      try{await this.bridge.retireLocal!(lease,generation);this.localLeases.delete(generation);}
+      try{
+        // Stop must follow the actual load ACK/failure. An early stop ACK cannot
+        // prove that a still-running native load will not commit afterwards.
+        await this.localLoads.get(generation)?.catch(()=>{});
+        await this.bridge.retireLocal!(lease,generation);
+        this.localLeases.delete(generation);this.localLoads.delete(generation);
+      }
       catch(error){throw downloadFailure(error);}
     })();
     this.localRetirements.set(generation,task);
