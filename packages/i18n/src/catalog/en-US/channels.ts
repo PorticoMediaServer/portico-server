@@ -66,6 +66,7 @@ export const channelMessages = {
   'guide.twoHours': '2 h',
   'guide.noInformation': 'No information',
   'guide.noGuide': 'No guide information',
+  'guide.noGuideBody': 'You can still watch this channel',
   'guide.ends': 'Ends {time}',
   'guide.range': '{start} – {end}',
   'guide.live': 'Live',
