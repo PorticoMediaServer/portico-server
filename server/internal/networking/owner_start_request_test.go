@@ -40,7 +40,7 @@ func TestSetupStartActionIsPurposeDisjoint(t *testing.T) {
 	if json.Unmarshal([]byte(valid), &q) != nil || q.SetupStart == nil || q.OwnerStart != nil {
 		t.Fatal("setup transport not distinct")
 	}
-	for _, extra := range []string{`,"ownerStart":{"state":"` + state + `","codeChallenge":"` + state + `","installationId":"d297a1dc-3adc-4b1c-a7f2-fbd4640f69e8"}`, `,"approvalEnvelope":"mixed"`, `,"setupStart":null`} {
+	for _, extra := range []string{`,"ownerStart":{"state":"` + state + `","codeChallenge":"` + state + `","installationId":"d297a1dc-3adc-4b1c-a7f2-fbd4640f69e8"}`, `,"approvalEnvelope":"mixed"`, `,"approvalEnvelope":""`, `,"setupStart":null`} {
 		if json.Unmarshal([]byte(valid[:len(valid)-1]+extra+"}"), &q) == nil || q.SetupStart != nil || q.OwnerStart != nil {
 			t.Fatal("mixed setup transport retained or accepted")
 		}

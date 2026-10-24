@@ -58,7 +58,8 @@ func (q *ClaimActionRequest) UnmarshalJSON(raw []byte) error {
 	if d.Decode(&next) != nil {
 		return ErrInvalid
 	}
-	if next.SetupStart != nil && (next.OwnerStart != nil || next.ApprovalEnvelope != "") {
+	_, hasApproval := fields["approvalEnvelope"]
+	if next.SetupStart != nil && (next.OwnerStart != nil || hasApproval) {
 		return ErrInvalid
 	}
 	*q = ClaimActionRequest(next)
