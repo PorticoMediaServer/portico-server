@@ -11,7 +11,7 @@ test('real local PlaybackService and V1QueuePlayer never request a server listen
   const http: V1Http = {send: async request => {
     paths.push(request.path);
     assert.equal(request.path, '/v1/listening/preferences', 'a local source ID reached a server request');
-    return {status: 200, headers: {}, body: {scope: viewer, data: {revision: 0, bookRate: 1.5, passoutMinutes: 15}}};
+    return {status: 200, headers: {}, body: {scope: viewer, data: {revision: 0, bookRate: 1.5, passoutMinutes: 30}}};
   }};
   const api = new V1PlaybackApi(http);
   let serial = 0;
@@ -19,10 +19,10 @@ test('real local PlaybackService and V1QueuePlayer never request a server listen
   const player = new V1QueuePlayer({http, api, playback, viewer});
   t.after(() => { player.dispose(); playback.leave(); });
   player.connect();
-  const make = (id: string): PlaybackSession => ({id, generation: 1, streamUrl: 'app-private-source', mode: 'direct', duration: 120, resumeSeconds: 0});
+  const make = (id: string): PlaybackSession => ({id, generation: 1, streamUrl: 'app-private-source', mode: 'local', duration: 120, resumeSeconds: 0});
   await playback.playLocal('private-file-id', () => make('local:session:one'));
   await new Promise<void>(resolve => setImmediate(resolve));
-  assert.equal(playback.getSnapshot().mode, 'local');
+  assert.equal(playback.getSnapshot().session?.mode, 'local');
   assert.equal(player.listening.getSnapshot().context, null);
   await playback.playLocal('file:another-private-source', () => make('local:session:two'));
   await new Promise<void>(resolve => setImmediate(resolve));

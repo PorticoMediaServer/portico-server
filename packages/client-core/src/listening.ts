@@ -85,7 +85,7 @@ export class ListeningService {
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
  private syncNativePolicy(){
-  const source=this.playback.getSnapshot(),serverSource=source.mode!=='local'&&!source.channel;
+  const source=this.playback.getSnapshot(),serverSource=!!source.session&&source.session.mode!=='local'&&!source.channel;
   const timer=serverSource?this.state.timer:null;
   this.playback.setListeningPolicy?.({preferences:serverSource&&this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,
    activityRevision:this.activityRevision,activityAtMs:this.activityAtMs,timerRevision:this.timerGeneration,
@@ -109,19 +109,18 @@ export class ListeningService {
  private rateFor(kind:string){if(kind!=='audiobook_file')return 1;const p=this.state.preferences,held=this.heldRate;if(held&&held.kind===kind&&held.run===this.run())return held.rate;return p?.bookRate??1;}
  interact(){if(this.disposed)return;this.lastActivity=this.now();this.activityAtMs=Date.now();this.activityRevision++;if(this.state.stopped)this.publish({stopped:false,message:null});else this.syncNativePolicy();}
  private applyRate(){const p=this.state.preferences,c=this.state.context,s=this.playback.getSnapshot();
-  if(s.mode==='local'||s.channel){const reset=this.lastRateKey!==''&&this.state.rate!==1;this.lastRateKey='';this.heldRate=undefined;if(this.state.rate!==1)this.publish({rate:1});if(reset&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(1);return;}
+  if(!s.session||s.session.mode==='local'||s.channel){const reset=this.lastRateKey!==''&&this.state.rate!==1;this.lastRateKey='';if(s.session?.mode==='local'||s.channel)this.heldRate=undefined;if(this.state.rate!==1)this.publish({rate:1});if(reset&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(1);return;}
   if(!p||!c||!['song','audiobook_file'].includes(c.kind)){this.lastRateKey='';if(this.state.rate!==1)this.publish({rate:1});return;}const rate=this.rateFor(c.kind);const key=`${s.session?.id??''}:${s.session?.generation??0}:${rate}`;
   if(this.state.rate!==rate)this.publish({rate});
   // A subscriber can replace playback synchronously while the rate publishes.
   const current=this.playback.getSnapshot();
-  if(this.state.context!==c||current.mode==='local'||current.channel||current.itemId!==s.itemId||current.session?.id!==s.session?.id||current.session?.generation!==s.session?.generation||current.playbackRun!==s.playbackRun)return;
+  if(this.state.context!==c||current.session?.mode==='local'||current.channel||current.itemId!==s.itemId||current.session?.id!==s.session?.id||current.session?.generation!==s.session?.generation||current.playbackRun!==s.playbackRun)return;
   if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
  }
- private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=p.channel||p.mode==='local'?'':p.itemId??'';
+ private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=!p.session||p.channel||p.session.mode==='local'?'':p.itemId??'';
   const eqApplied=p.audioEffects.eqApplied,levelingApplied=p.audioEffects.levelingApplied;
   if(this.state.eqApplied!==eqApplied||this.state.levelingApplied!==levelingApplied)this.publish({eqApplied,levelingApplied});
-  // With a kind hook, an item is decided once its session exists (until then it waits).
-  if(item&&this.listens&&item!==this.itemId&&!p.session)item=this.itemId;
+  // The item ID can precede a local session; never request source policy until its session exists.
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
   if(item&&this.state.context?.kind==='audiobook_file'&&p.phase==='ready'&&p.session){
    if(p.intent==='paused'&&this.pausedBook?.session!==p.session.id)this.pausedBook={session:p.session.id,at:this.now()};
@@ -160,7 +159,7 @@ export class ListeningService {
  }
  /** Called before natural advancement, and on foreground ticks/observations. */
  tick(){if(this.disposed)return;const p=this.playback.getSnapshot(),c=this.state.context;
-  if(p.mode==='local'||p.channel)return;
+  if(!p.session||p.session.mode==='local'||p.channel)return;
   if(p.nativeListening){
    const native=p.nativeListening;
    if(native.timerStopped&&!this.state.stopped){this.publish({stopped:true,message:'The listening timer paused playback.'});}
@@ -181,7 +180,7 @@ export class ListeningService {
  mayTransition(remainingSeconds:number){
   if(!this.mayAdvance())return false;
   const t=this.state.timer,p=this.playback.getSnapshot();
-  if(p.mode==='local'||p.channel)return Number.isFinite(remainingSeconds)&&remainingSeconds>=0;
+  if(!p.session||p.session.mode==='local'||p.channel)return Number.isFinite(remainingSeconds)&&remainingSeconds>=0;
   if(t?.choice==='chapter'||t&&(t.choice==='item'||t.choice==='book')&&t.itemId===p.itemId)return false;
   if(!Number.isFinite(remainingSeconds)||remainingSeconds<0)return false;
   if(t?.deadline!==undefined&&this.now()+remainingSeconds*1000>=t.deadline||t?.wallDeadline!==undefined&&Date.now()+remainingSeconds*1000>=t.wallDeadline)return false;

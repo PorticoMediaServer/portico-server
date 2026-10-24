@@ -190,12 +190,12 @@ test('a long audiobook pause rewinds once, while short pauses and music do not',
 
 test('same-item local replacement retires server book context, rate, timers and inactivity policy',async t=>{
  const paths:string[]=[];
- const f=setup(t,{preferences:{passoutMinutes:15},request:async path=>{paths.push(path);if(path==='/v1/listening/preferences')return wrapped({...prefs,passoutMinutes:15});return wrapped({itemId:'song',libraryId:'library',kind:'audiobook_file',bookId:'book'});}});
+ const f=setup(t,{preferences:{passoutMinutes:30},request:async path=>{paths.push(path);if(path==='/v1/listening/preferences')return wrapped({...prefs,passoutMinutes:30});return wrapped({itemId:'song',libraryId:'library',kind:'audiobook_file',bookId:'book'});}});
  const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);
  await settle();await f.service.setRate(2);await f.service.setTimer(15);
  assert.equal(f.engine.rates.at(-1),2);
- f.engine.update({intent:'paused'});f.setNow(1_000_000);
- f.engine.update({mode:'local',intent:'playing',nativeListening:{timerStopped:true,expiredTimerRevision:999}});
+ f.engine.update({intent:'paused'});f.setNow(2_000_000);
+ f.engine.update({session:{id:'local:source',generation:1,mode:'local'},intent:'playing',nativeListening:{timerStopped:true,expiredTimerRevision:999}});
  assert.equal(f.service.getSnapshot().context,null);
  assert.equal(f.service.getSnapshot().timer,null);
  assert.equal(f.service.getSnapshot().rate,1);
@@ -210,7 +210,7 @@ test('same-item local replacement retires server book context, rate, timers and 
  assert.deepEqual(f.engine.policies.at(-1).timer,null);
  f.engine.update({itemId:'file:private-local-item'});await settle();
  assert.deepEqual(paths.filter(path=>path.includes('/items/')),['/v1/items/song/listening']);
- f.engine.update({mode:'direct',itemId:'song',nativeListening:undefined});await settle();
+ f.engine.update({session:{id:'server-return',generation:1,mode:'direct'},itemId:'song',nativeListening:undefined});await settle();
  assert.equal(f.service.getSnapshot().context?.kind,'audiobook_file');
  assert.equal(f.service.getSnapshot().rate,1.5,'old per-playback held rate was not retained');
  assert.equal(paths.filter(path=>path.includes('/items/')).length,2);
@@ -220,7 +220,7 @@ test('late server context and chapter responses cannot rebind a local source',as
  let context!:(value:unknown)=>void;
  const paths:string[]=[];
  const f=setup(t,{request:async path=>{paths.push(path);if(path==='/v1/listening/preferences')return wrapped(prefs);return new Promise(resolve=>{context=resolve;});}});
- await settle();f.engine.update({mode:'local'});
+ await settle();f.engine.update({session:{id:'local:source',generation:1,mode:'local'}});
  context(wrapped({itemId:'song',libraryId:'library',kind:'audiobook_file',bookId:'book'}));await settle();
  assert.equal(f.service.getSnapshot().context,null);assert.equal(f.service.getSnapshot().rate,1);
  assert.deepEqual(paths.filter(path=>path.includes('/items/')),['/v1/items/song/listening']);
@@ -228,7 +228,7 @@ test('late server context and chapter responses cannot rebind a local source',as
  const g=setup(t,{request:async path=>{if(path==='/v1/listening/preferences')return wrapped(prefs);if(path.includes('/chapters'))return new Promise(resolve=>{chapterPending.resolve=resolve;});return wrapped({itemId:'song',libraryId:'library',kind:'audiobook_file',bookId:'book'});}});
  await settle();const setting=g.service.setTimer('chapter');await settle();
  assert.equal(g.service.getSnapshot().timerLoading,true);
- g.engine.native=true;g.engine.update({mode:'local'});
+ g.engine.native=true;g.engine.update({session:{id:'local:source',generation:1,mode:'local'}});
  chapterPending.resolve?.(chapterData());await setting;
  assert.equal(g.service.getSnapshot().context,null);assert.equal(g.service.getSnapshot().timer,null);assert.equal(g.service.getSnapshot().timerLoading,false);
  assert.equal(g.engine.policies.at(-1).preferences,null);assert.equal(g.engine.policies.at(-1).timer,null);
@@ -237,7 +237,7 @@ test('late server context and chapter responses cannot rebind a local source',as
 test('a synchronous local replacement during rate publication cannot apply the retired book rate',async t=>{
  const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'})});
  let replaced=false;
- f.service.subscribe(()=>{if(!replaced&&f.service.getSnapshot().rate===1.5){replaced=true;f.engine.update({mode:'local'});}});
+ f.service.subscribe(()=>{if(!replaced&&f.service.getSnapshot().rate===1.5){replaced=true;f.engine.update({session:{id:'local:source',generation:1,mode:'local'}});}});
  await settle();
  assert.equal(replaced,true);assert.equal(f.service.getSnapshot().context,null);assert.equal(f.service.getSnapshot().rate,1);
  assert.equal(f.engine.rates.includes(1.5),false);
