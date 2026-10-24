@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {transformTsx} from './transform-tsx.mjs';
+import {parseShortInvitationCode} from '@core/short-invitation-code.ts';
 
 registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
@@ -13,10 +14,13 @@ const {shortInvitationCodeDisplay, shortInvitationCodePlaceholder, shortInvitati
 
 test('the typed invitation code is one normal sixteen-symbol value shown in four groups', () => {
   assert.equal(shortInvitationCodePlaceholder, 'XXXX XXXX XXXX XXXX');
-  for (const raw of ['008J4CT4ANK7F24S', '008j4ct4ank7f24s', '008J-4CT4-ANK7-F24S', '008J 4CT4 ANK7 F24S', '  008J-4CT4-ANK7-F24S  ']) {
+  for (const raw of ['008J4CT4ANK7F24S', '008J-4CT4-ANK7-F24S', '008J 4CT4 ANK7 F24S', '  008J-4CT4-ANK7-F24S  ']) {
     assert.equal(shortInvitationCodeDisplay(raw), '008J 4CT4 ANK7 F24S');
     assert.equal(shortInvitationCodeValue(shortInvitationCodeDisplay(raw)), '008J4CT4ANK7F24S');
+    assert.equal(parseShortInvitationCode(shortInvitationCodeValue(shortInvitationCodeDisplay(raw))), '008J4CT4ANK7F24S');
   }
+  assert.equal(shortInvitationCodeDisplay('008j4ct4ank7f24s'), '008j 4ct4 ank7 f24s');
+  assert.equal(parseShortInvitationCode(shortInvitationCodeValue(shortInvitationCodeDisplay('008j4ct4ank7f24s'))), '008J4CT4ANK7F24S');
   assert.equal(shortInvitationCodeDisplay('008J4CT4ANK7F24SXYZ'), '008J 4CT4 ANK7 F24S');
   assert.equal(shortInvitationCodeDisplay('008J4CT4ANK'), '008J 4CT4 ANK');
 });
