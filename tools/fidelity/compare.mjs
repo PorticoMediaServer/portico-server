@@ -95,7 +95,11 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
       }
     }
     for (const property of paintStyles) {
+      if (unavailable(reference, node, property) || unavailable(actual, other, property)) continue;
       if (['transform', 'transformOrigin'].includes(property) && identityTransform(node.style?.transform) && identityTransform(other.style?.transform)) continue;
+      if (node.style?.[property] !== other.style?.[property] && (node.style?.[property] == null || other.style?.[property] == null)) {
+        differences.push({kind: 'unavailable-measurement', label, property, reason: 'Paint style was not observed on both sides'}); continue;
+      }
       if (!samePaint(node.style?.[property], other.style?.[property])) add(property, node.style?.[property], other.style?.[property]);
     }
     if (!unavailable(reference, node, 'effectiveOpacity') && !unavailable(actual, other, 'effectiveOpacity') && Math.abs(Number(node.effectiveOpacity ?? node.style?.opacity ?? 1) - Number(other.effectiveOpacity ?? other.style?.opacity ?? 1)) > policy.opacity) add('effectiveOpacity', node.effectiveOpacity ?? node.style?.opacity, other.effectiveOpacity ?? other.style?.opacity);
@@ -113,6 +117,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     }
     if (node.image?.kind !== other.image?.kind) add('image-slot.kind', node.image?.kind, other.image?.kind);
     if (node.image?.kind === 'image' && node.image.loaded !== other.image?.loaded) add('image-slot.loaded', node.image.loaded, other.image?.loaded);
+    if (node.image?.kind === 'icon' || other.image?.kind === 'icon') diagnostics.push({label, property: 'icon.identity/contents', scored: false, reason: 'Icon slot geometry/style is measured; SVG paths, sprite references and artwork contents are excluded. A matching slot does not establish glyph identity.'});
     for (const property of unscored) {
       const a = node[property] ?? node.style?.[property], b = other[property] ?? other.style?.[property];
       if (JSON.stringify(a) !== JSON.stringify(b)) diagnostics.push({label, property, expected: a, actual: b, scored: false});
