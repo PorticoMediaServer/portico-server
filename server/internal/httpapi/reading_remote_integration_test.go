@@ -197,8 +197,11 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 					if authErr != nil {
 						t.Fatal("real remote actor after refusal", authErr)
 					}
-					_, _, sourceErr := d.Reading.Prepare(context.Background(), p, item.ID, item.SourceID)
-					t.Fatal("real remote prepare", w.Code, w.Body.String(), "private source stage", sourceErr)
+					session, _, sourceErr := d.Reading.Prepare(context.Background(), p, item.ID, item.SourceID)
+					if session != nil {
+						_ = d.Reading.CloseSession(p, session.ID)
+					}
+					t.Fatal("real remote prepare", item.Format, w.Code, w.Body.String(), "private source stage", sourceErr)
 				}
 				base := "/v1/reading/sessions/" + manifest.SessionID
 				if !savedProfile {

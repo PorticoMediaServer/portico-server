@@ -23,7 +23,7 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	}
 	m = metadata("post_reading_sessions", "POST", "/v1/reading/sessions", "Open an authorized reading publication", apikit.ScopePlayback)
 	// Preparing an EPUB/comic inspects bounded source bytes. A valid paced
-	// remote read must not inherit the catalogue page's30s budget.
+	// remote read must not inherit the catalogue page's five-second budget.
 	m.Lane, m.Admission = apikit.Media, laneMediaBody
 	m.BodyLimit = 4096
 	if err := apikit.RegisterHTTP[ReadingSessionRequest, ReadingSessionResponse](registry, m); err != nil {
