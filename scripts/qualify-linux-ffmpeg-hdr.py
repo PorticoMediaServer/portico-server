@@ -41,7 +41,8 @@ def main():
     if digest(oracle) != libdovi['oracleSHA256']:
         raise ValueError('Official source-built test oracle changed')
     inputs = {'qualify-linux-ffmpeg-hdr.py': Path(__file__).resolve(),
-              'contract.json': contract_file}
+              'contract.json': contract_file,
+              'verify-hdr10plus-encode.py': root / 'scripts/verify-hdr10plus-encode.py'}
     for key, entry in contract['inputs'].items():
         path = root / entry['path']
         if digest(path) != entry['sha256']:
@@ -140,13 +141,24 @@ python3 /inputs/qualify-dovi-join.py --fixtures /inputs/join-fixtures --hdr-fixt
             join['joinedCases'] != join_contract['gate']['positive'] or
             join['refusalCases'] != join_contract['gate']['refused']):
         raise ValueError('Canonical corrected dual-PID fixture gate did not pass')
+    encode_report = stage / 'runtime/hdr10plus-encode.json'
+    subprocess.run(['python3', str(stage / 'verify-hdr10plus-encode.py'),
+        '--ffmpeg', str(prefix / 'bin/ffmpeg'), '--ffprobe', str(prefix / 'bin/ffprobe'),
+        '--fixtures', str(fixtures), '--scratch', str(stage / 'runtime/hdr10plus-encode'),
+        '--report', str(encode_report)], check=True)
+    hdr_encode = json.loads(encode_report.read_text())
+    if (hdr_encode.get('passed') is not True or hdr_encode.get('encoder') != 'libx265' or
+            hdr_encode.get('frames') != 24 or hdr_encode.get('metadataFrames') != 24 or
+            hdr_encode.get('perFrameMetadataIdentical') is not True or
+            hdr_encode.get('ffmpegSHA256') != pair['ffmpeg'] or hdr_encode.get('ffprobeSHA256') != pair['ffprobe']):
+        raise ValueError('Canonical libx265 HDR10+ encoder gate did not pass')
     if any(digest(prefix / 'bin' / name) != value for name, value in pair.items()):
         raise ValueError('Canonical executable pair changed during encoded-video gate')
     result = {'schema': 1, 'qualified': True, 'target': 'linux-x64', 'binarySHA256': pair,
         'inputs': hashes, 'sourceArchiveSHA256': rounds[0]['sourceArchiveSHA256'],
         'qualificationPrefixSealSHA256': digest(work / 'qualification-prefix-files.json'),
         'fixtureManifestSHA256': contract['inputs']['fixtureManifest']['sha256'],
-        'video': video, 'hdr10plus': hdr, 'join': join,
+        'video': video, 'hdr10plus': hdr, 'hdr10plusEncode': hdr_encode, 'join': join,
         'joinFixtureManifestSHA256': contract['inputs']['joinManifest']['sha256'],
         'joinPatchSHA256': join_contract['patchSha256'], 'scope': contract['scope']}
     result_file.write_text(json.dumps(result, indent=2) + '\n')

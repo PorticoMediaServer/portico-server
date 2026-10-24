@@ -41,3 +41,8 @@ LGPL-2.1-or-later licence and upstream 180-second default. Portico's disc reader
 selects 60 seconds explicitly. Target verification must decode the checked
 short BDMV and UDF title through FFmpeg's own protocol; source inspection and
 portico-disc's structure probe do not establish that playback works.
+
+The libx265 HDR10+ adapter follows FFmpeg's registered ITU-T T.35 encoding
+used by its libaom adapter, using the existing libavutil serializer. It remains
+under the source file's LGPL-2.1-or-later terms. Per-frame target encode proof
+is required; encoder names do not establish preservation through a pipeline.

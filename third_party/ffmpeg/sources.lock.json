@@ -430,6 +430,11 @@
         "path": "third_party/ffmpeg/portico-bluray-playlist-minimum.patch",
         "sha256": "4d475459c9688dcc11229a680fa87cc34733422025a76a069aee1ec8ac29c52c",
         "qualification": "Actual protocol help default180/min0 and 60-second selected-title BDMV/UDF fixture decode required; default unchanged."
+      },
+      {
+        "path": "third_party/ffmpeg/portico-x265-hdr10plus.patch",
+        "sha256": "a9a191eb861f49f1f941c0c7472853837b3007f53a462a102c379c622254cb96",
+        "qualification": "Actual per-frame libx265 target encode gate; no hardware, scaling or tone-map preservation grant."
       }
     ]
   },
@@ -602,6 +607,6 @@
   },
   "sourceAuthority": {
     "path": "third_party/ffmpeg/source-authority.v1.json",
-    "sha256": "2130e2f4c8a8350fe74f1f50cb7776d8eeaf3466d673b177eadda68d797c186a"
+    "sha256": "182986c0bf405e0d8c4a4fcdd7cbad926d6f0efc08d1aae905085844805fd2c9"
   }
 }
