@@ -17320,6 +17320,34 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminBackupSettingsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminBackupSettingsResponse": {
+    "properties": {
+      "backupFolder": {
+        "type": "string"
+      },
+      "includeArtwork": {
+        "type": "boolean"
+      },
+      "passphraseProtected": {
+        "type": "boolean"
+      },
+      "passphraseSet": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "backupFolder",
+      "includeArtwork",
+      "passphraseProtected",
+      "passphraseSet"
+    ],
+    "type": "object"
+  },
   "GetAdminBackupsRequest": {
     "properties": {},
     "required": [],
@@ -17337,6 +17365,9 @@ export const schemas = {
             },
             "createdAt": {
               "type": "string"
+            },
+            "encrypted": {
+              "type": "boolean"
             },
             "id": {
               "type": "string"
@@ -17368,6 +17399,27 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "lastBackup": {
+        "properties": {
+          "backupId": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "outcome"
+        ],
+        "type": "object"
       },
       "lastRestore": {
         "properties": {
@@ -150210,6 +150262,37 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAdminBackupsInspectRequest": {
+    "properties": {
+      "source": {
+        "properties": {
+          "backupId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
+    },
+    "required": [
+      "source"
+    ],
+    "type": "object"
+  },
+  "PostAdminBackupsInspectResponse": {
+    "properties": {
+      "encrypted": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "encrypted"
+    ],
+    "type": "object"
+  },
   "PostAdminBackupsRequest": {
     "properties": {
       "operationId": {
@@ -150235,6 +150318,9 @@ export const schemas = {
   "PostAdminBackupsRestoreRequest": {
     "properties": {
       "operationId": {
+        "type": "string"
+      },
+      "passphrase": {
         "type": "string"
       },
       "source": {
@@ -177357,6 +177443,47 @@ export const schemas = {
       "limits",
       "profileNames",
       "liveState"
+    ],
+    "type": "object"
+  },
+  "PutAdminBackupSettingsRequest": {
+    "properties": {
+      "backupFolder": {
+        "type": "string"
+      },
+      "includeArtwork": {
+        "type": "boolean"
+      },
+      "passphrase": {
+        "type": "string"
+      },
+      "passphraseProtected": {
+        "type": "boolean"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "PutAdminBackupSettingsResponse": {
+    "properties": {
+      "backupFolder": {
+        "type": "string"
+      },
+      "includeArtwork": {
+        "type": "boolean"
+      },
+      "passphraseProtected": {
+        "type": "boolean"
+      },
+      "passphraseSet": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "backupFolder",
+      "includeArtwork",
+      "passphraseProtected",
+      "passphraseSet"
     ],
     "type": "object"
   },

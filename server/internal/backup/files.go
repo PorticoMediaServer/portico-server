@@ -3,10 +3,12 @@ package backup
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/storagepaths"
@@ -25,6 +27,10 @@ func stateFiles() []string { return []string{"portico.toml", "Metadata", "Keys"}
 // copyStateFiles copies the state file set from state into the staging folder
 // at the same relative paths, and returns the manifest entries. Names use "/".
 func copyStateFiles(state, partial string) ([]FileEntry, error) {
+	return copyStateFilesForBackup(context.Background(), state, partial, false)
+}
+
+func copyStateFilesForBackup(ctx context.Context, state, partial string, includeArtwork bool) ([]FileEntry, error) {
 	entries := []FileEntry{}
 	for _, rel := range stateFiles() {
 		src := storagepaths.Path(state, filepath.FromSlash(rel))
@@ -71,6 +77,15 @@ func copyStateFiles(state, partial string) ([]FileEntry, error) {
 				return err
 			}
 			name = filepath.ToSlash(name)
+			if !includeArtwork && excludedDownloadedMetadata(name) {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return ErrSourceInvalid
+			}
 			if entry.IsDir() {
 				return os.MkdirAll(filepath.Join(partial, filepath.FromSlash(name)), 0700)
 			}
@@ -79,9 +94,9 @@ func copyStateFiles(state, partial string) ([]FileEntry, error) {
 				return err
 			}
 			if !info.Mode().IsRegular() {
-				return nil
+				return ErrSourceInvalid
 			}
-			fileEntry, err := copyOneFile(path, filepath.Join(partial, filepath.FromSlash(name)), name)
+			fileEntry, err := copyOneFileContext(ctx, path, filepath.Join(partial, filepath.FromSlash(name)), name, nil)
 			if err != nil {
 				return err
 			}
@@ -91,6 +106,13 @@ func copyStateFiles(state, partial string) ([]FileEntry, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	if !includeArtwork {
+		owner, err := copyOwnerArtwork(ctx, state, partial)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, owner...)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries, nil
@@ -118,6 +140,10 @@ func copyOneFileContext(ctx context.Context, src, dst, name string, progress fun
 		return entry, err
 	}
 	defer in.Close()
+	opened, err := in.Stat()
+	if err != nil || !os.SameFile(info, opened) {
+		return entry, ErrSourceInvalid
+	}
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return entry, err
@@ -163,16 +189,26 @@ func copyOneFileContext(ctx context.Context, src, dst, name string, progress fun
 	if err != nil {
 		return entry, err
 	}
+	after, statErr := in.Stat()
+	current, pathErr := os.Lstat(src)
+	if statErr != nil || pathErr != nil || !os.SameFile(info, current) || !os.SameFile(info, after) || after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) || written != info.Size() {
+		return entry, ErrIntegrity
+	}
 	entry.Bytes = written
 	entry.SHA256 = hex.EncodeToString(hash.Sum(nil))
 	return entry, nil
 }
 
 // writeManifest stores manifest.json in a finished staging folder.
+const maxManifestBytes = 64 << 20
+
 func writeManifest(partial string, manifest Manifest) error {
 	raw, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
+	}
+	if len(raw) > maxManifestBytes {
+		return ErrInvalid
 	}
 	raw = append(raw, '\n')
 	if err = durableFile(filepath.Join(partial, ManifestName), raw); err != nil {
@@ -187,9 +223,21 @@ func readManifest(dir string) (Manifest, error) {
 	if err := regularManifestFile(dir, ManifestName); err != nil {
 		return manifest, err
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, ManifestName))
+	info, err := os.Stat(filepath.Join(dir, ManifestName))
+	if err != nil || info.Size() > maxManifestBytes {
+		return manifest, ErrSourceInvalid
+	}
+	file, err := os.Open(filepath.Join(dir, ManifestName))
 	if err != nil {
 		return manifest, err
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, maxManifestBytes+1))
+	file.Close()
+	if err != nil {
+		return manifest, err
+	}
+	if len(raw) > maxManifestBytes {
+		return manifest, ErrSourceInvalid
 	}
 	if err = json.Unmarshal(raw, &manifest); err != nil {
 		return manifest, err
@@ -218,7 +266,7 @@ func readManifest(dir string) (Manifest, error) {
 
 // estimate sizes the coming backup: the database, its WAL, and the state
 // files. The free-space check multiplies this by 1.1.
-func (s *Service) estimate() (int64, error) {
+func (s *Service) estimate(ctx context.Context, includeArtwork bool) (int64, error) {
 	var total int64
 	for _, name := range []string{"Database/server.sqlite", "Database/server.sqlite-wal"} {
 		if info, err := os.Stat(storagepaths.Path(s.state, name)); err == nil && info.Mode().IsRegular() {
@@ -237,6 +285,14 @@ func (s *Service) estimate() (int64, error) {
 		}
 		confOnly := rel == "managed-storage"
 		_ = filepath.WalkDir(src, func(path string, entry fs.DirEntry, err error) error {
+			name, _ := filepath.Rel(s.state, path)
+			name = filepath.ToSlash(name)
+			if !includeArtwork && excludedDownloadedMetadata(name) {
+				if entry != nil && entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			if err != nil || entry.IsDir() {
 				return nil
 			}
@@ -248,6 +304,13 @@ func (s *Service) estimate() (int64, error) {
 			}
 			return nil
 		})
+	}
+	if !includeArtwork {
+		var ownerBytes int64
+		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(sum(bytes),0) FROM artwork_objects WHERE digest IN (`+ownerArtworkReferences+`)`).Scan(&ownerBytes); err != nil {
+			return 0, err
+		}
+		total += ownerBytes
 	}
 	if total < 1<<20 {
 		total = 1 << 20
@@ -381,3 +444,85 @@ func hashFile(ctx context.Context, folder, name string) (FileEntry, error) {
 	entry.Bytes, entry.SHA256 = size, hex.EncodeToString(hash.Sum(nil))
 	return entry, nil
 }
+
+// Owner references come from the exact finalized SQLite snapshot, including undo
+// history. Remote images are excluded unless explicitly selected/edited by an owner.
+func copyOwnerArtwork(ctx context.Context, state, partial string) ([]FileEntry, error) {
+	u := url.URL{Scheme: "file", Path: filepath.Join(partial, DatabaseName), RawQuery: "mode=ro"}
+	db, e := sql.Open("sqlite", u.String())
+	if e != nil {
+		return nil, e
+	}
+	defer db.Close()
+	rows, e := db.QueryContext(ctx, ownerArtworkReferences)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	entries := []FileEntry{}
+	for rows.Next() {
+		var digest string
+		if e = rows.Scan(&digest); e != nil {
+			return nil, e
+		}
+		raw, e := hex.DecodeString(digest)
+		if e != nil || len(raw) != sha256.Size {
+			return nil, ErrIntegrity
+		}
+		name := "Metadata/artwork/" + digest + ".img"
+		entry, e := copyOneFileContext(ctx, filepath.Join(state, filepath.FromSlash(name)), filepath.Join(partial, filepath.FromSlash(name)), name, nil)
+		if e != nil {
+			return nil, e
+		}
+		if entry.SHA256 != digest {
+			return nil, ErrIntegrity
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+// Keys/config must remain stable across the online database snapshot. Their
+// writers use atomic files; a concurrent rotation makes this run fail closed.
+func authorityFingerprint(ctx context.Context, state string) (string, error) {
+	h := sha256.New()
+	for _, name := range []string{"portico.toml", "Keys"} {
+		root := filepath.Join(state, name)
+		e := filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
+			if os.IsNotExist(e) && p == root {
+				return nil
+			}
+			if e != nil {
+				return e
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !d.Type().IsRegular() {
+				return ErrSourceInvalid
+			}
+			entry, e := hashFile(ctx, state, filepath.ToSlash(mustRelative(state, p)))
+			if e != nil {
+				return e
+			}
+			b, _ := json.Marshal(entry)
+			h.Write(b)
+			return nil
+		})
+		if e != nil {
+			return "", e
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+func mustRelative(root, p string) string { r, _ := filepath.Rel(root, p); return r }
+
+func excludedDownloadedMetadata(name string) bool {
+	return name == "Metadata/artwork" || name == "Metadata/people" || name == "Metadata/guide-images" || name == "Metadata/analysis-artifacts"
+}
+
+const ownerArtworkReferences = `SELECT digest FROM artwork_uploads UNION SELECT thumbnail_digest FROM artwork_uploads
+ UNION SELECT digest FROM artwork_selections WHERE locked=1 OR actor<>''
+ UNION SELECT thumbnail_digest FROM artwork_selections WHERE locked=1 OR actor<>''
+ UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.before_json) j JOIN artwork_objects o ON o.digest=j.value WHERE j.type='text'
+ UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.after_json) j JOIN artwork_objects o ON o.digest=j.value WHERE j.type='text'`
