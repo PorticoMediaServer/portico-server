@@ -145,7 +145,6 @@ export function fieldSelectionSummary(field: BrowseFieldCapability, predicates: 
   let low: unknown, high: unknown;
   for (const p of mine) {
     switch (p.operator) {
-    case 'within-last-days': return p.value === 365 ? t('filter.preset.lastYear') : t('filter.preset.lastDays', {count: Number(p.value)});
       case 'between': if (Array.isArray(p.value)) { low = p.value[0]; high = p.value[1]; } break;
       case 'at-least': case 'greater-than': low = p.value; break;
       case 'at-most': case 'less-than': high = p.value; break;

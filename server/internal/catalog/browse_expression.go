@@ -949,11 +949,11 @@ var ErrBrowsePersonalField = browseIssue("query", "watched, favorite, watchlist,
 // catalog_browse_rows aliased `e`, for shared surfaces outside the browse routes
 // (Library Channels). Personal fields are refused: a shared surface has no
 // single viewer. Additive: the browse routes do not use it.
-func CompileBrowseSelection(node *BrowseNode) (string, []any, error) {
+func CompileBrowseSelection(node *BrowseNode, evaluation ...time.Time) (string, []any, error) {
 	if BrowseNodePersonal(node) {
 		return "", nil, ErrBrowsePersonalField
 	}
-	c := &browseCompiler{}
+	c := &browseCompiler{now: browseSelectionInstant(evaluation)}
 	where, err := c.compile(node)
 	if err != nil {
 		return "", nil, err
@@ -963,11 +963,11 @@ func CompileBrowseSelection(node *BrowseNode) (string, []any, error) {
 
 // CompileCompactBrowseSelection shares the validated non-personal vocabulary
 // with Library Channels over catalog_browse_rows aliased e.
-func CompileCompactBrowseSelection(node *BrowseNode) (string, []any, error) {
+func CompileCompactBrowseSelection(node *BrowseNode, evaluation ...time.Time) (string, []any, error) {
 	if BrowseNodePersonal(node) {
 		return "", nil, ErrBrowsePersonalField
 	}
-	c := &browseCompiler{}
+	c := &browseCompiler{now: browseSelectionInstant(evaluation)}
 	where, err := c.compile(node)
 	if err != nil {
 		return "", nil, err

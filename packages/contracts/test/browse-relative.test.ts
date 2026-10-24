@@ -14,7 +14,7 @@ async function decoder() {
 
 test('published relative browse predicate advertises date fields and whole day limits', async () => {
  const relative=nodeSchema.oneOf.find((s:any)=>s.properties?.operator?.enum?.includes('within-last-days'));
- assert.deepEqual(relative.properties.field.enum,['dateAdded','releaseDate','lastPlayedAt']);
+ assert.deepEqual([...relative.properties.field.enum].sort(),['dateAdded','lastPlayedAt','releaseDate']);
  assert.deepEqual(relative.properties.value,{type:'integer',minimum:1,maximum:36500});
  const api=await decoder();
  for(const field of relative.properties.field.enum)for(const value of [1,30,36500]) {

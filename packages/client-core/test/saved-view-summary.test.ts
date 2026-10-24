@@ -96,7 +96,7 @@ test('relative date summaries retain their meaning on later days and use the §3
   t.mock.timers.enable({apis: ['Date'], now: new Date('2026-10-23T12:00:00Z')});
   for (const count of [1, 7, 30, 90, 365, 36500]) {
     const d = definition(node('dateAdded', 'within-last-days', count), 'added', 'desc');
-    const expected = `Added in the last ${count} days. Newest first.`;
+    const expected = `Added in the last ${new Intl.NumberFormat(defaultI18n.locale).format(count)} days. Newest first.`;
     assert.equal(savedViewSummary(d, caps, defaultI18n)?.line, expected);
     t.mock.timers.tick(86400000);
     assert.equal(savedViewSummary(d, caps, defaultI18n)?.line, expected);

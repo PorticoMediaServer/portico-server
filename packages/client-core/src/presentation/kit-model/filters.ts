@@ -14,16 +14,17 @@ const operators = {
   'greater-than': 'next.kit.filter.greaterThan', 'at-most': 'next.kit.filter.atMost', 'less-than': 'next.kit.filter.lessThan',
   between: 'next.kit.filter.between', 'starts-with': 'next.kit.filter.startsWith',
   contains: 'next.kit.filter.contains', 'contains-any': 'next.kit.filter.containsAny', 'contains-all': 'next.kit.filter.containsAll',
-} as const satisfies Record<FilterOperator, KitMessageId>;
+} as const satisfies Record<Exclude<FilterOperator, 'within-last-days'>, KitMessageId>;
 
 /** Value labels come from the capability owner; arbitrary metadata punctuation is preserved. */
 export function appliedFilterParts(predicate: AppliedFilter, fieldName: (id: string) => string, env: TextEnvironment, valueName: (value: string | number) => string = String): AppliedFilterModel {
   const {t} = env, fieldId = predicate.field === 'decade' ? 'year' : predicate.field;
   const presence = predicate.operator === 'is-present' ? 'present' : predicate.operator === 'is-missing' ? 'missing' : undefined;
   const raw = Array.isArray(predicate.value) ? predicate.value : [predicate.value];
-  const values = presence ? [] : raw.filter((v): v is string | number | boolean => v !== null && v !== undefined && (typeof v !== 'number' || Number.isFinite(v))).map((v, i) => part(`value-${i}`, typeof v === 'boolean' ? t(v ? 'next.kit.yes' : 'next.kit.no') : predicate.field === 'decade' ? t('next.kit.filter.decade', {year: String(v)}) : valueName(v), 'value'));
+  const relative = predicate.operator === 'within-last-days';
+  const values = presence || relative ? [] : raw.filter((v): v is string | number | boolean => v !== null && v !== undefined && (typeof v !== 'number' || Number.isFinite(v))).map((v, i) => part(`value-${i}`, typeof v === 'boolean' ? t(v ? 'next.kit.yes' : 'next.kit.no') : predicate.field === 'decade' ? t('next.kit.filter.decade', {year: String(v)}) : valueName(v), 'value'));
   return Object.freeze({rawValue: predicate.value, fieldId, field: part('field', fieldName(fieldId), 'context'), operator: predicate.operator,
-    operatorPart: part('operator', t(operators[predicate.operator]), 'context'), values: Object.freeze(values),
+    operatorPart: part('operator', predicate.operator === 'within-last-days' ? predicate.value === 365 ? t('filter.preset.lastYear') : t('filter.preset.lastDays', {count: Number(predicate.value)}) : t(operators[predicate.operator]), 'context'), values: Object.freeze(values),
     negated: predicate.operator === 'not-equals' || predicate.operator === 'not-in' || predicate.operator === 'is-missing', presence,
   });
 }

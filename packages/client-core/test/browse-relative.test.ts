@@ -31,3 +31,12 @@ test('relative values are bounded whole day counts on both parsing and query val
     assert.throws(() => validateBrowseQuery(capabilities, node as never));
   }
 });
+
+test('kit filter parts reuse preset words for relative recency', async () => {
+  const {appliedFilterParts} = await import('../src/presentation/kit-model/filters.ts');
+  for (const value of [30, 365]) {
+    const parts = appliedFilterParts({field:'dateAdded',operator:'within-last-days',value}, ()=>'Date added', {t:defaultI18n.t});
+    assert.equal(parts.operatorPart.text, value === 365 ? defaultI18n.t('filter.preset.lastYear') : 'In the last 30 days');
+    assert.deepEqual(parts.values, []);
+  }
+});
