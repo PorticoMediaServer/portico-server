@@ -12,6 +12,7 @@ function fixture() {
     getSnapshot: () => state,
     subscribeAuthorityRetired: (listener: () => void) => {retired.add(listener);return () => {retired.delete(listener);};},
     signIn: async () => {throw new Error('A member move must not fall back to ordinary sign-in.');},
+    resetLocalPassword: async () => {throw new Error('A member move must not use a password-reset proof.');},
     redeemLocalMove: async (username: string, password: string) => {calls.push(['move', username, password]);await write;state = {phase: result};},
     completeChallenge: async (code: string) => {calls.push(['challenge', code]);state = {phase: 'two-step-setup'};},
     beginRequiredTwoStep: async (password: string) => {
