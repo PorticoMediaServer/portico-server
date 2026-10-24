@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/storage"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -39,7 +40,9 @@ func TestRealSTRMApprovedLANProbeRangeAndRevocation(t *testing.T) {
 	if out, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("fixture %s %v", out, e)
 	}
+	var originRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		originRequests.Add(1)
 		if r.URL.Path == "/media/redirect.mp4" {
 			http.Redirect(w, r, "/media/movie.mp4?credential=private", 302)
 			return
@@ -75,7 +78,7 @@ func TestRealSTRMApprovedLANProbeRangeAndRevocation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, item, _ := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "item", "Movie", compactcatalog.Asset{Path: descriptor, Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Container: "strm"})
+	_, item, remoteAsset := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "item", "Movie", compactcatalog.Asset{Path: descriptor, Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Container: "strm"})
 	hash := identity.Digest("access")
 	insertFixtureSession(t, db, hash, "owner", "profile", "owner", time.Now().UTC().Add(time.Hour).Format(time.RFC3339))
 	binary, e := os.Executable()
@@ -114,6 +117,53 @@ func TestRealSTRMApprovedLANProbeRangeAndRevocation(t *testing.T) {
 	again, e := s.CreateContext(ctx, p, item, "automatic", "allowed")
 	if e != nil || again.ID != session.ID {
 		t.Fatal("STRM receipt retry failed", e)
+	}
+	// A named STRM alternate of a locally preferred version must prepare and
+	// play that alternate, rather than silently preparing the default file.
+	mediaInfo, e := os.Stat(media)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, localItem, localAsset := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "item", "Movie", compactcatalog.Asset{Path: media, Size: mediaInfo.Size(), ModifiedNS: mediaInfo.ModTime().UnixNano(), Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 160, Height: 90, Duration: 2})
+	if localItem != item {
+		t.Fatal("alternate fixture is not linked to the same title")
+	}
+	if best, err := s.SelectedAsset(ctx, item, nil); err != nil || best != localAsset {
+		t.Fatal("local file is not the default version", best, err)
+	}
+	selectedRemote, e := s.CreateV1(ctx, p, item, "explicit-remote-alternate", V1Choice{AssetID: remoteAsset, QualityID: "original"}, nil)
+	if e != nil {
+		t.Fatal("explicit STRM alternate did not play", e)
+	}
+	var acceptedAsset string
+	if err := db.QueryRow(`SELECT asset_id FROM playback_sessions WHERE id=?`, selectedRemote.ID).Scan(&acceptedAsset); err != nil || acceptedAsset != remoteAsset {
+		t.Fatal("wrong remote version accepted", acceptedAsset, err)
+	}
+	// Make the remote file preferred, then explicitly play local. An upstream
+	// refusal cannot affect a version that does not use that origin at all.
+	mustAudioExec(t, db, `UPDATE catalog_assets SET height=2160 WHERE token=?`, remoteAsset)
+	if best, err := s.SelectedAsset(ctx, item, nil); err != nil || best != remoteAsset {
+		t.Fatal("remote file is not the default version", best, err)
+	}
+	beforeLocal := originRequests.Load()
+	selectedLocal, e := s.CreateV1(ctx, p, item, "explicit-local-alternate", V1Choice{AssetID: localAsset, QualityID: "original"}, nil)
+	if e != nil {
+		t.Fatal("local selection inspected an unselected remote default", e)
+	}
+	if originRequests.Load() != beforeLocal {
+		t.Fatal("local selection fetched the unselected remote default")
+	}
+	if err := db.QueryRow(`SELECT asset_id FROM playback_sessions WHERE id=?`, selectedLocal.ID).Scan(&acceptedAsset); err != nil || acceptedAsset != localAsset {
+		t.Fatal("wrong local version accepted", acceptedAsset, err)
+	}
+	// A valid asset from a different title is not a selectable alternate and
+	// must be rejected before touching the otherwise-default remote source.
+	_, _, foreignAsset := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "other", "Other", compactcatalog.Asset{Path: filepath.Join(root, "foreign.mp4"), Container: "mp4", VideoCodec: "h264", AudioCodec: "aac"})
+	if _, e = s.CreateV1(ctx, p, item, "foreign-version", V1Choice{AssetID: foreignAsset, QualityID: "original"}, nil); e == nil {
+		t.Fatal("foreign asset was accepted as a version")
+	}
+	if originRequests.Load() != beforeLocal {
+		t.Fatal("foreign version triggered remote source inspection")
 	}
 	if _, e = s.ApproveNetworkRoots(ctx, "lib", nil); e != nil {
 		t.Fatal(e)

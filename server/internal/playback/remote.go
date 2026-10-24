@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"portico.local/server/internal/assets"
-	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/remotemedia"
@@ -126,9 +125,9 @@ func (r *Remote) source(ctx context.Context, asset, library string) (*remotemedi
 	client, e := remotemedia.New(ctx, locator, policy)
 	return client, identity.Digest(descriptor.Data), rev, e
 }
-func (r *Remote) prepare(ctx context.Context, item string) (*remotePreparation, error) {
+func (r *Remote) prepare(ctx context.Context, item, selectedAsset string) (*remotePreparation, error) {
 	var asset, library, container string
-	if e := r.db.QueryRow(`SELECT a.token,cl.library_id,a.container FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND a.available=1 ORDER BY `+compactcatalog.BestVersionOrder("l", "a")+` LIMIT 1`, item).Scan(&asset, &library, &container); e != nil {
+	if e := dbwork.QueryRow(ctx, r.db, `SELECT a.token,cl.library_id,a.container FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND a.token=? AND a.available=1`, item, selectedAsset).Scan(&asset, &library, &container); e != nil {
 		return nil, e
 	}
 	if container != "strm" {

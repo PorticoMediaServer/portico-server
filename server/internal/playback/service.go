@@ -242,13 +242,19 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	legacyRequest := request
 	request = sessionRequestKey(p, request)
+	// Resolve the viewer's version before any remote inspection. Preparation and
+	// acceptance must describe the same linked asset, including a STRM alternate.
+	var selectedAsset string
+	if e := s.selectAsset(ctx, item, v1).Scan(&selectedAsset); e != nil {
+		return Session{}, e
+	}
 	var prepared *remotePreparation
 	if s.remote != nil {
 		var exists int
 		err := s.db.QueryRow(`SELECT 1 FROM playback_requests WHERE account_id=? AND profile_id=? AND request_id IN(?,?) LIMIT 1`, p.AccountID, p.ProfileID, request, legacyRequest).Scan(&exists)
 		if errors.Is(err, sql.ErrNoRows) {
 			var prepErr error
-			prepared, prepErr = s.remote.prepare(ctx, item)
+			prepared, prepErr = s.remote.prepare(ctx, item, selectedAsset)
 			if prepErr != nil {
 				return Session{}, prepErr
 			}
@@ -256,13 +262,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, err
 		}
 	}
-	var selectedAsset string
-	{
-		if e := s.selectAsset(ctx, item, v1).Scan(&selectedAsset); e != nil {
-			return Session{}, e
-		}
-		s.refreshStreamDetail(ctx, selectedAsset)
-	}
+	s.refreshStreamDetail(ctx, selectedAsset)
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
 	if e != nil {
 		return Session{}, e
