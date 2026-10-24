@@ -15,6 +15,7 @@ def fetch(lock_path, root, *, open_url=urllib.request.urlopen, clock=time.monoto
     lock = json.loads(pathlib.Path(lock_path).read_text())["targets"]["linux-amd64"]
     root = pathlib.Path(root)
     archive = root / "rclone.zip"
+    archive_owned = False
     # Artifact setup has a wall-clock bound of its own; it is not a media
     # provider Retry-After, request deadline or permission to reroute a test.
     deadline = clock() + 120
@@ -28,6 +29,7 @@ def fetch(lock_path, root, *, open_url=urllib.request.urlopen, clock=time.monoto
                 request = urllib.request.Request(url, headers={"User-Agent": "Portico-test-dependency/1"})
                 digest, total = hashlib.sha256(), 0
                 with open_url(request, timeout=min(30, remaining)) as source, archive.open("xb") as target:
+                    archive_owned = True
                     while True:
                         if clock() >= deadline:
                             raise RuntimeError("locked rclone acquisition exceeded 120 seconds")
@@ -47,7 +49,9 @@ def fetch(lock_path, root, *, open_url=urllib.request.urlopen, clock=time.monoto
             except urllib.error.HTTPError as error:
                 if error.code != 403 or index != 0:
                     raise
-                archive.unlink(missing_ok=True)
+                if archive_owned:
+                    archive.unlink(missing_ok=True)
+                    archive_owned = False
                 print("Canonical archive returned 403; using the same-hash official release asset.", flush=True)
         if digest.hexdigest() != lock["sha256"]:
             raise RuntimeError("locked rclone archive digest mismatch")
@@ -62,7 +66,8 @@ def fetch(lock_path, root, *, open_url=urllib.request.urlopen, clock=time.monoto
         print("Official locked rclone archive and executable verified; no owner state used.", flush=True)
         return target
     finally:
-        archive.unlink(missing_ok=True)
+        if archive_owned:
+            archive.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

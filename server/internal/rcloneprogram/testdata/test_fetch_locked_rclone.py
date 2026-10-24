@@ -73,6 +73,15 @@ class Acquisition(unittest.TestCase):
                 fetch_locked.fetch(lock, root, open_url=lambda *_args, **_kwargs: io.BytesIO(b"changed"))
             self.assertFalse((pathlib.Path(root) / "rclone").exists())
 
+    def test_preexisting_archive_is_never_overwritten_or_cleaned(self):
+        with tempfile.TemporaryDirectory() as root:
+            lock, data, _ = self.fixture(root)
+            original = pathlib.Path(root) / "rclone.zip"
+            original.write_bytes(b"retained-original")
+            with self.assertRaises(FileExistsError):
+                fetch_locked.fetch(lock, root, open_url=lambda *_args, **_kwargs: io.BytesIO(data))
+            self.assertEqual(original.read_bytes(), b"retained-original")
+
 
 if __name__ == "__main__":
     unittest.main()
