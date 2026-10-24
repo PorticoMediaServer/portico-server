@@ -220,3 +220,72 @@ test('sequential206, changed revision, false length, excess bytes and oversized 
     f.client.dispose();
   });
 });
+
+async function withoutStreamConstructor(work: () => Promise<void>) {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'ReadableStream');
+  Object.defineProperty(globalThis, 'ReadableStream', {configurable: true, writable: true, value: undefined});
+  try { await work(); assert.equal(typeof globalThis.ReadableStream, 'undefined'); }
+  finally { if (descriptor) Object.defineProperty(globalThis, 'ReadableStream', descriptor); else Reflect.deleteProperty(globalThis, 'ReadableStream'); }
+}
+
+test('constructor-absent sequential scope pulls owned bytes with one reader and no global patch', async () => {
+  const f = setup(); f.manifest.sequential = true; f.manifest.size = 8;
+  const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+  let pulls = 0;
+  const original = Uint8Array.of(1, 2, 3);
+  const response = new Response(new ReadableStream<Uint8Array>({pull(c) { pulls++; c.enqueue(pulls === 1 ? original : Uint8Array.of(4, 5, 6, 7, 8)); if (pulls === 2) c.close(); }}, {highWaterMark: 0}), {headers: {'Content-Type': 'application/pdf', 'Content-Length': '8', 'Accept-Ranges': 'none', ETag: '"' + rev + '"'}});
+  f.hook(() => response);
+  try { await withoutStreamConstructor(async () => {
+    const stream = await session.openSequential(); assert.equal(pulls, 0); assert.equal('tee' in stream, false);
+    const reader = stream.getReader();
+    assert.throws(() => stream.getReader(), TypeError);
+    await assert.rejects(stream.cancel(), TypeError);
+    const first = reader.read();
+    await assert.rejects(reader.read(), coded('stream_busy'));
+    assert.throws(() => reader.releaseLock(), TypeError);
+    const value = (await first).value!; original[0] = 99;
+    assert.deepEqual(value, Uint8Array.of(1, 2, 3)); assert.equal(pulls, 1);
+    assert.deepEqual((await reader.read()).value, Uint8Array.of(4, 5, 6, 7, 8));
+    assert.equal((await reader.read()).done, true); reader.releaseLock();
+    await assert.rejects(reader.read(), TypeError);
+    const ended = stream.getReader(); assert.equal((await ended.read()).done, true); ended.releaseLock();
+    assert.equal(session.signal.aborted, false); assert.equal(f.calls.length, 2);
+  }); } finally { f.client.dispose(); }
+});
+
+test('constructor-absent stream handles stalled child cancel, reader cancel and captured authority retirement', async () => {
+  const f = setup(); f.manifest.sequential = true; f.manifest.size = 5;
+  const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+  let cancelled = 0;
+  const replies = Array.from({length: 3}, () => new Response(new ReadableStream<Uint8Array>({pull() { return new Promise(() => {}); }, cancel() { cancelled++; }}, {highWaterMark: 0}), {headers: {'Content-Type': 'application/pdf', 'Content-Length': '5', 'Accept-Ranges': 'none', ETag: '"' + rev + '"'}}));
+  f.hook(() => replies.shift());
+  try { await withoutStreamConstructor(async () => {
+    const request = new AbortController(), stream = await session.openSequential(request.signal), reader = stream.getReader();
+    const pending = reader.read(); await Promise.resolve(); request.abort();
+    await assert.rejects(pending, coded('cancelled')); reader.releaseLock();
+    assert.equal(cancelled, 1); assert.equal(session.signal.aborted, false);
+    const second = (await session.openSequential()).getReader(), waiting = second.read();
+    await second.cancel(); assert.equal((await waiting).done, true); second.releaseLock();
+    assert.equal(cancelled, 2); assert.equal(session.signal.aborted, false);
+    const third = (await session.openSequential()).getReader(), retired = third.read();
+    await Promise.resolve(); const before = f.calls.length; f.api.setAccessToken('replacement-token');
+    await assert.rejects(retired, coded('cancelled')); third.releaseLock();
+    assert.equal(cancelled, 3); assert.equal(session.signal.aborted, true);
+    await assert.rejects(session.openSequential(), coded('cancelled')); assert.equal(f.calls.length, before);
+    assert.ok(f.calls.every(call => call.headers.get('Authorization') === 'Bearer captured-token'));
+  }); } finally { f.client.dispose(); }
+});
+
+test('constructor-absent stream rejects false EOF and excess bytes without automatic replay', async t => {
+  for (const mismatch of ['short', 'excess', 'network'] as const) await t.test(mismatch, async () => {
+    const f = setup(); f.manifest.sequential = true; f.manifest.size = 5;
+    const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+    const response = new Response(new ReadableStream<Uint8Array>({pull(c) { if (mismatch === 'network') c.error(new Error('https://private-origin.invalid/secret')); else { c.enqueue(new Uint8Array(mismatch === 'short' ? 4 : 6)); c.close(); } }}, {highWaterMark: 0}), {headers: {'Content-Type': 'application/pdf', 'Content-Length': '5', 'Accept-Ranges': 'none', ETag: '"' + rev + '"'}});
+    f.hook(() => response);
+    try { await withoutStreamConstructor(async () => {
+      const reader = (await session.openSequential()).getReader();
+      await assert.rejects(async () => { while (!(await reader.read()).done) { /* exact EOF is part of the port */ } }, coded(mismatch === 'network' ? 'network_error' : 'response_size'));
+      reader.releaseLock(); assert.equal(session.signal.aborted, mismatch !== 'network'); assert.equal(f.calls.length, 2);
+    }); } finally { f.client.dispose(); }
+  });
+});
