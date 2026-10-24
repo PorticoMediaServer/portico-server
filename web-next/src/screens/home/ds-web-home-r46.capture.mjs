@@ -202,12 +202,16 @@ if (extras) {
     await setViewport(2048, 1400);
     await open(`${frameOrigin}/mock.html`, '#extras');
     report.reference.extras = await shot('web-home-extras-reference', '#extras .extras > div:first-child', 2048, `${frameOrigin}/mock.html`, '#extras');
+    report.reference.extrasBoxes = await evaluate(`(()=>{const root=document.querySelector('#extras .extras > div:first-child');const q=s=>{const n=root.querySelector(s);return n?n.getBoundingClientRect().toJSON():null};
+      return {root:root.getBoundingClientRect().toJSON(),title:q('h3'),lead:q('.lead'),panels:[...root.querySelectorAll('.fb')].map(p=>({rect:p.getBoundingClientRect().toJSON(),label:p.querySelector('.label')?.textContent,copy:p.querySelector('.copy')?.getBoundingClientRect().toJSON(),title:p.querySelector('.lockup')?.getBoundingClientRect().toJSON(),meta:p.querySelector('.meta')?.getBoundingClientRect().toJSON()})),fonts:{title:getComputedStyle(root.querySelector('h3')).fontSize,lead:getComputedStyle(root.querySelector('.lead')).fontSize,lockup:getComputedStyle(root.querySelector('.lockup')).fontSize}}})()`);
   }
   if (only !== 'reference') {
     const url = `${buildOrigin}/src/screens/home/ds-web-home-r46.html?mode=extras&assets=${encodeURIComponent(frameOrigin + '/')}`;
-    await setViewport(858, 900);
+    await setViewport(1440, 900);
     await open(url, '[data-home-extras]');
-    report.actual.extras = await shot('web-home-extras-actual', '[data-home-extras]', 858, url, '[data-home-extras]');
+    report.actual.extras = await shot('web-home-extras-actual', '[data-home-extras]', 1440, url, '[data-home-extras]');
+    report.actual.extrasBoxes = await evaluate(`(()=>{const root=document.querySelector('[data-home-extras]');const q=s=>{const n=root.querySelector(s);return n?n.getBoundingClientRect().toJSON():null};
+      return {root:root.getBoundingClientRect().toJSON(),title:q('h3'),lead:q('p'),panels:[...root.querySelectorAll('[class*="fb"]')].map(p=>({rect:p.getBoundingClientRect().toJSON(),label:p.querySelector('[class*="label"]')?.textContent,copy:p.querySelector('[class*="copy"]')?.getBoundingClientRect().toJSON(),title:p.querySelector('h4')?.getBoundingClientRect().toJSON(),meta:p.querySelector('[class*="facts"]')?.getBoundingClientRect().toJSON()})),fonts:{title:getComputedStyle(root.querySelector('h3')).fontSize,lead:getComputedStyle(root.querySelector('p')).fontSize,lockup:getComputedStyle(root.querySelector('h4')).fontSize}}})()`);
   }
 } else {
 if (only !== 'actual') {

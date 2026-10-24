@@ -1,5 +1,5 @@
 /* DEV-only gallery for mock.html#extras; the same production hero artwork treatments. */
-.gallery { width: 858px; padding: 56px 0 64px; }
+.gallery { width: 858px; margin: 56px 0 0; }
 .gallery h3 { margin: 0 0 6px; font-size: 22px; font-weight: 700; letter-spacing: -.015em; }
 .lead { max-width: 620px; margin: 0 0 22px; font-size: 15px; line-height: 1.5; color: var(--color-text-tertiary); }
 .fb { position: relative; height: 236px; margin-bottom: 20px; border-radius: 14px; overflow: hidden; background: var(--color-raised-soft, #0c1a25); }
