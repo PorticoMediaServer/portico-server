@@ -174,3 +174,18 @@ test('all saved sources remain listed beyond the former count ceiling',async()=>
  assert.deepEqual(service.getSnapshot().sources.map(row=>row.id),rows.map(row=>row.id));
  service.dispose();
 });
+
+
+test('source quota and throttle facts survive without a guessed provider wait time',async()=>{
+ const rows=[source({id:'quota',state:'degraded',errorCode:'quota_exceeded'}),source({id:'throttled',state:'rate_limited',errorCode:'rate_limited'})];
+ const service=new RemoteSourceService(api(async()=>list(rows)),scope,async()=>op);
+ await service.load();
+ assert.deepEqual(service.getSnapshot().sources.map(row=>[row.id,row.state,row.errorCode]),[
+  ['quota','degraded','quota_exceeded'],['throttled','rate_limited','rate_limited'],
+ ]);
+ for(const row of service.getSnapshot().sources){
+  assert(!Object.hasOwn(row,'retryAfterSeconds'));
+  assert(!Object.hasOwn(row,'retryAt'));
+ }
+ service.dispose();
+});
