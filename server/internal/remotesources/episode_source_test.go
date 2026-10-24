@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storage"
 )
 
 // The selected-artwork facts are a fixture, not a production metadata reader.
@@ -59,7 +60,11 @@ func TestEpisodeReadSourceNeverUsesUnqualifiedWebDAVAsRandomInput(t *testing.T) 
 			}
 			defer view.Rollback()
 			source, err := resolver.ResolveEpisodeReadSourceTx(context.Background(), view.Tx(), request, func() {})
-			if source != nil || !errors.Is(err, ErrEpisodeAuthority) {
+			want := ErrEpisodeAuthority
+			if support == "unsupported" {
+				want = storage.ErrRemoteRange
+			}
+			if source != nil || !errors.Is(err, want) {
 				t.Fatal("unqualified WebDAV granted ranged decode", source, err)
 			}
 			if len(f.s.serveLeases) != 0 {
