@@ -40,6 +40,11 @@ type ServeCommandSpec struct {
 	Connections           int
 	RequestsPerSecond     int
 	BytesPerSecond        int64
+	// SharedOperations keeps a provisional connection test within the current
+	// source's one operation budget. Its capacity must match Connections and
+	// its lifetime also owns this process. This conveys no operation authority;
+	// the independent process lease and Enforce checks remain mandatory.
+	SharedOperations *remotemedia.OperationBudget
 	// SequentialReads disables VFS chunk reopens for known start-only sources.
 	// This is transport behavior, never operation permission or fake ReadAt.
 	SequentialReads bool
@@ -75,6 +80,9 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if shared := spec.SharedOperations; shared != nil && (shared.Counts().Capacity != spec.Connections || shared.Context() == nil || shared.Context().Err() != nil) {
+		return nil, ErrServeConfiguration
 	}
 	if spec.MetadataPort < 0 || spec.MetadataPort > 65535 || spec.MetadataPort != 0 && spec.MetadataPort == spec.Port {
 		return nil, ErrServeConfiguration
@@ -210,6 +218,15 @@ func (s *ServeProcess) OperationCounts() remotemedia.OperationCounts {
 	return s.budget.Counts()
 }
 
+// SharedOperations returns only current resource custody for a separately
+// authorized source connection test. It never admits an actor or media read.
+func (s *ServeProcess) SharedOperations(ctx context.Context) (*remotemedia.OperationBudget, error) {
+	if err := s.Check(ctx); err != nil {
+		return nil, err
+	}
+	return s.budget, nil
+}
+
 func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lease ServeProcessLease) (*ServeProcess, error) {
 	if lease == nil {
 		return nil, ErrServeConfiguration
@@ -227,14 +244,21 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		return nil, err
 	}
 	life, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(lease.Context(), cancel)
+	stopLease := context.AfterFunc(lease.Context(), cancel)
+	stopBudget := func() bool { return false }
+	stop := func() { stopLease(); stopBudget() }
 	prepared, err := PrepareServe(life, program, spec)
 	if err != nil {
 		stop()
 		cancel()
 		return nil, err
 	}
-	budget := remotemedia.NewOperationBudget(life, spec.Connections)
+	budget := spec.SharedOperations
+	if budget == nil {
+		budget = remotemedia.NewOperationBudget(life, spec.Connections)
+	} else {
+		stopBudget = context.AfterFunc(budget.Context(), cancel)
+	}
 	endpoint, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, budget)
 	if err != nil {
 		_ = prepared.Loaded()
