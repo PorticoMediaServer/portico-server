@@ -61,7 +61,7 @@ test('an expired move proof refuses before any Hosted handoff',async()=>{
 });
 test('a selection change while proving the old password cannot publish or hand off the late ticket',async()=>{
  const f=await fixture(),started=f.holdPassword();const pending=f.entry.proveLocalMovePassword('member','old-password');await started;
- await f.store.signOutServer(serverId);f.releasePassword();assert.equal(await pending,false);
+ await f.store.signOutServer(serverId,'unselected-family');f.releasePassword();assert.equal(await pending,false);
  assert.equal(f.entry.getSnapshot().phase,'portico');assert.equal(f.prepares.length,0);f.entry.dispose();
 });
 test('cancel during old-password proof cannot revive the member flow',async()=>{
@@ -69,12 +69,12 @@ test('cancel during old-password proof cannot revive the member flow',async()=>{
  f.entry.cancel();f.releasePassword();assert.equal(await pending,false);assert.equal(f.entry.getSnapshot().phase,'welcome');assert.equal(f.prepares.length,0);f.entry.dispose();
 });
 test('a selected revision changed after code preview refuses before creating protected pending',async()=>{
- const f=await fixture();await f.entry.previewMoveCode(code);await f.store.signOutServer(serverId);
+ const f=await fixture();await f.entry.previewMoveCode(code);await f.store.signOutServer(serverId,'unselected-family');
  assert.equal(await f.entry.preparePorticoSignIn(hostedOrigin),undefined);assert.equal(f.prepares.length,0);f.entry.dispose();
 });
 test('a selection change during protected prepare cancels that attempt and returns no navigation',async()=>{
  const f=await fixture();await f.entry.previewMoveCode(code);const started=f.holdPrepare(),pending=f.entry.preparePorticoSignIn(hostedOrigin);await started;
- await f.store.signOutServer(serverId);f.releasePrepare();assert.equal(await pending,undefined);assert.equal(f.cancels,1);assert.equal(f.remembers,0);f.entry.dispose();
+ await f.store.signOutServer(serverId,'unselected-family');f.releasePrepare();assert.equal(await pending,undefined);assert.equal(f.cancels,1);assert.equal(f.remembers,0);f.entry.dispose();
 });
 
 test('a stored old-password ticket expires without falling back to ordinary sign-in',async t=>{
