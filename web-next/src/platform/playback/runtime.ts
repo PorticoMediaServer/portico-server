@@ -1219,6 +1219,15 @@ export class WebShellPlaybackRuntime {
     const next = direction === 1 ? offered.find(value => value > rate) : [...offered].reverse().find(value => value < rate);
     if (next !== undefined) this.setSpeed(fence, next);
   }
+  /** Browser transports belong only to this loaded, unheld HTML-media source.
+   * A native factory or the separate music renderer cannot lend its idle video. */
+  browserMediaReady(fence: PlaybackFence): boolean {
+    if (!this.matches(fence) || fence.kind === 'local' || this.env.createPlayer || this.stack.mode !== 'server') return false;
+    const slot = this.stack.web.slot, observed = slot.observe();
+    return slot.loaded === fence.generation && !slot.settling && observed.generation === fence.generation
+      && ['playing', 'paused', 'buffering'].includes(observed.state) && this.snapshot.dock.remote?.phase !== 'playing';
+  }
+
   /** The ordinary browser has no qualified frame primitive. A platform command still owns
    * its actual decoder/entry readiness and may refuse without publishing a guessed clock. */
   canStepFrame(fence: PlaybackFence): boolean {

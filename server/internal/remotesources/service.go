@@ -50,6 +50,7 @@ type Service struct {
 	commands            sync.Mutex
 	serveMu             sync.Mutex
 	serveLeases         map[string]*sourceProcessLease
+	sourceTests         map[string]*sourceTestScope
 	readLeases          map[string]map[int64]*SourceReadLease
 	serveClosed         bool
 	serveLife           context.Context
@@ -99,7 +100,7 @@ func New(db *sql.DB, state string, managed *mounts.Service) (*Service, error) {
 	}
 	managed.NativeBusy = s.PlaybackActive
 	managed.NativeInvalidated = s.invalidate
-	managed.NativeSourceCandidate = s.nativeSourceCandidate
+	managed.PrepareSourceCandidate = s.prepareSourceCandidate
 	// No acquisition survives a server process. Remove only our private spool names.
 	if files, e := os.ReadDir(private); e == nil {
 		for _, file := range files {

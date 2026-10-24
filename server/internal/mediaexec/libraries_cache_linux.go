@@ -11,12 +11,13 @@ import (
 )
 
 // This memo saves repeated ELF parsing, not custody checks. Every hit stats the
-// exact executable/dependency aliases and searched directories again. Changes
+// exact aliases/directories and checks the consumed ELF metadata bytes. Changes
 // force the original bounded resolver; it still decides every mounted path.
 type libraryNode struct {
 	entry    os.FileInfo
 	target   os.FileInfo
 	resolved string
+	metadata *libraryMetadata
 }
 
 type libraryWatch map[string]libraryNode
@@ -28,7 +29,7 @@ func (w libraryWatch) record(path string) {
 	entry, _ := os.Lstat(path)
 	target, _ := os.Stat(path)
 	resolved, _ := filepath.EvalSymlinks(path)
-	w[path] = libraryNode{entry, target, resolved}
+	w[path] = libraryNode{entry: entry, target: target, resolved: resolved}
 }
 
 func sameLibraryInfo(previous, now os.FileInfo, err error) bool {
@@ -51,6 +52,9 @@ func (w libraryWatch) unchanged() bool {
 		resolved, _ := filepath.EvalSymlinks(path)
 		if !sameLibraryInfo(previous.entry, entry, entryErr) ||
 			!sameLibraryInfo(previous.target, target, targetErr) || resolved != previous.resolved {
+			return false
+		}
+		if previous.metadata != nil && !previous.metadata.unchanged(path, previous.target) {
 			return false
 		}
 	}

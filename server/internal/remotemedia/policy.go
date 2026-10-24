@@ -31,6 +31,10 @@ type Policy struct {
 	// validate each hop and create a fresh, independently admitted client.
 	// The default remains automatic redirects within the admitted scope.
 	ManualRedirects bool
+	// SourceEndpoints applies the strict owner-saved source endpoint rules:
+	// public or this origin's saved private addresses; never special ranges.
+	// Descriptor/library approval behavior remains separate.
+	SourceEndpoints bool
 	UserAgent       string
 	ReadTimeout     time.Duration
 	Approvals       []Approval
@@ -290,7 +294,11 @@ func (s *scope) resolve(ctx context.Context, host string) ([]netip.Addr, error) 
 		ips[i] = ip.Unmap()
 	}
 	for _, ip := range ips {
-		if hardBlocked(ip) || (s.root != nil && !s.addresses[ip]) || (s.root == nil && !public(ip)) {
+		allowed := !hardBlocked(ip) && (s.root != nil && s.addresses[ip] || s.root == nil && public(ip))
+		if s.policy.SourceEndpoints {
+			allowed = nativeAddressAllowed(ip) && (public(ip) || s.root != nil && s.addresses[ip])
+		}
+		if !allowed {
 			// The addresses come back with the refusal so admit can tell a
 			// confirmable LAN destination from a blocked one; no caller dials them.
 			return ips, ErrPolicy
