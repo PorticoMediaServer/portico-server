@@ -11,11 +11,13 @@ import (
 // owns no actor/operation permission and does not count upstream idle sockets.
 // The source process lifetime and normalized profile supply its actual bounds.
 type OperationBudget struct {
-	life   context.Context
-	slots  chan struct{}
-	mu     sync.Mutex
-	active int
-	peak   int
+	life      context.Context
+	capacity  int
+	changed   chan struct{}
+	exclusive *ExclusiveTest
+	mu        sync.Mutex
+	active    int
+	peak      int
 }
 
 type OperationCounts struct{ Capacity, Active, Peak int }
@@ -30,7 +32,7 @@ func NewOperationBudget(life context.Context, capacity int) *OperationBudget {
 	if life == nil || capacity < 1 || capacity > 256 {
 		return nil
 	}
-	return &OperationBudget{life: life, slots: make(chan struct{}, capacity)}
+	return &OperationBudget{life: life, capacity: capacity, changed: make(chan struct{})}
 }
 
 func (b *OperationBudget) Counts() OperationCounts {
@@ -39,7 +41,7 @@ func (b *OperationBudget) Counts() OperationCounts {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return OperationCounts{Capacity: cap(b.slots), Active: b.active, Peak: b.peak}
+	return OperationCounts{Capacity: b.capacity, Active: b.active, Peak: b.peak}
 }
 
 // Context is resource lifetime only, never an actor/session or content grant.
@@ -53,7 +55,7 @@ func (b *OperationBudget) Context() context.Context {
 }
 
 func (b *OperationBudget) enter(ctx context.Context) (context.Context, func(), error) {
-	if b == nil || b.life == nil || cap(b.slots) < 1 || ctx == nil {
+	if b == nil || b.life == nil || b.capacity < 1 || ctx == nil {
 		return nil, nil, ErrPolicy
 	}
 	if err := ctx.Err(); err != nil {
@@ -68,27 +70,34 @@ func (b *OperationBudget) enter(ctx context.Context) (context.Context, func(), e
 	if current, ok := ctx.Value(operationBudgetKey{}).(*operationPermit); ok && current.budget == b && current.active.Load() {
 		return ctx, func() {}, nil
 	}
-	select {
-	case b.slots <- struct{}{}:
-	case <-ctx.Done():
-		return nil, nil, ctx.Err()
-	case <-b.life.Done():
-		return nil, nil, b.life.Err()
-	}
-	if err := ctx.Err(); err != nil {
-		<-b.slots
-		return nil, nil, err
-	}
-	if err := b.life.Err(); err != nil {
-		<-b.slots
-		return nil, nil, err
+	for {
+		b.mu.Lock()
+		if err := ctx.Err(); err != nil {
+			b.mu.Unlock()
+			return nil, nil, err
+		}
+		if err := b.life.Err(); err != nil {
+			b.mu.Unlock()
+			return nil, nil, err
+		}
+		if b.exclusive == nil && b.active < b.capacity {
+			b.active++
+			b.peak = max(b.peak, b.active)
+			b.mu.Unlock()
+			break
+		}
+		changed := b.changed
+		b.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-b.life.Done():
+			return nil, nil, b.life.Err()
+		}
 	}
 	permit := &operationPermit{budget: b}
 	permit.active.Store(true)
-	b.mu.Lock()
-	b.active++
-	b.peak = max(b.peak, b.active)
-	b.mu.Unlock()
 	life, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(b.life, cancel)
 	var once sync.Once
@@ -99,8 +108,8 @@ func (b *OperationBudget) enter(ctx context.Context) (context.Context, func(), e
 			cancel()
 			b.mu.Lock()
 			b.active--
+			b.notifyLocked()
 			b.mu.Unlock()
-			<-b.slots
 		})
 	}
 	return context.WithValue(life, operationBudgetKey{}, permit), release, nil

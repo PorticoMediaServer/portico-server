@@ -1,4 +1,6 @@
 import type {LibraryAdminDocument,LibrarySettings} from '../administration.ts';
+import type {LibrarySonicDocument} from '../server-admin/library-sonic.ts';
+import type {PutAdminLibrariesIdSonicAnalysisRequest} from '../../../contracts/src/types.ts';
 import {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from '../server-admin/library-policy.ts';
 import type {AccessMember,MemberLimits} from '../server-administration.ts';
 import type {SettingsBulkAccess} from '../settings-people.ts';
@@ -8,12 +10,13 @@ import {canonicalQualityLadder,canonicalMusicQualityLadder} from '../../../contr
 import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,type PreferenceValue} from '../preferences.ts';
 import type {ReadingPreferences} from '../preference-effects.ts';
 
-export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library'|'metadata';
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean'|'artwork-size';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
 const bindings:Readonly<Record<string,SettingsBinding>>={
+ 'metadata.artworkSize':{form:'metadata',key:'artworkMaxEdge',codec:'artwork-size'},
  'device.player':{form:'device',key:'playerEngine',codec:'player-engine'},
  'device.receive':{form:'device',key:'receiveFromDevices',codec:'boolean'},
  'audioSubtitles.surround':{form:'device',key:'forceStereo',codec:'surround'},
@@ -223,6 +226,7 @@ function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSour
  if(v===undefined)return undefined;
  if(binding.codec==='music-quality-choice')return typeof v==='string'&&canonicalMusicQualityLadder.some(q=>q.id===v)?(v==='cd-quality'?'cd':v):undefined;
  if(binding.codec==='video-quality-choice')return typeof v==='string'&&canonicalQualityLadder.some(q=>q.id===v)&&(binding.key!=='downloadMaxQuality'||v!=='automatic')?(v==='2160p'?'4k':v):undefined;
+ if(binding.codec==='artwork-size')return v===1280?'small':v===1920?'standard':v===2560?'large':undefined;
  if(binding.codec==='boolean')return typeof v==='boolean'?v:undefined;
  if(binding.codec==='surround')return typeof v==='boolean'?(v?'stereo':'asis'):undefined;
  if(binding.codec==='player-engine')return v==='automatic'?'auto':v==='native'||v==='mpv'?v:undefined;
@@ -318,6 +322,10 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
  }
  if(binding.codec==='missing-rule'){if(value==='never')return {form:binding.form,values:{'library.missingTitles':'never'}};if(value==='now')return {form:binding.form,values:{'library.missingTitles':'immediately'}};const n=value==='7d'?7:value==='30d'?30:value==='90d'?90:undefined;if(n===undefined)throw new Error('Custom is derived.');return {form:binding.form,values:{'library.missingTitles':'after_days','library.missingTitlesDays':n}};}
  let raw=value;
+ if(binding.codec==='artwork-size'){
+  if(value!=='small'&&value!=='standard'&&value!=='large')throw new Error('Invalid setting value.');
+  raw=value==='small'?1280:value==='standard'?1920:2560;
+ }
  if(binding.codec==='inherited-watched-threshold'){
   const field=sources.preferences?.registry.fields.find(f=>f.key===binding.key);
   if(field?.type!=='integer')throw new Error('Invalid setting value.');
@@ -412,6 +420,22 @@ export function readLibrarySettingsBinding(rowId:string,document:LibraryAdminDoc
  if(!document.eligibleControls.includes(rowId))return undefined;const current=libraryRowValue(rowId,document.settings,document);if(current===undefined)return undefined;
  return {current,effective:current,default:document.defaults?libraryRowValue(rowId,document.defaults,document):undefined,source:'library',configOnly:false};
 }
+/** Read the separate Sonic domain through its current Library eligibility hint. */
+export function readLibrarySonicSettingsBinding(rowId:string,document:Pick<LibraryAdminDocument,'libraryId'|'libraryKind'|'eligibleControls'>,sonic:LibrarySonicDocument):SettingsBindingValue|undefined{
+ if(document.libraryKind!=='music'||document.libraryId!==sonic.libraryId||!sonic.available||typeof sonic.defaultEnabled!=='boolean'||!document.eligibleControls.includes(rowId))return undefined;
+ if(rowId==='libraries.sonicAnalysis')return {current:sonic.enabled,effective:sonic.enabled,default:sonic.defaultEnabled,source:'library',configOnly:false};
+ if(rowId==='libraries.sonicStatus'){
+  const value=Object.freeze({state:sonic.state,done:sonic.done,total:sonic.total,observedAtMs:sonic.observedAtMs,...(sonic.reasonCode===undefined?{}:{reasonCode:sonic.reasonCode}),...(sonic.pausedUntilMs===undefined?{}:{pausedUntilMs:sonic.pausedUntilMs}),...(sonic.estimatedRemainingSeconds===undefined?{}:{estimatedRemainingSeconds:sonic.estimatedRemainingSeconds})});
+  return {current:value,effective:value,default:undefined,source:'library',configOnly:false};
+ }
+ return undefined;
+}
+/** Sonic keeps its own settings revision and writer, separate from full Library Save. */
+export function patchLibrarySonicSettingsBinding(rowId:string,value:unknown,document:Pick<LibraryAdminDocument,'libraryId'|'libraryKind'|'eligibleControls'>,sonic:LibrarySonicDocument):PutAdminLibrariesIdSonicAnalysisRequest{
+ if(rowId!=='libraries.sonicAnalysis'||typeof value!=='boolean'||!readLibrarySonicSettingsBinding(rowId,document,sonic))throw new Error('Invalid or unavailable library Sonic setting.');
+ return {enabled:value,expectedRevision:sonic.revision};
+}
+
 /** One complete typed library draft; the facade applies its revision/operation fence on Save. */
 export function patchLibrarySettingsBinding(rowId:string,value:unknown,document:LibraryAdminDocument):LibrarySettings{
  if(!document.eligibleControls.includes(rowId))throw new Error('This library does not offer that setting.');if(value==='custom')throw new Error('Custom is derived.');const settings=document.settings,binding=libraryScalarBindings[rowId];

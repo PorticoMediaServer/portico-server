@@ -4,15 +4,18 @@ import type {I18n, MessageId} from '../../i18n/src/index.ts';
 /** Where the OpenSubtitles key and account in force come from and how OpenSubtitles last answered. Never a secret. */
 export type OpenSubtitlesStatus=Readonly<{keySource:'owner'|'environment'|'none';accountSource:'owner'|'environment'|'none';account:'none'|'incomplete'|'not_checked'|'signed_in'|'rejected';problem:string;checkedAt:string;retryAt:string;downloadsRemaining:number;downloadsAllowed:number;downloadsResetAt:string}>;
 /** The OpenSubtitles fields say whether the owner saved their own key and password (never sent back) and the account name. */
-export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
+export type ArtworkMaxEdge=1280|1920|2560;
+const isArtworkMaxEdge=(value:unknown):value is ArtworkMaxEdge=>value===1280||value===1920||value===2560;
+export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;artworkMaxEdge:ArtworkMaxEdge;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
 /** A credential left out is unchanged; an empty one goes back to the server's own (for the username: no account). */
-export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
+export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;artworkMaxEdge?:ArtworkMaxEdge;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
 export function parseMetadataSettings(raw:unknown):MetadataSettings{
  if(typeof raw!=='object'||raw===null||Array.isArray(raw))throw new Error(unreadableServerResponse);
  const v=raw as Record<string,unknown>;
+ if(!isArtworkMaxEdge(v.artworkMaxEdge))throw new Error(unreadableServerResponse);
  if(typeof v.revision!=='number'||!Number.isSafeInteger(v.revision)||v.revision<1||typeof v.localArtworkLimitBytes!=='number'||!Number.isSafeInteger(v.localArtworkLimitBytes)||v.localArtworkLimitBytes<1||typeof v.includeAdult!=='boolean'||typeof v.tmdbCredentialConfigured!=='boolean'||typeof v.tvdbCredentialConfigured!=='boolean')throw new Error(unreadableServerResponse);
  if(typeof v.localArtworkUsedBytes!=="number"||!Number.isSafeInteger(v.localArtworkUsedBytes)||v.localArtworkUsedBytes<0)throw new Error(unreadableServerResponse);
- return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
+ return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,artworkMaxEdge:v.artworkMaxEdge,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
   openSubtitlesKeyConfigured:v.openSubtitlesKeyConfigured===true,openSubtitlesUsername:typeof v.openSubtitlesUsername==='string'&&v.openSubtitlesUsername.length<=512?v.openSubtitlesUsername:'',openSubtitlesPasswordConfigured:v.openSubtitlesPasswordConfigured===true,openSubtitles:parseOpenSubtitlesStatus(v.openSubtitles)});
 }
 const word=<T extends string>(v:unknown,allowed:readonly T[],fallback:T):T=>allowed.includes(v as T)?v as T:fallback;
@@ -49,7 +52,7 @@ export function openSubtitlesSummary(status:OpenSubtitlesStatus,i18n:I18n,now=Da
  return Object.freeze({tone:'healthy',text:status.account==='signed_in'?t('server.metadata.openSubtitlesSignedIn'):t('server.metadata.openSubtitlesKeyWorks'),...(downloads?{downloads}:{})});
 }
 type Request=<T>(path:string,method?:string,body?:unknown)=>Promise<T>;
-export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){return parseMetadataSettings(await request<unknown>(path,'PUT',change));},
+export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){if(change.artworkMaxEdge!==undefined&&!isArtworkMaxEdge(change.artworkMaxEdge))throw new Error(unreadableServerResponse);return parseMetadataSettings(await request<unknown>(path,'PUT',change));},
  /** Test connection: OpenSubtitles is asked now whether the saved key and account work. */
  async checkOpenSubtitles(){return parseOpenSubtitlesStatus(await request<unknown>(routePath("check_opensubtitles"),'POST'));}});}
 const GIBIBYTE=2**30;

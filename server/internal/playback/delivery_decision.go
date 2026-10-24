@@ -80,22 +80,33 @@ type RouteEvaluation struct {
 }
 
 type TraceVideo struct {
-	Rotation                 int     `json:"rotation,omitempty"`
-	SampleAspectRatio        string  `json:"sampleAspectRatio,omitempty"`
-	OutputRange              string  `json:"outputRange,omitempty"`
-	DolbyVisionLevel         int     `json:"dolbyVisionLevel,omitempty"`
-	DolbyVisionCompatibility int     `json:"dolbyVisionCompatibility,omitempty"`
-	Codec                    string  `json:"codec"`
-	Profile                  string  `json:"profile,omitempty"`
-	Level                    int     `json:"level,omitempty"`
-	BitDepth                 int     `json:"bitDepth,omitempty"`
-	Width                    int     `json:"width,omitempty"`
-	Height                   int     `json:"height,omitempty"`
-	FrameRate                float64 `json:"frameRate,omitempty"`
-	Interlaced               bool    `json:"interlaced,omitempty"`
-	DynamicRange             string  `json:"dynamicRange,omitempty"`
-	DolbyVisionProfile       int     `json:"dolbyVisionProfile,omitempty"`
-	BitRate                  int64   `json:"bitRate,omitempty"`
+	Rotation                   int     `json:"rotation,omitempty"`
+	SampleAspectRatio          string  `json:"sampleAspectRatio,omitempty"`
+	OutputRange                string  `json:"outputRange,omitempty"`
+	DolbyVisionLevel           int     `json:"dolbyVisionLevel,omitempty"`
+	DolbyVisionCompatibility   int     `json:"dolbyVisionCompatibility,omitempty"`
+	Codec                      string  `json:"codec"`
+	Profile                    string  `json:"profile,omitempty"`
+	Level                      int     `json:"level,omitempty"`
+	BitDepth                   int     `json:"bitDepth,omitempty"`
+	Width                      int     `json:"width,omitempty"`
+	Height                     int     `json:"height,omitempty"`
+	FrameRate                  float64 `json:"frameRate,omitempty"`
+	Interlaced                 *bool   `json:"interlaced,omitempty"`
+	DynamicRange               string  `json:"dynamicRange,omitempty"`
+	DolbyVisionProfile         int     `json:"dolbyVisionProfile,omitempty"`
+	ChromaSubsampling          string  `json:"chromaSubsampling,omitempty"`
+	FrameRateNumerator         int     `json:"frameRateNumerator,omitempty"`
+	FrameRateDenominator       int     `json:"frameRateDenominator,omitempty"`
+	FrameRateMode              string  `json:"frameRateMode,omitempty"`
+	DolbyVisionRPU             *bool   `json:"dolbyVisionRpu,omitempty"`
+	DolbyVisionBaseLayer       *bool   `json:"dolbyVisionBaseLayer,omitempty"`
+	DolbyVisionEnhancementType string  `json:"dolbyVisionEnhancementType,omitempty"`
+	DolbyVisionCMVersion       string  `json:"dolbyVisionCmVersion,omitempty"`
+	HDR10Plus                  bool    `json:"hdr10Plus,omitempty"`
+	MasterDisplay              string  `json:"masterDisplay,omitempty"`
+	MaxCLL                     string  `json:"maxCll,omitempty"`
+	BitRate                    int64   `json:"bitRate,omitempty"`
 }
 
 type TraceAudio struct {
@@ -104,6 +115,11 @@ type TraceAudio struct {
 	Channels    int    `json:"channels,omitempty"`
 	Language    string `json:"language,omitempty"`
 	ObjectAudio string `json:"objectAudio,omitempty"`
+	Profile     string `json:"profile,omitempty"`
+	Variant     string `json:"variant,omitempty"`
+	Layout      string `json:"layout,omitempty"`
+	SampleRate  int    `json:"sampleRate,omitempty"`
+	BitDepth    int    `json:"bitDepth,omitempty"`
 	// Why this track: explicit, carried, preferred_language, default, first.
 	ChosenBy string `json:"chosenBy"`
 	Tracks   int    `json:"tracks"`

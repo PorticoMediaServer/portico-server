@@ -4,6 +4,7 @@ import type {BrowseNode, BrowseSortSelection} from '../browse.ts';
 import {validateSubtitleDelivery} from '../subtitles.ts';
 import {apiRoot} from '../../../contracts/src/routes.ts';
 import {parseObservedPlayback, type ObservedPlayback} from './observed-playback.ts';
+import {parsePlaybackInfo, type PlaybackInfo} from './playback-info.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -37,7 +38,16 @@ export function url(v: unknown, what: string): string {
 }
 
 // ── Options (spec §4.1) ─────────────────────────────────────────────
-export type VideoStream = Readonly<{hdr10Plus?: boolean; interlaced?: boolean; id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
+export type VideoStream = Readonly<{
+  id: string; codec: string; profile?: string; level?: number;
+  bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number;
+  interlaced?: boolean; hdr10Plus?: boolean; chromaSubsampling?: string;
+  frameRateNumerator?: number; frameRateDenominator?: number; frameRateMode?: string;
+  dolbyVisionProfile?: number; dolbyVisionCompatibility?: number;
+  dolbyVisionRpu?: boolean; dolbyVisionBaseLayer?: boolean;
+  dolbyVisionEnhancementType?: string; dolbyVisionCmVersion?: string;
+  masterDisplay?: string; maxCll?: string;
+}>;
 export type AudioStream = Readonly<{profile?: string; variant?: string; objectAudio?: string; dtsx?: boolean; sampleRate?: number; bitDepth?: number; id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
 export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;
@@ -79,6 +89,27 @@ export function parseQuality(v: unknown): QualityInForce {
 const engineOf = (v: unknown): PlaybackEngine => (v === 'mpv' ? 'mpv' : 'native');
 const streamActions = ['direct', 'copy', 'transcode', 'burn', 'sidecar', 'device', 'drop'] as const;
 
+// These are source facts already present in the canonical Go Options DTO.
+// Keeping them never grants a decoder, Dolby profile, HDR display or route.
+const sourceInteger = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+function videoSourceFacts(s: Obj): Partial<VideoStream> {
+  return {
+    ...(sourceInteger(s.level) ? {level: s.level} : {}),
+    ...(typeof s.chromaSubsampling === 'string' ? {chromaSubsampling: s.chromaSubsampling} : {}),
+    ...(sourceInteger(s.frameRateNumerator) && s.frameRateNumerator > 0 ? {frameRateNumerator: s.frameRateNumerator} : {}),
+    ...(sourceInteger(s.frameRateDenominator) && s.frameRateDenominator > 0 ? {frameRateDenominator: s.frameRateDenominator} : {}),
+    ...(typeof s.frameRateMode === 'string' ? {frameRateMode: s.frameRateMode} : {}),
+    ...(sourceInteger(s.dolbyVisionProfile) && s.dolbyVisionProfile <= 255 ? {dolbyVisionProfile: s.dolbyVisionProfile} : {}),
+    ...(sourceInteger(s.dolbyVisionCompatibility) && s.dolbyVisionCompatibility <= 15 ? {dolbyVisionCompatibility: s.dolbyVisionCompatibility} : {}),
+    ...(typeof s.dolbyVisionRpu === 'boolean' ? {dolbyVisionRpu: s.dolbyVisionRpu} : {}),
+    ...(typeof s.dolbyVisionBaseLayer === 'boolean' ? {dolbyVisionBaseLayer: s.dolbyVisionBaseLayer} : {}),
+    ...(typeof s.dolbyVisionEnhancementType === 'string' ? {dolbyVisionEnhancementType: s.dolbyVisionEnhancementType} : {}),
+    ...(typeof s.dolbyVisionCmVersion === 'string' ? {dolbyVisionCmVersion: s.dolbyVisionCmVersion} : {}),
+    ...(typeof s.masterDisplay === 'string' ? {masterDisplay: s.masterDisplay} : {}),
+    ...(typeof s.maxCll === 'string' ? {maxCll: s.maxCll} : {}),
+  };
+}
+
 export function parseOptions(v: unknown): PlaybackOptions {
   if (!obj(v)) throw new ContractError('playback options');
   const versions = arr(v.versions).map((x, i): MediaVersion => {
@@ -87,7 +118,7 @@ export function parseOptions(v: unknown): PlaybackOptions {
       id: id(x.id, 'version id'), label: str(x.label), edition: typeof x.edition === 'string' ? x.edition : undefined, container: typeof x.container === 'string' ? x.container : undefined,
       sizeBytes: optNum(x.sizeBytes), durationMs: num(x.durationMs), bitrateKbps: optNum(x.bitrateKbps),
       parts: Object.freeze(arr(x.parts).filter(obj).map(p => Object.freeze({id: id(p.id, 'part id'), index: num(p.index), durationMs: num(p.durationMs), sizeBytes: optNum(p.sizeBytes)}))),
-      video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, ...(typeof s.interlaced === 'boolean' ? {interlaced: s.interlaced} : {}), ...(typeof s.hdr10Plus === 'boolean' ? {hdr10Plus: s.hdr10Plus} : {}), bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
+      video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({...videoSourceFacts(s), id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, ...(typeof s.interlaced === 'boolean' ? {interlaced: s.interlaced} : {}), ...(typeof s.hdr10Plus === 'boolean' ? {hdr10Plus: s.hdr10Plus} : {}), bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
       audio: Object.freeze(arr(x.audio).filter(obj).map(s => Object.freeze({id: id(s.id, 'audio id'), codec: str(s.codec), ...(typeof s.profile === 'string' ? {profile: s.profile} : {}), channels: optNum(s.channels), layout: typeof s.layout === 'string' ? s.layout : undefined,
         sampleRate: Number.isSafeInteger(s.sampleRate) && Number(s.sampleRate) > 0 ? s.sampleRate as number : undefined, bitDepth: Number.isSafeInteger(s.bitDepth) && Number(s.bitDepth) > 0 ? s.bitDepth as number : undefined,
         variant: typeof s.variant === 'string' ? s.variant : undefined, objectAudio: typeof s.objectAudio === 'string' ? s.objectAudio : undefined, dtsx: typeof s.dtsx === 'boolean' ? s.dtsx : undefined,
@@ -151,6 +182,7 @@ export type Session = Readonly<{
   presentation: Presentation;
   /** Only the current renderer snapshot returned by the authorized server read. */
   observedPlayback?: ObservedPlayback;
+  playbackInfo?: PlaybackInfo;
   /** Why an ended session ended (spec §14): "terminated" by an administrator with their message,
    * "stopped", "transferred", "lease_expired", "replaced"… Absent until it ends. */
   end?: SessionEnd;
@@ -173,11 +205,14 @@ function decision(v: unknown): Decision | undefined {
 export function parseSession(v: unknown): Session {
   if (!obj(v) || !obj(v.presentation)) throw new ContractError('session');
   let observed: ObservedPlayback | undefined;
+  let playbackInfo: PlaybackInfo | undefined;
   if (v.state !== 'ended') {
     try { observed = parseObservedPlayback(v.observedPlayback); } catch { /* Invalid optional facts never become output, or end valid playback. */ }
+    if (v.kind === 'vod') { try { playbackInfo = parsePlaybackInfo(v.playbackInfo); } catch { /* Invalid comparison never replaces a valid session or renderer observation. */ } }
   }
   return Object.freeze({
     ...(observed !== undefined ? {observedPlayback: observed} : {}),
+    ...(playbackInfo !== undefined ? {playbackInfo} : {}),
     id: id(v.id, 'session id'), revision: revision(v.revision), kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never),
     role: oneOf(v.role, ['local', 'receiver', 'group_member'] as const, 'other' as never), state: oneOf(v.state, ['playing', 'paused', 'ended'] as const, 'other' as never),
     itemId: optId(v.itemId, 'item id'), versionId: optId(v.versionId, 'version id'),

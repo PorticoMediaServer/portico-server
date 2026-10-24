@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/supervise"
@@ -61,13 +62,13 @@ type child struct {
 }
 type Service struct {
 	// NativeBusy is installed by the remote source registry for playback removal safety.
-	NativeBusy            func(string) bool
-	NativeInvalidated     func(string)
-	NativeSourceCandidate func(context.Context, []byte, string, func(*sql.Tx) error) (*SourceCandidatePublication, error)
-	commands              sync.Mutex
-	db                    *sql.DB
-	root, private, helper string
-	work, cache           string
+	NativeBusy             func(string) bool
+	NativeInvalidated      func(string)
+	PrepareSourceCandidate func(context.Context, SourceCandidateInput, func(*sql.Tx) error) (*SourceCandidatePublication, error)
+	commands               sync.Mutex
+	db                     *sql.DB
+	root, private, helper  string
+	work, cache            string
 	// fpKey signs command fingerprints. Hashing that is not encryption stays:
 	// the key lives in the configuration table, and replays survive restarts.
 	// Folder permissions are the protection, as in Plex.
@@ -260,7 +261,7 @@ func (s *Service) create(ctx context.Context, input CreateInput, record func(*sq
 		return Mount{}, err
 	}
 	input.Executable = executable
-	publication, err := s.sourceCandidate(ctx, []byte(input.Config), input.Remote, authorize)
+	publication, err := s.sourceCandidate(ctx, SourceCandidateInput{Configuration: []byte(input.Config), Remote: input.Remote}, authorize)
 	if err != nil {
 		return Mount{}, err
 	}
@@ -269,7 +270,7 @@ func (s *Service) create(ctx context.Context, input CreateInput, record func(*sq
 		return Mount{}, err
 	}
 	defer os.Remove(candidate)
-	if err = s.validateCandidate(ctx, executable, digest, input.Remote, candidate); err != nil {
+	if err = publication.Test(ctx, rcloneprogram.Program{Path: executable}, digest); err != nil {
 		return Mount{}, err
 	}
 	if publication != nil {

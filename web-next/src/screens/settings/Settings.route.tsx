@@ -21,6 +21,10 @@ import {createSettingsBindings} from './bindings';
 import {readingSettingsAdapter} from './reading-adapter';
 import {hasWebPreferenceEffect} from './effects';
 import {PeopleScreen, type PeopleBindings} from './People';
+import {SignInSettingsSource} from './signin-source';
+import {SettingsOwnerSwitch} from './owner-switch';
+import {browserAccountOrigin} from '../../platform/account-origin';
+import {SettingsInvitations} from './invitations';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
@@ -64,11 +68,23 @@ export function SettingsEntry() {
       }},
     };
     const controller = new SettingsController(options);
+    const signIn = identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true &&
+      (identity.signIn === 'local' || identity.signIn === 'portico') ? new SignInSettingsSource(context.api, {
+        serverId: viewer.serverId, signIn: identity.signIn, isCurrent: current,
+        capabilities: () => ({manageAccount: identity.capabilities?.manageAccount === true, managePeople: identity.capabilities?.managePeople === true,
+          manageServer: identity.capabilities?.manageServer === true, manageSignIn: current() && identity.capabilities?.manageSignIn === true}),
+        onAuthorityChanged: () => {if (current()) void router.navigate({to: '/sign-in', replace: true});},
+        ownerSwitch: identity.signIn === 'local' ? new SettingsOwnerSwitch(context.api, {serverId: viewer.serverId,
+          isCurrent: () => current() && context.session().viewer.role === 'owner' && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === 'local',
+          hostedOrigin: browserAccountOrigin(import.meta.env, globalThis.location),
+        }) : undefined,
+      }) : undefined;
     const session = context.session();
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
         client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
-        actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits, openHome, reportError,
+        actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
+        invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), openHome, reportError,
         authority: {scope: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: session.sessionFamilyId},
           isCurrent: current, subscribe: listener => {authorityListeners.add(listener); return () => {authorityListeners.delete(listener);};}, onAuthorityChanged: openHome},
       } : undefined;
@@ -82,7 +98,7 @@ export function SettingsEntry() {
         artwork: (id, kind, revision) => revision ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind}) + '?' + new URLSearchParams({v: revision}), kind === 'backdrop' ? 800 : 400, kind === 'poster' ? 2 / 3 : kind === 'backdrop' ? 16 / 9 : 1) : undefined,
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
-    const source = createSettingsBindings(controller, options, identity, {openHome,
+    const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: row => row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null,
       section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
     });
@@ -91,7 +107,7 @@ export function SettingsEntry() {
       rowState: (row, selected) => row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected),
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();controller.dispose();};
+    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();controller.dispose();};
   }, [context, retry, route.section, reportTimeZone]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};

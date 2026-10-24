@@ -7,6 +7,7 @@ import {createPersonBindings} from '../src/screens/detail/person-bindings.ts';
 import {createSearchBindings} from '../src/screens/search/bindings.ts';
 import {createEntryDetailsBindings} from '../src/screens/detail/entry-details.ts';
 import {createWatchBodyBindings} from '../src/screens/detail/watch-body.ts';
+import {createScreenPlayEffect} from '../src/screens/browse/playback-effect.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {browseCapabilitiesPath} from '@core/browse.ts';
@@ -34,6 +35,89 @@ const detailPage = (id: string) => ({scope: {serverId: 'server', libraryId: 'lib
   item: {id, libraryId: 'library', kind: 'movie', title: id, durationMs: 1000, progressMs: 0, available: true},
   personal: {watchlisted: false, favorite: false, rating: null, revision: 1, watched: false, progressMs: 0, lastPlayedAt: '', status: 'current', conflicts: []},
   actions: [], metadata: {status: 'unavailable', ratings: [], genres: [], credits: []}});
+function searchPage(path: string, fence = 'search-only') {
+  const params = new URL(path, 'https://local.invalid').searchParams, selected = params.get('group') ?? '';
+  const ids = (['movies', 'shows'] as const).filter(id => selected ? selected === id : params.get('groups')?.split(',').includes(id));
+  const libraryIds = params.get('libraryIds')?.split(',') ?? [], libraryId = libraryIds[0] ?? 'library';
+  const groups = ids.map(id => {
+    const itemId = libraryId + '-' + id, kind = id === 'movies' ? 'movie' : 'show';
+    return {id, title: id, entityKind: kind, status: 'success', errorCode: '',
+      items: [{id: itemId, libraryId, kind, title: itemId, navigation: {view: id === 'movies' ? 'item' : 'show', entityId: itemId}}],
+      totalCount: (id === 'movies' ? 5 : 7) * (libraryId === 'other' ? 10 : 1), totalCountExact: true, hasMore: false, nextCursor: ''};
+  });
+  return {scope: {serverId: 'server', libraryId: '', libraryKind: 'mixed', view: 'search', entityId: '', viewerFence: fence}, revision: {catalog: 4, viewer: 5},
+    heading: {key: 'search.title', fallback: ''}, query: {q: params.get('q'), sort: params.get('sort') ?? 'relevance', direction: params.get('direction') ?? 'desc',
+      group: selected, groups: ids, libraryIds, limit: Number(params.get('limit')), searchMode: 'normalized_prefix', recorded: params.get('record') === '1'},
+    groups, capabilities: {groups: groups.map(group => ({id: group.id, entityKind: group.entityKind, title: group.title, available: true, sorts: ['relevance', 'title']})),
+      sorts: ['relevance', 'title'], directions: ['asc', 'desc'], maxLimit: 40, groupBudgetMs: 600}};
+}
+
+test('Search summary counts follow actual library scope and ordering when the text and revisions stay the same', async () => {
+  const owner = setup(async path => searchPage(path)), binding = createSearchBindings(owner.context);
+  try {
+    await binding.select('harbor', {groups: ['movies', 'shows'], libraryIds: ['library']});
+    assert.equal(binding.service.getSnapshot().phase, 'ready');
+    assert.deepEqual(binding.summary().map(group => group.totalCount), [5, 7]);
+    await binding.select('harbor', {group: 'movies', libraryIds: ['library']});
+    assert.deepEqual(binding.summary().map(group => group.totalCount), [5, 7], 'same-query group narrowing retains server summary');
+    await binding.select('harbor', {group: 'movies', libraryIds: ['other']});assert.deepEqual(binding.summary(), []);
+    await binding.select('harbor', {groups: ['movies', 'shows'], libraryIds: ['other']});
+    assert.deepEqual(binding.summary().map(group => group.totalCount), [50, 70]);
+    await binding.select('harbor', {group: 'movies', libraryIds: ['other'], sort: 'title'});assert.deepEqual(binding.summary(), []);
+  } finally {binding.dispose();}
+});
+
+test('Search summary is immutable and unavailable during replacement reads or authority retirement', async () => {
+  const held = deferred<unknown>();let hold = false, heldPath = '';
+  const owner = setup(async path => {if (hold) {heldPath = path;return held.promise;}return searchPage(path);}), binding = createSearchBindings(owner.context);
+  try {
+    await binding.select('harbor', {groups: ['movies', 'shows'], libraryIds: ['library']});
+    const summary = binding.summary();assert(Object.isFrozen(summary));assert(Object.isFrozen(summary[0]));
+    hold = true;
+    const read = binding.select('harbor', {group: 'movies', libraryIds: ['other']});
+    assert.deepEqual(binding.summary(), []);
+    held.resolve(searchPage(heldPath));await read;
+    assert.deepEqual(binding.summary(), []);
+    hold = false;await binding.select('harbor', {groups: ['movies', 'shows'], libraryIds: ['library']});
+    assert.deepEqual(binding.summary().map(group => group.totalCount), [5, 7]);
+    owner.retire();assert.deepEqual(binding.summary(), []);
+  } finally {binding.dispose();}
+});
+
+test('a changed Search query retires its original caller through the actual screen play effect', async () => {
+  const held = deferred<void>();let guard: (() => boolean) | undefined;
+  const owner = setup(async path => {
+    const raw = searchPage(path);
+    return {...raw, groups: raw.groups.map(group => ({...group, items: group.items.map(item => item.kind === 'movie'
+      ? {...item, available: true, playback: {itemId: item.id, startMs: 0}} : item)}))};
+  });
+  const effect = createScreenPlayEffect({isCurrent: owner.context.isCurrent, runtime: () => runtime});
+  const runtime = {async playFromScreen(_target: unknown, lifetime: {signal: AbortSignal; isCurrent: () => boolean}) {guard = lifetime.isCurrent;await held.promise;}};
+  const binding = createSearchBindings({...owner.context, effects: {...owner.context.effects, play: effect}});
+  try {
+    await binding.select('harbor', {groups: ['movies', 'shows']});const entry = binding.service.getSnapshot().groups[0].items[0];
+    const play = binding.play(entry);assert.equal(guard?.(), true);
+    await binding.select('different', {groups: ['movies', 'shows']});assert.equal(guard?.(), false);
+    held.resolve();await assert.rejects(play, {name: 'AbortError'});
+  } finally {held.resolve();binding.dispose();}
+});
+
+test('a replaced Detail projection retires its original caller through the actual screen play effect', async () => {
+  const held = deferred<void>();let guard: (() => boolean) | undefined;
+  const owner = setup(async path => {
+    const id = path.includes('/two/') ? 'two' : 'one';
+    return {...detailPage(id), actions: [{id: 'play', labelKey: 'action.play', enabled: true, playback: {itemId: id, startMs: 0}}]};
+  });
+  const runtime = {async playFromScreen(_target: unknown, lifetime: {signal: AbortSignal; isCurrent: () => boolean}) {guard = lifetime.isCurrent;await held.promise;}};
+  const binding = createDetailBindings({...owner.context, effects: {...owner.context.effects,
+    play: createScreenPlayEffect({isCurrent: owner.context.isCurrent, runtime: () => runtime})}});
+  try {
+    await binding.select({libraryId: 'library', itemId: 'one'});const data = binding.service.getSnapshot().data!;
+    const play = binding.play(data, 'play');assert.equal(guard?.(), true);
+    await binding.select({libraryId: 'library', itemId: 'two'});assert.equal(guard?.(), false);
+    held.resolve();await assert.rejects(play, {name: 'AbortError'});
+  } finally {held.resolve();binding.dispose();}
+});
 const showPage = () => ({scope: {serverId: 'server', libraryId: 'library', viewerFence: 'show-fence'}, revision: {catalog: 3, viewer: 2},
   show: {id: 'show', libraryId: 'library', title: 'show', libraryKind: 'tv', providerMatchStatus: 'unresolved'},
   seasons: [{id: 'season', showId: 'show', number: 1, title: 'season'}], seasonTotalCount: 1, nextSeasonCursor: '', groups: [], selected: {seasonId: 'season'},
@@ -75,6 +159,8 @@ test('domain factory creation is inert and disposal erases all private snapshots
   assert.equal(show.personal.getSnapshot(), undefined);
   assert.equal(person.getSnapshot().page, undefined);
   assert.equal(search.service.getSnapshot().data, null);
+  assert.equal(search.genres.getSnapshot().phase, 'idle');
+  assert.deepEqual(search.genres.getSnapshot().genres, []);
   assert.deepEqual(search.session(), {text: '', group: undefined});
 });
 

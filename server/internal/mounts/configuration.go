@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 )
 
@@ -94,7 +95,7 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	if err = validateConfig(string(raw), c.Remote); err != nil {
 		return zero, ErrConfigInvalid
 	}
-	publication, err := s.sourceCandidate(ctx, raw, c.Remote, authorize)
+	publication, err := s.sourceCandidate(ctx, SourceCandidateInput{Configuration: raw, Remote: c.Remote, Current: &m}, authorize)
 	if err != nil {
 		clear(raw)
 		return zero, err
@@ -109,7 +110,7 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 		return zero, err
 	}
 	defer os.Remove(candidate)
-	if err = s.validateCandidate(ctx, executable, digest, c.Remote, candidate); err != nil {
+	if err = publication.Test(ctx, rcloneprogram.Program{Path: executable}, digest); err != nil {
 		return zero, err
 	}
 	if publication != nil {
