@@ -52,7 +52,8 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
       </li>)}
     </ul>
     <FolderEditor open={!!editing} onOpenChange={open => { if (!open) setEditing(undefined); }} source={editing}
-      busy={busy} onSave={edit => { if (!editing) return; void run(() => service.saveSource(editing.id, {...edit, expectedRevision: config.revision})); setEditing(undefined); }} />
+      busy={busy} onSave={edit => { if (!editing) return;
+        void run(() => service.saveSource(editing.id, {...edit, expectedRevision: config.revision, acceptReplacement: false})); setEditing(undefined); }} />
     <Dialog open={!!removing} onOpenChange={open => { if (!open) setRemoving(undefined); }} size="sm" role="alertdialog"
       title={t('next.settings.libraries.removeFolderTitle')} description={t('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.itemActions.1.confirm')}
       footer={<><Button onClick={() => setRemoving(undefined)}>{t('next.settings.cancel')}</Button>
