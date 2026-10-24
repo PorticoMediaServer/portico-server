@@ -674,6 +674,7 @@ export const settingsMessages = {
   'web.metadata.lockEverything': 'Lock everything',
   'web.metadata.unlockEverything': 'Unlock everything',
   'web.metadata.noHistory': 'No changes yet.',
+  'web.metadata.tabMatching': 'Matching',
   'web.metadata.field.name': 'Name',
   'web.metadata.field.role': 'Character or role',
   'web.metadata.field.department': 'Department',

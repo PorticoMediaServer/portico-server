@@ -52,9 +52,11 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   // The offer needs this exact library's own online metadata agent. The fact is keyed to the
   // library and screen scope that produced it, so a stale read can never enable another library
   // or survive a scope change; unknown, reset and failed reads all withhold the tab.
-  const [agentFact, setAgentFact] = useState<Readonly<{key: string; online: boolean}>>();
+  const [agentFact, setAgentFact] = useState<Readonly<{key: string; context: typeof context; online: boolean}>>();
   const agentKey = JSON.stringify([context.scope.serverId, context.scope.viewerId, library.id, library.kind]);
-  const onlineAttention = agentFact?.key === agentKey && agentFact.online === true;
+  // The captured ScreenContext itself is part of the fact: a new capture for the same viewer
+  // must not reuse a previous true before its own read, including on early lifetime refusal.
+  const onlineAttention = agentFact?.key === agentKey && agentFact.context === context && context.isCurrent() && agentFact.online === true;
   const tabs = libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true, onlineAttention}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
@@ -73,17 +75,17 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   useEffect(() => {
     if (!resources.life.current()) return;
     let live = true;
-    const withhold = () => {if (live && resources.life.current()) setAgentFact({key: agentKey, online: false});};
+    const withhold = () => {if (live && resources.life.current()) setAgentFact({key: agentKey, context, online: false});};
     void resources.life.api.request(metadataAgentPath(library.id), 'GET').then(raw => {
       if (!live || !resources.life.current()) return;
       let agent;
       try {agent = parseMetadataAgent(raw);} catch {withhold(); return;}
       // A read that answers for another library or kind is not this library's fact.
       if (agent.libraryId !== library.id || agent.libraryKind !== library.kind) {withhold(); return;}
-      setAgentFact({key: agentKey, online: agent.agent === 'online'});
+      setAgentFact({key: agentKey, context, online: agent.agent === 'online'});
     }, withhold).catch(withhold);
     return () => {live = false;};
-  }, [resources, library.id, library.kind, agentKey]);
+  }, [resources, library.id, library.kind, agentKey, context]);
   const href = useLocation({select: location => location.href}), runtime = captured.binding.playback?.runtime;
   const runtimeRef = useRef(runtime);runtimeRef.current = runtime;
   const playSelection = useMemo(() => {
