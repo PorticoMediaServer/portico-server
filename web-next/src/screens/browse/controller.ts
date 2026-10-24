@@ -103,6 +103,17 @@ export class BrowseController {
     if (!this.current() || !capabilities || !sort) throw closed();
     return this.builder(capabilities, predicates, sort).build();
   }
+  /** Fixed source membership is the default, not a user-applied filter. */
+  canSaveView() {
+    const {capabilities, predicates, sort, phase} = this.state;
+    if (!this.current() || phase !== 'ready' || !capabilities || !sort) return false;
+    const pivot = capabilities.resolvedPivot ?? capabilities.pivots.find(value => value.id === this.source.pivot);
+    if (!pivot) return false;
+    return predicates.length > 0 || this.sorts.length !== pivot.defaultSort.length || this.sorts.some((value, index) => {
+      const base = pivot.defaultSort[index];
+      return !base || value.field !== base.field || value.direction !== base.direction || value.seed !== base.seed;
+    });
+  }
   /** UI controls preserve compound predicates and validate every generated node. */
   parseNode = (value: unknown) => parseBrowseNode(value);
   retry = () => {

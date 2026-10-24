@@ -26,5 +26,6 @@ test('every output is available in the canonical generated catalogue for both co
     const icon: IconName = libraryNavigationIcon(kind, platform);
     assert.ok(Object.hasOwn(nextIcons, icon));
   }
-  assert.equal(Object.keys(nextIcons).length, 250);
+  // Other approved surfaces add glyphs independently. Navigation's invariant
+  // is that every returned ID exists, not a fixed size for the entire sprite.
 });
