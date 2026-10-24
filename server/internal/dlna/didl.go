@@ -28,7 +28,7 @@ func protocolInfo(mime string) string { return "http-get:*:" + mime + ":" + cont
 // type an original can be served as.
 func sourceProtocols() string {
 	types := []string{"video/mp4", "video/x-matroska", "video/webm", "video/x-msvideo", "video/mp2t", "video/mpeg",
-		"audio/mpeg", "audio/aac", "audio/flac", "audio/ogg", "audio/wav", "audio/aiff", "audio/mp4", "audio/x-ape", "audio/x-wavpack", "audio/x-dsf", "audio/x-dff", "audio/x-matroska", "audio/x-ms-wma", "audio/x-tta", "audio/x-musepack"}
+		"audio/mpeg", "audio/aac", "audio/flac", "audio/ogg", "audio/wav", "audio/aiff", "audio/mp4", "audio/x-ape", "audio/x-wavpack", "audio/x-dsf", "audio/x-dff", "audio/x-matroska", "audio/x-ms-wma", "audio/x-tta", "audio/x-musepack", "audio/x-caf", "application/octet-stream"}
 	out := make([]string, len(types))
 	for i, v := range types {
 		out[i] = protocolInfo(v)
@@ -119,7 +119,7 @@ func didl(base string, objects []object) string {
 			if r.video != "" && r.width > 0 && r.height > 0 {
 				attribute(&b, "resolution", strconv.Itoa(r.width)+"x"+strconv.Itoa(r.height))
 			}
-			b.WriteString(">" + xmlText(base+mediaPath+r.token+extension(r.container)) + "</res>")
+			b.WriteString(">" + xmlText(base+mediaPath+r.token+resourceExtension(r.container, r.video)) + "</res>")
 		}
 		b.WriteString("</" + tag + ">")
 	}
