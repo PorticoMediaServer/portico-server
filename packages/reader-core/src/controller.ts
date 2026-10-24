@@ -240,11 +240,13 @@ export class ReaderController<P extends object> {
     if (!query.trim() || query.length > 1024 || !Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > 500)
       throw new ReaderError('limit_exceeded');
     const scope = abortScope([options.signal, session.abort.signal]), signal=scope.signal;
-    const iterator = session.document.search(query, {...options, signal})[Symbol.asyncIterator]();
+    let iterator: AsyncIterator<ReaderSearchResult>|undefined;
     let abort!:()=>void;
     const stopped = new Promise<never>((_,reject)=>{abort=()=>reject(new ReaderError('aborted'));signal.addEventListener('abort',abort,{once:true});});
     let count = 0;
     try {
+    throwIfAborted(signal);
+    iterator = session.document.search(query, {...options, signal})[Symbol.asyncIterator]();
     for (;;) {
       throwIfAborted(signal);
       const next = await Promise.race([iterator.next(),stopped]);
@@ -258,8 +260,11 @@ export class ReaderController<P extends object> {
     }
     } finally {
       signal.removeEventListener('abort',abort);scope.dispose();
-      if (signal.aborted) { const closing=iterator.return?.(); if (closing) void closing.catch(()=>{}); }
-      else await iterator.return?.();
+      if (iterator) {
+        if (signal.aborted) {
+          try { const closing=iterator.return?.(); if (closing) void closing.catch(()=>{}); } catch {}
+        } else await iterator.return?.();
+      }
     }
   }
 }

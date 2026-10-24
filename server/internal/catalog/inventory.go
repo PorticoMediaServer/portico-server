@@ -276,6 +276,11 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 			discovered++
 		}
 	}
+	if libraryKind == "book" || libraryKind == "comic" {
+		if err = refreshReadingDirectoryTx(ctx, tx, job, source, relative); err != nil {
+			return false, err
+		}
+	}
 	state = "pending"
 	if page.Complete {
 		state = "done"

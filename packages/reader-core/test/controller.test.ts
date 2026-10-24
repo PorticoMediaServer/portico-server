@@ -100,6 +100,23 @@ test('external search cancellation rejects a late engine result without waiting 
     assert.ok(outcome instanceof ReaderError);assert.equal(outcome.code,'aborted');
   }finally{release.resolve();await new Promise(resolve=>setImmediate(resolve));await f.controller.close();}
 });
+test('aborted search swallows iterator close errors and keeps the abort code',async()=>{
+  for(const mode of ['sync','async'] as const){
+    const f=fixture(),abort=new AbortController(),pending=deferred<IteratorResult<{id:string;excerpt:string;location:typeof location}>>();let calls=0,returnCalls=0;
+    f.document.search=()=>({[Symbol.asyncIterator](){return {
+      next:()=>++calls===1?Promise.resolve({done:false,value:{id:'first',excerpt:'Actual quotation',location}}):pending.promise,
+      return:()=>{returnCalls++;if(mode==='sync')throw new Error('sync close');return Promise.reject(new Error('async close'));}
+    };}});
+    await f.controller.open({source,format:'epub',container});
+    const iter=f.controller.search('quote',{signal:abort.signal,limit:5})[Symbol.asyncIterator]();
+    try {
+      assert.equal((await iter.next()).value?.id,'first');
+      const late=iter.next();abort.abort();
+      const outcome=await Promise.race([late.then(()=> 'resolved',error=>error),new Promise(resolve=>setTimeout(()=>resolve('timeout'),100))]);
+      assert.ok(outcome instanceof ReaderError);assert.equal(outcome.code,'aborted');assert.equal(returnCalls,1);
+    }finally{pending.resolve({done:true,value:undefined});await new Promise(resolve=>setImmediate(resolve));await f.controller.close();}
+  }
+});
 test('opening errors expose codes and no arbitrary exception text; cleanup covers view failure', async () => {
   const f = fixture(); f.adapter.open = async () => {throw new Error('private URL/token must not be snapshot copy');};
   await f.controller.open({source, format: 'epub', container});
