@@ -5,6 +5,7 @@
   --person-count-size: 14.5px; --person-count-weight: 600;
   --person-group-size: 20px; --person-group-weight: 700; --person-group-tracking: -.015em;
   --person-group-count-size: 14px; --person-group-count-weight: 600; --person-strong-weight: 700;
+  --person-toolbar-heading-size: 26px; --person-toolbar-heading-weight: 800; --person-toolbar-heading-tracking: -.025em; --person-note-size: 14px;
   --person-phone-meta-size: 14px; --person-phone-bio-size: 15px; --person-phone-group-size: 19px;
   padding-bottom: 64px;
 }
@@ -47,6 +48,8 @@
 
 .toolbar { position: relative; z-index: var(--layer-row-arrow); display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 64px; }
 
+.toolbarHeading { margin: 0; font-size: var(--person-toolbar-heading-size); font-weight: var(--person-toolbar-heading-weight); line-height: normal; letter-spacing: var(--person-toolbar-heading-tracking); color: var(--color-text); }
+
 .count { font-size: var(--person-count-size); font-weight: var(--person-count-weight); line-height: normal; color: var(--color-text-tertiary); }
 
 .chips { margin-left: 18px; display: flex; gap: 8px; }
@@ -62,6 +65,10 @@
 .groupCount { font-size: var(--person-group-count-size); font-weight: var(--person-group-count-weight); color: var(--color-text-tertiary); }
 
 .track { padding-top: 12px; }
+
+.note { display: flex; align-items: center; gap: 10px; margin: 40px 64px 0; font-size: var(--person-note-size); line-height: normal; color: var(--color-text-tertiary); }
+
+.note svg { color: var(--color-accent-strong); flex: none; }
 
 .wideGrid { margin-top: 12px; }
 
@@ -94,6 +101,10 @@
 .readMore { margin-left: -12px; }
 
 .toolbar { flex-wrap: wrap; padding: 0 20px; }
+
+.toolbarHeading { font-size: var(--person-phone-group-size); }
+
+.note { margin: 32px 20px 0; }
 
 .chips { margin-left: 0; }
 

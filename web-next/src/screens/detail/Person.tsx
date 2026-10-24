@@ -33,7 +33,7 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
   const covers = person.knownFor.length > 0 ? Array.from({length: 4}, (_, index) => person.knownFor[index % person.knownFor.length]).flatMap(entry => { const source = art.foreground(entry.posterUrl, 320, 2 / 3); return source ? [source] : []; }) : [];
   const titles = page.pageInfo.total;
   const hasMeta = Boolean(born || person.birthPlace || titles > 0);
-  const hasBiography = Boolean(person.biography);
+  const hasBiography = Boolean(person.biography), biographySource = person.biographySource;
   return <article className={styles.person} data-person-screen>
     <header className={styles.hero} data-person-hero>
       <AmbientArt className={styles.wash} treatment="artist" sources={person.knownFor.slice(0, 3).flatMap(entry => { const source = art.ambient(entry.backdropUrl ?? entry.posterUrl); return source ? [source] : []; })} />
@@ -44,21 +44,22 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
         {hasMeta && <p className={styles.meta} data-person-meta>
           {born && <strong>{died ? t('web.person.lived', {born, died}) : t('web.person.born', {date: born})}</strong>}
           {person.birthPlace && <span>{person.birthPlace}</span>}
-          {titles > 0 && <span>{t('web.person.titles', {count: titles})}</span>}
+          {titles > 0 && <span>{t('web.person.titlesOnServer', {count: titles})}</span>}
         </p>}
         {hasBiography ? <TitleProse className={styles.biography} data-person-bio data-full={full || undefined}>{person.biography}</TitleProse> : <TitleProse className={styles.biography} data-person-bio>{t('web.person.noBio')}</TitleProse>}
-        {(hasBiography || person.biographySource) && <div className={styles.bioFoot} data-person-bio-foot>
+        {(hasBiography || biographySource) && <div className={styles.bioFoot} data-person-bio-foot>
           {hasBiography && <Button variant="text" size="small" className={styles.readMore} onClick={() => runScreenCommand(binding.context, () => { binding.current(page); setFull(value => !value); })}>{t(full ? 'web.person.showLess' : 'web.person.readMore')}<Icon name={full ? 'i-up' : 'i-down'} size={16} /></Button>}
-          {person.biographySource && <small className={styles.source} data-person-source>{person.biographySource}</small>}
+          {biographySource && <small className={styles.source} data-person-source>{t('web.person.biographyFrom', {source: biographySource})}</small>}
         </div>}
       </div>
     </header>
     {snapshot.role === 'all' && person.knownFor.length > 0 && titles > person.knownFor.length && <TitleRow binding={binding} heading={t('web.person.knownFor')} entries={person.knownFor} guard={() => binding.current(page)} />}
-    <div className={styles.toolbar} data-person-toolbar><span className={styles.count} data-person-count>{t('web.person.titles', {count: titles})}</span><div className={styles.chips}>{(['all', 'cast', 'crew'] as const).map(role => <Chip key={role} variant="quick" selected={snapshot.role === role} onClick={() => runScreenCommand(binding.context, () => { binding.current(page); return binding.select(person.id, role); })}>{t(role === 'all' ? 'web.search.all' : role === 'cast' ? 'web.person.cast' : 'web.person.crew')}</Chip>)}</div></div>
+    <div className={styles.toolbar} data-person-toolbar><h2 className={styles.toolbarHeading} data-person-toolbar-heading>{t('web.person.onServer')}</h2><span className={styles.count} data-person-count>{t('web.person.titles', {count: titles})}</span><div className={styles.chips}>{(['all', 'cast', 'crew'] as const).map(role => <Chip key={role} variant="quick" selected={snapshot.role === role} onClick={() => runScreenCommand(binding.context, () => { binding.current(page); return binding.select(person.id, role); })}>{t(role === 'all' ? 'web.search.all' : role === 'cast' ? 'web.person.cast' : 'web.person.crew')}</Chip>)}</div></div>
     {titles === 0 && <StateView title={t('web.person.noCredits')} body={t('web.person.noCreditsBody')} />}
     {page.groups.some(group => group.kind && group.total > 0) && snapshot.role === 'all'
       ? <div className={styles.groups} data-person-groups>{page.groups.filter(group => group.kind && group.total > 0).map(group => <PersonCredits key={group.id} binding={binding} page={page} kind={group.kind} total={group.total} heading={groupHeading(group.kind)} phone={phone} />)}</div>
       : titles > 0 && <PersonCredits binding={binding} page={page} total={titles} heading={t('web.person.credits')} phone={phone} />}
+    {titles > 0 && <p className={styles.note} data-person-note><Icon name="i-info" size={18} />{t('web.person.serverNote')}</p>}
   </article>;
 }
 
