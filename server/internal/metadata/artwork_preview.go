@@ -33,7 +33,7 @@ func queueArtworkPreview(ctx context.Context, tx *sql.Tx, t RepairTarget, candid
 }
 
 // Caller authenticates a current owner. This route only opens installed bytes.
-// width is one of the display buckets (400, 800, 1920): a preview larger than
+// width is one of the display buckets (400, 800, 1920, 2560): a preview larger than
 // the bucket is reduced with the same resizer the variant path uses, after the
 // read snapshot is released, so no lock is held across the resize that is not
 // already held today. Previews are thumbnails already, so the resize only fires
@@ -42,7 +42,7 @@ func (s *Service) PreviewArtwork(ctx context.Context, t RepairTarget, candidate 
 	if !artDigest(candidate) {
 		return nil, "", ErrRepairInput
 	}
-	if width != 400 && width != 800 && width != 1920 {
+	if width != 400 && width != 800 && width != 1920 && width != 2560 {
 		return nil, "", ErrRepairInput
 	}
 	gated, err := dbwork.BeginSnapshot(ctx, s.db)

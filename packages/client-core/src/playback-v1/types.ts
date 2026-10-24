@@ -3,6 +3,7 @@ import {parseDashboardSessionFacts} from '../admin/activity-summary/parser.ts';
 import type {BrowseNode, BrowseSortSelection} from '../browse.ts';
 import {validateSubtitleDelivery} from '../subtitles.ts';
 import {apiRoot} from '../../../contracts/src/routes.ts';
+import {parseObservedPlayback, type ObservedPlayback} from './observed-playback.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -148,6 +149,8 @@ export type Session = Readonly<{
   queue?: Readonly<{queueId: string; entryId: string}>;
   lease: Readonly<{expiresAt?: string; reportEveryMs: number}>;
   presentation: Presentation;
+  /** Only the current renderer snapshot returned by the authorized server read. */
+  observedPlayback?: ObservedPlayback;
   /** Why an ended session ended (spec §14): "terminated" by an administrator with their message,
    * "stopped", "transferred", "lease_expired", "replaced"… Absent until it ends. */
   end?: SessionEnd;
@@ -169,7 +172,12 @@ function decision(v: unknown): Decision | undefined {
 
 export function parseSession(v: unknown): Session {
   if (!obj(v) || !obj(v.presentation)) throw new ContractError('session');
+  let observed: ObservedPlayback | undefined;
+  if (v.state !== 'ended') {
+    try { observed = parseObservedPlayback(v.observedPlayback); } catch { /* Invalid optional facts never become output, or end valid playback. */ }
+  }
   return Object.freeze({
+    ...(observed !== undefined ? {observedPlayback: observed} : {}),
     id: id(v.id, 'session id'), revision: revision(v.revision), kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never),
     role: oneOf(v.role, ['local', 'receiver', 'group_member'] as const, 'other' as never), state: oneOf(v.state, ['playing', 'paused', 'ended'] as const, 'other' as never),
     itemId: optId(v.itemId, 'item id'), versionId: optId(v.versionId, 'version id'),
