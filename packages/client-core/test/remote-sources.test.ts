@@ -20,11 +20,11 @@ test('private connection body is never retained; lost response recovery reads on
  assert.equal(ids,1);assert.equal(calls.filter(c=>c.method==='POST').length,1);assert.equal(calls.find(c=>c.method==='POST')?.body && (calls.find(c=>c.method==='POST')!.body as any).password,input.password);
  assert(calls.some(c=>c.path.endsWith('/source-operations/'+op)&&c.method==='GET'&&c.body===undefined));service.dispose();
 });
-test('an unsafe source is never listed, and oversized lists and changed owner fences fail closed',async()=>{
+test('an unsafe source is never listed, and malformed lists and changed owner fences fail closed',async()=>{
  for(const row of [source({password:'secret'}),source({root:'https://private/'}),source({origin:'https://user:secret@private.example'}),source({kind:'ftp'}),source({generation:0})]){
   const service=new RemoteSourceService(api(async()=>list([row,source({id:'other'})])),scope,async()=>op);await service.load();assert.deepEqual(service.getSnapshot().sources.map(s=>s.id),['other']);assert(!JSON.stringify(service.getSnapshot()).includes('secret'));service.dispose();
  }
- for(const raw of [list(new Array(17).fill(source())),{...list(),sources:{}},{...list(),mountSupported:'yes'},{...list(),scope:{...wire,serverId:'other'}}]){
+ for(const raw of [{...list(),sources:{}},{...list(),mountSupported:'yes'},{...list(),scope:{...wire,serverId:'other'}}]){
   const service=new RemoteSourceService(api(async()=>raw),scope,async()=>op);await service.load();assert.equal(service.getSnapshot().sources.length,0);assert(service.getSnapshot().error);service.dispose();
  }
  // A state this app does not know is kept as the server named it, unknown range support reads as unknown,
@@ -110,4 +110,13 @@ test('an edit is carried onto the share as it is now, field by field',async()=>{
  assert.equal(rebaseDavEdit(base,source({generation:4,origin:'https://other.example'}) as any,{...keep,keepPassword:false,password:'p'}),undefined);
  // Both made the same change: no conflict.
  assert.equal(rebaseDavEdit(base,source({generation:4,name:'Same'}) as any,{...keep,name:'Same'})?.name,'Same');
+});
+
+
+test('all saved sources remain listed beyond the former count ceiling',async()=>{
+ const rows=Array.from({length:24},(_,i)=>source({id:`source-${i}`,name:`Source ${i}`}));
+ const service=new RemoteSourceService(api(async()=>list(rows)),scope,async()=>op);
+ await service.load();assert.equal(service.getSnapshot().error,'');
+ assert.deepEqual(service.getSnapshot().sources.map(row=>row.id),rows.map(row=>row.id));
+ service.dispose();
 });
