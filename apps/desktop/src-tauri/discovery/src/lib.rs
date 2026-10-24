@@ -121,7 +121,7 @@ fn project(service:&ResolvedService,at:u64)->Vec<DiscoveryRoute>{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mdns_sd::ServiceInfo;
+    use mdns_sd::{ServiceInfo,IntoTxtProperties};
     fn service(port:u16)->ServiceInfo {
         ServiceInfo::new(SERVICE,"portico-test","portico-test.local.","192.168.77.8",port,
             [("v","1"),("id",&format!("srv_{}",URL_SAFE_NO_PAD.encode([4;32]))),
@@ -137,7 +137,7 @@ mod tests {
         for key in ["v","path","id","fp","port"]{
             let mut value=service(10443).as_resolved_service();
             let changed:Vec<(String,String)>=value.txt_properties.iter().map(|p|(p.key().into(),if p.key()==key{"hostile".into()}else{p.val_str().into()})).collect();
-            value.txt_properties=changed.as_slice().into();assert!(project(&value,5000).is_empty());
+            value.txt_properties=changed.as_slice().into_txt_properties();assert!(project(&value,5000).is_empty());
         }
         let mut value=service(10443).as_resolved_service();value.port=10444;assert!(project(&value,5000).is_empty());
         for ip in [Ipv4Addr::new(8,8,8,8),Ipv4Addr::LOCALHOST,Ipv4Addr::new(100,110,122,17),Ipv4Addr::UNSPECIFIED]{assert!(!private_v4(&ip));}
