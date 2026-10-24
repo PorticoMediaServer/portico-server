@@ -156,7 +156,7 @@ test('Sonic requires both the producer hint and actual readiness, with no invent
     const calls: string[] = [];
     const f = fixture(async <T>(path: string) => {
       calls.push(path);
-      return (path.endsWith('/sonic-analysis') ? {...sonic, available} : {...document('selected'), eligibleControls: offered ? ['libraries.sonicAnalysis'] : []}) as T;
+      return (path.endsWith('/sonic-analysis') ? {...sonic, available} : {...document('selected'), libraryKind: 'music', eligibleControls: offered ? ['libraries.sonicAnalysis'] : []}) as T;
     });
     try {
       await f.source.select('selected');
@@ -175,7 +175,7 @@ test('Sonic uses its own CAS and probe facade while leaving Library settings and
   let state = sonic;
   const f = fixture(async <T>(path: string, method?: string, body?: unknown) => {
     calls.push({path, method, body});
-    if (path.endsWith('/settings')) return {...document('selected'), eligibleControls: ['libraries.sonicAnalysis']} as T;
+    if (path.endsWith('/settings')) return {...document('selected'), libraryKind: 'music', eligibleControls: ['libraries.sonicAnalysis']} as T;
     if (method === 'PUT') {assert.deepEqual(body, {enabled: true, expectedRevision: 3});state = {...sonic, enabled: true, revision: 4};}
     if (path.endsWith('/retry')) assert.deepEqual(body, {});
     return state as T;
@@ -200,7 +200,7 @@ test('Sonic selection retirement suppresses a late answer and removal of its pro
       return sonic as T;
     }
     if (method === 'PUT') offered = false;
-    return {...document('selected', method === 'PUT' ? 8 : 7), eligibleControls: ['libraries.cwWeeks', ...(offered ? ['libraries.sonicAnalysis'] : [])], settings: method === 'PUT' ? (body as {settings: LibrarySettings}).settings : settings} as T;
+    return {...document('selected', method === 'PUT' ? 8 : 7), libraryKind: 'music', eligibleControls: ['libraries.cwWeeks', ...(offered ? ['libraries.sonicAnalysis'] : [])], settings: method === 'PUT' ? (body as {settings: LibrarySettings}).settings : settings} as T;
   });
   try {
     await f.source.select('selected');
