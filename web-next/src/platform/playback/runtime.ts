@@ -240,6 +240,9 @@ export class WebShellPlaybackRuntime {
     const volume = () => this.sync();
     video.addEventListener('volumechange', volume);
     this.lifecycle.push(() => video.removeEventListener('volumechange', volume));
+    // The optional native local port is only known after this same persistent host
+    // mounts. Publish that actual capability change to the app attachment.
+    this.sync();
     return () => this.dispose();
   }
   private bindElement(stack: Stack): void { if (this.video && !stack.unmount) stack.unmount = stack.web.mount(this.video, this.surface); }
