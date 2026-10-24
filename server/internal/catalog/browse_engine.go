@@ -144,7 +144,7 @@ func resolveBrowseSorts(pivot browsePivot, selection []BrowseSortSelection) ([]B
 			return nil, browseIssue(path+".field", fmt.Sprintf("sort %q is not supported", entry.Field))
 		}
 		readingPivot := kindFilter["ebook"] || kindFilter["comic"]
-		if readingPivot && entry.Field!="title" && entry.Field!="year" && entry.Field!="added" || !readingPivot && !anyKind(definition.ApplicableKinds, kindFilter) {
+		if readingPivot && entry.Field != "title" && entry.Field != "year" && entry.Field != "added" || !readingPivot && !anyKind(definition.ApplicableKinds, kindFilter) {
 			return nil, browseIssue(path+".field", fmt.Sprintf("sort %q does not apply to this pivot", entry.Field))
 		}
 		if seen[entry.Field] {
@@ -339,8 +339,12 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 		extra += "\x00" + fence
 	}
 	readingScope, err := s.readingBrowseScope(request.Library)
-	if err != nil { return "",err }
-	if readingScope != nil { extra += "\x00"+readingScope.fence() }
+	if err != nil {
+		return "", err
+	}
+	if readingScope != nil {
+		extra += "\x00" + readingScope.fence()
+	}
 	extra += s.relativeBrowseFence(request.Query)
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
@@ -390,10 +394,16 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		return out, err
 	}
 	readingScope, err := s.readingBrowseScope(request.Library)
-	if err != nil { return out,err }
+	if err != nil {
+		return out, err
+	}
 	if len(rows) > 0 {
 		var entries []ContentEntry
-		if readingScope != nil { entries,err=readingScope.project(s,rows) } else { entries,err=s.browseProjection(request.Profile,rows) }
+		if readingScope != nil {
+			entries, err = readingScope.project(s, rows)
+		} else {
+			entries, err = s.browseProjection(request.Profile, rows)
+		}
 		if err != nil {
 			return out, err
 		}
@@ -442,9 +452,13 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	out.Pivot = pivot.ID
 	readingReady, err := s.readingBrowseScope(request.Library)
-	if err != nil {return out,nil,err}
+	if err != nil {
+		return out, nil, err
+	}
 	if err := s.browseReady(request.Library); err != nil {
-		if readingReady != nil {return out,nil,ErrStaleContinuation}
+		if readingReady != nil {
+			return out, nil, ErrStaleContinuation
+		}
 		return out, nil, err
 	}
 	if !pivot.Browsable {
@@ -478,9 +492,11 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			compiler.kinds = append(compiler.kinds, int(kind))
 		}
 	}
-	readingEligible, err := s.bindReadingBrowse(request.Library,compiler)
-	if err != nil { return out,nil,err }
-	where += " AND "+readingEligible
+	readingEligible, err := s.bindReadingBrowse(request.Library, compiler)
+	if err != nil {
+		return out, nil, err
+	}
+	where += " AND " + readingEligible
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -513,7 +529,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	out.PageInfo.Revision = revision
 	stale := request.Range != nil && request.Range.Revision != "" && request.Range.Revision != revision
-	if stale && compiler.reading != nil {return out,nil,ErrStaleContinuation}
+	if stale && compiler.reading != nil {
+		return out, nil, ErrStaleContinuation
+	}
 	if stale && request.HomeRowDisplay != "" {
 		return out, nil, ErrStaleContinuation
 	}
@@ -569,8 +587,10 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 		seekKeys, seekAnchor = cursor.Keys, cursor.ID
 		if compiler.reading != nil {
-			seekKeys,err=s.readingBrowseCursorKeys(where,args,sorts,cursor.Keys,cursor.ID)
-			if err!=nil {return out,nil,err}
+			seekKeys, err = s.readingBrowseCursorKeys(where, args, sorts, cursor.Keys, cursor.ID)
+			if err != nil {
+				return out, nil, err
+			}
 		}
 		if !counted && cursor.Total > 0 {
 			total, counted = cursor.Total, true
@@ -725,7 +745,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 				keys = append(keys, last.keys["phase"], last.keys["restTitle"])
 			}
 		}
-		if compiler.reading != nil { keys=readingBrowseBoundedKeys(keys) }
+		if compiler.reading != nil {
+			keys = readingBrowseBoundedKeys(keys)
+		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
 		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires})
 		if err != nil {
