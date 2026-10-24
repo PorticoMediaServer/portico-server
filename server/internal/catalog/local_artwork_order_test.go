@@ -80,6 +80,30 @@ func TestLocalArtworkOrderSurvivesRestartAndCompositeContinuation(t *testing.T) 
 			if err != nil || preferred == nil || *preferred != first[0] {
 				t.Fatal("default disagrees with canonical page", preferred, err)
 			}
+			c.Exec(`INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, canonical.Key)
+			c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owner-choice','item',?,'poster','local','owner',?,'Local file','owner-fence','now')`, item.ID, "local:"+key(7))
+			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('item',?,'poster','owner-choice',?,?,0,'owner','now')`, item.ID, canonical.Key, canonical.Key)
+			checkDefault := func(blocked bool) {
+				t.Helper()
+				tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer tx.Rollback()
+				value, err := ReadDefaultLocalArtworkCandidateTx(ctx, tx, "item", item.ID, "poster")
+				if err != nil || blocked != (value == nil) {
+					t.Fatal("default ignored owner authority", value, err)
+				}
+			}
+			checkDefault(true) // A deliberately unlocked owner choice still wins.
+			c.Exec(`UPDATE artwork_selections SET actor='',locked=1 WHERE entity_id=?`, item.ID)
+			checkDefault(true)
+			c.Exec(`UPDATE artwork_selections SET actor='',locked=0 WHERE entity_id=?`, item.ID)
+			checkDefault(false) // An automatic selection may adopt a better default.
+			c.Exec(`INSERT INTO artwork_jobs(id,kind,entity_id,role,candidate_id,origin,provider,source_fence,selection_revision,actor,created_at) VALUES('owner-job','item',?,'poster','owner-choice',?,'local','owner-fence',1,'owner','now')`, item.ID, "local:"+key(7))
+			checkDefault(true)
+			c.Exec(`DELETE FROM artwork_jobs WHERE id='owner-job'`)
+			c.Exec(`DELETE FROM artwork_selections WHERE entity_id=?`, item.ID)
 			resume := first[len(first)-1]
 			if err = db.Close(); err != nil {
 				t.Fatal(err)

@@ -72,11 +72,24 @@ func ReadLocalArtworkCandidatePageTx(ctx context.Context, tx *sql.Tx, kind strin
 	return out, rows.Err()
 }
 
-// ReadDefaultLocalArtworkCandidateTx supplies the ordered default for an
-// unowned slot. It never changes an owner selection or queues a rendering job.
+// ReadDefaultLocalArtworkCandidateTx supplies the ordered automatic default.
+// Owner selections (including unlocked choices) and pending owner jobs win.
+// Legacy rows without a basename supply choices, not a guessed named default;
+// callers retain the existing primary-art fallback until acceptance adds facts.
+// This reader never changes a selection or queues a rendering job.
 func ReadDefaultLocalArtworkCandidateTx(ctx context.Context, tx *sql.Tx, kind string, entity int64, role string) (*LocalArtworkCandidateCursor, error) {
 	page, err := ReadLocalArtworkCandidatePageTx(ctx, tx, kind, entity, role, nil, 1)
 	if err != nil || len(page) == 0 {
+		return nil, err
+	}
+	if page[0].SourceName == "" {
+		return nil, nil
+	}
+	var ownerHeld bool
+	err = tx.QueryRowContext(ctx, `SELECT
+ EXISTS(SELECT 1 FROM artwork_selections WHERE kind=? AND entity_id=? AND role=? AND subject='' AND (locked=1 OR actor<>''))
+ OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject='' AND preview=0 AND (locked=1 OR actor<>'') AND status IN('pending','running','retry'))`, kind, entity, role, kind, entity, role).Scan(&ownerHeld)
+	if err != nil || ownerHeld {
 		return nil, err
 	}
 	return &page[0], nil
