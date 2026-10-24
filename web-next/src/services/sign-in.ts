@@ -23,18 +23,23 @@ export function hostedSignInStore(): SignInStore {
   return new BrowserProtectedStore<Pending>('portico.services-sign-in.v1:' + servicesTab(), 16384, true);
 }
 export async function restoreHostedSignIn(store: SignInStore, origin: string, capture?: SignInCapture): Promise<HostedSignIn | undefined> {
-  if (capture) await store.change(() => undefined);
-  const saved = capture ? undefined : await store.read();
-  if (saved && saved.version !== 1) {await store.change(() => undefined); throw invalid();}
-  const href = capture ? capture.href : saved?.href;
-  if (!href) {if (capture) throw invalid(); return;}
+  // Claim this tab's pending slot before async signature work. A later capture
+  // supersedes it; neither a late success nor failure may replace that capture.
+  if (capture && (!capture.href || !parseHostedSignInStartURL(capture.href, origin))) {
+    await store.change(() => undefined); throw invalid();
+  }
+  const saved = capture ? {version: 1 as const, href: capture.href!} : await store.read();
+  if (!saved) return;
+  if (capture) await store.change(() => saved);
+  const mine = (current: Pending | undefined) => current?.version === saved.version && current?.href === saved.href;
   try {
-    const parsed = parseHostedSignInStartURL(href, origin);
+    if (saved.version !== 1) throw invalid();
+    const parsed = parseHostedSignInStartURL(saved.href, origin);
     if (!parsed) throw invalid();
     const verified = await verifyHostedSignInStart(parsed);
-    if (capture) await store.change(() => ({version: 1, href}));
+    if (!mine(await store.read())) throw invalid();
     return verified;
-  } catch (error) {await store.change(() => undefined); throw error;}
+  } catch (error) {await store.change(current => mine(current) ? undefined : current); throw error;}
 }
 
 /** The only answer-producing entry point. The view calls this on Continue;

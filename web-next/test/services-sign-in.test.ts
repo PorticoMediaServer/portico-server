@@ -76,3 +76,26 @@ test('the signed Hosted origin must be the canonical API origin before any beare
     new AbortController().signal, value => f.navigations.push(value)));
   assert.equal(f.calls.length, 0); assert.equal(f.navigations.length, 0); assert(f.saved());
 });
+
+for (const invalidSignature of [false, true]) test(`a late ${invalidSignature ? 'invalid' : 'valid'} capture cannot replace or clear its successor`, async () => {
+  const first = fixture(), second = fixture();
+  const href = invalidSignature ? buildHostedSignInStartURL({...first.handoff, context: {...first.handoff.context,
+    signature: Buffer.alloc(64, 1).toString('base64url')}}) : first.href;
+  let release!: () => void, entered!: () => void;
+  const blocked = new Promise<void>(resolve => {release = resolve;}), started = new Promise<void>(resolve => {entered = resolve;});
+  let firstWrite = true;
+  const store: SignInStore = {read: first.store.read, change: async update => {
+    await first.store.change(update);
+    if (firstWrite) {firstWrite = false; entered(); await blocked;}
+  }};
+  const old = restoreHostedSignIn(store, origin, {href});
+  // Attach the rejection handler before releasing asynchronous verification.
+  const rejected = assert.rejects(old);
+  await started;
+  const current = await restoreHostedSignIn(store, origin, {href: second.href});
+  release(); await rejected;
+  assert.equal(current?.handoff.context.payload, second.handoff.context.payload);
+  assert.equal(first.saved()?.href, second.href);
+  assert.equal((await restoreHostedSignIn(store, origin))?.handoff.context.payload, second.handoff.context.payload);
+  assert.equal(first.calls.length + second.calls.length, 0, 'restoration never issues an account answer');
+});
