@@ -1,4 +1,4 @@
-import {useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {timelineFacts, type TextEnvironment} from '@portico/client-core/kit-model';
 import {durationText} from '@core/presentation/kit-model/text.ts';
@@ -68,10 +68,12 @@ export function BrowseResults(props: BrowseResultsProps) {
   const painted = size.width > 0 ? gridColumns(size.width, cardWidth, gridGap) : 1;
   // Fill the grid's own content box so every row reaches the gutter. The hundredth of a pixel
   // keeps the canonical column count exactly `painted` when the grid re-derives it from this width.
-  const width = list ? Math.max(1, size.width) : size.grid > 0 ? (size.grid - (painted - 1) * gridGap) / painted - .01 : cardWidth;
+  const overflow = size.grid > 0 ? Math.max(0, size.width - size.grid) : 0;
+  const width = list ? Math.max(1, size.grid || size.width) : size.grid > 0 ? (size.grid - (painted - 1) * gridGap) / painted - .01 : cardWidth;
   const height = musicGenres ? 152 : width / ratio + (shape === 'collection' ? 0 : gridCaption);
+  const gutter = {'--grid-overflow': `${overflow}px`} as CSSProperties;
   if (failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
-  return <div className={styles.results} ref={root} data-view={view}>
+  return <div className={styles.results} ref={root} data-view={view} style={gutter}>
     {list && <div className={styles.listHead} role="row">{columns.map(column => {
       const offered = state.capabilities?.sorts.find(sort => sort.id === column.id);
       return <div key={column.id} role="columnheader" aria-sort={state.sort?.field === column.id ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
