@@ -101,6 +101,7 @@ const referenceScreens = resolve(design, 'settings.html');
 let app, reference, browser, driver;
 const log = [];
 const note = value => {log.push(value); console.log(value);};
+let failure;
 
 try {
   if (!(await readFile(referenceScreens)).length) throw new Error('reference mock is missing');
@@ -156,7 +157,7 @@ try {
   }
   await driver.waitFor(`document.querySelector('nav[aria-label="Main"]')`, 30000);
   await driver.navigate(`${base}/settings?scope=account&section=playback`);
-  await driver.waitFor(`document.querySelector('h1')?.textContent === 'Playback'`, 30000);
+  await driver.waitFor(`[...document.querySelectorAll('main h1')].some(heading => heading.textContent === 'Playback')`, 30000);
   await driver.waitFor(`document.querySelector('#playback\\.skipping')`, 30000);
   await sleep(350);
   // Frame state: Recaps changed to Skip automatically, so the row offers Reset and Saved is visible.
@@ -233,12 +234,20 @@ try {
   await writeFile(resolve(output, 'facts.log'), JSON.stringify(summary, null, 2));
   note(`raster changed=${diff.changed} (${diff.percent}%) strong=${diff.strong} bounds=${JSON.stringify(diff.bounds)}`);
   note('done');
+} catch (error) {
+  failure = error;
+  try {note('failure url ' + await driver.evaluate('location.href'));} catch {}
+  try {note('failure text ' + (await driver.evaluate('document.body.innerText')).slice(0, 2400).replace(/\n+/g, ' | '));} catch {}
+  throw error;
 } finally {
   try {driver?.socket.close();} catch {}
   try {browser?.kill('SIGTERM');} catch {}
+  if (browser) await Promise.race([new Promise(resolve => browser.once('exit', resolve)), sleep(3000)]).catch(() => {});
   try {app?.kill('SIGTERM');} catch {}
+  if (app) await Promise.race([new Promise(resolve => app.once('exit', resolve)), sleep(3000)]).catch(() => {});
   try {reference?.close();} catch {}
-  await rm(state, {recursive: true, force: true});
-  await rm(profile, {recursive: true, force: true});
+  await rm(state, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});
+  await rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});
   await writeFile(resolve(output, 'capture.log'), log.join('\n') + '\n').catch(() => {});
+  if (failure) process.exitCode = 1;
 }
