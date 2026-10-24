@@ -844,6 +844,9 @@ func (s *Service) growSegmentTx(ctx context.Context, w *sql.Tx, queue, snap stri
 	if err != nil {
 		return err
 	}
+	if _, err = before.loadExistingSonicRange(q.current, 1); err != nil {
+		return err
+	}
 	current, hasCurrent := before.currentEntry()
 	if err = before.extendShuffleOrder(ctx, w, snap, built); err != nil {
 		return err
@@ -883,6 +886,9 @@ func (s *Service) finishBuildTx(ctx context.Context, w *sql.Tx, queue, snap stri
 	}
 	before, err := s.readLayout(ctx, w, q)
 	if err != nil {
+		return err
+	}
+	if _, err = before.loadExistingSonicRange(q.current, 1); err != nil {
 		return err
 	}
 	current, hasCurrent := before.currentEntry()
@@ -941,6 +947,9 @@ func (s *Service) bumpQueueTx(ctx context.Context, w *sql.Tx, q queueRow, announ
 	}
 	l, err := s.readLayout(ctx, w, q)
 	if err != nil {
+		return err
+	}
+	if _, err = l.loadExistingSonicRange(q.current, 1); err != nil {
 		return err
 	}
 	if err = s.queueEventsTx(ctx, w, l, s.now()); err != nil {

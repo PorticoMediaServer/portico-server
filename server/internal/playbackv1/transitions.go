@@ -218,7 +218,16 @@ func (s *Service) PrepareNext(ctx context.Context, c Caller, id, ifMatch, key st
 	}
 	var pos int64
 	var entry, item string
-	if err = s.withLayout(ctx, q, func(l *layout) error {
+	if err = s.withMusicLayout(ctx, c, q.id, func(l *layout) ([]int64, error) {
+		if l.q.revision != q.revision {
+			return nil, ErrRevision
+		}
+		position, _, ok := completionNext(l)
+		if !ok {
+			return nil, ErrQueueEnded
+		}
+		return l.sonicWindowsForRange(position, 1)
+	}, func(l *layout) error {
 		if l.waiting() {
 			return ErrQueueBuilding
 		}
@@ -341,10 +350,15 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		if old.ended != 0 || old.generation != p.sessionGeneration || old.state != p.sessionState || old.lease <= now.UnixMilli() || q.session != old.id {
 			return fail("session_changed")
 		}
-		l, err := s.readLayout(ctx, tx, q)
+		l, err := s.readMusicWriterLayout(ctx, tx, q, c)
 		if err != nil {
 			return err
 		}
+		defer func() {
+			if l != nil {
+				l.sonicPrepare = nil
+			}
+		}()
 		pos, wraps, ok := completionNext(l)
 		if !ok || pos != p.nextPosition {
 			return fail("queue_changed")
@@ -418,7 +432,7 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		if err = s.sessionEventsTx(ctx, tx, next, now, true); err != nil {
 			return err
 		}
-		if l, err = s.readLayout(ctx, tx, l.q); err != nil {
+		if l, err = s.readMusicWriterLayout(ctx, tx, l.q, c); err != nil {
 			return err
 		}
 		if err = s.queueEventsTx(ctx, tx, l, now); err != nil {
@@ -453,44 +467,55 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 // withNext fills what plays after the current entry, through the caller's
 // fence, and the caller's post-play policy (spec §18.5), in one read.
 func (s *Service) withNext(ctx context.Context, c Caller, v *QueueView, q queueRow) {
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
-	if err != nil {
-		return
-	}
-	defer done()
-	l, err := s.readLayout(ctx, tx, q)
-	if err != nil {
-		return
-	}
-	next := QueueNext{Reason: "end"}
-	if pos, _, ok := completionNext(l); ok {
-		entry, key, err := l.entryAtErr(pos)
-		switch {
-		case err == nil:
-			next.EntryID = &entry
-			next.Reason = "unavailable"
-			if visible, err := s.visibleFilter(ctx, tx, c.Principal); err == nil {
-				if allowed, err := visible([]string{key}); err == nil && len(allowed) == 1 {
-					next.Available, next.Reason = true, "ready"
-				}
+	_ = s.withMusicLayout(ctx, c, q.id, func(l *layout) ([]int64, error) {
+		if l.q.revision != q.revision {
+			return nil, ErrRevision
+		}
+		windows, err := sonicCurrentWindow(l)
+		if err != nil {
+			return nil, err
+		}
+		if position, _, ok := completionNext(l); ok {
+			next, err := l.sonicWindowsForRange(position, 1)
+			if err != nil {
+				return nil, err
 			}
-		case errors.Is(err, ErrQueueBuilding):
-			next.Reason = "unavailable"
+			windows = append(windows, next...)
 		}
-	}
-	v.Next = &next
-
-	// A growing capture or endless radio has no final duration total.
-	if len(l.building) == 0 && radioSegment(l) < 0 {
-		if summary, err := s.queueDuration(ctx, l, c.Principal); err == nil {
-			v.TotalDurationMs = &summary.ms
-			v.DurationKnown = summary.known
+		return windows, nil
+	}, func(l *layout) error {
+		tx := l.tx
+		next := QueueNext{Reason: "end"}
+		if pos, _, ok := completionNext(l); ok {
+			entry, key, err := l.entryAtErr(pos)
+			switch {
+			case err == nil:
+				next.EntryID = &entry
+				next.Reason = "unavailable"
+				if visible, err := s.visibleFilter(ctx, tx, c.Principal); err == nil {
+					if allowed, err := visible([]string{key}); err == nil && len(allowed) == 1 {
+						next.Available, next.Reason = true, "ready"
+					}
+				}
+			case errors.Is(err, ErrQueueBuilding):
+				next.Reason = "unavailable"
+			}
 		}
-	}
+		v.Next = &next
 
-	if policy, err := s.postPlayPolicy(ctx, tx, c, l); err == nil {
-		v.PostPlay = &policy
-	}
+		// A growing capture or endless radio has no final duration total.
+		if len(l.building) == 0 && radioSegment(l) < 0 {
+			if summary, err := s.queueDuration(ctx, l, c.Principal); err == nil {
+				v.TotalDurationMs = &summary.ms
+				v.DurationKnown = summary.known
+			}
+		}
+
+		if policy, err := s.postPlayPolicy(ctx, tx, c, l); err == nil {
+			v.PostPlay = &policy
+		}
+		return nil
+	})
 }
 
 // cancelPreparedFor cancels a session's prepared next, if it has one (one

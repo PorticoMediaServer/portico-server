@@ -40,8 +40,9 @@ func TestCapturedSonicOrderKeepsSeededWindowsInverseAndOriginalOrder(t *testing.
 	l.q.shuffle = true
 	l.segments[0].musicOnly = false
 	for position := int64(0); position < 512; position++ {
-		if l.orderToSource(position) != l.ordinaryOrderToSource(position) {
-			t.Fatal("a mixed queue applied a captured music order", position)
+		window := l.sonicWindows[position/256]
+		if l.orderToSource(position) != window.ordinals[position%256] {
+			t.Fatal("later queue edits rewrote an already captured music order", position)
 		}
 	}
 }
