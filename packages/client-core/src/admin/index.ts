@@ -14,8 +14,8 @@ export * from '../playback-history.ts';
 export * from "../library-inventory.ts";
 export * from "../title-identity.ts";
 export * from "../administration.ts";
-export {RemoteSourceService,readSourceAvailability,sourceAvailabilityMessage} from "../remote-sources.ts";
-export type {RemoteSource,RemoteReceipt,RemoteState,DAVConfiguration,AnalysisPolicy,SourceAvailability,NetworkPolicy} from "../remote-sources.ts";
+export {RemoteSourceService,readSourceAvailability,sourceAvailabilityMessage,sourceReadPreset,sourceReadPresetName} from "../remote-sources.ts";
+export type {RemoteSource,RemoteReceipt,RemoteState,DAVConfiguration,AnalysisPolicy,SourceAvailability,NetworkPolicy,SourceReadValues,SourceReadSettings,SourceReadPreset} from "../remote-sources.ts";
 export * from "../media-analysis.ts";
 export * from "../segment-review.ts";
 

@@ -213,3 +213,27 @@ test('late unsaved test results cannot cross a disposed owner scope',async()=>{
  const tested=service.testConnection(input);service.dispose();pending.resolve({scope:wire,result:{origin:'https://private.example',rangeSupport:'conditional'}});
  await assert.rejects(tested,/Scope changed/);assert.equal(service.getSnapshot().sources.length,0);
 });
+
+test('read-profile reads the server values and the four drawn presets match its SourceReadPreset',async()=>{
+ const {sourceReadPreset,sourceReadPresetName}=await import('../src/remote-sources.ts');
+ assert.deepEqual(sourceReadPreset('list'),{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0});
+ assert.deepEqual(sourceReadPreset('once'),{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0});
+ assert.deepEqual(sourceReadPreset('everything'),{scanDepth:'complete',wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0});
+ assert.deepEqual(sourceReadPreset('ask'),{scanDepth:'basic',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0});
+ assert.equal(sourceReadPresetName(sourceReadPreset('once')),'once');assert.equal(sourceReadPresetName({...sourceReadPreset('once'),connections:5}),undefined);
+ const settings={sourceId:'dav',generation:'1',revision:2,saved:true,values:sourceReadPreset('everything')};
+ const service=new RemoteSourceService(api(async(path,method)=>{assert.equal(path,'/v1/storage/sources/dav/settings/read-profile');assert.equal(method,'GET');return {scope:wire,settings};}),scope,async()=>op);
+ assert.deepEqual(await service.readProfile('dav'),settings);service.dispose();
+ for(const raw of [{...settings,values:{...settings.values,connections:0}},{...settings,values:{...settings.values,scanDepth:'custom'}},{...settings,revision:-1},{...settings,saved:'yes'}]){
+  const bad=new RemoteSourceService(api(async()=>({scope:wire,settings:raw})),scope,async()=>op);await assert.rejects(bad.readProfile('dav'));bad.dispose();
+ }
+ const other=new RemoteSourceService(api(async()=>({scope:{...wire,serverId:'other'},settings})),scope,async()=>op);await assert.rejects(other.readProfile('dav'));other.dispose();
+});
+
+test('saving a read profile sends the exact revisioned body and returns the receipt settings',async()=>{
+ const settings={sourceId:'dav',generation:'7',revision:3,saved:true,values:{scanDepth:'complete' as const,wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0}};
+ let body:any;
+ const service=new RemoteSourceService(api(async(path,method,raw)=>{if(method==='GET')return list();assert.equal(path,'/v1/storage/sources/dav/settings/read-profile');assert.equal(method,'PUT');body=raw;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source(),readSettings:settings}};}),scope,async()=>op);
+ await service.load();const value=await service.saveProfile({sourceId:'dav',generation:'7',revision:2,saved:true,values:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}},settings.values);
+ assert.deepEqual(body,{operationId:op,expectedGeneration:'7',expectedRevision:2,values:settings.values});assert.deepEqual(value,settings);assert.equal(service.getSnapshot().receipt?.operationId,op);assert.equal(service.getSnapshot().busy,false);service.dispose();
+});
