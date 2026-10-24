@@ -133,7 +133,7 @@ test('retired authority discards a late copy receipt and cannot revive on Back',
 
 test('relabel uses the same formatter and retires old-language handles without another server read', async () => {
   let language = 'one';
-  const f = setup(undefined, {t: (key, values) => language + ':' + defaultI18n.t(key, values)});
+  const f = setup(undefined, {t: (key, values) => (key === 'music.mix.name' ? language + ':' : '') + defaultI18n.t(key, values)});
   try {
     await f.source.load();const old = f.source.getSnapshot().rows[0];language = 'two';f.source.relabel();
     const row = f.source.getSnapshot().rows[0];assert.equal(row.name, 'two:Rock mix');assert.equal(f.source.contains(old), false);
