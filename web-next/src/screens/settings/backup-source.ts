@@ -1,4 +1,4 @@
-import {getBackups, getBackupSettings, inspectBackupSource, startBackup, updateBackupSettings, waitForBackupCompletion, type BackupSettings, type BackupSettingsPatch, type BackupTransport} from '@core/backups.ts';
+import {getBackups, getBackupSettings, inspectBackupSource, isAuthenticationFailure, startBackup, updateBackupSettings, waitForBackupCompletion, type BackupSettings, type BackupSettingsPatch, type BackupTransport} from '@core/backups.ts';
 import type {BackupsDocument, RestoreSource} from '@core/administration.ts';
 import {randomId} from '@core/random-id.ts';
 
@@ -15,12 +15,16 @@ export class SettingsBackupSource {
   getSnapshot = () => this.current() ? this.state : empty;
   private publish(state: SettingsBackupSnapshot) {if (this.current()) {this.state = Object.freeze(state);this.notify();}}
   private requireCurrent() {if (!this.current()) throw new DOMException('The backup scope ended.', 'AbortError');}
+  private refuse(error: unknown): never {
+    if (isAuthenticationFailure(error)) {this.dispose();this.notify();}
+    throw error;
+  }
   load = (): Promise<void> => {
     if (!this.current() || this.state.busy) return Promise.resolve();
     if (this.loading) return this.loading;
     const task = Promise.all([getBackupSettings(this.api, this.serverId, this.lifetime.signal), getBackups(this.api, this.serverId, this.lifetime.signal)]).then(([settings, document]) => {
       this.publish({...this.state, settings, document});
-    }).finally(() => {if (this.loading === task) this.loading = undefined;});
+    }).catch(error => this.refuse(error)).finally(() => {if (this.loading === task) this.loading = undefined;});
     this.loading = task;return task;
   };
   async save(patch: BackupSettingsPatch): Promise<boolean> {
@@ -30,7 +34,7 @@ export class SettingsBackupSource {
       const settings = await updateBackupSettings(this.api, this.serverId, patch, this.lifetime.signal);
       if (!this.current()) return false;
       this.publish({...this.state, settings});return true;
-    } finally {this.publish({...this.state, busy: false});}
+    } catch (error) {this.refuse(error);} finally {this.publish({...this.state, busy: false});}
   }
   async backupNow(options: Readonly<{intervalMs?: number; timeoutMs?: number}> = {}): Promise<boolean> {
     if (!this.current() || this.loading || this.state.busy || !this.state.document || this.state.document.running || this.state.document.restore) return false;
@@ -43,7 +47,7 @@ export class SettingsBackupSource {
       }, {...options, expectedJobId: jobId, signal: this.lifetime.signal, onProgress: document => this.publish({...this.state, document})});
       if (!this.current()) return false;
       this.publish({...this.state, document});return true;
-    } finally {this.publish({...this.state, busy: false});}
+    } catch (error) {this.refuse(error);} finally {this.publish({...this.state, busy: false});}
   }
   async inspect(source: RestoreSource, signal: AbortSignal) {
     this.requireCurrent();
@@ -56,7 +60,7 @@ export class SettingsBackupSource {
       request.signal.throwIfAborted();
       const inspection = await inspectBackupSource(this.api, this.serverId, selected, request.signal);
       this.requireCurrent();request.signal.throwIfAborted();return inspection;
-    } finally {this.lifetime.signal.removeEventListener('abort', abort);signal.removeEventListener('abort', abort);}
+    } catch (error) {this.refuse(error);} finally {this.lifetime.signal.removeEventListener('abort', abort);signal.removeEventListener('abort', abort);}
   }
   dispose() {this.lifetime.abort();this.loading = undefined;this.state = empty;}
 }

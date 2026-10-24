@@ -98,3 +98,22 @@ test('a matching failed job rejects, and a disposed start cannot begin polling o
   await assert.rejects(pending, {name: 'AbortError'});assert.equal(signal?.aborted, true);assert.equal(late.calls.length, 3);
   assert.deepEqual(late.source.getSnapshot(), {busy: false});
 });
+
+test('an owner refusal clears retained facts and closes all later commands immediately', async () => {
+  for (const operation of ['load', 'save', 'inspect', 'start']) {
+    let denied = false;
+    const failure = Object.assign(new Error('denied'), {status: 403});
+    const f = fixture(async path => {
+      if (denied) throw failure;
+      return envelope(path.endsWith('/settings') ? settings : {backups: [backup]});
+    });
+    try {
+      await f.source.load();denied = true;
+      const pending = operation === 'load' ? f.source.load() : operation === 'save' ? f.source.save({includeArtwork: false}) : operation === 'inspect' ? f.source.inspect({backupId: 'listed'}, new AbortController().signal) : f.source.backupNow();
+      await assert.rejects(pending, failure);
+      assert.deepEqual(f.source.getSnapshot(), {busy: false});
+      const count = f.calls.length;await f.source.load();assert.equal(await f.source.save({includeArtwork: true}), false);assert.equal(await f.source.backupNow(), false);
+      assert.equal(f.calls.length, count);
+    } finally {f.source.dispose();}
+  }
+});
