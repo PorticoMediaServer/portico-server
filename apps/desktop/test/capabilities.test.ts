@@ -1,6 +1,17 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {desktopCapabilities} from '../src/capabilities.ts';
+test('original APE and Musepack versions are admitted independently by actual native decoders',()=>{
+ for(const present of [[],['ape'],['mpc7'],['mpc8'],['ape','mpc7','mpc8']]){
+  const profile=desktopCapabilities({version:'mpv 0.41.0',decoders:['flac',...present]},'linux','0.1.0');
+  const native=profile.engines.native;
+  for(const codec of ['ape','mpc7','mpc8'])assert.equal(native.audio?.some(value=>value.codec===codec),present.includes(codec));
+  assert.equal(native.transports?.[0]?.containers?.includes('ape'),present.includes('ape'));
+  assert.equal(native.transports?.[0]?.containers?.includes('mpc'),present.includes('mpc7')||present.includes('mpc8'));
+  assert.equal(profile.audioOutput,undefined);
+  assert.doesNotMatch(JSON.stringify(native.audio),/lossless|bitPerfect|sampleRate|bitDepth|objectAudio/);
+ }
+});
 test('canonical PCM requires the complete native integer/float decoder family, without output grants',()=>{
  const required=['pcm_u8','pcm_s16le','pcm_s16be','pcm_s24le','pcm_s24be','pcm_s32le','pcm_s32be','pcm_f32le','pcm_f32be','pcm_f64le','pcm_f64be'];
  for(const missing of [undefined,...required]){

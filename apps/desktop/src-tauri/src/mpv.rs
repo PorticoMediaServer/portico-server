@@ -402,7 +402,7 @@ impl Mpv {
     fn load(&self,source:&Source)->Result<()> {
         self.pending_autoplay.store(source.autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);
         self.set("pause","yes")?;
-        self.load_node(&source.url,&[("start",(source.start_position_ms/1000.0).to_string()),("sid","no".into()),("demuxer-lavf-o","protocol_whitelist=[http,https,tcp,tls,crypto],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into())])
+        self.load_node(&source.url,&[("start",(source.start_position_ms/1000.0).to_string()),("sid","no".into()),("demuxer-lavf-o","protocol_whitelist=[http,https,tcp,tls,crypto],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpc,mpc8,mpeg,mpegts,ogg,wav,wv]".into())])
     }
     /// Only the native download store can resolve this path. Fixed per-file options keep
     /// local demuxers from following a playlist/network reference and do not alter the
@@ -419,7 +419,7 @@ impl Mpv {
         self.clear_equalizer()?;self.clear_leveling()?;*self.leveling_gain.lock().map_err(|_|Error::EngineFailure)?=1.0;self.equalizer_route_pending.store(false,Ordering::Release);
         *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=path.to_str().ok_or(Error::InvalidSource)?.into();
         self.pending_autoplay.store(autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);self.set("pause","yes")?;
-        self.load_node(path.to_str().ok_or(Error::InvalidSource)?,&[("start",(start_ms/1000.0).to_string()),("sid","no".into()),("demuxer-lavf-o","protocol_whitelist=[file],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into()),("access-references","no".into()),("load-unsafe-playlists","no".into())])?;
+        self.load_node(path.to_str().ok_or(Error::InvalidSource)?,&[("start",(start_ms/1000.0).to_string()),("sid","no".into()),("demuxer-lavf-o","protocol_whitelist=[file],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpc,mpc8,mpeg,mpegts,ogg,wav,wv]".into()),("access-references","no".into()),("load-unsafe-playlists","no".into())])?;
         *generation=next_generation;self.current_generation.store(*generation,Ordering::Release);Ok(())
     }
     #[cfg(debug_assertions)]
@@ -526,6 +526,38 @@ impl Mpv {
     }
 }
 impl Drop for Mpv {fn drop(&mut self){unsafe{(self.api.destroy)(self.handle)}}}
+
+#[cfg(test)]
+mod legacy_original_tests {
+    use super::*;
+    #[test]
+    #[ignore="explicit native libmpv and existing rights-verified APE/MPC fixtures; no physical output claim"]
+    fn actual_ape_and_both_musepack_originals_play_without_external_references(){
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
+        let root=Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../../server/internal/decoder/testdata/music-formats-r29");
+        let manifest:serde_json::Value=serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
+        let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        let inventory=engine.decoder_inventory().unwrap();
+        for (index,(name,codec)) in [("tone.ape","ape"),("tone-sv7.mpc","mpc7"),("tone-sv8.mpc","mpc8")].iter().enumerate(){
+            assert!(inventory.iter().any(|value|value==codec),"required decoder missing: {codec}");
+            let fixture=root.join(name);let bytes=std::fs::read(&fixture).unwrap();
+            let hash=ring::digest::digest(&ring::digest::SHA256,&bytes).as_ref().iter().map(|value|format!("{value:02x}")).collect::<String>();
+            let receipt=manifest.as_array().unwrap().iter().find(|value|value["Path"]==*name).unwrap();
+            assert_eq!(receipt["SHA256"],hash);assert_eq!(receipt["Rights"],"verified-free-fixture");
+            engine.load_local(&fixture,(index+1) as u64,0.0,true).unwrap();
+            let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
+            loop {
+                let observed=engine.observation();assert_ne!(observed.state,"error");
+                if observed.position_ms>10.0{break}
+                assert!(std::time::Instant::now()<deadline,"original {codec} did not advance");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert_eq!(engine.property("audio-codec-name").as_deref(),Some(*codec));
+            assert_eq!(engine.audio_facts().source_rate,Some(44100));
+        }
+        engine.retire().unwrap();
+    }
+}
 
 #[cfg(test)]
 mod pcm_original_tests {
