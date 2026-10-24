@@ -167,6 +167,31 @@ func (s *Service) requireWebDAVRandom(ctx context.Context, source string) error 
 	}
 	return errUnknownWebDAVRange
 }
+
+// Imported/wrapped graphs have no established end-to-end from-zero proof.
+// Classification still selects sequential mode, but that alone must not admit
+// a wrapper which could reopen the origin at nonzero offsets.
+func (s *Service) requireWebDAVSequential(ctx context.Context, source string) error {
+	view, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer view.Rollback()
+	var kind, support string
+	var leaves sql.NullInt64
+	if err = view.Tx().QueryRowContext(ctx, `SELECT kind,range_support,webdav_leaf_count FROM remote_sources WHERE id=? AND removed=0`, source).Scan(&kind, &support, &leaves); err != nil {
+		return err
+	}
+	unqualified, err := unqualifiedWebDAV(kind, support, leaves)
+	if err != nil || !unqualified || kind != "rclone" {
+		return err
+	}
+	if support == "unsupported" {
+		return storage.ErrRemoteRange
+	}
+	return errUnknownWebDAVRange
+}
+
 func sourceObjectSequentialTx(ctx context.Context, tx *sql.Tx, source, path string) (bool, error) {
 	unqualified, err := unqualifiedWebDAVTx(ctx, tx, source)
 	if err != nil {

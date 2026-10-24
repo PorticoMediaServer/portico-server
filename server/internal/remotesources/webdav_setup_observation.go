@@ -2,7 +2,6 @@ package remotesources
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"portico.local/server/internal/rcloneprogram"
@@ -59,7 +58,7 @@ func candidateWebDAVObserver(raw []byte, selected string, profile SourceReadProf
 	if len(*output) == 0 {
 		return nil, nil
 	}
-	return func(ctx context.Context, _ *rcloneprogram.ServeProcess, hold *remotemedia.ExclusiveTest, clients map[string]*remotemedia.RcloneMetadata) (func(context.Context) error, func(), error) {
+	return func(ctx context.Context, _ *rcloneprogram.ServeProcess, hold *remotemedia.ExclusiveTest, clients map[string]candidateMetadata) (func(context.Context) error, func(), error) {
 		type pending struct {
 			row        int
 			diagnostic *remotemedia.RcloneWebDAVSetup
@@ -76,12 +75,12 @@ func candidateWebDAVObserver(raw []byte, selected string, profile SourceReadProf
 		}
 		for i := range *output {
 			row := &(*output)[i]
-			client := clients[row.Remote]
-			if client == nil {
+			metadata, exists := clients[row.Remote]
+			if !exists || metadata.client == nil {
 				cleanup()
 				return nil, cleanup, storage.ErrRemoteChanged
 			}
-			diagnostic, err := client.SetupWebDAV(ctx, hold, policy, check)
+			diagnostic, err := metadata.client.SetupWebDAV(ctx, hold, policy, check)
 			if err != nil {
 				cleanup()
 				return nil, cleanup, err
@@ -89,20 +88,7 @@ func candidateWebDAVObserver(raw []byte, selected string, profile SourceReadProf
 			if diagnostic == nil {
 				continue
 			}
-			var file *remotemedia.DAVEntry
-			found := errors.New("setup raw object selected")
-			err = client.VisitDirectory(ctx, "", check, func(entry remotemedia.RcloneFileMetadata) error {
-				if entry.Directory || entry.Size < 1 {
-					return nil
-				}
-				file = &remotemedia.DAVEntry{Relative: entry.Path, Size: entry.Size}
-				return found
-			})
-			if err != nil && !errors.Is(err, found) {
-				diagnostic.Close()
-				cleanup()
-				return nil, cleanup, err
-			}
+			file := metadata.file
 			if file == nil {
 				diagnostic.Close()
 				continue

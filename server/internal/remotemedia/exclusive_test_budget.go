@@ -24,6 +24,7 @@ type ExclusiveTest struct {
 	// its original pacing boundary; a leaf never starts an independent pacer.
 	diagnosticMu                               sync.Mutex
 	diagnosticNextRequest, diagnosticNextBytes time.Time
+	diagnosticRequests                         int
 }
 
 func (t *ExclusiveTest) Context() context.Context     { return t.life }

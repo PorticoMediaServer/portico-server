@@ -185,7 +185,12 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	return s.runCandidateServe(ctx, source, generation, profile, raw, input.Remote, program, digest, policy, check, observe)
 }
 
-type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remotemedia.ExclusiveTest, map[string]*remotemedia.RcloneMetadata) (func(context.Context) error, func(), error)
+type candidateMetadata struct {
+	client *remotemedia.RcloneMetadata
+	file   *remotemedia.DAVEntry
+}
+
+type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remotemedia.ExclusiveTest, map[string]candidateMetadata) (func(context.Context) error, func(), error)
 
 // runCandidateServe holds source I/O exclusively through both phases. The
 // observer's second phase runs only after physical Wait, under the SAME hold.
@@ -247,15 +252,30 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	if err != nil {
 		return err
 	}
-	if err = metadataClient.CheckRoot(life, check); err != nil {
-		return mapError(err)
-	}
 	leaves, err := configuredBackends(raw, remote)
 	if err != nil {
 		return err
 	}
+	webdav := map[string]bool{}
+	for _, leaf := range leaves {
+		webdav[leaf.Remote] = leaf.Kind == "webdav"
+	}
+	checkRoot := func(client *remotemedia.RcloneMetadata, name string) (candidateMetadata, error) {
+		result := candidateMetadata{client: client}
+		var err error
+		if webdav[name] {
+			result.file, err = client.CheckRootFile(life, check)
+		} else {
+			err = client.CheckRoot(life, check)
+		}
+		return result, err
+	}
+	rootMetadata, err := checkRoot(metadataClient, remote)
+	if err != nil {
+		return mapError(err)
+	}
 	checked := map[string]bool{remote: true}
-	leafMetadata := map[string]*remotemedia.RcloneMetadata{remote: metadataClient}
+	leafMetadata := map[string]candidateMetadata{remote: rootMetadata}
 	for _, leaf := range leaves {
 		if checked[leaf.Remote] {
 			continue
@@ -266,14 +286,14 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 			return err
 		}
 		defer client.Close()
-		err = client.CheckRoot(life, check)
+		metadata, err := checkRoot(client, leaf.Remote)
 		if err != nil {
 			if life.Err() != nil {
 				return life.Err()
 			}
 			return mapError(err)
 		}
-		leafMetadata[leaf.Remote] = client
+		leafMetadata[leaf.Remote] = metadata
 	}
 	var afterStop func(context.Context) error
 	if observe != nil {

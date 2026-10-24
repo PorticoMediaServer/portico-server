@@ -1,6 +1,7 @@
 package remotesources
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"testing"
@@ -44,5 +45,33 @@ func TestUnknownWebDAVRangeRetainsDistinctDiagnostic(t *testing.T) {
 	}
 	if code := ErrorCode(storage.ErrRemoteRange); code != "range_unsupported" {
 		t.Fatal("actual unsupported evidence was relabelled unknown", code)
+	}
+}
+
+func TestUnqualifiedImportedWebDAVCannotOpenSequentialWrapper(t *testing.T) {
+	for _, support := range []string{"unknown", "unsupported"} {
+		t.Run(support, func(t *testing.T) {
+			f := newObservationFixture(t)
+			identities, owner, _ := observationOwner(t, f)
+			if _, err := f.s.db.Exec(`UPDATE remote_sources SET range_support=?`, support); err != nil {
+				t.Fatal(err)
+			}
+			ref, err := f.record(t, scanFacts("wrapped"), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease := captureOwnerSource(t, f, ref, identities, owner, SourcePlayback, func() {})
+			defer lease.Close()
+			if _, err = f.s.db.Exec(`UPDATE remote_sources SET kind='rclone',webdav_leaf_count=1`); err != nil {
+				t.Fatal(err)
+			}
+			_, err = lease.OpenSequential(context.Background())
+			if !errors.Is(err, storage.ErrRemoteRange) {
+				t.Fatal("unqualified wrapper reached process admission", err)
+			}
+			if len(f.s.serveLeases) != 0 {
+				t.Fatal("unqualified wrapper started source process")
+			}
+		})
 	}
 }

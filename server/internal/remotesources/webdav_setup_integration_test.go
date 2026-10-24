@@ -143,10 +143,10 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 				want, count = remotemedia.SetupRangeUnknown, 0
 			}
 			if mode == "union/supported" {
-				count = 6
+				want, count = remotemedia.SetupRangeUnknown, 3
 			}
 			if mode == "union/partial" {
-				want, count = remotemedia.SetupRangeUnsupported, 4
+				want, count = remotemedia.SetupRangeUnknown, 3
 			}
 			if len(observations) != leafCount || aggregateWebDAVSetup(observations) != want || gets.Load() != count {
 				t.Fatal("actual setup fact mismatch", aggregateWebDAVSetup(observations), gets.Load(), want, count)
@@ -206,7 +206,7 @@ func publishActualWebDAVSetup(t *testing.T, ctx context.Context, program, config
 	}
 	sequential, err := sourceSequentialTx(ctx, view.Tx(), receipt.MountID, root)
 	view.Rollback()
-	wantSequential := strings.HasSuffix(mode, "/ignored") || strings.HasSuffix(mode, "/unknown")
+	wantSequential := strings.HasSuffix(mode, "/ignored") || strings.HasSuffix(mode, "/unknown") || strings.HasPrefix(mode, "union/")
 	if err != nil || sequential != wantSequential || gets.Load() != before {
 		t.Fatal("published capability did not control DB-only range mode", sequential, err)
 	}

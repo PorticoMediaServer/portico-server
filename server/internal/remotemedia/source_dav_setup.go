@@ -100,6 +100,9 @@ func (d *DAV) diagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 			continue
 		}
 		seen[start] = true
+		if test.diagnosticRequests >= 3 {
+			return SetupRangeUnknown, nil
+		}
 		length := min(int64(16), file.Size-start)
 		if err = waitDiagnostic(ctx, test.diagnosticNextRequest); err != nil {
 			return SetupRangeUnknown, err
@@ -118,6 +121,7 @@ func (d *DAV) diagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 			requestHeaders = make(http.Header)
 		}
 		requestHeaders.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+length-1))
+		test.diagnosticRequests++
 		response, err := client.request(ctx, http.MethodGet, nil, requestHeaders, headers != nil)
 		if err != nil {
 			client.Close()
