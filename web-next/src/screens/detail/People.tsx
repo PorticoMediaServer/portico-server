@@ -2,6 +2,7 @@ import {Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore} fr
 import type {DetailCredit, DetailProjection} from '@core/detail.ts';
 import {PersonCircle} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
+import {Icon} from '../../kit/Icon';
 import {Dialog} from '../../kit/overlays';
 import type {DetailBindings} from './bindings';
 import {t, locale} from './text';
@@ -41,7 +42,7 @@ export function TitlePeople({binding, data, episode = false}: {binding: DetailBi
   const totals = data.metadata.creditTotals, total = totals ? totals.cast + totals.crew : undefined;
   const rendered = Math.min(6, cast.length) + Math.min(6, crew.length);
   return <div className={styles.creditGroups} data-episode={episode || undefined}>
-    {!episode && <header className={styles.peopleHeader}><h2>{t('title.allPeople')}</h2>{total !== undefined && total > rendered && <Button ref={trigger} variant="text" size="small" icon="i-right" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); setOpen(true); })}>{t('shelf.seeAllCount', {count: total})}</Button>}</header>}
+    {!episode && <header className={styles.peopleHeader}><h2>{t('title.allPeople')}</h2>{total !== undefined && total > rendered && <button ref={trigger} type="button" className={styles.peopleAll} onClick={() => runScreenCommand(binding.context, () => { binding.current(data); setOpen(true); })}>{t('shelf.seeAllCount', {count: total})}<Icon name="i-right" size={16} /></button>}</header>}
     {([['cast', cast], ['crew', crew]] as const).map(([kind, credits]) => {
       if (!credits.length) return null;
       return <section key={kind}>{episode && <header className={styles.peopleHeader}><h2>{t(kind === 'cast' ? 'title.cast' : 'title.crew')}</h2>
