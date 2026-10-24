@@ -53,7 +53,7 @@ func TestDiscTitleProbeUsesActualConfinedISOAndRechecksInvocation(t *testing.T) 
 	probe := Probe{Binary: binary}
 	title := structure.OrderedTitles()[0]
 	facts, err := probe.InspectDiscScan(ctx, path, structure, title)
-	if err != nil || facts.Duration != 72 || facts.VideoCodec != "h264" || guards != 1 {
+	if err != nil || facts.Duration != float64(title.DurationMs)/1000 || facts.VideoCodec != "h264" || guards != 1 {
 		t.Fatalf("confined disc facts: %+v guards=%d err=%v", facts, guards, err)
 	}
 	denied := errors.New("inventory source revision changed")
