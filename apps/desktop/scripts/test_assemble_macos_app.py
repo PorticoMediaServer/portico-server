@@ -135,7 +135,7 @@ class AssemblyTests(unittest.TestCase):
             self.assertEqual(info["CFBundleShortVersionString"], "0.1.0")
             self.assertEqual(info["CFBundleVersion"], "0.1.0")
             self.assertEqual(info["CFBundlePackageType"], "APPL")
-            self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
+            self.assertNotIn("LSMinimumSystemVersion", info)
             self.assertEqual(info["LSApplicationCategoryType"], "public.app-category.entertainment")
             self.assertEqual(info["NSHumanReadableCopyright"], "Portico contributors")
             self.assertIs(info["NSHighResolutionCapable"], True)
@@ -158,10 +158,36 @@ class AssemblyTests(unittest.TestCase):
             self.assertEqual(receipt["inputs"]["nativeFiles"], 2)
             self.assertEqual(receipt["inputs"]["webRoot"]["kind"], "directory")
             self.assertEqual(receipt["inputs"]["webRoot"]["files"], 3)
+            self.assertEqual(receipt["inputs"]["webRoot"]["correspondence"],
+                             "asset-key presence only; embedded bytes are not compared")
+            self.assertNotIn("minimumSystemVersion", receipt)
             self.assertEqual(summary["nativeFiles"], 2)
             self.assertEqual(summary["webFiles"], 3)
 
-    def test_zip_web_root_binds_the_same_entries_without_extraction(self):
+    def test_minimum_system_version_is_written_only_when_configured(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture = Fixture(root)
+            configured = json.loads(fixture.config.read_text())
+            configured["bundle"]["macOS"] = {"minimumSystemVersion": "14.4"}
+            fixture.write_json(fixture.config, configured)
+            fixture.run()
+            contents = fixture.output / "Contents"
+            info = plistlib.loads((contents / "Info.plist").read_bytes())
+            receipt = json.loads((contents / "Resources/assembly-receipt.json").read_text())
+            self.assertEqual(info["LSMinimumSystemVersion"], "14.4")
+            self.assertEqual(receipt["minimumSystemVersion"], "14.4")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture = Fixture(root)
+            fixture.run()
+            contents = fixture.output / "Contents"
+            info = plistlib.loads((contents / "Info.plist").read_bytes())
+            receipt = json.loads((contents / "Resources/assembly-receipt.json").read_text())
+            self.assertNotIn("LSMinimumSystemVersion", info)
+            self.assertNotIn("minimumSystemVersion", receipt)
+
+    def test_zip_web_root_corresponds_to_the_same_entries_without_extraction(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             fixture = Fixture(root)
@@ -310,7 +336,7 @@ class AssemblyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fixture.run()
 
-    def test_web_root_must_match_the_embedded_frontend(self):
+    def test_web_root_must_correspond_to_the_embedded_frontend(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             fixture = Fixture(root)

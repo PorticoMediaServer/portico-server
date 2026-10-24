@@ -9,8 +9,12 @@ manifest's source cohort and every recorded byte. It never mutates an input.
 
 No web files are copied into the bundle: with tauri/custom-protocol the frontend is already
 embedded, so the web root is a correspondence input only. Every web-root entry must appear
-as an embedded asset key in the executable, which binds the retained binary and the retained
-web bundle to the same build.
+as an embedded asset key in the executable; that check proves the retained web root
+corresponds to the frontend embedded in the retained binary, not that the embedded content
+bytes equal the web-root files.
+
+Info.plist carries LSMinimumSystemVersion only when tauri.conf.json sets
+bundle.macOS.minimumSystemVersion; otherwise the key is omitted rather than guessed.
 
 No Developer ID, notarization, universal or release claim. --ad-hoc-sign optionally seals
 the finished bundle with `codesign --force --sign -` (no keychain credentials).
@@ -30,7 +34,6 @@ import zipfile
 
 ABI = {"avcodec": 62, "avformat": 62, "avutil": 60, "avfilter": 11,
        "avdevice": 62, "swscale": 9, "swresample": 6}
-MINIMUM_MACOS = "13.0"
 CPU_TYPE_ARM64 = 0x0100000C
 MH_EXECUTE = 2
 MH_DYLIB = 6
@@ -266,6 +269,8 @@ def verified_web_root(path, binary_bytes):
     material.sort()
     if not any(name == "index.html" for name, _ in material):
         raise ValueError("the web root has no index.html")
+    # Asset-key presence proves correspondence to these files, not byte equality with the
+    # frontend embedded in the executable.
     for name, _ in material:
         if b"/" + name.encode() not in binary_bytes:
             raise ValueError("a web-root entry is not embedded in the executable: " + name)
@@ -294,10 +299,18 @@ def app_identity(config):
     copyright_text = bundle.get("copyright")
     if not isinstance(copyright_text, str) or not copyright_text.strip():
         copyright_text = None
-    return product, version, identifier, category, copyright_text
+    macos_bundle = bundle.get("macOS") if isinstance(bundle.get("macOS"), dict) else {}
+    raw_minimum = macos_bundle.get("minimumSystemVersion")
+    if raw_minimum is None:
+        minimum_system = None
+    elif isinstance(raw_minimum, str) and raw_minimum.strip():
+        minimum_system = raw_minimum.strip()
+    else:
+        raise ValueError("tauri.conf.json has no usable bundle.macOS.minimumSystemVersion")
+    return product, version, identifier, category, copyright_text, minimum_system
 
 
-def info_plist(product, version, identifier, category, copyright_text):
+def info_plist(product, version, identifier, category, copyright_text, minimum_system):
     info = {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleDisplayName": product,
@@ -308,10 +321,11 @@ def info_plist(product, version, identifier, category, copyright_text):
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": version,
         "CFBundleVersion": version,
-        "LSMinimumSystemVersion": MINIMUM_MACOS,
         "NSHighResolutionCapable": True,
         "NSPrincipalClass": "NSApplication",
     }
+    if minimum_system:
+        info["LSMinimumSystemVersion"] = minimum_system
     if category:
         info["LSApplicationCategoryType"] = category
     if copyright_text:
@@ -370,9 +384,9 @@ def assemble(binary, web_root, native_stage, lock_path, tauri_config, output,
     binary_digest = hashlib.sha256(binary_bytes).hexdigest()
     require_arm64(binary, MH_EXECUTE)
     web_kind, web_files, web_digest = verified_web_root(web_root, binary_bytes)
-    product, version, identifier, category, copyright_text = app_identity(
+    product, version, identifier, category, copyright_text, minimum_system = app_identity(
         read_json(tauri_config, "tauri configuration"))
-    info = info_plist(product, version, identifier, category, copyright_text)
+    info = info_plist(product, version, identifier, category, copyright_text, minimum_system)
 
     partial = output.with_name(output.name + ".partial-" + str(os.getpid()))
     if partial.exists() or partial.is_symlink():
@@ -406,7 +420,7 @@ def assemble(binary, web_root, native_stage, lock_path, tauri_config, output,
             "schemaVersion": 1,
             "status": "development-only; unsigned/ad-hoc; unqualified for release",
             "product": product, "version": version, "identifier": identifier,
-            "minimumSystemVersion": MINIMUM_MACOS, "nativeAbi": ABI,
+            "nativeAbi": ABI,
             "localSignature": "ad-hoc; no Developer ID or notarization",
             "adHocSignedBundle": bool(ad_hoc_sign_bundle),
             "inputs": {
@@ -416,9 +430,12 @@ def assemble(binary, web_root, native_stage, lock_path, tauri_config, output,
                 "nativeManifest": {"name": MANIFEST, "bytes": manifest_size, "sha256": manifest_digest},
                 "nativeFiles": len(records), "nativeBytes": total,
                 "webRoot": {"name": web_root.name, "kind": web_kind,
-                            "files": web_files, "sha256": web_digest},
+                            "files": web_files, "sha256": web_digest,
+                            "correspondence": "asset-key presence only; embedded bytes are not compared"},
             },
         }
+        if minimum_system:
+            receipt["minimumSystemVersion"] = minimum_system
         receipt_path = contents / "Resources" / "assembly-receipt.json"
         receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
         if ad_hoc_sign_bundle:
