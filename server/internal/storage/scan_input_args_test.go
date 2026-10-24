@@ -14,3 +14,16 @@ func TestScanInputReplacementKeepsProtocolAndFormatBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscScanInputReplacementPreservesOnlyClosedBlurayPrefix(t *testing.T) {
+	args := []string{"probe", "-f", "mpegts", "bluray:retained-input"}
+	got, err := replaceScanInput(args, "retained-input", `C:\media\disc.iso`)
+	if err != nil || got[3] != `bluray:C:\media\disc.iso` || args[3] != "bluray:retained-input" {
+		t.Fatal(got, err)
+	}
+	for _, args := range [][]string{{"probe", "http:retained-input"}, {"probe", "bluray:retained-input", "retained-input"}, {"probe", "bluray:bluray:retained-input"}} {
+		if _, err := replaceScanInput(args, "retained-input", `C:\media\disc.iso`); err == nil {
+			t.Fatal("unbounded protocol/ambiguous replacement", args)
+		}
+	}
+}

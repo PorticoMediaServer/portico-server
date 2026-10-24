@@ -7,11 +7,32 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestMain(m *testing.M) {
+	if len(os.Args) == 3 && os.Args[1] == "--portico-disc-scan-fixture" {
+		raw := os.Args[2]
+		if !strings.HasPrefix(raw, "bluray:") {
+			os.Exit(2)
+		}
+		file, err := os.Open(strings.TrimPrefix(raw, "bluray:"))
+		if err != nil {
+			os.Exit(3)
+		}
+		_, err = io.WriteString(os.Stdout, "bluray:")
+		if err == nil {
+			_, err = io.Copy(os.Stdout, io.LimitReader(file, 64))
+		}
+		file.Close()
+		if err != nil {
+			os.Exit(4)
+		}
+		os.Exit(0)
+	}
+
 	if len(os.Args) == 2 && os.Args[1] == "--portico-storage-helper" {
 		if Helper(helperInput(), os.Stdout) != nil {
 			os.Exit(1)
