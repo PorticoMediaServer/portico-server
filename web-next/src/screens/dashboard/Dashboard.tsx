@@ -7,24 +7,30 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {ToastHost, type ToastData} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
-import type {DashboardAlert, DashboardBindings, DashboardSessions} from './bindings';
+import type {DashboardAlert, DashboardBindings, DashboardServerHeader, DashboardSessions} from './bindings';
 import {fmtMbps, fmtPct} from './format';
 import {loadTileValue, orderedSessions, sessionStopTitle} from './model';
 import {useDashboardAccounts, useDashboardAuthority, useDashboardRead, type ReadState} from './use-read';
 import {Range, ReadFeedback, Section, t} from './shared';
-import {Chart, type ChartSeries} from './Chart';
+import type {ChartSeries} from './Chart';
+import {Chart} from './Chart';
 import {SessionCard} from './SessionCard';
 import {Analytics} from './Analytics';
 import {useDashboardReport, type DashboardReportController} from './use-report';
 import {readNowPlaying} from './pages';
+import {PhonePage, PhoneStatistics, type DashboardPhoneChrome} from './phone';
+import {ProgressRing} from '../../kit/shell/Activity';
 import styles from './dashboard.module.css';
 
-export type DashboardScreenProps = Readonly<{bindings: DashboardBindings; embedded?: boolean; initialSection?: 'streams' | 'activity' | 'updates'}>;
+export type DashboardScreenProps = Readonly<{
+  bindings: DashboardBindings; embedded?: boolean; phone?: boolean; chrome?: DashboardPhoneChrome;
+  initialSection?: 'streams' | 'activity' | 'updates';
+}>;
 export function DashboardScreen(props: DashboardScreenProps) {
   const b = props.bindings;
   return <DashboardView key={JSON.stringify([b.scope.serverId, b.scope.viewerId, b.role])} {...props} />;
 }
-function DashboardView({bindings: b, embedded = false, initialSection}: DashboardScreenProps) {
+function DashboardView({bindings: b, embedded = false, initialSection, phone = false, chrome}: DashboardScreenProps) {
   const current = useDashboardAuthority(b);
   const ref = useRef<HTMLDivElement>(null), allowed = current && b.isMainProfile() && (b.role === 'owner' || b.role === 'admin');
   const statusLoad = useCallback((signal: AbortSignal) => b.read.status(signal), [b]);
@@ -33,23 +39,33 @@ function DashboardView({bindings: b, embedded = false, initialSection}: Dashboar
   const sessions = useDashboardRead(b, sessionsLoad, allowed, 10000);
   const liveLoad = useCallback((signal: AbortSignal) => b.read.telemetry('live', signal), [b]);
   const live = useDashboardRead(b, liveLoad, allowed && b.role === 'owner', 2000);
+  const serverLoad = useCallback((signal: AbortSignal) => b.read.server(signal), [b]);
+  const server = useDashboardRead<DashboardServerHeader>(b, serverLoad, allowed && b.role === 'owner' && phone, 60000);
   const report = useDashboardReport(b, allowed && b.role === 'owner');
-  const accounts = useDashboardAccounts(b, allowed && b.role === 'owner');
-  useEffect(() => {if (initialSection) ref.current?.querySelector(`[data-dashboard-section="${initialSection}"]`)?.scrollIntoView({block: 'start'});}, [initialSection]);
+  const accounts = useDashboardAccounts(b, allowed && b.role === 'owner' && !phone);
+  const [updatedAt, setUpdatedAt] = useState(() => Date.now());
+  useEffect(() => {if (sessions.value && !sessions.loading) setUpdatedAt(Date.now());}, [sessions.value, sessions.loading]);
+  useEffect(() => {if (!phone && initialSection) ref.current?.querySelector(`[data-dashboard-section="${initialSection}"]`)?.scrollIntoView({block: 'start'});}, [initialSection, phone]);
   if (!allowed) return null;
   const failed = sessions.failed || b.role === 'owner' && (status.failed || live.failed || report.state.failed || accounts.failed);
-  const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); live.refresh(); report.state.refresh(); accounts.refresh();}};
+  const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); live.refresh(); report.state.refresh(); accounts.refresh(); server.refresh();}};
+  const sections = phone
+    ? <><div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} phone /></div>
+        {b.role === 'owner' && <><Status bindings={b} status={status} phone /><Tasks status={status} phone /><Load bindings={b} report={report} live={live} phone /><div data-dashboard-section="activity"><PhoneStatistics bindings={b} report={report} /></div></>}</>
+    : <>{b.role === 'owner' && <Status bindings={b} status={status} />}
+        <div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} /></div>
+        {b.role === 'owner' && <><Load bindings={b} report={report} live={live} /><div data-dashboard-section="activity"><Analytics bindings={b} report={report} accounts={accounts} /></div><Tasks status={status} /></>}</>;
+  if (phone) return <PhonePage chrome={chrome ?? {serverName: '', audience: b.role === 'owner' ? 'owner' : 'administrators'}} server={server.value}
+    updatedAt={updatedAt} onBack={() => {if (history.length > 1) history.back(); else b.effects.openHome();}} onRefresh={retry} initialSection={initialSection}>
+    {failed && !sessions.value ? <ReadFeedback openHome={b.effects.openHome} height={420} state={{failed: true, loading: false, refresh: retry}} /> : sections}
+  </PhonePage>;
   return <div className={styles.dashboard} ref={ref}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.title')}</h2>}
-    {failed ? <ReadFeedback openHome={b.effects.openHome} state={{failed: true, loading: false, refresh: retry}} /> : <>
-      {b.role === 'owner' && <Status bindings={b} status={status} />}
-      <div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} /></div>
-      {b.role === 'owner' && <><Load bindings={b} report={report} live={live} /><div data-dashboard-section="activity"><Analytics bindings={b} report={report} accounts={accounts} /></div><Tasks status={status} /></>}
-    </>}
+    {failed ? <ReadFeedback openHome={b.effects.openHome} state={{failed: true, loading: false, refresh: retry}} /> : sections}
   </div>;
 }
 type SessionsState = ReadState<DashboardSessions> & {refresh: () => void};
 type LiveState = ReadState<TelemetryReading> & {refresh: () => void};
-function NowPlaying({bindings: b, state}: {bindings: DashboardBindings; state: SessionsState}) {
+function NowPlaying({bindings: b, state, phone = false}: {bindings: DashboardBindings; state: SessionsState; phone?: boolean}) {
   const [toast, showToast] = useState<ToastData | null>(null);
   const stack = useRef<HTMLDivElement>(null), removed = useRef<{id: string; index: number} | undefined>(undefined);
   const sessions = orderedSessions(state.value?.items ?? []), totals = state.value?.totals;
@@ -59,8 +75,11 @@ function NowPlaying({bindings: b, state}: {bindings: DashboardBindings; state: S
     const buttons = stack.current?.querySelectorAll<HTMLButtonElement>('button[data-session-menu]');
     (buttons?.[Math.min(target.index, buttons.length - 1)] ?? stack.current)?.focus({preventScroll: true}); removed.current = undefined;
   }, [state.value, state.loading, state.failed]);
-  return <Section title={t('next.dashboard.now')} extra={totals && totals.streams > 0 && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>}>
-    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(s)}), icon: 'i-check', durationMs: 3200});} state.refresh();}} />)}
+  const count = totals && totals.streams > 0 && (phone
+    ? <><span>{t('next.dashboard.peopleCount', {count: totals.people})}</span><i className={styles.dotSep} aria-hidden="true" /><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>
+    : <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>);
+  return <Section phone={phone} title={t('next.dashboard.now')} extra={count}>
+    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={phone ? styles.phoneSessionStack : styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} layout={phone ? 'phone' : 'desktop'} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(s)}), icon: 'i-check', durationMs: 3200});} state.refresh();}} />)}
       {!sessions.length && <p className={styles.empty}>{t('next.dashboard.nobody')}</p>}
     </div>}
     <ToastHost toast={toast} onDismiss={() => showToast(null)} />
@@ -73,14 +92,15 @@ function loadSeries(reading: TelemetryReading | undefined, kind: LoadKind): Char
   if (!reading) return [];
   return DASHBOARD_LOAD_SERIES[kind].metrics.filter(metric => reading.status[metric]?.status !== 'unavailable' && reading.series[metric]?.length).map(metric => ({key: metric, label: t(seriesNames[metric]), points: reading.series[metric]}));
 }
-function Load({bindings: b, report, live}: {bindings: DashboardBindings; report: DashboardReportController; live: LiveState}) {
+function Load({bindings: b, report, live, phone = false}: {bindings: DashboardBindings; report: DashboardReportController; live: LiveState; phone?: boolean}) {
   const [kind, setKind] = useState<LoadKind>('bandwidth'), id = useId(), range = report.query.window;
   const historical = {...report.state, value: report.state.value?.load};
   useEffect(() => {if (live.value && !loadSeries(live.value, kind).length) {const available = loadKinds.find(k => loadSeries(live.value, k).length); if (available) setKind(available);}}, [live.value, kind]);
   const detail = range === 'live' ? live : historical, series = loadSeries(detail.value, kind);
   const format = (value: number, selected = kind) => selected === 'bandwidth' ? fmtMbps(value) : selected === 'conversions' ? t(range === 'live' ? 'next.dashboard.running' : 'next.dashboard.averageCount', {value: range === 'live' ? String(Math.round(value)) : value.toFixed(1)}) : fmtPct(value);
-  return <Section title={t('next.dashboard.load')}>
-    <ReadFeedback height={118} openHome={b.effects.openHome} state={live} /><div className={styles.tiles} role="tablist" aria-label={t('next.dashboard.load')}>{loadKinds.map(k => {
+  return <Section phone={phone} title={t('next.dashboard.load')}>
+    {phone && <div className={styles.phoneRange}><Range phone load label={t('next.dashboard.load')} value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => report.change({window: value as typeof range})} /></div>}
+    <ReadFeedback height={118} openHome={b.effects.openHome} state={live} /><div className={phone ? styles.phoneTiles : styles.tiles} role="tablist" aria-label={t('next.dashboard.load')}>{loadKinds.map(k => {
       const available = loadSeries(live.value, k); if (!available.length) return null;
       const current = loadTileValue(live.value!, k);
       return <button type="button" className={styles.tile} key={k} id={`${id}-${k}`} role="tab" aria-selected={kind === k} aria-controls={`${id}-panel`} tabIndex={kind === k ? 0 : -1} onClick={() => setKind(k)} onKeyDown={event => {
@@ -88,7 +108,7 @@ function Load({bindings: b, report, live}: {bindings: DashboardBindings; report:
         const keys = loadKinds.filter(key => loadSeries(live.value, key).length), next = keys[(keys.indexOf(k) + (event.key === 'ArrowLeft' ? keys.length - 1 : 1)) % keys.length]; setKind(next); document.getElementById(`${id}-${next}`)?.focus();
       }}><span>{t(`next.dashboard.${k}`)}</span>{current !== undefined && <strong>{k === 'conversions' ? String(Math.round(current)) : current.toFixed(1)}<small>{t(k === 'bandwidth' ? 'next.dashboard.unit.mbps' : k === 'conversions' ? 'next.dashboard.unit.running' : 'next.dashboard.unit.percent')}</small></strong>}<small>{available.map(s => <span key={s.key} data-series={s.key}><i />{k === 'bandwidth' ? `${s.label} ${s.points.at(-1)!.v.toFixed(1)}` : k === 'conversions' ? t(s.key === 'hardwareConversions' ? 'next.dashboard.hardwareCount' : 'next.dashboard.processorCount', {value: Math.round(s.points.at(-1)!.v)}) : s.key === 'cpu' || s.key === 'memory' ? t('next.dashboard.systemCurrent', {value: s.points.at(-1)!.v.toFixed(1)}) : t('next.dashboard.portico')}</span>)}</small><Chart interval={live.value!} kind={k} title={t(`next.dashboard.${k}`)} series={available} format={n => format(n, k)} step={k === 'conversions'} compact /></button>;
     })}</div>
-    <div className={`${styles.card} ${styles.loadDetail}`} style={{'--load-index': loadKinds.indexOf(kind)} as CSSProperties} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${kind}`}><div className={styles.heading}><h4>{t(`next.dashboard.${kind}`)}</h4><div className={styles.filters}><Range load value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => report.change({window: value as typeof range})} /></div></div>
+    <div className={`${styles.card} ${styles.loadDetail}`} style={{'--load-index': loadKinds.indexOf(kind)} as CSSProperties} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${kind}`}><div className={styles.heading}><h4>{t(`next.dashboard.${kind}`)}</h4>{!phone && <div className={styles.filters}><Range load value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => report.change({window: value as typeof range})} /></div>}</div>
       <ReadFeedback height={250} openHome={b.effects.openHome} state={detail} />{detail.value && <Chart interval={detail.value} kind={kind} title={t(`next.dashboard.${kind}`)} series={series} format={format} formatAverage={value => kind === 'conversions' ? value.toFixed(1) : format(value)} step={kind === 'conversions' && range === 'live'} />}
     </div>
   </Section>;
@@ -103,22 +123,53 @@ const alertDestinations: Record<string, {section: string; label: MessageId}> = {
   'remote-source': {section: 'remote-sources', label: 'next.dashboard.remoteSources'},
 };
 type StatusState = ReadState<DashboardStatus> & {refresh: () => void};
-function Status({bindings: b, status}: {bindings: DashboardBindings; status: StatusState}) {
+function Status({bindings: b, status, phone = false}: {bindings: DashboardBindings; status: StatusState; phone?: boolean}) {
   const alerts = status.value?.alerts.filter(alert => alertCopy[alert.code] && (alert.code !== 'update_available' || !!alert.params.latest) && (alert.code !== 'upload_budget_exhausted' || alert.count !== undefined)) ?? [];
   const [busy, setBusy] = useState<string | undefined>();
   const retry = async (alert: DashboardAlert) => {if (!b.effects.retryCertificate || busy) return; setBusy(alert.code); try {await b.effects.retryCertificate(); if (b.isCurrent()) status.refresh();} catch (error) {b.effects.reportError(error);} finally {setBusy(undefined);}};
+  const action = (alert: DashboardAlert, update: boolean, destination: {section: string; label: MessageId}) => <>
+    {alert.code === 'secure_renewal_failed' && b.effects.retryCertificate && <Button size="xs" variant="glass" disabled={!!busy} onClick={() => void retry(alert)}>{t('next.dashboard.retry')}</Button>}
+    {!update && <Button size="xs" onClick={() => b.effects.openSettings(destination.section)}>{t(destination.label)}{!phone && <Icon name="i-right" size={16} />}</Button>}
+  </>;
+  if (phone) return <>{status.loading || status.failed || !!status.value ? <div data-dashboard-section="updates">
+    <Section phone title={t('next.dashboard.alerts')} extra={alerts.length ? <span>{defaultI18n.number(alerts.length)}</span> : undefined}>
+      <ReadFeedback height={56} openHome={b.effects.openHome} state={status} />
+      {!!status.value && !alerts.length && <div className={styles.phoneCalm}><span className={styles.phoneCalmLead} data-good><Icon name="i-check" size={18} /></span><b>{t('web.overview.noAlerts')}</b></div>}
+      {!!alerts.length && <div className={styles.phoneAlerts}>{alerts.map((alert, index) => {
+        const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = t(alertCopy[alert.code], {version: alert.params.latest ?? '', count: alert.count ?? 0});
+        const severity = alert.severity.toLowerCase(), severityKey = ['warning', 'critical', 'error', 'info', 'notice'].includes(severity) ? severity : 'info';
+        return <article className={styles.phoneAlert} key={`${alert.code}-${index}`} data-major={alert.major || undefined} data-info={update || undefined}>
+          <span className={styles.phoneSeverity} data-severity={severityKey}>{t(`server.severity.${severityKey}` as MessageId)}</span>
+          <b>{text}</b>{alert.params.reason && <p>{alert.params.reason}</p>}{alert.params.subject && <p>{alert.params.subject}</p>}
+          <div className={styles.phoneAlertActions}>{action(alert, update, destination)}</div>
+        </article>;
+      })}</div>}
+    </Section></div> : null}</>;
   return <>{(status.loading || status.failed || !!alerts.length) && <div data-dashboard-section="updates"><ReadFeedback height={56} openHome={b.effects.openHome} state={status} />{!!alerts.length && <section className={styles.alerts} aria-label={t('next.dashboard.alerts')}>{alerts.map((alert, index) => {
     const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = t(alertCopy[alert.code], {version: alert.params.latest ?? '', count: alert.count ?? 0});
     return <div className={styles.alert} key={`${alert.code}-${index}`} data-major={alert.major || undefined}><span className={styles.alertIcon} data-info={update || undefined}><Icon name={update ? 'i-arrow-up' : 'i-alert'} size={18} /></span><b>{text}</b>{alert.params.reason && <span>{alert.params.reason}</span>}{alert.params.subject && <span>{alert.params.subject}</span>}
-      {alert.code === 'secure_renewal_failed' && b.effects.retryCertificate && <Button size="xs" variant="glass" disabled={!!busy} onClick={() => void retry(alert)}>{t('next.dashboard.retry')}</Button>}
-      {!update && <Button size="xs" onClick={() => b.effects.openSettings(destination.section)}>{t(destination.label)}<Icon name="i-right" size={16} /></Button>}
+      {action(alert, update, destination)}
     </div>;
   })}</section>}</div>}
   </>;
 }
 
-function Tasks({status}: {status: StatusState}) {
+function Tasks({status, phone = false}: {status: StatusState; phone?: boolean}) {
   const tasks = status.value?.tasks.items.filter(task => task.state === 'running' && defaultI18n.has(`server.job.${task.kind}`)) ?? [];
   if (!tasks.length && !status.value?.scans.length) return null;
+  if (phone) {
+    const scan = (scan: NonNullable<StatusState['value']>['scans'][number]) => {
+      const fraction = scan.total !== undefined && scan.total > 0 ? Math.min(1, scan.analyzed / scan.total) : undefined;
+      return <div className={styles.phoneTask} key={scan.libraryId}><ProgressRing icon="i-library" fraction={fraction} /><div><b>{t('next.dashboard.scanning', {library: scan.libraryName})}</b>{scan.total !== undefined && <small>{t('next.dashboard.taskProgressFiles', {done: scan.analyzed, total: scan.total})}</small>}{scan.current && <small className={styles.phoneFile}>{scan.current}</small>}</div>{fraction !== undefined && <span className={styles.phonePercent}>{t('next.dashboard.percent', {value: Math.round(fraction * 100)})}</span>}</div>;
+    };
+    const task = (task: NonNullable<StatusState['value']>['tasks']['items'][number]) => {
+      const fraction = task.total !== undefined && task.total > 0 && task.processed !== undefined ? Math.min(1, task.processed / task.total) : undefined;
+      return <div className={styles.phoneTask} key={task.id}><ProgressRing icon={task.kind === 'trickplay' ? 'i-image' : 'i-server'} fraction={fraction} /><div><b>{task.kind === 'trickplay' && task.libraryName ? t('next.dashboard.makingPreviews', {library: task.libraryName}) : <>{jobName(t, defaultI18n.has, task.kind)}{task.libraryName ? `: ${task.libraryName}` : ''}</>}</b>{task.total !== undefined && task.processed !== undefined && <small>{t(task.unit === 'episodes' ? 'next.dashboard.taskProgressEpisodes' : task.unit === 'files' ? 'next.dashboard.taskProgressFiles' : 'next.dashboard.taskProgress', {done: task.processed, total: task.total})}</small>}</div>{fraction !== undefined && <span className={styles.phonePercent}>{t('next.dashboard.percent', {value: Math.round(fraction * 100)})}</span>}</div>;
+    };
+    return <Section phone title={t('next.dashboard.backgroundActivity')}><div className={styles.phoneTasks}>
+      {!!status.value?.scans.length && <><p className={styles.phoneSub}>{t('next.dashboard.libraryScans')}</p>{status.value.scans.map(scan)}</>}
+      {!!tasks.length && <><p className={styles.phoneSub}>{t('next.dashboard.tasks')}</p>{tasks.map(task)}</>}
+    </div></Section>;
+  }
   return <div className={styles.tasks}><Section title={t('next.dashboard.tasks')}><div className={`${styles.card} ${styles.taskCard}`}>{status.value?.scans.map(scan => <div className={styles.task} key={scan.libraryId}><span className={styles.taskIcon}><Icon name="i-library" size={18} /></span><div><b>{t('next.dashboard.scanning', {library: scan.libraryName})}</b>{scan.total !== undefined && <small>{t('next.dashboard.taskProgressFiles', {done: scan.analyzed, total: scan.total})}</small>}</div>{scan.total !== undefined && scan.total > 0 && <><progress aria-label={scan.libraryName} value={scan.analyzed} max={scan.total} /><span>{t('next.dashboard.percent', {value: Math.round(scan.analyzed / scan.total * 100)})}</span></>}</div>)}{tasks.map(task => <div className={styles.task} key={task.id}><span className={styles.taskIcon}><Icon name={task.kind === 'trickplay' ? 'i-image' : 'i-server'} size={18} /></span><div><b>{task.kind === 'trickplay' && task.libraryName ? t('next.dashboard.makingPreviews', {library: task.libraryName}) : <>{jobName(t, defaultI18n.has, task.kind)}{task.libraryName ? `: ${task.libraryName}` : ''}</>}</b>{task.total !== undefined && task.processed !== undefined && <small>{t(task.unit === 'episodes' ? 'next.dashboard.taskProgressEpisodes' : task.unit === 'files' ? 'next.dashboard.taskProgressFiles' : 'next.dashboard.taskProgress', {done: task.processed, total: task.total})}</small>}</div>{task.total !== undefined && task.total > 0 && task.processed !== undefined && <><progress aria-label={task.libraryName || t('next.dashboard.tasks')} value={task.processed} max={task.total} /><span>{t('next.dashboard.percent', {value: Math.round(task.processed / task.total * 100)})}</span></>}</div>)}</div></Section></div>;
 }

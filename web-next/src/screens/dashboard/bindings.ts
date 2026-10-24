@@ -14,6 +14,8 @@ import {sendTransport} from '@core/server-admin/now-playing.ts';
 import {fetchPlayHistory, type PlayHistoryApi, type PlayHistoryFilters, type PlayHistoryPage} from '@core/play-history.ts';
 import {parseTelemetryReading, type TelemetryReading} from '@core/telemetry.ts';
 import {retryCertificate, type CertificateAction, type CertificateApi} from '@core/certificates.ts';
+import type {FactPart} from '@core/presentation/kit-model/index.ts';
+import {settingsServerHeader} from '../settings/server-header';
 import type {ArtworkSource} from '../../kit/artwork/types';
 
 export type DashboardEvents = Readonly<{on(type: string, listener: () => void): () => void; onResync?(listener: () => void): () => void}>;
@@ -22,6 +24,8 @@ export type DashboardSession = AdminSession & Pick<DashboardSessionsPage['items'
 export type DashboardSessions = Omit<Awaited<ReturnType<AdminSessionsClient['list']>>, 'items'> & {items: readonly DashboardSession[]};
 export type DashboardFilters = Omit<PlayHistoryFilters, keyof ReportContext>;
 export type DashboardReportQuery = Omit<DashboardReportFilters, keyof ReportContext>;
+/** The drawn server header line: the same measurements ServerHeader draws, from this server only. */
+export type DashboardServerHeader = Readonly<{health?: 'normal' | 'attention'; facts: readonly FactPart[]}>;
 export type DashboardReport = Omit<WireDashboardReport, 'load'> & Readonly<{load: TelemetryReading}>;
 export type DashboardBindings = Readonly<{
   scope: ConsoleScope; role: 'owner' | 'admin' | 'member'; isCurrent: () => boolean; isMainProfile: () => boolean;
@@ -37,6 +41,8 @@ export type DashboardBindings = Readonly<{
     report: (filters: DashboardReportQuery, signal?: AbortSignal) => Promise<DashboardReport>;
     people: (filters: DashboardFilters, cursor?: string, signal?: AbortSignal) => Promise<DashboardPeople>;
     plays: (filters: DashboardFilters, cursor?: string, signal?: AbortSignal) => Promise<PlayHistoryPage>;
+    /** Owner-only server health and facts for the page header. */
+    server: (signal?: AbortSignal) => Promise<DashboardServerHeader>;
   }>;
   effects: Readonly<{
     transport: (id: string, command: 'pause' | 'resume') => Promise<void>;
@@ -94,6 +100,11 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
       report: (filters, signal) => ownerRead(async () => {const value = await data.report({...filters, ...context}, signal); return {...value, load: parseTelemetryReading(value.load)};}),
       people: (filters, cursor, signal) => ownerRead(() => data.people({...filters, ...context}, cursor, 100, signal)),
       plays: (filters, cursor, signal) => ownerRead(() => fetchPlayHistory(api, {...filters, ...context}, cursor, signal)),
+      server: signal => ownerRead(async () => {
+        const [health, storage] = await Promise.allSettled([consoleClient.measurement('health'), consoleClient.measurement('storage')]);
+        if (signal?.aborted) throw signal.reason;
+        return settingsServerHeader(health.status === 'fulfilled' ? health.value : undefined, storage.status === 'fulfilled' ? storage.value : undefined);
+      }),
     },
     effects: {...options.effects,
       openHistory: () => {assert(true); options.effects.openHistory(context);},
