@@ -113,14 +113,17 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
   useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
+  const focusEdge = useRef(false);
   useLayoutEffect(() => {
-    if (!open) return;
+    const wasOpen = focusEdge.current; focusEdge.current = open;
+    // Only on the closed-to-open edge: a later autoplay entry change must not take
+    // focus, and an open surface above the player keeps it.
+    if (!open || wasOpen) return;
     const element = root.current, active = document.activeElement;
-    // A player opened from a page control owns the keyboard from then on. Focus already
-    // inside the player stays where it is, so Space still presses the focused button.
     if (!element || (active instanceof Node && element.contains(active))) return;
+    if (active instanceof Element && active.closest('[role="dialog"],[role="menu"],[aria-modal="true"]')) return;
     element.focus({preventScroll: true});
-  }, [open, playbackKey]);
+  }, [open]);
   useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
   useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
