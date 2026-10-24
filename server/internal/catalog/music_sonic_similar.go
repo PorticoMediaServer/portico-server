@@ -36,7 +36,9 @@ const currentSonicEligibleSQL = `EXISTS(SELECT 1 FROM catalog_asset_links source
 // currentSonicVectorSQL reads only the current source/version/range. The outer
 // item must already be permitted by the current viewer. A newer copy wins
 // deterministically; no global album/artist means can include hidden songs.
-const currentSonicVectorSQL = `(SELECT embedding.vector FROM music_sonic_embeddings embedding
+const currentSonicVectorSQL = `(SELECT embedding.vector` + currentSonicResultBodySQL
+const currentSonicResultIDSQL = `(SELECT embedding.result_id` + currentSonicResultBodySQL
+const currentSonicResultBodySQL = ` FROM music_sonic_embeddings embedding
  JOIN analysis_results r ON r.id=embedding.result_id
  JOIN analysis_heads h ON h.result_id=r.id AND h.stage='sonic'
  JOIN inventory_objects o ON o.id=h.object_id AND o.revision=h.source_revision

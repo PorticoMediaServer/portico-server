@@ -13,18 +13,34 @@ spec.loader.exec_module(sdk)
 
 
 class RuntimeStagingTests(unittest.TestCase):
-    def fixture(self, root, path="onnxruntime-linux-x64-1.20.1/include/header.h"):
+    def fixture(self, root, path=None, target="linux-x64"):
+        prefix = "onnxruntime-" + target + "-1.20.1/"
+        path = path or prefix + "include/header.h"
         archive = root / "sdk.tgz"
-        with tarfile.open(archive, "w:gz") as target:
+        with tarfile.open(archive, "w:gz") as stream:
             for name, data in [(path, b"synthetic SDK boundary fixture"),
-                               ("onnxruntime-linux-x64-1.20.1/LICENSE", b"Permission is hereby granted, free of charge"),
-                               ("onnxruntime-linux-x64-1.20.1/ThirdPartyNotices.txt", b"fixture notices")]:
+                               (prefix + "LICENSE", b"Permission is hereby granted, free of charge"),
+                               (prefix + "ThirdPartyNotices.txt", b"fixture notices")]:
                 member = tarfile.TarInfo(name)
                 member.size = len(data)
-                target.addfile(member, io.BytesIO(data))
+                stream.addfile(member, io.BytesIO(data))
         lock = {"version": "1.20.1", "license": "MIT", "packages": {
-            "linux-x64": {"sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}}}
+            target: {"sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}}}
         return archive, lock
+
+    def test_target_prefix_and_exact_bytes_are_verified_before_publication(self):
+        for target in ("linux-x64", "linux-aarch64"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                archive, lock = self.fixture(root, target=target)
+                lock["packages"][target]["bytes"] = archive.stat().st_size + 1
+                with self.assertRaises(ValueError):
+                    sdk.prepare(archive, root / "wrong-size", target, lock)
+                self.assertFalse((root / "wrong-size").exists())
+                lock["packages"][target]["bytes"] = archive.stat().st_size
+                sdk.prepare(archive, root / "verified", target, lock)
+                self.assertTrue((root / "verified/LICENSE").is_file())
+                self.assertTrue((root / "verified/ThirdPartyNotices.txt").is_file())
 
     def test_changed_unlicensed_or_escaping_sdk_never_publishes(self):
         for kind in ("changed", "licence", "escape"):

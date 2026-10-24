@@ -1,11 +1,38 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createDesktopWindowController} from '../src/window-controller.ts';
+import {createDesktopAppLifetime} from '../src/app-lifetime.ts';
 import {installWindowChromeHost,createWindowChromePublisher,getWindowChromeEnvironment} from '../../../web-next/src/platform/window-chrome.ts';
 import type {ChromeUpdate,WindowBridge,WindowSnapshot} from '../src/window.ts';
 
 const observed:WindowSnapshot={os:'windows',fullscreen:false,maximized:false,focused:true,captionHover:0,captions:{minimize:'Minimize',maximize:'Maximize',restore:'Restore',close:'Close'}};
 const nextTurn=()=>new Promise<void>(resolve=>setImmediate(resolve));
+
+test('terminal close retires the real app lifetime without waiting on itself',{timeout:1000},async()=>{
+  const app=createDesktopAppLifetime(),events:string[]=[];
+  await app.importWebApp(async()=>({disposeApp(){events.push('web');}}));
+  const controller=createDesktopWindowController({bridge:{async read(){return observed;},async chrome(value){events.push(value.enabled?'chrome-on':'chrome-off');},async action(value){events.push(value);}},onEnvironment(){},onSnapshot(){},onError:()=>assert.fail('unexpected native error'),prepareToClose:()=>app.dispose()});
+  app.retain(()=>controller.dispose());
+  const closing=controller.action('close');assert.equal(controller.action('close'),closing);
+  await closing;await app.dispose();await controller.action('drag');
+  assert.deepEqual(events,['web','chrome-off','close']);
+});
+
+test('close drains earlier native actions and rejects later writes/read completions',{timeout:1000},async()=>{
+  const events:string[]=[];let finish!:()=>void;
+  const controller=createDesktopWindowController({bridge:{async read(){events.push('read');return observed;},async chrome(value){events.push(value.enabled?'chrome-on':'chrome-off');},async action(value){events.push(value);if(value==='drag')await new Promise<void>(resolve=>{finish=resolve});}},onEnvironment(){},onSnapshot(){},onError:()=>assert.fail('unexpected native error'),prepareToClose:async()=>{events.push('prepare');await controller.dispose();}});
+  const drag=controller.action('drag');await nextTurn();
+  const closing=controller.action('close');await controller.action('minimize');await controller.read();
+  controller.update({surface:'video',controlsVisible:false,fullscreen:true});controller.geometry(null);
+  finish();await drag;await closing;
+  assert.deepEqual(events,['drag','prepare','chrome-off','close']);
+});
+
+test('failed close preparation never skips app retirement to close the native window',async()=>{
+  let failures=0,closed=0;
+  const controller=createDesktopWindowController({bridge:{async read(){return observed;},async chrome(){},async action(){closed++;}},onEnvironment(){},onSnapshot(){},onError(){failures++;},prepareToClose:async()=>{throw new Error('controlled retirement failure');}});
+  await controller.action('close');assert.equal(failures,1);assert.equal(closed,0);await controller.dispose();
+});
 
 test('actual MAIN installation exits DOM fullscreen without sticky native facts and follows native fullscreen changes',async()=>{
   let native=observed,installation:ReturnType<typeof installWindowChromeHost>|undefined;

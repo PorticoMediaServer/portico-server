@@ -506,6 +506,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/optimization-jobs/{id}/cancel":           writeExempt("owner-only prepared job/version mutation, no new catalogue selection (preparedmedia service owner checks)"),
 		"POST /v1/optimization-jobs/{id}/retry":            writeExempt("owner-only prepared job/version mutation, no new catalogue selection (preparedmedia service owner checks)"),
 		"POST /v1/playlists":                               writeExempt(reasonOwnObject),
+		"POST /v1/music/mixes/{id}/playlist":               {check: musicMixForbiddenCopyCheck},
 		"POST /v1/playlists/{id}/entries": writeProbes(func(m *restrictionEnv) []idProbe {
 			return perHidden("POST", "/v1/playlists/"+m.playlist+"/entries", `{"operationId":"OP","expectedRevision":0,"itemIds":["ID"]}`, "item").probes(m)
 		}),
@@ -584,8 +585,12 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/downloads/options": writeProbes(func(m *restrictionEnv) []idProbe {
 			var out []idProbe
 			for _, kind := range []string{"show", "season", "album", "book"} {
-				body := fmt.Sprintf(`{"target":{"kind":%q,"id":"ID"},"deviceId":%q,"policy":{"episodes":"all"}}`, kind, m.device)
-				out = append(out, perHidden("POST", "/v1/downloads/options", body, kind).probes(m)...)
+				for _, probe := range perHidden("POST", "/v1/downloads/options", "", kind).probes(m) {
+					// Bind the actual device only after target substitution. A
+					// legitimate base64url device token may itself contain "ID".
+					probe.body = fmt.Sprintf(`{"target":{"kind":%q,"id":%q},"deviceId":%q,"policy":{"episodes":"all"}}`, kind, probe.hidden, m.device)
+					out = append(out, probe)
+				}
 			}
 			return out
 		}),

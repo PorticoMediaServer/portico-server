@@ -24,3 +24,5 @@ pub mod device_facts;
 pub mod installation_store;
 #[path = "../../src/measurement.rs"]
 pub mod measurement;
+#[path = "../../src/shutdown.rs"]
+pub mod shutdown;

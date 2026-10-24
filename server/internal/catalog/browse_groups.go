@@ -85,7 +85,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	pageCounts := false
 	var countGroups func(values []string) (map[string]int, error)
 	if request.Query != nil || request.Restrictions.Active() {
-		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, rows: request.Rows}
+		compiler := browseCompiler{now: s.recommendationNow(s.browseInstant), profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, rows: request.Rows}
 		// The grouping's titles are the library's facet holders: a value-side
 		// candidate list is bounded by their kinds.
 		if lib, libErr := s.library(request.Library); libErr == nil {
@@ -291,7 +291,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(rows) > 0 {
 		last := rows[len(rows)-1]
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(rows)), ID: last.value, Keys: []string{last.key}, Total: total, Expires: expires})
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(rows)), ID: last.value, Keys: []string{last.key}, Total: total, Expires: expires})
 	}
 	return out, err
 }

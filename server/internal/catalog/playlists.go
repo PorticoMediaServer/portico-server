@@ -118,6 +118,13 @@ func (s *Service) Playlist(server, fence, id string, a ResourceActor) (Playlist,
 // MutatePlaylist checks current principal authorization even on receipt replay.
 // authorize also verifies media access for add and target identity for share inside the transaction.
 func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m PlaylistMutation, authorize func(*sql.Tx) error) (PlaylistReceipt, error) {
+	return s.mutatePlaylistCaptured(a, id, action, target, m, authorize, nil)
+}
+
+// capture is internal domain composition. It runs in the existing writer,
+// after receipt replay, with the original request hash already fixed. Ordinary
+// public playlist mutations keep their existing hash and behavior unchanged.
+func (s *Service) mutatePlaylistCaptured(a ResourceActor, id, action, target string, m PlaylistMutation, authorize func(*sql.Tx) error, capture func(*sql.Tx) ([]string, error)) (PlaylistReceipt, error) {
 	out := PlaylistReceipt{OperationID: m.OperationID, PlaylistID: id}
 	if a.Authority == "" || a.AccountID == "" || a.ProfileID == "" || !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 {
 		return out, requestinput.New("invalid playlist operation")
@@ -233,6 +240,15 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 	case "create":
 		if m.Name == nil || m.ExpectedRevision != 0 {
 			return out, requestinput.New("name is required for creation")
+		}
+		if capture != nil {
+			m.ItemIDs, e = capture(tx)
+			if e != nil {
+				return out, e
+			}
+			if len(m.ItemIDs) == 0 || len(m.ItemIDs) > MaxPlaylistEntries {
+				return out, ErrPlaylistCapacity
+			}
 		}
 		var n int
 		if e = tx.QueryRow(`SELECT count(*) FROM catalog_playlists WHERE owner_authority=? AND owner_account=? AND owner_profile=?`, a.Authority, a.AccountID, a.ProfileID).Scan(&n); e != nil {

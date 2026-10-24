@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectDesktopMeasurement} from '../src/measurement-transport.ts';
 
-const sample=()=>({viewport:{deviceScaleFactor:1},fontStatus:'loaded',fontFaces:[{status:'loaded'}]});
+const sample=(density=1)=>({measurement:{renderer:'dom',coordinateUnit:'css-px'},viewport:{deviceScaleFactor:density},fontStatus:'loaded',fontFaces:[{status:'loaded'}]});
 test('transport writes the unchanged deterministic collector result once',async()=>{
-  const value=sample(),options={},writes:unknown[]=[];let calls=0;
+  for(const density of [1,2,3]){
+  const value=sample(density),options={},writes:unknown[]=[];let calls=0;
   await collectDesktopMeasurement(options,{measure:async input=>{assert.equal(input,options);calls++;return value;},validate:()=>[],focus:()=>null,write:async result=>{writes.push(result);}},new AbortController().signal);
   assert.equal(calls,2);assert.deepEqual(writes,[value]);assert.equal(writes[0],value);
+  assert.equal(value.viewport.deviceScaleFactor,density);
+  }
 });
 test('unstable facts/focus and validator failures never write',async()=>{
   for(const mode of ['facts','focus','validation']){
@@ -15,8 +18,8 @@ test('unstable facts/focus and validator failures never write',async()=>{
     assert.equal(writes,0);
   }
 });
-test('native DPR2, unloaded fonts and failed fonts remain unmeasured',async()=>{
-  for(const value of [{...sample(),viewport:{deviceScaleFactor:2}},{...sample(),fontFaces:[]},{...sample(),fontFaces:[{status:'error'}]},{...sample(),fontStatus:'loading'}]){
+test('unloaded fonts and failed fonts remain unmeasured',async()=>{
+  for(const value of [{...sample(),fontFaces:[]},{...sample(),fontFaces:[{status:'error'}]},{...sample(),fontStatus:'loading'}]){
     let writes=0;await assert.rejects(collectDesktopMeasurement({}, {measure:async()=>value,validate:()=>[],focus:()=>null,write:async()=>{writes++;}},new AbortController().signal));assert.equal(writes,0);
   }
 });

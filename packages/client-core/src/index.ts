@@ -27,6 +27,7 @@ import {playableAudio,type AudioRenderV2} from './playback-v1/audio-render.ts';
 export * from './audio-effects.ts';
 export * from './music-preferences.ts';
 export * from './music-signal.ts';
+export * from './music-mixes.ts';
 import {sessionEndMessage} from './session-end.ts';
 import {serviceText} from './presentation/service-text.ts';
 import {TUNER_RESERVED, tunerHandedOver} from './live-handover.ts';
@@ -108,7 +109,7 @@ export type MediaItem = {
 export const renderable=(s?:{audio?:AudioRenderV2}):boolean=>playableAudio(s?.audio);
 /** Caller lifetime for a local start, including Retry. It must describe the host/authority,
  * not the output generation this start replaces. Cancellation ends admission, not accepted playback. */
-export type PlaybackLocalStartContext = Readonly<{signal?:AbortSignal;isCurrent?:()=>boolean}>;
+export type PlaybackLocalStartContext = Readonly<{signal?:AbortSignal;isCurrent?:()=>boolean;initialIntent?:"playing"|"paused"}>;
 function localStartCurrent(context?:PlaybackLocalStartContext):boolean {
   try{return !context?.signal?.aborted&&context?.isCurrent?.()!==false;}catch{return false;}
 }
@@ -241,6 +242,9 @@ export class ApiError extends Error {
  * to be played in place; `escalates` false means there is no other way. */
 export type PlayerFailureResult = Readonly<{escalates: boolean; session?: PlaybackSession}>;
 export interface PlaybackApi {
+  /** Explicit app-local journal/cleanup custody. A local maker never grants the server API
+   * authority over its session; omission leaves this work with the app's local owner. */
+  localPlayback?: Pick<PlaybackApi,'stopPlayback'|'progressPlayback'>;
   /** Optional: tells the server the engine could not play one session's presentation. The server
    * remembers that for this file on this device and re-plans the same session the next way up, at
    * `positionSeconds`. The session keeps its id, its queue and its place in it. */
@@ -790,6 +794,7 @@ export class PlaybackService {
     { running: boolean; checkpoint?: ProgressCheckpoint; work?: Promise<void> }
   >();
   private progressPending = new Map<string, ProgressCheckpoint>();
+  private localSessions = new Map<string, PlaybackApi['localPlayback']>();
   private progressRunning = new Set<string>();
   private requestId: () => string;
   private startupTimer?: ReturnType<typeof setTimeout>;
@@ -1325,7 +1330,7 @@ export class PlaybackService {
   hasNativeOwner(){return !!this.nativeV1;}
   async confirmQueueEnd(intentId:number):Promise<void>{
     const snapshot=this.snapshot,session=snapshot.session;
-    if(snapshot.channel||intentId!==snapshot.intentId||snapshot.phase!=='ended'||!session||!this.hasObserved||this.bookmarkProtected)throw new Error('Playback completion is not confirmed.');
+    if(snapshot.channel||intentId!==snapshot.intentId||snapshot.phase!=='ended'||!session||this.localSessions.has(session.id)||!this.hasObserved||this.bookmarkProtected)throw new Error('Playback completion is not confirmed.');
     const payload:ProgressCheckpoint={generation:session.generation,sequence:++this.sequence,positionSeconds:snapshot.positionSeconds,state:'ended'};
     this.progressPending.set(session.id,payload);await this.persist();
     await this.bounded(()=>this.api.progressPlayback(session.id,payload));
@@ -1352,12 +1357,14 @@ export class PlaybackService {
    */
   async playLocal(itemId: string, session: () => PlaybackSession, startPosition?: number, context?: PlaybackLocalStartContext): Promise<void> {
     if(!localStartCurrent(context))throw localStartCancelled();
+    const requested=context?.initialIntent,intent=requested===undefined?"playing":requested;
+    if(intent!=="playing"&&intent!=="paused")throw new Error('invalid_local_start_intent');
     if(this.snapshot.listeningNotice)this.update({listeningNotice:undefined});
     this.escalations = 0;
-    const captured=context?Object.freeze({signal:context.signal,isCurrent:context.isCurrent}):undefined;
+    const captured=context?Object.freeze({signal:context.signal,isCurrent:context.isCurrent,initialIntent:intent}):undefined;
     this.lastPlay = { itemId, local: session, localContext:captured };
     this.update({ playbackRun: this.snapshot.playbackRun + 1 });
-    return this.startLocal(itemId, session, startPosition, "playing", captured);
+    return this.startLocal(itemId, session, startPosition, intent, captured);
   }
   private async startLocal(itemId: string, make: () => PlaybackSession, startPosition: number | undefined, intent: "playing" | "paused", context?:PlaybackLocalStartContext): Promise<void> {
     if(!localStartCurrent(context))throw localStartCancelled();
@@ -1372,7 +1379,7 @@ export class PlaybackService {
       }
     };
     this.update({ phase: "starting", intent, itemId, error: undefined });
-    let detach:()=>void=()=>{};
+    let detach:()=>void=()=>{},base:PlaybackSession|undefined;
     try {
       check();
       // Recovery belongs to the service, so a canceled row stops waiting without canceling
@@ -1391,19 +1398,24 @@ export class PlaybackService {
       check();
       this.sequence = 0;
       this.lastProgress = 0;
-      let session:PlaybackSession,base:PlaybackSession|undefined;
+      let session:PlaybackSession;
       try {
+        const localOwner=this.api.localPlayback;
         base=make();
+        if(base.mode==='local'&&base.protocol===undefined){
+          // Capture custody before checking cancellation: even a late maker's actual local
+          // resource must retire through its local owner, never a server session route.
+          if(this.cleanup.has(base.id)||this.progressPending.has(base.id)||this.localSessions.has(base.id))throw new Error('local_session_identity_reused');
+          this.localSessions.set(base.id,localOwner);
+        }
         check();
         session={...base,resumeSeconds:startPosition??base.resumeSeconds};
         check();
       } catch {
         // A maker can synchronously retire its caller or start a replacement. Neither a
         // late return nor an exception from that old maker may become the new UI's error.
-        try{check();}catch(error){
-          if(base&&this.snapshot.session?.id!==base.id)this.enqueueCleanup(base.id);
-          throw error;
-        }
+        check();
+        if(base&&this.localSessions.has(base.id)&&this.snapshot.session?.id!==base.id)this.enqueueCleanup(base.id);
         this.clearStartup();
         this.update({phase:"error",intent:"paused",error:serviceText('playback.message.internal_error')});
         return;
@@ -1420,6 +1432,7 @@ export class PlaybackService {
       check();
       this.persist();
     } catch(error) {
+      if(base&&this.snapshot.session?.id!==base.id)this.enqueueCleanup(base.id);
       // Existing three-argument callers quietly finish when another Play replaces them.
       if(!context&&this.snapshot.intentId!==intentId&&error instanceof Error&&error.name==='AbortError')return;
       throw error;
@@ -1442,7 +1455,7 @@ export class PlaybackService {
    * server marks safe. */
   markerSkipped(markerId: string, mode: 'automatic' | 'manual', positionSeconds: number = this.snapshot.positionSeconds): void {
     const session = this.snapshot.session;
-    if (!session || this.snapshot.channel || !markerId) return;
+    if (!session || this.localSessions.has(session.id) || this.snapshot.channel || !markerId) return;
     void this.api.markerSkipped?.(session.id, {markerId, mode, positionMs: Math.max(0, Math.round(positionSeconds * 1000))}).catch(() => {});
   }
   /** Where a retry of the current title starts: the target of a start or seek that failed or
@@ -1832,6 +1845,7 @@ export class PlaybackService {
     if(this.snapshot.channel||this.nativeV1)return;
     const session = this.snapshot.session;
     if (!session || !this.hasObserved || this.bookmarkProtected) return;
+    if(this.localSessions.has(session.id)&&!this.localSessions.get(session.id))return;
     this.progressPending.set(session.id, {
       generation: session.generation,
       sequence: ++this.sequence,
@@ -1863,8 +1877,10 @@ export class PlaybackService {
   private flushProgress() {
     for (const [id, payload] of this.progressPending) {
       if (this.progressRunning.has(id) || this.cleanup.has(id)) continue;
+      const api=this.localSessions.has(id)?this.localSessions.get(id):this.api;
+      if(!api)continue;
       this.progressRunning.add(id);
-      void this.bounded(() => this.api.progressPlayback(id, payload)).then(
+      void this.bounded(() => api.progressPlayback(id, payload)).then(
         () => {
           if (this.progressPending.get(id) === payload)
             this.progressPending.delete(id);
@@ -1899,22 +1915,24 @@ export class PlaybackService {
     entry.running = true;
     entry.work = (async () => {
       try {
+        const api=this.localSessions.has(id)?this.localSessions.get(id):this.api;
         const checkpoint = this.progressPending.get(id) ?? entry.checkpoint;
-        if (checkpoint) {
+        if (checkpoint&&api) {
           try {
-            await this.bounded(() => this.api.progressPlayback(id, checkpoint));
+            await this.bounded(() => api.progressPlayback(id, checkpoint));
           } catch (error) {
             if (![404, 409, 410].includes(statusOf(error))) throw error;
           }
         }
         try {
-          await this.bounded((signal) => this.api.stopPlayback(id, signal));
+          if(api)await this.bounded((signal) => api.stopPlayback(id, signal));
         } catch (error) {
           // Already ended (it played to its end) or already gone: there is nothing left to stop.
           if (![404, 410].includes(statusOf(error))) throw error;
         }
         this.cleanup.delete(id);
         this.progressPending.delete(id);
+        this.localSessions.delete(id);
         this.update({});
         await this.persist();
       } catch (error) {
@@ -1950,7 +1968,7 @@ export class PlaybackService {
   }
   private persist(): Promise<void> {
     if (!this.options.journal) return Promise.resolve();
-    const records: PlaybackJournalEntry[] = [...this.cleanup].map(
+    const records: PlaybackJournalEntry[] = [...this.cleanup].filter(([id])=>!this.localSessions.has(id)).map(
       ([id, value]) => ({
         id,
         checkpoint: this.progressPending.get(id) ?? value.checkpoint,
@@ -1960,7 +1978,7 @@ export class PlaybackService {
       records.push({ request: { requestId, itemId: entry.itemId } });
     // A native v1 owner's session is its own to stop (it holds the timeline and the lease).
     const active = this.nativeV1 ? undefined : this.snapshot.session;
-    if (active && !records.some((v) => v.id === active.id))
+    if (active && !this.localSessions.has(active.id) && !records.some((v) => v.id === active.id))
       records.push({
         id: active.id,
         checkpoint: this.progressPending.get(active.id),

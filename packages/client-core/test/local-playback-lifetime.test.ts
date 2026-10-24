@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PlaybackService,type PlaybackSession,type PlaybackOptions} from '../src/index.ts';
 import {serviceText} from '../src/presentation/service-text.ts';
+import {FakePlaybackServer,fakeHttp} from '../src/playback-v1/testing/fake-server.ts';
+import {V1PlaybackApi} from '../src/playback-v1/legacy-bridge.ts';
+import {V1QueuePlayer} from '../src/playback-v1/v1-queue-player.ts';
+import type {V1Request} from '../src/playback-v1/http.ts';
+import type {PlaybackApi,PlaybackJournalEntry} from '../src/index.ts';
 
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(r=>{resolve=r;});return {promise,resolve};}
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
@@ -117,4 +122,113 @@ test('three-argument local starts retain quiet supersession compatibility',async
   const next=x.service.playLocal('new',()=>local('local:new:2'));journal.resolve([]);await Promise.all([old,next]);
   assert.equal(oldMaker,0);assert.equal(x.service.getSnapshot().session?.id,'local:new:2');
  }finally{journal.resolve([]);x.service.leave();}
+});
+
+
+test('paused local admission is paused before the maker and throughout adoption until explicit Play',async()=>{
+ const x=setup(),states:string[]=[];let made=0;
+ const off=x.service.subscribe(()=>{const s=x.service.getSnapshot();if(s.itemId==='parked')states.push(s.intent);});
+ try{
+  await x.service.playLocal('parked',()=>{made++;assert.equal(x.service.getSnapshot().intent,'paused');return local();},42,{initialIntent:'paused',isCurrent:()=>true});
+  let s=x.service.getSnapshot();assert.equal(s.intent,'paused');assert.equal(s.pendingSeek?.positionSeconds,42);
+  const session=s.session,run=s.playbackRun;
+  x.service.ready(s.intentId);assert.equal(x.service.seekApplied(s.intentId,s.pendingSeek!.revision,42,'paused'),true);
+  assert.ok(states.length>0);assert.ok(states.every(intent=>intent==='paused'),'no transient playing intent was published for the new source');
+  x.service.resume();s=x.service.getSnapshot();assert.equal(s.intent,'playing');assert.equal(s.session,session);assert.equal(s.playbackRun,run);
+  assert.equal(made,1);assert.equal(x.remoteCreates(),0);
+ }finally{off();x.service.leave();}
+});
+
+test('paused initial intent is not a sticky preference: local Retry preserves the actual latest intent',async()=>{
+ const x=setup();let made=0;
+ try{
+  await x.service.playLocal('parked',()=>{if(++made===1)throw Error('controlled missing local file');return local('local:parked:'+made);},37,{initialIntent:'paused'});
+  assert.equal(x.service.getSnapshot().phase,'error');assert.equal(x.service.getSnapshot().intent,'paused');
+  await x.service.retry();let s=x.service.getSnapshot();assert.equal(s.intent,'paused');assert.equal(s.pendingSeek?.positionSeconds,37);
+  x.service.ready(s.intentId);x.service.seekApplied(s.intentId,s.pendingSeek!.revision,37,'paused');
+  x.service.resume();x.service.fail(s.intentId,'controlled decoder error');await x.service.retry();s=x.service.getSnapshot();
+  assert.equal(s.intent,'playing');assert.equal(s.pendingSeek?.positionSeconds,37);assert.equal(made,3);assert.equal(x.remoteCreates(),0);
+ }finally{x.service.leave();}
+});
+
+test('absent local initial intent stays playing and invalid values cannot replace a genuine source',async()=>{
+ const x=setup();try{
+  await x.service.playLocal('original',()=>local());assert.equal(x.service.getSnapshot().intent,'playing');
+  const before=x.service.getSnapshot();let made=0;
+  for(const value of ['invalid',null,1])await assert.rejects(Reflect.apply(x.service.playLocal,x.service,['foreign',()=>{made++;return local('foreign');},0,{initialIntent:value}]),/invalid_local_start_intent/);
+  assert.equal(x.service.getSnapshot(),before);assert.equal(made,0);
+  await x.service.playLocal('with-context',()=>local('local:context:2'),0,{isCurrent:()=>true});assert.equal(x.service.getSnapshot().intent,'playing');
+ }finally{x.service.leave();}
+});
+
+
+function localSource(id:string):PlaybackSession{return {...local(id),mode:'local'};}
+function acknowledge(s:PlaybackService){const p=s.getSnapshot();s.ready(p.intentId);if(p.pendingSeek)s.seekApplied(p.intentId,p.pendingSeek.revision,p.pendingSeek.positionSeconds,p.intent);}
+
+test('real V1 transport never receives local cleanup, progress or marker identities',async()=>{
+ const server=new FakePlaybackServer(),inner=fakeHttp(server),requests:V1Request[]=[];
+ const http={send:async(request:V1Request)=>{requests.push(request);return inner.send(request);}};
+ const api=new V1PlaybackApi(http,{timers:{setTimer:()=>0,clearTimer:()=>{}},key:()=> 'custody-key'});
+ const journal:PlaybackJournalEntry[][]=[];
+ const playback=new PlaybackService(api,()=> 'request',{journal:{load:async()=>[],save:async rows=>{journal.push(structuredClone(rows));}}});
+ const queue=new V1QueuePlayer({http,api,playback,viewer:{serverId:'server',authority:'local',accountId:'account',profileId:'profile'}});
+ try{
+  for(const id of ['local:session:one','opaque-session-without-prefix']){
+   await playback.playLocal('movie',()=>localSource(id));acknowledge(playback);playback.pause();playback.resume();playback.markerSkipped('marker','manual');
+   await assert.rejects(playback.confirmQueueEnd(playback.getSnapshot().intentId),/not confirmed/);
+  }
+  playback.leave();await tick();await tick();
+  assert.deepEqual(requests,[],'no local identity may reach any server session route');
+  assert.ok(journal.length>0);assert.ok(journal.every(rows=>rows.length===0),'the server recovery journal cannot claim local ownership');
+ }finally{queue.dispose();playback.leave();}
+});
+
+test('explicit app-local custody receives progress and cleanup for the exact accepted resource',async()=>{
+ const serverStops:string[]=[],serverProgress:string[]=[],localStops:string[]=[],localProgress:{id:string;state:string}[]=[];
+ const journal:PlaybackJournalEntry[][]=[];
+ const api:PlaybackApi={createPlayback:async()=>local('server'),stopPlayback:async id=>{serverStops.push(id);},progressPlayback:async id=>{serverProgress.push(id);},
+  localPlayback:{stopPlayback:async id=>{localStops.push(id);},progressPlayback:async(id,payload)=>{localProgress.push({id,state:payload.state});}}};
+ const s=new PlaybackService(api,()=> 'request',{journal:{load:async()=>[],save:async rows=>{journal.push(structuredClone(rows));}}});
+ try{
+  await s.playLocal('movie',()=>localSource('opaque-local-resource'));acknowledge(s);s.pause();await tick();s.leave();await tick();await tick();
+  assert.ok(localProgress.length>0);assert.ok(localProgress.every(p=>p.id==='opaque-local-resource'));assert.equal(localProgress.at(-1)?.state,'paused');
+  assert.deepEqual(localStops,['opaque-local-resource']);assert.deepEqual(serverStops,[]);assert.deepEqual(serverProgress,[]);
+  assert.ok(journal.every(rows=>rows.length===0));
+ }finally{s.leave();}
+});
+
+test('local startup timeout and canceled late maker retire only through app-local custody',async()=>{
+ const server:string[]=[],stops:string[]=[],caller=new AbortController();
+ const api:PlaybackApi={createPlayback:async()=>local('server'),stopPlayback:async id=>{server.push(id);},progressPlayback:async id=>{server.push(id);},localPlayback:{stopPlayback:async id=>{stops.push(id);},progressPlayback:async()=>{}}};
+ const s=new PlaybackService(api,()=> 'request',{startupTimeoutMs:5});
+ try{
+  await assert.rejects(s.playLocal('movie',()=>{caller.abort();return localSource('late-local');},0,{signal:caller.signal}),{name:'AbortError'});
+  await tick();assert.deepEqual(stops,['late-local']);
+  await s.playLocal('movie',()=>localSource('timed-out-local'));await new Promise(r=>setTimeout(r,15));await tick();
+  assert.deepEqual(stops,['late-local','timed-out-local']);assert.deepEqual(server,[]);assert.equal(s.getSnapshot().phase,'error');
+ }finally{s.leave();}
+});
+
+test('failed local cleanup retains its original owner for retry and never falls back to a newer owner or server',async()=>{
+ const server:string[]=[],first:string[]=[],second:string[]=[];let fail=true;
+ const api:PlaybackApi={createPlayback:async()=>local('server'),stopPlayback:async id=>{server.push(id);},progressPlayback:async id=>{server.push(id);},
+  localPlayback:{stopPlayback:async id=>{first.push(id);if(fail)throw Error('native cleanup ACK pending');},progressPlayback:async()=>{}}};
+ const s=new PlaybackService(api,()=> 'request');
+ try{
+  await s.playLocal('one',()=>localSource('one'));api.localPlayback={stopPlayback:async id=>{second.push(id);},progressPlayback:async()=>{}};
+  s.leave();await tick();assert.equal(s.getSnapshot().cleanupPending,1);fail=false;s.retryCleanup();await tick();
+  assert.deepEqual(first,['one','one']);assert.equal(s.getSnapshot().cleanupPending,0);
+  await s.playLocal('two',()=>localSource('two'));s.leave();await tick();
+  assert.deepEqual(second,['two']);assert.deepEqual(server,[]);
+ }finally{s.leave();}
+});
+
+test('server cleanup custody is preserved independently of any local-looking session ID',async()=>{
+ const stopped:string[]=[],journal:PlaybackJournalEntry[][]=[];
+ const s=new PlaybackService({createPlayback:async()=>local('local:server-owned'),stopPlayback:async id=>{stopped.push(id);},progressPlayback:async()=>{}},()=> 'request',{journal:{load:async()=>[],save:async rows=>{journal.push(structuredClone(rows));}}});
+ try{
+  await s.play('movie');acknowledge(s);s.pause();await tick();
+  assert.ok(journal.some(rows=>rows.some(row=>row.id==='local:server-owned')));
+  s.leave();await tick();assert.deepEqual(stopped,['local:server-owned']);
+ }finally{s.leave();}
 });

@@ -231,9 +231,9 @@ func (s *Service) Open(key string) (*os.File, string, error) {
 func (s *Service) MovieArtwork(ctx context.Context, library, path string, f assets.Facts) assets.Facts {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	stem := strings.TrimSuffix(path, filepath.Ext(path))
-	for _, candidate := range []string{stem + "-poster.jpg", stem + "-poster.png", filepath.Join(filepath.Dir(path), "poster.jpg"), filepath.Join(filepath.Dir(path), "poster.png"), filepath.Join(filepath.Dir(path), "folder.jpg"), filepath.Join(filepath.Dir(path), "folder.png")} {
-		if key, ok := s.sidecarKey(ctx, library, candidate); ok {
+	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	for _, name := range videoArtworkNames(stem+"-poster", stem, "poster", "folder", "cover", "default", "movie") {
+		if key, ok := s.sidecarKey(ctx, library, filepath.Join(filepath.Dir(path), name)); ok {
 			f.ArtworkKey = key
 			return f
 		}

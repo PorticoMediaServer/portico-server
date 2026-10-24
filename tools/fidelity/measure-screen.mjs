@@ -157,7 +157,7 @@ export async function measureScreen({selector, expectedViewport, anchors = {}, r
   };
   await visit(root, [0]);
   const viewport = {width: innerWidth, height: innerHeight, deviceScaleFactor: devicePixelRatio};
-  return {version: 1, scope: 'screen', viewport, root: {x: round(bounds.x), y: round(bounds.y), width: round(bounds.width), height: round(bounds.height)},
+  return {version: 1, scope: 'screen', measurement: {renderer: 'dom', coordinateUnit: 'css-px'}, viewport, root: {x: round(bounds.x), y: round(bounds.y), width: round(bounds.width), height: round(bounds.height)},
     expectedViewport: expectedViewport ?? null,
     fullViewport: bounds.x === 0 && bounds.y === 0 && bounds.width === innerWidth && bounds.height === innerHeight,
     fontStatus: document.fonts.status, fontFaces: [...document.fonts].map(face => ({family: face.family, weight: face.weight, style: face.style, status: face.status})).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),

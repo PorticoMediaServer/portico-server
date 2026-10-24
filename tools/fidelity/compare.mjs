@@ -1,4 +1,5 @@
 import {colorDifference} from './color.mjs';
+import {usesLogicalCoordinates} from './contract.mjs';
 
 export const policy = Object.freeze({boxPixels: 2, opacity: .02, deltaE2000: 2, colorAlpha: .02});
 const textStyles = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'textTransform', 'textDecorationLine', 'textShadow'];
@@ -49,9 +50,9 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   const exclude = new Set(referenceOnly);
   const expected = reference.elements.filter(node => significant(node) && !exclude.has(node.frame) && !within(node.id, cascadeRoots.reference));
   const observed = actual.elements.filter(node => significant(node) && !actualContentOnly.includes(node.frame) && !within(node.id, cascadeRoots.actual));
-  const nativeLogical = actual.measurement?.renderer === 'react-native' && ['dp', 'pt'].includes(actual.measurement.coordinateUnit);
-  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!nativeLogical && actual.viewport.deviceScaleFactor !== 1))
-    differences.push({kind: 'screen-state', label: 'Complete same-size logical screen / DOM DPR1', expected: reference.root, actual: actual.root});
+  const actualLogical = usesLogicalCoordinates(actual);
+  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
+    differences.push({kind: 'screen-state', label: 'Complete same-size measured logical screen', expected: reference.root, actual: actual.root});
   for (const [side, screen] of [['reference', reference], ['actual', actual]]) for (const fact of screen.unavailable ?? []) differences.push({kind: 'unavailable-measurement', label: `${side} ${fact.element ?? 'screen'}`, property: fact.property, reason: fact.reason});
   if (focus && !actual.elements.some(node => unavailable(actual, node, 'focused'))) {
     const focused = actual.elements.filter(node => node.focused === true), target = actual.elements.filter(node => node.frame === focus.frame);
@@ -94,7 +95,11 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
       }
     }
     for (const property of paintStyles) {
+      if (unavailable(reference, node, property) || unavailable(actual, other, property)) continue;
       if (['transform', 'transformOrigin'].includes(property) && identityTransform(node.style?.transform) && identityTransform(other.style?.transform)) continue;
+      if (node.style?.[property] !== other.style?.[property] && (node.style?.[property] == null || other.style?.[property] == null)) {
+        differences.push({kind: 'unavailable-measurement', label, property, reason: 'Paint style was not observed on both sides'}); continue;
+      }
       if (!samePaint(node.style?.[property], other.style?.[property])) add(property, node.style?.[property], other.style?.[property]);
     }
     if (!unavailable(reference, node, 'effectiveOpacity') && !unavailable(actual, other, 'effectiveOpacity') && Math.abs(Number(node.effectiveOpacity ?? node.style?.opacity ?? 1) - Number(other.effectiveOpacity ?? other.style?.opacity ?? 1)) > policy.opacity) add('effectiveOpacity', node.effectiveOpacity ?? node.style?.opacity, other.effectiveOpacity ?? other.style?.opacity);
@@ -112,6 +117,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     }
     if (node.image?.kind !== other.image?.kind) add('image-slot.kind', node.image?.kind, other.image?.kind);
     if (node.image?.kind === 'image' && node.image.loaded !== other.image?.loaded) add('image-slot.loaded', node.image.loaded, other.image?.loaded);
+    if (node.image?.kind === 'icon' || other.image?.kind === 'icon') diagnostics.push({label, property: 'icon.identity/contents', scored: false, reason: 'Icon slot geometry/style is measured; SVG paths, sprite references and artwork contents are excluded. A matching slot does not establish glyph identity.'});
     for (const property of unscored) {
       const a = node[property] ?? node.style?.[property], b = other[property] ?? other.style?.[property];
       if (JSON.stringify(a) !== JSON.stringify(b)) diagnostics.push({label, property, expected: a, actual: b, scored: false});

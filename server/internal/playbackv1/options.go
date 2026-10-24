@@ -221,6 +221,7 @@ type Service struct {
 	CastQueueAuthority func(context.Context, *sql.Tx, Caller, string) error
 	QueryKeys          func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
 	RadioKeys          func(context.Context, *sql.Tx, identity.Principal, catalog.RadioBatchRequest) (catalog.RadioBatch, error)
+	MixKeys            func(context.Context, *sql.Tx, identity.Principal, string) ([]string, error)
 	LibraryCheck       LibraryCheck
 	Visibility         Visibility
 	// Unrestricted says the caller's item fence admits every item (every

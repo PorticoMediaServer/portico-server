@@ -28,7 +28,10 @@ role, normalized descendant text and order. A list cardinality fault is reported
 once; descendant missing/extra/string cascades are suppressed. Own text is used
 as fallback only on leaves. Missing, extra and ambiguous elements are failures; order
 selection during ambiguity is diagnostic, not a waiver. The complete declared
-screen must match viewport and DPR1; an element crop cannot pass.
+screen must match the authored logical viewport; an element crop cannot pass.
+Reference extraction uses DPR1. Actual DOM CSS-pixel and RN dp/pt measurements
+retain their real density (including 2/3) without rescaling coordinates or fonts;
+see the shared measurement interface.
 
 Geometry tolerance is **2 CSS px per x/y/width/height**, opacity **0.02**.
 Font family/size/weight and normalized text are exact. Rendered Range text-run
@@ -85,3 +88,29 @@ Native and desktop producers use the same [measurement interface](NATIVE-CONTRAC
 and `compare-files.mjs` CLI. Native dump ownership stays with its producer;
 logical geometry, actual pixel ratio, unavailable facts and explicit drawn
 focus states are handled without a second comparator.
+
+## Controlled state adapters and pending copy baseline
+
+`run-web.mjs --adapter /external/state.json` accepts a declarative adapter using
+existing genuine DEV entries. Optional `stateSteps` use real click/insertText
+browser events on unique visible public-fixture selectors; arbitrary evaluation,
+DOM/style rewrites and direct focus calls are not state preparation. Explicit
+`expectations` check actual focused input type/length and, where applicable,
+native-caret eligibility. Unrelated Kit states have no implicit auth4 password
+requirement. An optional readySelector waits for the genuine mounted specimen;
+readiness errors stay unmeasured. It never creates an alternate renderer.
+
+The pending player Info string baseline includes the existing PlaybackInfo copy
+slots inFile/playingHere/routes/sections/fields/routeName/originalValue and the
+canonical projection's reason/loss/network/screen/output/shown, DV conversion
+and unit patterns. Map approved frame text through the sole strings extractor
+when that area is reached. Missing catalogue bindings remain explicit; no copied
+test words, new fallback copy or parallel extractor. The Info domain owner binds
+the resulting published catalogue keys. This queue entry is not a mapping or a
+screen measurement. Relative Browse date and Live Series rules remain excluded.
+
+Matching icon slots establish bounds/style only. The comparator emits an explicit
+`icon.identity/contents` unscored diagnostic; no SVG paths, sprite references or
+artwork bytes are collected. Do not use a slot match to claim the panel close
+glyph is i-close or to justify a closeIcon renderer change. That identity remains
+unmeasurable under the current content-exclusion policy.
