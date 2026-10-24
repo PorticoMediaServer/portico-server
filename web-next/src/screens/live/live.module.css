@@ -49,7 +49,7 @@
 .guideTime .guideView { border-radius: 10px; background: var(--color-raised-high); padding: 3px; gap: 2px; box-shadow: none; }
 .guideTime .guideView button { height: 34px; padding: 0 12px; gap: 6px; font-size: calc(var(--type-body-size) - 1px); }
 .guideTime .guideView button > svg { width: 18px; height: 18px; }
-.guide { margin-top: 16px; }
+.guide { position: relative; margin-top: 16px; padding-bottom: 8px; }
 .guideRuler { display: flex; height: 44px; }
 .guideCorner { width: var(--guide-column); flex: none; padding-left: var(--shell-gutter, var(--gutter-desktop)); display: flex; align-items: center; font-size: var(--type-caption-size); font-weight: var(--type-caption-strong-weight); color: var(--color-text-tertiary); }
 .guideCornerNow { padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
