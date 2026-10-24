@@ -18,6 +18,25 @@ test('actual browser actions/viewer projection keep independent servers and reme
  await f.actions.switchServer('second');assert.equal((await f.viewer.read())?.session.viewer.profileId,'profile-second');
  assert.equal((await f.store.read()).servers.length,3);assert.equal(f.revoked.length,0);f.actions.dispose();
 });
+test('a cancelled queued server selection cannot commit or settle over its successor',async()=>{
+ let raw:AppSessionRecord|undefined={version:1,revision:1,selectedServerId:'local',servers:[entry('local'),entry('first'),entry('second')]};
+ let unlock!:()=>void,entered!:()=>void,first=true,current=true;
+ const waiting=new Promise<void>(resolve=>{unlock=resolve;}),started=new Promise<void>(resolve=>{entered=resolve;});
+ let tail=Promise.resolve();
+ const store=new AppSessionStore({read:async()=>structuredClone(raw),change:(update,beforeCommit)=>{
+  const result=tail.then(async()=>{const next=update(raw);if(first){first=false;entered();await waiting;}beforeCommit?.();raw=next;});
+  tail=result.catch(()=>{});return result;
+ }});
+ const actions=new BrowserAppSessionActions(store,()=>{throw new Error('No network expected.');},async()=>{throw new Error('No revocation expected.');});
+ const cancelled=assert.rejects(actions.switchServer('first',()=>current),{code:'cancelled'});
+ await started;current=false;
+ const successor=actions.switchServer('second');
+ assert.equal((await store.read()).selectedServerId,'local');
+ unlock();await cancelled;await successor;
+ assert.equal((await store.read()).selectedServerId,'second');
+ assert.equal((await store.read()).revision,2,'only the successor advanced the admission fence');
+ actions.dispose();
+});
 test('server signout retires exact device-server family before remote call and offline failure never resurrects it',async()=>{
  const f=setup();await f.actions.switchServer('first');f.setOffline();const session=(await f.store.selected())!.connection.session;
  const result=await f.actions.signOutServer(session);assert.equal(result[0].status,'rejected');
