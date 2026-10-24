@@ -859,11 +859,12 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			p.MaxFrameRate = limit
 		}
 	}
-	p.HardwareDevice = in.Hardware.Device
-	if in.Hardware.Available && in.Hardware.Backend != decoder.BackendSoftware {
-		p.HardwareBackend, p.HardwareNative = string(in.Hardware.Backend), in.Hardware.NativeFilters
+	selectedHardware := measuredConversionProbe(in.Server, in.Hardware, picture.Codec, picture.BitDepth)
+	p.HardwareDevice = selectedHardware.Device
+	if selectedHardware.Available {
+		p.HardwareBackend, p.HardwareNative = string(selectedHardware.Backend), selectedHardware.NativeFilters
 		if !p.ToneMap {
-			p.HardwareNative = p.HardwareNative || in.Hardware.ScaleFilters
+			p.HardwareNative = p.HardwareNative || selectedHardware.ScaleFilters
 		}
 		p.ReasonCodes = append(p.ReasonCodes, ReasonHardwareBackend)
 	} else {
