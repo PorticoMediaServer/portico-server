@@ -5,4 +5,6 @@
 .returnLink a > span { display: inline-flex; align-items: center; gap: 6px; }
 /* The drawn divider inherits the page's normal line height, not the app's 1.5. */
 .divider { line-height: normal; }
+/* The drawn empty password field shows its 17px placeholder; typed dots keep the kit size. */
+.password input[type="password"]::placeholder { font-size: 17px; letter-spacing: normal; }
 .submit { margin-top: 8px; }

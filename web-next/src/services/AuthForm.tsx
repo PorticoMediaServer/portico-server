@@ -47,7 +47,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
     {mode === 'signin' && state.options?.password && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
         <TextField variant="auth" label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required />
-        <AuthPasswordField label={t('auth.password')} placeholder={t('auth.password')} name="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required />
+        <AuthPasswordField containerClassName={signInStyles.password} label={t('auth.password')} placeholder={t('auth.password')} name="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required />
         <div className={signInStyles.submit}><ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim() || !password}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions></div>
       </form>
       <AuthLinks>{state.options.recovery && <button type="button" disabled={busy} onClick={() => flow.go('forgot')}>{t('auth.forgotPassword')}</button>}{state.options.registration && <button type="button" disabled={busy} onClick={() => flow.go('create')}>{t('auth.createAccount')}</button>}</AuthLinks>
