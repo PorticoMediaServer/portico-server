@@ -97,3 +97,45 @@ func TestRemoteIgnoreReadRejectsMissingOrMismatchedListingBeforeIO(t *testing.T)
 		})
 	}
 }
+
+func TestRemoteIgnoreChangedObservationStopsPageWithoutReplacement(t *testing.T) {
+	f := newLoopFixture(t, "movie")
+	source, err := f.s.catalog.LibrarySource(context.Background(), f.source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := storage.Snapshot{Path: filepath.Join(f.root, ".ignore"), Name: ".ignore", Size: 8, Revision: "listed"}
+	raw, _ := json.Marshal(member)
+	f.exec(`INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,ready,created_at) VALUES('ignore-list','job','remote','generation',?,1,1)`, f.root)
+	f.exec(`INSERT INTO remote_listing_entries(listing_id,name,snapshot) VALUES('ignore-list',?,?)`, member.Path, string(raw))
+	for _, test := range []struct {
+		name string
+		err  error
+		stop bool
+	}{
+		{"changed member", storage.ErrRemoteChanged, true},
+		{"changed listing", storage.ErrInventoryChanged, true},
+		{"unreadable provider", storage.ErrRemoteOffline, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f.s.forgetListing("job")
+			entry := storage.Snapshot{Path: filepath.Join(f.root, "Movie.mkv"), Name: "Movie.mkv"}
+			page := storage.InventoryPage{Remote: &storage.RemotePage{ID: "ignore-list", SourceID: "remote", Generation: "generation", Directory: f.root}, Entries: []storage.Snapshot{entry}, Complete: true}
+			reads := 0
+			err := f.s.applyRemoteIgnores(context.Background(), "job", source, ".", &page, func(context.Context, string, int64) ([]byte, error) {
+				reads++
+				return nil, errors.Join(errors.New("read failed"), test.err)
+			})
+			if errors.Is(err, test.err) != test.stop || reads != 1 || len(page.Entries) != 1 || page.Entries[0] != entry {
+				t.Fatal("changed config was retried, replaced or silently ignored", err, reads, page)
+			}
+			if test.stop {
+				if len(page.Issues) != 0 || len(f.s.ignoreScopes["job"]) != 0 {
+					t.Fatal("stale ignore rules were cached or downgraded to a warning", page.Issues)
+				}
+			} else if err != nil || len(page.Issues) != 1 || page.Issues[0].Reason != "ignore_unreadable" {
+				t.Fatal("genuine unreadable-file warning policy changed", err, page.Issues)
+			}
+		})
+	}
+}

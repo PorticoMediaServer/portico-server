@@ -87,7 +87,7 @@ func (s *Service) remoteIgnoreScope(ctx context.Context, job string, source cata
 		readCtx := context.WithValue(ctx, remoteIgnoreReadKey{}, remoteIgnoreRead{job: job, source: source.ID, listing: listing, member: file})
 		raw, err := read(readCtx, file.Path, naming.MaxIgnoreBytes)
 		if err != nil {
-			if errors.Is(err, storage.ErrBusy) || ctx.Err() != nil {
+			if errors.Is(err, storage.ErrBusy) || errors.Is(err, storage.ErrRemoteChanged) || errors.Is(err, storage.ErrInventoryChanged) || ctx.Err() != nil {
 				return out, err
 			}
 			out.issues = append(out.issues, storage.InventoryIssue{Path: relative, Reason: "ignore_unreadable", Warning: true})
