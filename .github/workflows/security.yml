@@ -4,9 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: '23 8 * * 1'
 
+  workflow_call:
+    inputs:
+      nightly:
+        type: boolean
+        default: false
 permissions:
   contents: read
   security-events: write
@@ -18,6 +21,7 @@ concurrency:
 
 jobs:
   secrets:
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,6 +48,7 @@ jobs:
           PY
 
   codeql:
+    if: inputs.nightly == true
     runs-on: ubuntu-24.04
     strategy: {matrix: {language: [go, javascript-typescript]}}
     steps:
@@ -61,6 +66,7 @@ jobs:
       - uses: github/codeql-action/analyze@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
 
   go-vulnerabilities:
+    if: inputs.nightly == true
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -77,6 +83,7 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   javascript-vulnerabilities:
+    if: inputs.nightly == true
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
