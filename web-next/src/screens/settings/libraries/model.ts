@@ -66,3 +66,12 @@ export function folderRows(sources: readonly InventorySource[]): readonly Librar
     network: source.classification === 'network', health: source.health, enabled: source.enabled,
   }));
 }
+
+/** How often the server checks one folder for changes, in the drawn order. */
+export const folderIntervalOptions = () => Object.freeze([
+  {value: '900', label: 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.3.control.options.0.label' as const},
+  {value: '3600', label: 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.3.control.options.1.label' as const},
+  {value: '21600', label: 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.3.control.options.2.label' as const},
+  {value: '86400', label: 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.3.control.options.3.label' as const},
+  {value: '0', label: 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.3.control.options.4.label' as const},
+]);

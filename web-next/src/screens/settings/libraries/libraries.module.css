@@ -148,7 +148,7 @@
 
 .folder {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 2px 16px;
   padding: 12px 2px;
   border-bottom: 1px solid var(--color-line-soft);
@@ -180,4 +180,12 @@
 .folderUnavailable {
   color: var(--color-record);
   font-weight: calc(var(--type-body-strong-weight) + 50);
+}
+
+.folderActions {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

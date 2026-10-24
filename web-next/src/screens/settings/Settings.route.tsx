@@ -153,8 +153,8 @@ export function SettingsEntry() {
         if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries}
           onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
         if (row.id === 'libraries.folders' && isLibraryPanelContext(rowContext) && rowContext.recordId) {
-          const folders = controller.folders.getSnapshot(), own = folders.libraryId === rowContext.recordId;
-          return <LibraryFolders config={controller.folders.config(rowContext.recordId)} loading={own && folders.loading} failed={own && !!folders.error} />;
+          return <LibraryFolders libraryId={rowContext.recordId} api={options.api}
+            scope={{serverId: viewer.serverId, viewerId: options.viewerId}} isCurrent={current} onError={reportError} />;
         }
         if (row.control.type === 'action' && libraryScanAction(row.id) && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
@@ -181,7 +181,10 @@ export function SettingsEntry() {
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
   const settings = failure ? {...owned.settings, section: () => <SettingsPageFailure retry={() => setRetry(value => value + 1)} home={owned.settings.openHome} />} : owned.settings;
-  return <SettingsScreen bindings={settings} route={route} navigate={navigate} />;
+  // A URL that names its scope or section was a link to that page (a Dashboard
+  // or storage alert), so the compact layout opens the page, not the list.
+  const openDetail = typeof raw.scope === 'string' || typeof raw.section === 'string';
+  return <SettingsScreen bindings={settings} route={route} navigate={navigate} openDetail={openDetail} />;
 }
 
 export default defineWebScreen({id: 'settings', component: SettingsEntry, validateSearch: raw => settingsRoute(raw, () => true)});
