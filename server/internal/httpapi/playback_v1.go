@@ -240,6 +240,20 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 	// non-owner on an owner route is not_permitted, the "direct_account" admin
 	// scope is the direct account's own manage right, and sign-in states
 	// (password change, device approval) keep their own codes.
+	// This one read is the account-scoped profile picker, not a viewer read.
+	// DirectMe validates the live family, epoch, membership and narrowed-grant
+	// refusal itself; generic principal authentication intentionally rejects
+	// account-only sign-ins before a profile has been selected. Do not attach
+	// a viewer principal or extend this admission to any other device route.
+	if m.ID == "get_direct_account" && m.Method == http.MethodGet && m.Path == "/v1/direct" {
+		if d.Identity == nil {
+			return nil, &apierror.Error{Code: "internal"}
+		}
+		if _, err := d.Identity.DirectMe(ctx, directBearer(r)); err != nil {
+			return nil, foundationAuthError(err)
+		}
+		return ctx, nil
+	}
 	var p identity.Principal
 	var err error
 	switch {
