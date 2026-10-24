@@ -18,6 +18,12 @@ type remoteIgnoreScope struct {
 	bytes  int
 }
 
+type remoteIgnoreReadKey struct{}
+type remoteIgnoreRead struct {
+	job, source, listing string
+	member               storage.Snapshot
+}
+
 const maxRemoteIgnoreScopes = 128
 const maxRemoteIgnoreBytes = 512 << 10
 
@@ -75,7 +81,11 @@ func (s *Service) remoteIgnoreScope(ctx context.Context, job string, source cata
 			out.issues = append(out.issues, storage.InventoryIssue{Path: relative, Reason: "ignore_file_budget_exceeded", Warning: true})
 			continue
 		}
-		raw, err := read(ctx, file.Path, naming.MaxIgnoreBytes)
+		// Keep the exact selected listing/member through the existing callback.
+		// The later retained reader must not refresh a failed listing handle or
+		// substitute the media file's observation for this config file.
+		readCtx := context.WithValue(ctx, remoteIgnoreReadKey{}, remoteIgnoreRead{job: job, source: source.ID, listing: listing, member: file})
+		raw, err := read(readCtx, file.Path, naming.MaxIgnoreBytes)
 		if err != nil {
 			if errors.Is(err, storage.ErrBusy) || ctx.Err() != nil {
 				return out, err
@@ -172,6 +182,18 @@ func (s *Service) applyRemoteIgnores(ctx context.Context, job string, source cat
 }
 
 func (s *Service) readRemoteIgnore(ctx context.Context, job string, source catalog.LibrarySource, path string, limit int64) ([]byte, error) {
+	observed, ok := ctx.Value(remoteIgnoreReadKey{}).(remoteIgnoreRead)
+	if !ok || observed.job != job || observed.source != source.ID || observed.listing == "" || observed.member.Path != path || observed.member.Directory || filepath.Base(path) != ".plexignore" && filepath.Base(path) != ".ignore" {
+		return nil, storage.ErrRemoteConfig
+	}
+	policy, err := s.catalog.ScanPolicy(ctx, source.LibraryID)
+	if err != nil {
+		return nil, err
+	}
+	admission := storage.InventoryBlobAdmission{Purpose: storage.InventoryBlobIgnore,
+		JobID: job, LibraryID: source.LibraryID, LibrarySourceID: source.ID,
+		RootIncarnation: source.Incarnation, RootIdentity: source.RootIdentity, SourceGeneration: source.Generation,
+		PolicyRevision: policy.Revision, ListingID: observed.listing, Member: observed.member}
 	check := func(ctx context.Context, _ string) error {
 		var valid bool
 		err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_runs r JOIN jobs j ON j.id=r.job_id JOIN library_sources s ON s.id=r.source_id WHERE r.job_id=? AND j.status='running' AND s.id=? AND s.enabled=1 AND r.source_generation=s.generation AND r.root_incarnation=s.incarnation AND r.root_identity=s.root_identity)`, job, source.ID).Scan(&valid)
@@ -185,6 +207,6 @@ func (s *Service) readRemoteIgnore(ctx context.Context, job string, source catal
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	ctx = storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks})
+	ctx = storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}, admission)
 	return s.storage.ReadSmall(storage.WithScanReadGuard(ctx, check), source.ID, path, limit)
 }

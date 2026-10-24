@@ -3,7 +3,9 @@ package ingestion
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/storage"
 	"testing"
 )
@@ -22,8 +24,16 @@ func TestManagedIgnoreRulesUseStagedNamesAndPreserveAdapterPages(t *testing.T) {
 		f.exec(`INSERT INTO remote_listing_entries(listing_id,name,snapshot) VALUES(?,?,?)`, entry.id, snapshot.Path, string(raw))
 	}
 	reads := 0
-	read := func(_ context.Context, path string, _ int64) ([]byte, error) {
+	read := func(ctx context.Context, path string, _ int64) ([]byte, error) {
 		reads++
+		captured, ok := ctx.Value(remoteIgnoreReadKey{}).(remoteIgnoreRead)
+		wantListing := "child-list"
+		if filepath.Base(path) == ".plexignore" {
+			wantListing = "root-list"
+		}
+		if !ok || captured.job != "job" || captured.source != source.ID || captured.listing != wantListing || captured.member.Path != path || captured.member.Revision != "revision" {
+			t.Fatal("ignore callback lost the actual selected listing/member", captured)
+		}
 		if filepath.Base(path) == ".plexignore" {
 			return []byte("Ignored*.mkv\n"), nil
 		}
@@ -61,5 +71,29 @@ func TestManagedIgnoreRulesUseStagedNamesAndPreserveAdapterPages(t *testing.T) {
 	f.s.forgetListing("job")
 	if len(f.s.ignoreScopes) != 0 {
 		t.Fatal("remote ignore cache survived scan completion")
+	}
+}
+
+func TestRemoteIgnoreReadRejectsMissingOrMismatchedListingBeforeIO(t *testing.T) {
+	// No service/DB/storage is needed for a refusal before admission. A path,
+	// pool name or unrelated observed member never supplies listing authority.
+	s := &Service{}
+	for name, captured := range map[string]*remoteIgnoreRead{
+		"missing":      nil,
+		"other job":    {job: "other", source: "source", listing: "listing", member: storage.Snapshot{Path: "/root/.ignore"}},
+		"other source": {job: "job", source: "other", listing: "listing", member: storage.Snapshot{Path: "/root/.ignore"}},
+		"other member": {job: "job", source: "source", listing: "listing", member: storage.Snapshot{Path: "/root/movie.mkv"}},
+		"no listing":   {job: "job", source: "source", member: storage.Snapshot{Path: "/root/.ignore"}},
+		"directory":    {job: "job", source: "source", listing: "listing", member: storage.Snapshot{Path: "/root/.ignore", Directory: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			if captured != nil {
+				ctx = context.WithValue(ctx, remoteIgnoreReadKey{}, *captured)
+			}
+			if _, err := s.readRemoteIgnore(ctx, "job", catalog.LibrarySource{ID: "source"}, "/root/.ignore", 4096); !errors.Is(err, storage.ErrRemoteConfig) {
+				t.Fatal("unbound ignore read reached I/O", err)
+			}
+		})
 	}
 }
