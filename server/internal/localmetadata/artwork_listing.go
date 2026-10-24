@@ -17,3 +17,7 @@ type artworkListingKey struct{}
 func WithArtworkListing(ctx context.Context, listed func(string) (ArtworkDirectoryListing, bool)) context.Context {
 	return context.WithValue(ctx, artworkListingKey{}, listed)
 }
+
+// observedArtworkImage binds cached bytes to the exact observed source stamp.
+// A failed concurrent reader cannot replace bytes under another stamp.
+type observedArtworkImage struct{ stamp, key string }

@@ -27,7 +27,7 @@ import (
 )
 
 type Service struct {
-	artworkCandidateObservations map[string]string
+	artworkCandidateObservations map[string]observedArtworkImage
 	ArtworkLimit                 func(context.Context) int64
 	artworkBytes                 int64
 	artworkAccounted             bool

@@ -66,19 +66,34 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 			}
 			stamp := listing.SourceID + "\x00" + listing.RootIdentity + "\x00" + entry.Revision
 			s.mu.Lock()
-			if s.artworkCandidateObservations == nil || len(s.artworkCandidateObservations) > 1024 {
-				s.artworkCandidateObservations = map[string]string{}
-			}
-			if s.artworkCandidateObservations[path] != stamp {
-				delete(s.sidecars, path)
-				s.artworkCandidateObservations[path] = stamp
-			}
+			cached := s.artworkCandidateObservations[path]
 			s.mu.Unlock()
-			key, valid := s.sidecarKey(ctx, library, path)
-			if !valid || !check() {
+			key := ""
+			if cached.stamp == stamp {
+				key = cached.key
+			}
+			if key == "" {
+				raw, err := s.readSmall(ctx, library, path, 4<<20)
+				if err != nil {
+					artworkReadFailed(ctx)
+					return nil, false
+				}
+				key, err = s.store(raw)
+				if err != nil {
+					artworkReadFailed(ctx)
+					return nil, false
+				}
+			}
+			if !check() {
 				artworkReadFailed(ctx)
 				return nil, false
 			}
+			s.mu.Lock()
+			if s.artworkCandidateObservations == nil || len(s.artworkCandidateObservations) > 1024 {
+				s.artworkCandidateObservations = map[string]observedArtworkImage{}
+			}
+			s.artworkCandidateObservations[path] = observedArtworkImage{stamp: stamp, key: key}
+			s.mu.Unlock()
 			result = append(result, assets.LocalArtworkCandidate{Slot: slot, Key: key})
 		}
 	}
