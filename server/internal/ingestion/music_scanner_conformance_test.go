@@ -2,6 +2,7 @@ package ingestion
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,6 +17,7 @@ import (
 	"portico.local/server/internal/naming"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/testtier"
 )
 
 // The Plex music layout's exact examples, built from generated/blank audio
@@ -23,6 +25,7 @@ import (
 // facts; they copy no real media, artwork or provider metadata.
 
 func TestMusicScannerConformancePlexTheWallPackedNumbers(t *testing.T) {
+	testtier.Media(t, "generates and scans an actual 26-track music album")
 	ffmpeg := decodertest.QualifiedFFmpeg(t)
 	root := t.TempDir()
 	albumDir := filepath.Join(root, "music", "Pink Floyd", "The Wall")
@@ -69,6 +72,7 @@ func TestMusicScannerConformancePlexTheWallPackedNumbers(t *testing.T) {
 }
 
 func TestMusicScannerConformancePlexVariousArtistsCompilation(t *testing.T) {
+	testtier.Media(t, "generates and scans actual compilation tracks")
 	ffmpeg := decodertest.QualifiedFFmpeg(t)
 	root := t.TempDir()
 	albumDir := filepath.Join(root, "music", "Various Artists", "Guardians Of The Galaxy")
@@ -124,6 +128,39 @@ func TestMusicScannerConformancePlexVariousArtistsCompilation(t *testing.T) {
 	}
 }
 
+// Decoder acceptance cannot stand in for Basic ingestion: the exact bounded
+// header timeline must survive the real probe, scanner and normalized writer.
+func TestMusicScannerConformanceMusepackBasicStoresValidatedTimeline(t *testing.T) {
+	testtier.Media(t, "probes and scans actual committed SV7 and short SV8 tones")
+	root := t.TempDir()
+	albumDir := filepath.Join(root, "music", "Fixture Artist", "Musepack")
+	if err := os.MkdirAll(albumDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{"tone-sv7.mpc", "tone-sv8.mpc"}
+	for _, name := range names {
+		raw, err := os.ReadFile(filepath.Join("..", "decoder", "testdata", "music-formats-r29", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(albumDir, name), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _, db := musicConformanceScanWithDB(t, root)
+	for index, name := range names {
+		var codec, measuredCodec string
+		var duration float64
+		var sampleRate, channels int
+		var sourceCurrent bool
+		err := db.QueryRow(`SELECT asset.audio_codec,asset.duration,facts.codec,facts.sample_rate,facts.channels,facts.size=asset.size AND facts.modified_ns=asset.modified_ns FROM catalog_assets asset JOIN music_technical_facts facts ON facts.asset_id=asset.token WHERE asset.path=? AND asset.available=1`, filepath.Join(albumDir, name)).Scan(&codec, &duration, &measuredCodec, &sampleRate, &channels, &sourceCurrent)
+		expected := []string{"mpc7", "mpc8"}[index]
+		if err != nil || codec != expected || measuredCodec != expected || duration != 0.5 || sampleRate != 44100 || channels != 2 || !sourceCurrent {
+			t.Fatal("Basic scan did not publish the actual validated source timeline", name, codec, duration, measuredCodec, sampleRate, channels, sourceCurrent, err)
+		}
+	}
+}
+
 func musicConformanceFLAC(t *testing.T, ffmpeg, path string, tags ...string) {
 	t.Helper()
 	args := []string{"-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.2", "-c:a", "flac"}
@@ -137,6 +174,12 @@ func musicConformanceFLAC(t *testing.T, ffmpeg, path string, tags ...string) {
 }
 
 func musicConformanceScan(t *testing.T, root string) (catalog.Library, *catalog.Service) {
+	t.Helper()
+	library, service, _ := musicConformanceScanWithDB(t, root)
+	return library, service
+}
+
+func musicConformanceScanWithDB(t *testing.T, root string) (catalog.Library, *catalog.Service, *sql.DB) {
 	t.Helper()
 	ffprobe := decodertest.QualifiedFFprobe(t)
 	db, err := persistence.Open(filepath.Join(root, "catalog.sqlite"))
@@ -197,13 +240,13 @@ func musicConformanceScan(t *testing.T, root string) (catalog.Library, *catalog.
 				t.Fatal(err)
 			}
 			catalogtest.New(t, db).Drain()
-			return lib, cat
+			return lib, cat, db
 		case "failed", "cancelled":
 			t.Fatalf("music scan %s: %+v", state.Status, state)
 		}
 	}
 	t.Fatal("music scan did not finish")
-	return catalog.Library{}, nil
+	return catalog.Library{}, nil, nil
 }
 
 func musicConformanceArtist(t *testing.T, cat *catalog.Service, lib catalog.Library, name string) string {
