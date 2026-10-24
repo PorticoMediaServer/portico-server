@@ -65,9 +65,11 @@
 .toolbar[data-platform=phone] .separator { display: none; }
 .phoneCount { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 13px; color: var(--browse-muted); font-weight: 600; }
 .phoneCount .saveView { font-size: 13px; height: 30px; padding: 0; color: var(--color-accent-strong); }
-.phoneView { margin-left: auto; }
+.phoneView { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+/* Frame 47: the count-row sort is the phone chip, not the toolbar chip. */
+.toolbar[data-platform=phone] .phoneView .sortTrigger { height: 34px; padding: 0 13px; border-radius: 9px; gap: 6px; font-size: 13.5px; background: transparent; box-shadow: inset 0 0 0 1px var(--color-line-strong); }
 .phoneView .viewToggle { background: none; padding: 0; gap: 2px; }
-.phoneView button { width: 32px; min-width: 32px; height: 30px; }
+.phoneView .viewToggle button { width: 32px; min-width: 32px; height: 30px; }
 .toolbar[data-platform=phone] .applied { padding: 0 20px 10px; }
 .toolbar[data-platform=phone] .appliedChip { height: 30px; font-size: 13px; padding: 0 8px 0 11px; }
 .toolbar[data-platform=tv] .toolbarMain { gap: 14px; padding-inline: 0; }
