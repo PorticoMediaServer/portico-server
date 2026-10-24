@@ -63,6 +63,8 @@ func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int, p
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 	inputURL := publicURL
 	if inputURL == "" {
 		pattern := filepath.Join(dir, "pattern.mp4")
@@ -83,8 +85,6 @@ func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int, p
 			t.Fatal(err)
 		}
 		defer func() { _ = origin.Process.Kill(); _ = origin.Wait() }()
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
 		for {
 			data, _ := os.ReadFile(filepath.Join(dir, "index.m3u8"))
 			if strings.Count(string(data), "#EXTINF:") >= 3 {
