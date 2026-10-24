@@ -10,6 +10,10 @@ import {Button} from '../../kit/controls';
 import {ProfileAvatarFace, TopBarActivity} from '../../kit/shell';
 import {useShellWidth} from '../../shell/viewport';
 import {GuideScreen, type GuideRowData} from '../../screens/live/GuideScreen';
+import {ProgrammePanelView} from '../../screens/live/ProgrammePanel';
+import type {PreviewAiring, ProgrammeSnapshot, SeriesChoice} from '../../screens/live/programme-bindings';
+import type {GuideProgramme} from '@core/channel-guide.ts';
+import type {Recording} from '@core/dvr.ts';
 import {onNowProgramme} from '../../screens/live/on-now-programme';
 import shell from '../../shell/shell.module.css';
 import live from '../../screens/live/live.module.css';
@@ -126,11 +130,46 @@ function GuideNavigation() {
   </nav>;
 }
 
+const panelProgrammeId = 'pk3';
+const panelChannelRow = rows.find(row => row.channel?.id === 'pk')!.channel!;
+const panelProgramme = rows.find(row => row.channel?.id === 'pk')!.programs.find(programme => programme.id === panelProgrammeId)!;
+const panelAiring = (id: string, from: [number, number], to: [number, number], title: string, episode: string, subtitle: string): PreviewAiring => {
+  const start = at(...from), range = defaultI18n.t('guide.cellTime', {start: defaultI18n.time(start), end: defaultI18n.time(at(...to))});
+  return {id, start, time: defaultI18n.time(start), range, day: defaultI18n.t('guide.today'), title, episode, channelId: 'pk'};
+};
+const panelRawProgramme: GuideProgramme = {id: panelProgrammeId, channelId: 'pk', title: 'Story Time Island',
+  start: new Date(at(16, 0)).toISOString(), end: new Date(at(16, 30)).toISOString(), lineage: 'provider-id', seriesId: '',
+  episodeId: '', newEvidence: 'new', description: 'Story Time Island on Pebble Kids. A fictional listing from the Portico demo guide, used to test how the guide shows descriptions of different lengths.',
+  subtitle: 'Homecoming', episode: {season: 3, number: 1}, categories: ['Kids', 'Animation'], rating: {system: 'TV', value: 'TV-Y'}, flags: {new: true}}; // lint-strings-allow
+const panelRecording: Recording = {id: 'rec-pk3', revision: 1,
+  occurrence: {sourceId: 'synthetic', channelId: 'pk', generation: 'synthetic', programmeId: panelProgrammeId},
+  programme: panelRawProgramme, ruleId: '', options: {beforeSeconds: 0, afterSeconds: 0, priority: 0, retentionDays: 0, episodeLimit: 0},
+  start: panelRawProgramme.start, end: panelRawProgramme.end, state: 'recording', reason: '', keep: false, itemId: '', libraryId: '',
+  coverageStart: panelRawProgramme.start, coverageEnd: panelRawProgramme.end, bytes: 0,
+  channel: {id: 'pk', name: 'Pebble Kids', number: '401', mark: {text: 'PK', seed: 'synthetic:pk'}}, watched: null};
+const panelChoice: SeriesChoice = {episodes: 'all', keep: '5', startEarly: 0, endLate: 2, anyChannel: false};
+const panelSnapshot: ProgrammeSnapshot = {phase: 'ready', favorite: true, recording: panelRecording, previewLoading: false,
+  preview: {matches: 4, airings: [
+    panelAiring('pk4', [16, 30], [17, 0], 'First Light', 'S5 E2', ''),
+    panelAiring('pk6', [17, 30], [18, 0], 'Open Doors', 'S2 E4', ''),
+    panelAiring('pk7', [19, 45], [20, 15], 'Low Tide', 'S5 E7', ''),
+    panelAiring('pk8', [22, 0], [22, 30], 'Crossed Wires', 'S6 E5', '')]}};
+
+function PanelSpecimen() {
+  return <aside className={live.programmePanel} style={{position: 'fixed', top: 76, right: 0, bottom: 0, width: 600, zIndex: 30, overflow: 'auto'}} data-panel-specimen>
+    <ProgrammePanelView channel={panelChannelRow} programme={panelProgramme} now={NOW} timezone={timezone}
+      snapshot={panelSnapshot} choice={panelChoice} seriesOpen={true} reminders={['pk7']}
+      onClose={() => {}} onWatch={() => {}} onRecord={() => {}} onCancelRecording={() => {}} onRecordSeries={() => {}}
+      onFavorite={() => {}} onSeriesOpenChange={() => {}} onChoice={() => {}} onReminder={() => {}} onViewRecordings={() => {}}/>
+  </aside>;
+}
+
 function Specimen() {
   const width = useShellWidth(), column = width < 600 ? 60 : width < 1024 ? 180 : 284, rowHeight = width < 600 ? 72 : width < 1024 ? 62 : 76;
   const scale = pxPerMsFor(width < 1024 ? 90 : 240), [start, setStart] = useState(at(15, 30));
+  const panel = new URLSearchParams(location.search).get('panel') === '1';
   const [view, setView] = useState<'guide' | 'list'>(new URLSearchParams(location.search).get('view') === 'list' ? 'list' : 'guide');
-  const [selected, setSelected] = useState<Readonly<{channelId: string; programmeId?: string}>>();
+  const [selected, setSelected] = useState<Readonly<{channelId: string; programmeId?: string}>>(panel ? {channelId: 'pk', programmeId: panelProgrammeId} : undefined);
   const days = dayStarts(NOW, NOW + 2 * 86_400_000, timezone);
   const chips = useMemo(() => [{id: 'all', label: t('channels.filterAll'), count: channels.length, selected: true, onSelect: () => {}},
     {id: 'favorites', label: t('channels.favorites'), favorites: true, count: 3, selected: false, onSelect: () => {}},
@@ -151,7 +190,7 @@ function Specimen() {
       <Button className={live.nowArrow} variant="icon" icon="i-right" iconOnly aria-label={t('web.live.empty.moreTitle')} onClick={() => {}}/>
     </div>
   </Row>;
-  return <GuideScreen title={t('next.home.shell.live')}
+  return <><GuideScreen title={t('next.home.shell.live')}
     switcher={{value: 'all', options: [{value: 'all', label: t('channels.all')}], onChange: () => {}}}
     summary={{name: t('next.live.example.source'), channels: channels.length, through: t('next.live.guideThrough', {day: t('next.live.example.saturday')})}}
     chips={chips} onNow={onNow}
@@ -164,7 +203,7 @@ function Specimen() {
     span={{start, end: start + Math.max(1, width - column) / scale, now: NOW, scale, column, rowHeight, timezone}}
     rows={rows} total={rows.length} selected={selected}
     onSelect={(channel, programme) => setSelected({channelId: channel.id, ...(programme ? {programmeId: programme.id} : {})})}
-    onVisibleWindow={onVisibleWindow}/>;
+    onVisibleWindow={onVisibleWindow}/>{panel && <PanelSpecimen/>}</>;
 }
 
 createRoot(document.getElementById('root')!).render(<><IconSprite /><main data-guide-specimen><div className={shell.shell} data-desktop="true"><GuideNavigation /><Specimen /></div></main></>);

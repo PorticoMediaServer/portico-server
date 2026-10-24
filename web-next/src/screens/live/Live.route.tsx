@@ -5,21 +5,18 @@ import {dayStarts, localDayStart, legacyChannel, legacyChannelRow, legacyProgram
 import {dayPrimeTime} from '@core/channel-guide.ts';
 import type {GuideSourceSummaries} from '@core/guide/directory.ts';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
-import {programmeFactParts} from '@portico/client-core/kit-model';
 import {dependsOn} from '@core/freshness-hub.ts';
 import {useQuietRefresh} from '../../platform/freshness';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
-import {Artwork} from '../../kit/artwork';
-import {Button} from '../../kit/controls';
-import {BottomSheet, SidePanel} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import {useScreenAppearance} from '../browse/screen-preferences';
 import {SeriesRulesEntry} from './SeriesRulesEntry';
 import {ScreenProblem} from '../detail/ScreenProblem';
+import {ProgrammePanel} from './ProgrammePanel';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
 import {liveProgramWindow} from './program-window';
@@ -97,10 +94,6 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
     const value = await owner.refresh(refresh.signal);
     if (!refresh.signal.aborted && owner.life.current()) {setSelected(undefined);setSummary({owner, value});setFailed(undefined);}
   }, () => summary?.owner === owner, {dependencies: liveDependencies, everyMs: 0});
-  const facts = (programme: GuideProgram) => programmeFactParts({startMs: programme.start, endMs: programme.end,
-    episode: programme.episode ? {mode: 'seasonal', season: programme.episode.season, episode: programme.episode.number} : undefined,
-    subtitle: programme.subtitle, categories: programme.categories, year: programme.year, rating: programme.rating, flags: programme.flags, recording: programme.recording?.state === 'recording'},
-  {t, locale: defaultI18n.region.formatLocale, timeZone: timezone});
   const play = (channel: GuideChannelRow) => {
     const actual = legacyChannel(channel), playback = captured.binding.playback;
     if (!actual || !playback || !owner.life.current()) return;
@@ -131,13 +124,11 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
     else if (value === 'all') navigate({sourceId: undefined, kind: undefined, channelId: undefined, group: undefined});
   };
   const sourceName = search.sourceId ? selectedSources[0]?.provenance === 'library-channel' ? t('channels.custom.name') : selectedSources[0]?.name : t('channels.all');
-  const body = currentSelection && <>
-    {currentSelection.programme ? <p className={styles.facts}>{facts(currentSelection.programme).map(part => <span key={part.id}>{part.text}</span>)}</p> : <p>{t('guide.noInformation')}</p>}
-    {currentSelection.programme?.description && <p>{currentSelection.programme.description}</p>}
-    {currentSelection.programme?.image && <Artwork source={context.artwork.foreground(currentSelection.programme.image, 640, 16 / 9)} alt=""/>}
-  </>;
-  const footer = currentSelection && currentSelection.channel.tuneAvailable && captured.binding.playback
-    ? <Button variant="primary" icon="i-play" onClick={() => play(currentSelection.channel)}>{t(!currentSelection.programme || currentSelection.programme.start > now ? 'guide.watchChannel' : 'guide.watchLive')}</Button> : undefined;
+  const onChanged = useCallback(() => { owner.store.invalidate(); setAttempt(value => value + 1); }, [owner]);
+  const openRecordings = useCallback(() => {
+    setSelected(undefined);
+    if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), tab: 'recordings'}, replace: true, resetScroll: false}).catch(context.effects.reportError);
+  }, [context, searchKey]);
   if (authorityFailure) return <ScreenProblem context={context} error={authorityFailure} retry={() => setAttempt(value => value + 1)}/>;
   return <>
     {failed === owner ? <div className={styles.guideState}><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setAttempt(value => value + 1)}}/></div>
@@ -166,8 +157,9 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
           onSelect={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, ...(programme ? {programme} : {})});}}
           onPlay={captured.binding.playback ? play : undefined}
           onVisibleWindow={onVisibleWindow} onRetry={() => owner.store.retry()}/>}
-    {phone ? <BottomSheet open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme?.title ?? currentSelection?.channel.name} description={currentSelection?.programme ? currentSelection.channel.name : undefined} footer={footer}>{body}</BottomSheet>
-      : <SidePanel open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme?.title ?? currentSelection?.channel.name} description={currentSelection?.programme ? currentSelection.channel.name : undefined} footer={footer}>{body}</SidePanel>}
+    {currentSelection && <ProgrammePanel captured={captured} channel={currentSelection.channel} programme={currentSelection.programme}
+      now={now} timezone={timezone} open onClose={() => setSelected(undefined)}
+      onWatch={captured.binding.playback ? () => play(currentSelection.channel) : undefined} onChanged={onChanged} onViewRecordings={openRecordings}/>}
   </>;
 }
 function LiveRouteScreen() {
