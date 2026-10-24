@@ -122,3 +122,10 @@ test('sequential publication checks exact EOF and bounded byte chunks without bu
   const missing=fixture('pdf');missing.replaceManifest({sequential:true});delete missing.session.openSequential;await assert.rejects(createReadingPublication(missing.session),{code:'invalid_source'});assert.deepEqual(missing.calls,[]);
   for(const format of ['epub','cbz'] as const){const f=fixture(format);f.replaceManifest({sequential:true});await assert.rejects(createReadingPublication(f.session),{code:'invalid_source'});assert.deepEqual(f.calls,[]);}
 });
+
+test('a comic session without enumerated page names is refused, never read as a crash',async()=>{
+  const f=fixture('cbz');
+  f.replaceManifest({pageNames:undefined});
+  await assert.rejects(createReadingPublication(f.session),(error:unknown)=>(error as {code?:string}).code==='invalid_source');
+  assert.deepEqual(f.calls,[]);
+});

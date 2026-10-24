@@ -88,6 +88,11 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
   try {
     current();const format=manifest.format;
     if(format!=='epub'&&format!=='pdf'&&format!=='cbz')throw new ReaderError('unsupported_format');
+    // A comic's pages are the server's enumerated names. Without them there is
+    // nothing to draw, and a forced read would throw a TypeError instead of the
+    // reader's own refusal on a perfectly valid session answer.
+    if(format==='cbz'&&(!Array.isArray(manifest.pageNames)||manifest.pageNames.length===0))throw new ReaderError('invalid_source');
+    const pageNames=Object.freeze([...(manifest.pageNames??[])]);
     if(sequential===true&&(format!=='pdf'||typeof session.openSequential!=='function'))throw new ReaderError('invalid_source');
     if(!id||!revision||!Number.isSafeInteger(size)||size<1)throw new ReaderError('invalid_source');
     const direction=manifest.metadata.direction;
@@ -122,12 +127,12 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
         if(progress.sourceId!==id)throw new ReaderError('invalid_source');
         if(progress.stale||progress.sourceRevision!==revision)return null;
         const location=readerLocationFromReading(progress.location);validateLocation(location,format);
-        if(location.format==='cbz'&&location.page>=manifest.pageNames!.length)throw new ReaderError('invalid_location');return location;
+        if(location.format==='cbz'&&location.page>=pageNames.length)throw new ReaderError('invalid_location');return location;
       },
       ...format==='cbz'?{async comicPages(candidate:ReaderSource,parent:AbortSignal):Promise<ComicPageProvider> {
         current();throwIfAborted(parent);if(candidate!==source)throw new ReaderError('invalid_source');
         const providerLife=new AbortController(),providerScope=abortScope([signal,parent,providerLife.signal]);
-        const provider:ComicPageProvider={id,revision,pageCount:manifest.pageNames!.length,metadata,
+        const provider:ComicPageProvider={id,revision,pageCount:pageNames.length,metadata,
           async page(index,options) {
             throwIfAborted(providerScope.signal);
             if(!Number.isInteger(index)||index<0||index>=provider.pageCount||!Number.isInteger(options.width)||options.width<32||options.width>2048)
@@ -135,7 +140,7 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
             const task=abortScope([providerScope.signal,options.signal]);
             try{return await run(task.signal,async active=>{
               const page=await session.page(index,{width:options.width,signal:active});
-              if(page.index!==index||page.name!==manifest.pageNames![index]||!(page.bytes instanceof Uint8Array)||page.bytes.length>16*1024*1024)
+              if(page.index!==index||page.name!==pageNames[index]||!(page.bytes instanceof Uint8Array)||page.bytes.length>16*1024*1024)
                 throw new ReaderError('invalid_book');
               const image=rasterInfo(page.bytes);
               if(image.mime!==page.mime||image.width>options.width)throw new ReaderError('invalid_book');
