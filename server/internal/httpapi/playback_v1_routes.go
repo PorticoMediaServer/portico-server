@@ -22,6 +22,7 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
+	"portico.local/server/internal/sonic"
 )
 
 // v1Route registers one route, failing registry construction loudly: a route
@@ -91,6 +92,20 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 			return nil, err
 		}
 		return d.Catalog.MusicMixKeysTx(ctx, tx, viewer, time.Now(), id)
+	}
+	s.JourneyKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, request playbackv1.JourneySelector) ([]string, error) {
+		if d.Catalog == nil {
+			return nil, playbackv1.ErrUnsupportedSelector
+		}
+		viewer, err := d.queueCatalogViewerTx(ctx, tx, p)
+		if err != nil {
+			return nil, err
+		}
+		journey, err := d.Catalog.MusicJourneyTx(ctx, tx, viewer, request.From, request.To, request.Length)
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, sonic.ErrUnavailable) {
+			return nil, playbackv1.ErrUnsupportedSelector
+		}
+		return journey.Tracks, err
 	}
 	s.LibraryCheck = func(ctx context.Context, tx *sql.Tx, p identity.Principal, library string) error {
 		return d.allowedLibraryTx(ctx, p, library, tx)
