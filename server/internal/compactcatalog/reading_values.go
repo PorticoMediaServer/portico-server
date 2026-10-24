@@ -59,6 +59,7 @@ var readingMarkedNumber = regexp.MustCompile(`(?i)(?:^|[ _.-])(?:v(?:ol(?:ume)?\
 var readingDashNumber = regexp.MustCompile(`\s+-\s+([0-9]+(?:\.[0-9]+)?)(?:\s+-\s+|$)`)
 var readingOnlyNumber = regexp.MustCompile(`(?i)^(?:(?:v(?:ol(?:ume)?\.?)?|book|#)\s*)?[0-9]+(?:\.[0-9]+)?$`)
 var readingStartsNumber = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(?:$|[ _-])`)
+var readingEndsNumber = regexp.MustCompile(`(?:^|[ _-])[0-9]+(?:\.[0-9]+)?$`)
 var readingDate = regexp.MustCompile(`\b(?:19|20)[0-9]{2}(?:-[0-9]{2}(?:-[0-9]{2})?|[0-9]{4})\b`)
 var readingOwnerNumber = regexp.MustCompile(`^[+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
 
@@ -70,6 +71,9 @@ func readingFileAuthor(stem string) (string, string) {
 	left, right, ok := strings.Cut(stem, " - ")
 	left, right = strings.TrimSpace(left), strings.TrimSpace(right)
 	if !ok || left == "" || right == "" || readingOnlyNumber.MatchString(left) || readingStartsNumber.MatchString(right) {
+		return "", stem
+	}
+	if number, _ := readingNumber(left, ""); number != nil || readingEndsNumber.MatchString(left) {
 		return "", stem
 	}
 	return left, right
