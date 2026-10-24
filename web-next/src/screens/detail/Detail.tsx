@@ -1,4 +1,6 @@
 import {t, locale, environment as env} from './text';
+import {defaultI18n} from '@i18n';
+import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -53,8 +55,8 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
     <TitleTabs title={data.item.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact && <TitleActions binding={binding} data={data} small />}><Tabs aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
     {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
     {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
-    <div key={tab} className={styles.tabPanel}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
-      : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} heading={row.title} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)
+    <div key={tab} className={tab === 'details' ? styles.tabPanel : `${styles.tabPanel} ${styles.rowsPanel}`}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
+      : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} heading={serverTextLabel(defaultI18n, row.titleText, row.title)} subtitle={serverTextLabel(defaultI18n, row.subtitleText)} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)
         : data.related?.rows.map(row => <TitleRow key={row.id} heading={row.heading} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)}</div>
   </article>;
 }
@@ -79,7 +81,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
   return <header className={styles.hero}>
     {showBackdrops && <AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
     <div className={styles.copy}>
-      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}><Icon name="i-layers" size={18} />{data.collections[0].name}</button>}
+      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}><Icon name="i-layers" size={18} />{data.collections[0].name}<span className={styles.collectionCount}>{t('lib.count', {count: data.collections[0].memberCount, pivot: 'movies'})}</span></button>}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
       <TitleFactsLine parts={parts} genres={genres} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
@@ -176,8 +178,9 @@ export function TitleDetails({binding, data}: {binding: DetailBindings; data: De
   </div>;
 }
 
-export function TitleRow({heading, entries, binding, guard}: {heading: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
-  return <Shelf heading={heading} items={entries} getKey={entry => entry.id} renderItem={entry => {
+export function TitleRow({heading, subtitle, entries, binding, guard}: {heading: ReactNode; subtitle?: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
+  const phone = useShellWidth() < 1024;
+  return <Shelf heading={heading} subtitle={phone ? undefined : subtitle} items={entries} getKey={entry => entry.id} renderItem={entry => {
     const props = {model: entryCard(entry, env), artwork: binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3), onNavigate: () => runScreenCommand(binding.context, () => { if (binding.context.isCurrent()) { guard?.(); binding.context.effects.openEntry(entry); } }), watched: entry.watched};
     return ['album', 'book'].includes(entry.kind) ? <SquareCard {...props} /> : <PosterCard {...props} />;
   }} />;
