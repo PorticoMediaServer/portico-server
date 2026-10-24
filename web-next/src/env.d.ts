@@ -8,6 +8,10 @@ interface ImportMetaEnv {
   readonly VITE_SERVER_URL?: string;
 }
 declare module 'virtual:portico-kit-families' {
+  type LayoutInputs = Readonly<Record<'referenceHtml' | 'searchHtml' | 'tvHtml' | 'phoneHtml' | 'browseJson' | 'browseHtml' | 'readHtml' | 'phoneReadHtml', string>>;
+  type BrowseInputs = Readonly<Record<'movieCapabilities' | 'musicCapabilities' | 'songResponse' | 'drawnListen' | 'drawnTv' | 'drawnBrowse' | 'drawnRead' | 'drawnPhone' | 'albumResponse', string>>;
+  export function loadGalleryInputs(family: 'layout'): Promise<LayoutInputs>;
+  export function loadGalleryInputs(family: 'browse'): Promise<BrowseInputs>;
   const loaders: readonly ((() => Promise<{default: import('./dev/gallery-registry').GalleryFamily}>) & {readonly familyId: string})[];
   export default loaders;
 }
