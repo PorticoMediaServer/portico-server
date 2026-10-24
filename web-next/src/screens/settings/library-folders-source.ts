@@ -68,7 +68,7 @@ export class SettingsLibraryFoldersSource {
       if (this.owns(request, libraryId)) this.publish({libraryId, config, loading: false, mutation: 'idle'});
     }).catch(error => {
       // An error means this selection has no current configuration; a genuine reread is the only recovery.
-      if (this.owns(request, libraryId)) this.publish({libraryId, loading: false, mutation, error});
+      if (this.owns(request, libraryId)) {this.publish({libraryId, loading: false, mutation, error});this.reportError(error);}
     }).finally(() => {if (this.request === request) {this.request = undefined;this.pending = undefined;}});
     this.pending = pending;
     this.publish({libraryId, ...(retained ? {config: retained} : {}), loading: true, mutation});
