@@ -215,10 +215,13 @@ function RecordedGroupPanel({context, group, title, sort, onClose}: {context: Sc
 }
 
 function HistoryView({snapshot, now}: {snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number}) {
-  const recordings = snapshot.page?.recordings ?? [];
+  const recordings = snapshot.page?.recordings ?? [], [shown, setShown] = useState<Recording>();
   return <div className={styles.recBody}>{recordings.length
-    ? recordings.map(recording => <RecordingRow key={recording.id} recording={recording} now={now}/>)
-    : <StateView title={t('recordings.noneRecorded')} body={t('recordings.noneRecordedBody')}/>}</div>;
+    ? recordings.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onDetails={() => setShown(recording)}/>)
+    : <StateView title={t('recordings.noneRecorded')} body={t('recordings.noneRecordedBody')}/>}
+    <Dialog open={!!shown} onOpenChange={open => {if (!open) setShown(undefined);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
+      footer={<Button variant="glass" onClick={() => setShown(undefined)}>{t('next.overlays.close')}</Button>}>{shown && <p className={styles.dialogText}>{recordingStateLabel(shown.state)}{shown.reason && <> · {recordingReason(shown.reason)}</>}</p>}</Dialog>
+  </div>;
 }
 
 function StorageView({snapshot}: {snapshot: ReturnType<RecordingsController['getSnapshot']>}) {
