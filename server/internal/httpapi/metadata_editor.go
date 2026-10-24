@@ -49,7 +49,9 @@ func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 			return
 		}
 		authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
-		out, err := d.Metadata.BulkEdit(ctx, body, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize)
+		out, err := d.Metadata.BulkEdit(ctx, body, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize, func(tx *sql.Tx, t metadata.RepairTarget) error {
+			return d.readingMetadataTargetAuthorize(ctx, tx, p, t)
+		})
 		if err != nil {
 			repairFailure(w, err)
 			return

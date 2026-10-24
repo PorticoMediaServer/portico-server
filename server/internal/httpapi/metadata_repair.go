@@ -51,8 +51,13 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 				repairFailure(w, metadata.ErrRepairInput)
 				return
 			}
-			authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
 			target := metadata.RepairTarget{Kind: r.PathValue("kind"), ID: r.PathValue("id")}
+			authorize := func(tx *sql.Tx) error {
+				if err := d.manualMetadataAuthorize(ctx, tx, p); err != nil {
+					return err
+				}
+				return d.readingMetadataTargetAuthorize(ctx, tx, p, target)
+			}
 			var out metadata.RepairState
 			if method == "GET" {
 				out, err = d.Metadata.RepairState(ctx, target, authorize)

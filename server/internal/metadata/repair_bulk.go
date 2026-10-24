@@ -19,6 +19,8 @@ const bulkTargetLimit = 200
 // transaction. Each target carries its own revision fence and is applied in its
 // own transaction, so one stale target cannot discard the other 199, and the
 // caller is told exactly which ones failed and why.
+type BulkTargetAuthorize func(*sql.Tx, RepairTarget) error
+
 type BulkTarget struct {
 	Kind             string `json:"kind"`
 	ID               string `json:"id"`
@@ -98,8 +100,8 @@ func validBulkEdit(m BulkEdit) error {
 
 // BulkEdit applies one edit to many targets. Replaying the same operationId
 // returns the stored receipt rather than editing anything a second time.
-func (s *Service) BulkEdit(ctx context.Context, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error) (BulkReceipt, error) {
-	if actor.AccountID == "" || authorize == nil {
+func (s *Service) BulkEdit(ctx context.Context, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize ...BulkTargetAuthorize) (BulkReceipt, error) {
+	if actor.AccountID == "" || authorize == nil || len(targetAuthorize) > 1 {
 		return BulkReceipt{}, ErrRepairInput
 	}
 	if err := validBulkEdit(m); err != nil {
@@ -117,6 +119,13 @@ func (s *Service) BulkEdit(ctx context.Context, m BulkEdit, actor MBActor, autho
 		return BulkReceipt{}, err
 	}
 	stored, digest, err := operations.Receipt(tx, scope, m.OperationID, m, now)
+	if err == nil && stored != "" && len(targetAuthorize) == 1 {
+		for _, t := range m.Targets {
+			if err = targetAuthorize[0](tx, RepairTarget{Kind: t.Kind, ID: t.ID}); err != nil {
+				break
+			}
+		}
+	}
 	gated.Rollback()
 	if errors.Is(err, operations.ErrInvalid) || errors.Is(err, operations.ErrConflict) {
 		return BulkReceipt{}, ErrRepairInput
@@ -135,7 +144,7 @@ func (s *Service) BulkEdit(ctx context.Context, m BulkEdit, actor MBActor, autho
 	for _, target := range m.Targets {
 		t := RepairTarget{Kind: target.Kind, ID: target.ID}
 		result := BulkResult{Kind: t.Kind, ID: t.ID}
-		revision, problem := s.bulkTarget(ctx, t, target.ExpectedRevision, m, actor, authorize)
+		revision, problem := s.bulkTarget(ctx, t, target.ExpectedRevision, m, actor, authorize, targetAuthorize...)
 		switch {
 		case problem == nil:
 			result.OK = true
@@ -177,7 +186,7 @@ func bulkFailure(err error) (string, string) {
 
 // bulkTarget applies the whole edit to one target in one transaction. The target
 // either takes every part of the edit or none of it.
-func (s *Service) bulkTarget(ctx context.Context, t RepairTarget, expected string, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error) (string, error) {
+func (s *Service) bulkTarget(ctx context.Context, t RepairTarget, expected string, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize ...BulkTargetAuthorize) (string, error) {
 	gated3, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return "", err
@@ -187,7 +196,7 @@ func (s *Service) bulkTarget(ctx context.Context, t RepairTarget, expected strin
 	if err = authorize(tx); err != nil {
 		return "", err
 	}
-	revision, err := s.ApplyBulkTargetTx(ctx, tx, t, expected, m, actor, authorize)
+	revision, err := s.ApplyBulkTargetTx(ctx, tx, t, expected, m, actor, authorize, targetAuthorize...)
 	if err != nil {
 		return "", err
 	}
@@ -196,12 +205,20 @@ func (s *Service) bulkTarget(ctx context.Context, t RepairTarget, expected strin
 
 // ApplyBulkTargetTx lets the durable selector job commit an edit and its cursor
 // atomically. It preserves repair validation/history without an item receipt.
-func (s *Service) ApplyBulkTargetTx(ctx context.Context, tx *sql.Tx, t RepairTarget, expected string, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error) (string, error) {
+func (s *Service) ApplyBulkTargetTx(ctx context.Context, tx *sql.Tx, t RepairTarget, expected string, m BulkEdit, actor MBActor, authorize func(*sql.Tx) error, targetAuthorize ...BulkTargetAuthorize) (string, error) {
 	if authorize == nil {
 		return "", ErrRepairInput
 	}
 	if err := authorize(tx); err != nil {
 		return "", err
+	}
+	if len(targetAuthorize) > 1 {
+		return "", ErrRepairInput
+	}
+	if len(targetAuthorize) == 1 {
+		if err := targetAuthorize[0](tx, t); err != nil {
+			return "", err
+		}
 	}
 	before, ent, err := readRepairSnapshot(ctx, tx, t)
 	if err != nil {

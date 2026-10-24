@@ -1,0 +1,80 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"testing"
+
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/metadata"
+)
+
+func TestReadingOwnerMetadataUsesExistingRouteAndCurrentLibraryAuthority(t *testing.T) {
+	f := administrationFixtureNew(t)
+	c := catalogtest.New(t, f.deps.DB)
+	read := c.Library("read", "Read", "book", "/read")
+	hidden := c.Library("hidden-read", "Hidden", "comic", "/hidden")
+	a := c.Entity(compactcatalog.Entity{Library: read, Kind: compactcatalog.Ebook, Key: "ebook:one", Title: "One"}, nil)
+	b := c.Entity(compactcatalog.Entity{Library: hidden, Kind: compactcatalog.Comic, Key: "comic:two", Title: "Two"}, nil)
+	c.Drain()
+	f.deps.Metadata = metadata.New(f.deps.DB, "test-token")
+	f.handler = New(f.deps)
+	get := func(token, id string) metadata.RepairState {
+		t.Helper()
+		w := f.call("GET", "/v1/metadata/item/"+id, token, "")
+		if w.Code != http.StatusOK {
+			t.Fatal("metadata read", w.Code, w.Body.String())
+		}
+		var out metadata.RepairState
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	first := get(f.owner, a.Public)
+	second := get(f.owner, b.Public)
+	for _, token := range []string{"", f.member} {
+		w := f.call("GET", "/v1/metadata/item/"+a.Public, token, "")
+		if w.Code != 401 && w.Code != 403 {
+			t.Fatal("nonadministrator read", w.Code)
+		}
+	}
+	value := "A & B"
+	body, _ := json.Marshal(metadata.BulkEdit{OperationID: "read-owner-http", Targets: []metadata.BulkTarget{{Kind: "item", ID: a.Public, ExpectedRevision: first.Revision}, {Kind: "item", ID: b.Public, ExpectedRevision: second.Revision}}, Fields: map[string]metadata.RepairFieldEdit{"author": {Value: &value}}})
+	w := f.call("POST", "/v1/metadata/bulk", f.owner, string(body))
+	if w.Code != 200 {
+		t.Fatal("owner bulk", w.Code, w.Body.String())
+	}
+	if get(f.owner, a.Public).Snapshot.Fields["author"].Value != value || get(f.owner, b.Public).Snapshot.Fields["author"].Value != value {
+		t.Fatal("bulk did not publish exact scalar values")
+	}
+	if _, err := dbwork.ExecWrite(context.Background(), f.deps.DB, dbwork.ClassSecurityFence, `UPDATE direct_memberships SET allowed_libraries='["read"]',revision=revision+1 WHERE account_id='admin'`); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := f.deps.Identity.Issue("admin", "admin-profile", "local", "admin", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := get(admin.AccessToken, a.Public)
+	w = f.call("GET", "/v1/metadata/item/"+b.Public, admin.AccessToken, "")
+	if w.Code != 401 && w.Code != 403 {
+		t.Fatal("hidden library metadata disclosed", w.Code)
+	}
+	other := "Scoped owner edit"
+	second = get(f.owner, b.Public)
+	body, _ = json.Marshal(metadata.BulkEdit{OperationID: "read-scoped-http", Targets: []metadata.BulkTarget{{Kind: "item", ID: a.Public, ExpectedRevision: allowed.Revision}, {Kind: "item", ID: b.Public, ExpectedRevision: second.Revision}}, Fields: map[string]metadata.RepairFieldEdit{"author": {Value: &other}}})
+	w = f.call("POST", "/v1/metadata/bulk", admin.AccessToken, string(body))
+	if w.Code != 200 {
+		t.Fatal("scoped bulk", w.Code, w.Body.String())
+	}
+	var receipt metadata.BulkReceipt
+	if err = json.Unmarshal(w.Body.Bytes(), &receipt); err != nil || receipt.Updated != 1 || receipt.Failed != 1 {
+		t.Fatal("per-target authority not preserved", receipt, err)
+	}
+	if get(f.owner, b.Public).Snapshot.Fields["author"].Value != value {
+		t.Fatal("hidden target changed")
+	}
+}
