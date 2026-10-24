@@ -59,8 +59,11 @@ export function createRenderer() {
       return walk(out, key);
     }
     if (node.props?.ref && typeof node.props.ref === 'object' && 'current' in node.props.ref) node.props.ref.current = fakeElement();
-    if (node.props && 'children' in node.props) return {...node, props: {...node.props, children: walk(node.props.children, `${key}/c`)}};
-    return node;
+    if (!node.props) return node;
+    // Children and a control the row was given both render.
+    const children = 'children' in node.props ? walk(node.props.children, `${key}/c`) : node.props.children;
+    const control = node.props.control !== undefined ? walk(node.props.control, `${key}/k`) : node.props.control;
+    return {...node, props: {...node.props, children, control}};
   };
   const render = run => {
     pending = [];
@@ -90,6 +93,7 @@ export function tree(node, out = []) {
     if (node.props.action) tree(node.props.action, out);
     if (node.props.secondaryAction) tree(node.props.secondaryAction, out);
     if (node.props.trigger) tree(node.props.trigger, out);
+    if (node.props.control) tree(node.props.control, out);
   }
   return out;
 }
