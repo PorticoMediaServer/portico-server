@@ -83,22 +83,27 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
 	if filter == "" {
 		return out, identity.ErrForbidden
 	}
-	// Partition only after the actual owner's progress has joined eligible,
-	// visible Reading publications. Multiple folder observations of one asset
-	// choose the same lowest inventory-object id as selectPublication.
-	query := `WITH candidates(entity,asset,format,title,language,library,token,path,size,modified,folder_source,root,generation,incarnation,root_identity,relative,object,inventory,evidence,item_id,stored_revision,stored_format,cfi,section,page_index,progression,progress_revision,observed,source_row) AS (
- SELECT ` + publicationFields + `,pid(e.public_id),rp.source_revision,rp.format,rp.cfi,rp.section,rp.page_index,rp.progression,rp.revision,rp.observed_at,
- row_number() OVER(PARTITION BY e.id,p.asset_id ORDER BY o.id)
+	// Walk only this owner's recent-progress index. The two indexed absence
+	// checks select its latest saved version and the same lowest eligible
+	// inventory-object id as selectPublication, without a whole-library walk
+	// or a window that sorts the owner's entire history before LIMIT.
+	priorEligible := strings.NewReplacer("o.", "earlier.", "s.", "earlier_source.").Replace(publicationObjectEligible)
+	query := `SELECT ` + publicationFields + `,pid(e.public_id),rp.source_revision,rp.format,rp.cfi,rp.section,rp.page_index,rp.progression,rp.revision,rp.observed_at
  FROM reading_progress rp CROSS JOIN catalog_entities e ON e.id=rp.item_id` + publicationJoins + `
  WHERE rp.owner_key=? AND rp.asset_id=p.asset_id AND rp.progression<1
  AND NOT EXISTS(SELECT 1 FROM reading_progress newer WHERE newer.owner_key=rp.owner_key AND newer.item_id=rp.item_id
  AND (newer.observed_at>rp.observed_at OR (newer.observed_at=rp.observed_at AND newer.asset_id>rp.asset_id)))
  AND (?='' OR cl.library_id=?) AND ` + publicationEligible + ` AND (` + filter + `)
- AND (?=0 OR (rp.observed_at,e.id,p.asset_id)<(?,?,?)))
- SELECT entity,asset,format,title,language,library,token,path,size,modified,folder_source,root,generation,incarnation,root_identity,relative,object,inventory,evidence,item_id,stored_revision,stored_format,cfi,section,page_index,progression,progress_revision,observed
- FROM candidates WHERE source_row=1 ORDER BY observed DESC,entity DESC,asset DESC LIMIT ?`
+ AND NOT EXISTS(SELECT 1 FROM inventory_objects earlier INDEXED BY inventory_objects_asset
+ JOIN library_sources earlier_source ON earlier_source.id=earlier.source_id AND earlier_source.library_id=cl.library_id
+ WHERE earlier.asset_id=a.token AND earlier.id<o.id AND ` + priorEligible + `)`
 	values := append([]any{identity.PersonalKey(p.Viewer), library, library}, args...)
-	values = append(values, boolInt(cursor != ""), after.observed, after.item, after.asset, limit+1)
+	if cursor != "" {
+		query += ` AND (rp.observed_at,rp.item_id,rp.asset_id)<(?,?,?)`
+		values = append(values, after.observed, after.item, after.asset)
+	}
+	query += ` ORDER BY rp.observed_at DESC,rp.item_id DESC,rp.asset_id DESC LIMIT ?`
+	values = append(values, limit+1)
 	rows, err := g.Tx().QueryContext(ctx, query, values...)
 	if err != nil {
 		return out, err
@@ -128,11 +133,4 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
 		last = continueCursor{progress.ObservedAt, selected.Entity, selected.Asset}
 	}
 	return out, rows.Err()
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

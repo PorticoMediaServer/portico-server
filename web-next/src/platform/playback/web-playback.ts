@@ -32,6 +32,7 @@ import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@core/playback-v1/port.ts';
 import {localPlayerSource, localPlayerLoadReceipt, type LocalPlayerSource, type LocalPlayerLoadContext, type LocalPlayerLoadReceipt} from '@core/playback-v1/local-port.ts';
 import {PlaybackSessionController, SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
+import {requireSessionChangeCurrent, type SessionChangeContext} from '@core/playback-v1/change-context.ts';
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
 import {saveDeviceEqualizer} from './audio/equalizer-store';
@@ -809,10 +810,13 @@ export class WebPlayback implements PlaybackAdapter {
       forget(id: string) { self.dropped(id); },
       reportedSeq: () => 0,
       session: (id: string) => self.known.get(id),
-      async change(id: string, change: SessionChange, durationSeconds: number) {
+      async change(id: string, change: SessionChange, durationSeconds: number, context?: SessionChangeContext) {
+        requireSessionChangeCurrent(context);
         if (self.controller.getSnapshot().session?.id !== id) throw new PlaybackApiError(410, 'session_ended', 'never');
-        const updated = await self.controller.change(change);
+        const updated = await self.controller.change(change, context);
+        requireSessionChangeCurrent(context);
         if (!updated) throw new PlaybackApiError(410, 'session_ended', 'never');
+        if (context && (updated.id !== id || self.controller.getSnapshot().session?.presentation.generation !== updated.presentation.generation)) throw new Error('Playback session changed during replan');
         return {session: self.remember(updated), playback: toPlaybackSession(updated, durationSeconds)};
       },
       createPlayback: (itemId: string, requestId: string, signal?: AbortSignal) => start({itemId}, {startFrom: 'resume', state: 'playing'}, requestId, undefined, signal).then(r => r.playback),

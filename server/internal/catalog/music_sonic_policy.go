@@ -10,6 +10,10 @@ import (
 
 const SonicOperation = "sonic"
 
+// SonicDefaultEnabled is the factory choice for a configurable Music library.
+// It is independent of a saved choice, its CAS revision and engine readiness.
+func SonicDefaultEnabled() bool { return true }
+
 type SonicSettings struct {
 	Enabled  bool  `json:"enabled"`
 	Revision int64 `json:"revision"`
@@ -26,7 +30,7 @@ func SonicSettingsTx(ctx context.Context, tx *sql.Tx, library string) (SonicSett
 	if kind != "music" {
 		return SonicSettings{}, ErrAdminQuery
 	}
-	settings := SonicSettings{Enabled: true, Revision: 1}
+	settings := SonicSettings{Enabled: SonicDefaultEnabled(), Revision: 1}
 	err := tx.QueryRowContext(ctx, `SELECT enabled,revision FROM library_sonic_settings WHERE library_id=?`, library).Scan(&settings.Enabled, &settings.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil

@@ -373,9 +373,12 @@ impl DownloadsSession {
             .viewer()
     }
     pub fn execute(&mut self, lease: &str, operation: DownloadOperation) -> Result<DownloadReply> {
-        let viewer = self.viewer(lease)?;
         use DownloadOperation as O;
         use DownloadReply as R;
+        // Binding replacement has already retired this lease's opaque handles.
+        // A cleanup ACK is idempotent, never access to the replacement viewer.
+        if matches!(&operation,O::ReleaseLocalQueue{..})&&!self.lease_current(lease){return Ok(R::Done)}
+        let viewer = self.viewer(lease)?;
         let mut reply = match operation {
             O::PrepareLocalQueue { selection } => {
                 R::LocalQueue(self.prepare_local_queue(lease, selection)?)
@@ -870,6 +873,24 @@ mod tests {
         let sequence=session.store.next_local_sequence().unwrap();drop(session);
         let reopened=DownloadsSession::open(&root).unwrap();assert_eq!(reopened.store.next_local_sequence().unwrap(),sequence+1);drop(reopened);
         std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn retired_preparation_cleanup_ack_cannot_read_or_retire_the_replacement() {
+        let root=std::env::temp_dir().join(format!("desktop-retired-preparation-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let mut session=DownloadsSession::open(&root).unwrap();
+        let old=session.bind(scope()).unwrap();
+        let mut next=scope();next.session_family_id="replacement".into();
+        let current=session.bind(next).unwrap();session.local_preparation=Some("replacement-preparation".into());
+        for id in ["old-preparation","replacement-preparation"]{
+            assert!(matches!(session.execute(&old,DownloadOperation::ReleaseLocalQueue{preparation_id:id.into()}),Ok(DownloadReply::Done)));
+            assert_eq!(session.local_preparation.as_deref(),Some("replacement-preparation"));
+            assert!(session.lease_current(&current));
+        }
+        assert!(matches!(session.execute(&old,DownloadOperation::Rules{}),Err(Error::DownloadsConflict)));
+        assert!(matches!(session.execute(&old,DownloadOperation::PrepareLocalQueue{selection:LocalSelection::Entry{entry_id:"a".repeat(64),expected_revision:0}}),Err(Error::DownloadsConflict)));
+        session.force_release(&current);
+        assert!(matches!(session.execute(&current,DownloadOperation::ReleaseLocalQueue{preparation_id:"replacement-preparation".into()}),Ok(DownloadReply::Done)));
+        drop(session);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn closed_commands_bound_byte_allocation_and_reject_extra_paths() {

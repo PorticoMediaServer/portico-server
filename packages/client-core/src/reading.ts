@@ -1,8 +1,8 @@
 import {
-  routePath, errors, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
+  routePath, errors, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
   decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
   decodePutReadingSessionsSessionIdProgressResponse,
-  type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
+  type GetReadingContinueResponse, type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
   type PostReadingSessionsRequest, type PostReadingSessionsResponse,
   type GetReadingSessionsSessionIdProgressResponse,
   type PutReadingSessionsSessionIdProgressRequest, type PutReadingSessionsSessionIdProgressResponse,
@@ -16,6 +16,10 @@ export type ReadingPage = Readonly<{index: number; name: string; bytes: Uint8Arr
 export type ReadingLocation = PutReadingSessionsSessionIdProgressRequest['location'];
 export type ReadingProgress = GetReadingSessionsSessionIdProgressResponse;
 export type ReadingSavedProgress = PutReadingSessionsSessionIdProgressResponse;
+export type ReadingByteReader = Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel' | 'releaseLock'>;
+/** Pull/cancel only; native hosts need no global Web Streams constructor.
+ * Callers keep one read pending and release the reader after EOF/cancellation. */
+export type ReadingByteStream = Readonly<{getReader(): ReadingByteReader; cancel(reason?: unknown): Promise<void>}>;
 
 /** Errors contain a machine code/status, never an origin URL or response body. */
 export class ReadingError extends Error {
@@ -96,8 +100,71 @@ async function bytes(response: Response, max: number, signal: AbortSignal, check
   } finally { signal.removeEventListener('abort', abort); void reader.cancel().catch(() => {}); try { reader.releaseLock(); } catch { /* stream already ended */ } }
 }
 
+type ByteController = Pick<ReadableStreamDefaultController<Uint8Array>, 'enqueue' | 'close' | 'error'>;
+type ByteSource = {start(controller: ByteController): void; pull(): Promise<void>; cancel(): void};
+
+// Keep the fallback scoped to this body. It is a small pull protocol, not a
+// global polyfill or an object cast to the complete DOM ReadableStream API.
+function scopedByteStream(source: ByteSource): ReadingByteStream {
+  if (typeof globalThis.ReadableStream === 'function') return new globalThis.ReadableStream<Uint8Array>(source, {highWaterMark: 0});
+  type Result = ReadableStreamReadResult<Uint8Array>;
+  type Pending = {resolve(value: Result): void; reject(error: unknown): void};
+  let state: 'open' | 'closed' | 'errored' = 'open', failure: unknown, locked = false, pulling = false, pending: Pending | undefined;
+  const finish = (error?: unknown, errored = false) => {
+    if (state !== 'open') return;
+    state = errored ? 'errored' : 'closed'; failure = error;
+    const read = pending; pending = undefined;
+    if (errored) read?.reject(error); else read?.resolve({done: true, value: undefined});
+  };
+  const controller: ByteController = {
+    enqueue(value) {
+      if (state !== 'open' || !pending || value === undefined) throw new TypeError('No pending reading pull');
+      const read = pending; pending = undefined; read.resolve({done: false, value});
+    },
+    close() { finish(); },
+    error(error) { finish(error, true); },
+  };
+  const pump = () => {
+    if (pulling || !pending || state !== 'open') return;
+    pulling = true;
+    void Promise.resolve().then(() => source.pull()).catch(error => controller.error(error)).finally(() => { pulling = false; pump(); });
+  };
+  const cancel = (): Promise<void> => {
+    if (state === 'errored') return Promise.reject(failure);
+    if (state === 'closed') return Promise.resolve();
+    finish();
+    try { source.cancel(); return Promise.resolve(); } catch (error) { return Promise.reject(error); }
+  };
+  try { source.start(controller); } catch (error) { controller.error(error); }
+  return Object.freeze({
+    getReader(): ReadingByteReader {
+      if (locked) throw new TypeError('Reading stream already locked');
+      locked = true;
+      let released = false;
+      return Object.freeze({
+        read(): Promise<Result> {
+          if (released) return Promise.reject(new TypeError('Reading reader lock released'));
+          if (state === 'errored') return Promise.reject(failure);
+          if (state === 'closed') return Promise.resolve({done: true, value: undefined});
+          if (pending) return Promise.reject(new ReadingError('stream_busy'));
+          const result = new Promise<Result>((resolve, reject) => { pending = {resolve, reject}; });
+          pump(); return result;
+        },
+        cancel() { return released ? Promise.reject(new TypeError('Reading reader lock released')) : cancel(); },
+        releaseLock() {
+          if (released) return;
+          if (pending) throw new TypeError('Reading reader has a pending pull');
+          released = true; locked = false;
+        },
+      });
+    },
+    cancel() { return locked ? Promise.reject(new TypeError('Reading stream already locked')) : cancel(); },
+  });
+}
+
 function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSessionsRequest) {
   if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !format(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
+  if (m.sequential === true && m.format !== 'pdf') fail('invalid_manifest');
   if (m.metadata.direction !== undefined && !['ltr', 'rtl', 'vertical'].includes(m.metadata.direction)) fail('invalid_manifest');
   const resources = m.resources ?? [], pages = m.pageNames ?? [], spine = m.spine ?? [];
   if (resources.length > 4096 || pages.length > 4096 || spine.length > 4096) fail('invalid_manifest');
@@ -197,6 +264,21 @@ export class ReadingClient {
     if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format))) fail('invalid_document');
     return out;
   }
+  async continue(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingContinueResponse> {
+    if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(options.cursor))) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_continue'), options), 'GET', undefined, signal, decodeGetReadingContinueResponse, 2 << 20);
+    if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(out.nextCursor))) fail('invalid_document');
+    const seen = new Set<string>();
+    for (const {item, progress} of out.items) {
+      const location = progress.location;
+      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || progress.sourceId !== item.sourceId || !revision(progress.sourceRevision) || !integer(progress.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(progress.observedAt, 1, Number.MAX_SAFE_INTEGER) || !format(location.format) || (!progress.stale && location.format !== item.format) || !Number.isFinite(location.progression) || location.progression < 0 || location.progression >= 1) fail('invalid_progress');
+      if (location.format === 'epub') {
+        if (location.pageIndex !== undefined || !location.cfi?.startsWith('epubcfi(/') || !location.cfi.endsWith(')') || new TextEncoder().encode(location.cfi).length > 4096 || /[\p{Cc}<>]/u.test(location.cfi) || (location.section !== undefined && !member(location.section))) fail('invalid_progress');
+      } else if (location.cfi !== undefined || location.section !== undefined || !integer(location.pageIndex ?? -1, 0, 2147483647)) fail('invalid_progress');
+      seen.add(item.id);
+    }
+    return out;
+  }
   async versions(itemId: string, signal?: AbortSignal): Promise<GetItemsItemIdReadingVersionsResponse> {
     if (!id(itemId)) fail('invalid_request');
     const out = await this.json(routePath('get_items_itemId_reading_versions', {itemId}), 'GET', undefined, signal, decodeGetItemsItemIdReadingVersionsResponse, 64 << 10);
@@ -219,6 +301,7 @@ export class ReadingSession {
   #client: ReadingClient;
   #life = new AbortController();
   #activeRanges = 0;
+  #activeSequential = false;
   #retire: () => void;
   constructor(client: ReadingClient, manifest: ReadingManifest) {
     this.#client = client; this.manifest = frozen(manifest); this.signal = this.#life.signal;
@@ -250,12 +333,12 @@ export class ReadingSession {
     return this.#binary(routePath('head_reading_sessions_sessionId_source', {sessionId: this.manifest.sessionId}), {method: 'HEAD'}, signal, async (r, active, check) => {
       if (r.status !== 200) return this.#client.error(r, active, check);
       this.#etag(r);
-      if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.get('Accept-Ranges') !== 'bytes' || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
+      if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.get('Accept-Ranges') !== (this.manifest.sequential ? 'none' : 'bytes') || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
       check(); await discard(r);
     });
   };
   readRange = async (range: Readonly<{start: number; endExclusive: number}>, signal?: AbortSignal): Promise<Uint8Array> => {
-    if (this.manifest.format !== 'pdf') fail('invalid_format');
+    if (this.manifest.format !== 'pdf' || this.manifest.sequential) fail('invalid_format');
     const {start, endExclusive} = range, length = endExclusive - start;
     if (!integer(start, 0, this.manifest.size - 1) || !integer(endExclusive, start + 1, this.manifest.size) || length > 64 << 10) fail('invalid_range');
     if (this.#activeRanges >= 2) fail('range_busy');
@@ -268,6 +351,56 @@ export class ReadingSession {
         return bytes(r, length, active, check, length);
       });
     } finally { this.#activeRanges--; }
+  };
+  /** One genuine from-start200 stream; it is never a ranged or buffered source. */
+  openSequential = async (signal?: AbortSignal): Promise<ReadingByteStream> => {
+    if (this.manifest.format !== 'pdf' || !this.manifest.sequential) fail('invalid_format');
+    this.#check();
+    if (this.#activeSequential) fail('sequential_busy');
+    this.#activeSequential = true;
+    const op = operation([this.#client.signal, this.signal, signal]);
+    let handedOff = false;
+    const release = () => { this.#activeSequential = false; op.release(); };
+    try {
+      return await this.#binary(routePath('get_reading_sessions_sessionId_source', {sessionId: this.manifest.sessionId}), {method: 'GET', headers: {Accept: 'application/pdf'}}, op.signal, async (r, active, check) => {
+        if (r.status !== 200) { if (r.status === 206) return fail('invalid_response'); return this.#client.error(r, active, check); }
+        this.#etag(r);
+        if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.has('Content-Range') || r.headers.get('Accept-Ranges') !== 'none' || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
+        if (!r.body) return fail('stream_unsupported');
+        const reader = r.body.getReader();
+        let controller: ByteController, ended = false, total = 0;
+        const unlock = () => { try { reader.releaseLock(); } catch { /* pending read releases after cancellation */ } };
+        const end = (error?: ReadingError, consumerCancel = false) => {
+          if (ended) return;
+          ended = true; op.signal.removeEventListener('abort', abort); release();
+          if (error && ['source_changed', 'response_size', 'invalid_response'].includes(error.code)) this.retire(error);
+          if (!consumerCancel) { if (error) controller.error(error); else controller.close(); }
+          if (error || consumerCancel) void reader.cancel().catch(() => {});
+          unlock();
+        };
+        const abort = () => end(cancellation(op.signal));
+        const stream = scopedByteStream({
+          start(c) { controller = c; op.signal.addEventListener('abort', abort, {once: true}); if (op.signal.aborted) abort(); },
+          pull: async () => {
+            if (ended) return;
+            try {
+              this.#client.check(op.signal);
+              const next = await reader.read();
+              this.#client.check(op.signal);
+              if (ended) return;
+              if (next.done) { if (total !== this.manifest.size) fail('response_size'); end(); return; }
+              if (!(next.value instanceof Uint8Array) || next.value.byteLength > 1 << 20 || total + next.value.byteLength > this.manifest.size) fail('response_size');
+              total += next.value.byteLength;
+              controller.enqueue(next.value.slice());
+            } catch (error) { end(op.signal.aborted ? cancellation(op.signal) : error instanceof ReadingError ? error : new ReadingError('network_error')); }
+            finally { if (ended) unlock(); }
+          },
+          cancel() { end(undefined, true); },
+        });
+        handedOff = true;
+        return stream;
+      });
+    } finally { if (!handedOff) release(); }
   };
   readAsset = async (path: string, signal?: AbortSignal): Promise<Uint8Array> => {
     if (this.manifest.format !== 'epub') fail('invalid_format');

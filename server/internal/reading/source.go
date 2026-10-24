@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/sourceaccess"
 	"portico.local/server/internal/storage"
 )
@@ -27,11 +29,15 @@ import (
 type Authorization func(context.Context, *sql.Tx, identity.Principal, string, string) error
 type Visibility func(context.Context, *sql.Tx, identity.Principal, string) (string, []any, error)
 type Service struct {
-	DB             *sql.DB
-	Storage        *storage.Client
-	Mounts         *mounts.Service
-	Authorize      Authorization
-	Visible        Visibility
+	DB        *sql.DB
+	Storage   *storage.Client
+	Mounts    *mounts.Service
+	Remote    *remotesources.Service
+	Authorize Authorization
+	Visible   Visibility
+	// Changed queues metadata inventory for the actual captured folder source.
+	// It runs only outside source/DB locks, never as content-read authority.
+	Changed        func(library, folderSource string)
 	sessionMu      sync.Mutex
 	sessions       map[string]*Session
 	sessionsClosed bool
@@ -54,10 +60,12 @@ const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
  CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
  CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token`
 
+const publicationObjectEligible = `o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
+ AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
+
 const publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
  AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
- AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
- AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
+ AND ` + publicationObjectEligible
 
 const selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
  WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` ORDER BY a.id,o.id LIMIT 1`
@@ -127,16 +135,20 @@ func (s *Service) validate(ctx context.Context, p identity.Principal, selected S
 // and after each bounded extent. No immutable/no-splice claim is made from it.
 type Source struct {
 	Selection
-	ctx       context.Context
-	p         identity.Principal
-	service   *Service
-	reader    *storage.ObservedPlaybackReader
-	roots     *sourceaccess.Registry
-	mu        sync.Mutex
-	observed  storage.ObservedFileObservation
-	onClose   func()
-	onFailure func()
-	closeOnce sync.Once
+	ctx            context.Context
+	p              identity.Principal
+	service        *Service
+	reader         *storage.ObservedPlaybackReader
+	roots          *sourceaccess.Registry
+	mu             sync.Mutex
+	observed       storage.ObservedFileObservation
+	remoteSession  *Session
+	remoteRange    *remotesources.SourceRange
+	remoteRetained bool
+	remoteCancel   func()
+	onClose        func()
+	onFailure      func()
+	closeOnce      sync.Once
 }
 
 // Context carries both this request's cancellation and the captured reader
@@ -152,10 +164,10 @@ func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID
 	if expected != "" && expected != v.Revision {
 		return nil, ErrChanged
 	}
-	// Pool labels on Remote.Acquire do not carry interactive read authority.
-	// Until that real producer is checked on main, remote sources stay closed.
+	// Remote reads use the retained interactive session resolver, never a
+	// playback/analysis scheduling pool as operation authority.
 	if s.Storage.IsRemote(v.path) {
-		return nil, ErrUnavailable
+		return s.openRemote(ctx, p, v, nil)
 	}
 	// A typed nil mount service must not become a nonnil mountOwner interface.
 	// Unmanaged local roots still use the actual registration/helper boundary.
@@ -217,7 +229,7 @@ func (f *Source) checkObservation(o storage.ObservedFileObservation) error {
 }
 func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	defer func() {
-		if failure != nil && failure != io.EOF && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
+		if failure != nil && failure != io.EOF && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
 			f.Close()
 		}
@@ -235,6 +247,23 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	}
 	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
 		return 0, err
+	}
+	if f.remoteSession != nil {
+		if f.Sequential() {
+			return 0, storage.ErrRemoteRange
+		}
+		if f.remoteRange == nil {
+			var err error
+			f.remoteRange, err = f.remoteSession.remote.OpenRange(f.ctx)
+			if err != nil {
+				return 0, fmt.Errorf("reading range acquisition: %w", err)
+			}
+		}
+		n, err := f.remoteRange.ReadAt(f.ctx, b, offset)
+		if err != nil && err != io.EOF {
+			return n, fmt.Errorf("reading range extent: %w", err)
+		}
+		return n, err
 	}
 	wanted := min(int64(len(b)), f.Size-offset)
 	done := 0
@@ -267,8 +296,23 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 }
 func (f *Source) Close() error {
 	f.closeOnce.Do(func() {
-		f.reader.Close()
-		f.roots.Close()
+		if f.remoteCancel != nil {
+			f.remoteCancel()
+		}
+		if f.reader != nil {
+			f.reader.Close()
+		}
+		if f.roots != nil {
+			f.roots.Close()
+		}
+		f.mu.Lock()
+		if f.remoteRange != nil {
+			f.remoteRange.Close()
+		}
+		f.mu.Unlock()
+		if f.remoteSession != nil && !f.remoteRetained {
+			f.remoteSession.close()
+		}
 		if f.onClose != nil {
 			f.onClose()
 		}
@@ -280,7 +324,7 @@ func (f *Source) Close() error {
 // before publication; CPU work must not turn a revoked read into a response.
 func (f *Source) Validate() (failure error) {
 	defer func() {
-		if failure != nil && f.onFailure != nil {
+		if failure != nil && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
 			f.Close()
 		}
@@ -290,6 +334,15 @@ func (f *Source) Validate() (failure error) {
 	}
 	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
 		return err
+	}
+	if f.remoteSession != nil {
+		f.mu.Lock()
+		reader := f.remoteRange
+		f.mu.Unlock()
+		if reader != nil {
+			return reader.Check(f.ctx)
+		}
+		return f.remoteSession.remote.Check(f.ctx)
 	}
 	o, err := f.reader.Observe(f.ctx)
 	if err != nil {
@@ -308,10 +361,16 @@ func (f *Source) StopAndRecheck(cause error) error {
 	if err := f.ctx.Err(); err != nil {
 		return err
 	}
-	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+	if errors.Is(cause, storage.ErrBusy) || errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
-	err := f.Validate()
+	var err error
+	if f.remoteSession != nil {
+		err = f.remoteSession.remote.StopAndRecheck(f.ctx)
+		f.remoteSession.close()
+	} else {
+		err = f.Validate()
+	}
 	if f.onFailure != nil {
 		f.onFailure()
 	}

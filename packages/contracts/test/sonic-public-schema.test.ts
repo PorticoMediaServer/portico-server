@@ -11,7 +11,7 @@ test('Sonic settings require both the explicit choice and its CAS revision', () 
 });
 
 test('the owner Sonic projection publishes bounded state codes and no raw runtime facts', () => {
-  const status = {libraryId: 'library', available: true, enabled: true, revision: 1, policyAllows: true, state: 'complete', done: 1, total: 1, policyRevision: 1, observedAtMs: 1};
+  const status = {libraryId: 'library', available: true, defaultEnabled: true, enabled: true, revision: 1, policyAllows: true, state: 'complete', done: 1, total: 1, policyRevision: 1, observedAtMs: 1};
   assert.doesNotThrow(() => decode('GetAdminLibrariesIdSonicAnalysisResponse', {...status, available: true, enabled: false, policyAllows: false, state: 'disabled'}));
   assert.doesNotThrow(() => decode('GetAdminLibrariesIdSonicAnalysisResponse', {...status, available: false, state: 'unavailable'}));
   for (const state of ['disabled', 'unavailable', 'complete', 'paused', 'analyzing']) {
@@ -27,6 +27,22 @@ test('the owner Sonic projection publishes bounded state codes and no raw runtim
   assert.ok(schemas.GetAdminLibrariesIdSonicAnalysisResponse.required.includes('available'));
   assert.equal(properties.available.type, 'boolean');
   for (const key of ['work', 'runtime', 'path', 'vector', 'error']) assert.equal(key in properties, false);
+});
+
+test('every Sonic status response requires the factory default independently of saved choice and runtime availability', () => {
+  const status = {libraryId: 'library', available: false, defaultEnabled: true, enabled: false, revision: 2, policyAllows: false, state: 'disabled', done: 0, total: 1, policyRevision: 1, observedAtMs: 1};
+  for (const name of ['GetAdminLibrariesIdSonicAnalysisResponse', 'PutAdminLibrariesIdSonicAnalysisResponse', 'PostAdminLibrariesIdSonicAnalysisRetryResponse'] as const) {
+    for (const available of [true, false]) {
+      assert.doesNotThrow(() => decode(name, {...status, available}));
+    }
+    for (const defaultEnabled of [undefined, null, 'true', 1]) {
+      assert.throws(() => decode(name, {...status, defaultEnabled}));
+    }
+    assert.ok(schemas[name].required.includes('defaultEnabled'));
+    assert.equal(schemas[name].properties.defaultEnabled.type, 'boolean');
+    assert.ok(schemas[name].required.includes('available'));
+    assert.equal(schemas[name].properties.available.type, 'boolean');
+  }
 });
 
 test('the existing similar payload declares its actual sound selection basis', () => {

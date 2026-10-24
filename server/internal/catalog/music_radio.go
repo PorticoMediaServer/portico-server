@@ -191,7 +191,7 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 			}
 		}
 	}
-	rows, err = s.read().Query(`SELECT item.id,pid(item.public_id),pid(album_item.public_id),pid(artist.public_id),`+radioArtistsSQL+`,(SELECT count(*) FROM catalog_rec_facets facet WHERE facet.entity_id=item.id AND facet.facet IN(SELECT value FROM json_each(?))),CASE WHEN ? AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),1)=1 THEN `+currentSonicVectorSQL+` END
+	rows, err = s.read().Query(`SELECT item.id,pid(item.public_id),pid(album_item.public_id),pid(artist.public_id),`+radioArtistsSQL+`,(SELECT count(*) FROM catalog_rec_facets facet WHERE facet.entity_id=item.id AND facet.facet IN(SELECT value FROM json_each(?))),CASE WHEN ? AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),?)=1 THEN `+currentSonicVectorSQL+` END
  FROM catalog_entities item JOIN catalog_libraries library ON library.id=item.library_id
  JOIN libraries configured ON configured.id=library.library_id AND configured.kind='music'
  JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
@@ -199,7 +199,7 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
  JOIN catalog_entities artist ON artist.id=album.artist_id AND artist.retired=0
  WHERE item.kind=7 AND `+visible+` AND `+currentSonicEligibleSQL+`
  AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
-	 ORDER BY item.id`, append([]any{idsJSON(genres), hasCenter, sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256}, args...)...)
+	 ORDER BY item.id`, append([]any{idsJSON(genres), hasCenter, SonicDefaultEnabled(), sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256}, args...)...)
 	if err != nil {
 		return out, err
 	}
