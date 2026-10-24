@@ -7,7 +7,8 @@ export function RuleCard({title, glyph, tone, selected, paused, options, next, c
   title: string; glyph: string; tone: RuleTone; selected: boolean; paused: boolean; options: readonly string[]; next: string; conflict?: boolean;
   state: string; upcoming?: string; actionsLabel: string; onOpen: () => void; buttonRef?: Ref<HTMLButtonElement>;
 }) {
-  return <article className={styles.rule} data-tone={tone} data-selected={selected || undefined} data-paused={paused || undefined}>
+  return <article className={styles.rule} data-tone={tone} data-selected={selected || undefined} data-paused={paused || undefined}
+    onClick={event => {if (event.target instanceof Element && !event.target.closest('button')) onOpen();}}>
     <div className={styles.art} aria-hidden="true"><div className={styles.generated}><span>{glyph}</span></div></div>
     <button ref={buttonRef} type="button" className={styles.copy} onClick={onOpen} aria-pressed={selected}><b>{title}</b><small className={styles.options}>{options.map((option, index) => <span key={index}>{option}</span>)}</small><span className={styles.next} data-conflict={conflict || undefined}>{next}</span></button>
     <div className={styles.state}><span className={styles.pill} data-on={!paused}>{state}</span>{upcoming && <small>{upcoming}</small>}</div>
