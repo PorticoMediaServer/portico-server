@@ -97,7 +97,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 		return QueueSelection{}, err
 	}
 	where, args := browseScopeSQL(query.LibraryID, pivot)
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
 	clause, err := compiler.compile(node)
 	if err != nil {
 		return QueueSelection{}, err
