@@ -45,8 +45,8 @@ function SetupForm({flow, state, local}: {flow: SetupFlow; state: SetupSnapshot;
       description={t('web.setup.serverNameHelp')} onChange={event => flow.setName(event.currentTarget.value)} disabled={state.busy}/></div>
     <div className={styles.legend}>{t('web.setup.howSignIn')}</div>
     <button type="button" role="radio" aria-checked={hosted} className={hosted ? styles.choice : styles.qopt} onClick={() => flow.setMode('hosted')} disabled={state.busy}>
-      <span className={styles.choiceIcon} aria-hidden="true"><Icon name="i-person" size={22}/></span>
-      <span className={styles.choiceCopy}><b>{t('accounts.settings.portico')}{hosted && <span className={styles.rec}>{t('web.setup.recommended')}</span>}</b>
+      {hosted && <span className={styles.choiceIcon} aria-hidden="true"><Icon name="i-person" size={22}/></span>}
+      <span className={styles.choiceCopy}><b>{t('accounts.settings.portico')}<span className={styles.rec}>{t('web.setup.recommended')}</span></b>
         <p>{t('web.setup.porticoBody')}</p></span>
       <span className={hosted ? styles.rad : styles.radOff} aria-hidden="true"/>
     </button>
@@ -61,12 +61,14 @@ function SetupForm({flow, state, local}: {flow: SetupFlow; state: SetupSnapshot;
       <div className={styles.field}><TextField variant="auth" label={t('web.direct.username')} value={state.username} autoComplete="username"
         autoCapitalize="off" spellCheck={false} maxLength={64} required disabled={state.busy} description={t('web.setup.usernameHelp')}
         onChange={event => flow.setUsername(event.currentTarget.value)}/></div>
-      <div className={styles.field}><TextField variant="auth" type="password" label={t('web.account.password')} value={state.password}
-        autoComplete="new-password" required disabled={state.busy} onChange={event => flow.setPassword(event.currentTarget.value)}/>
-        <ServicesStrength password={state.password} id="setup-password-strength"/></div>
-      <div className={styles.field}><TextField variant="auth" type="password" label={t('web.directJoin.confirm')} value={state.confirm}
-        autoComplete="new-password" required disabled={state.busy} error={Boolean(state.confirm) && !match ? t('web.setup.mismatch') : undefined}
-        onChange={event => flow.setConfirm(event.currentTarget.value)}/></div>
+      <div className={styles.pair}>
+        <div className={styles.field}><TextField variant="auth" type="password" label={t('web.account.password')} value={state.password}
+          autoComplete="new-password" required disabled={state.busy} onChange={event => flow.setPassword(event.currentTarget.value)}/>
+          <ServicesStrength password={state.password} id="setup-password-strength"/></div>
+        <div className={styles.field}><TextField variant="auth" type="password" label={t('web.directJoin.confirm')} value={state.confirm}
+          autoComplete="new-password" required disabled={state.busy} error={Boolean(state.confirm) && !match ? t('web.setup.mismatch') : undefined}
+          onChange={event => flow.setConfirm(event.currentTarget.value)}/></div>
+      </div>
     </>}
     {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
     <div className={[styles.btnRow, local ? styles.btnRowTight : ''].filter(Boolean).join(' ')}>
@@ -80,8 +82,8 @@ function SetupForm({flow, state, local}: {flow: SetupFlow; state: SetupSnapshot;
 
 function SetupSteps({steps, label}: {steps: ReturnType<typeof setupSteps>; label: string}) {
   return <div className={styles.steps} aria-label={label}>
-    {steps.map(step => <div key={step.id} className={styles.step} data-state={step.state}>
-      <span className={styles.stepNumber}>{step.state === 'done' ? <Icon name="i-check" size={18}/> : step.id === 'server' ? 1 : step.id === 'account' ? 2 : 3}</span>
+    {steps.map((step, index) => <div key={step.id} className={styles.step} data-state={step.state}>
+      <span className={styles.stepNumber}>{step.state === 'done' ? <Icon name="i-check" size={18}/> : index + 1}</span>
       <span>{step.title}<small>{step.body}</small></span>
     </div>)}
   </div>;
