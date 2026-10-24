@@ -120,7 +120,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     if (!settledPlaybackChanged(settledPlayback.current, binding.runtime, fence?.playback)) return;
     settledPlayback.current = {runtime: binding.runtime, key: playbackKey};
     setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true);
-  }, [binding.runtime, playbackKey]);
+  }, [binding.runtime, playbackKey, fence?.playback]);
   const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => {
     const wasOpen = focusEdge.current; focusEdge.current = open;
