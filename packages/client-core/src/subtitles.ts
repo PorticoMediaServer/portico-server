@@ -220,7 +220,7 @@ export class SubtitleService {
   if(context&&(!this.active||!saveCurrent(context))){this.retryOperation=undefined;if(this.active)this.publish({error:null,canRetry:false});return Promise.reject(saveRetired());}
   if(!this.active)return Promise.resolve();const life=this.life;this.queued++;this.publish({busy:true,error:null,canRetry:false});
   const run=async()=>{try{if(!this.active||life!==this.life){if(context)throw saveRetired();return;}checkSave(context);await task();checkSave(context);this.retryOperation=undefined;this.publish({error:null,canRetry:false});}catch(e){
-   if(context&&(!this.active||life!==this.life||!saveCurrent(context))){this.retryOperation=undefined;if(this.active&&life===this.life)this.publish({error:null,canRetry:false});throw saveRetired();}
+   if(context&&(!this.active||life!==this.life||!saveCurrent(context))){if(life===this.life){this.retryOperation=undefined;if(this.active)this.publish({error:null,canRetry:false});}throw saveRetired();}
    this.retryOperation={task,context};this.fail(e);
   }};
   const result=this.queue.then(run,run).finally(()=>{this.queued--;if(this.active&&life===this.life){this.publish({busy:this.queued>0});if(!this.queued&&!this.state.error)void this.refresh();}});
