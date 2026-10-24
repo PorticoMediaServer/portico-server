@@ -66,8 +66,8 @@ export const currentAccessToken = () => viewer.getSnapshot().session?.accessToke
  * Account service is down or busy, the server is fine (Portico retries once the service allows). */
 export type PorticoOutcome = 'done' | 'refused' | 'unreachable' | 'account-unavailable' | 'failed';
 export type DirectPending = {api: HttpLocalApi; snapshot?: DirectSnapshot; accountGrant: boolean; accountSession?: LocalSession; profilesError?: string; /** A Portico Account member: routes keep coming from Hosted. */ hosted?: RememberedServer['hosted']};
-/** A direct sign-in that needs one more answer: a two-step code, a new password, or the owner's approval. */
-export type DirectStep = {kind: 'code' | 'new-password' | 'device-pending'};
+/** A direct sign-in that needs a two-step code or a required new password. */
+export type DirectStep = {kind: 'code' | 'new-password'};
 /** `hostedAccountId`: a Portico Account member of this server; its password and two-step verification live at the Portico Account. */
 export type LocalAccount = {username: string; canManage: boolean; managementFamily: string; hostedAccountId?: string; /** INT M6: the owner is a Portico Account but Hosted's custody of the server's registration isn't with it yet. */ custodyPending?: boolean; profiles: readonly {id: string; name: string; art: string; primary: boolean; pinRequired: boolean}[]};
 export type AccountState = ReturnType<ReturnType<typeof browserAccount>['service']['getSnapshot']>;
