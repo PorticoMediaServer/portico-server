@@ -15,6 +15,8 @@ const selectionCountKeys = {
   album: 'next.selection.album',
   song: 'next.selection.song',
   book: 'next.selection.book',
+  ebook: 'next.selection.book',
+  comic: 'next.selection.titles',
   audiobook_file: 'next.selection.audiobookPart',
   chapter: 'next.selection.chapter',
   collection: 'next.selection.collection',
