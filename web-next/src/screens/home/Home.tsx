@@ -24,6 +24,7 @@ import {cardScale, type ScreenAppearance} from '../browse/appearance';
 import styles from './home.module.css';
 import type {HomeCustomizationBindings} from './customization';
 import {HomeCustomizeEntry} from './Customize';
+import type {ReadingContinueBindings} from './reading-continue';
 
 export type HomeSelection = Readonly<{
   /** The canonical selection owner supplies its real bar and controls. */
@@ -46,7 +47,7 @@ export type HomeEffects = Readonly<{
   reportError: (error: unknown) => void;
   openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings}>;
+export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings; readingContinue?: ReadingContinueBindings}>;
 type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion' | 'appearance'>;
 const t = defaultI18n.t;
 const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];

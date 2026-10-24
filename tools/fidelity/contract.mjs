@@ -13,6 +13,11 @@ export const diagnosticStyleProperties = Object.freeze([
 ]);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const rect = value => value && ['x', 'y', 'width', 'height'].every(key => finite(value[key])) && value.width >= 0 && value.height >= 0;
+export function usesLogicalCoordinates(screen) {
+  const value = screen?.measurement;
+  return value?.renderer === 'dom' && value.coordinateUnit === 'css-px' || value?.renderer === 'react-native' &&
+    (value.platform === 'android' && value.coordinateUnit === 'dp' || ['ios', 'tvos'].includes(value.platform) && value.coordinateUnit === 'pt');
+}
 
 export function validateMeasurement(screen) {
   const errors = [];
@@ -27,6 +32,7 @@ export function validateMeasurement(screen) {
     need(['dom', 'react-native'].includes(screen.measurement.renderer), 'measurement.renderer');
     need(['css-px', 'dp', 'pt'].includes(screen.measurement.coordinateUnit), 'measurement.coordinateUnit');
     need(screen.measurement.renderer !== 'react-native' || ['android', 'ios', 'tvos'].includes(screen.measurement.platform), 'measurement.platform');
+    need(usesLogicalCoordinates(screen), 'measurement.coordinateMapping');
   }
   need(Array.isArray(screen?.elements), 'elements');
   need(Array.isArray(screen?.strings), 'strings');

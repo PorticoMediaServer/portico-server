@@ -62,3 +62,24 @@ test('unobserved native focus and opacity remain unavailable rather than becomin
   assert.equal(result.verdict, 'FAIL'); assert.equal(result.differenceCount, 2);
   assert.ok(result.differences.every(value => value.kind === 'unavailable-measurement'));
 });
+test('actual DOM DPR2/3 preserves density while comparing measured CSS coordinates unchanged', () => {
+  for (const density of [2, 3]) {
+    const reference = fixture(), actual = fixture();
+    actual.measurement = {renderer: 'dom', coordinateUnit: 'css-px'}; actual.viewport.deviceScaleFactor = density;
+    assert.deepEqual(validateMeasurement(actual), []);
+    const result = compareMeasurements(reference, actual);
+    assert.equal(result.verdict, 'PASS'); assert.equal(actual.viewport.deviceScaleFactor, density);
+    assert.deepEqual(result.calibration.counts, {self: 0, oneFont: 1, oneOpacity: 1});
+    actual.elements[0].box.x += 3;
+    assert.ok(compareMeasurements(reference, actual).differences.some(value => value.property === 'box.x'));
+  }
+});
+test('physical bounds and incorrect coordinate-unit declarations cannot masquerade as logical matches', () => {
+  const reference = fixture(), actual = fixture(); actual.measurement = {renderer: 'dom', coordinateUnit: 'css-px'}; actual.viewport.deviceScaleFactor = 2;
+  actual.root.width *= 2; actual.viewport.width *= 2;
+  assert.ok(compareMeasurements(reference, actual).differences.some(value => value.kind === 'screen-state'));
+  actual.measurement.coordinateUnit = 'dp';
+  assert.ok(validateMeasurement(actual).includes('measurement.coordinateMapping'));
+  actual.measurement = {renderer: 'react-native', platform: 'android', coordinateUnit: 'pt'};
+  assert.ok(validateMeasurement(actual).includes('measurement.coordinateMapping'));
+});

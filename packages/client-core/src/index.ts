@@ -108,7 +108,7 @@ export type MediaItem = {
 export const renderable=(s?:{audio?:AudioRenderV2}):boolean=>playableAudio(s?.audio);
 /** Caller lifetime for a local start, including Retry. It must describe the host/authority,
  * not the output generation this start replaces. Cancellation ends admission, not accepted playback. */
-export type PlaybackLocalStartContext = Readonly<{signal?:AbortSignal;isCurrent?:()=>boolean}>;
+export type PlaybackLocalStartContext = Readonly<{signal?:AbortSignal;isCurrent?:()=>boolean;initialIntent?:"playing"|"paused"}>;
 function localStartCurrent(context?:PlaybackLocalStartContext):boolean {
   try{return !context?.signal?.aborted&&context?.isCurrent?.()!==false;}catch{return false;}
 }
@@ -1352,12 +1352,14 @@ export class PlaybackService {
    */
   async playLocal(itemId: string, session: () => PlaybackSession, startPosition?: number, context?: PlaybackLocalStartContext): Promise<void> {
     if(!localStartCurrent(context))throw localStartCancelled();
+    const requested=context?.initialIntent,intent=requested===undefined?"playing":requested;
+    if(intent!=="playing"&&intent!=="paused")throw new Error('invalid_local_start_intent');
     if(this.snapshot.listeningNotice)this.update({listeningNotice:undefined});
     this.escalations = 0;
-    const captured=context?Object.freeze({signal:context.signal,isCurrent:context.isCurrent}):undefined;
+    const captured=context?Object.freeze({signal:context.signal,isCurrent:context.isCurrent,initialIntent:intent}):undefined;
     this.lastPlay = { itemId, local: session, localContext:captured };
     this.update({ playbackRun: this.snapshot.playbackRun + 1 });
-    return this.startLocal(itemId, session, startPosition, "playing", captured);
+    return this.startLocal(itemId, session, startPosition, intent, captured);
   }
   private async startLocal(itemId: string, make: () => PlaybackSession, startPosition: number | undefined, intent: "playing" | "paused", context?:PlaybackLocalStartContext): Promise<void> {
     if(!localStartCurrent(context))throw localStartCancelled();
