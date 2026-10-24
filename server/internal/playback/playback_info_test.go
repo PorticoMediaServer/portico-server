@@ -89,10 +89,25 @@ func TestPlaybackComparisonTargetFactsNeverBecomeRendererObservations(t *testing
 		t.Fatal("FLAC target lost full rate/depth or invented object retention", info)
 	}
 	want := []PlaybackLoss{{Feature: "dolbyVision", Replacement: PlaybackReplacement{DynamicRange: "sdr"}}, {Feature: "hdr", Replacement: PlaybackReplacement{DynamicRange: "sdr"}}, {Feature: "atmos", Replacement: PlaybackReplacement{AudioCodec: "flac", Channels: 8, Layout: "7.1"}}}
-	if !reflect.DeepEqual(info.Losses, want) || info.EstimatedBitrateKbps != 3000 {
-		t.Fatal("structured losses/estimate", info)
+	if !reflect.DeepEqual(info.Losses, want) || info.EstimatedBitrateKbps != 0 {
+		t.Fatal("structured losses/unknown lossless total", info)
 	}
 	if info.Source.Subtitles.Rendering != "" || info.Source.Subtitles.Format != "pgs" || info.Delivered.Subtitles.Rendering != "burnedIn" || info.Delivered.Subtitles.Format != "" || subtitle.Rendering != "burnedIn" {
 		t.Fatal("subtitle source and rendering mixed", info, subtitle)
+	}
+}
+
+func TestPlaybackComparisonOmitsPartialOrUnappliedRoutesAndRates(t *testing.T) {
+	plan := DeliveryPlan{VideoAction: "none", AudioAction: "none", Trace: &DecisionTrace{Video: &TraceVideo{Codec: "hevc"}}}
+	if PlaybackInfoForPlan(plan, nil) != nil {
+		t.Fatal("unknown/drop became Original")
+	}
+	plan = DeliveryPlan{Strategy: DeliveryVideoConversion, VideoAction: "convert", AudioAction: "convert", VideoBitrateBPS: 3000000, AudioBitrateBPS: 320000, OutputVideoCodec: "h264", OutputAudioCodec: "aac", Trace: &DecisionTrace{Video: &TraceVideo{Codec: "hevc"}, Audio: &TraceAudio{Codec: "truehd"}}}
+	if info := PlaybackInfoForPlan(plan, nil); info.EstimatedBitrateKbps != 3320 {
+		t.Fatal("known aggregate estimate", info)
+	}
+	plan.VideoBitrateBPS = 0
+	if info := PlaybackInfoForPlan(plan, nil); info.EstimatedBitrateKbps != 0 {
+		t.Fatal("audio-only rate misreported as aggregate", info)
 	}
 }

@@ -267,6 +267,9 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 		}
 		out.Delivered.Subtitles = &shown
 	}
+	if out.Routes.Picture == "" && out.Routes.Sound == "" && out.Routes.Subtitles == "" {
+		return nil
+	}
 	for _, route := range []string{out.Routes.Picture, out.Routes.Sound, out.Routes.Subtitles} {
 		out.Route = strongerPlaybackRoute(out.Route, route)
 	}
@@ -292,7 +295,12 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 		out.Reason.Kind = "subtitles"
 	}
 	if p.VideoAction == "convert" || p.AudioAction == "convert" {
-		out.EstimatedBitrateKbps = (p.VideoBitrateBPS + p.AudioBitrateBPS) / 1000
+		// A rate for only one converted stream is not an estimate of the
+		// whole delivery. In particular FLAC and quality-mode video have no
+		// fixed rate; leave the total unknown until the renderer measures it.
+		if (out.Delivered.Video == nil || p.VideoBitrateBPS > 0) && (out.Delivered.Audio == nil || p.AudioBitrateBPS > 0) {
+			out.EstimatedBitrateKbps = (p.VideoBitrateBPS + p.AudioBitrateBPS) / 1000
+		}
 	} else if p.Trace.BitRate > 0 {
 		out.EstimatedBitrateKbps = int(p.Trace.BitRate / 1000)
 	}
