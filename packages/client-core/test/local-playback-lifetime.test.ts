@@ -118,3 +118,40 @@ test('three-argument local starts retain quiet supersession compatibility',async
   assert.equal(oldMaker,0);assert.equal(x.service.getSnapshot().session?.id,'local:new:2');
  }finally{journal.resolve([]);x.service.leave();}
 });
+
+
+test('paused local admission is paused before the maker and throughout adoption until explicit Play',async()=>{
+ const x=setup(),states:string[]=[];let made=0;
+ const off=x.service.subscribe(()=>{const s=x.service.getSnapshot();if(s.itemId==='parked')states.push(s.intent);});
+ try{
+  await x.service.playLocal('parked',()=>{made++;assert.equal(x.service.getSnapshot().intent,'paused');return local();},42,{initialIntent:'paused',isCurrent:()=>true});
+  let s=x.service.getSnapshot();assert.equal(s.intent,'paused');assert.equal(s.pendingSeek?.positionSeconds,42);
+  const session=s.session,run=s.playbackRun;
+  x.service.ready(s.intentId);assert.equal(x.service.seekApplied(s.intentId,s.pendingSeek!.revision,42,'paused'),true);
+  assert.ok(states.length>0);assert.ok(states.every(intent=>intent==='paused'),'no transient playing intent was published for the new source');
+  x.service.resume();s=x.service.getSnapshot();assert.equal(s.intent,'playing');assert.equal(s.session,session);assert.equal(s.playbackRun,run);
+  assert.equal(made,1);assert.equal(x.remoteCreates(),0);
+ }finally{off();x.service.leave();}
+});
+
+test('paused initial intent is not a sticky preference: local Retry preserves the actual latest intent',async()=>{
+ const x=setup();let made=0;
+ try{
+  await x.service.playLocal('parked',()=>{if(++made===1)throw Error('controlled missing local file');return local('local:parked:'+made);},37,{initialIntent:'paused'});
+  assert.equal(x.service.getSnapshot().phase,'error');assert.equal(x.service.getSnapshot().intent,'paused');
+  await x.service.retry();let s=x.service.getSnapshot();assert.equal(s.intent,'paused');assert.equal(s.pendingSeek?.positionSeconds,37);
+  x.service.ready(s.intentId);x.service.seekApplied(s.intentId,s.pendingSeek!.revision,37,'paused');
+  x.service.resume();x.service.fail(s.intentId,'controlled decoder error');await x.service.retry();s=x.service.getSnapshot();
+  assert.equal(s.intent,'playing');assert.equal(s.pendingSeek?.positionSeconds,37);assert.equal(made,3);assert.equal(x.remoteCreates(),0);
+ }finally{x.service.leave();}
+});
+
+test('absent local initial intent stays playing and invalid values cannot replace a genuine source',async()=>{
+ const x=setup();try{
+  await x.service.playLocal('original',()=>local());assert.equal(x.service.getSnapshot().intent,'playing');
+  const before=x.service.getSnapshot();let made=0;
+  for(const value of ['invalid',null,1])await assert.rejects(Reflect.apply(x.service.playLocal,x.service,['foreign',()=>{made++;return local('foreign');},0,{initialIntent:value}]),/invalid_local_start_intent/);
+  assert.equal(x.service.getSnapshot(),before);assert.equal(made,0);
+  await x.service.playLocal('with-context',()=>local('local:context:2'),0,{isCurrent:()=>true});assert.equal(x.service.getSnapshot().intent,'playing');
+ }finally{x.service.leave();}
+});
