@@ -93,7 +93,7 @@ async function main() {
       try { json = JSON.parse(body); } catch { /* an empty body still means accepted */ }
       registrationId = json.registrationId || json.id || json.registration?.id || '';
       assert(registrationId, `the registration response carried no id: ${body.slice(0, 300)}`);
-      writeProtected({registrationId, username, contactAddress, origin, createdAt: new Date().toISOString(),
+      writeProtected({registrationId, username, password, contactAddress, origin, createdAt: new Date().toISOString(),
         note: 'Security writes the real mail code here as {"code":"..."}; nothing else belongs in this file'});
       return {detail: `registration ${registrationId.slice(0, 8)}… accepted (HTTP ${response.status()}); id written to the protected file`,
         evidence: {registrationFile}};
@@ -132,7 +132,12 @@ async function main() {
       // Change the display name in the drawn control and prove it persisted.
       const rename = process.env.SMOKE_RENAME_TO || `${displayName} B`;
       let renamed = 'name control not exercised';
-      const nameField = await findAny(page, [{css: 'input[autocomplete=name]'}, {role: 'textbox', name: /name/i}]);
+      const nameField = await findAny(page, [{css: 'input[autocomplete=name]'}, {role: 'textbox', name: /name/i}], {timeout: 3000});
+      if (!nameField) {
+        const shot = await evidence.shot(page, 'hosted-manage');
+        throw blocked(`the account screen draws no display-name field; text was: ${text.replace(/\n/g, ' ').slice(0, 220)}`,
+          {screenshot: shot});
+      }
       if (nameField) {
         await nameField.fill(rename, {timeout: 8000}).catch(() => {});
         await clickAny(page, [{role: 'button', name: /^Save/}, {css: 'button[type=submit]'}], {label: 'Save name'}).catch(() => {});
@@ -161,6 +166,7 @@ async function main() {
       await settle(page, {quiet: 1500});
       const state = await surfaceState(page);
       assert(!/\/sign-in/.test(state.url), `sign-in did not leave the form (at ${state.url}): ${state.textHead.slice(0, 140)}`);
+      assert(!/\/v3\/signin/.test(state.url), `sign-in bounced to the identity provider at ${new URL(state.url).pathname} instead of opening the account; the just-verified account could not sign in`);
       return {detail: `signed in through the browser form; now at ${new URL(state.url).pathname}`,
         evidence: {screenshot: await evidence.shot(page, 'hosted-signed-in')}};
     });
