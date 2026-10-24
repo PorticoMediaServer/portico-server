@@ -5,6 +5,7 @@ import {LibraryInventoryService, type InventorySource} from '@core/library-inven
 import {Button, RichSelect, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays/Dialog';
 import {Menu} from '../../../kit/overlays/Popover';
+import {FolderPicker} from './FolderPicker';
 import {folderRows, folderIntervalOptions} from './model';
 import styles from './libraries.module.css';
 
@@ -21,6 +22,7 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
   const service = useMemo(() => new LibraryInventoryService({api, scope, libraryId}), [api, scope, libraryId]);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [menu, setMenu] = useState<string>(), [editing, setEditing] = useState<InventorySource>(), [removing, setRemoving] = useState<InventorySource>(), [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false), [adding, setAdding] = useState<string>();
   useEffect(() => { void service.refresh().catch(onError); return () => service.dispose(); }, [service, onError]);
   const run = async (command: () => Promise<boolean>) => {
     if (!isCurrent()) return;
@@ -30,9 +32,11 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
   if (!snapshot.config) return <p role="status" className={styles.formNote}>{t(snapshot.loading ? 'next.settings.loading' : 'next.settings.folderFailed')}</p>;
   const config = snapshot.config, rows = folderRows(config.sources);
   const source = (id: string) => config.sources.find(value => value.id === id);
-  if (!rows.length) return <p className={styles.formNote}>{t('next.settings.libraries.noFolders')}</p>;
   return <>
-    <ul className={styles.folders} aria-label={t('next.settingsSpec.server.libraries.panels.library.tabs.1.title')}>
+    <div className={styles.listHeader}>
+      <Button variant="primary" size="small" icon="i-plus" onClick={() => setPicking(true)}>{t('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}</Button>
+    </div>
+    {rows.length ? <ul className={styles.folders} aria-label={t('next.settingsSpec.server.libraries.panels.library.tabs.1.title')}>
       {rows.map(row => <li key={row.id} className={styles.folder} data-folder-row={row.id}>
         <span className={styles.folderName}>{row.name}</span>
         <small className={styles.folderPath}>{row.path}</small>
@@ -50,7 +54,10 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
           ]} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('next.settings.actions')} disabled={busy} />} />
         </span>
       </li>)}
-    </ul>
+    </ul> : <p className={styles.formNote}>{t('next.settings.libraries.noFolders')}</p>}
+    <FolderPicker open={picking} onOpenChange={setPicking} api={api} onChoose={path => { setPicking(false); setAdding(path); }} />
+    <FolderEditor open={!!adding} onOpenChange={open => { if (!open) setAdding(undefined); }} initialPath={adding}
+      busy={busy} onSave={edit => { void run(() => service.saveSource(undefined, {...edit, expectedRevision: config.revision, acceptReplacement: false})); setAdding(undefined); }} />
     <FolderEditor open={!!editing} onOpenChange={open => { if (!open) setEditing(undefined); }} source={editing}
       busy={busy} onSave={edit => { if (!editing) return;
         void run(() => service.saveSource(editing.id, {...edit, expectedRevision: config.revision, acceptReplacement: false})); setEditing(undefined); }} />
@@ -66,17 +73,20 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
 
 /** One existing folder's editable facts: its name, its path, and how often the
  * server checks it for changes. The location is read-only here. */
-function FolderEditor({open, onOpenChange, source, busy, onSave}: Readonly<{
-  open: boolean; onOpenChange: (open: boolean) => void; source?: InventorySource; busy: boolean;
+function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: Readonly<{
+  open: boolean; onOpenChange: (open: boolean) => void; source?: InventorySource; initialPath?: string; busy: boolean;
   onSave: (edit: Readonly<{name: string; path: string; classification: 'local' | 'network'; followSymlinks: boolean; intervalSeconds: number}>) => void;
 }>) {
   const [name, setName] = useState(''), [path, setPath] = useState(''), [interval, setInterval] = useState('0');
-  useEffect(() => { if (!source) return; setName(source.name); setPath(source.path); setInterval(String(source.intervalSeconds)); }, [source]);
+  useEffect(() => {
+    if (source) { setName(source.name); setPath(source.path); setInterval(String(source.intervalSeconds)); return; }
+    if (initialPath) { const parts = initialPath.split('/').filter(Boolean); setName(parts[parts.length - 1] ?? ''); setPath(initialPath); setInterval('0'); }
+  }, [source, initialPath]);
   return <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t('next.settings.libraries.editFolder')}
     footer={<><Button onClick={() => onOpenChange(false)}>{t('next.settings.cancel')}</Button>
-      <Button variant="primary" loading={busy} disabled={!source || !name.trim() || !path.trim()} onClick={() => {
-        if (source) onSave({name: name.trim(), path: path.trim(), classification: source.classification,
-          followSymlinks: source.followSymlinks, intervalSeconds: Number(interval) || 0});
+      <Button variant="primary" loading={busy} disabled={!name.trim() || !path.trim()} onClick={() => {
+        onSave({name: name.trim(), path: path.trim(), classification: source?.classification ?? 'local',
+          followSymlinks: source?.followSymlinks ?? false, intervalSeconds: Number(interval) || 0});
       }}>{t('next.settings.libraries.saveFolder')}</Button></>}>
     <div className={styles.form}>
       <TextField label={label('1.rows.1.label')} value={name} onChange={event => setName(event.currentTarget.value)} />
