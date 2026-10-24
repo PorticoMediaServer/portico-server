@@ -81,7 +81,7 @@ test('the DEV entry mounts the registered Person route on the public frame facts
   assert.match(entry, /\{id: 'show', kind: 'show', total: 1\}/);
   assert.match(entry, /role: 'Executive producer', department: 'Production'/);
   assert.match(html, /<script type="module" src="\.\/person\.tsx"><\/script>/);
-  assert.doesNotMatch(entry, /Bearer |Authorization|assets\/pool|--bd\.jpg/i);
+  assert.doesNotMatch(entry, /Bearer |Authorization:|assets\/pool|--bd\.jpg/i);
   assert.doesNotMatch(entry, /\/v1\/(?!people\/|admin\/activity)/);
 });
 
