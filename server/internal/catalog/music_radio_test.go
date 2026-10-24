@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -67,6 +68,12 @@ func TestMusicRadioGenreFallbackSpansLibrariesWithoutHiddenSeedFacets(t *testing
 	private := c.Song(album, 2, "/seed/jazz.flac", "Private jazz")
 	rock := c.Song(c.Album(c.Artist(otherLib, "Rock artist"), "Rock", 2026), 1, "/other/rock.flac", "Rock elsewhere")
 	jazz := c.Song(c.Album(c.Artist(otherLib, "Jazz artist"), "Jazz", 2026), 1, "/other/jazz.flac", "Jazz elsewhere")
+	// Fallback still requires genuine available inventory/source facts, but no
+	// embedding or inference result exists for any of these songs.
+	for _, item := range []catalogtest.Item{seed, private, rock, jazz} {
+		c.Exec(`UPDATE catalog_assets SET audio_codec='flac',duration=2 WHERE id=?`, item.Asset)
+		c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT ?,src.id,a.token,src.incarnation,a.path,'r','{}',a.size,a.modified_ns FROM catalog_assets a JOIN catalog_asset_links link ON link.asset_id=a.id JOIN catalog_entities item ON item.id=link.entity_id JOIN catalog_libraries library ON library.id=item.library_id JOIN library_sources src ON src.library_id=library.library_id WHERE a.id=? LIMIT 1`, fmt.Sprint(item.ID), item.Asset)
+	}
 	c.Genres(seed.ID, "local", "Rock")
 	c.Genres(private.ID, "local", "Jazz")
 	c.Genres(rock.ID, "local", "Rock")
