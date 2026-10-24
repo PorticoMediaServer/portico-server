@@ -578,7 +578,7 @@ func (s *Service) header(l *layout) QueueView {
 	start = max(0, min(start, len(l.segments)-HeaderSegments))
 	for _, g := range l.segments[start:min(len(l.segments), start+HeaderSegments)] {
 		kind := g.kind
-		if kind != "items" {
+		if kind != "items" && kind != "radio" {
 			kind = "selector"
 		}
 		v.Segments = append(v.Segments, SegmentView{ID: g.id, Kind: kind, Label: g.label, Count: g.live(), State: g.state, SourceRevision: g.sourceRevision})

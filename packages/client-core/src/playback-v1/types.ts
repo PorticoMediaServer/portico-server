@@ -215,7 +215,7 @@ export type Selector =
   | Readonly<{query: QueueBrowseSelector}>
   | Readonly<{saved: Readonly<{id: string}>}>
   | Readonly<{items: Readonly<{ids: readonly string[]}>}>;
-export type QueueSegment = Readonly<{id: string; kind: 'items' | 'selector' | 'other'; sourceRevision?: string; label: string; count: number; state: 'building' | 'ready' | 'failed' | 'other'}>;
+export type QueueSegment = Readonly<{id: string; kind: 'items' | 'selector' | 'radio' | 'other'; sourceRevision?: string; label: string; count: number; state: 'building' | 'ready' | 'failed' | 'other'}>;
 export type QueueHeader = Readonly<{
   id: string; revision: string; total: number; remainingCount?: number; totalDurationMs?: number; durationKnown?: boolean; current?: Readonly<{entryId: string; position: number}>;
   repeat: 'off' | 'one' | 'all'; shuffle?: Readonly<{seed: string; lap: number}>; segments: readonly QueueSegment[];
@@ -254,7 +254,7 @@ export function parseQueue(v: unknown): QueueHeader {
     current: obj(v.current) ? Object.freeze({entryId: id(v.current.entryId, 'current entry'), position: num(v.current.position)}) : undefined,
     repeat: oneOf(v.repeat, ['off', 'one', 'all'] as const, 'off'),
     shuffle: obj(v.shuffle) ? Object.freeze({seed: str(v.shuffle.seed), lap: num(v.shuffle.lap)}) : undefined,
-    segments: Object.freeze(arr(v.segments).filter(obj).map(s => Object.freeze({id: id(s.id, 'segment id'), kind: oneOf(s.kind, ['items', 'selector'] as const, 'other' as never), ...(typeof s.sourceRevision === 'string' ? {sourceRevision: s.sourceRevision} : {}), label: str(s.label), count: num(s.count), state: oneOf(s.state, ['building', 'ready', 'failed'] as const, 'other' as never)}))),
+    segments: Object.freeze(arr(v.segments).filter(obj).map(s => Object.freeze({id: id(s.id, 'segment id'), kind: oneOf(s.kind, ['items', 'selector', 'radio'] as const, 'other' as never), ...(typeof s.sourceRevision === 'string' ? {sourceRevision: s.sourceRevision} : {}), label: str(s.label), count: num(s.count), state: oneOf(s.state, ['building', 'ready', 'failed'] as const, 'other' as never)}))),
     next: obj(v.next) ? Object.freeze({entryId: typeof v.next.entryId === 'string' ? id(v.next.entryId, 'next entry') : null, available: v.next.available === true, reason: oneOf(v.next.reason, ['ready', 'end', 'unavailable'] as const, 'end')}) : undefined,
     postPlay: obj(v.postPlay) ? Object.freeze({autoplay: v.postPlay.autoplay !== false, countdownSeconds: num(v.postPlay.countdownMs, 10000) / 1000, passoutCheckDue: v.postPlay.passoutCheckDue === true, automaticAdvances: num(v.postPlay.automaticAdvances), startDuringCredits: v.postPlay.startDuringCredits === true}) : undefined,
   });
