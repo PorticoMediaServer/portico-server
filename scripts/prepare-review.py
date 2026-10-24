@@ -35,6 +35,8 @@ def main():
     p.add_argument('--private-review', required=True, type=Path)
     p.add_argument('--smoke-output', required=True, type=Path)
     p.add_argument('--resume', action='store_true')
+    p.add_argument('--conversion-mode', choices=('all', 'sound', 'never'), default='never',
+                   help='explicit demo playback policy; campaign M0 uses all for its bounded transcode smoke')
     a = p.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', a.commit) or not re.fullmatch('review-[a-z0-9-]{1,64}', a.cycle):
         p.error('exact review cutoff and safe cycle required')
@@ -98,15 +100,15 @@ def main():
     document = call('GET', '/v1/admin/console/settings')['data']
     values = document['requested']
     changed = document
-    if values['conversionMode'] != 'never' or document['effective']['conversionMode'] != 'never':
-        values['conversionMode'] = 'never'
+    if values['conversionMode'] != a.conversion_mode or document['effective']['conversionMode'] != a.conversion_mode:
+        values['conversionMode'] = a.conversion_mode
         changed = call('PATCH', '/v1/admin/console/settings', {'expectedRevision': document['revision'], 'idempotencyKey': str(uuid.uuid4()), 'values': values})['data']
-    assert changed['requested']['conversionMode'] == changed['effective']['conversionMode'] == 'never'
-    state['conversionMode'] = 'never'
+    assert changed['requested']['conversionMode'] == changed['effective']['conversionMode'] == a.conversion_mode
+    state['conversionMode'] = a.conversion_mode
     system = call('GET', '/v1/system')
     assert not system['setupRequired'] and system['signIn'] == 'local'
     state['serverId'] = system['id']
-    print('Stage prepared: two profiles and effective conversionMode=never. Private notes unchanged.', flush=True)
+    print(f'Stage prepared: two profiles and effective conversionMode={a.conversion_mode}. Private notes unchanged.', flush=True)
     if input().strip() != 'publish-four-browser-passes':
         raise SystemExit('Private review publication cancelled; state preserved.')
     validate_smoke(a.smoke_output, a.commit)
