@@ -32,9 +32,12 @@ func TestSavedQueryEchoCarriesTheFilterAlone(t *testing.T) {
 	if _, e := db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES('p',?,45000,0,0,'playback')`, names["b"].ID); e != nil {
 		t.Fatal(e)
 	}
+	if _, e := db.Exec(`UPDATE personal_items SET favorite=1 WHERE profile_id='p' AND item_id=?`, names["c"].ID); e != nil {
+		t.Fatal(e)
+	}
 	libraries := []string{"m"}
 	for _, shape := range []string{"", "posters", "squares"} {
-		for _, filter := range []string{"all", "unwatched", "inProgress"} {
+		for _, filter := range []string{"all", "unwatched", "inProgress", "watched", "favorites"} {
 			page := savedQueryEchoPage(t, s, libraries, filter, shape, 40, "")
 			if page.Query.Category != filter {
 				t.Fatalf("shape %q filter %q echoed %q", shape, filter, page.Query.Category)
@@ -63,6 +66,25 @@ func TestSavedQueryEchoCarriesTheFilterAlone(t *testing.T) {
 	otherFilter.Cursor, otherFilter.Filter = first.Sections[0].NextCursor, "unwatched"
 	if _, e := s.Saved(otherFilter, libraries); !errors.Is(e, ErrCursor) {
 		t.Fatalf("filter change reused the cursor: %v", e)
+	}
+	otherFilter.Filter = "watched"
+	if _, e := s.Saved(otherFilter, libraries); !errors.Is(e, ErrCursor) {
+		t.Fatalf("watched change reused the cursor: %v", e)
+	}
+	// Watched and Favorites read the same profile's saved rows and the same
+	// visibility/shape base: a is watched, c is favorited, b is neither.
+	counts := map[string]int{}
+	for _, option := range savedQueryEchoPage(t, s, libraries, "all", "posters", 40, "").Filters[0].Options {
+		counts[option.ID] = option.Count
+	}
+	if counts["watched"] != 1 || counts["favorites"] != 1 || counts["unwatched"] != 2 || counts["inProgress"] != 1 {
+		t.Fatalf("published filter counts %v", counts)
+	}
+	for filter, want := range map[string]string{"watched": names["a"].Public, "favorites": names["c"].Public} {
+		page := savedQueryEchoPage(t, s, libraries, filter, "posters", 40, "")
+		if page.Sections[0].TotalCount != 1 || len(page.Sections[0].Entries) != 1 || page.Sections[0].Entries[0].ID != want {
+			t.Fatalf("%s filter %v", filter, page.Sections)
+		}
 	}
 	same := minted
 	same.Cursor = first.Sections[0].NextCursor

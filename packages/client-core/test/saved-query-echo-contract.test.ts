@@ -8,6 +8,7 @@ import {SavedService, type SavedRoute} from '../src/saved.ts';
 const scope = {serverId: 'server', viewerId: '["local","account","profile"]'};
 const filters = [{id: 'filter', labelKey: 'saved.filter', options: [
   {id: 'all', label: 'All', count: 1}, {id: 'unwatched', label: 'Unwatched', count: 1}, {id: 'inProgress', label: 'In progress', count: 1},
+  {id: 'watched', label: 'Watched', count: 1}, {id: 'favorites', label: 'Favorites', count: 1},
 ]}];
 function page(category: string) {
   return {
@@ -22,7 +23,7 @@ function page(category: string) {
       entries: [{id: 'movie', libraryId: 'library', kind: 'movie', title: 'Movie', available: true, playback: {itemId: 'movie'}}], totalCount: 1, nextCursor: ''}],
   };
 }
-type RouteShape = Readonly<{shape?: 'posters' | 'squares'; filter?: 'all' | 'unwatched' | 'inProgress'}>;
+type RouteShape = Readonly<{shape?: 'posters' | 'squares'; filter?: 'all' | 'unwatched' | 'inProgress' | 'watched' | 'favorites'}>;
 async function read(category: string, route: RouteShape) {
   let calls = 0;
   const service = new SavedService({scope, api: {request: async () => { calls++; return page(category); }},
@@ -35,7 +36,7 @@ async function read(category: string, route: RouteShape) {
 
 test('the published filter alone parses for every shape and filter', async () => {
   for (const shape of [undefined, 'posters', 'squares'] as const) {
-    for (const filter of ['all', 'unwatched', 'inProgress'] as const) {
+    for (const filter of ['all', 'unwatched', 'inProgress', 'watched', 'favorites'] as const) {
       const snapshot = await read(filter, {...(shape ? {shape} : {}), ...(filter === 'all' ? {} : {filter})});
       assert.equal(snapshot.phase, 'ready', `${shape ?? 'both'} ${filter}: ${snapshot.error?.code}`);
       assert.equal(snapshot.projection?.query.category, filter, `${shape ?? 'both'} ${filter}`);
