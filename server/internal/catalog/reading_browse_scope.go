@@ -22,6 +22,10 @@ type readingBrowseScope struct {
 	generation compactcatalog.ReadingGeneration
 }
 
+// ErrReadingProjectionChanged preserves the existing catalog stale cause while
+// the HTTP boundary uses the registered revision_mismatch refusal for Reading.
+var ErrReadingProjectionChanged = fmt.Errorf("%w: Reading projection changed", ErrStaleContinuation)
+
 func isReadingLibrary(kind string) bool { return kind == "book" || kind == "comic" }
 
 func readingBrowseField(field string) bool {
@@ -53,14 +57,14 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 	// Requiring a carried transaction prevents a ready check and its consumers
 	// from silently using different states. Mutation selectors carry a writer.
 	if dbwork.Snapshot(s.Context()) == nil && !dbwork.InWriteTx(s.Context()) {
-		return nil, ErrStaleContinuation
+		return nil, ErrReadingProjectionChanged
 	}
 	out := &readingBrowseScope{kind: lib.Kind}
 	err = s.read().QueryRow(`SELECT c.id,a.namespace,a.input_generation,a.ready_generation
  FROM catalog_libraries c JOIN reading_attribution_state a ON a.library_id=c.id
  WHERE c.library_id=? AND c.retired=0`, library).Scan(&out.library, &out.generation.Namespace, &out.generation.Input, &out.generation.Ready)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.generation.Ready == 0 || out.generation.Input != out.generation.Ready) {
-		return nil, ErrStaleContinuation
+		return nil, ErrReadingProjectionChanged
 	}
 	return out, err
 }

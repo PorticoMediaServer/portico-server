@@ -386,6 +386,9 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		return result, err
 	}
 	out, rows, err := s.browseSelect(request)
+	if errors.Is(err,ErrVisibilityBuilding)||errors.Is(err,ErrStaleContinuation) {
+		if lib,lookupErr:=s.library(request.Library);lookupErr==nil&&isReadingLibrary(lib.Kind) {return out,ErrReadingProjectionChanged}
+	}
 	if errors.Is(err, ErrVisibilityBuilding) {
 		out.Entries = []ContentEntry{}
 		return out, nil

@@ -23,6 +23,10 @@ import (
 // browseFailure answers a validation error with the offending path so a client
 // can attach the message to the control that produced it.
 func browseFailure(w http.ResponseWriter, e error) {
+	if errors.Is(e,catalog.ErrReadingProjectionChanged) {
+		policyError(w,"revision_mismatch")
+		return
+	}
 	var issue *catalog.BrowseValidationError
 	if errors.As(e, &issue) {
 		write(w, 400, map[string]any{"error": map[string]any{"code": "invalid_query", "message": issue.Message, "field": issue.Path, "retryable": false}})

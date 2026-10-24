@@ -176,8 +176,12 @@ func (s *Service) readingFacetPage(viewer Viewer, request FacetRequest, r *readi
 	if request.Sort != "" && request.Sort != "title" && request.Sort != "count" {
 		return out, browseIssue("sort", "Reading facets sort by title or count")
 	}
+	query:=browseAnd(request.Group,request.Query)
+	var err error
+	s,err=s.withBrowseInstant(query,"")
+	if err!=nil {return out,err}
 	c := &browseCompiler{reading: r, now: s.recommendationNow(s.browseInstant), profile: viewer.Profile, restrictions: viewer.EffectiveRestrictions()}
-	clause, err := c.compile(browseAnd(request.Group, request.Query))
+	clause, err := c.compile(query)
 	if err != nil {
 		return out, err
 	}
@@ -224,6 +228,6 @@ func (s *Service) readingFacetPage(viewer Viewer, request FacetRequest, r *readi
 	}
 	// No cached or sampled aggregate: all inputs and the selected window share
 	// this snapshot. Revision changes with the input/ready lifetime and viewer.
-	out.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:%d:%s:%s:%s:%s", request.Library, request.Field, revision.Catalog, revision.Viewer, r.fence(), viewer.Fence, RestrictionFence(viewer.EffectiveRestrictions()), queryFingerprint(request.Query)))))
+	out.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:%d:%s:%s:%s:%s", request.Library, request.Field, revision.Catalog, revision.Viewer, r.fence(), viewer.Fence, RestrictionFence(viewer.EffectiveRestrictions()), queryFingerprint(query)+s.relativeBrowseFence(query)))))
 	return out, nil
 }
