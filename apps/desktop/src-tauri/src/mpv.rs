@@ -545,6 +545,25 @@ mod wavpack_tests {
 mod local_source_tests {
     use super::*;
     #[test]
+    #[ignore="explicit native libmpv and owned default-subtitle fixture; no GUI or screenshot"]
+    fn unselected_default_embedded_subtitle_stays_off(){
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
+        let fixture=std::env::var_os("PORTICO_TEST_SUBTITLE_FIXTURE").expect("owned subtitle fixture required");
+        let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        engine.load_local(Path::new(&fixture),1,0.0,true).unwrap();
+        let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
+        loop {
+            let observed=engine.observation();assert_ne!(observed.state,"error");
+            if observed.position_ms>10.0{break}
+            assert!(std::time::Instant::now()<deadline,"owned default-track movie did not advance");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(engine.property("track-list/1/type").as_deref(),Some("sub"));
+        assert_eq!(engine.property("track-list/1/default").as_deref(),Some("yes"));
+        assert_eq!(engine.property("sid").as_deref(),Some("no"));
+        engine.retire().unwrap();
+    }
+    #[test]
     #[ignore="requires an explicit native libmpv library and owned PCM fixture"]
     fn constrained_local_source_plays_pcm_and_never_follows_network_playlist(){
         let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library path required");
