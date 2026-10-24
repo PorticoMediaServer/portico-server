@@ -99,7 +99,7 @@ const api: SavedApi = {
       const shape = url.searchParams.get('shape') === 'squares' ? 'squares' as const : 'posters' as const;
       return contentPage(view, shape, url.searchParams.get('sort') ?? 'title', url.searchParams.get('direction') ?? 'asc', url.searchParams.get('filter') ?? 'all') as unknown as T;
     }
-    if (url.pathname === '/v1/personal-history') return {nextCursor: '', viewerFence: 'r46-fence', revision: 1, entries: historyEntries} as unknown as T;
+    if (url.pathname === '/v1/personal-history') return {serverId: 'r46-saved', nextCursor: '', viewerFence: 'r46-fence', revision: 1, entries: historyEntries} as unknown as T;
     throw new Error(`Unexpected Saved fixture request: ${url.pathname}`);
   },
 };
