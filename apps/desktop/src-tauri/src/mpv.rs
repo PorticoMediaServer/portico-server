@@ -444,7 +444,15 @@ impl Mpv {
         // A load command changes the generation before mpv has retired the previous
         // file. Its time-pos/eof properties belong to that old file until FILE_LOADED.
         let current_file=self.loaded.load(Ordering::Acquire)&&!matches!(state,"idle"|"loading"|"error");
+        let output_ready=matches!(state,"playing"|"paused"|"buffering")&&current_file
+            &&self.restarted_generation.load(Ordering::Acquire)==generation
+            &&self.expected_entry.load(Ordering::Acquire)>0
+            &&self.started_entry.load(Ordering::Acquire)==self.expected_entry.load(Ordering::Acquire);
+        let observed_playback=if output_ready{
+            crate::boundary::RendererOutput::pcm(self.property("audio-out-params/format").as_deref(),self.number("audio-out-params/samplerate"),self.number("audio-out-params/channel-count"))
+        }else{crate::boundary::RendererOutput::default()};
         Observation{generation,state:state.into(),position_ms:if current_file{self.number("time-pos").unwrap_or(0.0).max(0.0)*1000.0}else{0.0},
+            observed_playback,
             rate:self.number("speed").unwrap_or(1.0),volume:self.number("volume").unwrap_or(100.0)/100.0,
             muted:self.flag("mute"),dropped_frames:self.number("frame-drop-count").unwrap_or(0.0) as u64,
             native_surface_active:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.surface_ready.load(Ordering::Acquire)&&self.geometry_ready.load(Ordering::Acquire)&&self.frame_drawn.load(Ordering::Acquire)==generation&&self.loaded.load(Ordering::Acquire)&&self.number("width").unwrap_or(0.0)>0.0,
@@ -588,6 +596,16 @@ mod local_source_tests {
         }
         assert!(advanced,"native PCM did not advance");
         assert_eq!(engine.audio_facts().source_rate,Some(48000));assert_eq!(engine.audio_facts().output_rate,Some(48000));
+        let ready=std::time::Instant::now()+std::time::Duration::from_secs(2);
+        loop {
+            let output=serde_json::to_value(engine.observation().observed_playback).unwrap();
+            if output["audio"]["sampleRate"]==48000 {
+                assert_eq!(output["audio"]["handling"],"pcm");assert_eq!(output["audio"]["channels"],2);
+                assert!(output["audio"].get("bitDepth").is_none());assert!(output["audio"].get("bitPerfect").is_none());break
+            }
+            assert!(std::time::Instant::now()<ready,"current native output was not observed");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         for gain in [f64::NAN,0.0,33.0]{assert_eq!(engine.execute(Command::Processing{generation:1,gain}),Err(Error::InvalidCommand));}
         engine.execute(Command::Processing{generation:1,gain:0.5}).unwrap();
         assert!(engine.property("af").unwrap().contains("@portico-leveling:"));
@@ -607,7 +625,7 @@ mod local_source_tests {
         let mut reloaded=false;
         while std::time::Instant::now()<until{
             let observation=engine.observation();
-            if observation.state=="loading"{assert_eq!(observation.position_ms,0.0);}
+            if observation.state=="loading"{assert_eq!(observation.position_ms,0.0);assert_eq!(serde_json::to_value(observation.observed_playback).unwrap(),serde_json::json!({}));}
             if observation.state=="playing"&&observation.position_ms>10.0{reloaded=true;break}
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
