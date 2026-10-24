@@ -29,12 +29,13 @@ import (
 type Authorization func(context.Context, *sql.Tx, identity.Principal, string, string) error
 type Visibility func(context.Context, *sql.Tx, identity.Principal, string) (string, []any, error)
 type Service struct {
-	DB        *sql.DB
-	Storage   *storage.Client
-	Mounts    *mounts.Service
-	Remote    *remotesources.Service
-	Authorize Authorization
-	Visible   Visibility
+	DB          *sql.DB
+	Storage     *storage.Client
+	Mounts      *mounts.Service
+	Remote      *remotesources.Service
+	Authorize   Authorization
+	Visible     Visibility
+	SeriesScope SeriesScopeResolver
 	// Changed queues metadata inventory for the actual captured folder source.
 	// It runs only outside source/DB locks, never as content-read authority.
 	Changed        func(library, folderSource string)
