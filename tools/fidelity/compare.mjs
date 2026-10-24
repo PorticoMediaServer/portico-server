@@ -28,7 +28,7 @@ function samePaint(a, b) {
 }
 
 /** Deterministic anchor -> role/text/order matching. Never widens policy to pass. */
-export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = {}) {
+export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = {}, {referenceSelf = false} = {}) {
   const differences = [], diagnostics = [], ambiguous = [], matches = [], used = new Set(), itemMatches = new Map();
   const unavailable = (screen, node, property) => screen.unavailable?.some(fact => fact.element === node?.id && fact.property === property);
   const cascadeRoots = {reference: [], actual: []};
@@ -51,7 +51,9 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   const expected = reference.elements.filter(node => significant(node) && !exclude.has(node.frame) && !within(node.id, cascadeRoots.reference));
   const observed = actual.elements.filter(node => significant(node) && !actualContentOnly.includes(node.frame) && !within(node.id, cascadeRoots.actual));
   const actualLogical = usesLogicalCoordinates(actual);
-  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
+  const referenceSelfCanvas = referenceSelf && reference.measurement?.sourceRole === 'reference-frame' && actual.measurement?.sourceRole === 'reference-frame' &&
+    JSON.stringify(reference.referencePresentation) === JSON.stringify(actual.referencePresentation) && JSON.stringify(reference.viewport) === JSON.stringify(actual.viewport);
+  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport && !referenceSelfCanvas || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
     differences.push({kind: 'screen-state', label: 'Complete same-size measured logical screen', expected: reference.root, actual: actual.root});
   for (const [side, screen] of [['reference', reference], ['actual', actual]]) for (const fact of screen.unavailable ?? []) differences.push({kind: 'unavailable-measurement', label: `${side} ${fact.element ?? 'screen'}`, property: fact.property, reason: fact.reason});
   if (focus && !actual.elements.some(node => unavailable(actual, node, 'focused'))) {

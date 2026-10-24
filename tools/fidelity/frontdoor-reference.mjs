@@ -1,7 +1,7 @@
 /** Reference-only selectors. Never import into an application or native payload. */
 export const frontdoorReferences = {
   phone: {
-    selector: '.frame[data-f="39"] > .screen > .col:nth-of-type(1) > .phone',
+    selector: '.frame[data-f="39"] > .screen > .col:nth-of-type(1) .phone',
     windowViewport: {width: 1440, height: 1010, deviceScaleFactor: 1},
     viewport: {width: 390, height: 844, deviceScaleFactor: 1},
     anchors: {'primary-action': '.btn.play'},
