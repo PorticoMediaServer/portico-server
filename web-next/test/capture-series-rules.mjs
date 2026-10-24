@@ -3,7 +3,7 @@ import {spawn} from 'node:child_process';
 import {readFile, writeFile, symlink, unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {checkSeriesRules} from '../test/live-series-rules.browser.mjs';
+import {checkSeriesRules} from './live-series-rules.browser.mjs';
 const output = process.env.PORTICO_RUNNER_OUTPUT, reference = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
 if (!output || !reference || !process.env.PORTICO_BROWSER_MODULE) throw new Error('Run on the external runner with --browser and the exact design secondary source.');
 const {chromium} = await import(pathToFileURL(process.env.PORTICO_BROWSER_MODULE));
