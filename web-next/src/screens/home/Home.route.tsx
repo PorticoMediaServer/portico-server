@@ -6,13 +6,13 @@ import {useScreenAppearance} from '../browse/screen-preferences';
 import {isReadingLibrary} from '../browse/reading-library';
 import {HomeScreen} from './Home';
 import {createReadingContinueBindings, type ReadingContinueBindings} from './reading-continue';
-import {useMusicMixes} from '../browse/music-mixes-owner';
+import {useMusicMixes} from '../browse/music-mixes-hook';
 
 function HomeRouteScreen() {
   const captured = useProtectedWebScreenContext();
   const appearance = useScreenAppearance(captured?.context);
   const context = captured?.context, supported = !!context?.facts.identity.libraries.some(library => isReadingLibrary(library.kind));
-  const musicMixes = useMusicMixes(context, !!context?.facts.identity.libraries.some(library => library.kind === 'music'));
+  const musicMixes = useMusicMixes(captured, !!context?.facts.identity.libraries.some(library => library.kind === 'music'));
   const [reading, setReading] = useState<Readonly<{context: NonNullable<typeof context>; binding: ReadingContinueBindings}>>();
   useEffect(() => {
     if (!context || !supported) return;

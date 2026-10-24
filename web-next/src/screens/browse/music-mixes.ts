@@ -108,7 +108,7 @@ export function createMusicMixesController(options: Options) {
       } catch (error) {if (await stale(error, command.isCurrent)) return undefined;throw error;}
       finally {command.finish();if (playing === command.controller) playing = undefined;}
     },
-    save(row: MusicMixRow, caller: MusicMixLifetime): Promise<PostMusicMixesIdPlaylistResponse | undefined> {
+    async save(row: MusicMixRow, caller: MusicMixLifetime): Promise<PostMusicMixesIdPlaylistResponse | undefined> {
       // A second caller never inherits the first caller's navigation lease.
       if (saves.has(row)) return Promise.reject(cancelled());
       const command = capture(row, caller);

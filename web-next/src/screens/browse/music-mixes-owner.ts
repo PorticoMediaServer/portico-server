@@ -1,4 +1,3 @@
-import {useEffect, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {randomId} from '@core/random-id.ts';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
@@ -35,14 +34,4 @@ export function retainMusicMixes(context: ShellAssemblyContext) {
     active = false;
     if (--owner.leases === 0) {if (owners.get(context) === owner) owners.delete(context);owner.dispose();}
   }});
-}
-
-export function useMusicMixes(context: ShellAssemblyContext | undefined, enabled: boolean) {
-  const [value, setValue] = useState<Readonly<{context: ShellAssemblyContext; source: MusicMixesController}>>();
-  useEffect(() => {
-    if (!context || !enabled) return;
-    const lease = retainMusicMixes(context);setValue({context, source: lease.source});
-    return lease.release;
-  }, [context, enabled]);
-  return enabled && value?.context === context ? value?.source : undefined;
 }

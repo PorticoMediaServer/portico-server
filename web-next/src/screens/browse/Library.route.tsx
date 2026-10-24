@@ -17,7 +17,7 @@ import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
 import {BrowseController} from './controller';
 import {createLibraryPlaySelection} from './play-selection';
-import {useMusicMixes} from './music-mixes-owner';
+import {useMusicMixes} from './music-mixes-hook';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
 import {LibraryDiscoveryScreen} from './Discovery';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
@@ -46,7 +46,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   const tabs = libraryTabs(library.kind), requested = tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
-  const musicMixes = useMusicMixes(captured.context, library.kind === 'music' && view === 'discover');
+  const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
   const browse = !!pivot && !search.entityId && !search.category && !search.q && view !== 'discover';
   const sourceKey = JSON.stringify({libraryId: library.id, pivot: pivot ?? '', predicates: search.query ? [search.query] : undefined,

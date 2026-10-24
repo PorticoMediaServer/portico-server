@@ -4,6 +4,7 @@ import {defaultI18n} from '../../packages/i18n/src/index.ts';
 import {routePath} from '../../packages/contracts/src/index.ts';
 import {createMusicMixesController} from '../src/screens/browse/music-mixes.ts';
 import {retainMusicMixes} from '../src/screens/browse/music-mixes-owner.ts';
+import {bindMusicMixes} from '../src/screens/browse/music-mixes-binding.ts';
 import type {ShellAssemblyContext} from '../src/shell/bootstrap';
 import type {QueueHeader} from '@core/playback-v1/types.ts';
 
@@ -150,4 +151,33 @@ test('generated count/art validation and mismatched receipts remain closed; deni
         if (invalid === 'denied') assert.equal(f.source.getSnapshot().phase, 'retired');}
     } finally {f.source.dispose();}
   }
+});
+
+test('a view binding retires only its own command and subscription while the shared profile source remains usable', async () => {
+  const held = deferred<QueueHeader>(), f = setup(), navigation = new AbortController();
+  let observed: {signal?: AbortSignal; isCurrent?: () => boolean} | undefined, notices = 0;
+  const runtime = {cataloguePlayback: () => ({playSegments: async (_segments: unknown, options?: {signal?: AbortSignal; isCurrent?: () => boolean}) => {observed = options;return held.promise;}})};
+  const binding = bindMusicMixes(f.source, {signal: navigation.signal, isCurrent: () => true}, () => runtime);
+  try {
+    await binding.load();const row = binding.getSnapshot().rows[0];assert.equal(binding.canPlay(row), true);
+    const off = binding.subscribe(() => notices++), playing = binding.play(row);assert.equal(observed?.isCurrent?.(), true);
+    navigation.abort();assert.equal(observed?.signal?.aborted, true);assert.equal(observed?.isCurrent?.(), false);
+    assert.equal(binding.getSnapshot().phase, 'retired');assert.equal(f.source.getSnapshot().phase, 'ready');
+    const before = notices;f.source.relabel();await f.source.load();assert.equal(notices, before, 'retired view subscription is detached');
+    held.resolve(queue);await assert.rejects(playing, {name: 'AbortError'});off();
+  } finally {held.resolve(queue);binding.dispose();f.source.dispose();}
+});
+
+test('a late same-runtime replacement invalidates only the original Play; an absent executor is genuinely unavailable', async () => {
+  const held = deferred<QueueHeader>(), f = setup(), life = new AbortController();let observed: {isCurrent?: () => boolean} | undefined;
+  const first = {cataloguePlayback: () => ({playSegments: async (_segments: unknown, options?: {isCurrent?: () => boolean}) => {observed = options;return held.promise;}})};
+  let runtime: typeof first | undefined;
+  const binding = bindMusicMixes(f.source, {signal: life.signal, isCurrent: () => true}, () => runtime);
+  try {
+    await binding.load();const row = binding.getSnapshot().rows[0];assert.equal(binding.canPlay(row), false);
+    await assert.rejects(binding.play(row), {code: 'music_mix_playback_unavailable'});assert.equal(f.calls.length, 1);
+    runtime = first;const playing = binding.play(row);assert.equal(observed?.isCurrent?.(), true);
+    runtime = {cataloguePlayback: first.cataloguePlayback};assert.equal(observed?.isCurrent?.(), false);
+    held.resolve(queue);await assert.rejects(playing, {name: 'AbortError'});
+  } finally {held.resolve(queue);binding.dispose();f.source.dispose();}
 });

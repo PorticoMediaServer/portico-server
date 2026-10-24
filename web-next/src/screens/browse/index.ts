@@ -17,3 +17,4 @@ export type {DiscoveryBindings} from './Discovery';
 export {createLibraryPlaySelection, type LibraryPlayRow, type LibraryPlaySelection, type LibraryPlaySelectionOptions, type LibraryPlaySelectionSnapshot} from './play-selection';
 export {createReadingContinueBindings, type ReadingContinueBindings} from '../home/reading-continue';
 export {createMusicMixesController, type MusicMixesController, type MusicMixesSnapshot, type MusicMixRow, type MusicMixLifetime} from './music-mixes';
+export {bindMusicMixes, type MusicMixesBinding} from './music-mixes-binding';
