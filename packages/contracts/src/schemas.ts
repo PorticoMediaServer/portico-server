@@ -70601,6 +70601,11 @@ export const schemas = {
             "properties": {
               "audio": {
                 "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "channels": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -70615,8 +70620,19 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "layout": {
+                    "type": "string"
+                  },
                   "objectAudio": {
                     "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "streamIndex": {
                     "maximum": 9007199254740991,
@@ -70627,6 +70643,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -70746,13 +70765,25 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
                   "codec": {
+                    "type": "string"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
                     "type": "string"
                   },
                   "dolbyVisionCompatibility": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
                   },
                   "dolbyVisionLevel": {
                     "maximum": 9007199254740991,
@@ -70764,11 +70795,30 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
                   "dynamicRange": {
                     "type": "string"
                   },
                   "frameRate": {
                     "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
                   },
                   "height": {
                     "maximum": 9007199254740991,
@@ -70782,6 +70832,12 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
                   },
                   "outputRange": {
                     "type": "string"
@@ -109005,6 +109061,16 @@ export const schemas = {
   },
   "GetMetadataSettingsResponse": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -109087,6 +109153,7 @@ export const schemas = {
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
+      "artworkMaxEdge",
       "tmdbCredentialConfigured",
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
@@ -185089,6 +185156,16 @@ export const schemas = {
   },
   "PutMetadataSettingsRequest": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -185127,6 +185204,16 @@ export const schemas = {
   },
   "PutMetadataSettingsResponse": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -185209,6 +185296,7 @@ export const schemas = {
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
+      "artworkMaxEdge",
       "tmdbCredentialConfigured",
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
