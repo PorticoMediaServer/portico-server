@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 const origin=process.env.PORTICO_REVIEW_ORIGIN,commit=process.env.PORTICO_REVIEW_COMMIT;
+const {privacy,safePath}=await import('file://'+process.env.PORTICO_RUNNER_SECONDARY_SOURCE+'/scripts/review-smoke-privacy.mjs');
+const privateValues=[];
 const {chromium}=await import(process.env.TMPDIR+'/browser/node_modules/playwright/index.mjs');
 let browser,page,step='launch',credentialPhase=false;const consoleEvents=[],requests=[],responses=[];const pendingResponses=[];const out=process.env.PORTICO_RUNNER_OUTPUT;const failures=[];const authFacts={profileSelectionPOSTOccurred:false,me:[],refresh:[]};const pendingAuth=[];const safeRole=value=>['account','owner','admin','member'].includes(value)?value:'unobserved';
 try {
  browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
- const context=await browser.newContext({viewport:{width:1440,height:900}});page=await context.newPage();page.setDefaultTimeout(30000);page.on('console',m=>{if(!credentialPhase)consoleEvents.push({type:m.type(),text:m.text().slice(0,3000)});});page.on('request',r=>{const u=new URL(r.url());requests.push({method:r.method(),origin:u.origin,path:u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,':id'),type:r.resourceType()});});
- page.on('response',r=>{if(!credentialPhase && ['document','script'].includes(r.request().resourceType()))pendingResponses.push((async()=>{const u=new URL(r.url());const body=await r.body();responses.push({origin:u.origin,path:u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,':id'),status:r.status(),contentType:r.headers()['content-type'],sha256:createHash('sha256').update(body).digest('hex')});})().catch(()=>{}));if(r.status()>=400){const u=new URL(r.url());if(u.origin===origin)failures.push({path:u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,':id'),status:r.status()});}});
+ const context=await browser.newContext({viewport:{width:1440,height:900}});page=await context.newPage();page.setDefaultTimeout(30000);if(!Object.values(await page.evaluate(privacy,{kind:'fixture'})).every(Boolean))throw Error('diagnostic-redaction');page.on('console',m=>{if(!credentialPhase)consoleEvents.push({type:m.type(),text:m.text().slice(0,3000)});});page.on('request',r=>{const u=new URL(r.url());requests.push({method:r.method(),origin:u.origin,path:safePath(u.pathname),type:r.resourceType()});});
+ page.on('response',r=>{if(!credentialPhase && ['document','script'].includes(r.request().resourceType()))pendingResponses.push((async()=>{const u=new URL(r.url());const body=await r.body();responses.push({origin:u.origin,path:safePath(u.pathname),status:r.status(),contentType:r.headers()['content-type'],sha256:createHash('sha256').update(body).digest('hex')});})().catch(()=>{}));if(r.status()>=400){const u=new URL(r.url());if(u.origin===origin)failures.push({path:safePath(u.pathname),status:r.status()});}});
  page.on('request',request=>{
   const path=new URL(request.url()).pathname;
   if(request.method()==='POST'&&(/^\/v1\/direct\/profiles\/.+\/select$/.test(path)||path==='/v1/direct/profile-switch'))authFacts.profileSelectionPOSTOccurred=true;
@@ -27,7 +29,7 @@ try {
  await page.reload({waitUntil:'networkidle'});await page.locator('input[name="password"]').waitFor();
  await page.screenshot({path:out+'/sign-in.png'});console.log('PASS /sign-in document and reload');console.log(JSON.stringify({event:'/sign-in document and reload',utc:new Date().toISOString(),origin,commit}));console.log('PRIVATE_STDIN_READY');
  let input='';for await(const chunk of process.stdin){input+=chunk;if(input.includes('\n'))break;}
- const credentials=JSON.parse(input);input='';credentialPhase=true;
+ const credentials=JSON.parse(input);input='';credentialPhase=true;privateValues.push(credentials.username,credentials.password);
  step='owner-sign-in';await page.locator('input[name="username"]').fill(credentials.username);await page.locator('input[name="password"]').fill(credentials.password);credentials.password='';
  await page.locator('form button[type="submit"]').click();
  await page.waitForFunction(()=>location.pathname==='/' || location.pathname==='/profiles');
@@ -48,9 +50,9 @@ finally {
  if(page){
   try {
    await page.locator('input').evaluateAll(nodes=>nodes.forEach(node=>{node.value='';node.removeAttribute('value');}));
-   const document=await page.evaluate(()=>{const clone=document.documentElement.cloneNode(true);clone.querySelectorAll('input,textarea').forEach(node=>{node.removeAttribute('value');node.textContent='';});return clone.outerHTML;});
+   const document=await page.evaluate(privacy,{kind:'dom',privateValues});
    fs.writeFileSync(out+'/failure-dom.log',document);
-   await Promise.allSettled([...pendingResponses,...pendingAuth]);const cookies=await browser.contexts()[0].cookies();authFacts.cookies={present:cookies.length>0,flags:cookies.map(c=>({secure:c.secure,httpOnly:c.httpOnly,sameSite:c.sameSite}))};console.log(JSON.stringify({diagnosis:{authFacts,responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+new URL(page.url()).pathname,title:await page.title(),console:consoleEvents,requests,failures}}));try{await page.screenshot({path:out+'/final-page.png',timeout:5000});}catch{console.log('Diagnostic screenshot unavailable; DOM and console retained.');}
+   await Promise.allSettled([...pendingResponses,...pendingAuth]);const cookies=await browser.contexts()[0].cookies();authFacts.cookies={present:cookies.length>0,flags:cookies.map(c=>({secure:c.secure,httpOnly:c.httpOnly,sameSite:c.sameSite}))};console.log(JSON.stringify({diagnosis:{authFacts,responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+safePath(new URL(page.url()).pathname),title:await page.title(),console:consoleEvents.map(event=>({...event,text:privacy({kind:'text',value:event.text,privateValues})})),requests,failures}}));try{await page.screenshot({path:out+'/final-page.png',timeout:5000});}catch{console.log('Diagnostic screenshot unavailable; DOM and console retained.');}
   }catch{console.log('Diagnostic page unavailable after browser failure');}
  }
  if(browser)await browser.close();
