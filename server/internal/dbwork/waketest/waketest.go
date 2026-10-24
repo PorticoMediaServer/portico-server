@@ -4,6 +4,7 @@ package waketest
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -37,7 +38,15 @@ func Inputs(t *testing.T, subscribe func(*worker.Signal) func(), relevant ...str
 	defer stop()
 	write := func(name string) {
 		t.Helper()
-		if _, err := dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive, `UPDATE `+name+` SET value=value+1`); err != nil {
+		if err := dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+			statement, err := tx.Prepare(`UPDATE ` + name + ` SET value=value+1`)
+			if err != nil {
+				return err
+			}
+			defer statement.Close()
+			_, err = statement.Exec()
+			return err
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
