@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
@@ -130,6 +131,12 @@ func TestReadingBrowseCursorBindsUnboundedSortAndRejectsInputDrift(t *testing.T)
 	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 1, Cursor: page.PageInfo.NextCursor}); err != nil {
 		t.Fatal(err)
 	}
+	signed,err:=s.readSignedBrowseCursor(page.PageInfo.NextCursor)
+	if err!=nil {t.Fatal(err)}
+	signed.Expires=time.Now().Add(-time.Second).Unix()
+	expired,err:=s.encodeCursor(signed)
+	if err!=nil {t.Fatal(err)}
+	if _,err=s.BrowseEntities(viewer,BrowseRequest{Library:"reading",Limit:1,Cursor:expired});!errors.Is(err,ErrStaleContinuation) {t.Fatalf("expired Reading cursor renewed: %v",err)}
 	c.Exec(`UPDATE metadata_owner_fields SET value='Changed Series' WHERE entity_id=? AND field='series'`, items[0].ID)
 	if _, err = s.Facets(viewer, FacetRequest{Library: "reading", Field: "series"}); !errors.Is(err, ErrStaleContinuation) {
 		t.Fatalf("unready facets returned facts: %v", err)
