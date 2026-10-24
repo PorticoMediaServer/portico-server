@@ -15,8 +15,10 @@ export async function readRange(source: ReaderSource, range: ReaderRange, signal
     throw new ReaderError('invalid_source');
   if (endExclusive - start > MAX_READER_RANGE_BYTES) throw new ReaderError('limit_exceeded');
   if (!source.read) throw new ReaderError('invalid_source');
+  const id = source.id, revision = source.revision, size = source.size;
   const bytes = await source.read(range, signal);
   throwIfAborted(signal);
+  if (source.id !== id || source.revision !== revision || source.size !== size) throw new ReaderError('invalid_source');
   if (!(bytes instanceof Uint8Array) || bytes.byteLength !== endExclusive - start) throw new ReaderError('invalid_source');
   return bytes;
 }
