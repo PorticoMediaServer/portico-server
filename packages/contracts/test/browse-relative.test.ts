@@ -7,7 +7,7 @@ import {schemas} from '../src/schemas.ts';
 // Use the actual generated browse node schema in the production runtime.
 const nodeSchema = (schemas as any).BrowseLibraryResponse.properties.applied.properties.query;
 async function decoder() {
- const template=readFileSync(new URL('../../../apikit/templates/runtime.ts.txt',import.meta.url),'utf8');
+ const template=readFileSync(new URL('../src/runtime.ts',import.meta.url),'utf8');
  const source=template.replace("import { schemas } from './schemas.ts';",`const schemas = ${JSON.stringify({BrowseNode:nodeSchema})};`);
  return await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source)).toString('base64'));
 }

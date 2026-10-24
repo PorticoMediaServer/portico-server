@@ -118,7 +118,7 @@ func TestBrowseRelativeFreshCountsFacetsAndSnapshotPages(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	across := AcrossRequest{Pivot: "movies", Query: browseAnd(&BrowseNode{Field: "watchlisted", Operator: "equals", Value: true}, query), Limit: 1}
+	across := AcrossRequest{Pivot: "titles", Query: browseAnd(&BrowseNode{Field: "watchlisted", Operator: "equals", Value: true}, query), Limit: 1}
 	acrossFirst, e := s.BrowseAcross(viewer, across)
 	if e != nil {
 		t.Fatal(e)
