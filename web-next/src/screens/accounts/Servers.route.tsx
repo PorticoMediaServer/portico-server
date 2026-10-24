@@ -7,8 +7,8 @@ import {router} from '../../router';
 import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platform/account-entry';
 import {browserAccount} from '../../platform/account';
 import {browserAccountOrigin} from '../../platform/account-origin';
-import {servicesAccount, accountIdentity} from '../../services/session';
-import {workspaceApi} from '../../services/workspace-api';
+import {createAccountServerDirectory} from '../../platform/account-server-directory';
+import {accountIdentity} from '../../platform/account-work';
 import {browserAppSessions, observeBrowserSessionChanges} from '../../platform/server-connections';
 import {browserAppSessionActions, signOutBrowserPorticoAccount} from '../../platform/app-sessions';
 import {browserServerDisplay} from '../../platform/server-display';
@@ -36,10 +36,11 @@ export type MobileChooserRow = Readonly<{
   selected: boolean;
   status?: Readonly<{kind: 'online'}> | Readonly<{kind: 'seen'; at: string}> | Readonly<{kind: 'never'}>;
   owner?: boolean;
+  administrator?: boolean;
 }>;
 /** The directory facts the chooser can display; the account service owns their truth. */
 export type DirectoryFacts = Readonly<{
-  id: string; name: string; status: string;
+  id: string; name: string; status: string; role: string;
   presence: Readonly<{lastSeenAt: string | null}>;
   ownedByMe: boolean;
 }>;
@@ -52,7 +53,7 @@ export function mobileChooserRows(choices: readonly SavedServerChoice[], directo
     if (!item) return choice;
     const status: NonNullable<MobileChooserRow['status']> = item.status === 'active' ? {kind: 'online'}
       : item.presence.lastSeenAt ? {kind: 'seen', at: item.presence.lastSeenAt} : {kind: 'never'};
-    return {...choice, label: item.name.trim() || choice.label, status, ...(item.ownedByMe ? {owner: true} : {})};
+    return {...choice, label: item.name.trim() || choice.label, status, ...(item.ownedByMe ? {owner: true} : item.role === 'admin' ? {administrator: true} : {})};
   });
 }
 export type MobileChooserAttempt =
@@ -166,7 +167,8 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
             disabled={busy} onClick={() => onChoose(row)}>
             <span className={styles.rowIcon} data-online={status?.online || undefined}><Icon name="i-server" size={18} /></span>
             <span className={styles.rowText}>{row.label}{status && <small data-online={status.online || undefined}>{status.text}</small>}</span>
-            {row.owner && <span className={styles.owner}>{t('web.hostedAccount.serverOwner')}</span>}
+            {row.owner ? <span className={styles.owner}>{t('web.hostedAccount.serverOwner')}</span>
+              : row.administrator ? <span className={styles.owner}>{t('web.access.roleAdmin')}</span> : null}
             <Icon name="i-right" size={18} />
           </button>;
         })}
@@ -230,14 +232,14 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
     if (!accountId || !familyId) return;
     const controller = new AbortController();
     let active = true;
-    const account = servicesAccount();
+    const account = browserAccount();
     void (async () => {
       try {
         await account.service.synchronize();
         const session = await account.service.accessSession();
         if (!active) return;
         const scope = accountIdentity(session);
-        const list = await workspaceApi(account, scope).servers(controller.signal);
+        const list = await createAccountServerDirectory(account, scope).read(controller.signal);
         if (!active || controller.signal.aborted) return;
         const current = account.service.getSnapshot().session;
         if (!current || current.account.id !== scope.accountId || current.familyId !== scope.familyId) return;

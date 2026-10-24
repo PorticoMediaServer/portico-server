@@ -97,20 +97,20 @@ test('opening, loading and list-failed are real transient states, not a second f
 test('genuine account-directory facts supply the drawn presence and owner; status/ownership unknowns grant nothing', () => {
   const choices = [{id: 'a', label: 'Saved A', signIn: 'portico', selected: false}, {id: 'b', label: 'Saved B', signIn: 'portico', selected: false}, {id: 'c', label: 'Saved C', signIn: 'local', selected: false}] as const;
   const listed = mobileChooserRows(choices, [
-    {id: 'a', name: 'Portico demo', status: 'active', presence: {lastSeenAt: null}, ownedByMe: true},
-    {id: 'b', name: 'The cottage', status: 'quiet', presence: {lastSeenAt: seenAt}, ownedByMe: false},
-    {id: 'c', name: 'Lake house', status: 'dormant', presence: {lastSeenAt: null}, ownedByMe: false},
+    {id: 'a', name: 'Portico demo', status: 'active', role: 'owner', presence: {lastSeenAt: null}, ownedByMe: true},
+    {id: 'b', name: 'The cottage', status: 'quiet', role: 'member', presence: {lastSeenAt: seenAt}, ownedByMe: false},
+    {id: 'c', name: 'Lake house', status: 'dormant', role: 'admin', presence: {lastSeenAt: null}, ownedByMe: false},
   ] as const);
   assert.deepEqual(listed[0], {...choices[0], label: 'Portico demo', status: {kind: 'online'}, owner: true});
   assert.deepEqual(listed[1], {...choices[1], label: 'The cottage', status: {kind: 'seen', at: seenAt}});
-  assert.deepEqual(listed[2], {...choices[2], label: 'Lake house', status: {kind: 'never'}});
-  assert.equal(listed[1]!.owner, undefined); assert.equal(listed[2]!.owner, undefined);
+  assert.deepEqual(listed[2], {...choices[2], label: 'Lake house', status: {kind: 'never'}, administrator: true});
+  assert.equal(listed[1]!.owner, undefined); assert.equal(listed[2]!.owner, undefined); assert.equal(listed[1]!.administrator, undefined);
 });
 
 test('a saved server absent from the account directory keeps only its saved facts', () => {
   const choices = [{id: 'x', label: 'Studio', signIn: 'local', selected: false}] as const;
   assert.deepEqual(mobileChooserRows(choices, []), choices);
-  assert.deepEqual(mobileChooserRows(choices, [{id: 'y', name: 'Elsewhere', status: 'active', presence: {lastSeenAt: null}, ownedByMe: true}]), choices);
+  assert.deepEqual(mobileChooserRows(choices, [{id: 'y', name: 'Elsewhere', status: 'active', role: 'owner', presence: {lastSeenAt: null}, ownedByMe: true}]), choices);
 });
 
 test('a cancelled attempt cannot let its late settle clear a successor or leave the chooser locked', () => {
@@ -138,4 +138,10 @@ test('the waiting countdown holds hidden, re-arms a positive countdown on visibi
   assert.deepEqual(waitingStep({...waiting, seconds: 0}, 'visibility', true), {kind: 'retry'});
   assert.deepEqual(waitingStep(undefined, 'visibility', true), {kind: 'hold'});
   assert.deepEqual(waitingStep({kind: 'unreachable', row: rows[2]!}, 'visibility', true), {kind: 'hold'});
+});
+
+test('an admin directory fact renders the drawn badge with the Administrator catalogue word', () => {
+  const html = render({rows: [{id: 'admin-server', label: 'Studio', signIn: 'portico', selected: false, administrator: true}], onDifferentAccount: undefined});
+  assert.match(html, /Administrator/);
+  assert.doesNotMatch(html, /Owner|Signed in with a local account/);
 });
