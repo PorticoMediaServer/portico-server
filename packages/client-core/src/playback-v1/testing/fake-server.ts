@@ -408,7 +408,7 @@ export class FakePlaybackServer {
     // Automatic quality is a place on the ladder: a step moves from where the session is.
     const asked = body.quality as {mode?: string; id?: string; step?: string} | undefined;
     if (asked?.mode === 'automatic') {
-      const ladder: readonly string[] = ['', ...qualityLadder.map(rung => rung.id)], here = (s.quality as {mode?: string; id?: string} | undefined);
+      const ladder = ['', ...qualityLadder.map(rung => rung.id)], here = (s.quality as {mode?: string; id?: string} | undefined);
       const at = Math.max(0, ladder.indexOf(here?.mode === 'automatic' ? here.id ?? '' : ''));
       const next = asked.step === 'down' ? Math.min(ladder.length - 1, at + 1) : asked.step === 'up' ? Math.max(0, at - 1) : asked.id ? Math.max(0, ladder.indexOf(asked.id)) : at;
       body = {...body, quality: {mode: 'automatic', ...(ladder[next] ? {id: ladder[next]} : {})}};
