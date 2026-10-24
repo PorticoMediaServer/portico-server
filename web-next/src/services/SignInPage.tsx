@@ -46,7 +46,7 @@ export function RegisteredSignInPage({account, pending}: {account: ServicesAccou
       const current = account.service.getSnapshot().session;
       if (gesture && current) act(signal => continueHostedSignIn(account, pending, accountIdentity(current), hostedSignInStore(), signal, value => location.assign(value)));
     }} />;
-  return <ServicesAuthStage><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesLead>{lead}</ServicesLead>
+  return <ServicesAuthStage><ServicesHeading singleLine>{t('auth.welcomeHome')}</ServicesHeading><ServicesLead>{lead}</ServicesLead>
     <HostedError error={error} /><ServicesSignedInAccount username={session.account.username} disabled={busy}
       onDifferent={() => act(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />
     <ServicesActions><Button variant="primary" loading={busy} disabled={busy} onClick={() => act(signal =>
