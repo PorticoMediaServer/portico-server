@@ -1,6 +1,7 @@
 import {createRoot} from 'react-dom/client';
 import {IconSprite} from '../../src/kit/Icon';
 import {SetupScreen} from '../../src/screens/setup/SetupScreen';
+import {HostedSetupApproval} from '../../src/screens/setup/HostedSetupApproval';
 import type {SetupPorts, SetupServer} from '../../src/screens/setup/setup-flow';
 import '../../src/kit/tokens.css';
 import '../../src/kit/fonts.css';
@@ -15,7 +16,7 @@ const now = Date.now();
 const session = {accessToken: 'specimen', expiresAt: new Date(now + 3_600_000).toISOString(),
   authorizationHorizon: new Date(now + 7_200_000).toISOString(), sessionFamilyId: 'specimen-family', tokenGeneration: '1',
   viewer: {accountId: 'owner-account', profileId: 'main-profile', serverId: 'server-1', authority: 'local', role: 'owner'}};
-const frame = new URLSearchParams(location.search).get('frame');
+const params = new URLSearchParams(location.search), frame = params.get('frame'), approval = params.get('approval');
 const server: SetupServer = {
   server: {id: 'server-1', name: 'Portico demo', version: '1', signIn: 'local', move: null, setupRequired: true, hostedConfigured: false, hostedAttached: false},
   api: {getRouteConnection: () => ({pin: {serverId: 'server-1'}}), request: async (path: string) => {
@@ -36,4 +37,8 @@ const ports: SetupPorts = {
   complete: () => {},
   hostname: () => '192.168.1.20',
 };
-createRoot(document.getElementById('root')!).render(<><IconSprite /><SetupScreen ports={ports}/></>);
+createRoot(document.getElementById('root')!).render(<><IconSprite />{approval
+  ? <HostedSetupApproval serverName="Portico demo" address="192.168.1.20:32500" accountName="Demo" requestedAt="Just now"
+      approved={approval === 'approved'} error={approval === 'error' ? Object.assign(new Error('expired'), {code: 'claim_stale', status: 409}) : undefined}
+      onApprove={() => {}} onDeny={() => {}} onReturn={() => {}}/>
+  : <SetupScreen ports={ports}/>}</>);

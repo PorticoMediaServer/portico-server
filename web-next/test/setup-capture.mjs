@@ -42,7 +42,7 @@ try {
   const page = await browser.newPage({viewport: {width: 1440, height: 860}, deviceScaleFactor: 1});
   const capture = async (name, viewport, id, prepare) => {
     await page.setViewportSize(viewport);
-    await page.goto(`${origin}/dev/setup/setup.html${id === '3' ? '?frame=3' : ''}`, {waitUntil: 'networkidle'});
+    await page.goto(`${origin}/dev/setup/setup.html${id === '3' ? '?frame=3' : id === '2b' || id === '2c' ? `?approval=${id === '2c' ? 'approved' : 'pending'}` : ''}`, {waitUntil: 'networkidle'});
     if (prepare) await prepare();
     await page.evaluate(async () => {await document.fonts.ready; await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));});
     await page.mouse.move(1, 1); await page.evaluate(() => document.activeElement?.blur());
@@ -65,6 +65,8 @@ try {
     await page.getByLabel('Username', {exact: true}).waitFor();
   });
   await capture('setup-3', {width: 1440, height: 1120}, '3');
+  await capture('setup-2b', {width: 1440, height: 986}, '2b');
+  await capture('setup-2c', {width: 1440, height: 860}, '2c');
   await (await import('node:fs/promises')).writeFile(join(output, 'setup-capture.json'), JSON.stringify(shots, null, 2));
   console.log(JSON.stringify(shots.map(shot => shot.name)));
 } finally {
