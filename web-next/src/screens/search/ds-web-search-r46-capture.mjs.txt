@@ -24,7 +24,7 @@ try {
   const end = source.indexOf('<p class="cap"><b>Results, two letters in.</b>');
   const frame = source.slice(start, end);
   const sprite = source.match(/<svg width="0" height="0" style="position:absolute">[\s\S]*?<\/svg>/)[0];
-  const referenceHtml = `<!doctype html><html><head><meta charset="utf-8"><base href="/design/"><link rel="stylesheet" href="${viteOrigin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;padding:0;background:#071018}</style></head><body>${sprite}${frame}</body></html>`;
+  const referenceHtml = `<!doctype html><html><head><meta charset="utf-8"><base href="/design/"><link rel="stylesheet" href="${viteOrigin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;padding:0;background:#071018}</style></head><body class="p">${sprite}${frame}</body></html>`;
   const designRoot = join(design, 'design/ui-v1');
   reference = createHttpServer(async (request, response) => {
     try {

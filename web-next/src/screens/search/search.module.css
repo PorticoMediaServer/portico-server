@@ -70,7 +70,8 @@
 
 .recent,.single,.partial { width: 100%; }
 
-.recent > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.recent > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.recent > div > button { color: var(--color-text-secondary); font-weight: var(--type-body-strong-weight); }
 .recent[data-compact] header { margin-bottom: 8px; }
 .recent[data-compact] header h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-row-heading-weight); }
 .recent > .recentList { display: block; overflow: hidden; border-radius: 14px; background: var(--color-raised); }

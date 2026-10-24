@@ -99,8 +99,8 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpen
     onClear={() => {
       void binding.clearRecent().then(() => {if (context.isCurrent()) {setRecent([]);setClearFailed(false);}}, () => {if (context.isCurrent()) setClearFailed(true);});
     }}/>;
-  const videoKinds = new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format([
-    t('web.libraryKind.plural', {kind: 'movie'}), t('web.libraryKind.plural', {kind: 'tv'}), t('web.libraryKind.plural', {kind: 'anime'})]);
+  const videoKindLabels = [t('web.libraryKind.plural', {kind: 'movie'}), t('web.libraryKind.plural', {kind: 'tv'}), t('web.libraryKind.plural', {kind: 'anime'})];
+  const videoKinds = videoKindLabels.length > 1 ? `${videoKindLabels.slice(0, -1).join(', ')} and ${videoKindLabels.at(-1)}` : videoKindLabels[0]!;
   const liveSourceCount = new Set(onNow.cards.map(card => card.channel.sourceId)).size;
   const beforeTyping = <div className={styles.empty}>
     {recentBlock}
