@@ -41,6 +41,12 @@ export type LibraryBindings = Readonly<{
   scopeLibraries?: readonly Library[];
   shape?: 'poster' | 'square' | 'collection';
   onSaveView?: () => void;
+  /** A surface that names its own sort on the bar (a row's order reads "Best match"). */
+  sortLabel?: string;
+  /** The quick filters this surface draws; absent draws every one the server offers. */
+  quickIds?: readonly string[];
+  /** Names the scope chips from the viewer's own library list rather than the kind's generic name. */
+  scopeLabel?: (kind: string) => string;
   canSaveView: boolean;
   showSaveView?: boolean;
   artwork: ShellArtwork;
@@ -101,9 +107,10 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
       onQuickChange={(id, checked) => {const quick = [...model.quick, ...model.filterQuick].find(quick => quick.id === id);if (quick) setPredicates(checked ? [...state.predicates, quick.query] : state.predicates.filter(node => JSON.stringify(node) !== JSON.stringify(quick.query)));}}
       onFilters={() => setFiltersOpen(true)} filtersOpen={filtersOpen} onSortChange={sort}
       onReshuffle={() => sort({...model.sort, seed: crypto.getRandomValues(new Uint32Array(1))[0]})}
+      sortLabel={bindings.sortLabel} quickIds={bindings.quickIds}
       view={views.includes('grid') && views.includes('list') ? {value: view, onValueChange: view => bindings.onAppearanceChange({view})} : undefined}
       cardSize={!compact && view === 'grid' ? {value: appearance.cardSize, options: (['small', 'medium', 'large'] as const).map(value => ({value, label: t(`next.browse.${value}`)})), onValueChange: value => {if (value === 'small' || value === 'medium' || value === 'large') bindings.onAppearanceChange({cardSize: value});}} : undefined}
-      actions={<BrowseScopeChips controller={controller} libraries={bindings.scopeLibraries} reportError={reportError}/>} save={bindings.showSaveView === false || !bindings.onSaveView ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
+      actions={<BrowseScopeChips controller={controller} libraries={bindings.scopeLibraries} reportError={reportError} labelFor={bindings.scopeLabel}/>} save={bindings.showSaveView === false || !bindings.onSaveView ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
       onRemoveFilter={id => setPredicates(state.predicates.filter(node => node !== model.applied[Number(id)]))} onClearFilters={() => setPredicates([])} selection={selection.toolbar}/>
     <BrowseResults controller={controller} label={library.name} view={view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
       reducedMotion={bindings.preferences?.reducedMotion ?? bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}

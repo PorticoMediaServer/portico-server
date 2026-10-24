@@ -1,11 +1,13 @@
 import type {BrowserAccountEntry} from '../../platform/account-entry';
 import type {CapturedPorticoReturn} from '../../platform/portico-return-dispatch';
+import type {MoveCodeLink} from '@core/account-move.ts';
 
-type Entry = Pick<BrowserAccountEntry, 'finishPorticoReturn' | 'loadProfiles' | 'getSnapshot' | 'inspect'>;
+type Entry = Pick<BrowserAccountEntry, 'finishPorticoReturn' | 'inspectMoveLink' | 'loadProfiles' | 'getSnapshot' | 'inspect'>;
 /** Startup scrubbed this original callback. Only Entry's protected controller
  * may choose its KIND, verify it and admit its family. */
 export async function initializeAccountSignIn(entry: Entry, ports: Readonly<{
   takeReturn?: () => CapturedPorticoReturn | undefined;
+  takeMove?: () => MoveCodeLink | undefined;
   selectedOrigin: () => Promise<string | undefined>;
   pageOrigin: string;
   isCurrent: () => boolean;
@@ -14,6 +16,11 @@ export async function initializeAccountSignIn(entry: Entry, ports: Readonly<{
   if (!ports.isCurrent()) return;
   const captured = ports.takeReturn?.();
   if (captured) {await entry.finishPorticoReturn(captured); return;}
+  const move = ports.takeMove?.();
+  if (move) {
+    if (ports.isCurrent()) await entry.inspectMoveLink(ports.pageOrigin, move);
+    return;
+  }
   const savedOrigin = await ports.selectedOrigin();
   if (!ports.isCurrent()) return;
   if (savedOrigin) {

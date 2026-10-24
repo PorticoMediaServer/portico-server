@@ -18,7 +18,7 @@ func TestMusicCueVirtualTracksR29(t *testing.T) {
 		token = v
 		return e
 	})
-	f := assets.Facts{AudioCodec: "flac", Container: "flac", Duration: 120, MusicCueTracks: []assets.Chapter{{Title: "One", Start: 0, End: 60}, {Title: "Two", Start: 60, End: 120}}, Streams: []assets.Stream{{Type: "audio", Codec: "flac", Channels: 6, Detail: assets.StreamDetail{SampleRate: 96000, BitDepth: 24}}}}
+	f := assets.Facts{AudioCodec: "flac", Container: "flac", Duration: 120, MusicCueTracks: []assets.Chapter{{Title: "One", Start: 0, End: 60}, {Title: "Two", Start: 60, End: 120}}, Streams: []assets.Stream{{Type: "audio", Codec: "flac", Channels: 6, Detail: assets.StreamDetail{SampleRate: 96000, BitsPerSample: 24}}}}
 	assets.CopyEmbeddedAudioTags(&f, map[string]string{"title": "Disc", "album": "Album", "artist": "Artist"})
 	commit := func(f assets.Facts) {
 		t.Helper()

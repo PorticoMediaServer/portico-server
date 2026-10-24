@@ -162,6 +162,22 @@
 .field[data-variant="code"] .error {margin-top: 9px; color: var(--color-record);}
 .field[data-variant="code"][data-invalid] .inputShell {box-shadow: inset 0 0 0 1.5px var(--color-record);}
 
+/* The account panel's field (connect.html frame 46c): the server page's own panel, not the full-page
+   auth stage, so it keeps the auth paint at the panel's size — 46px control, 15.5px text, 13px label. */
+.field[data-variant="account-panel"] .inputShell {height: 46px; border-radius: 11px; padding: 0 14px; background: color-mix(in srgb, var(--color-ink) 62%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);}
+.field[data-variant="account-panel"] .input {font-size: 15.5px; caret-color: var(--color-accent-strong);}
+.field[data-variant="account-panel"] .fieldLabel {font-size: 13px; margin-bottom: 6px;}
+.field[data-variant="account-panel"] .inputTrailing {gap: 6px; font-size: 13px;}
+.field[data-variant="account-panel"] .inputTrailing svg {width: 18px; height: 18px;}
+/* The name already filled in carries the existing accent tint (data-filled on the input). */
+.field[data-variant="account-panel"]:has(.input[data-filled]) .inputShell {background: rgba(64,159,212,.13);}
+
+/* The same panel's code field (frame 46b, and 46d for its refusal): taller, larger and tighter-tracked
+   than the full-page code box, with the panel's own 13px label. Its evidence stays the ordinary danger rule. */
+.field[data-variant="account-panel-code"] .inputShell {height: 58px; border-radius: 12px; padding: 0 16px; background: color-mix(in srgb, var(--color-ink) 62%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);}
+.field[data-variant="account-panel-code"] .input {font-size: 25px; font-weight: 800; letter-spacing: .08em; font-variant-numeric: tabular-nums; caret-color: var(--color-accent-strong);}
+.field[data-variant="account-panel-code"] .fieldLabel {font-size: 13px; margin-bottom: 6px;}
+
 .select {height: 40px; min-width: 176px; max-width: 100%; padding: 0 12px 0 16px; border-radius: 10px; background: var(--color-raised-bright); display: inline-flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 15px; font-weight: 700; transition: background 160ms var(--ease-out);}
 .select > span:last-child {display: flex; align-items: center; color: var(--color-text-tertiary); flex: none;}
 .selectValue {min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left;}

@@ -1,6 +1,6 @@
 import {playbackIdentity, type CardSubject, type PlaybackSubject, type TimeEnvironment} from '@core/presentation/kit-model/index.ts';
 import type {ActivitySummarySession, ActivitySummarySnapshot, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
-import {jobName, jobStateName, scanStepName} from '@core/server-admin/console-catalogue.ts';
+import {jobName, scanStepName} from '@core/server-admin/console-catalogue.ts';
 import {heightText} from '@core/presentation/kit-model/technical.ts';
 import {defaultI18n} from '@i18n';
 import type {ActivityPanelView} from '../kit/shell';
@@ -45,8 +45,14 @@ export function activityView(document: OwnerActivitySummary, time: TimeEnvironme
     }),
     scans: document.scans.map(scan => ({id: scan.libraryId, title: scan.libraryName, detail: scanStepName(t, defaultI18n.has, scan.phase), current: scan.current,
       icon: 'i-refresh', processed: scan.analyzed, discovered: scan.discovered, total: scan.total, onOpen: () => actions.onDashboard('activity')})),
-    tasks: document.tasks.items.map(task => ({id: task.id, title: jobName(t, defaultI18n.has, task.kind), detail: jobStateName(t, defaultI18n.has, task.state),
-      current: task.libraryName, icon: 'i-act', processed: task.processed, total: task.total, onOpen: () => actions.onDashboard('activity')})),
+    // The drawn row is the task, then the library it works on, then the count of what is done:
+    // real totals only, in the Dashboard's own words, because the two surfaces never disagree.
+    tasks: document.tasks.items.map(task => ({id: task.id, title: jobName(t, defaultI18n.has, task.kind), detail: task.libraryName,
+      icon: task.kind === 'trickplay' ? 'i-image' : 'i-server', processed: task.processed, total: task.total,
+      progressText: task.processed !== undefined && task.total !== undefined
+        ? t(task.unit === 'episodes' ? 'next.dashboard.taskProgressEpisodes' : task.unit === 'files' ? 'next.dashboard.taskProgressFiles' : 'next.dashboard.taskProgress', {done: task.processed, total: task.total})
+        : undefined,
+      onOpen: () => actions.onDashboard('activity')})),
     update: {...document.update, onOpen: actions.openUpdate},
     ...(document.lastScanFinishedAt ? {lastScan: defaultI18n.relativeTime(document.lastScanFinishedAt, Date.parse(document.observedAt))} : {}),
     phase: 'ready', onRetry: actions.onRetry, onDashboard: actions.onDashboard,

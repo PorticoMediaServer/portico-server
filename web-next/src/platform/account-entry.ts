@@ -1,14 +1,14 @@
-import {HttpLocalApi, type LocalSession} from '@core/index.ts';
+import {HttpLocalApi, type HostedServer, type LocalSession} from '@core/index.ts';
 import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
 import {directSignIn, directSignInContinuation, shouldRetireAccountSession, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
-import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
+import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, connectHostedServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {assertFirstContactIdentity, RouteError, sameServerPin, type ServerPin} from '@core/route-identity.ts';
 import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
-import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-servers.ts';
+import {acceptPorticoInvitation, porticoSignIn, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, ownerResetSecurity, finishOwnerResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
-import {MemberAccountMoveClient, type MoveCodePreview} from '@core/account-move.ts';
+import {MemberAccountMoveClient, type MoveCodePreview, type MoveCodeLink} from '@core/account-move.ts';
 import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
 import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
@@ -22,12 +22,14 @@ import {createBrowserRegisteredSignIn, type BrowserRegisteredSignIn} from './reg
 import {dispatchPorticoReturn, type CapturedPorticoReturn} from './portico-return-dispatch';
 import {createBrowserOwnerClaim, type BrowserOwnerClaim} from './owner-claim';
 import {buildHostedSignInStartURL} from '@core/hosted-sign-in-start.ts';
+import type {AccountServerAccess} from './account-server-access';
 
 type RegisteredController=Pick<BrowserRegisteredSignIn,'prepare'|'finish'|'completeChallenge'|'cancel'>;
 type RegisteredCompletion=Awaited<ReturnType<RegisteredController['finish']>>;
 type OwnerReturnController=Pick<BrowserOwnerClaim,'pendingReturn'|'finish'|'cancel'>;
 type AdmittedCompletion=Readonly<{api:HttpLocalApi;result:Extract<DirectSignIn,{kind:'signed-in'}>}>;
 export type OwnerResetDetails=Readonly<{username:string;twoStepEnabled:boolean}>;
+export type HostedDirectoryServer=Readonly<Pick<HostedServer,'id'|'name'|'publicKey'|'policyRevision'|'baseUrl'|'routes'>>;
 type OwnerResetCapture=Readonly<{source:HttpLocalApi;api:HttpLocalApi;grant:Extract<DirectSignIn,{kind:'signed-in'}>;pin:ServerPin;revision:number}>;
 
 export type AccountEntryState = Readonly<{
@@ -43,6 +45,7 @@ type EntryPorts = Readonly<{
  restore:typeof restoreBrowserConnection;
  inspect:typeof inspectDirectServer; connect:typeof connectPairedServer; remember:typeof rememberNativeSession;
  connectPortico?:typeof connectPairedPorticoServer;
+ connectHosted?:typeof connectHostedServer; signInHosted?:typeof porticoSignIn;
  retire?:(api:HttpLocalApi,session:LocalSession)=>Promise<void>;
  temporary?:(source:HttpLocalApi,session:LocalSession)=>HttpLocalApi;
  invitationDestination?:'adopt'|'server-origin';
@@ -64,6 +67,9 @@ export class BrowserAccountEntry {
  private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
  private ownerReset?:OwnerResetCapture;private ownerResetTimer?:ReturnType<typeof setTimeout>;
  private moveProof?:Readonly<{code:string;revision:number;preview:MoveCodePreview}>;
+ private moveTicket?:Readonly<{ticket:string;revision:number;expiresAt:string}>;
+ private hostedChallenge?:Readonly<{account:AccountServerAccess;hosted:NonNullable<RememberedServer['hosted']>}>;
+ private offHostedChallenge?:()=>void;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
  getSnapshot=()=>this.state;
@@ -74,8 +80,9 @@ export class BrowserAccountEntry {
  private stopAuthorityWatch(){const off=this.offSelection;this.offSelection=undefined;try{off?.();}catch{ /* Retirement must still clear the captured authority. */ }}
  private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
  private release(){
+  this.clearHostedChallenge();
   this.stopAuthorityWatch();const api=this.api,registered=this.registered,ownerReturn=this.ownerReturn,reset=this.takeOwnerReset(),hadAuthority=!!this.session||!!this.challenge||!!registered||!!ownerReturn||!!reset;
-  this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;this.registered=undefined;this.registeredChallenge=undefined;this.ownerReturn=undefined;
+  this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;this.moveTicket=undefined;this.registered=undefined;this.registeredChallenge=undefined;this.ownerReturn=undefined;
   if(ownerReturn)void ownerReturn.cancel().catch(()=>{});
   if(registered)void registered.cancel().catch(()=>{});
   if(hadAuthority)this.retired();
@@ -115,6 +122,56 @@ export class BrowserAccountEntry {
  }
  cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.invitationCode=undefined;this.joinedAccountId=undefined;this.joinedUsername=undefined;this.publish({phase:'welcome'});}
  address(){this.cancel();this.publish({phase:'address'});}
+ private clearHostedChallenge(){const off=this.offHostedChallenge;this.hostedChallenge=undefined;this.offHostedChallenge=undefined;off?.();}
+ private watchHostedChallenge(account:AccountServerAccess,hosted:NonNullable<RememberedServer['hosted']>){
+  this.clearHostedChallenge();const capture=this.hostedChallenge={account,hosted};
+  const off=account.observe?.(()=>{if(this.hostedChallenge===capture&&!account.isCurrent())this.cancel();});
+  if(this.hostedChallenge===capture)this.offHostedChallenge=off;else off?.();
+  if(!account.isCurrent())this.cancel();
+ }
+ /** A directory fact is only a hint until Hosted-signed routes and the Server's
+  * private key prove this exact identity. The Server still decides membership. */
+ async openHostedServer(input:HostedDirectoryServer,source:AccountServerAccess):Promise<boolean>{
+  const account:AccountServerAccess=Object.freeze({origin:source.origin,accountId:source.accountId,request:source.request.bind(source),isCurrent:source.isCurrent.bind(source),...(source.observe?{observe:source.observe.bind(source)}:{})});
+  const server:HostedServer=Object.freeze({id:input.id,name:input.name,publicKey:input.publicKey,policyRevision:input.policyRevision,baseUrl:input.baseUrl,...(input.routes?{routes:structuredClone(input.routes)}:{})});
+  this.cancel();const op=this.operation();this.publish({phase:'checking',busy:true});
+  const guard={...op,current:()=>op.current()&&account.isCurrent()};
+  let connected:Awaited<ReturnType<typeof connectHostedServer>>|undefined;
+  try{
+   if(!guard.current())throw new CodedError('cancelled','The Portico Account changed.');
+   const revision=(await this.ports.store.read()).revision;if(!guard.current())return false;
+   const request:HostedRequestApi['request']=async<T,>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{
+    if(!guard.current())throw new CodedError('cancelled','The Portico Account changed.');
+    const result=await account.request<T>(path,method,body,signal);
+    if(!guard.current())throw new CodedError('cancelled','The Portico Account changed.');return result;
+   };
+   connected=await(this.ports.connectHosted??connectHostedServer)(server,{origin:account.origin,accountId:account.accountId,request:(path,signal)=>request(path,'GET',undefined,signal)},this.ports.environment(server.id),op.signal);
+   if(!guard.current())return false;
+   const api=connected.api,pin=connected.connection.pin,origin=api.baseUrl;
+   const verified=parseServerSignIn(await api.request(routePath('get_system'),'GET',undefined,op.signal));
+   if(!guard.current())return false;
+   if(pin.serverId!==server.id||pin.publicKey!==server.publicKey||connected.hosted.origin!==account.origin||connected.hosted.accountId!==account.accountId||verified.id!==server.id||verified.signIn!=='portico'||verified.setupRequired)throw new RouteError('identity_mismatch','The server identity or sign-in changed.');
+   const saved=await this.ports.store.read();if(!guard.current())return false;
+   if(saved.revision!==revision)throw new CodedError('cancelled','The server selection changed.');
+   assertFirstContactIdentity(origin,pin,{linkId:server.id,knownRoutes:knownServerRoutes(saved)});
+   this.api=api;this.ports.rememberName?.(api,verified.name);
+   this.publish({phase:'portico',busy:true,server:verified,origin,pin});
+   if(!guard.current())return false;
+   const result=await(this.ports.signInHosted??porticoSignIn)({request},account.origin,{request:(path,method,body,signal)=>{
+    if(!guard.current())throw new CodedError('cancelled','The Portico Account changed.');
+    return api.request(path,method,body,signal);
+   }},server.id,{kind:'interactive',signal:op.signal});
+   if(!guard.current()||result.kind==='signed-in'&&result.snapshot.account.hostedAccountId!==account.accountId){
+    if(result.kind==='signed-in')await this.retire(api,result.session);
+    if(op.current())throw new CodedError('cancelled','The Portico Account changed.');return false;
+   }
+   if(result.kind==='challenge')this.watchHostedChallenge(account,connected.hosted);
+   if(!guard.current())return false;
+   await this.accept(result,api,revision,guard,connected.hosted);
+   return guard.current();
+  }catch(error){if(op.current()){this.release();this.publish({phase:'address',error,busy:false});}return false;}
+  finally{if(op.current()&&!account.isCurrent())this.cancel();if(connected&&this.api!==connected.api)connected.connection.dispose();}
+ }
  async inspect(address:string,linkId?:string){
   this.cancel();const op=this.operation();this.publish({phase:'checking'});
   try{
@@ -244,10 +301,17 @@ export class BrowserAccountEntry {
  }
  /** The owner's code is previewed only at the already-proved server. It never
   * enters public state, browser storage, a URL or a Hosted request. */
+ /** The synchronous fragment capture owns the code. Preserve its public
+  * expected identity through proof before asking this server to preview it. */
+ async inspectMoveLink(origin:string,link:MoveCodeLink){
+  const {code,id}=link;
+  const inspected=await this.inspect(origin,id);if(!inspected?.current())return;
+  await this.previewMoveCode(code);
+ }
  async previewMoveCode(code:string){
   const state=this.state,api=this.api;
   if(!api||!state.server||state.invitation||state.busy||!['password','portico','move-code','move-local','move-portico'].includes(state.phase))return;
-  const op=this.operation();this.moveProof=undefined;this.publish({...state,phase:'move-code',movePreview:undefined,busy:true,error:undefined});
+  const op=this.operation();this.moveProof=undefined;this.moveTicket=undefined;this.publish({...state,phase:'move-code',movePreview:undefined,busy:true,error:undefined});
   const client=new MemberAccountMoveClient(api,{serverId:state.server.id,isCurrent:op.current,retireLateGrant:session=>this.retire(api,session)});
   try{
    const revision=(await this.ports.store.read()).revision;if(!op.current())return;
@@ -259,6 +323,25 @@ export class BrowserAccountEntry {
    this.moveProof={code,revision,preview};
    this.publish({...state,phase:preview.signIn==='local'?'move-local':'move-portico',movePreview:preview,busy:false,error:undefined});
   }catch(error){if(op.current())this.publish({...state,phase:'move-code',movePreview:undefined,busy:false,error});}
+  finally{client.dispose();}
+ }
+ /** During the actual guided move the old password proves only this Waiting
+  * account. The one-use ticket stays private until the protected return owns it. */
+ async proveLocalMovePassword(username:string,password:string):Promise<boolean>{
+  const state=this.state,api=this.api;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.server.move!=='to_portico'||state.invitation||state.busy||!api)return false;
+  const op=this.operation();this.moveProof=undefined;this.moveTicket=undefined;this.publish({...state,busy:true,error:undefined});
+  const client=new MemberAccountMoveClient(api,{serverId:state.server.id,isCurrent:op.current,retireLateGrant:session=>this.retire(api,session)});
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!op.current())return false;
+   const proof=await client.password(username,password,op.signal);
+   if(!op.current())return false;
+   if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed.');
+   if(!op.current())return false;
+   if(Date.parse(proof.expiresAt)<=Date.now())throw new CodedError('move_code_invalid','The move proof expired.');
+   this.moveTicket={ticket:proof.ticket,expiresAt:proof.expiresAt,revision};
+   this.publish({...state,phase:'move-portico',busy:false,error:undefined});return true;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});return false;}
   finally{client.dispose();}
  }
  async redeemLocalMove(username:string,password:string){
@@ -451,15 +534,33 @@ export class BrowserAccountEntry {
   this.publish({phase:'challenge',server,origin:api.baseUrl,pin,busy:false});this.watchAuthority();
  }
  async preparePorticoSignIn(hostedOrigin:string):Promise<string|undefined>{
-  const state=this.state,api=this.api;
-  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.invitation||state.busy||!api||!state.origin||!this.ports.registered)return;
+  const state=this.state,api=this.api,proof=this.moveProof,ticket=this.moveTicket,moving=state.phase==='move-portico';
+  if(!['portico','move-portico'].includes(state.phase)||state.server?.signIn!=='portico'||state.invitation||state.busy||!api||!state.origin||!this.ports.registered)return;
+  // A move is never silently retried as ordinary sign-in. Its actual old-
+  // password ticket or owner-issued code must accompany the private prepare.
+  if(moving&&(state.server.move!=='to_portico'||(!proof&&!ticket)))return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  let preparing:RegisteredController|undefined;
+  const checkMove=async()=>{
+   if(!moving)return;
+   const revision=proof?.revision??ticket!.revision,expiresAt=proof?.preview.expiresAt??ticket!.expiresAt;
+   if(!op.current()||Date.parse(expiresAt)<=Date.now())throw new CodedError('move_code_invalid','The move proof expired.');
+   if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed.');
+   if(!op.current()||Date.parse(expiresAt)<=Date.now())throw new CodedError('cancelled','The account move request ended.');
+  };
   try{
+   await checkMove();if(!op.current())return;
    const previous=this.registered;this.registered=undefined;if(previous)await previous.cancel();if(!op.current())return;
-   const flow=this.ports.registered();this.registered=flow.controller;
-   const url=await flow.controller.prepare(api,state.origin,hostedOrigin,flow.installationId());
-   if(!op.current())return;this.publish({...state,busy:false,error:undefined});return url;
-  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+   await checkMove();if(!op.current())return;
+   const flow=this.ports.registered();preparing=this.registered=flow.controller;
+   const move=moving?(proof?{moveCode:proof.code}:{moveTicket:ticket!.ticket}):{};
+   const url=await flow.controller.prepare(api,state.origin,hostedOrigin,flow.installationId(),move);
+   await checkMove();if(!op.current())return;
+   this.publish({...state,busy:false,error:undefined});return url;
+  }catch(error){
+   if(preparing&&this.registered===preparing){this.registered=undefined;await preparing.cancel().catch(()=>{});}
+   if(op.current())this.publish({...state,busy:false,error});
+  }
  }
  async finishPorticoReturn(captured:CapturedPorticoReturn){
   // Cancel prior entry work BEFORE selecting an owner journal. Calling cancel
@@ -497,9 +598,17 @@ export class BrowserAccountEntry {
    catch(error){if(op.current()){this.publish({...state,busy:false,error});this.watchAuthority();}}return;
   }
   const state=this.state,api=this.api,challenge=this.challenge,revision=this.challengeRevision;if(state.phase!=='challenge'||!api||!challenge||revision===undefined)return;
-  const op=this.operation();this.publish({...state,busy:true,error:undefined});
-  try{if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed. Start this sign-in again.');if(!op.current())return;await this.accept(await completeDirectSignInChallenge(api,challenge.token,code,op.signal),api,revision,op);}
-  catch(error){if(op.current())this.publish({...state,busy:false,error});}
+  const op=this.operation(),hosted=this.hostedChallenge,guard={...op,current:()=>op.current()&&(!hosted||hosted.account.isCurrent())};this.publish({...state,busy:true,error:undefined});
+  try{
+   if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed. Start this sign-in again.');if(!guard.current())return;
+   const result=await completeDirectSignInChallenge(api,challenge.token,code,op.signal);
+   if(!guard.current()||hosted&&result.kind==='signed-in'&&result.snapshot.account.hostedAccountId!==hosted.account.accountId){
+    if(result.kind==='signed-in')await this.retire(api,result.session);
+    if(op.current())throw new CodedError('cancelled','The Portico Account changed.');return;
+   }
+   await this.accept(result,api,revision,guard,hosted?.hosted);
+   if(result.kind==='signed-in'&&this.hostedChallenge===hosted)this.clearHostedChallenge();
+  }catch(error){if(op.current()){if(hosted&&!hosted.account.isCurrent())this.cancel();else this.publish({...state,busy:false,error});}}
  }
  async changePassword(currentPassword:string,newPassword:string){
   const state=this.state,api=this.api,session=this.session;if(state.phase!=='password-change'||!api||!session)return;

@@ -231,3 +231,67 @@ type panicSetupResolver struct{}
 func (panicSetupResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
 	panic("DB-only config reader performed DNS")
 }
+
+func TestDedicatedDAVOwnerCanSaveNineSources(t *testing.T) {
+	program := lockedRcloneFixture(t)
+	t.Setenv("PORTICO_RCLONE", program)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	f, _, identities, owner, family, _ := nativeSaveFixture(t)
+	authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
+	var listings atomic.Int32
+	server := newPrivateSourceServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, password, ok := r.BasicAuth()
+		if !ok || user != "fixture" || password != "fixture-only" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.Method != "PROPFIND" || r.URL.Path != "/media/" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		listings.Add(1)
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusMultiStatus)
+		fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/media/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`)
+	}))
+	initial, err := f.s.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, row := range initial {
+		ids[row.ID] = true
+	}
+	for index := 0; index < 9; index++ {
+		input := DAVInput{OperationID: nativeSaveOperation(400 + index), Name: fmt.Sprintf("DAV %d", index), Root: server.URL + "/media/", Username: "fixture", Password: "fixture-only", InsecureLocal: true}
+		receipt, err := f.s.ConfigureDAV(ctx, "actual-owner-fixture", "", input, authorize)
+		if err != nil {
+			t.Fatalf("source %d: %v", index+1, err)
+		}
+		if ids[receipt.Source.ID] || receipt.Source.Kind != SourceWebDAV || receipt.Source.Generation != 1 || receipt.Source.RangeSupport != "unknown" {
+			t.Fatal("save lost distinct source/setup facts")
+		}
+		ids[receipt.Source.ID] = true
+	}
+	rows, err := f.s.List(ctx)
+	if err != nil || len(rows) != len(initial)+9 || listings.Load() < 9 {
+		t.Fatal("sources were capped or saved without actual connection checks", len(rows), listings.Load(), err)
+	}
+	for _, row := range rows {
+		if !ids[row.ID] {
+			t.Fatal("list substituted a saved source")
+		}
+	}
+	if _, err = f.s.db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=?`, family); err != nil {
+		t.Fatal(err)
+	}
+	before := listings.Load()
+	_, err = f.s.ConfigureDAV(ctx, "actual-owner-fixture", "", DAVInput{OperationID: nativeSaveOperation(409), Name: "Revoked", Root: server.URL + "/media/", Username: "fixture", Password: "fixture-only", InsecureLocal: true}, authorize)
+	if err == nil || listings.Load() != before {
+		t.Fatal("source-count change bypassed current owner authority", err)
+	}
+	if count := ownedRcloneChildren(t); count != 0 {
+		t.Fatal("source setup left temporary serve processes", count)
+	}
+}

@@ -196,29 +196,12 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 	case "video":
 		d.PixelFormat = streamText(s.PixelFormat, 32)
 		d.ChromaSubsampling = chromaSubsampling(s.PixelFormat)
-		d.FrameRateNumerator, d.FrameRateDenominator = exactProbeRate(s.AvgFrameRate)
-		if d.FrameRateNumerator == 0 {
-			d.FrameRateNumerator, d.FrameRateDenominator = exactProbeRate(s.RealFrameRate)
-		}
-		if depth, err := strconv.Atoi(s.BitsRaw); err == nil && depth > 0 && depth <= 16 {
-			d.BitDepth = depth
-		} else {
-			d.BitDepth = pixelBitDepth(s.PixelFormat)
-		}
+		d.FrameRate, d.FrameRateNumerator, d.FrameRateDenominator = VideoProbeFrameRate(s.AvgFrameRate, s.RealFrameRate)
+		d.BitDepth = VideoProbeBitDepth(s.BitsRaw, s.PixelFormat)
 		if width > 0 && height > 0 && width <= 65536 && height <= 65536 {
 			d.Width, d.Height = width, height
 		}
-		d.FrameRate = probeRate(s.AvgFrameRate)
-		if d.FrameRate == 0 {
-			d.FrameRate = probeRate(s.RealFrameRate)
-		}
-		switch strings.ToLower(s.FieldOrder) {
-		case "tt", "bb", "tb", "bt":
-			d.Interlaced = true
-			d.InterlaceAnalysis = InterlaceFieldOrderInterlaced
-		case "progressive":
-			d.InterlaceAnalysis = InterlaceFieldOrderProgressive
-		}
+		d.Interlaced, d.InterlaceAnalysis = VideoProbeInterlace(s.FieldOrder)
 		if len(s.SampleAspect) <= 24 {
 			d.SampleAspectRatio = s.SampleAspect
 		}

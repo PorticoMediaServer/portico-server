@@ -440,6 +440,8 @@ func (s *Service) encodeAndPublish(ctx context.Context, w work, custody *attempt
 		if err != nil {
 			return err
 		}
+		original = musicSourceFacts(original, tags, input.Size())
+		recipe.Source = original.recipeSource()
 		retainedTags = tags
 		e = s.encodeMusic(ctx, w, custody, source, recipe, progress, tags)
 	} else {
@@ -618,6 +620,7 @@ type probed struct {
 	FrameRate                  float64
 	AudioChannels              []int
 	AudioBitrateBPS            int
+	AudioLossless              *bool
 	// The first picture's range as a recipe reads it (sdr, hdr10, hlg; a
 	// Dolby Vision picture's base layer), its depth, and HDR10's metadata.
 	// Range is "" for a Dolby Vision picture with no base layer to show.
@@ -630,7 +633,7 @@ type probed struct {
 
 // recipeSource is what an encode is told about the source it reads.
 func (f probed) recipeSource() decoder.PreparedSource {
-	return decoder.PreparedSource{DynamicRange: f.Range, BitDepth: f.BitDepth, DolbyVision: f.DolbyVision, MasterDisplay: f.MasterDisplay, MaxCLL: f.MaxCLL, AudioChannels: append([]int(nil), f.AudioChannels...), AudioSampleRate: f.AudioSampleRate, AudioBitDepth: f.AudioBitDepth, AudioCodec: f.AudioCodec, AudioBitrateBPS: f.AudioBitrateBPS}
+	return decoder.PreparedSource{AudioLossless: f.AudioLossless, DynamicRange: f.Range, BitDepth: f.BitDepth, DolbyVision: f.DolbyVision, MasterDisplay: f.MasterDisplay, MaxCLL: f.MaxCLL, AudioChannels: append([]int(nil), f.AudioChannels...), AudioSampleRate: f.AudioSampleRate, AudioBitDepth: f.AudioBitDepth, AudioCodec: f.AudioCodec, AudioBitrateBPS: f.AudioBitrateBPS}
 }
 
 func parseProbe(raw []byte) (probed, error) {

@@ -17,6 +17,7 @@ import {JoinPage} from './JoinPage';
 import {ServicesHomePage} from './HomePage';
 import {RegisteredSignInPage} from './SignInPage';
 import {captureHostedSignIn, type SignInCapture} from './sign-in';
+import {captureHostedOwnerClaim, type HostedOwnerClaimCapture} from './owner-claim';
 
 type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
@@ -38,12 +39,14 @@ function makeRouter(context: Context) {
   return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
-export function ServicesApp({capture, invalidContinuation, join, signIn}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; signIn?: SignInCapture} = {}) {
+export function ServicesApp({capture, invalidContinuation, join, signIn, owner}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture} = {}) {
   const [value] = useState(() => {
     const signedCapture = signIn ?? captureHostedSignIn(location, history, location.origin);
+    const ownerCapture = owner ?? captureHostedOwnerClaim(location, history, location.origin);
     const captured = capture ?? captureServicesLink(location, history);
     const invalid = invalidContinuation ?? scrubUnsupportedServicesFragment(location, history);
-    const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured, {origin: location.origin, capture: signedCapture});
+    const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured, {origin: location.origin, capture: signedCapture},
+      location.pathname === '/claim' ? {origin: location.origin, capture: ownerCapture} : undefined);
     return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid, join})};
   });
   useEffect(() => { void value.bootstrap.start(); return () => value.bootstrap.dispose(); }, [value]);
@@ -56,7 +59,7 @@ function ServicesRoot() {
   if (state.phase === 'restoring') return <ServicesAuthStage><></></ServicesAuthStage>;
   if (state.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />;
-  if (invalidContinuation || state.invalidSignIn) return <InvalidLink />;
+  if (invalidContinuation || state.invalidSignIn || state.invalidOwner) return <InvalidLink />;
   if (state.signIn && location.pathname === '/') return <RegisteredSignInPage account={account} pending={state.signIn} />;
   return <Outlet />;
 }

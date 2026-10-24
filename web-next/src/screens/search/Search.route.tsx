@@ -12,7 +12,10 @@ function BoundSearch({captured}: {captured: ProtectedLibraryScreen}) {
   const binding = useMemo(() => createSearchBindings(context), [context]);
   useEffect(() => () => binding.dispose(), [binding]);
   const search = useSearch({from: '/search'});
-  return <SearchScreen binding={binding} linkedQuery={typeof search.q === 'string' ? search.q : undefined} onConsumeLinkedQuery={() => {
+  return <SearchScreen binding={binding} linkedQuery={typeof search.q === 'string' ? search.q : undefined} onOpenLive={sourceId => {
+    if (!context.isCurrent()) return;
+    void router.navigate({to: '/live', search: sourceId ? {sourceId} : {}}).catch(context.effects.reportError);
+  }} onConsumeLinkedQuery={() => {
     void router.navigate({to: '/search', search: {q: ''}, replace: true, resetScroll: false}).catch(context.effects.reportError);
   }}/>;
 }

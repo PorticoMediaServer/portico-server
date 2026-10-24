@@ -1,8 +1,10 @@
 .pendingCard { pointer-events: none; }
-.results { position: relative; min-height: 280px; margin: 0 var(--shell-gutter, var(--gutter-desktop)); }
+/* The grid owns a thin scrollbar inside its content edge; let that width live in the right
+   gutter so the drawn poster row still reaches the gutter like frame #grid's fluid grid. */
+.results { position: relative; min-height: 280px; margin: 0 var(--shell-gutter, var(--gutter-desktop)); margin-right: calc(var(--shell-gutter, var(--gutter-desktop)) - var(--grid-overflow, 0px)); }
 .results[data-view='grid'] { padding-top: 26px; }
 .results[data-view='list'] { padding-top: 22px; }
-.rail { position: absolute; right: -46px; top: 28px; }
+.rail { position: absolute; right: calc(-46px + var(--grid-overflow, 0px)); top: 28px; }
 .listHead, .listRow { display: grid; grid-template-columns: minmax(0,1fr) 84px 118px 86px 112px 136px 60px 92px; align-items: center; column-gap: 8px; padding: 0 12px; }
 .listHead { height: 44px; border-bottom: 1px solid var(--color-line); font-size: var(--type-caption-size); font-weight: var(--type-row-heading-weight); color: var(--color-text-tertiary); }
 .listHead > :not(:first-child) { text-align: right; }
@@ -22,7 +24,7 @@
 .listActions { display: flex; justify-content: flex-end; gap: 6px; opacity: 0; }
 .listRow:hover .listActions, .listRow:focus-within .listActions { opacity: 1; }
 @media (pointer: coarse) { .listActions { opacity: 1; } }
-@media (max-width: 1023px) { .results { margin: 0 20px; } .rail { right: -18px; } }
+@media (max-width: 1023px) { .results { margin: 0 20px; margin-right: calc(20px - var(--grid-overflow, 0px)); } .rail { right: calc(-18px + var(--grid-overflow, 0px)); } }
 @media (prefers-reduced-motion: reduce) { .results * { scroll-behavior: auto; } }
 .library { min-height: 100dvh; padding-bottom: 72px; }
 .headerTabs { margin-top: 22px; padding-inline: var(--shell-gutter, var(--gutter-desktop)); }
