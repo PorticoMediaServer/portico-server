@@ -47,7 +47,7 @@ type sessionScope struct {
 
 func sessionTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, session string) (sessionScope, error) {
 	var v sessionScope
-	e := tx.QueryRowContext(ctx, `SELECT s.asset_id,s.grant_token,s.generation,pin.size,pin.modified_ns,a.available,s.mode FROM playback_sessions s JOIN playback_source_pins pin ON pin.session_id=s.id JOIN catalog_assets a ON a.token=pin.asset_id WHERE s.id=? AND s.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND s.session_hash=? AND s.account_id=? AND s.profile_id=? AND s.state NOT IN('stopped','ended','failed') AND s.expires_at>? AND a.size=pin.size AND a.modified_ns=pin.modified_ns`, session, item, p.Hash, p.AccountID, p.ProfileID, time.Now().UTC().Format(time.RFC3339)).Scan(&v.source, &v.grant, &v.generation, &v.size, &v.modified, &v.available, &v.mode)
+	e := tx.QueryRowContext(ctx, `SELECT s.asset_id,s.grant_token,s.generation,pin.size,pin.modified_ns,a.available,s.mode FROM playback_sessions s JOIN playback_source_pins pin ON pin.session_id=s.id AND pin.asset_id=s.asset_id JOIN catalog_assets a ON a.token=pin.asset_id WHERE s.id=? AND s.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND s.session_hash=? AND s.account_id=? AND s.profile_id=? AND s.state NOT IN('stopped','ended','failed') AND s.expires_at>? AND a.size=pin.size AND a.modified_ns=pin.modified_ns`, session, item, p.Hash, p.AccountID, p.ProfileID, time.Now().UTC().Format(time.RFC3339)).Scan(&v.source, &v.grant, &v.generation, &v.size, &v.modified, &v.available, &v.mode)
 	if errors.Is(e, sql.ErrNoRows) {
 		e = identity.ErrUnauthorized
 	}
