@@ -611,7 +611,7 @@ func musicLoudnessPolicy(ctx context.Context, q interface {
 		p.Operations = append(append([]string{}, p.Operations...), "loudness")
 	}
 	if kind == "music" && p.Tier != "file_list_only" {
-		enabled := true
+		enabled := SonicDefaultEnabled()
 		err := q.QueryRowContext(ctx, `SELECT enabled FROM library_sonic_settings WHERE library_id=?`, library).Scan(&enabled)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return p, err
