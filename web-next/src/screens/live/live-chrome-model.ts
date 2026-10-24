@@ -33,6 +33,14 @@ export function liveBehindLabel(seconds: number): string | undefined {
   return t('player.live.behindLive', {duration});
 }
 
+const actionable = new Set(['scheduled', 'conflicted', 'waiting-source', 'waiting-guide', 'recording', 'preparing', 'finalizing']);
+
+/** The one real command a recording button may send: record, cancel that exact recording, or none. */
+export function liveRecordCommand(hasRecording: boolean, state?: string): 'record' | 'cancel' | 'none' {
+  if (!hasRecording) return 'record';
+  return state !== undefined && actionable.has(state) ? 'cancel' : 'none';
+}
+
 export function liveRecordLabel(programme: LiveChromePort['programme']): string | undefined {
   const state = programme?.recording;
   if (!state) return t('guide.record');

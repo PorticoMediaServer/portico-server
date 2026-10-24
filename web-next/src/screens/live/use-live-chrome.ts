@@ -10,12 +10,11 @@ import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {router} from '../../router';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createLiveBindings} from './bindings';
-import {liveChannelCurrent, liveNavigationAllowed} from './live-chrome-model';
+import {liveChannelCurrent, liveNavigationAllowed, liveRecordCommand} from './live-chrome-model';
 import type {LiveChromeChannel, LiveChromeGuideChannel, LiveChromeGuideTarget, LiveChromePort, LiveChromeProgramme} from './live-chrome-types';
 
 const randomHex = async () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
 const recordingStates: ReadonlySet<string> = new Set(['scheduled', 'conflicted', 'waiting-source', 'waiting-guide', 'preparing', 'recording', 'finalizing', 'completed', 'incomplete-playable', 'failed', 'cancelled', 'pending-delete', 'deleted']);
-const recordingActionable: ReadonlySet<string> = new Set(['scheduled', 'conflicted', 'waiting-source', 'waiting-guide', 'recording', 'preparing', 'finalizing']);
 const recordingState = (programme: GuideProgramme | undefined): LiveChromeProgramme['recording'] => {
   if (!programme?.recordingId || !recordingStates.has(programme.recordingState)) return undefined;
   return programme.recordingState as LiveChromeProgramme['recording'];
@@ -106,7 +105,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const currentGuideProgramme = !!facts && facts.fenceKey === fenceKey ? facts.programmes.get(fence.channelId) : undefined;
   const guideProgramme = !!facts && facts.fenceKey === fenceKey && linear.programme
     ? (currentGuideProgramme?.id === linear.programme.id ? currentGuideProgramme : facts.current.programmes.find(programme => programme.id === linear.programme!.id)) : undefined;
-  const recordKnown = !guideProgramme?.recordingId || recordingActionable.has(guideProgramme.recordingState);
+  const recordKnown = liveRecordCommand(!!guideProgramme?.recordingId, guideProgramme?.recordingState) !== 'none';
   const authoritative: LiveChromeChannel = channel && currentGuide ? {...channel, recordAvailable: channel.recordAvailable && !!guideProgramme && recordKnown} : {id: fence.channelId, sourceId: linear.channel.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
     number: '', name: linear.name, favorite: false, recordAvailable: false, tuneAvailable: true};
   const factsRecording = recordingState(guideProgramme);
@@ -143,7 +142,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
     if (!isCurrent() || !client || !guideProgramme || !guideChannel) return;
     const local = recorded?.programmeId === guideProgramme.id ? recorded.recording : undefined;
     if (guideProgramme.recordingId) {
-      if (!recordingActionable.has(guideProgramme.recordingState)) return;
+      if (liveRecordCommand(true, guideProgramme.recordingState) !== 'cancel') return;
       const detail = await client.detail(guideProgramme.recordingId);
       if (!isCurrent()) return;
       await client.cancel(detail.recording);
@@ -151,7 +150,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
       setRecorded(undefined);setRefresh(value => value + 1);return;
     }
     if (local) {
-      if (!recordingActionable.has(local.state)) return;
+      if (liveRecordCommand(true, local.state) !== 'cancel') return;
       await client.cancel(local);
       if (!isCurrent()) return;
       setRecorded(undefined);setRefresh(value => value + 1);return;

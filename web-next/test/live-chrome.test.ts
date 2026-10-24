@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {liveBehindLabel, liveChannelCurrent, liveNavigationAllowed, liveNeighbour, liveNextLine, liveRail, liveRecordLabel, liveSeekSeconds, liveTimeRange} from '../src/screens/live/live-chrome-model';
+import {liveBehindLabel, liveChannelCurrent, liveNavigationAllowed, liveNeighbour, liveNextLine, liveRail, liveRecordCommand, liveRecordLabel, liveSeekSeconds, liveTimeRange} from '../src/screens/live/live-chrome-model';
 import type {LiveChromePort, LiveChromeWindow} from '../src/screens/live/live-chrome-types';
 
 const hour = 3_600_000, minute = 60_000;
@@ -66,4 +66,16 @@ test('retained navigation handlers need both the screen and the exact port curre
   assert.equal(liveNavigationAllowed(true, true), true);
   assert.equal(liveNavigationAllowed(false, true), false);
   assert.equal(liveNavigationAllowed(true, false), false);
+});
+
+
+test('a record command is record, cancel the actual actionable recording, or none', () => {
+  assert.equal(liveRecordCommand(false), 'record');
+  assert.equal(liveRecordCommand(true, 'scheduled'), 'cancel');
+  assert.equal(liveRecordCommand(true, 'recording'), 'cancel');
+  assert.equal(liveRecordCommand(true, 'conflicted'), 'cancel');
+  assert.equal(liveRecordCommand(true, 'completed'), 'none');
+  assert.equal(liveRecordCommand(true, 'failed'), 'none');
+  assert.equal(liveRecordCommand(true, ''), 'none');
+  assert.equal(liveRecordCommand(true, undefined), 'none');
 });
