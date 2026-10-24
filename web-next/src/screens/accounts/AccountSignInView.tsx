@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
+import type {ResetFileLocation} from '@core/account-reset.ts';
 import type {TakeAccountReturn} from '../../route-registry-return';
 import {router} from '../../router';
 import type {BrowserAccountEntry} from '../../platform/account-entry';
@@ -12,10 +13,16 @@ import {Button} from '../../kit/controls';
 import {AccountSignInForm} from './sign-in-form';
 import {initializeAccountSignIn} from './sign-in-start';
 import {RequiredFactorDialogs} from './RequiredSetup';
+import {LocalPasswordRecovery} from '../../kit/accounts/LocalPasswordRecovery';
+import {OwnerResetFile, OwnerResetPassword} from '../../kit/accounts/OwnerPasswordRecovery';
+import {finishOwnerResetAndSignIn} from './owner-reset';
 
 export function AccountSignInView({entry, form, takeReturn, initialize = true, initialOrigin, onCancel}: {entry: BrowserAccountEntry; form: AccountSignInForm; takeReturn?: TakeAccountReturn; initialize?: boolean; initialOrigin?: string; onCancel?: () => void}) {
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), input = useSyncExternalStore(form.subscribe, form.getSnapshot);
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), started = useRef(false), alive = useRef(true);
+  const [recovery, setRecovery] = useState<Readonly<{username: string; file?: ResetFileLocation; writtenAt?: number}>>();
+  const recoveryRun = useRef(0);
+  useEffect(() => entry.subscribeAuthorityRetired(() => setRecovery(undefined)), [entry]);
   const pageOrigin = initialOrigin ?? import.meta.env.VITE_SERVER_URL ?? location.origin;
   useEffect(() => {
     alive.current = true;
@@ -38,16 +45,35 @@ export function AccountSignInView({entry, form, takeReturn, initialize = true, i
   }, [entry, form, state, input, initializing]);
   const reauthenticate = () => {
     const origin = entry.getSnapshot().origin ?? pageOrigin;
-    form.clear(); setError(undefined); void entry.inspect(origin);
+    ++recoveryRun.current;setRecovery(undefined);form.clear(); setError(undefined); void entry.inspect(origin);
   };
-  const cancel = () => {form.clear(); entry.cancel(); if (onCancel) onCancel(); else void router.navigate({to: '/servers'});};
+  const cancel = () => {++recoveryRun.current;setRecovery(undefined);form.clear(); entry.cancel(); if (onCancel) onCancel(); else void router.navigate({to: '/servers'});};
   const busy = state.busy || input.busy, failure = state.error ?? error;
+  const recoveryBack = () => {++recoveryRun.current;setRecovery(undefined);entry.cancelLocalOwnerReset();form.clear();setError(undefined);};
+  const writeResetFile = async (username: string) => {
+    const epoch = ++recoveryRun.current, server = entry.getSnapshot().server, origin = entry.getSnapshot().origin;
+    setError(undefined);
+    const file = await entry.requestLocalResetFile(username);
+    const current = entry.getSnapshot();
+    if (file && alive.current && recoveryRun.current === epoch && current.phase === 'password' && current.server?.id === server?.id && current.origin === origin) setRecovery({username, file, writtenAt: Date.now()});
+  };
+  if (state.phase === 'owner-reset-password' && state.ownerReset && state.server?.signIn === 'local') return <OwnerResetPassword key={JSON.stringify([state.server.id, state.ownerReset])}
+    serverName={state.server.name} username={state.ownerReset.username} twoStepEnabled={state.ownerReset.twoStepEnabled} busy={busy} error={failure} onSubmit={(password, turnOff) => {
+      const epoch = recoveryRun.current;
+      void finishOwnerResetAndSignIn(entry, form, password, turnOff, () => alive.current && recoveryRun.current === epoch).catch(failure => {if (alive.current) setError(failure);});
+    }} />;
+  if (recovery && state.phase === 'password' && state.server?.signIn === 'local') {
+    if (recovery.file && recovery.writtenAt !== undefined) return <OwnerResetFile key={recovery.writtenAt} serverName={state.server.name} location={recovery.file} writtenAt={recovery.writtenAt} busy={busy} error={failure}
+      onVerify={code => {void entry.verifyLocalOwnerReset(code);}} onRewrite={() => {void writeResetFile(recovery.username);}} onBack={recoveryBack} />;
+    return <LocalPasswordRecovery serverName={state.server.name} initialUsername={recovery.username} busy={busy} error={failure} onWriteFile={username => {void writeResetFile(username);}}
+      onMemberReset={(username, code, password) => {form.setUsername(username);void entry.resetLocalPassword({kind: 'member', username, code}, password);}} onBack={recoveryBack} />;
+  }
   if (input.factor) return <RequiredFactorDialogs form={input.factor} error={failure} onCancel={cancel} onDone={() => {form.clear(); void router.navigate({to: '/profiles', replace: true});}} />;
   if (state.phase === 'password-change') return <RequiredPasswordDialog key={input.inputEpoch} busy={busy} error={failure}
     onChange={(current, next) => {form.clear(); void entry.changePassword(current, next);}} onCancel={cancel} />;
   if (state.phase === 'challenge') return <ServerChallenge key={input.inputEpoch} busy={busy} error={failure} onCode={code => void form.completeChallenge(code)} onBack={reauthenticate} />;
   if (state.phase === 'password' && state.server?.signIn === 'local') return <LocalServerSignIn key={input.inputEpoch} serverName={state.server.name} initialUsername={input.username}
-    busy={busy} error={failure} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} />;
+    busy={busy} error={failure} onForgotPassword={username => {++recoveryRun.current;form.clear();setRecovery({username});setError(undefined);}} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={() => {
     const epoch = input.inputEpoch, serverId = state.server?.id, origin = state.origin;
     if (!serverId) return;

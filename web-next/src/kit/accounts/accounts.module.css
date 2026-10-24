@@ -224,3 +224,57 @@
   .pinStage .pinActions button:last-child { padding: 0; height: auto; font-size: 15px; }
   .pinStage .phoneProfileBack { position: absolute; z-index: 2; top: 50px; left: 8px; display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 6px 0 0; border: 0; background: none; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; }
 }
+
+/* Auth20b/20c: actual reset-file facts, then the proved Local owner's password. */
+.resetFileContent { width: 600px; }
+.ownerResetContent { width: 540px; }
+.resetFileContent h1, .ownerResetContent h1 { font-size: 52px; white-space: nowrap; }
+.resetFilePath { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: color-mix(in srgb, var(--color-ink) 62%, transparent); box-shadow: inset 0 0 0 1px var(--color-line-strong); margin: 0 0 6px; }
+.resetFilePath > div { flex: 1; min-width: 0; }
+.resetFilePath small { display: block; font-size: 12.5px; line-height: normal; font-weight: 700; color: var(--color-text-tertiary); margin-bottom: 3px; }
+.resetFilePath code, .resetFilePlatforms code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 14px; line-height: 1.45; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; }
+.resetFilePath button { flex: none; border: 0; background: none; padding: 0; color: var(--color-text-tertiary); cursor: pointer; }
+.resetFilePlatforms { margin: 0 0 12px; }
+.resetFilePlatforms summary { display: flex; align-items: center; gap: 8px; padding: 10px 4px; font-size: 14px; line-height: normal; font-weight: 700; color: var(--color-text-secondary); list-style: none; cursor: pointer; }
+.resetFilePlatforms summary::-webkit-details-marker { display: none; }
+.resetFilePlatforms summary svg { color: var(--color-text-tertiary); }
+.resetFilePlatforms[open] summary svg { transform: rotate(180deg); }
+.resetFilePlatforms dl { margin: 0; padding: 2px 14px; }
+.resetFilePlatforms dl > div { padding: 7px 0; font-size: 12.5px; line-height: 1.5; color: var(--color-text-tertiary); }
+.resetFilePlatforms dt { font-weight: 700; color: var(--color-text-secondary); }
+.resetFilePlatforms dd { margin: 2px 0 0; }
+.resetFileActions { display: flex; gap: 12px; margin-top: 6px; }
+.resetFileActions button:first-child { padding-inline: 40px; }
+.ownerResetQuiet { font-size: 13.5px; line-height: 1.5; color: var(--color-text-tertiary); margin: 18px 0 0; }
+.ownerResetPasswordField { margin-bottom: 16px; }
+.ownerResetFactor { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--color-line-soft); margin: 6px 0 20px; }
+.ownerResetFactor > span { flex: 1; font-size: 15px; line-height: normal; font-weight: 600; }
+.ownerResetFactor small { font-size: 12.5px; line-height: normal; font-weight: 500; color: var(--color-text-tertiary); margin-top: 2px; }
+.ownerResetFactor .desktopRecoveryCopy { display: block; }
+.ownerResetFactor input { --switch-width: 44px; --switch-height: 26px; --switch-thumb: 20px; --switch-distance: 18px; }
+.ownerResetFactor input::after { background: var(--color-text-secondary); }
+.ownerResetFactor input:checked::after { background: var(--color-white); }
+.ownerResetSubmit { width: 100%; }
+@media (max-width: 700px) {
+  .ownerResetStage .brand { display: none; }
+  .resetFileContent, .ownerResetContent { width: auto; margin: 0; padding: 50px 22px 26px; }
+  .resetFileContent > .eyebrow { display: none; }
+  .resetFileContent h1 { font-size: 30px; white-space: normal; margin-bottom: 6px; }
+  .resetFileContent > .lede { font-size: 13.5px; line-height: 1.45; margin-bottom: 10px; }
+  .resetFilePath { padding: 10px 14px; margin-bottom: 2px; }
+  .resetFilePath code { font-size: 12px; }
+  .resetFilePlatforms summary { padding: 6px 4px; font-size: 13.5px; }
+  .resetFilePlatforms code { font-size: 11.5px; }
+  .resetFileActions { flex-direction: column; gap: 8px; margin: 0; }
+  .resetFileActions button:last-child { background: none; height: auto; padding: 0; font-size: 14px; color: var(--color-accent-strong); }
+  .resetFileContent .ownerResetQuiet, .resetFileContent .localRecoveryBack { display: none; }
+  .ownerResetContent { padding-top: 30px; }
+  .ownerResetContent > .lede { margin-bottom: 12px; }
+  .ownerResetContent h1 { font-size: 36px; line-height: 1.05; white-space: normal; }
+  .ownerResetPasswordField > div:last-child:not([data-variant]) { display: none; }
+  .ownerResetFactor { padding: 10px 0 12px; border: 0; margin: 0; }
+  .ownerResetFactor > span { font-size: 14px; }
+  .ownerResetFactor .desktopRecoveryCopy { display: none; }
+  .ownerResetFactor .phoneRecoveryCopy { display: block; }
+  .ownerResetQuiet { margin-top: 10px; font-size: 12.5px; }
+}

@@ -25,11 +25,11 @@ export function AuthStage({children, shape = 'side', phoneShape, layout = 'colum
 export function AuthLinks({children}: {children: ReactNode}) { return <div className={styles.links}>{children}</div>; }
 
 /** One real password input retains browser autofill and native password-manager support. */
-export const AuthPasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'trailing'>>(function AuthPasswordField(props, ref) {
+export const AuthPasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'trailing'> & {revealLabel?: boolean}>(function AuthPasswordField({revealLabel = true, ...props}, ref) {
   const [shown, setShown] = useState(false);
   return <TextField {...props} ref={ref} variant="auth" type={shown ? 'text' : 'password'} trailing={<button type="button" className={styles.reveal}
     aria-label={t(shown ? 'field.hidePassword' : 'field.showPassword')} aria-pressed={shown} onClick={() => setShown(value => !value)}>
-    <Icon name="i-eye" size={20} />{!shown && <span>{t('accounts.signIn.showPassword')}</span>}
+    <Icon name="i-eye" size={20} />{revealLabel && !shown && <span>{t('accounts.signIn.showPassword')}</span>}
   </button>} />;
 });
 

@@ -9,7 +9,7 @@ import styles from './accounts.module.css';
 const t = defaultI18n.t;
 export type LocalServerSignInProps = Readonly<{
   serverName: string; initialUsername?: string; remembered?: readonly RememberedAccount[]; busy?: boolean; error?: unknown;
-  onSignIn: (username: string, password: string) => void; onForgotPassword?: () => void; onJoin?: () => void;
+  onSignIn: (username: string, password: string) => void; onForgotPassword?: (username: string) => void; onJoin?: () => void;
 }>;
 export function LocalServerSignIn({serverName, initialUsername = '', remembered = [], busy, error, onSignIn, onForgotPassword, onJoin}: LocalServerSignInProps) {
   const [username, setUsername] = useState(initialUsername), [password, setPassword] = useState('');
@@ -25,7 +25,7 @@ export function LocalServerSignIn({serverName, initialUsername = '', remembered 
       <AuthPasswordField label={t('accounts.signIn.password')} name="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required />
       <Button className={styles.submit} variant="primary" type="submit" loading={busy} disabled={!username || !password}>{t('accounts.signIn.submit')}</Button>
     </form>
-    <AuthLinks><button type="button" disabled={!onForgotPassword || busy} onClick={onForgotPassword}>{t('auth.forgotPassword')}</button><button type="button" data-quiet disabled={!onJoin || busy} onClick={onJoin}>{t('web.directJoin.have')}</button></AuthLinks>
+    <AuthLinks><button type="button" disabled={!onForgotPassword || busy} onClick={() => onForgotPassword?.(username)}>{t('auth.forgotPassword')}</button><button type="button" data-quiet disabled={!onJoin || busy} onClick={onJoin}>{t('web.directJoin.have')}</button></AuthLinks>
   </AuthStage>;
 }
 export function PorticoServerSignIn({serverName, busy, error, moving = false, onContinue, onRecovery, onOldPassword}: {
