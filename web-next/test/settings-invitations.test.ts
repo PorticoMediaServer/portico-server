@@ -59,6 +59,53 @@ test('share links are same-server, current-row one-use results with no private n
     const other = fixture(() => reply);try {await assert.rejects(other.source.link(row, live()));} finally {other.source.dispose();}
   }
 });
+test('explicit short codes use the caller operation, stay one request, and preserve a replay absence', async () => {
+  const expiry = '2099-01-01T00:00:00Z';
+  const replay = fixture(() => ({serverId, expiresAt: expiry}));
+  try {
+    const value = await replay.source.shortCode(row, 'first-explicit-code', live());
+    assert.deepEqual(value, {serverId, expiresAt: expiry});
+    assert.equal(Object.hasOwn(value, 'shortCode'), false);
+    assert.equal(replay.calls.length, 1);
+    assert.equal(new URL(replay.calls[0].path, origin).pathname, '/v1/admin/access/invitations/invitation/short-code');
+    assert.deepEqual(replay.calls[0].body, {expectedRevision: 7, operationId: 'first-explicit-code'});
+    // The absence is not an invitation to rotate: no second request happened.
+    assert.equal(replay.calls.length, 1);
+  } finally {replay.source.dispose();}
+  const issued = fixture(() => ({serverId, expiresAt: expiry, shortCode: '008j4ct4ank7f24s'}));
+  try {
+    const value = await issued.source.shortCode(row, 'second-explicit-code', live());
+    assert.equal(value.shortCode, '008J-4CT4-ANK7-F24S');
+    assert.equal(issued.calls.length, 1);
+    // A distinct explicit New code is a distinct operation, never a replay.
+    await issued.source.shortCode(row, 'third-explicit-code', live());
+    assert.deepEqual(issued.calls.map(call => (call.body as {operationId: string}).operationId), ['second-explicit-code', 'third-explicit-code']);
+  } finally {issued.source.dispose();}
+});
+
+test('short-code refusal, foreign identity and expiry fail without a retry or a foreign command', async () => {
+  const refusal = Object.assign(new Error('conflict'), {status: 409}), failed = fixture(() => {throw refusal;});
+  try {
+    await assert.rejects(failed.source.shortCode(row, 'same-explicit-code', live()), refusal);
+    assert.equal(failed.calls.length, 1);
+  } finally {failed.source.dispose();}
+  const foreign = fixture(() => ({serverId: 'srv_' + 'a'.repeat(42) + 'A', expiresAt: '2099-01-01T00:00:00Z', shortCode: '008J4CT4ANK7F24S'}));
+  try {
+    await assert.rejects(foreign.source.shortCode(row, 'foreign-code', live()), /invitation_server_changed/);
+    assert.equal(foreign.calls.length, 1);
+  } finally {foreign.source.dispose();}
+  const expired = fixture(() => ({serverId, expiresAt: '2000-01-01T00:00:00Z', shortCode: '008J4CT4ANK7F24S'}));
+  try {
+    await assert.rejects(expired.source.shortCode(row, 'expired-code', live()), {code: 'invitation_expired'});
+    assert.equal(expired.calls.length, 1);
+  } finally {expired.source.dispose();}
+  const empty = fixture(() => ({serverId, expiresAt: '2099-01-01T00:00:00Z'}));
+  try {
+    await assert.rejects(empty.source.shortCode(row, '', live()), /invitation_operation_required/);
+    assert.equal(empty.calls.length, 0);
+  } finally {empty.source.dispose();}
+});
+
 test('revocation and edit preserve the actual captured revision and caller operation key without automatic retry', async () => {
   const f = fixture((_path, _method, body) => ({...row, revision: 8, state: 'revoked', notes: (body as {notes?: string}).notes ?? row.notes}));
   try {

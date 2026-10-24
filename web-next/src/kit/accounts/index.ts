@@ -3,6 +3,7 @@ export {LocalServerSignIn, PorticoServerSignIn, type LocalServerSignInProps} fro
 export {ServerProfiles, ServerProfilePIN} from './ServerProfiles';
 
 export {LocalInvitationForm, type LocalInvitationFormProps} from './Invitation';
+export {InvitationShortCodeDialog, type ShortCodeInvitation, type ShortCodeRequest} from './InvitationShortCodeDialog';
 
 export {ServerIdentityFailure, type ServerIdentityFailureProps} from './ServerIdentityFailure';
 
