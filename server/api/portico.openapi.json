@@ -73720,6 +73720,11 @@
                     "properties": {
                       "audio": {
                         "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "channels": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -73734,8 +73739,19 @@
                           "language": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "objectAudio": {
                             "type": "string"
+                          },
+                          "profile": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "streamIndex": {
                             "maximum": 9007199254740991,
@@ -73746,6 +73762,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -73865,13 +73884,25 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "chromaSubsampling": {
+                            "type": "string"
+                          },
                           "codec": {
+                            "type": "string"
+                          },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
+                          "dolbyVisionCmVersion": {
                             "type": "string"
                           },
                           "dolbyVisionCompatibility": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionEnhancementType": {
+                            "type": "string"
                           },
                           "dolbyVisionLevel": {
                             "maximum": 9007199254740991,
@@ -73883,11 +73914,30 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
+                          },
                           "dynamicRange": {
                             "type": "string"
                           },
                           "frameRate": {
                             "type": "number"
+                          },
+                          "frameRateDenominator": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "frameRateMode": {
+                            "type": "string"
+                          },
+                          "frameRateNumerator": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "hdr10Plus": {
+                            "type": "boolean"
                           },
                           "height": {
                             "maximum": 9007199254740991,
@@ -73901,6 +73951,12 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "masterDisplay": {
+                            "type": "string"
+                          },
+                          "maxCll": {
+                            "type": "string"
                           },
                           "outputRange": {
                             "type": "string"
@@ -113085,6 +113141,16 @@
       },
       "GetMetadataSettingsResponse": {
         "properties": {
+          "artworkMaxEdge": {
+            "enum": [
+              1280,
+              1920,
+              2560
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "includeAdult": {
             "type": "boolean"
           },
@@ -113167,6 +113233,7 @@
           "revision",
           "localArtworkLimitBytes",
           "includeAdult",
+          "artworkMaxEdge",
           "tmdbCredentialConfigured",
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
@@ -203843,6 +203910,16 @@
       },
       "PutMetadataSettingsRequest": {
         "properties": {
+          "artworkMaxEdge": {
+            "enum": [
+              1280,
+              1920,
+              2560
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "expectedRevision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -203881,6 +203958,16 @@
       },
       "PutMetadataSettingsResponse": {
         "properties": {
+          "artworkMaxEdge": {
+            "enum": [
+              1280,
+              1920,
+              2560
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "includeAdult": {
             "type": "boolean"
           },
@@ -203963,6 +204050,7 @@
           "revision",
           "localArtworkLimitBytes",
           "includeAdult",
+          "artworkMaxEdge",
           "tmdbCredentialConfigured",
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
@@ -258884,6 +258972,16 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "artworkMaxEdge": {
+                      "enum": [
+                        1280,
+                        1920,
+                        2560
+                      ],
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "includeAdult": {
                       "type": "boolean"
                     },
@@ -258966,6 +259064,7 @@
                     "revision",
                     "localArtworkLimitBytes",
                     "includeAdult",
+                    "artworkMaxEdge",
                     "tmdbCredentialConfigured",
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
@@ -259031,6 +259130,16 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "artworkMaxEdge": {
+                    "enum": [
+                      1280,
+                      1920,
+                      2560
+                    ],
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -259077,6 +259186,16 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "artworkMaxEdge": {
+                      "enum": [
+                        1280,
+                        1920,
+                        2560
+                      ],
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "includeAdult": {
                       "type": "boolean"
                     },
@@ -259159,6 +259278,7 @@
                     "revision",
                     "localArtworkLimitBytes",
                     "includeAdult",
+                    "artworkMaxEdge",
                     "tmdbCredentialConfigured",
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
@@ -358675,6 +358795,11 @@
                               "properties": {
                                 "audio": {
                                   "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
                                     "channels": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -358689,8 +358814,19 @@
                                     "language": {
                                       "type": "string"
                                     },
+                                    "layout": {
+                                      "type": "string"
+                                    },
                                     "objectAudio": {
                                       "type": "string"
+                                    },
+                                    "profile": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
                                     },
                                     "streamIndex": {
                                       "maximum": 9007199254740991,
@@ -358701,6 +358837,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -358820,13 +358959,25 @@
                                       "minimum": -9007199254740991,
                                       "type": "integer"
                                     },
+                                    "chromaSubsampling": {
+                                      "type": "string"
+                                    },
                                     "codec": {
+                                      "type": "string"
+                                    },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
+                                    "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
                                     "dolbyVisionCompatibility": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionEnhancementType": {
+                                      "type": "string"
                                     },
                                     "dolbyVisionLevel": {
                                       "maximum": 9007199254740991,
@@ -358838,11 +358989,30 @@
                                       "minimum": -9007199254740991,
                                       "type": "integer"
                                     },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
+                                    },
                                     "dynamicRange": {
                                       "type": "string"
                                     },
                                     "frameRate": {
                                       "type": "number"
+                                    },
+                                    "frameRateDenominator": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "frameRateMode": {
+                                      "type": "string"
+                                    },
+                                    "frameRateNumerator": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "hdr10Plus": {
+                                      "type": "boolean"
                                     },
                                     "height": {
                                       "maximum": 9007199254740991,
@@ -358856,6 +359026,12 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "masterDisplay": {
+                                      "type": "string"
+                                    },
+                                    "maxCll": {
+                                      "type": "string"
                                     },
                                     "outputRange": {
                                       "type": "string"
