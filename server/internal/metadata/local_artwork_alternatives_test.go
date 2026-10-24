@@ -518,7 +518,7 @@ func TestSeedLocalArtworkKeepsDirtyUntilEverySlotCompletes(t *testing.T) {
 		candidates = append(candidates, namedCandidate{fmt.Sprintf("poster-%d.jpg", n), int64(1024 + n), fmt.Sprintf("%064x", n)})
 	}
 	seedNamedAlternatives(t, db, "altdirty", movie, "poster", candidates)
-	mustExec(t, db, `INSERT INTO artwork_dirty(kind,entity_id) VALUES('item',?)`, movie.ID)
+	mustExec(t, db, `INSERT OR IGNORE INTO artwork_dirty(kind,entity_id) VALUES('item',?)`, movie.ID)
 	s := New(db, "test-token")
 	dirtyRows := func() int {
 		var count int
