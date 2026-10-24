@@ -1,11 +1,14 @@
-/** Shared measured facts, not a renderer or a source of layout defaults. */
+import {hasCompleteDeclaration, declaredFontFamily, prepareNativeDeclarations} from './native-declarations.mjs';
+/** Shared facts with explicit observed or declared provenance; never a renderer. */
 export const contractVersion = 1;
-/** Curated scalar input styles only; these never substitute for measured style. */
+/** Curated scalar styles; scoring declarations require explicit complete provenance. */
 export const diagnosticStyleProperties = Object.freeze([
   'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform',
   'color', 'backgroundColor', 'opacity', 'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
   'borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
-  'shadowColor', 'shadowOpacity', 'shadowRadius', 'elevation', 'overflow', 'display', 'position', 'zIndex',
+  'shadowColor', 'shadowOpacity', 'shadowRadius', 'shadowOffsetX', 'shadowOffsetY',
+  'textDecorationLine', 'textShadowColor', 'textShadowRadius', 'textShadowOffsetX', 'textShadowOffsetY',
+  'elevation', 'overflow', 'display', 'position', 'zIndex',
   'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'top', 'right', 'bottom', 'left',
   'padding', 'paddingHorizontal', 'paddingVertical', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
   'margin', 'marginHorizontal', 'marginVertical', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
@@ -57,6 +60,7 @@ export function componentFitsViewport(screen) {
 }
 
 export function validateMeasurement(screen, {reference = false} = {}) {
+  screen = prepareNativeDeclarations(screen);
   const errors = [];
   const need = (condition, path) => {if (!condition) errors.push(path);};
   need(screen?.version === contractVersion, 'version');
@@ -110,7 +114,9 @@ export function validateMeasurement(screen, {reference = false} = {}) {
     const declared = property => Array.isArray(screen.unavailable) && screen.unavailable.some(fact => fact.element === node.id && fact.property === property && typeof fact.reason === 'string' && fact.reason.length > 0);
     need(typeof node.id === 'string' && !ids.has(node.id), path + '.id'); ids.add(node.id);
     if (node.diagnostics !== undefined) {
-      need(only(node.diagnostics, physicalWindow ? ['flattenedStyle', 'nativeWindowRect', 'nativeWindowTextRects', 'publicMeasurement'] : ['flattenedStyle']), path + '.diagnostics');
+      need(only(node.diagnostics, physicalWindow ? ['flattenedStyle', 'declaredStyle', 'nativeWindowRect', 'nativeWindowTextRects', 'publicMeasurement'] : ['flattenedStyle', 'declaredStyle']), path + '.diagnostics');
+      if (node.diagnostics.declaredStyle !== undefined) need(!reference && screen.measurement?.renderer === 'react-native' &&
+        only(node.diagnostics.declaredStyle, ['source', 'complete']) && hasCompleteDeclaration(node), path + '.diagnostics.declaredStyle');
       const style = node.diagnostics?.flattenedStyle;
       if (style !== undefined) need(style && typeof style === 'object' && !Array.isArray(style) && Object.entries(style).every(([key, value]) => diagnosticStyleProperties.includes(key) && (finite(value) || typeof value === 'string' && !/url\s*\(|(?:https?|file|data):/i.test(value))), path + '.diagnostics.flattenedStyle');
     }
@@ -134,7 +140,8 @@ export function validateMeasurement(screen, {reference = false} = {}) {
       need(typeof node.effectiveBackgroundColor === 'string' || declared('effectiveBackgroundColor'), path + '.effectiveBackgroundColor');
       if (node.ownText && !node.input) {
         need(Array.isArray(node.textRects) && node.textRects.length > 0 && node.textRects.every(rect) || declared('textRects'), path + '.textRects');
-        for (const property of ['resolvedFontFamily', 'fontSize', 'fontWeight', 'color']) need(typeof node.style?.[property] === 'string' || declared(property), path + '.style.' + property);
+        for (const property of ['resolvedFontFamily', 'fontSize', 'fontWeight', 'color']) need(typeof node.style?.[property] === 'string' || declared(property) ||
+          property === 'resolvedFontFamily' && declaredFontFamily(node) !== undefined, path + '.style.' + property);
       }
     }
   }

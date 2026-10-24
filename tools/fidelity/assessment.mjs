@@ -17,8 +17,14 @@ export function assessDifferences(differences, {reference, actual} = {}) {
   const findings = {
     measured: differences.filter(value => value.kind === 'measured-difference' && !missingObservation(value)).length, missing: count(['missing-element']), extra: count(['extra-element']),
     ambiguous: count(['ambiguous-match']), cardinality: count(['anchor-cardinality', 'list-cardinality']),
-    missingContentSlots: count(['missing-content-slot']),
+    missingContentSlots: count(['missing-content-slot', 'missing-paint-slot']),
   };
   const productFindingsReady = coverage.status === 'COMPLETE' && !findings.ambiguous && !findings.cardinality && !findings.missingContentSlots;
-  return {coverage, findings, productFindingsReady, measuredVerdict: !productFindingsReady ? 'WITHHELD' : differences.length ? 'FAIL' : 'PASS'};
+  const actionableFindingsReady = !coverage.invalidMeasurements && !coverage.calibrationFailures && !coverage.stateFailures &&
+    !findings.ambiguous && !findings.cardinality && !findings.missingContentSlots;
+  // Known differences remain actionable while unrelated facts are unavailable.
+  // A complete screen PASS still requires every required fact and match.
+  return {coverage, findings, productFindingsReady, actionableFindingsReady,
+    actionableVerdict: !actionableFindingsReady ? 'WITHHELD' : findings.measured || findings.missing || findings.extra ? 'FAIL' : 'NO_KNOWN_DIFFERENCES',
+    measuredVerdict: !productFindingsReady ? 'WITHHELD' : differences.length ? 'FAIL' : 'PASS'};
 }

@@ -263,3 +263,58 @@ Actual platform font scaling, when available, belongs in the optional top-level
 explicitly unscored, absent when unavailable, and never copied into viewport or
 used to multiply/divide geometry, font sizes, runs or tolerances. Observed fonts
 and text runs retain their actual rendered facts independently of this metadata.
+
+### Theme-resolved native declarations
+
+The r46 source policy additionally accepts the current complete evaluated
+`StyleSheet.flatten` result as DECLARED paint evidence. Runtime window geometry,
+text runs, focus, fixture/currentness and privacy guards are unchanged. No new
+native observer/carrier is required. A new capture may carry:
+
+```js
+node.diagnostics.flattenedStyle = curatedScalarFinalStyle;
+node.diagnostics.declaredStyle = {
+  source: 'theme-resolved-stylesheet', complete: true
+};
+```
+
+Only a current registration explicitly marked `declaredStyleComplete:true` may
+emit this marker. Partial, stale, unsafe/getter-truncated or absent registrations
+must omit it. No source/asset/URL/raw props are allowed. Descriptor-safe
+`shadowOffset` and `textShadowOffset` are scalarized as `shadowOffsetX/Y` and
+`textShadowOffsetX/Y`; objects are not serialized. The canonical normalizer
+`normalizeNativeDeclaredStyle(flattened, {complete:true})` returns `{style,
+properties}`. Producers do not copy its colour/shadow/compositing math.
+
+`prepareNativeDeclarations(screen)` builds a comparison-only clone from NEW
+explicit evidence. Legacy flattened diagnostics remain unscored. Raw captures,
+geometry, runs, focus and loaded-image facts are never changed. The clone clears
+only unavailable entries supplied by accepted declarations. Own-view omitted
+background/opacity/radius/border/shadow defaults are allowed only for complete
+registrations. Missing ancestry is never an implicit transparent/opacity1 view.
+`normalizeNativeDeclaredAncestry` requires the complete current parent chain to
+the screen root for opacity; backgrounds composite that same chain in the same
+scope as DOM parentElements, excluding the OS/window compositor. An opaque own
+background can resolve its background independently of unknown ancestors.
+
+Font family stays declared `style.fontFamily`; it is never written into
+`resolvedFontFamily` or treated as proof of a loaded/shaped resource. Existing
+observed resolved identity takes precedence when present; declared spelling is
+otherwise compared and explicitly qualified as declared, with no alias suffix
+stripping or requested weight defaults. Loaded identity is retained where
+actually available. Declaration omission never overwrites observed weight800
+with400 or invents inherited text colour/family.
+
+Different renderer layers may use an explicit flat `paintSlots` recipe, e.g.
+`[{reference:'primary-action',actual:'primary-action-face'}]`, with that face also
+in `actualContentOnly`. Only paint comes from the mapped actual child; action
+geometry/focus/transform stay on the action host. Missing/ambiguous paint slots
+fail closed. Transparent action hosts are not evidence that an opaque child face
+is absent. This is a semantic mapping, not geometry inference or a new renderer.
+
+Assessment retains coverage separately and exposes `actionableFindingsReady`
+and `actionableVerdict` for known measured/missing/extra facts when input,
+calibration, state and matching are valid. Unknown unrelated facts do not hide
+those differences; they still prevent complete-screen PASS. Diagnostic font
+aliases, OS chrome scope and renderer-specific SVG paint need their stated
+qualification before a product fix list.
