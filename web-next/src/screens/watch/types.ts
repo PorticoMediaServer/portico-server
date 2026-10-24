@@ -22,6 +22,8 @@ export type WatchPanelContext = Readonly<{
   layout: 'desktop' | 'phone';
   phoneTop: number;
   close: () => void;
+  /** Navigate the parent's open panel, e.g. a phone row to its own sub-panel. */
+  show: (panel: WatchPanel) => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
 }>;
 /** The parent validates/reads one set and owns authenticated tile delivery and retirement. */

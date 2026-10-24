@@ -7,6 +7,7 @@ import {Button, Slider} from '../../kit/controls';
 import {Menu, type MenuEntry} from '../../kit/overlays';
 import {KeyboardShortcuts} from '../../kit/states';
 import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchShortcutTarget, watchStepIntent, type WatchIntent} from './model';
+import {settledPlaybackChanged, settledPlaybackKey, type SettledPlayback} from './screen-state';
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
 import styles from './watch.module.css';
 import {ScrubPreview} from './ScrubPreview';
@@ -55,7 +56,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const current = useRef({binding, snapshot, expanded});
   current.current = {binding, snapshot, expanded};
   const presentation = snapshot.presentation, fence = snapshot.fence;
-  const playbackKey = fence ? JSON.stringify(fence.playback) : '';
+  const playbackKey = settledPlaybackKey(fence?.playback);
+  const settledPlayback = useRef<SettledPlayback | undefined>(undefined);
   const sourceKey = fence ? JSON.stringify(fence) : '';
   const valid = !snapshot.disposed && !!presentation && !!fence && sameFence(fence, presentation.fence)
     && snapshot.authority === binding.runtime.getSnapshot().authority && sameFence(binding.runtime.getSnapshot().fence, fence);
@@ -112,8 +114,14 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     return clearTimer;
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
-  useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
-  const focusEdge = useRef(false);
+  useLayoutEffect(() => {
+    // A fence replacement blanks playback for a frame; only a settled new runtime or a new
+    // playback run starts screen state over (a quality change in the same run keeps it).
+    if (!settledPlaybackChanged(settledPlayback.current, binding.runtime, fence?.playback)) return;
+    settledPlayback.current = {runtime: binding.runtime, key: playbackKey};
+    setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true);
+  }, [binding.runtime, playbackKey]);
+  const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => {
     const wasOpen = focusEdge.current; focusEdge.current = open;
     // Only on the closed-to-open edge: a later autoplay entry change must not take
@@ -127,7 +135,18 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
   useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
-  useEffect(() => { if (!open) { pictureInput.cancel(); setTapFeedback(null); clearTimer(); setPanel(null); setMore(false); setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); } }, [open, clearTimer, pictureInput]);
+  // A source change may blink expanded/open for a frame while the new stack starts.
+  // Only a settled collapse clears the transient player chrome; the options panel is
+  // owned by the playback identity effect above and survives a collapse blink.
+  useEffect(() => {
+    if (expanded) return;
+    const timer = setTimeout(() => {
+      if (expandedNow.current) return;
+      pictureInput.cancel(); setTapFeedback(null); clearTimer(); setMore(false);
+      setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [expanded, clearTimer, pictureInput]);
   useEffect(() => { if (panel || more || shortcuts) pictureInput.cancel(); }, [panel, more, shortcuts, pictureInput]);
   const showPanel = (next: WatchPanel, anchor?: HTMLButtonElement) => {
     if (!surfaces?.available.includes(next)) return;
@@ -322,7 +341,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     }}>
       {surfaces?.body}
     </div>
-    {open && surfaces?.render({panel, snapshot, layout: width < 1024 ? 'phone' : 'desktop', phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), returnFocusRef: panelAnchor})}
+    {open && surfaces?.render({panel, snapshot, layout: width < 1024 ? 'phone' : 'desktop', phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), show: next => showPanel(next), returnFocusRef: panelAnchor})}
     <Menu open={more} onOpenChange={setMore} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={300} items={menuItems} />
     <KeyboardShortcuts open={shortcuts} onOpenChange={setShortcuts} skipBackSeconds={binding.skips.back} skipForwardSeconds={binding.skips.forward} returnFocusRef={moreAnchor} />
   </div>;

@@ -26,6 +26,7 @@ export const dockMessages = {
   'next.dock.playOnDevice': 'Play on',
   'next.dock.subtitlesAudio': 'Subtitles and audio',
   'next.dock.options': 'Playback options',
+  'next.dock.backToOptions': 'Back to playback options',
   'next.dock.lyrics': 'Lyrics',
   'next.dock.queue': 'Up next',
   'next.dock.chapters': 'Chapters',
