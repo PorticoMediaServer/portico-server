@@ -30,7 +30,7 @@ if (params.get('capture') === '1') {
 }
 
 const serverId = 'specimen-server';
-const artPath = (id: string) => `/v1/items/${id}/art/backdrop?v=${'a'.repeat(64)}&w=1920`;
+const artPath = (id: string) => `/v1/metadata/item/${id}/art/backdrop?v=${'a'.repeat(64)}&w=1920`;
 const genre = (value: string, label: string, count: number) => ({value, label, count,
   backdrop: {kind: 'item', id: value, path: artPath(value)}, covers: []});
 const genres = [
@@ -50,7 +50,7 @@ const source = {id: 'synthetic', name: 'Synthetic Live TV', generation: 'g1', pu
   availableStart: '', availableEnd: '', provenance: 'live-source', refreshState: 'ready'};
 const guideChannel = (channel: ChannelFixture, programmes: readonly unknown[]) => ({id: channel.id, sourceId: source.id,
   provenance: 'live-source', name: channel.name, number: channel.number, group: 'Synthetic', generation: source.generation,
-  preferenceRevision: 0, programmes, tuneAvailable: true, recordAvailable: true, favorite: false, hidden: false});
+  preferenceRevision: 0, programmes, tuneAvailable: true, recordAvailable: true, favorite: false, hidden: false, mark: channel.mark});
 const programme = (channel: ChannelFixture) => ({id: 'programme-' + channel.id, channelId: channel.id, title: channel.title,
   subtitle: channel.subtitle, start: channel.start, end: channel.end, flags: channel.live ? {live: true} : undefined});
 const artworkData = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="36"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2f4f63"/><stop offset="1" stop-color="#10212d"/></linearGradient></defs><rect width="64" height="36" fill="url(#g)"/></svg>');

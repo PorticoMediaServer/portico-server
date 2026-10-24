@@ -30,6 +30,16 @@ try {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
       if (pathname === '/reference') {response.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});response.end(referenceHtml);return;}
+      if (pathname === '/frame.png' || pathname === '/build.png') {
+        response.writeHead(200, {'Content-Type': 'image/png'});response.end(await readFile(join(output, pathname.slice(1))));return;
+      }
+      if (pathname === '/pair') {
+        const body = `<!doctype html><html><body style="margin:0;display:flex;background:#000">` +
+          `<div style="width:1440px;height:${height - 100}px;overflow:hidden"><img width="1440" height="${height}" style="margin-top:-100px" src="/frame.png"></div>` +
+          `<div style="width:1440px;height:${height - 100}px;overflow:hidden"><img width="1440" height="${height}" style="margin-top:-100px" src="/build.png"></div>` +
+          `</body></html>`;
+        response.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});response.end(body);return;
+      }
       if (!pathname.startsWith('/design/')) {response.writeHead(404);response.end();return;}
       const relative = pathname.slice('/design/'.length), file = resolve(designRoot, relative);
       if (!file.startsWith(designRoot + '/')) {response.writeHead(403);response.end();return;}
@@ -39,12 +49,12 @@ try {
   await new Promise(done => reference.listen(0, '127.0.0.1', done));
   const referenceOrigin = `http://127.0.0.1:${reference.address().port}`;
 
-  async function chromium(args, label) {
+  async function chromium(args, label, width = 1440, windowHeight = height) {
     const profile = join(process.env.TMPDIR, 'chromium-' + label);
     await mkdir(profile, {recursive: true});
     const child = spawn(chrome, ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars',
-      '--force-device-scale-factor=1', `--window-size=1440,${height}`, '--virtual-time-budget=20000', `--user-data-dir=${profile}`, ...args],
-      {stdio: ['ignore', 'pipe', 'pipe']});
+      '--force-device-scale-factor=1', `--window-size=${width},${windowHeight}`, '--virtual-time-budget=20000', `--user-data-dir=${profile}`, ...args],
+      {stdio: ['ignore', 'pipe', 'pipe'], env: {...process.env, TZ: 'America/Halifax'}});
     let stdout = '', stderr = '';
     child.stdout.on('data', data => {stdout += data;});child.stderr.on('data', data => {stderr += data;});
     const code = await new Promise(done => child.on('close', done));
@@ -61,27 +71,15 @@ try {
 
   const headings = html => [...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map(match => match[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
   const images = html => [...html.matchAll(/<img\b[^>]*>/g)].length;
-  const python = `from PIL import Image
-import sys
-frame=Image.open(sys.argv[1]).convert('RGB'); build=Image.open(sys.argv[2]).convert('RGB')
-h=min(frame.height,build.height)
-a=frame.crop((0,100,1440,h)); b=build.crop((0,100,1440,h))
-out=Image.new('RGB',(2880,h-100)); out.paste(a,(0,0)); out.paste(b,(1440,0)); out.save(sys.argv[3])
-out2=Image.new('RGB',(1440,h-100)); out2.paste(b,(0,0)); out2.save(sys.argv[4])
-print(frame.size, build.size)
-`;
-  const pair = spawn('python3', ['-c', python, join(output, 'frame.png'), join(output, 'build.png'), join(output, 'pair.png'), join(output, 'build-content.png')]);
-  let pairOut = '', pairErr = '';
-  pair.stdout.on('data', data => {pairOut += data;});pair.stderr.on('data', data => {pairErr += data;});
-  const pairCode = await new Promise(done => pair.on('close', done));
+  const pairShot = await chromium([`--screenshot=${join(output, 'pair.png')}`, `${referenceOrigin}/pair`], 'pair', 2880, height - 100);
   const summary = {kind: 'SEARCH EMPTY FRAME/BUILD CAPTURE, not acceptance', viewport: {width: 1440, height, deviceScaleFactor: 1},
-    state: 'empty, recent searches, permitted video genres, permitted Live TV, field focused, fixed clock 2026-10-24T19:05:00Z',
+    state: 'empty, recent searches, permitted video genres, permitted Live TV, field focused, fixed clock 2026-10-24T19:05:00Z, America/Halifax',
     frame: {screenshot: frameShot, headings: headings(frameDom.stdout), images: images(frameDom.stdout)},
     build: {screenshot: buildShot, headings: headings(buildDom.stdout), images: images(buildDom.stdout), note: 'artwork uses neutral image slots; the frame uses private demo artwork'},
-    pair: {code: pairCode, sizes: pairOut.trim(), error: pairErr.trim()},
+    pair: {screenshot: pairShot, note: 'left is the frame, right is the build, both cropped below y=100; the shell navigation is not in the specimen'},
     limits: ['The specimen mounts the screen without the shell navigation; compare from the field down.', 'Image content is not scored; frame artwork is illustrative.']};
   await writeFile(join(output, 'capture.log'), JSON.stringify(summary, null, 2) + '\n', {mode: 0o600});
-  console.log(JSON.stringify({frame: frameShot.code, build: buildShot.code, pair: pairCode, headings: summary.build.headings}));
+  console.log(JSON.stringify({frame: frameShot.code, build: buildShot.code, pair: pairShot.code, headings: summary.build.headings}));
 } finally {
   await vite.close();
   if (reference) await new Promise(done => reference.close(done));
