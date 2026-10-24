@@ -186,3 +186,75 @@ func TestArtworkSizeRefreshNeverRebindsSourceOrRegeneratesPictures(t *testing.T)
 		})
 	}
 }
+
+func TestArtworkSizeRefreshRetainsWorkerFailureBudget(t *testing.T) {
+	s, db, _, _ := integrationScreen(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	s.now = func() time.Time { return now }
+	s.artClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(p08cPNG(t, 20, 20))), Header: http.Header{}}, nil
+	})}
+	if err := s.ScreenStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	saveArtworkEdge(t, s, 2560)
+	if err := s.GlobalArtworkSizeStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	integrationExec(t, db, `UPDATE artwork_jobs SET status='failed',attempts=5,error='acquisition_failed' WHERE size_refresh=1`)
+	now = now.Add(2 * time.Minute)
+	if err := s.GlobalArtworkSizeStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := integrationValue(t, db, `SELECT count(*) FROM metadata_artwork_size_requests`); got != "0" {
+		t.Fatal("exhausted intent retried", got)
+	}
+	if got := integrationValue(t, db, `SELECT count(*) FROM artwork_jobs WHERE size_refresh=1 AND attempts=5 AND status='failed'`); got != "1" {
+		t.Fatal("failure budget reset", got)
+	}
+}
+
+func TestArtworkSizeSweepIsBoundedAndIdleDoesNotWrite(t *testing.T) {
+	s, db, _, _ := integrationScreen(t)
+	ctx := context.Background()
+	s.artClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(p08cPNG(t, 20, 20))), Header: http.Header{}}, nil
+	})}
+	if err := s.ScreenStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Generated pictures are deliberately ineligible for this acquisition lane.
+	// A large real selection set still advances at most one 32-row page.
+	integrationExec(t, db, `UPDATE artwork_candidates SET provider='generated'; WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<40) INSERT INTO artwork_selections SELECT kind,entity_id,role,printf('%03d',x),candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at FROM artwork_selections CROSS JOIN n WHERE subject=''`)
+	saveArtworkEdge(t, s, 2560)
+	if err := s.GlobalArtworkSizeStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var running bool
+	var cursor string
+	if err := db.QueryRow(`SELECT running,cursor_subject FROM metadata_artwork_size_sweep`).Scan(&running, &cursor); err != nil || !running || cursor != "031" {
+		t.Fatal("unbounded page", running, cursor, err)
+	}
+	if err := s.GlobalArtworkSizeStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT running FROM metadata_artwork_size_sweep`).Scan(&running); err != nil || running {
+		t.Fatal(running, err)
+	}
+	before := dbwork.ChangingCommits()
+	for range 3 {
+		if err := s.GlobalArtworkSizeStep(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if after := dbwork.ChangingCommits(); after != before {
+		t.Fatal("idle sweep writes", before, after)
+	}
+}
