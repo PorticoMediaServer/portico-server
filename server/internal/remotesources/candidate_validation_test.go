@@ -201,6 +201,19 @@ func TestCandidateExclusiveScopeRetiresWithServiceEvenWithoutCurrentProcess(t *t
 	if _, _, err = s.beginCandidateTest(context.Background(), "", ReadLimits{Connections: 1}); !errors.Is(err, storage.ErrRemoteOffline) {
 		t.Fatal("retired service admitted another test", err)
 	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		s.serveMu.Lock()
+		pending := len(s.sourceTests)
+		s.serveMu.Unlock()
+		if pending == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("ended hold retained source queue without caller cleanup")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	finish()
 	s.serveMu.Lock()
 	count := len(s.sourceTests)

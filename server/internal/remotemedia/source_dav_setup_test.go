@@ -114,7 +114,7 @@ func TestSourceDAVSetupRangeFactsNeverInferSupport(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			dav, err := NewSourceDAV(context.Background(), config, nil)
+			dav, err := NewSourceDAV(config, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -169,7 +169,7 @@ func TestSourceDAVSetupDiagnosticPacesRequestsAndBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dav, err := NewSourceDAV(context.Background(), config, nil)
+	dav, err := NewSourceDAV(config, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

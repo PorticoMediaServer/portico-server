@@ -44,13 +44,13 @@ func ValidateSourceDAVConfig(ctx context.Context, c DAVConfig, resolver Resolver
 // NewSourceDAV rechecks THIS source's saved origin, never a native/library
 // approval. It permits normal verified TLS; HTTP retains its existing explicit
 // local-only configuration restriction.
-func NewSourceDAV(ctx context.Context, c DAVConfig, resolver Resolver) (*DAV, error) {
+func NewSourceDAV(c DAVConfig, resolver Resolver) (*DAV, error) {
 	u, err := url.Parse(c.Root)
 	if err != nil || u.RawQuery != "" || u.User != nil || u.Fragment != "" || (u.Scheme != "https" && (!c.InsecureLocal || len(c.Approval.Addresses) == 0)) {
 		return nil, ErrPolicy
 	}
 	policy := Policy{Resolver: resolver, SourceEndpoints: true, SourcePrivateOnly: u.Scheme != "https", Approvals: []Approval{c.Approval}}
-	if err := policy.CheckEndpointApproval(ctx, c.Root, c.Approval); err != nil {
+	if _, _, err := savedEndpointAddresses(c.Root, c.Approval); err != nil {
 		return nil, err
 	}
 	return &DAV{config: c, policy: policy}, nil

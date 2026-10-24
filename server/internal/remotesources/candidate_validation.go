@@ -102,6 +102,9 @@ func (s *Service) beginCandidateTest(ctx context.Context, source string, limits 
 		}
 		return nil, nil, err
 	}
+	// Queue retirement follows the bounded hold even if a caller is delayed in
+	// cleanup. Cancellation also stops its temporary process independently.
+	context.AfterFunc(hold.Context(), finish)
 	return hold, func() { hold.Close(); finish() }, nil
 }
 
