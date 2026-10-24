@@ -1,0 +1,151 @@
+import test, {type TestContext} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createPrivateKey, randomUUID, sign} from 'node:crypto';
+import {BrowserSetupClaim} from '../src/platform/setup-claim.ts';
+import {HttpLocalApi, transportJSON, type LocalSession} from '@core/index.ts';
+import {AppSessionStore, type AppSessionRecord} from '@core/app-sessions.ts';
+import {setInstallationIdentity} from '@core/installation.ts';
+import type {SetupDraft} from '@core/setup-onboarding.ts';
+import {rememberNativeSession} from '@core/server-connections.ts';
+import {routeBase64, routeBytes, webRouteCrypto} from '@core/route-identity.ts';
+
+type Ports = ConstructorParameters<typeof BrowserSetupClaim>[0];
+type Pending = Awaited<ReturnType<Ports['journal']['read']>>;
+const vector = JSON.parse(readFileSync(new URL('../../server/internal/claimweb/testdata/owner_start.json', import.meta.url), 'utf8'));
+const original = {...JSON.parse(vector.claimPayload), purpose: 'setup'};
+const key = createPrivateKey({key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), Buffer.alloc(32, 0x42)]), format: 'der', type: 'pkcs8'});
+function signed(value: unknown) {const bytes = Buffer.from(transportJSON(value)); return {payload: bytes.toString('base64url'), signature: sign(null, bytes, key).toString('base64url')};}
+async function fixture(t: TestContext, origin = original.address) {
+  const hostedOrigin = original.audience, installation = randomUUID(), suffix = randomUUID();
+  setInstallationIdentity({installationId: installation, name: 'Browser', platform: 'web', app: 'portico', appVersion: '1'});
+  t.after(() => setInstallationIdentity(undefined));
+  const pin = {serverId: original.serverId, publicKey: original.publicKey, fingerprint: routeBase64(await webRouteCrypto.sha256(routeBytes(original.publicKey, 32)))};
+  let now = Date.parse('2030-01-02T03:04:07Z'), saved: Pending, secure = true, installed = false, prepared = false, cancelled = false;
+  const oldSession: LocalSession = {accessToken: 'old-access-' + suffix, refreshToken: routeBase64(new Uint8Array(32).fill(4)), sessionFamilyId: 'old-family-' + suffix, tokenGeneration: '1',
+    expiresAt: '2030-01-02T04:00:00Z', authorizationHorizon: '2030-02-02T04:00:00Z', viewer: {serverId: pin.serverId, accountId: 'local-setup', profileId: 'main', authority: 'local', role: 'owner'}};
+  let record: AppSessionRecord = {version: 1, revision: 7, servers: []};
+  let draft: SetupDraft | undefined = {version: 1, serverId: pin.serverId, requestId: '11111111-2222-4333-8444-555555555555', setupToken: 'actual-protected-setup-secret', name: original.name, authMode: 'hosted'};
+  const sessions = new AppSessionStore({read: async () => record, change: async update => {record = update(record)!;}});
+  const nextSession: LocalSession = {...oldSession, accessToken: 'new-access-' + suffix, sessionFamilyId: 'new-family-' + suffix,
+    viewer: {...oldSession.viewer, role: 'account'}};
+  const grant = {authority: 'local', serverId: pin.serverId, canManage: true, capabilities: {manageAccount: true, managePeople: false, manageServer: false, manageSignIn: false},
+    account: {id: 'local-setup', username: 'actual_setup', primaryProfileId: 'main', role: 'owner', revision: 2, disabled: false, allowedLibraries: [], hostedAccountId: 'approved-hosted-setup'},
+    profiles: [{id: 'main', name: 'Main', primary: true, art: 'blue', position: 0, revision: 1, pinRevision: 1, pinRequired: false},
+      {id: 'second', name: 'Second', primary: false, art: 'blue', position: 1, revision: 1, pinRevision: 1, pinRequired: false}], session: nextSession};
+  const expected = {operationId: original.operationId, localGeneration: original.localGeneration, revision: '2'};
+  const transactionId = 'actual_setup_transaction', registration = {id: 'ret_' + 'r'.repeat(43), origin: 'https://managed.example.test'};
+  let handoff: NonNullable<Pending>['handoff'], firstSetupStart: unknown;
+  const sent: {path: string; method: string; body: any; authorization: string | null}[] = [], retired: string[] = [];
+  let hook = async (_path: string) => {}, lost = false, failStorage = false;
+  const stamp = (time: number) => new Date(time).toISOString().replace('.000Z', 'Z');
+  const status = () => ({state: installed ? 'installed' : prepared ? 'prepared' : 'unconfigured', identity: {serverId: pin.serverId, localGeneration: cancelled && !installed ? String(BigInt(expected.localGeneration) + 1n) : expected.localGeneration},
+    ...(prepared ? {operation: {...expected, revision: installed ? '5' : expected.revision}, accountId: 'account-unbound',
+      approvalRequest: {purpose: 'setup', currentSetupAccountId: '', previousSetupRole: '', returnRegistrationId: '', operationId: expected.operationId, serverId: pin.serverId,
+        publicKey: pin.publicKey, localGeneration: expected.localGeneration, name: original.name, expectedRevision: expected.revision}} : {}),
+    installationAcknowledged: installed, approvalRequired: !installed, actions: prepared ? ['cancel', installed ? 'continue' : 'approve'] : ['prepare'],
+    ...(installed ? {setupContinuation: {transactionId, phase: cancelled ? 'cancelled' : 'installed', expiresAt: handoff!.expiresAt, returnRegistration: registration}} : {})});
+  const fetcher: typeof fetch = async (input, init) => {
+    const path = new URL(String(input)).pathname, body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    sent.push({path, method: init?.method ?? 'GET', body, authorization: new Headers(init?.headers).get('Authorization')});
+    let response: unknown;
+    if (path === '/v1/setup/resume') {assert.equal(body.requestId, draft!.requestId); response={serverId: pin.serverId, requestId: draft!.requestId, authMode: 'hosted', claimRequired: true, revision: '2'};}
+    else if (path === '/v1/networking/claim/prepare') {assert.equal(body.purpose, 'setup'); prepared = true; response = status();}
+    else if (path === '/v1/networking/claim') response = status();
+    else if (path === '/v1/networking/claim/cancel') {
+      assert.deepEqual(body.expected, {...expected, revision: installed ? '5' : expected.revision});
+      cancelled = true; if (!installed) prepared = false; response = status();
+    }
+    else if (path === '/v1/networking/claim/web-approval') {
+      if (firstSetupStart) assert.deepEqual(body.setupStart, firstSetupStart, 'retry must freeze the original PKCE/state/installation');
+      firstSetupStart = body.setupStart;
+      const claim = {...original, address: origin, issuedAt: stamp(now - 1000), expiresAt: stamp(now + 599000)}, proof = signed(claim);
+      const inherited=JSON.parse(vector.startPayload);
+      const start = {kind: 'portico.setup-start.v1', audience: hostedOrigin, claimHash: routeBase64(await webRouteCrypto.sha256(routeBytes(proof.payload))),
+        operationId: expected.operationId, serverId: pin.serverId, publicKey: pin.publicKey, localGeneration: expected.localGeneration, address: origin, purpose: 'setup',
+        setupRequestId: draft!.requestId, setupRevision: '2', state: body.setupStart.state, codeChallenge: body.setupStart.codeChallenge, installationId: body.setupStart.installationId,
+        serverChallenge: inherited.serverChallenge, issuedAt: stamp(now), expiresAt: stamp(now + 299000)};
+      handoff = {expected, binding: {pin, origin, hostedOrigin, operationId: expected.operationId, localGeneration: expected.localGeneration, setupRequestId: draft!.requestId, setupRevision: '2', ...body.setupStart},
+        transactionId, expiresAt: start.expiresAt, claim: proof, start: signed(start)};
+      const code = 'claim_' + 'K'.repeat(43);
+      response = {...status(), approvalUrl: hostedOrigin + '/claim#' + new URLSearchParams({code, operation: expected.operationId, server: original.name}), claimCode: code,
+        setupContinuation: {transactionId, phase: 'prepared', expiresAt: start.expiresAt, claim: handoff.claim, start: handoff.start}};
+    } else if (path === '/v1/auth/portico-return/exchange') {
+      assert.equal(saved, undefined, 'private journal is spent before exchange');
+      assert.deepEqual(Object.keys(body).sort(), ['installationId', 'purpose', 'registrationId', 'serverChallenge', 'state', 'transactionId', 'verifier']);
+      assert.equal(body.registrationId, registration.id); assert.equal(body.installationId, installation); assert.equal(body.purpose, 'setup');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer actual-protected-setup-secret');
+      if (lost) throw new Error('lost setup response');
+      response = grant;
+    } else throw new Error('unexpected setup API path');
+    await hook(path);
+    return new Response(JSON.stringify(response), {headers: {'Content-Type': 'application/json'}});
+  };
+  const connection = {logicalOrigin: origin, pin, fetch: fetcher, getSnapshot: () => ({phase: 'ready'}), subscribe: () => () => {}, dispose: () => {},
+    getMemory: () => ({paired: new Set([origin])}), setPersistence: () => {}};
+  const api = new HttpLocalApi(origin, oldSession.accessToken, fetcher); api.useRoutes(connection as never);
+  const boundAPI = new HttpLocalApi(origin, '', fetcher); boundAPI.useRoutes(connection as never);
+  const ports: Ports = {
+    journal: {assertAvailable: () => {if (!secure) throw new Error('secure storage unavailable');}, read: async () => saved,
+      change: async update => {if (failStorage && saved?.handoff) throw new Error('storage unavailable'); saved = update(saved);}},
+    draft: () => ({read: async () => draft, change: async update => {draft=update(draft);}}),
+    sessions, environment: () => ({storage: sessions.connectionStorage(pin.serverId)}), installationId: () => installation, pageOrigin: () => origin, now: () => now,
+    connect: (async () => ({api, connection})) as Ports['connect'],
+    connectPortico: (async (_origin, _pin, source) => {
+      assert.equal(_origin, origin, 'no credential/storage migration to the new HTTPS origin'); assert.equal(source.accountId, 'approved-hosted-setup');
+      return {api: boundAPI, connection, hosted: {origin: hostedOrigin, accountId: source.accountId, key: {keyId: 'key', publicKey: pin.publicKey}}};
+    }) as Ports['connectPortico'],
+    retire: async (_api, session) => {retired.push(session.sessionFamilyId);},
+  };
+  const flow = new BrowserSetupClaim(ports), callback = {href: origin + '/auth/portico-return', fragment: '#transaction=' + transactionId};
+  return {flow, api, callback, grant, oldSession, nextSession, sent, retired, sessions, expected, registration, ports,
+    prepare: () => flow.prepare(api, hostedOrigin), another: () => new BrowserSetupClaim(ports), pending: () => saved,
+    install: () => {installed = true;}, expire: () => {now += 301000;}, advance: () => {now += 2000;}, insecure: () => {secure = false;}, lose: () => {lost = true;},
+    draft: () => draft, replaceDraft: () => {draft={...draft!, requestId: '11111111-2222-4333-8444-555555555556'};},
+    replaceSelection: () => {record={...record, revision: record.revision+1};},
+    mutate: (change: (record: NonNullable<Pending>) => Pending) => {saved = change(saved!);},
+    hook: (value: typeof hook) => {hook = value;}, failStorage: () => {failStorage = true;}};
+}
+
+
+test('initial setup captures the actual pending request without inventing a Local owner', async t => {
+ const f=await fixture(t); const url=await f.prepare();
+ assert.equal(f.pending()?.kind,'setup'); assert.equal((await f.sessions.read()).servers.length,0);
+ assert.ok(f.sent.every(v=>v.authorization==='Bearer actual-protected-setup-secret'));
+ for (const secret of [f.pending()!.setupToken,f.pending()!.verifier,f.pending()!.state]) assert.equal(url.includes(secret),false);
+ await f.another().prepare(f.api,original.audience);
+ assert.equal(f.sent.filter(v=>v.path.endsWith('/prepare')).length,1);
+});
+test('setup refuses insecure storage before any private or network work', async t=>{
+ const f=await fixture(t);f.insecure();await assert.rejects(f.prepare(),/secure storage/);assert.equal(f.sent.length,0);
+});
+test('setup completion consumes once and adopts only the real admitted owner', async t=>{
+ const f=await fixture(t);await f.prepare();f.install();
+ assert.deepEqual(await f.flow.pendingReturn(),{kind:'setup',transactionId:'actual_setup_transaction'});
+ const out=await f.another().finish(f.callback);
+ assert.equal(out.result.snapshot.account.hostedAccountId,'approved-hosted-setup');
+ assert.equal((await f.sessions.selected())?.signIn,'portico');assert.equal(f.draft(),undefined);
+ await assert.rejects(f.another().finish(f.callback));assert.equal(f.sent.filter(v=>v.path.endsWith('/exchange')).length,1);
+});
+for(const mode of ['draft','selection','expiry'] as const) test('setup '+mode+' replacement blocks an exchange',async t=>{
+ const f=await fixture(t);await f.prepare();f.install();
+ if(mode==='draft') f.replaceDraft();if(mode==='selection')f.replaceSelection();if(mode==='expiry')f.expire();
+ await assert.rejects(f.flow.finish(f.callback));assert.equal(f.sent.some(v=>v.path.endsWith('/exchange')),false);assert.equal((await f.sessions.read()).servers.length,0);
+});
+for(const fragment of ['#transaction=wrong','#transaction=actual_setup_transaction&state=x','#transaction=actual_setup_transaction&purpose=setup']) test('malformed setup callback preserves pending',async t=>{
+ const f=await fixture(t);await f.prepare();f.install();const pending=f.pending(),count=f.sent.length;
+ await assert.rejects(f.flow.finish({...f.callback,fragment}));assert.equal(f.pending(),pending);assert.equal(f.sent.length,count);
+});
+test('setup loses its response without retrying an owner grant',async t=>{
+ const f=await fixture(t);await f.prepare();f.install();f.lose();await assert.rejects(f.flow.finish(f.callback));
+ await assert.rejects(f.another().finish(f.callback));assert.equal(f.sent.filter(v=>v.path.endsWith('/exchange')).length,1);assert.equal((await f.sessions.read()).servers.length,0);
+});
+test('late setup grant is retired and a replaced draft survives',async t=>{
+ const f=await fixture(t);await f.prepare();f.install();f.hook(async path=>{if(path.endsWith('/exchange'))f.replaceDraft();});
+ await assert.rejects(f.flow.finish(f.callback));assert.deepEqual(f.retired,[f.nextSession.sessionFamilyId]);assert.equal(f.draft()?.requestId,'11111111-2222-4333-8444-555555555556');
+});
+test('setup admission expiry removes only its new family',async t=>{
+ const f=await fixture(t);await f.prepare();f.install();
+ const flow=new BrowserSetupClaim({...f.ports,remember:async(...args)=>{await rememberNativeSession(...args);f.expire();}});
+ await assert.rejects(flow.finish(f.callback));assert.deepEqual(f.retired,[f.nextSession.sessionFamilyId]);assert.equal(await f.sessions.selected(),undefined);assert.ok(f.draft());
+});
