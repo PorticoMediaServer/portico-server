@@ -78,7 +78,7 @@ test('preview uses server membership/count instead of locally filtering its boun
     await f.binding.load();const row = f.binding.getSnapshot().view!.rules[0];await f.binding.preview(row, {...row.settings, episodes: 'new'});
     const preview = f.binding.getSnapshot().preview!;
     assert.equal(preview.count, 40);assert.equal(preview.airings.length, 2);assert.equal(preview.airings[0].isNew, true);assert.equal(preview.airings[1].isNew, false);
-    assert.equal(preview.airings[0].scheduled, true);assert.equal(preview.airings[1].scheduled, false, 'a preview match with no recording fact is not scheduled');
+    assert.equal(preview.airings[0].scheduled, true);assert.equal(preview.airings[1].scheduled, undefined, 'a preview match does not invent a recording state');
     assert.equal(preview.airings[1].channel, undefined);assert.equal(preview.airings[0].channel, 'Stored channel');
     assert.equal(f.nonces(), 0, 'readonly preview is not a mutation receipt');
   } finally {f.binding.dispose();}
