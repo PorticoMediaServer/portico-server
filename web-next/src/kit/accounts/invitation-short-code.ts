@@ -38,7 +38,7 @@ export class ShortCodeIssuer {
     ++this.generation;this.active?.abort();this.active = undefined;this.operationId = undefined;
     this.publish({phase: 'idle'});
   }
-  dispose() {this.reset();this.disposed = true;this.listeners.clear();}
+  dispose() {this.disposed = true;++this.generation;this.active?.abort();this.active = undefined;this.operationId = undefined;this.listeners.clear();}
   retry(run: ShortCodeRun) {return this.issue(false, run);}
   async issue(fresh: boolean, run: ShortCodeRun): Promise<void> {
     if (this.disposed || this.state.phase === 'issuing') return;
