@@ -39,6 +39,13 @@ func TestMusicTrackCohortRequiresCompleteCurrentDirectoryObservation(t *testing.
 	if _, known := s.scanMusicTracksListed(context.Background(), "job", source)(filepath.Join(root, "..")); known {
 		t.Fatal("outside root trusted")
 	}
+	duplicate := page(true)
+	duplicate.Entries = append(duplicate.Entries, storage.Snapshot{Name: "101 - ONE.flac"})
+	s.noteDirectoryPage("job", "Album", "", duplicate)
+	if _, known := s.scanMusicTracksListed(context.Background(), "job", source)(directory); known {
+		t.Fatal("case-colliding actual names collapsed into a clear cohort")
+	}
+	s.noteDirectoryPage("job", "Album", "", page(true))
 	changed := time.Now().Add(time.Hour)
 	if err := os.Chtimes(directory, changed, changed); err != nil {
 		t.Fatal(err)

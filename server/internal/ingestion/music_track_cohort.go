@@ -21,7 +21,7 @@ func (s *Service) scanMusicTracksListed(ctx context.Context, job string, source 
 			return nil, false
 		}
 		dir, known := current(relative)
-		if !known || len(dir.names) > naming.MaxPackedTrackCohort {
+		if !known || dir.musicAmbiguous || len(dir.names) > naming.MaxPackedTrackCohort {
 			return nil, false
 		}
 		names := []string{}

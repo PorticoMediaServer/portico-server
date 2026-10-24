@@ -40,19 +40,21 @@ type listedDirectory struct {
 	names              map[string]struct{}
 	artwork            map[string]string
 	identity, revision string
+	musicAmbiguous     bool
 }
 
 type scanListing struct {
-	open         map[string]map[string]struct{}
-	done         map[string]listedDirectory
-	names        int
-	artworkOpen  map[string]map[string]string
-	artworkNames int
+	open           map[string]map[string]struct{}
+	done           map[string]listedDirectory
+	names          int
+	artworkOpen    map[string]map[string]string
+	artworkNames   int
+	musicAmbiguous map[string]bool
 }
 
 // sidecarLike reports whether a name has one of the extensions local metadata
-// looks for beside a media file. Only those names are remembered, so only
-// those can be reported absent.
+// looks for beside a media file. Only those names can be reported absent;
+// audio names are also kept as bounded album-cohort naming evidence.
 func sidecarLike(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".jpg", ".jpeg", ".png", ".tbn", ".webp", ".nfo", ".opf", ".json":
@@ -85,6 +87,10 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 		s.listings[job] = l
 	}
 	if cursor == "" {
+		if l.musicAmbiguous == nil {
+			l.musicAmbiguous = map[string]bool{}
+		}
+		delete(l.musicAmbiguous, relative)
 		if l.artworkOpen == nil {
 			l.artworkOpen = map[string]map[string]string{}
 		}
@@ -127,6 +133,9 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 				}
 			}
 		}
+		if _, seen := names[listedName(v.Name)]; seen && assets.SupportedForKind(v.Name, "music") {
+			l.musicAmbiguous[relative] = true // case/Unicode collisions cannot establish a unique album cohort
+		}
 		if _, seen := names[listedName(v.Name)]; !seen {
 			names[listedName(v.Name)] = struct{}{}
 			l.names++
@@ -135,12 +144,13 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 	if page.Complete {
 		delete(l.open, relative)
 		if page.DirectoryIdentity != "" && page.DirectoryRevision != "" {
-			l.done[relative] = listedDirectory{names: names, artwork: l.artworkOpen[relative], identity: page.DirectoryIdentity, revision: page.DirectoryRevision}
+			l.done[relative] = listedDirectory{names: names, artwork: l.artworkOpen[relative], identity: page.DirectoryIdentity, revision: page.DirectoryRevision, musicAmbiguous: l.musicAmbiguous[relative]}
 		} else {
 			l.names -= len(names)
 			l.artworkNames -= len(l.artworkOpen[relative])
 		}
 		delete(l.artworkOpen, relative)
+		delete(l.musicAmbiguous, relative)
 	}
 }
 
