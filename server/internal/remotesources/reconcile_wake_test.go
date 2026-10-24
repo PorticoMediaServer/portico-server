@@ -35,7 +35,7 @@ func TestRemoteSourceWakeIgnoresTelemetryAndRetainsActualInputs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	commit(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES(0,'remote-wake-fixture',1,1,'ok','',0,0)`)
+	commit(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES(0,'remote-wake-fixture',1,1,'available','',0,0)`)
 	select {
 	case <-passes:
 		t.Fatal("unrelated telemetry woke source reconciliation")
