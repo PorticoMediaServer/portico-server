@@ -72,13 +72,13 @@ func (s *Service) Albums(artist, cursor string, limit int) ([]Album, string, err
 	}
 	rows, err := s.read().Query(`SELECT pid(e.public_id),l.library_id,e.title,pid(ar.public_id),ar.title,e.year,a.provider_match_status,
  COALESCE((SELECT pid(item.public_id) FROM catalog_songs s JOIN catalog_entities item ON item.id=s.entity_id JOIN catalog_item_details d ON d.entity_id=item.id WHERE s.album_id=e.id AND d.poster_url<>'' AND item.retired=0 LIMIT 1),''),
- a.release_id,a.release_group_id,a.release_date,a.release_country,a.provider_observed_at
+ a.release_id,a.release_group_id,a.release_date,a.release_country,a.provider_observed_at,`+albumRoleSQL("e", "ar")+`
  FROM catalog_entities e JOIN catalog_albums a ON a.entity_id=e.id
  JOIN catalog_entities ar ON ar.id=a.artist_id
  JOIN catalog_libraries l ON l.id=e.library_id
  WHERE e.kind=6 AND e.retired=0 AND ar.retired=0 AND l.retired=0
  AND (ar.public_id=pid_blob(?) OR EXISTS(SELECT 1 FROM catalog_songs s JOIN catalog_song_artists sa ON sa.song_id=s.entity_id WHERE s.album_id=e.id AND sa.artist_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))))
- AND e.id>? ORDER BY e.id LIMIT ?`, artist, artist, after, limit+1)
+ AND e.id>? ORDER BY e.id LIMIT ?`, artist, artist, artist, after, limit+1)
 	if err != nil {
 		return nil, "", err
 	}
@@ -87,7 +87,7 @@ func (s *Service) Albums(artist, cursor string, limit int) ([]Album, string, err
 	for rows.Next() {
 		var row Album
 		var artItem string
-		if err = rows.Scan(&row.ID, &row.LibraryID, &row.Title, &row.AlbumArtistID, &row.AlbumArtist, &row.Year, &row.ProviderMatchStatus, &artItem, &row.ProviderReleaseID, &row.ProviderReleaseGroupID, &row.ProviderReleaseDate, &row.ProviderReleaseCountry, &row.ProviderObservedAt); err != nil {
+		if err = rows.Scan(&row.ID, &row.LibraryID, &row.Title, &row.AlbumArtistID, &row.AlbumArtist, &row.Year, &row.ProviderMatchStatus, &artItem, &row.ProviderReleaseID, &row.ProviderReleaseGroupID, &row.ProviderReleaseDate, &row.ProviderReleaseCountry, &row.ProviderObservedAt, &row.Role); err != nil {
 			return nil, "", err
 		}
 		if artItem != "" {

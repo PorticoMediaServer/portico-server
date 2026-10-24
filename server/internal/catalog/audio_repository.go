@@ -34,6 +34,9 @@ type Album struct {
 	Year                   int    `json:"year,omitempty"`
 	ProviderMatchStatus    string `json:"providerMatchStatus"`
 	PosterURL              string `json:"posterUrl,omitempty"`
+	// Role is the artist-relative release role for this artist page: album, ep,
+	// single, compilation, or appearance. Absent from older servers.
+	Role string `json:"role,omitempty"`
 }
 type Book struct {
 	ID                  string      `json:"id"`
