@@ -85,9 +85,9 @@ func (s *Service) sonicGroups(viewer Viewer, kind int, only int64, visit func(so
  `+creditJoin+` JOIN catalog_entities target ON target.id=`+target+` AND target.retired=0
  WHERE item.kind=7 AND `+visible+`
 	 AND `+currentSonicEligibleSQL+`
- AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),1)=1
+ AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),?)=1
  AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
- ORDER BY target.id,item.id`, append([]any{sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256}, args...)...)
+ ORDER BY target.id,item.id`, append(append([]any{sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256}, args...), SonicDefaultEnabled())...)
 	if err != nil {
 		return err
 	}
@@ -242,11 +242,11 @@ func QueueSonicRefreshTx(ctx context.Context, tx *sql.Tx) error {
 	 JOIN library_scan_policies policy ON policy.library_id=configured.id
 	 JOIN catalog_libraries library ON library.library_id=configured.id AND library.retired=0
 	 WHERE configured.kind='music' AND policy.tier<>'file_list_only'
-	 AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=configured.id),1)=1
+	 AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=configured.id),?)=1
 	 AND EXISTS(SELECT 1 FROM catalog_entities item WHERE item.library_id=library.id AND item.kind=7 AND item.retired=0
 	 AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
 	 AND `+currentSonicEligibleSQL+`
 	 AND `+currentSonicVectorSQL+` IS NULL)
-	 ON CONFLICT(library_id) DO UPDATE SET revision=excluded.revision`, sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256)
+	 ON CONFLICT(library_id) DO UPDATE SET revision=excluded.revision`, SonicDefaultEnabled(), sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256)
 	return err
 }

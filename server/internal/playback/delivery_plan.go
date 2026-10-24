@@ -406,7 +406,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if audio != nil {
 		p.SourceAudioCodec, p.OutputAudioCodec = audio.Codec, audio.Codec
 		p.AudioStream = audio.Index
-		trace.Audio = &TraceAudio{StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, ChosenBy: chosenBy, Tracks: len(source.Audio)}
+		trace.Audio = traceAudioSource(audio, chosenBy, len(source.Audio))
 	}
 	if in.Remote && !in.BurnIn {
 		p.Mode = "remote"
@@ -688,7 +688,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			trace.Notes = append(trace.Notes, NoteFirstAudioTrackPlayed)
 			audio = &source.Audio[0]
 			p.SourceAudioCodec, p.OutputAudioCodec, p.AudioStream = audio.Codec, audio.Codec, audio.Index
-			trace.Audio.StreamIndex, trace.Audio.Codec, trace.Audio.Channels, trace.Audio.Language, trace.Audio.ChosenBy = audio.Index, audio.Codec, audio.Channels, audio.Language, "only_reachable_track"
+			trace.Audio = traceAudioSource(audio, "only_reachable_track", len(source.Audio))
 			code := ReasonDirectPlayCompatible
 			candidates = append(candidates, candidate{DeliveryOriginal, costDirect, "direct", TransportDirect, []string{code}, 0})
 		}
@@ -871,6 +871,13 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		p.ReasonCodes = append(p.ReasonCodes, ReasonSoftwareFallback)
 	}
 	return p, nil
+}
+
+func traceAudioSource(audio *SourceAudio, chosenBy string, tracks int) *TraceAudio {
+	if audio == nil {
+		return nil
+	}
+	return &TraceAudio{StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, ChosenBy: chosenBy, Tracks: tracks}
 }
 
 // sourceAudioAt is the source track with the given absolute stream index.

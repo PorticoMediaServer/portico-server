@@ -66,3 +66,24 @@ func TestMusicSonicPolicyNeverReadsFileListOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestMusicSonicFactoryDefaultStaysIndependentOfSavedChoice(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("music", "Music", "music", "/music")
+	if !SonicDefaultEnabled() {
+		t.Fatal("approved factory choice changed")
+	}
+	tx, err := c.DB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing, err := SonicSettingsTx(context.Background(), tx, "music")
+	tx.Rollback()
+	if err != nil || missing.Enabled != SonicDefaultEnabled() || missing.Revision != 1 {
+		t.Fatal(missing, err)
+	}
+	saved, err := New(c.DB).UpdateSonicSettings(context.Background(), "music", false, missing.Revision, func(*sql.Tx) error { return nil })
+	if err != nil || saved.Enabled || saved.Revision != 2 || !SonicDefaultEnabled() {
+		t.Fatal("saved Off replaced the factory fact", saved, err)
+	}
+}
