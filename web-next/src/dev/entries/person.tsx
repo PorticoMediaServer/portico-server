@@ -119,7 +119,7 @@ function activityDocument(now: string) {
   });
   return {scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: 'Portico demo', // lint-strings-allow: public DEV specimen server
     streams: {count: 2, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: [session('stream-1'), session('stream-2')]},
-    scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''}, health: {degraded: false}};
+    scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''}, health: {degraded: false}, majorIssues: []};
 }
 
 export function createPersonSpecimen(kind: 'desktop' | 'phone' = 'desktop') {
@@ -209,7 +209,7 @@ const contextBase = {
   signOutPorticoAccount: () => { specimen.record('sign-out-portico'); },
   switchProfile: async () => {}, switchServer: async () => {}, savedServers: [],
 } as unknown as ShellAssemblyContext;
-const activity = createOwnerActivity(contextBase, time, () => { specimen.record('open-dashboard'); }, () => { specimen.record('open-update'); });
+const activity = createOwnerActivity(contextBase, time, () => { specimen.record('open-dashboard'); }, () => { specimen.record('open-update'); }, destination => { specimen.record('open-issue', destination); });
 const binding: ShellBindings = {
   api: specimen.api, events: specimen.events, scopeKey: `person-specimen-${specimen.personId}`,
   shell: {identity, OwnerActivity: activity.OwnerActivity, dockVisible: false, onSignOut: () => { specimen.record('sign-out'); }},

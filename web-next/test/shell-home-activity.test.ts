@@ -13,8 +13,8 @@ function stream(): ActivitySummarySession { return {id: 'session', kind: 'vod', 
 function summary(session = stream()): OwnerActivitySummary { return {scope: {serverId: 'server', viewerFence: 'viewer-fence'}, serverName: f.server, observedAt: '2026-10-22T12:00:00Z',
   streams: {count: 9, convertingCount: 4, overflow: {count: 6, convertingCount: 3}, items: [session, {...session, id: 'second', converting: false, decision: {}}, {...session, id: 'third', converting: false, decision: {}}]}, scans: [{libraryId: 'library', libraryName: f.libraryPrefix, kind: 'movies', phase: 'analyzing', analyzed: 12, discovered: 40}],
   tasks: {count: 4, items: [{id: 'task', kind: 'metadata', state: 'running', phase: 'fetching', processed: 5}]},
-  update: {available: true, state: 'available', current: '1.0', latest: '1.1'}, health: {degraded: false}, lastScanFinishedAt: '2026-10-22T11:55:00Z'}; }
-const actions = {onDashboard: () => {}, onRetry: () => {}, openUpdate: () => {}};
+  update: {available: true, state: 'available', current: '1.0', latest: '1.1'}, health: {degraded: false}, majorIssues: [], lastScanFinishedAt: '2026-10-22T11:55:00Z'}; }
+const actions = {onDashboard: () => {}, onRetry: () => {}, openUpdate: () => {}, openIssue: () => {}};
 
 test('Activity maps semantic episode identity while keeping the real profile and device separate', () => {
   const view = activityView(summary(), environment, actions), value = view.streams[0];

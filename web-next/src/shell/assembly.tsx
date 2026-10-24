@@ -10,6 +10,7 @@ import {router} from '../router';
 import type {ShellBindings} from './bindings';
 import type {ShellAssembler} from './bootstrap';
 import {createOwnerActivity} from './Activity';
+import {activityIssueSettings} from './activity-model';
 import {ShellFeedback, ShellFeedbackHost} from './Feedback';
 import {entryDestination, seeAllDestination} from './navigation';
 import {hasDock} from './playback-model';
@@ -77,7 +78,11 @@ export const assembleShellBindings: ShellAssembler = async context => {
   };
   const activity = createOwnerActivity(context, time,
     section => { void router.navigate({to: '/dashboard', search: section ? {section} : {}}).catch(feedback.reportError); },
-    () => { void router.navigate({to: '/dashboard', search: {section: 'updates'}}).catch(feedback.reportError); });
+    () => { void router.navigate({to: '/dashboard', search: {section: 'updates'}}).catch(feedback.reportError); },
+    destination => {
+      const section = activityIssueSettings(destination.kind);
+      if (section) void router.navigate({to: '/settings', search: {scope: 'server', section}}).catch(feedback.reportError);
+    });
   resources.push(activity.dispose);
   let homeLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
   if (context.preferences) resources.push(context.preferences.subscribe(() => {

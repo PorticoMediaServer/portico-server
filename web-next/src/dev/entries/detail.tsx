@@ -80,7 +80,7 @@ const contextBase = {
   signOutPorticoAccount: () => { specimen.record('sign-out-portico'); },
   switchProfile: async () => {}, switchServer: async () => {}, savedServers: [],
 } as unknown as ShellAssemblyContext;
-const activity = createOwnerActivity(contextBase, time, () => { specimen.record('open-dashboard'); }, () => { specimen.record('open-update'); });
+const activity = createOwnerActivity(contextBase, time, () => { specimen.record('open-dashboard'); }, () => { specimen.record('open-update'); }, destination => { specimen.record('open-issue', destination); });
 const binding: ShellBindings = {
   api: specimen.api, events: specimen.events, scopeKey: 'detail-specimen',
   shell: {identity, OwnerActivity: activity.OwnerActivity, dockVisible: false, onSignOut: () => { specimen.record('sign-out'); }},

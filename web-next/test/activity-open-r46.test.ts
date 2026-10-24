@@ -16,7 +16,7 @@ const {activityView} = await import('../src/shell/activity-model.ts');
 const {ActivityPanel, TopBarActivity} = await import('../src/kit/shell/Activity.tsx');
 
 const environment = {t: defaultI18n.t, locale: 'en-US', timeZone: 'UTC'};
-const actions = {onDashboard: () => {}, onRetry: () => {}, openUpdate: () => {}};
+const actions = {onDashboard: () => {}, onRetry: () => {}, openUpdate: () => {}, openIssue: () => {}};
 
 /** The drawn frame-2 state: three streams in the server's order, one conversion, real work and an update. */
 function stream(id: string, username: string, profile: string, device: string, startedAt: string, extra: Partial<ActivitySummarySession> = {}): ActivitySummarySession {

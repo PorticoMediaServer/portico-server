@@ -4,14 +4,14 @@ import {localV1Http} from '@core/playback-v1/local-http.ts';
 import type {TimeEnvironment} from '@core/presentation/kit-model/index.ts';
 import {TopBarActivity, type ActivityPanelView} from '../kit/shell';
 import type {ShellAssemblyContext} from './bootstrap';
-import {activityPanelView} from './activity-model';
+import {activityPanelView, type ActivityIssueAction} from './activity-model';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../kit/Icon';
 
 export type OwnerActivityProps = Readonly<{presentation?: 'topbar' | 'rail' | 'sidebar'; className?: string}>;
 
 /** Only an owner surface mounts this service, using its existing scoped transport. */
-export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnvironment, onDashboard: ActivityPanelView['onDashboard'], openUpdate: () => void) {
+export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnvironment, onDashboard: ActivityPanelView['onDashboard'], openUpdate: () => void, openIssue: ActivityIssueAction) {
   const mounted = new Set<ActivitySummaryService>();
   let retired = false;
   const sourceListeners = new Set<() => void>();
@@ -31,7 +31,7 @@ export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnv
       return () => { mounted.delete(service); service.setActive(false); service.dispose(); };
     }, [service]);
     const retry = () => { void service.retry(); };
-    const view = activityPanelView(snapshot, context.facts.serverName, time, {onDashboard, onRetry: retry, openUpdate});
+    const view = activityPanelView(snapshot, context.facts.serverName, time, {onDashboard, onRetry: retry, openUpdate, openIssue});
     if (presentation !== 'topbar') {
       const count = view.phase === 'ready' ? view.streamCount : undefined;
       return <button type="button" className={className} data-nav-activity data-icon-only={presentation === 'rail' || undefined}

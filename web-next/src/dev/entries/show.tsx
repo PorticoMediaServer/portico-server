@@ -161,7 +161,7 @@ function activityDocument(now: string) {
     problem: false, converting: false, positionMs: 60_000, decision: {}});
   return {scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: 'Portico demo', // lint-strings-allow
     streams: {count: 2, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: [session('stream-1'), session('stream-2')]},
-    scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''}, health: {degraded: false}};
+    scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''}, health: {degraded: false}, majorIssues: []};
 }
 
 const records: SpecimenEvent[] = [];
@@ -251,7 +251,7 @@ const identity: ShellIdentity = {viewer, username: 'demo', profileName: 'Demo', 
 const contextBase = {api, session: () => session, events, artwork, facts: {identity, preferences, serverName: identity.serverName},
   preferences: {getSnapshot: () => preferences, subscribe: subscribePreferences}, epoch: 1, isCurrent: () => true,
   signOut: () => record('sign-out'), signOutPorticoAccount: () => record('sign-out-portico'), switchProfile: async () => {}, switchServer: async () => {}, savedServers: []} as unknown as ShellAssemblyContext;
-const activity = createOwnerActivity(contextBase, time, () => record('open-dashboard'), () => record('open-update'));
+const activity = createOwnerActivity(contextBase, time, () => record('open-dashboard'), () => record('open-update'), destination => record('open-issue', destination));
 const homeService = {getSnapshot: () => ({phase: 'idle'}), subscribe: () => () => {}} as unknown as HomeBindings['service'];
 const home: HomeBindings = {service: homeService, artwork, time, reducedMotion: true,
   selection: {toolbar: null, card: () => undefined, channel: () => undefined, collection: () => undefined, registerWindow: () => undefined, registerSpotlight: () => undefined, moreAvailable: () => false, moreExpanded: () => false},

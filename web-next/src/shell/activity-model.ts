@@ -1,12 +1,36 @@
 import {playbackIdentity, type CardSubject, type PlaybackSubject, type TimeEnvironment} from '@core/presentation/kit-model/index.ts';
-import type {ActivitySummarySession, ActivitySummarySnapshot, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
+import {activityIssueCopy, type ActivitySummarySession, type ActivitySummarySnapshot, type OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
 import {jobName, scanStepName} from '@core/server-admin/console-catalogue.ts';
 import {heightText} from '@core/presentation/kit-model/technical.ts';
 import {defaultI18n} from '@i18n';
-import type {ActivityPanelView} from '../kit/shell';
+import type {ActivityMajorIssueView, ActivityPanelView} from '../kit/shell';
+
+/** The server's qualified issue points at its own existing settings destination. */
+export type ActivityIssueDestination = Readonly<{kind: string; target: string}>;
+export type ActivityIssueAction = (destination: ActivityIssueDestination) => void;
+type ActivityActions = Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void; openIssue: ActivityIssueAction};
+
+/** One glanceable problem, chosen by the server's own order; the Settings page owns the detail. */
+export function activityMajorIssue(issue: OwnerActivitySummary['majorIssues'][number] | undefined, t: typeof defaultI18n.t, openIssue: ActivityIssueAction): ActivityMajorIssueView | undefined {
+  if (!issue) return undefined;
+  const copy = activityIssueCopy(issue);
+  if (!copy) return undefined;
+  return {title: t(copy.title, copy.values), description: t(copy.detail), onOpen: () => openIssue({kind: issue.destination.kind, target: issue.destination.target})};
+}
+
+/** The existing Settings page that explains and resolves the issue; an unknown kind has none. */
+export function activityIssueSettings(kind: string): string | undefined {
+  switch (kind) {
+    case 'library-source': return 'libraries';
+    case 'remote-source': return 'remote-sources';
+    case 'storage': case 'backups': return 'storage';
+    case 'networking': return 'remote';
+    default: return undefined;
+  }
+}
 
 /** Cold, refreshing and failed reads do not establish normal health or zero work. */
-export function activityPanelView(snapshot: ActivitySummarySnapshot, serverName: string, time: TimeEnvironment, actions: Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void}): ActivityPanelView {
+export function activityPanelView(snapshot: ActivitySummarySnapshot, serverName: string, time: TimeEnvironment, actions: ActivityActions): ActivityPanelView {
   if (snapshot.phase === 'ready' && snapshot.document) return activityView(snapshot.document, time, actions);
   return {serverName, streams: [], scans: [], tasks: [], phase: snapshot.phase === 'error' || snapshot.phase === 'unavailable' ? 'error' : 'loading', onRetry: actions.onRetry, onDashboard: actions.onDashboard};
 }
@@ -23,13 +47,14 @@ export function activitySubject(stream: ActivitySummarySession): PlaybackSubject
   };
   return {kind: item.kind === 'song' ? 'music' : item.kind === 'audiobook_file' ? 'audiobook' : 'video', item: subject};
 }
-export function activityView(document: OwnerActivitySummary, time: TimeEnvironment, actions: Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void}): ActivityPanelView {
+export function activityView(document: OwnerActivitySummary, time: TimeEnvironment, actions: ActivityActions): ActivityPanelView {
   const {t} = defaultI18n;
   // health.degraded includes watchdog recovery as well as failed probes/corruption.
-  // It cannot qualify a major issue. Future status must supply its qualified
-  // playback-stop/data-risk severity, honest title/details and existing destination
-  // before a shared projection can supply majorIssue to Activity and its Settings row.
+  // It cannot qualify a major issue; only the server's qualified, ordered
+  // playback-stop/data-risk facts do, using their existing settings destination.
+  const majorIssue = activityMajorIssue(document.majorIssues[0], t, actions.openIssue);
   return {serverName: document.serverName, health: document.health.degraded ? 'attention' : 'normal', streamCount: document.streams.count, streamOverflow: document.streams.overflow, taskCount: document.tasks.count,
+    ...(majorIssue ? {majorIssue} : {}),
     // This bounded set is already selected globally. Preserve its order and exact overflow facts.
     streams: document.streams.items.map(stream => {
       const subject = activitySubject(stream);

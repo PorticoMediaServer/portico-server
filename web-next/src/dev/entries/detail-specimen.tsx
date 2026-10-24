@@ -126,7 +126,7 @@ function activityDocument(now: string) {
     scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: fixtureText('next.detail.fixture.server'),
     streams: {count: 2, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: [session('stream-1'), session('stream-2')]},
     scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''},
-    health: {degraded: false},
+    health: {degraded: false}, majorIssues: [],
   };
 }
 

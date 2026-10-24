@@ -381,7 +381,7 @@ async function mount(element: HTMLElement) {
     epoch: 1, isCurrent: () => true, signOut: () => record('sign-out'), signOutPorticoAccount: () => record('sign-out-portico'),
     switchProfile: async () => {}, switchServer: async () => {}, savedServers: [],
   };
-  const activity = createOwnerActivity(contextBase as never, time, () => record('open-dashboard'), () => record('open-update'));
+  const activity = createOwnerActivity(contextBase as never, time, () => record('open-dashboard'), () => record('open-update'), destination => record('open-issue', destination));
   const playback = {artwork, environment: time, skips: {back: 10, forward: 30}, reportError: (error: unknown) => record('report-error', String(error)),
     runtime: {playFromQueue: async (source: unknown, _context: unknown, options: {shuffle?: boolean}) => { record('play-from-queue', {source, shuffle: options.shuffle === true}); }}};
   const home = {
