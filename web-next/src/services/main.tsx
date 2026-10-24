@@ -22,6 +22,6 @@ if (entry.native !== 'forwarded' && !(window as Window & {__porticoUnsupportedBr
     if (globalThis.isSecureContext && globalThis.crypto?.subtle && navigator.locks) await import('../platform/polyfills');
     // Device metadata only: a failed claim leaves it unset and never blocks sign-in.
     await initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '').catch(() => undefined);
-    createRoot(document.getElementById('root')!).render(<ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} signIn={entry.signIn} owner={entry.owner} />);
+    createRoot(document.getElementById('root')!).render(<ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} plainShortJoin={entry.plainShortJoin} signIn={entry.signIn} owner={entry.owner} />);
   }
 }

@@ -15,10 +15,15 @@ export function captureServicesEntry(page: Pick<Location, 'href' | 'replace' | '
   if (owner) return {owner};
   if (page.pathname === '/join' || page.pathname === '/join/') {
     const href = page.href;
-    if (page.hash) history.replaceState(history.state, '', page.pathname + page.search);
     // Canonical invitations stay only in this document. A provider navigation requires reopening
     // the invitation; it is never serialized into another continuation or the account store.
     const join = parseJoinLink(href);
+    const state = history.state && typeof history.state === 'object' ? history.state as Record<string, unknown> : {};
+    const scrubbed = state.porticoJoinScrubbed === true;
+    // A plain /join is the typed-entry composition only before any capability attempt.
+    // No query, fragment or earlier scrub may turn a malformed or lost link into it.
+    if (!join && !page.search && !page.hash && !scrubbed) return {plainShortJoin: true, invalidContinuation: false};
+    if (page.hash) history.replaceState({...state, porticoJoinScrubbed: true}, '', page.pathname + page.search);
     return {join, invalidContinuation: !join};
   }
   const capture = captureServicesLink(page, history);
