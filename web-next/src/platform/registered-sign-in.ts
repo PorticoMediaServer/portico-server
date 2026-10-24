@@ -87,13 +87,18 @@ export class BrowserRegisteredSignIn {
     try {
       const value = await (this.ports.prepare ?? prepareRegisteredSignIn)(api, port,
         {origin, hostedOrigin, installationId, ...move}, {signal: operation.signal, isCurrent: operation.current});
+      const expiresAt = Date.parse(value.expiresAt);
+      const fresh = () => Number.isFinite(expiresAt) && expiresAt > Date.now();
+      if (!fresh()) throw cancelled();
       const url = this.ports.startURL(value);
       if (!operation.current() || (await this.ports.sessions.read()).revision !== state.revision) throw cancelled();
       await this.ports.journal.change(old => {
         if (!operation.current() || !old || old.attemptId !== attemptId || old.pending?.state !== value.start.state) throw cancelled();
         return {...old, expiresAt: value.expiresAt};
       });
-      if (!operation.current()) throw cancelled();
+      // IndexedDB/tab-lock waits may outlast the signed prepare. Never hand
+      // an expired ordinary/member move off after its durable private write.
+      if (!operation.current() || !fresh()) throw cancelled();
       return url;
     } catch (error) {
       await this.ports.journal.change(old => old?.attemptId === attemptId ? undefined : old);
