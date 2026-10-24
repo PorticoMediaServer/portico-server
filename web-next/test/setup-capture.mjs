@@ -63,8 +63,8 @@ try {
   await capture('setup-1c', {width: 1440, height: 1130}, '1c', async () => {
     await page.getByRole('radio', {name: /Local sign-in/}).click();
     await page.getByLabel('Username', {exact: true}).fill('demo');
-    await page.getByLabel('Password', {exact: true}).fill('Portico1234!');
-    await page.getByLabel('Confirm password', {exact: true}).fill('Portico1234!');
+    await page.getByLabel('Password', {exact: true}).fill('Portico-1234!x');
+    await page.getByLabel('Confirm password', {exact: true}).fill('Portico-1234!x');
     await page.getByLabel('Confirm password', {exact: true}).focus();
   });
   await capture('setup-3', {width: 1440, height: 1120}, '3', async () => {
