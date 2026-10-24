@@ -330,6 +330,8 @@ index identity_refresh_receipts_family
 index identity_unknown_attempts_age
 index inventory_analysis_object
 index inventory_analysis_pending
+index inventory_artwork_candidates_asset
+index inventory_artwork_candidates_entity
 index inventory_artwork_sources_entity
 index inventory_artwork_sources_role
 index inventory_changes_source
@@ -942,6 +944,7 @@ table identity_sign_in_policy
 table identity_state
 table identity_unknown_attempts
 table inventory_analysis_queue
+table inventory_artwork_candidates
 table inventory_artwork_sources
 table inventory_changes
 table inventory_directories

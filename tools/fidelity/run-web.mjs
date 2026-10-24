@@ -11,6 +11,7 @@ import {compareScreens} from './compare.mjs';
 import {auth4} from './auth4.mjs';
 import {applyControlledState, checkControlledState} from './controlled-state.mjs';
 import {calibrateFrame} from './calibration.mjs';
+import {fontReadiness} from './readiness.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -37,17 +38,7 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       const differences = [...comparison.differences, ...strings.differences];
       const calibration = calibrateFrame(reference);
       if (!calibration.passed) differences.push({kind: 'calibration-failure', label: 'Frame self and single-fact perturbations', calibration});
-      for (const [side, screen] of [['reference', reference], ['actual', actual]]) {
-        const required = new Map(screen.strings.filter(value => value.style).map(value => [value.style.fontFamily + '|' + value.style.fontWeight, value.style]));
-        for (const style of required.values()) {
-          const family = style.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, ''), weight = Number(style.fontWeight);
-          if (['system-ui', 'sans-serif', 'serif', 'monospace'].includes(family)) continue;
-          if (!screen.fontFaces.some(face => {
-            const name = face.family.replace(/^['"]|['"]$/g, ''), range = face.weight.split(/\s+/).map(Number);
-            return name === family && face.status === 'loaded' && (range.length === 1 ? range[0] === weight : weight >= range[0] && weight <= range[1]);
-          })) differences.push({kind: 'font-not-loaded', label: `${side} ${family} ${weight}`});
-        }
-      }
+      differences.push(...fontReadiness(reference, 'reference'), ...fontReadiness(actual, 'actual'));
       const controlled = checkControlledState(actual, adapter.expectations);
       differences.push(...controlled.differences);
       if (!deterministicReference || !deterministicActual) differences.push({kind: 'nondeterministic-extraction', label: 'Same-input determinism', reference: deterministicReference, actual: deterministicActual});

@@ -27,13 +27,14 @@ import (
 )
 
 type Service struct {
-	ArtworkLimit     func(context.Context) int64
-	artworkBytes     int64
-	artworkAccounted bool
-	lastArtworkIssue string
-	root, binary     string
-	storage          *storage.Client
-	mu               sync.Mutex
+	artworkCandidateObservations map[string]observedArtworkImage
+	ArtworkLimit                 func(context.Context) int64
+	artworkBytes                 int64
+	artworkAccounted             bool
+	lastArtworkIssue             string
+	root, binary                 string
+	storage                      *storage.Client
+	mu                           sync.Mutex
 	// sidecars caches sidecar-file reads by full path (positive hits only,
 	// bounded): one show's hundred episodes share a single poster read.
 	sidecars map[string]string
@@ -73,11 +74,15 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 			}
 		}
 	}
-	for _, name := range []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.webp", "folder.webp", "front.webp", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"} {
+	coverNames := []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.webp", "folder.webp", "front.webp", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"}
+	if kind == "music" {
+		coverNames = musicCoverNames()
+	}
+	for _, name := range coverNames {
 		if unlisted(ctx, filepath.Join(filepath.Dir(path), name)) {
 			continue
 		}
-		raw, err := s.storage.ReadSmall(ctx, library, filepath.Join(filepath.Dir(path), name), 4<<20)
+		raw, err := s.read(ctx, library, filepath.Join(filepath.Dir(path), name), 4<<20)
 		if err != nil {
 			continue
 		}
@@ -231,9 +236,9 @@ func (s *Service) Open(key string) (*os.File, string, error) {
 func (s *Service) MovieArtwork(ctx context.Context, library, path string, f assets.Facts) assets.Facts {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	stem := strings.TrimSuffix(path, filepath.Ext(path))
-	for _, candidate := range []string{stem + "-poster.jpg", stem + "-poster.png", filepath.Join(filepath.Dir(path), "poster.jpg"), filepath.Join(filepath.Dir(path), "poster.png"), filepath.Join(filepath.Dir(path), "folder.jpg"), filepath.Join(filepath.Dir(path), "folder.png")} {
-		if key, ok := s.sidecarKey(ctx, library, candidate); ok {
+	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	for _, name := range videoArtworkNames(stem+"-poster", stem, "poster", "folder", "cover", "default", "movie") {
+		if key, ok := s.sidecarKey(ctx, library, filepath.Join(filepath.Dir(path), name)); ok {
 			f.ArtworkKey = key
 			return f
 		}

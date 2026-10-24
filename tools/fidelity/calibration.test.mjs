@@ -9,3 +9,14 @@ test('same frame is zero; one font or effective caption opacity observation is e
   const frame = {scope: 'screen', fullViewport: true, root: {width: 200, height: 100}, viewport: {deviceScaleFactor: 1}, anchorIssues: [], elements: [node('title', 'Public heading', 1), node('caption', 'Public caption', .72)]};
   assert.deepEqual(calibrateFrame(frame), {passed: true, counts: {self: 0, oneFont: 1, oneOpacity: 1}, fontProperty: 'fontSize', opacityProperty: 'effectiveOpacity'});
 });
+test('reference self calibration matches stable observation IDs without waiving app matching ambiguity', async () => {
+  const {compareScreens} = await import('./compare.mjs');
+  const elements = [
+    {id: '0', tag: 'div', ownText: '', style: {backgroundColor: 'rgb(7,16,24)'}},
+    {id: '0.0', tag: 'div', ownText: '', style: {backgroundColor: 'rgb(7,16,24)'}},
+    {id: '0.1', frame: 'title', tag: 'h1', ownText: 'Public title', style: {fontSize: '32px', fontFamily: 'Example', fontWeight: '800'}},
+  ];
+  const frame = {scope: 'screen', fullViewport: true, root: {width: 200, height: 100}, viewport: {deviceScaleFactor: 1}, anchorIssues: [], elements};
+  assert.deepEqual(calibrateFrame(frame).counts, {self: 0, oneFont: 1, oneOpacity: 1});
+  assert.ok(compareScreens(frame, structuredClone(frame)).differences.some(value => value.kind === 'ambiguous-match'));
+});
