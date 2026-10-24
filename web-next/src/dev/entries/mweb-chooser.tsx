@@ -1,3 +1,5 @@
+// Evaluate the real router before the route module so the eager registry has its owner.
+import '../../router';
 import {createRoot} from 'react-dom/client';
 import {IconSprite} from '../../kit/Icon';
 import {MobileServerChooser, type MobileChooserAttempt, type MobileChooserRow} from '../../screens/accounts/Servers.route';
