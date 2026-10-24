@@ -90,7 +90,7 @@ func readingFailure(w http.ResponseWriter, err error) {
 
 func readingHeaders(w http.ResponseWriter, revision string) {
 	w.Header().Set("ETag", `"`+revision+`"`)
-	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Cache-Control", "private, no-store, no-transform")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'")
 	w.Header().Set("Referrer-Policy", "no-referrer")

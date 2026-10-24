@@ -24,7 +24,7 @@ import (
 //     with byte ranges that a compressed stream cannot express.
 //   - Server-sent events. Compressing a stream means buffering it, and an event
 //     stream that is buffered is no longer an event stream.
-//   - Anything already carrying a Content-Encoding.
+//   - Anything already carrying a Content-Encoding or Cache-Control: no-transform.
 //
 // The middleware also refuses to compress a response it cannot see the type of
 // yet, and it never compresses a 304 — which has no body by definition and whose
@@ -64,7 +64,7 @@ func (c *compressingWriter) WriteHeader(status int) {
 	// handler may not have set a Content-Type and the body length is unknown.
 	if status == http.StatusNotModified || status == http.StatusNoContent {
 		c.decided, c.failed = true, true
-		if status == http.StatusNotModified {
+		if status == http.StatusNotModified && !responseNoTransform(c.Header()) {
 			weakenETag(c.Header())
 		}
 		c.ResponseWriter.WriteHeader(status)
@@ -108,7 +108,7 @@ func (c *compressingWriter) Write(p []byte) (int, error) {
 func (c *compressingWriter) decide() {
 	c.decided = true
 	header := c.ResponseWriter.Header()
-	if header.Get("Content-Encoding") != "" || !compressibleType(header.Get("Content-Type")) {
+	if responseNoTransform(header) || header.Get("Content-Encoding") != "" || !compressibleType(header.Get("Content-Type")) {
 		c.failed = true
 		c.flushHeader()
 		return
@@ -197,6 +197,32 @@ func compressibleType(value string) bool {
 	case value == "application/json", value == "application/x-mpegurl", value == "application/xml",
 		value == "application/javascript", value == "image/svg+xml", value == "application/manifest+json":
 		return true
+	}
+	return false
+}
+
+// responseNoTransform recognizes a directive, never a fragment of a quoted
+// extension value. Reading uses an exact strong source validator across control
+// and byte responses, so transforming either representation would retire it.
+func responseNoTransform(header http.Header) bool {
+	for _, value := range header.Values("Cache-Control") {
+		start, quoted, escaped := 0, false, false
+		for i := 0; i <= len(value); i++ {
+			if i == len(value) || (value[i] == ',' && !quoted) {
+				if strings.EqualFold(strings.TrimSpace(value[start:i]), "no-transform") {
+					return true
+				}
+				start = i + 1
+				continue
+			}
+			if escaped {
+				escaped = false
+			} else if quoted && value[i] == '\\' {
+				escaped = true
+			} else if value[i] == '"' {
+				quoted = !quoted
+			}
+		}
 	}
 	return false
 }

@@ -62,7 +62,7 @@ func TestReadingPrivateLawfulPDFExactRanges(t *testing.T) {
 		if w.Code != 206 || w.Header().Get("Content-Range") != fmt.Sprintf("bytes %d-%d/%d", start, end-1, len(raw)) || w.Header().Get("Content-Length") != strconv.Itoa(end-start) || !bytes.Equal(w.Body.Bytes(), raw[start:end]) {
 			t.Fatalf("exact PDF extent %d..%d failed: status=%d, headers=%v", start, end, w.Code, w.Header())
 		}
-		if w.Header().Get("ETag") != `"`+revision+`"` || w.Header().Get("Cache-Control") != "private, no-store" {
+		if w.Header().Get("ETag") != `"`+revision+`"` || w.Header().Get("Cache-Control") != "private, no-store, no-transform" {
 			t.Fatal("PDF extent lost its captured revision/private scope")
 		}
 		delivered.Write(w.Body.Bytes())

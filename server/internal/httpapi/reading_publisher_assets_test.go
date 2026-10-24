@@ -91,7 +91,7 @@ func TestReadingPrivatePublisherAssetsRemainOriginalAndAuthorityBound(t *testing
 	}
 	for name, b := range want {
 		w := r.bytesRequest(t, "GET", "/assets/"+name, session, publication.Selection.Revision, r.f.owner.AccessToken, nil)
-		if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), b) || w.Header().Get("Cache-Control") != "private, no-store" {
+		if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), b) || w.Header().Get("Cache-Control") != "private, no-store, no-transform" {
 			t.Fatalf("asset changed or rejected %s: status=%d size=%d/%d", name, w.Code, w.Body.Len(), len(b))
 		}
 		found := false
