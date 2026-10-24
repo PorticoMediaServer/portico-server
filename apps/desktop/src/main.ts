@@ -24,7 +24,7 @@ async function startDesktop(){
   lifetime.retain(installPlatformInstallationProvider(nativeInstallation));
   const facts=await nativeDeviceFacts().catch(()=>undefined);lifetime.assertCurrent();
   const device=facts?createDesktopDevicePort(facts):undefined;if(device)lifetime.retain(()=>device.dispose());
-  lifetime.retain(installSettingsPlatform({environment:{platform:'desktop',os:native.os},...(device?{device}:{}),Equalizer:DesktopSettingsEqualizer}));
+  lifetime.retain(installSettingsPlatform({environment:{platform:'desktop',os:native.os},...(device?{device}:{}),Equalizer:DesktopSettingsEqualizer,equalizerPort:desktopEqualizerPort}));
   let windowChrome:WindowChromeInstallation|undefined;
   const windowHost=createDesktopNativeWindowHost({onEnvironment:value=>windowChrome?.updateEnvironment(value),prepareToClose:()=>lifetime.dispose()});
   windowChrome=installWindowChromeHost(windowHost);windowChrome.updateEnvironment({os:native.os,fullscreen:native.fullscreen});

@@ -1,6 +1,7 @@
 import type {ComponentType} from 'react';
 import type {SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
 import type {SettingsValue} from '@core/presentation/settings-spec.ts';
+import type {EqualizerPort} from '../kit/media/equalizer-port';
 
 export type SettingsViewerScope = Readonly<{
   serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string; sessionFamilyId: string;
@@ -38,6 +39,9 @@ export type SettingsPlatform = Readonly<{
   bindDownloads?: (scope: SettingsViewerScope, isCurrent: () => boolean) => SettingsDownloadsPort;
   /** The media owner binds its one app/device store and actual controlled EQ component. */
   Equalizer?: ComponentType<{layout: 'settings'; onError: (error: unknown) => void}>;
+  /** The same store the Equalizer edits, so the row can show the real On/Off state.
+   * A browser owns its renderer store and leaves this absent; a native host binds it. */
+  equalizerPort?: EqualizerPort;
 }>;
 
 let installed: SettingsPlatform | undefined;
