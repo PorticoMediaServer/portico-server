@@ -19,6 +19,11 @@ fi
 export NODE_OPTIONS=--max-old-space-size=1536
 npm ci --ignore-scripts --no-audit --no-fund --quiet
 npm exec -w web-next -- tsc --noEmit
+if [ "$mode" = gate ]; then
+  npm run lint:design --workspace web-next
+  npm run lint:hooks --workspace web-next
+  npm run lint:boundary --workspace web-next
+fi
 if [ "$mode" = capture ]; then
   npm exec -w web-next -- vite build --logLevel warn
   mkdir -p dist
