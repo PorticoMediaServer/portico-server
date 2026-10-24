@@ -14,6 +14,7 @@ import {useFreshness, usePooledService, useQuietRefresh} from '../../platform/fr
 import {Artwork, AmbientArt, ColourBackdrop, GeneratedArt} from '../../kit/artwork';
 import {Hero, HeroFacts, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
 import {Button} from '../../kit/controls';
+import {Icon} from '../../kit/Icon';
 import {CollectionBanner, LiveCard, PosterCard, RankedCard, SquareCard, WideCard, type CardSelection} from '../../kit/cards';
 import {HomeSkeleton, StateLayout} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
@@ -53,6 +54,8 @@ type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' |
 const t = defaultI18n.t;
 const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
 const pageSubscribe = (listener: () => void) => { document.addEventListener('visibilitychange', listener); return () => document.removeEventListener('visibilitychange', listener); };
+/** The frame draws a long hero title at the long lockup size; no shorter drawn rule decides it (mock.html#home). */
+const longHeroTitle = (title: string) => [...title.trim()].length > 20;
 
 function useVisible() {
   const ref = useRef<HTMLDivElement>(null), [intersects, setIntersects] = useState(false);
@@ -131,7 +134,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
   const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
   const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
-  const candidates: Spotlight[] = useMemo(() => homeSpotlights(document, env).map((slide, index) => ({...slide, source: document.spotlight[index], causalReason: slide.reason, reason: serverTextLabel(defaultI18n, slide.reason.text)})), [document, env]);
+  const candidates: Spotlight[] = useMemo(() => homeSpotlights(document, env).map((slide, index) => ({...slide, long: longHeroTitle(slide.title), source: document.spotlight[index], causalReason: slide.reason, reason: serverTextLabel(defaultI18n, slide.reason.text)})), [document, env]);
   useEffect(() => {
     if (!hero.visible) return;
     const cleanups = document.spotlight.map(selection.registerSpotlight);
@@ -183,9 +186,13 @@ function HomeRowView(props: HomeRowProps) {
 function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};
   const phone = platform !== 'desktop';
+  // The On now row's drawn trailing link is "Guide", not "See all", and it stays visible
+  // beside the heading instead of waiting for the row's hover (mock.html#home).
+  const guide = !phone && row.seeAll?.type === 'guide';
   const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title),
     subtitle: !phone || ['on_now', 'listen_next', 'continue_listening'].includes(row.id) ? serverTextLabel(defaultI18n, row.subtitleText) : undefined, platform,
-    onSeeAll: row.seeAll && (!phone || !['continue', 'continue_books', 'community_watching'].includes(row.id)) ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
+    actions: guide ? <button type="button" className={styles.rowGuide} onClick={() => bindings.effects.openSeeAll(row.seeAll!)}>{t('next.controls.guide')}<Icon name="i-right" size={18} /></button> : undefined,
+    onSeeAll: row.seeAll && !guide && (!phone || !['continue', 'continue_books', 'community_watching'].includes(row.id)) ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
   const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
   const ranked = row.id === 'community_watching' && !!row.period;
   const scale = cardScale(bindings.appearance);
@@ -224,7 +231,11 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
   const scale = cardScale(appearance), width = (wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118) * scale;
   const resume = row.resumes?.find(value => value.entryId === entry.id)?.target ?? entry;
   const target = homePlaybackTarget(entry, resume);
-  const model = homeCardModel(wide ? resume : entry, wide, {t, locale: time.locale});
+  // A continuing Listen next card draws the bar under its art and the time left where the
+  // author/artist line otherwise sits (mock.html#home); both parts come from the shared card text.
+  const continued = square && row.id === 'listen_next' ? homeCardModel(resume, true, {t, locale: time.locale}) : undefined;
+  const left = continued?.detail.find(part => part.id === 'remaining');
+  const model = continued && left ? {...continued, caption: [left], detail: []} : homeCardModel(wide ? resume : entry, wide, {t, locale: time.locale});
   const source = wide ? entry.backdropUrl ?? entry.posterUrl : entry.posterUrl;
   const props = {model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%'},
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
@@ -236,7 +247,7 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
     onMore: selection.moreAvailable(entry) ? (anchor: HTMLButtonElement) => effects.openMore(row, entry, anchor) : undefined,
     moreExpanded: selection.moreExpanded(row, entry)};
   const ranked = row.id === 'community_watching' && !!row.period;
-  return <div ref={interest.ref} className={ranked ? styles.scaledRanked : undefined} style={ranked ? {'--home-card-scale': scale} as CSSProperties : undefined}>{ranked ? <RankedCard {...props} rank={row.start + index + 1} /> : wide ? <WideCard {...props} /> : square ? <SquareCard {...props} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'} /> : <PosterCard {...props} />}</div>;
+  return <div ref={interest.ref} className={ranked ? styles.scaledRanked : undefined} style={ranked ? {'--home-card-scale': scale} as CSSProperties : undefined}>{ranked ? <RankedCard {...props} rank={row.start + index + 1} /> : wide ? <WideCard {...props} /> : square ? <SquareCard {...props} progressPlacement={left ? 'below' : 'edge'} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'} /> : <PosterCard {...props} />}</div>;
 }
 
 function VisibleLive({item, mark, nowMs, order, row, artwork, effects, time, selection, appearance}: HomePresentation & {item: HomeChannel; mark: Parameters<typeof LiveCard>[0]['channel']['mark']; nowMs: number; order: number; row: HomeRow}) {

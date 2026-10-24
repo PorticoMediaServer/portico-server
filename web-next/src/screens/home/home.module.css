@@ -2,6 +2,9 @@
 .rows { position: relative; z-index: var(--layer-content); padding-bottom: 72px; }
 .rows[data-with-hero='true'] { margin-top: -40px; }
 .collection { margin: 44px var(--shell-gutter, var(--gutter-desktop)) 0; }
+.rowGuide { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; line-height: normal; color: var(--color-text-tertiary); cursor: pointer; }
+.rowGuide:hover { color: var(--color-text-secondary); }
+.rowGuide:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; border-radius: 4px; }
 .scaledRanked > div > span { width: calc(92px * var(--home-card-scale)); height: calc(255px * var(--home-card-scale)); margin-right: calc(-22px * var(--home-card-scale)); font-size: calc(168px * var(--home-card-scale)); }
 .scaledRanked [data-card-kind='poster'] { width: calc(170px * var(--home-card-scale)); }
 .slowNotice { position: absolute; top: 88px; left: 50%; transform: translateX(-50%); z-index: var(--layer-notice); display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 18px 0 14px; border-radius: 20px; white-space: nowrap; background: color-mix(in srgb, var(--color-raised) 90%, transparent); backdrop-filter: blur(24px); box-shadow: 0 14px 30px -12px color-mix(in srgb, var(--color-shadow) 80%, transparent),inset 0 0 0 1px color-mix(in srgb, var(--color-text) 10%, transparent); font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-secondary); }
