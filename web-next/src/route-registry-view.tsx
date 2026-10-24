@@ -3,6 +3,7 @@ import {createWebScreenRegistry, invokeWebAction, type WebActionId, type WebScre
 import type {ShellBindings} from './shell/bindings';
 import type {ShellAssemblyContext, ShellBootstrap} from './shell/bootstrap';
 import type {TakeAccountReturn} from './route-registry-return';
+import type {TakeAccountMove} from './route-registry-arrival';
 
 // Eager discovery imports registrations once. Components/services still mount lazily
 // in their own route; importing a module must not start requests or create a runtime.
@@ -17,6 +18,8 @@ export type WebScreenContext = Readonly<{
   bootstrap?: ShellBootstrap;
   /** One captured callback, scrubbed before startup. The protected journal decides KIND. */
   takeAccountReturn?: TakeAccountReturn;
+  /** Original scrubbed move link, delivered once; entry proves its expected ID. */
+  takeAccountMove?: TakeAccountMove;
 }>;
 const Context = createContext<WebScreenContext>({});
 export function WebScreenProvider({value, children}: {value: WebScreenContext; children: ReactNode}) {
