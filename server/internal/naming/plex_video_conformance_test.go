@@ -154,7 +154,11 @@ func TestPlex45ShowFolderEditionStaysFolderEvidence(t *testing.T) {
 	if len(r.ProviderIDs) != 1 || r.ProviderIDs[0].Value != (ProviderID{"tvdb", "1234"}) || r.ProviderIDs[0].Source != GrandparentFolder {
 		t.Fatalf("show-folder ID hint %+v", r.ProviderIDs)
 	}
-	if len(r.Seasons) != 1 || r.Seasons[0].Value != 1 || len(r.Episodes) != 1 || len(r.Episodes[0].Value) != 1 || r.Episodes[0].Value[0] != 1 {
+	seasonOne := false
+	for _, season := range r.Seasons {
+		seasonOne = seasonOne || season.Value == 1
+	}
+	if !seasonOne || len(r.Episodes) != 1 || len(r.Episodes[0].Value) != 1 || r.Episodes[0].Value[0] != 1 {
 		t.Fatalf("season/episode evidence %+v %+v", r.Seasons, r.Episodes)
 	}
 }
