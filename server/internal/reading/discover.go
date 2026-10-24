@@ -10,19 +10,16 @@ import (
 // DiscoverLimits bounds one Discover response. Zero values take the default.
 type DiscoverLimits struct {
 	Recent int
+	// Series opts into the ready, single-library series composition.
+	Series int
 }
 
-// Discover is the server-composed Discover payload built from facts already in
-// this snapshot. This cohort publishes only the recently-added row: its order
-// and membership are the catalogue's own added_ms under the List predicate.
-//
-// Series rows are deliberately absent. A capped scan cannot establish the
-// authoritative owner/frequency label, global count or numbered-first members,
-// and the approved model is the durable ready projection (Root Reading
-// storage/cursor decision, 24 Oct 2026). They arrive with that projection, not
-// as a sampled substitute here.
+// Discover composes real title rows and, when requested, exact series summaries
+// from the same authorized ready projection. Classification and reading-length
+// rows require their own real producers and are not inferred here.
 type Discover struct {
 	Recent []LibraryRow
+	Series []DiscoverSeries
 }
 
 // Discover returns the bounded server-composed rows for one authorized library
@@ -30,6 +27,9 @@ type Discover struct {
 // profile/library/restriction predicate as List.
 func (s *Service) Discover(ctx context.Context, p identity.Principal, library string, limits DiscoverLimits) (Discover, error) {
 	out := Discover{Recent: []LibraryRow{}}
+	if limits.Series < 0 || limits.Series > 20 || limits.Series > 0 && library == "" {
+		return out, ErrInvalid
+	}
 	if s.Visible == nil {
 		return out, identity.ErrForbidden
 	}
@@ -86,6 +86,11 @@ func (s *Service) Discover(ctx context.Context, p identity.Principal, library st
 	if err = rows.Close(); err != nil {
 		return out, err
 	}
-	err = readingAttributionProjectionTx(ctx, tx, out.Recent)
+	if err = readingAttributionProjectionTx(ctx, tx, out.Recent); err != nil {
+		return out, err
+	}
+	if limits.Series > 0 {
+		out.Series, err = s.discoverSeriesTx(ctx, tx, p, library, limits.Series, filter, args)
+	}
 	return out, err
 }
