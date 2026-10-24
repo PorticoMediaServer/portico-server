@@ -24,7 +24,7 @@
 
 .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 24px; }
 
-.copy > .actions { margin: 0; }
+.copy > .actions { margin: 0; flex-wrap: nowrap; }
 
 .phoneHero { position: relative; margin-bottom: 18px; }
 .phonePicture { position: relative; height: 330px; }
@@ -66,7 +66,7 @@
 .sticky[data-stuck] [role="tab"] { display: flex; align-items: center; height: 100%; padding: 0; font-size: var(--detail-stuck-tab-size); }
 .sticky[data-stuck] [role="tab"][data-state="active"]::after { inset: auto 0 0; }
 
-.details { display: grid; grid-template-columns: 360px 1fr; gap: 64px; padding: 32px 64px 80px; }
+.details { display: grid; grid-template-columns: 360px 1fr; column-gap: 64px; padding: 32px 64px 80px; }
 
 .details h2, .sectionHeading { font-size: var(--type-detail-heading-size); font-weight: var(--type-row-heading-weight); margin: 0 0 16px; }
 

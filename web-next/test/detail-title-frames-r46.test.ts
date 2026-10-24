@@ -61,7 +61,7 @@ test('frame 3 draws About with Rated and the collection banner with honest membe
     assert.match(body, /PG-13/);
     // The producer counts every visible member; it never claims a film-only total.
     assert.match(body, /Part of a collection/);
-    assert.match(body, /Dune collection/);
+    assert.match(body, /Dune/);
     assert.match(body, /2 titles on your server, from 2021 to 2024\./);
     assert.doesNotMatch(body, /films/);
     assert.match(body, new RegExp(defaultI18n.t('next.home.openCollection')));

@@ -88,7 +88,7 @@ function fixtures(frame: SpecimenFrame) {
     const itemId = 'inside-out';
     return {
       itemId, title: fixtureText('next.detail.fixture.insideOut'), year: 2015, durationMs: 5_700_000, progressMs: 513_000,
-      overview: fixtureText('next.detail.fixture.insideOutOverview'), rating: fixtureText('next.detail.fixture.rating'), tagline: fixtureText('next.detail.fixture.insideOutTagline'),
+      overview: fixtureText('next.detail.fixture.insideOutOverview'), rating: fixtureText('next.detail.fixture.insideOutRating'), tagline: fixtureText('next.detail.fixture.insideOutTagline'),
       releaseDate: '2015-06-19', studio: fixtureText('next.detail.fixture.pixar'), country: fixtureText('next.detail.fixture.country'),
       genres: [['animation', 'next.detail.fixture.animation'], ['family', 'next.detail.fixture.family']] as const,
       credits: insideOutCredits, creditTotals: {cast: 4, crew: 1}, audio: ['en'], subtitles: ['en'],
