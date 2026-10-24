@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +66,7 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				t.Cleanup(release)
 				return gate, release
 			}
-			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := newPrivateSourceServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				n := active.Add(1)
 				defer active.Add(-1)
 				for prior := peak.Load(); n > prior && !peak.CompareAndSwap(prior, n); prior = peak.Load() {
@@ -133,7 +132,7 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				http.ServeContent(w, r, "film.mkv", modified, bytes.NewReader(payload))
 			}))
 			t.Cleanup(origin.Close)
-			config, err := remotemedia.ValidateDAVConfig(ctx, remotemedia.DAVConfig{Root: origin.URL + "/media/", Username: "fixture", Password: "private-fixture", InsecureLocal: true}, nil)
+			config, err := remotemedia.ValidateSourceDAVConfig(ctx, remotemedia.DAVConfig{Root: origin.URL + "/media/", Username: "fixture", Password: "private-fixture", InsecureLocal: true}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
