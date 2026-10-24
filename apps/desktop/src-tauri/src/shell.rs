@@ -271,7 +271,7 @@ async fn desktop_retire_local(window:WebviewWindow,state:tauri::State<'_,Downloa
     tauri::async_runtime::spawn_blocking(move||{
         let mut guard=downloads.lock().map_err(|_|Error::DownloadsUnavailable)?;let session=guard.as_mut().map_err(|e|*e)?;
         // Cancellation may arrive after replacement. It owns only this exact load.
-        let previous=native.as_ref().map(|native|native.observation()).unwrap_or_else(||crate::boundary::Observation{generation:0,state:"idle".into(),position_ms:0.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false});
+        let previous=native.as_ref().map(|native|native.observation()).unwrap_or_else(||crate::boundary::Observation{observed_playback:Default::default(),generation:0,state:"idle".into(),position_ms:0.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false});
         session.retire_local_load(&lease,generation,&previous,||{
             if let Some(native)=native.as_ref(){if native.matches_generation(generation){native.execute(Command::Stop{generation})?;}}
             Ok(())

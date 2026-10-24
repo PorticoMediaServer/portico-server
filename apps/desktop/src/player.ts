@@ -53,7 +53,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   private emit(event: PlayerEvent) { for (const listener of [...this.listeners]) listener(event); }
   private fail(epoch: number) {
     if (this.disposed || epoch !== this.epoch || !this.source) return;
-    this.reading = {...this.reading, state: 'error'};
+    this.reading = {...this.reading, state: 'error',observedPlayback:{}};
     this.surfaceActive = false;
     this.processing=undefined;
     this.emit({type: 'error', observation: this.reading, code: 'engine_unavailable'});
@@ -166,7 +166,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
       this.surfaceActive = active;
       this.processing=processing;
       const {nativeSurfaceActive: _,eqApplied: _eq,levelingApplied: _leveling,...projected} = next;
-      this.reading = {...projected, generation: this.source.generation, subtitleTrackId: this.reading.subtitleTrackId, subtitlesCarried: this.reading.subtitlesCarried};
+      this.reading = {...projected,observedPlayback:confirmed?next.observedPlayback??{}:{},generation: this.source.generation, subtitleTrackId: this.reading.subtitleTrackId, subtitlesCarried: this.reading.subtitlesCarried};
       if (changed) this.emit({type: 'state', observation: this.reading});
       if (this.seeking && !['loading','buffering'].includes(next.state)) { this.seeking = false; this.emit({type: 'seeked', observation: this.reading}); }
       this.emit({type: 'time', observation: this.reading});
