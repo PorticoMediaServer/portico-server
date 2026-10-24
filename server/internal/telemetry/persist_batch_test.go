@@ -29,9 +29,9 @@ func TestTelemetryPersistsOneBoundedSampleWithoutPerMetricStatements(t *testing.
 	// Keep the real completed sample pending, then observe its actual SQL.
 	c.lastPersist = clock.UnixMilli()
 	c.Collect(ctx)
-	listen := func(table string) <-chan struct{} {
+	listen := func(tables ...string) <-chan struct{} {
 		sig := worker.NewSignal()
-		unregister := dbwork.WakeOnTables(sig, table)
+		unregister := dbwork.WakeOnTables(sig, tables...)
 		loop, cancel := context.WithCancel(ctx)
 		done, passes := make(chan struct{}), make(chan struct{}, 8)
 		go func() {
@@ -42,7 +42,7 @@ func TestTelemetryPersistsOneBoundedSampleWithoutPerMetricStatements(t *testing.
 		t.Cleanup(func() { unregister(); cancel(); <-done })
 		return passes
 	}
-	metrics, unrelated := listen("telemetry_rollups"), listen("quick_connect_v1")
+	metrics, unrelated := listen("telemetry_rollups"), listen("quick_connect_v1", "jobs", "inventory_*", "library_sources", "maintenance_*", "server_settings", "api_events", "api_change_pending", "books", "book_files")
 	dbwork.ProfileStatements(true)
 	c.persist(ctx, true)
 	profile := dbwork.StatementProfile()
