@@ -70,3 +70,12 @@ test('late preparation fence failure keeps cleanup retryable until native acknow
   assert.equal(releases,1);fail=false;await broker.dispose();assert.equal(releases,2);
  }finally{fail=false;await broker.dispose();store.dispose()}
 });
+
+test('runtime release after captured store disposal recognizes the actual native preparation ACK',async()=>{
+ const h=await setup(async(_,request)=>receipt(request.generation));
+ try{
+  await h.broker.load(source,101,{signal:new AbortController().signal,isCurrent:()=>true});
+  h.store.dispose();await new Promise(resolve=>setImmediate(resolve));
+  await h.broker.release(h.prepared);assert.deepEqual(h.released,[preparationId]);assert.deepEqual(h.retired,[101]);
+ }finally{await h.broker.dispose();h.store.dispose()}
+});

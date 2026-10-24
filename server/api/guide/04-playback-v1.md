@@ -71,6 +71,27 @@ segments and available post-play information. Mutation routes use `If-Match`:
 Prepare/commit-next and save-as-playlist routes also use idempotency keys.
 Use the operation's request shape in [portico.openapi.json](../portico.openapi.json).
 
+A Music radio uses the existing container selector:
+
+```json
+{"selector":{"container":{"kind":"radio","id":"<song-album-or-artist-id>"}},"startPlayback":{"state":"playing"}}
+```
+
+The server starts the seed song, or the first permitted song on the seed album
+or artist, then selects from the profile's permitted Music libraries. Actual
+current sonic vectors rank the songs when available; genres and qualified
+co-listening supply the fallback. A segment reports `kind: "radio"` and the
+seed's stored title as its label. It cannot be replaced by a finite shuffle.
+
+Radio stores bounded lookahead in the ordinary queue. `total` counts buffered
+occurrences and may grow; it is not the radio's final size or duration. Advance
+and committed local audio preparations refill that lookahead in the same queue
+revision change. Existing entry identities, manual queue order, idempotency,
+profile restrictions and the single active-session transfer remain in force.
+With only one permitted song, repeated occurrences refer to that real song.
+No extra query flag or parallel session is needed. This queue protocol does not
+establish receiver preload, media cache reuse, gapless output or hardware facts.
+
 `session.updated`, `queue.updated` and related [feed hints](06-events.md) tell a
 client to reread; they do not replace the resource. Revocation ends grant access.
 
