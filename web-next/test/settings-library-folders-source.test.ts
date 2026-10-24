@@ -473,3 +473,37 @@ test('clearing or replacing the selection suppresses a late folder command publi
     } finally {f.folders.dispose();}
   }
 });
+
+test('replacing the selection and returning retires a held folder command without late publication', async () => {
+  for (const outcome of ['success', 'failure'] as const) {
+    let release!: () => void, signal: AbortSignal | undefined, reads = 0;
+    const gate = {hold: undefined as Promise<void> | undefined};
+    const f = fixture(async <T>(path: string, method = 'GET', _body?: unknown, captured?: AbortSignal) => {
+      if (method === 'POST') {
+        signal = captured;await gate.hold;
+        if (outcome === 'failure') throw Object.assign(new Error('refused'), {code: 'invalid_request'});
+        return source('added', '/media/new', '/media/new') as T;
+      }
+      const libraryId = path.includes('/other/') ? 'other' : 'selected';
+      if (libraryId === 'selected') reads++;
+      return configuration(libraryId, 7, [source('existing', `/media/${libraryId}`, `/media/${libraryId}`, libraryId)]) as T;
+    });
+    try {
+      await f.folders.select('selected');
+      gate.hold = new Promise(resolve => {release = resolve;});
+      const saving = f.folders.save('selected', undefined, edit);
+      await f.folders.select('other');
+      assert.equal(signal?.aborted, true);
+      await f.folders.select('selected');
+      const confirmed = reads;
+      release();assert.equal(await saving, false);
+      assert.equal(reads, confirmed);
+      assert.equal(f.folders.getSnapshot().libraryId, 'selected');
+      assert.equal(f.folders.getSnapshot().mutation, 'idle');
+      assert.equal(f.folders.getSnapshot().error, undefined);
+      assert.equal(f.folders.config('selected')?.revision, 7);
+      assert.deepEqual(f.folders.config('selected')?.sources.map(item => item.id), ['existing']);
+      assert.deepEqual(f.errors, []);
+    } finally {f.folders.dispose();}
+  }
+});

@@ -75,8 +75,6 @@ export class SettingsController {
   readonly folders: SettingsLibraryFoldersSource;
   readonly backups: SettingsBackupSource;
   private readonly listeners = new Set<() => void>();
-  private folderObserved = false;
-  private folderLibraryId?: string;
   private readonly lifetime = new AbortController();
   private readonly rowErrors = new Map<string, unknown>();
   private readonly offDevice?: () => void;
@@ -88,10 +86,11 @@ export class SettingsController {
   constructor(options: SettingsControllerOptions) {
     this.options = options; this.preferences = options.preferences;
     this.sectionReads = new SettingsSectionReads(this.current, () => {for (const listener of this.listeners) listener();});
-    this.library = new SettingsLibrarySource(options.api, () => this.current() && options.mainProfile && options.capabilities.manageServer && options.role !== 'member', () => this.publish({}), options.reportError);
+    const libraryCurrent = () => this.current() && options.mainProfile && options.capabilities.manageServer && options.role !== 'member';
+    this.library = new SettingsLibrarySource(options.api, libraryCurrent, () => this.publish({}), options.reportError);
     const scope = {serverId: options.serverId, viewerId: options.viewerId};
     // A folder read is tab-scoped: its headless port carries the error, so it never fails the whole section.
-    this.folders = new SettingsLibraryFoldersSource(options.api, scope, () => this.current(), () => this.publish({}), () => {});
+    this.folders = new SettingsLibraryFoldersSource(options.api, scope, libraryCurrent, () => this.publish({}), () => {});
     this.console = new ConsoleClient(options.api, scope);
     this.backups = new SettingsBackupSource(options.api, options.serverId, () => this.current() && !!this.forms.runtime, () => this.publish({}));
     this.preferencesReader = options.reader;
@@ -115,14 +114,7 @@ export class SettingsController {
   preferencesSnapshot = () => this.current() ? this.preferences : undefined;
   serverHealth = () => this.current() ? this.header.health : undefined;
   serverFacts = () => this.current() ? this.header.facts : [];
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    // A headless controller that no screen observes does no folder IO; the captured selection starts on the first observation.
-    this.folderObserved = true;
-    const libraryId = this.folderLibraryId;
-    if (libraryId) void this.folders.select(libraryId);
-    return () => {this.listeners.delete(listener);};
-  };
+  subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
   private publish(patch: Partial<SettingsPageSnapshot>) {
     if (!this.current()) return;
     this.sectionReads.update(patch);
@@ -147,11 +139,7 @@ export class SettingsController {
   private libraryRow = (context?: SettingsContext) => context?.section.scope === 'server' && context.section.id === 'libraries' && context.panelId === 'library' && !!context.recordId;
   loadContext = (context: SettingsContext) => {
     const libraryId = this.libraryRow(context) && this.sectionVisible(context.section) ? context.recordId : undefined;
-    const library = this.library.select(libraryId);
-    this.folderLibraryId = libraryId;
-    if (!libraryId) {this.folders.clear();return library;}
-    if (!this.folderObserved) return library;
-    return Promise.all([library, this.folders.select(libraryId)]).then(() => undefined);
+    return Promise.all([this.library.select(libraryId), this.folders.select(libraryId)]).then(() => undefined);
   };
   private backupValue(rowId: string): SettingsBindingValue | undefined {
     const settings = this.backups.getSnapshot().settings;

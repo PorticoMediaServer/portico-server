@@ -6,6 +6,7 @@ import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
 import {settingsSpec} from '@core/presentation/settings-spec.ts';
 import {SettingsController} from '../src/screens/settings/controller.ts';
+import type {SettingsLibraryFolderEdit} from '../src/screens/settings/library-folders-source.ts';
 
 const section = settingsSpec.find(item => item.scope === 'server' && item.id === 'libraries')!;
 const settings: LibrarySettings = {scanDepth: 'basic', groupCollections: true, localTags: 'prefer', lyricsSource: 'files', titleSource: 'tags', episodeNumbering: 'absolute', findExtras: true, sortIgnoreArticles: true, refreshMode: 'replace_unlocked', acoustidEnabled: false,
@@ -20,19 +21,18 @@ function inventory(libraryId: string, revision = 41) {
     sources: [{id: 'folder', libraryId, kind: 'local', name: 'Folder', path: '/media', resolvedPath: '/media', classification: 'local', generation: 1, health: 'healthy', enabled: true, followSymlinks: false, identityConfirmed: true, intervalMs: 3600000, nextScanAt: '', lastCompleteAt: '', lastProgressAt: ''}],
     policy: {tier: 'basic', revision: 1, operations: []}};
 }
-function fixture(request: LibraryContentApi['request'], observe = true) {
+function fixture(request: LibraryContentApi['request'], access: Partial<{role: 'owner' | 'admin' | 'member'; manageServer: boolean; mainProfile: boolean}> = {}) {
   let current = true;
   const calls: string[] = [];
   const api: LibraryContentApi = {request: async <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => {calls.push(path);return request<T>(path, method, body, signal);}};
   const preferences: PreferenceSnapshot = {deviceClass: 'web', registry: {revision: 'test', fields: []}, documents: [], effective: {}, effectiveSource: {}, clampedFields: [], registryRevision: 'test'};
   const reader = new PreferencesReader(api, {serverId: 'server', viewerId: 'viewer'});
-  const controller = new SettingsController({api, serverId: 'server', viewerId: 'viewer', role: 'admin', mainProfile: true,
-    capabilities: {manageServer: true, managePeople: false, manageSignIn: false}, preferences, reader, isCurrent: () => current, reportError: error => {throw error;},
+  const controller = new SettingsController({api, serverId: 'server', viewerId: 'viewer', role: access.role ?? 'admin', mainProfile: access.mainProfile ?? true,
+    capabilities: {manageServer: access.manageServer ?? true, managePeople: false, manageSignIn: false}, preferences, reader, isCurrent: () => current, reportError: error => {throw error;},
     environment: {platform: 'web', os: 'browser'}, eligibility: {hasEngine: () => false, library: () => undefined},
     reading: {read: () => {throw new Error('Unexpected Reading read');}, patch: () => {throw new Error('Unexpected Reading write');}},
   });
-  const unsubscribe = observe ? controller.subscribe(() => {}) : () => {};
-  return {controller, reader, calls, unsubscribe, retire: () => {current = false;}};
+  return {controller, reader, calls, retire: () => {current = false;}};
 }
 const selected = {section, panelId: 'library', recordId: 'selected'};
 
@@ -51,7 +51,7 @@ test('the controller selects and clears its one folder source with the library p
     assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
     assert.deepEqual(f.controller.folders.getSnapshot().config, undefined);
     assert.deepEqual(f.calls.filter(path => path.endsWith('/inventory-config')).length, 2);
-  } finally {f.unsubscribe();f.controller.dispose();f.reader.dispose();}
+  } finally {f.controller.dispose();f.reader.dispose();}
 });
 
 test('a non-library context or a different panel never reads folders', async () => {
@@ -62,7 +62,7 @@ test('a non-library context or a different panel never reads folders', async () 
     await f.controller.loadContext({section: dashboard, panelId: 'library', recordId: 'selected'});
     assert.deepEqual(f.calls.filter(path => path.endsWith('/inventory-config')), []);
     assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
-  } finally {f.unsubscribe();f.controller.dispose();f.reader.dispose();}
+  } finally {f.controller.dispose();f.reader.dispose();}
 });
 
 test('disposing or retiring the controller suppresses a held folder read', async () => {
@@ -80,22 +80,23 @@ test('disposing or retiring the controller suppresses a held folder read', async
     await pending;
     assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
     assert.equal(f.controller.folders.getSnapshot().libraryId, undefined);
-    f.unsubscribe();f.controller.dispose();f.reader.dispose();
+    f.controller.dispose();f.reader.dispose();
   }
 });
 
-test('an unobserved headless controller does no folder IO until the screen observes it', async () => {
-  const f = fixture(async <T>(path: string) => (path.endsWith('/inventory-config') ? inventory('selected') : document('selected')) as T, false);
-  try {
-    await f.controller.loadContext(selected);
-    assert.deepEqual(f.calls.filter(path => path.endsWith('/inventory-config')), []);
-    assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
-    const off = f.controller.subscribe(() => {});
+const edit: SettingsLibraryFolderEdit = {name: 'Folder', path: '/media/new', classification: 'local', followSymlinks: false, intervalSeconds: 900, acceptReplacement: false};
+test('a denied controller gives its folder port no IO or authority', async () => {
+  for (const access of [{role: 'member' as const}, {manageServer: false}, {mainProfile: false}]) {
+    const f = fixture(async <T>(path: string) => (path.endsWith('/inventory-config') ? inventory('selected') : document('selected')) as T, access);
     try {
+      await f.controller.folders.select('selected');
+      await f.controller.folders.refresh();
+      assert.equal(await f.controller.folders.save('selected', undefined, edit), false);
+      assert.equal(await f.controller.folders.remove('selected', 'folder'), false);
       await f.controller.loadContext(selected);
-      assert.equal(f.controller.folders.getSnapshot().libraryId, 'selected');
-      assert.equal(f.controller.folders.getSnapshot().config?.revision, 41);
-      assert.equal(f.calls.filter(path => path.endsWith('/inventory-config')).length, 1);
-    } finally {off();}
-  } finally {f.unsubscribe();f.controller.dispose();f.reader.dispose();}
+      assert.deepEqual(f.calls.filter(path => path.endsWith('/inventory-config')), []);
+      assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
+      assert.equal(f.controller.folders.config('selected'), undefined);
+    } finally {f.controller.dispose();f.reader.dispose();}
+  }
 });

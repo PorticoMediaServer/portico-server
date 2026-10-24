@@ -43,6 +43,8 @@ export class SettingsLibraryFoldersSource {
       if (this.commanding) return this.commanding.then(() => undefined);
       if (this.state.config) return Promise.resolve();
     }
+    // A replaced selection retires its command for good: returning later must never reconcile an old write.
+    this.retireCommand();
     return this.read(libraryId);
   };
   /** Explicit recovery: rereads the selected library, keeping its genuine folders visible while the read runs. */
@@ -110,6 +112,9 @@ export class SettingsLibraryFoldersSource {
     this.commanding = commanding;
     this.publish({libraryId, config: captured, loading: false, mutation: 'pending'});
     return commanding;
+  }
+  private retireCommand() {
+    this.commandRequest?.abort();this.commandRequest = undefined;this.commanding = undefined;
   }
   private code(error: unknown): string | undefined {
     const value = error as {code?: unknown} | null;

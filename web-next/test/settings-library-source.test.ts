@@ -16,6 +16,11 @@ function document(libraryId: string, revision = 7): LibraryAdminDocument {
   return {libraryId, libraryName: libraryId, libraryKind: 'anime', revision, digest: 'actual-document', eligibleControls: ['libraries.cwWeeks', 'libraries.episodeNumbering'], audience: {everyone: false, accounts: 3}, actions: ['scan', 'rename'],
     settings, defaults: {...settings, continueWatching: {...settings.continueWatching, weeks: 8}}, analysisMatrix: {costClasses: [], operations: []}, availableProviders: [], enumerations: {}, sources: []};
 }
+function inventory(libraryId: string, revision = 3) {
+  return {scope: {serverId: 'server', viewerFence: 'fence-test'}, libraryId, revision,
+    sources: [{id: 'folder', libraryId, kind: 'local', name: 'Folder', path: '/media', resolvedPath: '/media', classification: 'local', generation: 1, health: 'healthy', enabled: true, followSymlinks: false, identityConfirmed: true, intervalMs: 3600000, nextScanAt: '', lastCompleteAt: '', lastProgressAt: ''}],
+    policy: {tier: 'basic', revision: 1, operations: []}};
+}
 function fixture(request: LibraryContentApi['request']) {
   let current = true;
   const errors: unknown[] = [];
@@ -126,7 +131,9 @@ test('the existing Settings panel loads only its actual record and dispatches ch
   const calls: string[] = [], section = settingsSpec.find(section => section.scope === 'server' && section.id === 'libraries')!;
   let server = document('selected');
   const api: LibraryContentApi = {request: async <T>(path: string, method?: string, body?: unknown) => {
-    calls.push(path);assert.equal(path, '/v1/admin/libraries/selected/settings');
+    calls.push(path);
+    if (path.endsWith('/inventory-config')) return inventory('selected') as T;
+    assert.equal(path, '/v1/admin/libraries/selected/settings');
     if (method === 'PUT') server = {...server, revision: server.revision + 1, settings: (body as {settings: LibrarySettings}).settings};
     return server as T;
   }};
@@ -147,7 +154,7 @@ test('the existing Settings panel loads only its actual record and dispatches ch
     controller.change(row, 24, selected);await new Promise(resolve => setImmediate(resolve));
     assert.equal(controller.rowState(row, selected).value, 24);
     await controller.loadContext({section});assert.equal(controller.rowState(row, selected).present, false);
-    controller.change(row, 32, selected);assert.equal(calls.length, 2);
+    controller.change(row, 32, selected);assert.equal(calls.length, 3);
   } finally {controller.dispose();reader.dispose();}
 });
 
