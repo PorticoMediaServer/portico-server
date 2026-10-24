@@ -154,7 +154,8 @@ export function createDetailBindings(context: ScreenContext) {
         startSeconds = positionMs / 1000;
       }
       current(data);
-      await context.effects.play({...action.playback, startSeconds, libraryId: data.scope.libraryId, ...(versionId ? {versionId} : {})}, life.signal(signal));
+      await context.effects.play({...action.playback, startSeconds, libraryId: data.scope.libraryId, ...(versionId ? {versionId} : {})}, life.signal(signal),
+        () => life.current() && service.getSnapshot().phase === 'ready' && service.getSnapshot().data === data);
     },
     dispose() { intent++; selected = undefined; subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); service.cancel(); service.dispose(); },
   };
