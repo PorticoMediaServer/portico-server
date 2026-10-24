@@ -113,6 +113,17 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
   useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
+  const focusEdge = useRef(false);
+  useLayoutEffect(() => {
+    const wasOpen = focusEdge.current; focusEdge.current = open;
+    // Only on the closed-to-open edge: a later autoplay entry change must not take
+    // focus, and an open surface above the player keeps it.
+    if (!open || wasOpen) return;
+    const element = root.current, active = document.activeElement;
+    if (!element || (active instanceof Node && element.contains(active))) return;
+    if (active instanceof Element && active.closest('[role="dialog"],[role="menu"],[aria-modal="true"]')) return;
+    element.focus({preventScroll: true});
+  }, [open]);
   useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
   useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
@@ -196,7 +207,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     ...(surfaces?.more ?? []).map(item => ({id: item.id, label: item.label, onSelect: () => effect(item.action)})),
     {id: 'shortcuts', label: t('player.shortcuts'), icon: 'i-kbd', onSelect: () => setShortcuts(true)},
   ];
-  return <div ref={root} className={styles.watch} hidden={!open} data-watch-screen data-mode={mode} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+  return <div ref={root} className={styles.watch} hidden={!open} tabIndex={-1} data-watch-screen data-mode={mode} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
