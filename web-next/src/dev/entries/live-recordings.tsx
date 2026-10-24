@@ -26,16 +26,17 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const programme = (title: string, from: number, to: number, extra: Partial<GuideProgramme> = {}): GuideProgramme => ({id: `p-${title}`, channelId: 'c',
   title, start: iso(from), end: iso(to), lineage: 'provider-id', seriesId: '', episodeId: '', newEvidence: 'unknown', description: '', ...extra});
 const channel = (name: string, number: string, mark: string) => ({id: `c-${mark}`, name, number, mark: {text: mark, seed: `synthetic:${mark}`}});
-const recording = (id: string, state: Recording['state'], title: string, from: number, to: number, channelFact: ReturnType<typeof channel>, extra: Partial<Recording> = {}): Recording => ({
+const recording = (id: string, state: Recording['state'], title: string, from: number, to: number, channelFact: ReturnType<typeof channel>, extra: Partial<Recording> = {}, programmeExtra: Partial<GuideProgramme> = {}): Recording => ({
   id, revision: 1, occurrence: {sourceId: 'synthetic', channelId: channelFact.id, generation: 'synthetic', programmeId: `p-${title}`},
-  programme: programme(title, from, to), ruleId: '', options: {beforeSeconds: 0, afterSeconds: 0, priority: 0, retentionDays: 0, episodeLimit: 0},
+  programme: programme(title, from, to, programmeExtra), ruleId: '', options: {beforeSeconds: 0, afterSeconds: 0, priority: 0, retentionDays: 0, episodeLimit: 0},
   start: iso(from), end: iso(to), state, reason: '', keep: false, itemId: '', libraryId: '', coverageStart: '', coverageEnd: '', bytes: 0,
   conflicts: [], channel: channelFact, watched: null, ...extra});
 const pebble = channel('Pebble Kids', '401', 'PK'), atlas = channel('Atlas Documentaries', '501', 'AD'), summit = channel('Summit Sports Extra', '202', 'SSE');
 const conflict = recording('r-conflict', 'conflicted', 'Summit Football: Harbor City vs. Ridgeview', at(20, 0), at(21, 0), summit,
-  {conflicts: [{start: iso(at(20, 0)), end: iso(at(20, 15)), demand: 3, capacity: 2}]});
-const active = recording('r-active', 'recording', 'Story Time Island', at(16, 0), at(16, 30), pebble, {watched: false});
-const later = recording('r-later', 'scheduled', 'The Clockmakers', at(16, 15), at(17, 0), atlas, {ruleId: 'rule-1'});
+  {conflicts: [{start: iso(at(20, 0)), end: iso(at(20, 15)), demand: 3, capacity: 2}]}, {subtitle: t('next.live.example.football'), flags: {live: true}, episode: {season: 5, number: 9}});
+const active = recording('r-active', 'recording', 'Story Time Island', at(16, 0), at(16, 30), pebble, {watched: false},
+  {episode: {season: 3, number: 1}, subtitle: 'Homecoming', flags: {new: true}, description: 'Story Time Island on Pebble Kids.'});
+const later = recording('r-later', 'scheduled', 'The Clockmakers', at(16, 15), at(17, 0), atlas, {ruleId: 'rule-1'}, {episode: {season: 5, number: 9}, subtitle: t('next.live.example.crossed')});
 const later2 = recording('r-later2', 'waiting-source', 'Wild Plains', at(18, 45), at(19, 45), atlas);
 const detail: RecordingDetail = {recording: conflict, capacity: {known: true, effective: 2}, nextOverlap: '',
   overlaps: [{id: 'o1', title: 'The Long Road North', start: iso(at(17, 53)), end: iso(at(20, 20)), priority: 0, state: 'recording'},

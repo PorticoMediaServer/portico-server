@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties} from 'react';
+import {useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {activeRecording, bytesLabel, dvrMessage, mutableRecording, playableRecording, recordingReason, recordingStateLabel,
   type Recording, type RecordingDetail, type RecordingState} from '@core/dvr.ts';
@@ -6,7 +6,7 @@ import {channelTint} from '@portico/client-core/kit-model';
 import {Button, Chip, Select} from '../../kit/controls';
 import {ChannelMark} from '../../kit/artwork';
 import {Icon} from '../../kit/Icon';
-import {Banner, Dialog, SidePanel} from '../../kit/overlays';
+import {Banner, Dialog, Menu, SidePanel, type MenuEntry} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import {RecordingsLayout, RecordingStorage} from '../../kit/dvr/RecordingsLayout';
 import {RuleGap} from '../../kit/dvr/RuleCard';
@@ -32,36 +32,49 @@ function dayOf(value: string, now: number) {
   return new Date(at).toDateString() === new Date(now).toDateString() ? t('guide.today')
     : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', month: 'short', day: 'numeric'}).format(at);
 }
+function dateOf(value: string) { return new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', month: 'long', day: 'numeric'}).format(Date.parse(value)); }
 function rangeOf(recording: Recording) { return t('guide.cellTime', {start: timeOf(recording.start), end: timeOf(recording.end)}); }
+function episodeOf(recording: Recording) {
+  const info = recording.programme.episode;
+  const number = info?.number ?? (info as {number?: number; episode?: number} | undefined)?.episode;
+  return info?.display ?? (info?.season !== undefined && number !== undefined ? t('downloads.title.episode', {season: info.season, episode: number}) : undefined);
+}
 function channelMark(recording: Recording) {
   const channel = recording.channel;
   return channel ? {sourceId: '', id: channel.id, text: channel.mark?.text ?? channel.name.slice(0, 2).toLocaleUpperCase(), seed: channel.mark?.seed ?? channel.id} : undefined;
 }
-function RecordingArt({recording, large}: {recording: Recording; large?: boolean}) {
+function RecordingArt({recording, large, badges}: {recording: Recording; large?: boolean; badges?: ReactNode}) {
   const mark = channelMark(recording);
+  const title = recording.programme.title.replace(/^The\s+/i, '');
   return <span className={large ? styles.recArtLarge : styles.recArt} style={{'--tint': channelTint(mark?.seed ?? recording.id)} as CSSProperties} aria-hidden="true">
-    {mark ? <ChannelMark mark={mark} size={large ? 58 : 42}/> : <span className={styles.recArtLetter}>{recording.programme.title.slice(0, 1)}</span>}
+    <span className={styles.recArtGlyph}>{(Array.from(title)[0] ?? '?').toLocaleUpperCase()}</span>
+    {mark && <span className={styles.recArtChannel}><ChannelMark mark={mark} size={large ? 22 : 18}/>{large && <b>{recording.channel?.name}</b>}</span>}
+    {badges && <span className={styles.recArtBadges}>{badges}</span>}
   </span>;
 }
 function StatePill({recording}: {recording: Recording}) {
   return <span className={styles.recState} data-state={recording.state}>{statePill(recording.state)}</span>;
 }
-
-function RecordingRow({recording, now, onCancel, onDetails}: {recording: Recording; now: number; onCancel?: () => void; onDetails?: () => void}) {
-  const info = recording.programme.episode;
-  const episode = info?.display ?? (info?.season !== undefined && info.number !== undefined
-    ? t('downloads.title.episode', {season: info.season, episode: info.number}) : undefined);
+function RecordingCopy({recording}: {recording: Recording}) {
+  const episode = episodeOf(recording);
+  return <div className={styles.recCopy}>
+    <b>{recording.programme.title}</b>
+    {(episode || recording.programme.subtitle) && <small className={styles.recEpisode}>{episode}{episode && recording.programme.subtitle && <RuleGap/>}{recording.programme.subtitle}</small>}
+    <small className={styles.recMeta}>{recording.channel && <span>{recording.channel.number}<RuleGap/>{recording.channel.name}</span>}{recording.ruleId && <span><Icon name="i-series" size={15}/>{t('next.live.seriesRule')}</span>}</small>
+  </div>;
+}
+function RecordingRow({recording, onCancel, onDetails}: {recording: Recording; now?: number; onCancel?: () => void; onDetails?: () => void}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const items: readonly MenuEntry[] = [
+    ...(onCancel ? [{id: 'cancel', label: t('recordings.cancelAction'), icon: 'i-close' as const, destructive: true, onSelect: onCancel}] : []),
+    ...(onDetails ? [{id: 'details', label: t('next.live.details'), icon: 'i-info' as const, onSelect: onDetails}] : [])];
   return <div className={styles.recRow} data-state={recording.state}>
-    <div className={styles.recWhen}><b>{recording.state === 'recording' ? t('guide.now') : dayOf(recording.start, now)}</b><small>{rangeOf(recording)}</small></div>
+    <div className={styles.recWhen}><b>{recording.state === 'recording' ? t('guide.now') : timeOf(recording.start)}</b><small>{rangeOf(recording)}</small></div>
     <RecordingArt recording={recording}/>
-    <div className={styles.recCopy}>
-      <b>{recording.programme.title}</b>
-      {(episode || recording.programme.subtitle) && <small className={styles.recEpisode}>{episode}{episode && recording.programme.subtitle && <RuleGap/>}{recording.programme.subtitle}</small>}
-      <small className={styles.recMeta}>{recording.channel && <><span>{recording.channel.number}<RuleGap/>{recording.channel.name}</span></>}{recording.ruleId && <span>{t('next.live.seriesRule')}</span>}</small>
-    </div>
+    <RecordingCopy recording={recording}/>
     <div className={styles.recRight}><StatePill recording={recording}/>
-      {onCancel && <Button className={styles.recAction} variant="ghost" size="small" onClick={onCancel}>{t('recordings.cancelAction')}</Button>}
-      {onDetails && <Button className={styles.recAction} variant="ghost" size="small" onClick={onDetails}>{t('next.live.details')}</Button>}
+      {items.length > 0 && <Menu open={menuOpen} onOpenChange={open => setMenuOpen(open)} title={t('web.dvr.actionsFor', {title: recording.programme.title})}
+        trigger={<Button className={styles.recMore} variant="ghost" size="small" iconOnly icon="i-more" aria-label={t('web.dvr.actionsFor', {title: recording.programme.title})}/>} items={items}/>}
     </div>
   </div>;
 }
@@ -79,10 +92,16 @@ function ConflictBox({context, recording, detail: supplied, onResolve}: {context
     <div className={styles.conflictHead}><Icon name="i-warn" size={22}/><div>
       <h3>{t('recordings.conflictTitle', {title: recording.programme.title})}</h3>
       {tuners !== undefined && <p>{t('recordings.conflictBodyTuners', {count: tuners})}</p>}
-    </div><Button className={styles.conflictAction} variant="primary" onClick={() => onResolve(detail)}>{t('web.dvr.seeConflict')}</Button></div>
+    </div></div>
+    <div className={styles.conflictRow}>
+      <div className={styles.recWhen}><b>{timeOf(recording.start)}</b><small>{rangeOf(recording)}</small></div>
+      <RecordingArt recording={recording}/>
+      <RecordingCopy recording={recording}/>
+      <div className={styles.recRight}><StatePill recording={recording}/><Button className={styles.conflictAction} variant="primary" onClick={() => onResolve(detail)}>{t('web.dvr.seeConflict')}</Button></div>
+    </div>
     {detail && detail.overlaps.length > 0 && <div className={styles.conflictOthers}>
       <span>{t('next.live.usingTuners')}</span>
-      {detail.overlaps.map(other => <span key={other.id}><b>{other.title}</b><em>{rangeOf({...recording, start: other.start, end: other.end} as Recording)}</em></span>)}
+      {detail.overlaps.map(other => <span key={other.id}><b>{other.title}</b><em>{t('guide.cellTime', {start: timeOf(other.start), end: timeOf(other.end)})}</em></span>)}
     </div>}
   </div>;
 }
@@ -125,10 +144,11 @@ export function UpcomingView({context, controller, snapshot, now, onResolve, con
   const later = recordings.filter(recording => !activeRecording(recording) && recording.state !== 'conflicted');
   const [shown, setShown] = useState<Recording>();
   return <div className={styles.recBody}>
-    {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} detail={conflictDetails?.[recording.id]} onResolve={detail => onResolve(recording, detail)}/>)}
+    {conflicted.length > 0 && <section className={styles.recSection}><h2>{t('recordings.conflicts')}<span>{snapshot.summary?.conflicts ?? conflicted.length}</span></h2>
+      {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} detail={conflictDetails?.[recording.id]} onResolve={detail => onResolve(recording, detail)}/>)}</section>}
     {active.length > 0 && <section className={styles.recSection}><h2>{t('next.live.recordingNow')}</h2>
       {active.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}}/>)}</section>}
-    {later.length > 0 && <section className={styles.recSection}><h2>{t('next.live.laterToday')}<span>{dayOf(later[0]!.start, now)}</span></h2>
+    {later.length > 0 && <section className={styles.recSection}><h2>{t('next.live.laterToday')}<span>{dateOf(later[0]!.start)}</span></h2>
       {later.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}} onDetails={() => setShown(recording)}/>)}</section>}
     {!conflicted.length && !active.length && !later.length && <StateView title={t('recordings.noneScheduled')} body={t('recordings.noneScheduledBody')}/>}
     <Dialog open={!!shown} onOpenChange={open => {if (!open) setShown(undefined);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
@@ -143,12 +163,11 @@ export function RecordedView({context, controller, snapshot}: {context: ScreenCo
   const change = (value: string) => {if (value === 'recent' || value === 'title' || value === 'oldest') void controller.readGroups(value).catch(() => {});};
   return <div className={styles.recBody}>
     <div className={styles.recordedHead}><p>{t('next.live.recordedHead', {shows: groups.length, recordings: snapshot.summary?.recorded ?? 0, unwatched: snapshot.summary?.unwatched ?? 0})}</p>
-      <Select className={styles.recordedSort} aria-label={t('channels.sort')} value={sort} options={[{value: 'recent', label: t('next.live.sortRecent')}, {value: 'title', label: t('next.live.sortTitle')}, {value: 'oldest', label: t('next.live.sortOldest')}]} onValueChange={change}/></div>
+      <span className={styles.recordedSortLabel}>{t('channels.sort')}</span><Select className={styles.recordedSort} aria-label={t('channels.sort')} value={sort} options={[{value: 'recent', label: t('next.live.sortRecent')}, {value: 'title', label: t('next.live.sortTitle')}, {value: 'oldest', label: t('next.live.sortOldest')}]} onValueChange={change}/></div>
     {groups.length > 0 ? <div className={styles.recordedGrid}>{groups.map(group => <button type="button" className={styles.recordedCard} key={group.key} onClick={() => setOpen({key: group.key, title: group.title})}>
-      <RecordingArt recording={group.recording} large/>
+      <RecordingArt recording={group.recording} large={true} badges={<>{group.unwatched > 0 && <em className={styles.recArtCount}>{group.unwatched}</em>}{group.kept > 0 && <em>{t('recordings.kept')}</em>}{group.exceptions > 0 && <em>{t('dvr.state.incomplete')}</em>}</>}/>
       <span className={styles.recordedCopy}><b>{group.title}</b><small>{group.recording.channel?.name}</small>
-        <small>{group.unwatched ? t('recordings.showCountUnwatched', {count: group.recordings, unwatched: group.unwatched}) : t('recordings.showCount', {count: group.recordings})}</small>
-        {(group.kept > 0 || group.exceptions > 0) && <span className={styles.recordedBadges}>{group.kept > 0 && <em>{t('recordings.kept')}</em>}{group.exceptions > 0 && <em>{t('dvr.state.incomplete')}</em>}</span>}</span>
+        <small>{group.unwatched ? t('recordings.showCountUnwatched', {count: group.recordings, unwatched: group.unwatched}) : t('recordings.showCount', {count: group.recordings})}</small></span>
     </button>)}</div> : <StateView title={t('recordings.noneRecorded')} body={t('recordings.noneRecordedBody')}/>}
     {open && <RecordedGroupPanel context={context} group={open.key} title={open.title} sort={sort} onClose={() => setOpen(undefined)}/>}
   </div>;

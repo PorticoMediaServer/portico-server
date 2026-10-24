@@ -46,14 +46,14 @@ try {
   const shot = (url, file) => {
     const result = spawnSync(chromium, ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars',
       '--run-all-compositor-stages-before-draw', '--virtual-time-budget=8000', '--window-size=1440,1230', `--screenshot=${file}`, url],
-      {encoding: 'utf8', timeout: 60_000});
+      {encoding: 'utf8', timeout: 60_000, env: {...process.env, TZ: 'America/Halifax'}});
     if (result.status !== 0) throw new Error(`Chromium failed for ${url}: ${result.stderr?.slice(-2000) ?? ''}`);
   };
   for (const name of ['upcoming', 'recorded']) {
     shot(`${origin}/src/dev/entries/live-recordings.html?view=${name}`, `${output}/${name}-implementation.png`);
     shot(`${referenceOrigin}/${name}.html`, `${output}/${name}-frame.png`);
     const pair = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', `${output}/${name}-implementation.png`, '-i', `${output}/${name}-frame.png`,
-      '-filter_complex', 'hstack=inputs=2', `${output}/${name}-comparison.jpg`], {encoding: 'utf8', timeout: 60_000});
+      '-filter_complex', 'hstack=inputs=2', `${output}/${name}-comparison.jpg`], {encoding: 'utf8', timeout: 60_000, env: {...process.env, TZ: 'America/Halifax'}});
     if (pair.status !== 0) throw new Error(`ffmpeg failed: ${pair.stderr?.slice(-1000) ?? ''}`);
   }
   await writeFile(`${output}/capture.log`, JSON.stringify({origin, referenceOrigin, screens: ['upcoming', 'recorded'], viewport: '1440x1230'}, null, 2));
