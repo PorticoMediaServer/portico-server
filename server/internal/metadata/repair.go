@@ -7,6 +7,7 @@ import (
 	"errors"
 	"portico.local/server/internal/requestinput"
 	"strconv"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -75,19 +76,20 @@ type RepairSnapshot struct {
 	Artwork           []ArtworkChoice        `json:"artwork"`
 }
 type RepairState struct {
-	Tabs         []string          `json:"tabs"`
-	Target       RepairTarget      `json:"target"`
-	Library      string            `json:"libraryId"`
-	Server       string            `json:"serverId"`
-	ViewerFence  string            `json:"viewerFence"`
-	Revision     string            `json:"revision"`
-	Snapshot     RepairSnapshot    `json:"snapshot"`
-	Candidates   []RepairCandidate `json:"candidates"`
-	History      []RepairHistory   `json:"history"`
-	Artwork      ArtworkState      `json:"artwork"`
-	Cascades     []RepairCascade   `json:"cascades"`
-	Schema       []RepairFieldSpec `json:"schema"`
-	ArtworkRoles []string          `json:"artworkRoles"`
+	TargetItemKind string            `json:"-"`
+	Tabs           []string          `json:"tabs"`
+	Target         RepairTarget      `json:"target"`
+	Library        string            `json:"libraryId"`
+	Server         string            `json:"serverId"`
+	ViewerFence    string            `json:"viewerFence"`
+	Revision       string            `json:"revision"`
+	Snapshot       RepairSnapshot    `json:"snapshot"`
+	Candidates     []RepairCandidate `json:"candidates"`
+	History        []RepairHistory   `json:"history"`
+	Artwork        ArtworkState      `json:"artwork"`
+	Cascades       []RepairCascade   `json:"cascades"`
+	Schema         []RepairFieldSpec `json:"schema"`
+	ArtworkRoles   []string          `json:"artworkRoles"`
 }
 type RepairFieldEdit struct {
 	Value     *string   `json:"value,omitempty"`
@@ -160,6 +162,13 @@ func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (Repair
 			f.Observed = observed
 			if f.Value == v {
 				f.Source = "manual"
+			}
+			if readingRepairKind(ent.itemKind) && readingAttributionField(k) {
+				if locked && strings.TrimSpace(v) != "" {
+					f.Value, f.Source = v, "owner"
+				} else {
+					f.Value, f.Source = a, "automatic"
+				}
 			}
 			out.Fields[k] = f
 		}
@@ -238,6 +247,9 @@ func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (Repair
 	if err != nil {
 		return out, ent, err
 	}
+	if readingRepairKind(ent.itemKind) {
+		return out, ent, nil
+	}
 	out.Artwork, err = readArtworkChoices(ctx, tx, t)
 	return out, ent, err
 }
@@ -276,6 +288,7 @@ func readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairSta
 		return out, err
 	}
 	out.Snapshot = snap
+	out.TargetItemKind = ent.itemKind
 	out.Library = ent.library
 	out.Schema = ent.schema
 	out.Tabs = repairSchemaTabs(ent.schema)
@@ -347,6 +360,10 @@ func readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairSta
 			}
 		}
 	}
+	if readingRepairKind(ent.itemKind) {
+		out.Artwork = ArtworkState{Candidates: []ArtworkCandidate{}, Jobs: []ArtworkJob{}}
+		return out, nil
+	}
 	out.Artwork, err = readArtworkState(ctx, tx, t)
 	if err != nil {
 		return out, err
@@ -408,6 +425,9 @@ func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, a
 	}
 	if base != m.ExpectedRevision {
 		return RepairState{}, ErrRepairConflict
+	}
+	if readingRepairKind(ent.itemKind) && m.Action != "edit" && m.Action != "lock_all" && m.Action != "unlock_all" && m.Action != "undo" {
+		return RepairState{}, ErrRepairInput
 	}
 	who := actor.Authority + ":" + actor.AccountID + ":" + actor.ProfileID
 	now := s.publicationTime().Format(time.RFC3339Nano)
@@ -555,11 +575,17 @@ func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, a
 		if err = setRelationshipLock(ctx, tx, t, "identity", identityLocked, who, now); err != nil {
 			return RepairState{}, err
 		}
-		if err = s.verifyRestorableArtwork(saved.Artwork); err != nil {
-			return RepairState{}, err
-		}
-		if err = restoreArtworkChoices(ctx, tx, t, saved.Artwork, who, now); err != nil {
-			return RepairState{}, err
+		if readingRepairKind(ent.itemKind) {
+			if len(saved.Artwork) != 0 {
+				return RepairState{}, ErrRepairInput
+			}
+		} else {
+			if err = s.verifyRestorableArtwork(saved.Artwork); err != nil {
+				return RepairState{}, err
+			}
+			if err = restoreArtworkChoices(ctx, tx, t, saved.Artwork, who, now); err != nil {
+				return RepairState{}, err
+			}
 		}
 	case "preview_artwork":
 		err = queueArtworkPreview(ctx, tx, t, m.CandidateID, who, now)
