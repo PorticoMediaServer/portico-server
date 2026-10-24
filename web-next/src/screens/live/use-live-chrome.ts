@@ -40,6 +40,7 @@ type GuideFacts = Readonly<{fenceKey: string; current: GuideChannel; rows: reado
 export function useLiveChromePort(context: ScreenContext | undefined, runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined,
   skips: Readonly<{back: number; forward: number}>): LiveChromePort | undefined {
   const fence = snapshot?.fence?.kind === 'channel' ? snapshot.fence as ChannelPlaybackFence : undefined;
+  const expanded = snapshot?.dock.local?.expanded === true;
   const linear = snapshot?.playback.linear, presentation = snapshot?.presentation;
   const channelRef = linear?.channel;
   const fenceKey = fence && channelRef ? JSON.stringify([fence.sessionId, fence.generation, fence.channelId, fence.channelGeneration, linear?.programme?.id ?? '']) : '';
@@ -53,7 +54,7 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
   useEffect(() => { setRecorded(undefined); }, [fenceKey]);
   useEffect(() => {
     const fence = input.current.fence, channelRef = input.current.channelRef;
-    if (!context || !life || !fence || !channelRef || !fenceKey) { setFacts(undefined); return; }
+    if (!context || !life || !expanded || !fence || !channelRef || !fenceKey) { setFacts(undefined); return; }
     const abort = new AbortController();
     const bindings = createLiveBindings(context, {kind: channelRef.kind, sourceId: channelRef.sourceId, timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, search: '', sort: 'number'});
     const source = legacyGuideSource(life.api, context.scope.serverId, {kind: channelRef.kind, sourceId: channelRef.sourceId,
@@ -85,12 +86,12 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
     };
     void run().catch(() => {});
     return () => {abort.abort();bindings.dispose();};
-  }, [context, life, fenceKey, refresh]);
-  if (!context || !life || !client || !runtime || !snapshot || !fence || !linear || !presentation || !fenceKey) return undefined;
-  const channel = facts?.fenceKey === fenceKey ? asChromeChannel(facts.current) : undefined;
-  const currentGuide = facts?.fenceKey === fenceKey ? facts.rows.find(row => row.id === fence.channelId) : undefined;
-  const currentGuideProgramme = facts?.fenceKey === fenceKey ? facts.programmes.get(fence.channelId) : undefined;
-  const guideProgramme = facts?.fenceKey === fenceKey && linear.programme
+  }, [context, life, expanded, fenceKey, refresh]);
+  if (!context || !life || !client || !runtime || !snapshot || !expanded || !fence || !linear || !presentation || !fenceKey) return undefined;
+  const channel = !!facts && facts.fenceKey === fenceKey ? asChromeChannel(facts.current) : undefined;
+  const currentGuide = !!facts && facts.fenceKey === fenceKey ? facts.rows.find(row => row.id === fence.channelId) : undefined;
+  const currentGuideProgramme = !!facts && facts.fenceKey === fenceKey ? facts.programmes.get(fence.channelId) : undefined;
+  const guideProgramme = !!facts && facts.fenceKey === fenceKey && linear.programme
     ? (currentGuideProgramme?.id === linear.programme.id ? currentGuideProgramme : facts.current.programmes.find(programme => programme.id === linear.programme!.id)) : undefined;
   const authoritative = channel && currentGuide ? channel : {id: fence.channelId, sourceId: fence.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
     number: '', name: linear.name, favorite: false, recordAvailable: false, tuneAvailable: true};
@@ -101,10 +102,9 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
     startMs: linear.programme.startMs, endMs: linear.programme.endMs, ...(currentRecording ? {recording: currentRecording} : {})} : undefined;
   const position = presentation.positionSeconds;
   const timeline = channelTimeline(linear, position), origin = linear.media.originMs;
-  const currentMini = currentGuide && linear.programme ? asMini(currentGuide, guideProgramme) : undefined;
-  const miniGuide: LiveChromeGuideChannel[] = facts?.fenceKey === fenceKey ? facts.rows.map(row => asMini(row,
+  const miniGuide: LiveChromeGuideChannel[] = !!facts && facts.fenceKey === fenceKey ? facts.rows.map(row => asMini(row,
     row.id === fence.channelId ? guideProgramme : facts.programmes.get(row.id))).filter((row): row is LiveChromeGuideChannel => !!row) : [];
-  const currentIndex = facts?.fenceKey === fenceKey ? facts.rows.findIndex(row => row.id === fence.channelId) : -1;
+  const currentIndex = !!facts && facts.fenceKey === fenceKey ? facts.rows.findIndex(row => row.id === fence.channelId) : -1;
   const downRow = currentIndex > 0 ? facts!.rows[currentIndex - 1] : undefined;
   const upRow = currentIndex >= 0 ? facts!.rows[currentIndex + 1] : undefined;
   const down = downRow ? asMini(downRow, facts!.programmes.get(downRow.id)) : undefined;
@@ -132,7 +132,8 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
   const guideRowTarget = (row: LiveChromeGuideChannel): LiveChromeGuideTarget => ({sourceId: row.channel.sourceId, channelId: row.channel.id,
     generation: row.channel.generation, kind: row.channel.kind});
   const record = async (): Promise<void> => {
-    if (!isCurrent() || !client || !guideProgramme || !facts?.current) return;
+    const guideChannel = facts?.current;
+    if (!isCurrent() || !client || !guideProgramme || !guideChannel) return;
     if (guideProgramme.recordingId) {
       const detail = await client.detail(guideProgramme.recordingId);
       if (!isCurrent()) return;
@@ -140,7 +141,7 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
       if (!isCurrent()) return;
       setRecorded(undefined);setRefresh(value => value + 1);return;
     }
-    const scheduled = await client.schedule({channel: facts.current, programme: guideProgramme, series: false}, defaultRecordingOptions);
+    const scheduled = await client.schedule({channel: guideChannel, programme: guideProgramme, series: false}, defaultRecordingOptions);
     if (!isCurrent()) return;
     const state: RecordingState = scheduled.state;
     if (['recording', 'preparing', 'scheduled', 'conflicted', 'waiting-source', 'waiting-guide'].includes(state)) {

@@ -122,8 +122,9 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     // playback run starts screen state over (a quality change in the same run keeps it).
     if (!settledPlaybackChanged(settledPlayback.current, binding.runtime, fence?.playback)) return;
     settledPlayback.current = {runtime: binding.runtime, key: playbackKey};
-    setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true);
+    setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); setLiveGuideOpen(false);
   }, [binding.runtime, playbackKey, fence?.playback]);
+  useEffect(() => {if (!open) setLiveGuideOpen(false);}, [open]);
   const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => {
     const wasOpen = focusEdge.current; focusEdge.current = open;
@@ -271,7 +272,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         <Icon name={tapFeedback.direction === 'left' ? 'i-back' : 'i-fwd'} size={40} />
         <span>{t('duration.long.seconds', {seconds: tapFeedback.seconds})}</span>
       </div>}
-      {liveChrome ? <div className={styles.liveOverlay} data-visible={chromeVisible}>
+      {liveChrome ? open && <div className={styles.liveOverlay} data-visible={chromeVisible}>
         <LiveChrome port={liveChrome} playing={!!presentation?.playing} onCollapse={onCollapse} onStop={() => send({kind: 'stop'})}
           onPlayPause={() => send({kind: mainKind})} onSkip={skip} onSeek={seconds => {if (can('seek')) send({kind: 'seek', seconds});}}
           onMore={anchor => {moreAnchor.current = anchor;setPanel(null);setMore(value => !value);}}
