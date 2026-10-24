@@ -274,6 +274,56 @@ func mp4Data(kind uint32, v []byte) []byte {
 	copy(b[8:], v)
 	return mp4Atom("data", b)
 }
+
+// Native MP4 number atoms can represent one canonical uint16 index/total.
+// Preserve anything else as its original freeform text instead of clamping,
+// dropping totals, or inventing an index of zero.
+func musicNumberValue(value string) (int, bool) {
+	n, err := strconv.Atoi(value)
+	return n, err == nil && n > 0 && n <= 65535 && strconv.Itoa(n) == value
+}
+
+func mp4MusicNumber(t audiotags.Tags, key string) []byte {
+	values := t.Values[key]
+	if len(values) != 1 {
+		return nil
+	}
+	parts := strings.Split(values[0], "/")
+	if len(parts) > 2 {
+		return nil
+	}
+	index, ok := musicNumberValue(parts[0])
+	if !ok {
+		return nil
+	}
+	total := 0
+	if len(parts) == 2 {
+		total, ok = musicNumberValue(parts[1])
+		if !ok {
+			return nil
+		}
+	}
+	totalKey := "total_tracks"
+	if key == "disc" {
+		totalKey = "total_discs"
+	}
+	totals := t.Values[totalKey]
+	if len(totals) > 1 {
+		return nil
+	}
+	if len(totals) == 1 {
+		explicit, valid := musicNumberValue(totals[0])
+		if !valid || total != 0 && explicit != total {
+			return nil
+		}
+		total = explicit
+	}
+	payload := make([]byte, 8)
+	binary.BigEndian.PutUint16(payload[2:], uint16(index))
+	binary.BigEndian.PutUint16(payload[4:], uint16(total))
+	return payload
+}
+
 func mp4MusicTags(t audiotags.Tags) ([]byte, error) {
 	names := map[string]string{"title": "\xa9nam", "artist": "\xa9ART", "album_artist": "aART", "album": "\xa9alb", "date": "\xa9day", "genre": "\xa9gen", "composer": "\xa9wrt", "description": "\xa9cmt", "lyrics": "\xa9lyr", "artist_sort": "soar", "album_artist_sort": "soaa", "album_sort": "soal", "title_sort": "sonm"}
 	keys := []string{}
@@ -282,29 +332,21 @@ func mp4MusicTags(t audiotags.Tags) ([]byte, error) {
 	}
 	sort.Strings(keys)
 	ilst := []byte{}
+	numbers := map[string][]byte{"track": mp4MusicNumber(t, "track"), "disc": mp4MusicNumber(t, "disc")}
 	for _, k := range keys {
 		values := t.Values[k]
 		if len(values) == 0 {
 			continue
 		}
-		if k == "total_tracks" || k == "total_discs" {
-			continue
+		if k == "total_tracks" && numbers["track"] != nil || k == "total_discs" && numbers["disc"] != nil {
+			continue // included in its actual native index atom below
 		}
-		if k == "track" || k == "disc" {
-			v := make([]byte, 8)
-			n, _ := strconv.Atoi(strings.Split(values[0], "/")[0])
-			binary.BigEndian.PutUint16(v[2:], uint16(min(65535, max(0, n))))
-			total := "total_tracks"
+		if number := numbers[k]; number != nil {
 			atom := "trkn"
 			if k == "disc" {
-				total = "total_discs"
 				atom = "disk"
 			}
-			if a := t.Values[total]; len(a) > 0 {
-				n, _ = strconv.Atoi(a[0])
-				binary.BigEndian.PutUint16(v[4:], uint16(min(65535, max(0, n))))
-			}
-			ilst = append(ilst, mp4Atom(atom, mp4Data(0, v))...)
+			ilst = append(ilst, mp4Atom(atom, mp4Data(0, number))...)
 			continue
 		}
 		payload := []byte{}
@@ -584,13 +626,26 @@ func verifyMusicMetadata(r io.ReaderAt, size int64, expected audiotags.Tags) err
 	for key, values := range expected.Values {
 		got := actual.Values[key]
 		for _, v := range values {
-			// MP4 represents track/disc totals separately in the same atom.
+			if slices.Contains(got, v) {
+				continue
+			}
+			// A native MP4 atom splits a compound index/total. Both facts must
+			// survive; FLAC/Opus and freeform tags may retain the exact text.
 			if key == "track" || key == "disc" {
-				v = strings.Split(v, "/")[0]
+				parts := strings.Split(v, "/")
+				if len(parts) == 2 {
+					_, indexOK := musicNumberValue(parts[0])
+					_, totalOK := musicNumberValue(parts[1])
+					totalKey := "total_tracks"
+					if key == "disc" {
+						totalKey = "total_discs"
+					}
+					if indexOK && totalOK && slices.Contains(got, parts[0]) && slices.Contains(actual.Values[totalKey], parts[1]) {
+						continue
+					}
+				}
 			}
-			if !slices.Contains(got, v) {
-				return fmt.Errorf("%w: retained music tag missing", ErrOutput)
-			}
+			return fmt.Errorf("%w: retained music tag missing", ErrOutput)
 		}
 	}
 	for _, p := range expected.Pictures {
