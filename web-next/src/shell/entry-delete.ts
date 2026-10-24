@@ -2,7 +2,7 @@ import {deletionAllowed, parseDeletePreview, parseDeleteResult, type DeletePrevi
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import type {EntryActionPorts, EntryActionTarget} from './entry-actions';
 
-export type EntryDeletePhase = 'idle' | 'loading' | 'ready' | 'blocked' | 'deleting' | 'uncertain' | 'result' | 'error';
+export type EntryDeletePhase = 'idle' | 'loading' | 'ready' | 'confirming' | 'blocked' | 'deleting' | 'uncertain' | 'result' | 'error';
 export type EntryDeleteSnapshot = Readonly<{
   phase: EntryDeletePhase; preview?: DeletePreview; confirmation: string; removeFiles: boolean;
   result?: DeleteResult; errorCode?: string;
@@ -31,6 +31,7 @@ export class EntryDeleteProducer {
   private fail(code: string) { this.state = {...this.state, errorCode: code}; this.emit(); }
 
   open(target: EntryActionTarget, ports: EntryActionPorts) {
+    if (!ports.isCurrent()) { this.close(); return; }
     this.attempt++; this.controller?.abort();
     this.target = target; this.ports = ports; this.preview = undefined; this.body = undefined;
     this.state = {...idle, phase: 'loading'}; this.emit();
@@ -51,7 +52,7 @@ export class EntryDeleteProducer {
   }
   private async load() {
     const attempt = this.attempt, ports = this.ports, target = this.target;
-    if (!ports || !target) return;
+    if (!ports || !target || !ports.isCurrent() || !this.live(attempt)) return;
     const controller = new AbortController(); this.controller = controller;
     try {
       const raw = await ports.api.request(routePath('post_admin_media_delete_preview'), 'POST', {itemIds: [target.itemId]}, controller.signal);
@@ -74,12 +75,13 @@ export class EntryDeleteProducer {
       || !entry || entry.itemId !== target.itemId || entry.libraryId !== target.libraryId) { this.fail('delete_not_ready'); return; }
     if (!this.body) {
       const controller = this.controller;
+      this.state = {...this.state, phase: 'confirming', errorCode: undefined}; this.emit();
       try {
         const operationId = await ports.requestId();
         if (!this.live(attempt) || controller?.signal.aborted || this.state.confirmation !== preview.confirmation || !deletionAllowed(preview)) return;
         this.body = Object.freeze({itemIds: Object.freeze([target.itemId]), expectedRevision: preview.revision,
           confirmation: this.state.confirmation, deleteFiles: this.state.removeFiles, operationId});
-      } catch { if (this.live(attempt)) this.fail('delete_not_ready'); return; }
+      } catch { if (this.live(attempt)) { this.state = {...this.state, phase: 'ready'}; this.fail('delete_not_ready'); } return; }
     }
     await this.send(attempt);
   }
@@ -101,4 +103,10 @@ export class EntryDeleteProducer {
       if (this.live(attempt)) this.emit();
     }
   }
+}
+
+/** The host maps an uncertain delete to the same approved retry dialog the selection surface uses. */
+export function deleteSurfaceFor(phase: EntryDeletePhase): 'dialog' | 'uncertain' | 'none' {
+  if (phase === 'idle') return 'none';
+  return phase === 'uncertain' ? 'uncertain' : 'dialog';
 }
