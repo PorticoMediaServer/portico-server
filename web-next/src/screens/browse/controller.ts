@@ -1,10 +1,23 @@
-import {BrowseQueryBuilder, browseCapabilitiesPath, browsePath, browseMembershipId, parseBrowseCapabilities, parseBrowseResult, browseContextFacetsPath, parseBrowseFacets, browseCountsPath, browseCountsRequest, parseBrowseCounts, parseBrowseNode,
+import {BrowseQueryBuilder, browseCapabilitiesPath, browsePath, browseMembershipId, parseBrowseCapabilities, parseBrowseResult, browseContextFacetsPath, parseBrowseFacets, browseCountsPath, browseCountsRequest, parseBrowseCounts, parseBrowseNode, type BrowseResult,
   type BrowseCapabilities, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from '@core/library-content.ts';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
 
 export type BrowseMember = Readonly<{membershipId: string; entry: ContentEntry}>;
+/** A browse page is one library's scope; entity entries (show, album, artist) can omit their
+ * library even though every destination needs it. Fill only what the server left absent. */
+export function withLibraryScope(page: BrowseResult, libraryId: string): BrowseResult {
+  if (!libraryId) return page;
+  let changed = false;
+  const entries = page.entries.map(entry => {
+    if (entry.libraryId) return entry;
+    changed = true;
+    return Object.freeze({...entry, libraryId});
+  });
+  return changed ? Object.freeze({...page, entries: Object.freeze(entries)}) : page;
+}
+
 export type BrowseSource = Readonly<{libraryId: string; pivot: string; base?: readonly BrowseNode[]; predicates?: readonly BrowseNode[]; homeRowId?: string; sort?: BrowseSortSelection; sorts?: readonly BrowseSortSelection[]}>;
 export type BrowseState = Readonly<{phase: 'loading' | 'ready' | 'error'; capabilities?: BrowseCapabilities; predicates: readonly BrowseNode[]; sort?: BrowseSortSelection; error?: unknown;
   /** Actual opaque page token, absent until this applied query has replied. */
@@ -102,7 +115,7 @@ export class BrowseController {
         }
         throw error;
       });
-      const page = parseBrowseResult(raw);
+      const page = withLibraryScope(parseBrowseResult(raw), this.source.libraryId);
       if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
       if (page.pivot !== this.source.pivot || page.pageInfo.start !== start || revision && revision !== page.pageInfo.revision) {
         stale = true;this.members = new WeakMap();this.publish({revision: undefined});
