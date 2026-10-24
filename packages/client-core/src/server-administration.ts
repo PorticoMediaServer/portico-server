@@ -84,7 +84,7 @@ export type ConnectivityTLS=Readonly<{configured:boolean;state?:string;errorCode
 export type ConnectivityDiscovery=Readonly<{enabled:boolean;supported:boolean;state:DiscoveryState;detail?:string;serviceType?:string}>;
 export type ConnectionDocument=Readonly<{secure:boolean;remote:boolean;plainHttpOutsideHome:boolean;clientAddress:string;accessUrls:readonly string[]}>;
 export type ConnectivityStatus=Readonly<{connection:ConnectionDocument;observedAt:string;policy:ConnectivityPolicy;tls:ConnectivityTLS;discovery:ConnectivityDiscovery;
- addresses:readonly ConnectivityAddress[];interfaces:readonly ConnectivityInterface[];warnings:readonly string[];omittedAddresses:number;omittedInterfaces:number}>;
+ identityCode?:string;localUrl?:string;addresses:readonly ConnectivityAddress[];interfaces:readonly ConnectivityInterface[];warnings:readonly string[];omittedAddresses:number;omittedInterfaces:number}>;
 export type AdministrationPage<T>=Readonly<{limit:number;nextCursor:string;items:readonly T[]}>;
 
 const obj=(x:unknown):x is Record<string,unknown>=>!!x&&typeof x==='object'&&!Array.isArray(x);
@@ -302,6 +302,8 @@ export function parseConnectivityStatus(raw:unknown):ConnectivityStatus{
   // What the server says about this very connection is only shown: when it cannot be read, nothing is claimed about it.
   const connection=keepReadable('server-administration','connectivity.connection',[raw.connection],parseConnectionDocument)[0]??NO_CONNECTION_FACTS;
  return Object.freeze({connection,observedAt:when(raw.observedAt),policy:parseConnectivityPolicy(raw.policy),
+  ...(raw.identityCode===undefined?{}:{identityCode:str(raw.identityCode,256)}),
+  ...(raw.localUrl===undefined?{}:{localUrl:str(raw.localUrl,2048)}),
   tls:Object.freeze({configured:bool(tls.configured??false),...(tls.state?{state:str(tls.state,64)}:{}),
    ...(tls.errorCode?{errorCode:str(tls.errorCode,64)}:{}),...(tls.dnsName?{dnsName:str(tls.dnsName,253)}:{}),
    ...(tls.issuer?{issuer:str(tls.issuer,253)}:{}),notAfter:optionalWhen(tls.notAfter),

@@ -41,7 +41,8 @@ def main():
     if digest(oracle) != libdovi['oracleSHA256']:
         raise ValueError('Official source-built test oracle changed')
     inputs = {'qualify-linux-ffmpeg-hdr.py': Path(__file__).resolve(),
-              'contract.json': contract_file}
+              'contract.json': contract_file,
+              'verify-hdr10plus-encode.py': root / 'scripts/verify-hdr10plus-encode.py'}
     for key, entry in contract['inputs'].items():
         path = root / entry['path']
         if digest(path) != entry['sha256']:
@@ -120,6 +121,9 @@ python3 /inputs/qualify-linux-ffmpeg-hdr.py --inside
 python3 /inputs/qualify-dovi-join.py --fixtures /inputs/join-fixtures --hdr-fixtures /inputs/fixtures \\
  --scratch /gate/join-runtime --ffmpeg /opt/ffbuild/bin/ffmpeg --ffprobe /opt/ffbuild/bin/ffprobe \\
  --test-binary /gate/dovi-join-packets
+python3 /inputs/verify-hdr10plus-encode.py --ffmpeg /opt/ffbuild/bin/ffmpeg \
+ --ffprobe /opt/ffbuild/bin/ffprobe --fixtures /inputs/fixtures \
+ --scratch /gate/runtime/hdr10plus-encode --report /gate/runtime/hdr10plus-encode.json
 ''')
     subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-hdr-gate',
         '--label', 'portico.lane=hardware-r29', '--cpus', '2', '--memory', '4g', '--memory-swap', '4g',
@@ -140,13 +144,23 @@ python3 /inputs/qualify-dovi-join.py --fixtures /inputs/join-fixtures --hdr-fixt
             join['joinedCases'] != join_contract['gate']['positive'] or
             join['refusalCases'] != join_contract['gate']['refused']):
         raise ValueError('Canonical corrected dual-PID fixture gate did not pass')
+    encode_report = stage / 'runtime/hdr10plus-encode.json'
+    hdr_encode = json.loads(encode_report.read_text())
+    if (hdr_encode.get('passed') is not True or hdr_encode.get('encoder') != 'libx265' or
+            hdr_encode.get('frames') != 24 or hdr_encode.get('metadataFrames') != 24 or
+            hdr_encode.get('perFrameMetadataIdentical') is not True or
+            hdr_encode.get('encoderOption') != 'hdr10plus' or hdr_encode.get('optionDefaultFalse') is not True or
+            hdr_encode.get('defaultOffFrames') != 24 or hdr_encode.get('defaultOffMetadataFrames') != 0 or
+            hdr_encode.get('explicitOffFrames') != 24 or hdr_encode.get('explicitOffMetadataFrames') != 0 or
+            hdr_encode.get('ffmpegSHA256') != pair['ffmpeg'] or hdr_encode.get('ffprobeSHA256') != pair['ffprobe']):
+        raise ValueError('Canonical libx265 HDR10+ encoder gate did not pass')
     if any(digest(prefix / 'bin' / name) != value for name, value in pair.items()):
         raise ValueError('Canonical executable pair changed during encoded-video gate')
     result = {'schema': 1, 'qualified': True, 'target': 'linux-x64', 'binarySHA256': pair,
         'inputs': hashes, 'sourceArchiveSHA256': rounds[0]['sourceArchiveSHA256'],
         'qualificationPrefixSealSHA256': digest(work / 'qualification-prefix-files.json'),
         'fixtureManifestSHA256': contract['inputs']['fixtureManifest']['sha256'],
-        'video': video, 'hdr10plus': hdr, 'join': join,
+        'video': video, 'hdr10plus': hdr, 'hdr10plusEncode': hdr_encode, 'join': join,
         'joinFixtureManifestSHA256': contract['inputs']['joinManifest']['sha256'],
         'joinPatchSHA256': join_contract['patchSha256'], 'scope': contract['scope']}
     result_file.write_text(json.dumps(result, indent=2) + '\n')
@@ -196,9 +210,9 @@ def inside():
     run([ffmpeg, '-v', 'error', '-nostdin', '-threads', '1', '-i', str(source), '-map', '0:v:0',
          '-an', '-c:v', 'copy', '-use_editlist', '0', str(copied)])
     run([ffmpeg, '-v', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1', '-i', str(source),
-         '-map', '0:v:0', '-an', '-frames:v', '24', '-c:v', 'libx265', '-threads:v', '1',
+         '-map', '0:v:0', '-an', '-frames:v', '24', '-c:v', 'libx265', '-hdr10plus', '1', '-threads:v', '1',
          '-pix_fmt', 'yuv420p10le', '-x265-params',
-         'pools=none:frame-threads=1:wpp=0:repeat-headers=1:dhdr10-info=/inputs/fixtures/hdr10plus.json',
+         'pools=none:frame-threads=1:wpp=0:repeat-headers=1',
          '-f', 'hevc', str(encoded)])
     if metadata(copied) != reference or metadata(encoded) != reference:
         raise ValueError('HDR10+ per-frame metadata changed during copy or CPU encoding')

@@ -51,10 +51,11 @@ func (s *Service) Start(parent context.Context) {
 		supervise.Go("prepared.worker.collect", func() {
 			defer wg.Done()
 			// Collection has something to reclaim only after a job or a lease
-			// changed, which is a commit; five seconds of asking an idle database
+			// changed; five seconds of asking an idle database
 			// bought nothing that a wake does not.
 			collect := worker.NewSignal()
-			dbwork.WakeOnCommit(collect)
+			unregister := watchPreparedCollection(collect)
+			defer unregister()
 			worker.Run(ctx, "prepared.worker.collect", collect, func(ctx context.Context) time.Duration {
 				if !dbwork.Yield(ctx) {
 					return 0
@@ -84,7 +85,8 @@ func (s *Service) Close() error {
 }
 func (s *Service) run(ctx context.Context) {
 	shared := worker.NewSignal()
-	dbwork.WakeOnCommit(shared)
+	unregister := watchPreparedWork(shared)
+	defer unregister()
 	worker.RunWith(ctx, "prepared.worker.run", s.wake, shared, func(ctx context.Context) time.Duration {
 		// A pass that found work says so by asking to run again immediately;
 		// there is usually more behind it. A pass that found none waits for the
@@ -97,7 +99,7 @@ func (s *Service) run(ctx context.Context) {
 }
 
 // spaceWarned keeps the "no room" message to one line per minute: the loop is
-// woken by every commit, and an out-of-space server has plenty of those.
+// woken by relevant input changes, and a busy server has plenty of those.
 var spaceWarned atomic.Int64
 
 // roomToEncode reports whether the artifact volume has room for another
@@ -847,4 +849,28 @@ func acceptOutput(original, output probed, p Profile) error {
 		return ErrOutput
 	}
 	return nil
+}
+
+// watchPreparedCollection follows this runtime's durable inputs; clock-only expiry
+// still runs through worker.SafetyTick. Unrelated telemetry is not work.
+func watchPreparedCollection(signal *worker.Signal) func() {
+	return dbwork.WakeOnTables(signal,
+		"prepared_media_*", "playback_sessions", "catalog_asset_links", "catalog_assets",
+		"catalog_entities",
+	)
+}
+
+// watchPreparedWork follows this runtime's durable inputs; clock-only expiry
+// still runs through worker.SafetyTick. Unrelated telemetry is not work.
+func watchPreparedWork(signal *worker.Signal) func() {
+	return dbwork.WakeOnTables(signal,
+		"prepared_media_*", "catalog_assets", "catalog_asset_links", "catalog_entities",
+		"catalog_item_availability", "catalog_libraries", "asset_stream*", "episode_asset_boundaries",
+		"music_virtual_tracks", "inventory_objects", "library_sources", "library_network_policy",
+		"source_*", "remote_source_*", "remote_sources", "remote_scan_observations", "playback_origin_*",
+		"playback_owner_policy", "playback_sessions", "server_settings", "console_settings_revision",
+		"authorization_*", "accounts", "direct_profiles", "direct_memberships",
+		"direct_profile_trust", "restrictions", "hosted_*", "identity_devices",
+		"profile_*", "media_process_*",
+	)
 }

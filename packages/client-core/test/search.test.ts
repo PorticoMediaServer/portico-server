@@ -50,6 +50,21 @@ test('pause cannot relabel a pending different query with old results',async()=>
  }finally{s.dispose();}
 });
 
+test('pause refuses a pending changed library or ordering but preserves a recording-only read',async()=>{
+ for(const change of [{libraryIds:['other']},{sort:'title' as const},{direction:'asc' as const},{record:true}]){
+  const held=deferred();let reads=0,path='';
+  const s=service(async p=>{path=p;return ++reads===1?result(p):held.promise;});
+  try{
+   await s.select('harbor',{group:'movies',libraryIds:['library']});const shown=s.getSnapshot().data;
+   const read=s.select('harbor',{group:'movies',libraryIds:['library'],...change});s.pause();
+   if('record' in change){assert.equal(s.getSnapshot().data,shown);assert.equal(s.getSnapshot().phase,'ready');}
+   else{assert.equal(s.getSnapshot().data,null);assert.equal(s.getSnapshot().phase,'idle');}
+   held.resolve(result(path));await read;
+   assert.equal(s.getSnapshot().data,'record' in change?shown:null);
+  }finally{s.dispose();}
+ }
+});
+
 test('pause aborts quiet revalidation and refuses its late replacement',async()=>{
  const held=deferred();let reads=0,path='';let signal:AbortSignal|undefined;
  const s=service(async(p,provided)=>{path=p;if(++reads===2){signal=provided;return held.promise;}return result(p);});
@@ -83,6 +98,18 @@ test('terminal authorization failure cannot be made ready again by pause',async(
  try{
   await s.select('harbor',{group:'movies'});fail=true;await s.next('movies');assert.equal(s.getSnapshot().data,null);
   s.pause();assert.equal(s.getSnapshot().phase,'idle');assert.deepEqual(s.getSnapshot().groups,[]);
+ }finally{s.dispose();}
+});
+
+test('pause retains a transient read failure rather than presenting its cached page as a successful retry',async()=>{
+ let fail=false;
+ const s=service(async path=>{if(fail)throw new TypeError('Connection lost');return result(path,{groups:[group('movies',['shown'],'next-cursor')]});});
+ try{
+  await s.select('harbor',{group:'movies'});const shown=s.getSnapshot().data;
+  fail=true;await s.next('movies');const error=s.getSnapshot().error;assert.equal(s.getSnapshot().phase,'error');
+  s.pause();assert.equal(s.getSnapshot().phase,'error');assert.equal(s.getSnapshot().error,error);assert.equal(s.getSnapshot().data,shown);
+  assert.equal(s.getSnapshot().pagination.cursor,null);
+  fail=false;await s.retry();assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().error,null);
  }finally{s.dispose();}
 });
 

@@ -789,11 +789,11 @@ func (s *Service) Delete(ctx context.Context, p identity.Principal, item, id str
 // session. The object store separately rejects deletion with physical readers.
 func (s *Service) Run(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
-	// Expired candidates and superseded revisions only appear after a write, so
-	// the sweep follows commits rather than a minute hand that opened a write
-	// transaction sixty times an hour on a server nobody was using.
+	// Resource/pin changes wake collection promptly. Clock-only expiry keeps
+	// the shared SafetyTick backstop without treating telemetry as new work.
 	wake := worker.NewSignal()
-	dbwork.WakeOnCommit(wake)
+	unregister := watchSubtitleCollection(wake)
+	defer unregister()
 	worker.Run(ctx, "subtitles.cleanup", wake, func(ctx context.Context) time.Duration {
 		s.Cleanup(ctx)
 		return 0
@@ -894,4 +894,14 @@ func relative(root, path string) (string, error) {
 		return "", ErrInput
 	}
 	return r, nil
+}
+
+// watchSubtitleCollection follows this runtime's durable inputs; clock-only expiry
+// still runs through worker.SafetyTick. Unrelated telemetry is not work.
+func watchSubtitleCollection(signal *worker.Signal) func() {
+	return dbwork.WakeOnTables(signal,
+		"subtitle_*", "playback_subtitle_pins", "playback_subtitle_state", "playback_subtitle_presentations",
+		"playback_manifest_subtitles", "playback_sessions", "prepared_media_session_pins", "catalog_assets",
+		"catalog_entities", "library_sources",
+	)
 }
