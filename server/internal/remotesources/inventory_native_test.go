@@ -185,8 +185,38 @@ func runInventoryServeFixture() int {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
+		case "/config/get":
+			var input struct{ Name string }
+			if json.NewDecoder(r.Body).Decode(&input) != nil {
+				w.WriteHeader(400)
+				return
+			}
+			raw, err := os.ReadFile(flag("--config"))
+			if err != nil {
+				w.WriteHeader(500)
+				return
+			}
+			sections, err := parseServeConfiguration(raw)
+			clear(raw)
+			if err != nil || sections[input.Name] == nil {
+				w.WriteHeader(404)
+				return
+			}
+			json.NewEncoder(w).Encode(sections[input.Name])
+		case "/options/get":
+			fmt.Fprint(w, `{"main":{"UserAgent":"fixture-synthetic/1","InsecureSkipVerify":false,"Cookie":false}}`)
 		case "/operations/fsinfo":
-			fmt.Fprint(w, `{"Name":"fixture","Features":{"SlowHash":true}}`)
+			var input struct{ Fs string }
+			if json.NewDecoder(r.Body).Decode(&input) != nil {
+				w.WriteHeader(400)
+				return
+			}
+			name, root, ok := strings.Cut(input.Fs, ":")
+			if !ok {
+				w.WriteHeader(400)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"Name": name, "Root": strings.Trim(root, "/"), "Features": map[string]bool{"SlowHash": true}})
 		case "/operations/list":
 			fmt.Fprint(w, `{"list":[`)
 			for i := 0; i < 130; i++ {
