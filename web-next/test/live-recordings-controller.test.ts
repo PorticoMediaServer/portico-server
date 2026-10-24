@@ -475,3 +475,71 @@ test('a view change keeps the server aggregates that are not page facts', async 
     assert.equal(snapshot.groups?.nextCursor, 'group-next');
   } finally { controller.dispose(); }
 });
+
+// Queue item 2 — two controllers never share captured state, lifetimes or receipts.
+test('two controllers on one API keep separate facts, lifetimes and generations', async () => {
+  let served = 0;
+  const {api} = fixtureServer(() => {
+    const revision = ++served;
+    return pageOf([recording(hex(64, revision === 1 ? '1' : '2'))], '', revision);
+  });
+  const first = controllerFor(api), second = controllerFor(api);
+  try {
+    await first.load({view: 'recorded'});
+    await second.load({view: 'recorded'});
+    assert.equal(first.getSnapshot().page?.revision, 1);
+    assert.equal(second.getSnapshot().page?.revision, 2);
+    first.dispose();
+    assert.equal(first.getSnapshot().phase, 'retired');
+    assert.equal(second.getSnapshot().phase, 'ready', 'one disposal cannot retire its neighbour');
+    assert.equal(second.getSnapshot().page?.revision, 2);
+    await second.load({view: 'recorded'});
+    assert.equal(second.getSnapshot().page?.revision, 3);
+  } finally { second.dispose(); }
+});
+
+test('an authority failure in one controller leaves the other controller’s facts intact', async () => {
+  let deny = false;
+  const {api} = fixtureServer(call => {
+    if (deny && params(call).get('state') === 'history') throw {status: 403};
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const first = controllerFor(api), second = controllerFor(api);
+  try {
+    await first.load({view: 'recorded'});
+    await second.load({view: 'recorded'});
+    deny = true;
+    await first.load({view: 'history'});
+    assert.equal(first.getSnapshot().accessDenied, true);
+    assert.equal(first.getSnapshot().page, null);
+    assert.notEqual(first.getSnapshot().phase, 'retired', 'a denied read is not a retirement');
+    assert.equal(second.getSnapshot().accessDenied, false);
+    assert.equal(second.getSnapshot().page?.recordings.length, 1);
+    await second.readGroups();
+    assert.equal(second.getSnapshot().groups?.groups[0].recordings, 9);
+    assert.equal(second.getSnapshot().groupsSort, 'recent');
+  } finally { first.dispose(); second.dispose(); }
+});
+
+test('each controller keeps the API and receipt source it captured', async () => {
+  const captured = fixtureServer(() => pageOf([recording(hex(64, '1'))], '', 1));
+  const other = fixtureServer(() => pageOf([recording(hex(64, '2'))], '', 2));
+  const options = {api: captured.api, serverId: 'server', requestId: async () => hex(48, 'e'),
+    signal: new AbortController().signal, isCurrent: () => true};
+  const controller = createRecordingsController(options);
+  const second = controllerFor(other.api, {requestId: async () => hex(48, 'b')});
+  try {
+    options.api = other.api;
+    options.requestId = async () => hex(48, '9');
+    await controller.load({view: 'recorded'});
+    assert.equal(captured.calls.length, 1, 'the API captured at construction is the one used');
+    assert.equal(other.calls.length, 0);
+    assert.equal(await controller.requestReceipt(), hex(48, 'e'), 'the captured receipt source is the one used');
+    assert.equal(other.calls.length, 0);
+    controller.dispose();
+    await assert.rejects(controller.requestReceipt(), failure => failure instanceof DOMException && failure.name === 'AbortError');
+    assert.equal(await second.requestReceipt(), hex(48, 'b'), 'one retirement cannot refuse another controller’s receipt');
+    assert.equal(second.getSnapshot().phase, 'idle');
+  } finally { second.dispose(); }
+});
