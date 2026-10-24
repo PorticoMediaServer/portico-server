@@ -59,6 +59,25 @@ func (d Dependencies) readingPrincipal(w http.ResponseWriter, r *http.Request) (
 	return p, true
 }
 
+// readingItemProjection publishes only the accepted attribution facts already
+// selected in this same snapshot. It never derives from archive metadata,
+// titles or paths and never re-reads per item.
+func readingItemProjection(row reading.LibraryRow) ReadingItem {
+	out := ReadingItem{ID: row.ID, LibraryID: row.LibraryID, Title: row.Title, Format: ReadingFormat(row.Format), SourceID: row.SourceID, InventoryAvailable: row.InventoryAvailable}
+	if row.Author != nil {
+		out.Author = &ReadingAuthor{Value: row.Author.Value, Source: ReadingAttributionSource(row.Author.Source)}
+	}
+	if row.Series != nil {
+		series := &ReadingSeries{ID: row.Series.ID, Name: row.Series.Name, Source: ReadingAttributionSource(row.Series.Source)}
+		if row.Series.Number != nil {
+			number := *row.Series.Number
+			series.Number = &number
+		}
+		out.Series = series
+	}
+	return out
+}
+
 func (d Dependencies) listReadingItems(w http.ResponseWriter, r *http.Request) {
 	p, ok := d.readingPrincipal(w, r)
 	if !ok {
@@ -79,7 +98,7 @@ func (d Dependencies) listReadingItems(w http.ResponseWriter, r *http.Request) {
 	}
 	out := ReadingItemsResponse{Items: []ReadingItem{}, NextCursor: page.NextCursor}
 	for _, item := range page.Items {
-		out.Items = append(out.Items, ReadingItem{item.ID, item.LibraryID, item.Title, ReadingFormat(item.Format), item.SourceID, item.InventoryAvailable})
+		out.Items = append(out.Items, readingItemProjection(item))
 	}
 	write(w, 200, out)
 }
@@ -105,7 +124,7 @@ func (d Dependencies) readingContinue(w http.ResponseWriter, r *http.Request) {
 	out := ReadingContinueResponse{Items: []ReadingContinueItem{}, NextCursor: page.NextCursor}
 	for _, row := range page.Items {
 		v := row.Item
-		out.Items = append(out.Items, ReadingContinueItem{Item: ReadingItem{v.ID, v.LibraryID, v.Title, ReadingFormat(v.Format), v.SourceID, v.InventoryAvailable}, Progress: *readingProgressProjection(&row.Progress)})
+		out.Items = append(out.Items, ReadingContinueItem{Item: readingItemProjection(v), Progress: *readingProgressProjection(&row.Progress)})
 	}
 	write(w, 200, out)
 }

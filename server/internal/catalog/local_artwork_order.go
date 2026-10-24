@@ -31,6 +31,24 @@ func validArtworkCursor(c LocalArtworkCandidateCursor) bool {
 // The consumer's stable local:hash identity also coalesces identical image bytes
 // retained under different accepted source names; no hash encodes their order.
 func ReadLocalArtworkCandidatePageTx(ctx context.Context, tx *sql.Tx, kind string, entity int64, role string, after *LocalArtworkCandidateCursor, limit int) ([]LocalArtworkCandidateCursor, error) {
+	return readLocalArtworkCandidatePageTx(ctx, tx, kind, entity, role, "", after, limit)
+}
+
+// ReadUnmaterializedLocalArtworkCandidatePageTx excludes only the exact local
+// origin already materialized for this target/slot under the caller's current
+// fence. The database supplies durable progress: start with after=nil on every
+// committed worker pass, so restarts and late lower/middle arrivals are found.
+// after is only for a sweep within the same captured transaction, not a cursor
+// to retain across changing input. No historical-origin map or prefix walk is
+// needed in the caller; the existing origin index serves the anti-lookup.
+func ReadUnmaterializedLocalArtworkCandidatePageTx(ctx context.Context, tx *sql.Tx, kind string, entity int64, role, fence string, after *LocalArtworkCandidateCursor, limit int) ([]LocalArtworkCandidateCursor, error) {
+	if fence == "" {
+		return nil, ErrAdminQuery
+	}
+	return readLocalArtworkCandidatePageTx(ctx, tx, kind, entity, role, fence, after, limit)
+}
+
+func readLocalArtworkCandidatePageTx(ctx context.Context, tx *sql.Tx, kind string, entity int64, role, unmaterializedFence string, after *LocalArtworkCandidateCursor, limit int) ([]LocalArtworkCandidateCursor, error) {
 	if tx == nil || entity <= 0 || limit < 1 || limit > 128 || (kind != "item" && kind != "show" && kind != "season") || (role != "poster" && role != "backdrop" && role != "logo") {
 		return nil, ErrAdminQuery
 	}
@@ -46,6 +64,9 @@ func ReadLocalArtworkCandidatePageTx(ctx context.Context, tx *sql.Tx, kind strin
  CROSS JOIN inventory_objects o ON o.id=c.object_id AND o.revision=c.source_revision AND o.asset_id=c.asset_id
  CROSS JOIN library_sources s ON s.id=o.source_id
  WHERE c.entity_id=? AND c.kind=? AND c.role=? AND (c.source_rank,c.source_name,c.art_key)>(?,?,?)
+ AND (?7='' OR NOT EXISTS(SELECT 1 FROM artwork_candidates m INDEXED BY artwork_candidates_source
+ WHERE m.provider='local' AND m.origin='local:'||c.art_key AND m.kind=c.kind AND m.entity_id=c.entity_id
+ AND m.role=c.role AND m.subject='' AND m.source_fence=?7))
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
  AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed')
  AND (
@@ -53,7 +74,7 @@ func ReadLocalArtworkCandidatePageTx(ctx context.Context, tx *sql.Tx, kind strin
  (c.kind='show' AND EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=c.asset_id AND ep.show_id=c.entity_id)) OR
  (c.kind='season' AND EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id JOIN catalog_seasons se ON se.show_id=ep.show_id WHERE a.token=c.asset_id AND se.entity_id=c.entity_id))
  )
- ORDER BY c.source_rank,c.source_name,c.art_key LIMIT ?`, entity, kind, role, lower.SourceRank, lower.SourceName, lower.Key, limit)
+ ORDER BY c.source_rank,c.source_name,c.art_key LIMIT ?`, entity, kind, role, lower.SourceRank, lower.SourceName, lower.Key, unmaterializedFence, limit)
 	if err != nil {
 		return nil, err
 	}

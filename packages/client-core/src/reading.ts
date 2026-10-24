@@ -12,6 +12,12 @@ import type {Viewer} from './index.ts';
 export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
 type Immutable<T> = T extends readonly (infer V)[] ? readonly Immutable<V>[] : T extends object ? {readonly [K in keyof T]: Immutable<T[K]>} : T;
 export type ReadingManifest = Immutable<PostReadingSessionsResponse>;
+/** Derived from the generated official response, never a hand-written mirror. */
+export type ReadingItem = GetReadingItemsResponse['items'][number];
+export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
+export type ReadingAuthor = NonNullable<ReadingItem['author']>;
+export type ReadingSeries = NonNullable<ReadingItem['series']>;
+export type ReadingAttributionSource = ReadingAuthor['source'];
 export type ReadingPage = Readonly<{index: number; name: string; bytes: Uint8Array; mime: 'image/jpeg' | 'image/png' | 'image/webp'}>;
 export type ReadingLocation = PutReadingSessionsSessionIdProgressRequest['location'];
 export type ReadingProgress = GetReadingSessionsSessionIdProgressResponse;
