@@ -72,6 +72,10 @@ test('DEV endpoint is per-family, same-origin, no-store and redacts missing priv
   for (const suffix of ['unknown', '../layout', 'layout?file=example.html', '%6cayout']) assert.equal(request('/__portico_gallery_inputs/' + suffix).statusCode, 404);
   assert.equal(request('/__portico_gallery_inputs/layout', 'POST').statusCode, 404);
   assert.equal(request('/__portico_gallery_inputs/layout', 'GET', {host: '127.0.0.1:5188', origin: 'https://other.invalid'}).statusCode, 403);
+  assert.equal(request('/__portico_gallery_inputs/layout', 'GET', {host: '127.0.0.1:5188', 'sec-fetch-site': 'cross-site'}).statusCode, 403);
+  assert.equal(request('/__portico_gallery_inputs/layout', 'GET', {host: 'rebinding.invalid:5188', origin: 'http://rebinding.invalid:5188'}).statusCode, 403);
+  assert.equal(request('/__portico_gallery_inputs/layout', 'GET', {}).statusCode, 403);
+  assert.equal(request('/__portico_gallery_inputs/layout', 'GET', {host: '[::1]:5188'}).statusCode, 200);
   process.env.PORTICO_GALLERY_INPUT_MANIFEST = join(f.base, 'missing-private-input.json');
   const failure = request('/__portico_gallery_inputs/layout');
   assert.equal(failure.statusCode, 503); assert.deepEqual(JSON.parse(failure.body), {error: 'gallery inputs unavailable'});

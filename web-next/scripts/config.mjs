@@ -96,8 +96,11 @@ export function kitFamilies() {
         response.setHeader('Content-Type', 'application/json');
         const family = url.slice(inputPrefix.length);
         if (!development || request.method !== 'GET' || !Object.hasOwn(inputKeys, family)) { response.statusCode = 404; return response.end('{"error":"gallery inputs unavailable"}'); }
+        // This private local carrier must not bypass Vite's later host guard.
+        const host = request.headers?.host;
+        if (typeof host !== 'string' || !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?$/.test(host)) { response.statusCode = 403; return response.end('{"error":"gallery inputs unavailable"}'); }
         const origin = request.headers?.origin;
-        if (origin && origin !== 'http://' + request.headers.host && origin !== 'https://' + request.headers.host || request.headers?.['sec-fetch-site'] === 'cross-site') { response.statusCode = 403; return response.end('{"error":"gallery inputs unavailable"}'); }
+        if (origin && origin !== 'http://' + host && origin !== 'https://' + host || request.headers?.['sec-fetch-site'] === 'cross-site') { response.statusCode = 403; return response.end('{"error":"gallery inputs unavailable"}'); }
         try { response.end(JSON.stringify(readGalleryInputs(process.env.PORTICO_GALLERY_INPUT_MANIFEST, family, root))); }
         catch { response.statusCode = 503; response.end('{"error":"gallery inputs unavailable"}'); }
       });
