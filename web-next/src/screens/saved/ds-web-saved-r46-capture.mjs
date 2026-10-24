@@ -54,12 +54,12 @@ const gridSelectors = {
   section: '#saved .sub2', sectionHeading: '#saved .sub2 .sh', squareArt: '#saved .sub2 .card .art',
 };
 const historySelectors = {
-  screen: '#saved', title: '#saved .phd h1', tabs: '#saved .tabs', tabSelected: '#saved .tab[aria-selected="true"]',
-  toolbar: '#saved .tb', filters: '#saved .tb > .chip:nth-child(1)', quick: '#saved .tb > .chip:nth-child(3)',
-  count: '#saved .tb .r', sort: '#saved .tb .r > .chip', segmented: '#saved .tb .seg',
-  grid: '#saved .day:nth-of-type(1)', card1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1)', art1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1) .a',
-  cardTitle1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1) b', cardSub1: '#saved .day:nth-of-type(1) .hl:nth-of-type(1) small',
-  card8: null, art8: null, section: '#saved .day:nth-of-type(2)', sectionHeading: '#saved .day:nth-of-type(2) h3', squareArt: '#saved .day:nth-of-type(1) .hl:nth-of-type(2) .a',
+  screen: '#history', title: '#history .phd h1', tabs: '#history .tabs', tabSelected: '#history .tab[aria-selected="true"]',
+  toolbar: '#history .tb', filters: '#history .tb > .chip:nth-child(1)', quick: '#history .tb > .chip:nth-child(3)',
+  count: '#history .tb .r', sort: '#history .tb .r > .chip', segmented: '#history .tb .seg',
+  grid: '#history .day:nth-of-type(1)', card1: '#history .day:nth-of-type(1) .hl:nth-of-type(1)', art1: '#history .day:nth-of-type(1) .hl:nth-of-type(1) .a',
+  cardTitle1: '#history .day:nth-of-type(1) .hl:nth-of-type(1) b', cardSub1: '#history .day:nth-of-type(1) .hl:nth-of-type(1) small',
+  card8: null, art8: null, section: '#history .day:nth-of-type(2)', sectionHeading: '#history .day:nth-of-type(2) h3', squareArt: '#history .day:nth-of-type(1) .hl:nth-of-type(2) .a',
 };
 const activeSelectors = scope === 'history' ? historySelectors : gridSelectors;
 const buildHistoryMeasure = () => {
@@ -154,9 +154,10 @@ try {
   const source = await readFile(path.join(designRoot, 'desktop-search.html'), 'utf8');
   const kit = await readFile(path.join(designRoot, 'kit.css'), 'utf8');
   const css = source.match(/<style>([\s\S]*?)<\/style>/)[1];
-  const start = source.indexOf('<div class="screen" id="saved"');
-  const end = source.indexOf('<p class="cap"><b>Saved, History', start);
-  if (start < 0 || end < 0) throw new Error('Saved frame not found in the design source.');
+  const frameName = scope === 'history' ? 'history' : 'saved';
+  const start = source.indexOf(`<div class="screen" id="${frameName}"`);
+  const end = source.indexOf(scope === 'history' ? '<p class="cap"><b>Avatar menu' : '<p class="cap"><b>Saved, History', start);
+  if (start < 0 || end < 0) throw new Error(`${frameName} frame not found in the design source.`);
   const sprite = [...source.matchAll(/<svg width="0" height="0" style="position:absolute">[\s\S]*?<\/svg>/g)].map(match => match[0]).join('');
   const referenceHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;background:#071018}.screen{overflow:visible}nav{visibility:hidden}</style></head><body class="p">${sprite}${source.slice(start, end)}</body></html>`;
   await page.route('**/__saved_reference__', route => route.fulfill({contentType: 'text/html', body: referenceHtml}));
