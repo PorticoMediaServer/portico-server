@@ -101,30 +101,28 @@ func (p Probe) InspectRemoteMP4(ctx context.Context, path string) (Facts, error)
 	facts.Container = "mp4"
 	return facts, e
 }
-func (p Probe) inspect(ctx context.Context, path string, options []string) (Facts, error) {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
+func (p Probe) probeOutput(ctx context.Context, path, input string, options []string) ([]byte, error) {
 	bin := p.Binary
 	if bin == "" {
 		bin = mediatools.Resolve("ffprobe")
 	}
-	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-show_entries", "format:stream:chapter:format_tags=title,show,tv_show,year,date,season_number,episode_sort,edition,imdb,imdbid,tmdb,tmdbid,tvdb,tvdbid,anilist,anilistid:stream_tags=language,title:chapter_tags=title", "-of", "json", path}...)
+	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-show_entries", "format:stream:chapter:format_tags=title,show,tv_show,year,date,season_number,episode_sort,edition,imdb,imdbid,tmdb,tmdbid,tvdb,tvdbid,anilist,anilistid:stream_tags=language,title:chapter_tags=title", "-of", "json", input}...)
 	out := &boundedBuffer{limit: 1 << 20}
 	var runErr error
 	if p.ReadGuard != nil {
 		if e := p.ReadGuard(ctx, path); e != nil {
-			return Facts{}, e
+			return nil, e
 		}
 	}
 	if e := ctx.Err(); e != nil {
-		return Facts{}, e
+		return nil, e
 	}
 	if handled, err := storage.RunScanCommand(ctx, bin, args, path, out); handled {
 		runErr = err
 	} else if p.Supervisor != nil {
 		cmd, err := mediaexec.Command(probeJob(bin, args, path))
 		if err != nil {
-			return Facts{}, fmt.Errorf("media probe failed: %w", err)
+			return nil, fmt.Errorf("media probe failed: %w", err)
 		}
 		key := path
 		if len(options) > 0 && options[0] == "-f" {
@@ -134,7 +132,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	} else {
 		cmd, err := mediaexec.CommandContext(ctx, probeJob(bin, args, path))
 		if err != nil {
-			return Facts{}, fmt.Errorf("media probe failed: %w", err)
+			return nil, fmt.Errorf("media probe failed: %w", err)
 		}
 		cmd.Stdout = out
 		cmd.Stderr = io.Discard
@@ -142,8 +140,12 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 		runErr = cmd.Run()
 	}
 	if runErr != nil {
-		return Facts{}, fmt.Errorf("media probe failed: %w", runErr)
+		return nil, fmt.Errorf("media probe failed: %w", runErr)
 	}
+	return out.data, nil
+}
+
+func decodeMediaProbe(data []byte) (Facts, error) {
 	var raw struct {
 		Format struct {
 			Duration string            `json:"duration"`
@@ -177,7 +179,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 			Tags  map[string]string `json:"tags"`
 		} `json:"chapters"`
 	}
-	if e := json.Unmarshal(out.data, &raw); e != nil {
+	if e := json.Unmarshal(data, &raw); e != nil {
 		return Facts{}, e
 	}
 	// Detail is read in a second pass over the same bytes so the two shapes stay
@@ -188,7 +190,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 		} `json:"format"`
 		Streams []probeStreamDetail `json:"streams"`
 	}
-	if json.Unmarshal(out.data, &detail) != nil || len(detail.Streams) != len(raw.Streams) {
+	if json.Unmarshal(data, &detail) != nil || len(detail.Streams) != len(raw.Streams) {
 		detail.Streams = make([]probeStreamDetail, len(raw.Streams))
 	}
 	f := Facts{Container: demuxerIdentity(raw.Format.Name)}
@@ -238,9 +240,6 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 
 		}
 	}
-	if err := p.completeMusepackTimeline(ctx, path, &f); err != nil {
-		return Facts{}, err
-	}
 	if !knownStreams {
 		f.Streams = nil
 	}
@@ -253,6 +252,26 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 			continue
 		}
 		f.Chapters = append(f.Chapters, Chapter{streamText(c.Tags["title"], 500), start, end})
+	}
+	if f.VideoCodec != "" {
+		f.VideoName, f.VideoNameSkipped = EmbeddedVideoName(raw.Format.Tags)
+	}
+	return f, nil
+}
+
+func (p Probe) inspect(ctx context.Context, path string, options []string) (Facts, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	data, err := p.probeOutput(ctx, path, path, options)
+	if err != nil {
+		return Facts{}, err
+	}
+	f, err := decodeMediaProbe(data)
+	if err != nil {
+		return Facts{}, err
+	}
+	if err := p.completeMusepackTimeline(ctx, path, &f); err != nil {
+		return Facts{}, err
 	}
 	if !strings.Contains(path, "://") {
 		tags, err := storage.ReadAudioTags(ctx, path)
@@ -271,9 +290,6 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 		} else {
 			f.LocalMetadataIssue = "unreadable_audio_tags"
 		}
-	}
-	if f.VideoCodec != "" {
-		f.VideoName, f.VideoNameSkipped = EmbeddedVideoName(raw.Format.Tags)
 	}
 	f.Chapters, f.ChapterStatus = CleanChapters(f.Chapters, f.Duration)
 	if f.ChapterStatus == "partial" {
