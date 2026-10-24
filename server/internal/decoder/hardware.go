@@ -219,14 +219,14 @@ func SoftwareToneMap(algorithm string) string {
 	return "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=" + algorithm + ":desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
 }
 
-// HardwareDetector probes backends once per ffmpeg identity and caches the
-// verdict. The cache key is the ffmpeg binary identity plus backend and device,
-// so replacing ffmpeg re-probes without a restart.
 type hardwareProbeCell struct {
 	backend HardwareBackend
 	device  string
 }
 
+// HardwareDetector caches measured backend/device results by FFmpeg runtime
+// identity. Replacing that runtime or explicitly reproving a cell retires its
+// prior observation without invalidating peer devices.
 type HardwareDetector struct {
 	// Devices supplies physical discovery only; candidates still require probes.
 	Devices func(context.Context) []HardwareDevice
