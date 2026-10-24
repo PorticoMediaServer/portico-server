@@ -22,6 +22,7 @@ import {hostedGate} from './hosted-gate.ts';
 import {parseDirectSignIn,type DirectSignIn,type ProfileAPI} from './profile-management.ts';
 import {routeBase64,routeBytes,serverPin,webRouteCrypto,type RouteCrypto} from './route-identity.ts';
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
+import {parseShortInvitationCode} from './short-invitation-code.ts';
 
 /** A Hosted-signed document, verified by the server against its pinned root. */
 export type IdentityAssertion=Readonly<{payload:string;signature:string;keyId:string;certificate?:unknown}>;
@@ -100,6 +101,15 @@ export async function acceptPorticoInvitation(hosted:HostedRequestApi,hostedOrig
  const trimmed=code.trim();if(trimmed.length<32||trimmed.length>128)throw new CodedError('invitation_incomplete','This invitation code is not complete.');
  const porticoIdentity=await assertionFor(hosted,hostedOrigin,server,serverId,'interactive',signal,undefined,crypto);
  return sameServer(parseDirectSignIn(await server.request<RouteResponse<"post_access_invitations_accept">>(routePath("post_access_invitations_accept"),'POST',{code:trimmed,porticoIdentity},signal)),serverId);
+}
+
+/** Accepts only the distinct human-entry capability, on an already verified
+ * inviting server. It is never resolved by Hosted or interpreted as a link. */
+export async function acceptShortPorticoInvitation(hosted:HostedRequestApi,hostedOrigin:string,server:ProfileAPI,serverId:string,raw:string,signal?:AbortSignal,crypto?:RouteCrypto):Promise<DirectSignIn>{
+ const shortCode=parseShortInvitationCode(raw);
+ if(!shortCode)throw new CodedError('invitation_incomplete','This invitation code is not complete.');
+ const porticoIdentity=await assertionFor(hosted,hostedOrigin,server,serverId,'interactive',signal,undefined,crypto);
+ return sameServer(parseDirectSignIn(await server.request<RouteResponse<"post_access_invitations_accept">>(routePath("post_access_invitations_accept"),'POST',{shortCode,porticoIdentity},signal)),serverId);
 }
 
 /** A Portico Account owner (it has no password on the server) transfers ownership:
