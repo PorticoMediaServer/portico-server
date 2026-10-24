@@ -225,6 +225,7 @@ def main():
     write_epub(media / LIBRARY_NAME / BOOK_AUTHOR / (BOOK_TITLE + '.epub'))
     write_pdf(media / LIBRARY_NAME / BOOK_AUTHOR / 'Reference Sheet.pdf')
     write_hostile_epub(media / LIBRARY_NAME / BOOK_AUTHOR / 'Hostile Notes.epub')
+    (media / 'Extra').mkdir(parents=True, exist_ok=True)
     ffmpeg = shutil.which('ffmpeg') or '/opt/portico-ffmpeg/bin/ffmpeg'
     movie = media / 'Movies' / 'Example Movie (2019)' / 'Example Movie (2019).mp4'
     movie.parent.mkdir(parents=True, exist_ok=True)
@@ -301,7 +302,7 @@ def main():
                 raise AssertionError('scanned library did not publish ' + expected + ': ' + repr(titles))
         credentials = run / 'credentials.json'
         credentials.write_text(json.dumps({'username': 'owner', 'password': password, 'libraryName': LIBRARY_NAME,
-                                           'libraryId': library['id'], 'bookTitle': BOOK_TITLE, 'bookText': 'Chapter One', 'pdfTitle': 'Reference Sheet', 'hostileTitle': 'Hostile Notes',
+                                           'libraryId': library['id'], 'bookTitle': BOOK_TITLE, 'bookText': 'Chapter One', 'pdfTitle': 'Reference Sheet', 'hostileTitle': 'Hostile Notes', 'addPath': str(media / 'Extra'),
                                            'searchTerm': 'Example'}), encoding='utf-8')
         walk = subprocess.run(['node', str(ROOT / 'tools/web-core-flows/flows.mjs')], cwd=ROOT,
                               env={**os.environ, 'PORTICO_FLOW_BASE': base, 'PORTICO_FLOW_CREDS': str(credentials),

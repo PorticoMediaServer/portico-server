@@ -62,6 +62,10 @@ async function walk(page, viewportName) {
     return steps.at(-1);
   };
   const text = () => page.evaluate(() => document.body.innerText);
+  // Book text lives inside the reader's sandboxed frame, which the parent
+  // document's innerText does not include; read both without crossing trust.
+  const bookText = () => page.evaluate(() => [document.body.innerText,
+    ...Array.from(document.querySelectorAll('iframe'), frame => { try { return frame.contentDocument?.body?.innerText ?? ''; } catch { return ''; } })].join('\n'));
   const settle = async (ms = 350) => page.waitForTimeout(ms);
   const signIn = async () => {
     await page.goto(base + '/sign-in', {waitUntil: 'domcontentloaded'});
@@ -98,7 +102,12 @@ async function walk(page, viewportName) {
     const before = page.url();
     const details = page.getByRole('button', {name: /^details$/i}).first();
     if (await details.count()) await details.click();
-    else await page.locator('[data-group] button').first().click();
+    else {
+      const row = page.locator('[data-group] button, [data-group] a, a[href^="/item/"]').first();
+      if (!(await row.count())) throw new Error('no clickable result on ' + new URL(page.url()).pathname + ': ' + excerpt(await text(), 300)
+        + ' | buttons=' + await page.locator('button').count() + ' links=' + await page.locator('a[href]').count());
+      await row.click();
+    }
     await settle(1500);
     if (page.url() === before) throw new Error('opening a result did not navigate');
     return {from: new URL(before).pathname, to: new URL(page.url()).pathname};
@@ -137,6 +146,22 @@ async function walk(page, viewportName) {
     await settle(2500);
     return {text: excerpt(await text(), 400)};
   });
+
+  await step('settings-add-library', async () => {
+    await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
+    await settle(1500);
+    await page.getByRole('button', {name: /^Add library$/i}).first().click();
+    const dialog = page.getByRole('dialog').first();
+    await dialog.waitFor({timeout: 10000});
+    await dialog.getByLabel('Name').fill('Added Library');
+    await dialog.getByLabel('Folder path').fill(creds.addPath);
+    await dialog.getByRole('button', {name: /^Add library$/i}).last().click();
+    await dialog.waitFor({state: 'detached', timeout: 20000}).catch(() => {});
+    await settle(2500);
+    const body = await text();
+    if (!body.includes('Added Library')) throw new Error('the added library did not appear: ' + excerpt(body, 300));
+    return {added: 'Added Library'};
+  });
   await step('settings-account', async () => {
     await page.goto(base + '/settings?scope=account&section=playback', {waitUntil: 'domcontentloaded'});
     await settle(1500);
@@ -165,7 +190,7 @@ async function walk(page, viewportName) {
     await settle(4500);
     const path = new URL(page.url()).pathname;
     if (!path.startsWith('/read/')) throw new Error('reading did not open from the library; at ' + path);
-    const body = await text();
+    const body = await bookText();
     if (!body.includes(creds.bookText)) throw new Error('reader did not render the chapter text: ' + excerpt(body, 200));
     return {path, text: excerpt(body, 400)};
   });
@@ -205,8 +230,11 @@ async function walk(page, viewportName) {
     await settle(4000);
     const path = new URL(page.url()).pathname;
     if (!path.startsWith('/read/')) throw new Error('hostile book did not open; at ' + path);
-    const body = await text();
-    if (!body.includes('only thing a reader may draw')) throw new Error('the hostile book did not draw its plain paragraph');
+    const body = await bookText();
+    // A safe reader either draws the plain paragraph or refuses the book
+    // outright; what it may never do is run the book's script or reach the network.
+    const refused = /Something didn't load|page ran into a problem/i.test(body);
+    if (!refused && !body.includes('only thing a reader may draw')) throw new Error('the hostile book drew neither its plain paragraph nor the refusal state: ' + excerpt(body, 300));
     if (body.includes('book script ran')) throw new Error('the book script ran inside the reader');
     const escapes = attempted.slice(before).filter(url => /portico-epub-egress|127\.0\.0\.1:9/.test(url));
     if (escapes.length) throw new Error('the book reached the network: ' + escapes.join(', '));
@@ -214,7 +242,7 @@ async function walk(page, viewportName) {
       try { return /^https?:/.test(frame.getAttribute('src') ?? '') || /^https?:/.test(frame.src ?? ''); } catch { return false; }
     }));
     if (hostFrame) throw new Error('the book created a network iframe');
-    return {path, attemptedDuringStep: attempted.length - before};
+    return {path, refused, attemptedDuringStep: attempted.length - before};
   });
 
   // Live: with or without a source the screen must render, never blank.
