@@ -111,7 +111,7 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
 	query := `SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
- JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=primaryPublicationSQL
+ JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
  WHERE e.retired=0 AND cl.retired=0
