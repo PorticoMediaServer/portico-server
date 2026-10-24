@@ -13,6 +13,22 @@ import '../../bootstrap.css';
 // Drawn demo facts exist only in this DEV specimen, never in runtime adapters.
 if (!import.meta.env.DEV) throw new Error('Search specimens require development.');
 
+const params = new URLSearchParams(location.search);
+if (params.get('clock') === 'fixed') {
+  const fixed = Date.parse('2026-10-24T19:05:00Z'), RealDate = Date;
+  const Construct = RealDate as unknown as new (...args: unknown[]) => Date;
+  const FakeDate = function (...args: unknown[]) { return args.length ? new Construct(...args) : new Construct(fixed); } as unknown as DateConstructor;
+  FakeDate.now = () => fixed;
+  FakeDate.parse = RealDate.parse.bind(RealDate);
+  FakeDate.UTC = RealDate.UTC.bind(RealDate);
+  window.Date = FakeDate;
+}
+if (params.get('capture') === '1') {
+  const style = document.createElement('style');
+  style.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}';
+  document.head.append(style);
+}
+
 const serverId = 'specimen-server';
 const artPath = (id: string) => `/v1/items/${id}/art/backdrop?v=${'a'.repeat(64)}&w=1920`;
 const genre = (value: string, label: string, count: number) => ({value, label, count,

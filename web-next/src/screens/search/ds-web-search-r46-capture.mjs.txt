@@ -1,29 +1,22 @@
-import {createRequire} from 'node:module';
+import {createServer as createHttpServer} from 'node:http';
+import {spawn} from 'node:child_process';
 import {join, resolve, extname} from 'node:path';
-import {readFile, writeFile} from 'node:fs/promises';
-import {createServer} from 'vite';
+import {readFile, writeFile, mkdir, rm} from 'node:fs/promises';
+import {createServer as createViteServer} from 'vite';
 
 const output = process.env.PORTICO_RUNNER_OUTPUT;
 const design = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
 if (!output || !design) throw new Error('Run on the runner with --browser and the design secondary source.');
 await writeFile(join(output, 'capture.log'), '{"kind":"capture started"}\n', {mode: 0o600});
-let chromium;
-if (process.env.PORTICO_BROWSER_TOOLS_DIR) {
-  try { ({chromium} = createRequire(join(process.env.PORTICO_BROWSER_TOOLS_DIR, 'loader.cjs'))('playwright-core')); } catch {}
-}
-if (!chromium && process.env.PORTICO_BROWSER_MODULE) ({chromium} = await import(process.env.PORTICO_BROWSER_MODULE));
-if (!chromium) throw new Error('No Playwright browser module was supplied.');
+const chrome = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.PORTICO_CHROMIUM || '/usr/bin/chromium';
+const height = 1037;
 const mime = {'.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2'};
-const server = await createServer({root: resolve('web-next'), configFile: resolve('web-next/vite.config.ts'), cacheDir: join(process.env.TMPDIR, 'search-vite'),
+const vite = await createViteServer({root: resolve('web-next'), configFile: resolve('web-next/vite.config.ts'), cacheDir: join(process.env.TMPDIR, 'search-vite'),
   server: {host: '127.0.0.1', port: 0, strictPort: false}});
-let browser;
+let reference;
 try {
-  await server.listen();
-  const address = server.httpServer.address();
-  const origin = `http://127.0.0.1:${address.port}`;
-  browser = await chromium.launch({executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bin/chromium', headless: true,
-    args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--renderer-process-limit=2']});
-  const context = await browser.newContext({viewport: {width: 1440, height: 1100}, deviceScaleFactor: 1, locale: 'en-US', timezoneId: 'America/Halifax', reducedMotion: 'reduce'});
+  await vite.listen();
+  const viteOrigin = `http://127.0.0.1:${vite.httpServer.address().port}`;
   const source = await readFile(join(design, 'design/ui-v1/desktop-search.html'), 'utf8');
   const kit = await readFile(join(design, 'design/ui-v1/kit.css'), 'utf8');
   const css = source.match(/<style>([\s\S]*?)<\/style>/)[1];
@@ -31,124 +24,65 @@ try {
   const end = source.indexOf('<p class="cap"><b>Results, two letters in.</b>');
   const frame = source.slice(start, end);
   const sprite = source.match(/<svg width="0" height="0" style="position:absolute">[\s\S]*?<\/svg>/)[0];
-  const referenceHtml = `<!doctype html><html><head><meta charset="utf-8"><base href="${origin}/__design__/"><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;padding:0;background:#071018}</style></head><body>${sprite}${frame}</body></html>`;
-  const reference = await context.newPage();
-  await reference.route('**/__design__/**', async route => {
-    const path = decodeURIComponent(new URL(route.request().url()).pathname.replace('/__design__/', ''));
-    await route.fulfill({path: join(design, 'design/ui-v1', path), contentType: mime[extname(path)] ?? 'application/octet-stream'});
+  const referenceHtml = `<!doctype html><html><head><meta charset="utf-8"><base href="/design/"><link rel="stylesheet" href="${viteOrigin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;padding:0;background:#071018}</style></head><body>${sprite}${frame}</body></html>`;
+  const designRoot = join(design, 'design/ui-v1');
+  reference = createHttpServer(async (request, response) => {
+    try {
+      const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+      if (pathname === '/reference') {response.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});response.end(referenceHtml);return;}
+      if (!pathname.startsWith('/design/')) {response.writeHead(404);response.end();return;}
+      const relative = pathname.slice('/design/'.length), file = resolve(designRoot, relative);
+      if (!file.startsWith(designRoot + '/')) {response.writeHead(403);response.end();return;}
+      response.writeHead(200, {'Content-Type': mime[extname(file)] ?? 'application/octet-stream'});response.end(await readFile(file));
+    } catch {response.writeHead(404);response.end();}
   });
-  await reference.route('**/__search-empty-frame__', route => route.fulfill({contentType: 'text/html', body: referenceHtml}));
-  await reference.goto(`${origin}/__search-empty-frame__`, {waitUntil: 'load'});
-  await reference.addStyleTag({content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'});
-  await reference.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all([...document.images].map(image => image.decode().catch(() => {})));
-    await new Promise(resolve => setTimeout(resolve, 250));
-  });
-  const frameHeight = await reference.locator('#s-empty').evaluate(element => Math.ceil(element.getBoundingClientRect().height));
-  const frameFacts = await reference.evaluate(() => {
-    const box = element => { if (!element) return null; const r = element.getBoundingClientRect();
-      return {x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height)}; };
-    const text = element => element?.innerText.replace(/\s+/g, ' ').trim() ?? '';
-    const block = name => [...document.querySelectorAll('.blk')].find(candidate => candidate.querySelector('h2')?.textContent.trim() === name);
-    const field = document.querySelector('.sf');
-    const recent = block('Recent searches'), genre = block('Browse by genre'), live = block('On now');
-    return {
-      field: {box: box(field), placeholder: text(field?.querySelector('.ph')), hint: text(field?.querySelector('.hint'))},
-      recent: {box: box(recent), header: box(recent?.querySelector('.sh')), heading: text(recent?.querySelector('h2')), clear: text(recent?.querySelector('.ghost')),
-        chips: [...(recent?.querySelectorAll('.rc .chip') ?? [])].map(chip => ({box: box(chip), text: text(chip)}))},
-      genres: {box: box(genre), header: box(genre?.querySelector('.sh')), heading: text(genre?.querySelector('h2')), note: text(genre?.querySelector('.sh .c')),
-        all: text(genre?.querySelector('.sh .all')), tiles: [...(genre?.querySelectorAll('.gt') ?? [])].map(tile => ({box: box(tile), text: text(tile)}))},
-      onNow: {box: box(live), header: box(live?.querySelector('.sh')), heading: text(live?.querySelector('h2')), note: text(live?.querySelector('.sh .c')),
-        guide: text(live?.querySelector('.sh .all')), cards: [...(live?.querySelectorAll('.live') ?? [])].map(card => ({box: box(card), text: text(card)}))},
-      screen: box(document.querySelector('#s-empty')),
-    };
-  });
-  await reference.locator('#s-empty').screenshot({path: join(output, 'frame.png')});
+  await new Promise(done => reference.listen(0, '127.0.0.1', done));
+  const referenceOrigin = `http://127.0.0.1:${reference.address().port}`;
 
-  const build = await context.newPage();
-  await build.addInitScript(() => {
-    const fixed = Date.parse('2026-10-24T19:05:00Z');
-    const RealDate = Date;
-    // @ts-ignore -- the specimen's clock is fixed so the drawn programme state is reproducible.
-    window.Date = class extends RealDate {
-      constructor(...args) { if (args.length) super(...args); else super(fixed); }
-      static now() { return fixed; }
-    };
-  });
-  await build.setViewportSize({width: 1440, height: frameHeight});
-  await build.goto(`${origin}/src/screens/search/ds-web-search-r46-empty.html`, {waitUntil: 'load'});
-  await build.getByRole('heading', {name: 'Browse by genre'}).waitFor({timeout: 20000});
-  await build.getByRole('heading', {name: 'On now'}).waitFor({timeout: 20000});
-  await build.locator('article[data-card-kind=videoGenre]').first().waitFor({timeout: 20000});
-  await build.locator('article[data-card-kind=live]').first().waitFor({timeout: 20000});
-  await build.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all([...document.images].map(image => image.decode().catch(() => {})));
-    await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));
-  });
-  await build.locator('form[role=search] input').focus();
-  const buildFacts = await build.evaluate(() => {
-    const box = element => { if (!element) return null; const r = element.getBoundingClientRect();
-      return {x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height)}; };
-    const text = element => element?.innerText.replace(/\s+/g, ' ').trim() ?? '';
-    const block = name => [...document.querySelectorAll('section')].find(candidate =>
-      [...candidate.querySelectorAll(':scope > header h2')].some(heading => heading.textContent.trim() === name));
-    const field = document.querySelector('form[role=search]');
-    const recent = block('Recent searches'), genre = block('Browse by genre'), live = block('On now');
-    const card = element => ({box: box(element), text: text(element)});
-    return {
-      field: {box: box(field), placeholder: field?.querySelector('input')?.getAttribute('placeholder') ?? '', hint: text(field?.querySelector('span'))},
-      recent: {box: box(recent), header: box(recent?.querySelector(':scope > header')), heading: text(recent?.querySelector('h2')), clear: text(recent?.querySelector('header button')),
-        chips: [...(recent?.querySelectorAll('div > button') ?? [])].map(card)},
-      genres: {box: box(genre), header: box(genre?.querySelector(':scope > header')), heading: text(genre?.querySelector('h2')), note: text(genre?.querySelector('header > span')),
-        all: text(genre?.querySelector('header button')), tiles: [...(genre?.querySelectorAll('article[data-card-kind=videoGenre]') ?? [])].map(card)},
-      onNow: {box: box(live), header: box(live?.querySelector(':scope > header')), heading: text(live?.querySelector('h2')), note: text(live?.querySelector('header > span')),
-        guide: text(live?.querySelector('header button')), cards: [...(live?.querySelectorAll('article[data-card-kind=live]') ?? [])].map(card)},
-      screen: {x: 0, y: 0, width: innerWidth, height: innerHeight},
-    };
-  });
-  await build.screenshot({path: join(output, 'build.png')});
-
-  const differences = [];
-  const compareBox = (name, expected, actual) => {
-    if (!expected || !actual) { differences.push({name, kind: 'missing', expected, actual}); return; }
-    const delta = {x: actual.x - expected.x, y: actual.y - expected.y, width: actual.width - expected.width, height: actual.height - expected.height};
-    if (Object.values(delta).some(value => Math.abs(value) > 2)) differences.push({name, kind: 'box', delta, expected, actual});
-  };
-  for (const part of ['recent', 'genres', 'onNow']) compareBox(part + '.header', frameFacts[part].header, buildFacts[part].header);
-  compareBox('field', frameFacts.field.box, buildFacts.field.box);
-  for (const part of ['field', 'recent', 'genres', 'onNow']) {
-    const expected = frameFacts[part], actual = buildFacts[part];
-    for (const key of ['heading', 'note', 'clear', 'placeholder', 'hint', 'guide']) if (expected[key] !== undefined && expected[key] !== '' && expected[key] !== actual[key])
-      differences.push({name: part + '.' + key, kind: 'text', expected: expected[key], actual: actual[key]});
+  async function chromium(args, label) {
+    const profile = join(process.env.TMPDIR, 'chromium-' + label);
+    await mkdir(profile, {recursive: true});
+    const child = spawn(chrome, ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars',
+      '--force-device-scale-factor=1', `--window-size=1440,${height}`, '--virtual-time-budget=20000', `--user-data-dir=${profile}`, ...args],
+      {stdio: ['ignore', 'pipe', 'pipe']});
+    let stdout = '', stderr = '';
+    child.stdout.on('data', data => {stdout += data;});child.stderr.on('data', data => {stderr += data;});
+    const code = await new Promise(done => child.on('close', done));
+    await rm(profile, {recursive: true, force: true});
+    return {code, stdout, stderr: stderr.split('\n').filter(line => !/Fontconfig|dbus|GPU|DevTools|sandbox/i.test(line)).slice(-8).join('\n')};
   }
-  if (frameFacts.genres.all && !buildFacts.genres.all) differences.push({name: 'genres.all', kind: 'missing-control', expected: frameFacts.genres.all, actual: ''});
-  for (const [name, expected, actual] of [['recent.chips', frameFacts.recent.chips, buildFacts.recent.chips],
-    ['genres.tiles', frameFacts.genres.tiles, buildFacts.genres.tiles], ['onNow.cards', frameFacts.onNow.cards, buildFacts.onNow.cards]]) {
-    if (expected.length !== actual.length) differences.push({name: name + '.count', kind: 'count', expected: expected.length, actual: actual.length});
-    for (let index = 0; index < Math.min(expected.length, actual.length); index++) {
-      compareBox(name + '[' + index + ']', expected[index].box, actual[index].box);
-      if (expected[index].text !== actual[index].text) differences.push({name: name + '[' + index + '].text', kind: 'text', expected: expected[index].text, actual: actual[index].text});
-    }
-  }
-  differences.push({name: 'artwork', kind: 'slot-content', note: 'Frame uses private demo artwork; the build specimen uses neutral image slots. Image content is not scored.'});
-  differences.push({name: 'shell', kind: 'excluded', note: 'The specimen mounts the screen without the shell navigation; the pair crops y>=100 so the field and content align.'});
 
-  const pair = await context.newPage();
-  await pair.setViewportSize({width: 2880, height: Math.max(1, frameHeight - 100)});
-  const frameCrop = await reference.screenshot({clip: {x: 0, y: 100, width: 1440, height: frameHeight - 100}});
-  const buildCrop = await build.screenshot({clip: {x: 0, y: 100, width: 1440, height: frameHeight - 100}});
-  await pair.setContent(`<body style="margin:0;display:flex;background:#000"><img width="1440" height="${frameHeight - 100}" src="data:image/png;base64,${frameCrop.toString('base64')}"><img width="1440" height="${frameHeight - 100}" src="data:image/png;base64,${buildCrop.toString('base64')}"></body>`);
-  await pair.screenshot({path: join(output, 'pair.png')});
-  await pair.close();
+  const frameShot = await chromium([`--screenshot=${join(output, 'frame.png')}`, `${referenceOrigin}/reference`], 'frame');
+  const buildShot = await chromium([`--screenshot=${join(output, 'build.png')}`, `${viteOrigin}/src/screens/search/ds-web-search-r46-empty.html?clock=fixed&capture=1`], 'build');
+  const frameDom = await chromium(['--dump-dom', `${referenceOrigin}/reference`], 'frame-dom');
+  const buildDom = await chromium(['--dump-dom', `${viteOrigin}/src/screens/search/ds-web-search-r46-empty.html?clock=fixed&capture=1`], 'build-dom');
+  await writeFile(join(output, 'frame-dom.log'), frameDom.stdout, {mode: 0o600});
+  await writeFile(join(output, 'build-dom.log'), buildDom.stdout, {mode: 0o600});
 
-  const summary = {kind: 'SEARCH EMPTY SPECIMEN PAIR, not screen acceptance', viewport: {width: 1440, height: frameHeight, deviceScaleFactor: 1},
-    state: 'empty, recent searches present, video genres permitted, Live TV permitted, field focused, clock 2026-10-24T19:05:00Z',
-    frame: frameFacts, build: buildFacts, differences};
+  const headings = html => [...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map(match => match[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
+  const images = html => [...html.matchAll(/<img\b[^>]*>/g)].length;
+  const python = `from PIL import Image
+import sys
+frame=Image.open(sys.argv[1]).convert('RGB'); build=Image.open(sys.argv[2]).convert('RGB')
+h=min(frame.height,build.height)
+a=frame.crop((0,100,1440,h)); b=build.crop((0,100,1440,h))
+out=Image.new('RGB',(2880,h-100)); out.paste(a,(0,0)); out.paste(b,(1440,0)); out.save(sys.argv[3])
+out2=Image.new('RGB',(1440,h-100)); out2.paste(b,(0,0)); out2.save(sys.argv[4])
+print(frame.size, build.size)
+`;
+  const pair = spawn('python3', ['-c', python, join(output, 'frame.png'), join(output, 'build.png'), join(output, 'pair.png'), join(output, 'build-content.png')]);
+  let pairOut = '', pairErr = '';
+  pair.stdout.on('data', data => {pairOut += data;});pair.stderr.on('data', data => {pairErr += data;});
+  const pairCode = await new Promise(done => pair.on('close', done));
+  const summary = {kind: 'SEARCH EMPTY FRAME/BUILD CAPTURE, not acceptance', viewport: {width: 1440, height, deviceScaleFactor: 1},
+    state: 'empty, recent searches, permitted video genres, permitted Live TV, field focused, fixed clock 2026-10-24T19:05:00Z',
+    frame: {screenshot: frameShot, headings: headings(frameDom.stdout), images: images(frameDom.stdout)},
+    build: {screenshot: buildShot, headings: headings(buildDom.stdout), images: images(buildDom.stdout), note: 'artwork uses neutral image slots; the frame uses private demo artwork'},
+    pair: {code: pairCode, sizes: pairOut.trim(), error: pairErr.trim()},
+    limits: ['The specimen mounts the screen without the shell navigation; compare from the field down.', 'Image content is not scored; frame artwork is illustrative.']};
   await writeFile(join(output, 'capture.log'), JSON.stringify(summary, null, 2) + '\n', {mode: 0o600});
-  console.log(JSON.stringify({frameHeight, differences: differences.length, kinds: differences.map(item => item.kind)}));
+  console.log(JSON.stringify({frame: frameShot.code, build: buildShot.code, pair: pairCode, headings: summary.build.headings}));
 } finally {
-  await browser?.close();
-  await server.close();
+  await vite.close();
+  if (reference) await new Promise(done => reference.close(done));
 }
