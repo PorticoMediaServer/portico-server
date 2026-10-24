@@ -23,8 +23,12 @@ export function createSearchBindings(context: ScreenContext) {
   const visible = new Set<SearchEntry>();
   const commandContext: ScreenContext = {...context, effects: {...context.effects, async play(target, signal, callerCurrent = () => true) {
     life.assert();signal.throwIfAborted();
-    const query = requestKey(service.getSnapshot().query), source = resultKey;
-    const current = () => life.current() && callerCurrent() && requestKey(service.getSnapshot().query) === query && resultKey === source;
+    const captured = service.getSnapshot(), query = requestKey(captured.query), source = resultKey;
+    const current = () => {
+      const state = service.getSnapshot();
+      return life.current() && callerCurrent() && state.phase === 'ready' && state.generation === captured.generation
+        && requestKey(state.query) === query && resultKey === source;
+    };
     if (service.getSnapshot().phase !== 'ready' || !query || !source || !current()) throw new DOMException('Search playback changed', 'AbortError');
     await context.effects.play(target, signal, current);
     if (!current()) throw new DOMException('Search playback changed', 'AbortError');

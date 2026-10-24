@@ -4,6 +4,8 @@ import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {readdir} from 'node:fs/promises';
 import {withMeasurementBrowser} from './browser.mjs';
+import {compareScreens} from './compare.mjs';
+import {applyControlledState} from './controlled-state.mjs';
 
 // Public synthetic measurement fixture, never a product screen or approved design.
 const html = `<!doctype html><html><style>
@@ -31,10 +33,11 @@ test('real browser measures the whole viewport and protects source, secret and n
     const measured = await withMeasurementBrowser({scratch: process.env.TMPDIR, executable,
       viewport: {width: 800, height: 600, deviceScaleFactor: 1}, allowedOrigins: [origin]}, async browser => {
       await browser.navigate(origin, 'main');
-      await browser.evaluate('document.querySelector("input[name=password]").focus()');
+      await applyControlledState(browser, [{action: 'click', selector: 'input[name=password]'}]);
       const screen = await browser.measure('main');
       assert.deepEqual(screen, await browser.measure('main'), 'same source/state extraction is deterministic');
       assert.equal(screen.scope, 'screen'); assert.equal(screen.fullViewport, true);
+      assert.deepEqual(screen.measurement, {renderer: 'dom', coordinateUnit: 'css-px'});
       assert.deepEqual(screen.root, {x: 0, y: 0, width: 800, height: 600});
       assert.deepEqual(screen.viewport, {width: 800, height: 600, deviceScaleFactor: 1});
       assert.equal(screen.fontStatus, 'loaded');
@@ -79,6 +82,15 @@ test('real browser measures the whole viewport and protects source, secret and n
       return screen;
     });
     assert.ok(measured.elements.length > 8);
+    await withMeasurementBrowser({scratch: process.env.TMPDIR, executable,
+      viewport: {width: 800, height: 600, deviceScaleFactor: 2}, allowedOrigins: [origin]}, async browser => {
+      await browser.navigate(origin, 'main');
+      await applyControlledState(browser, [{action: 'click', selector: 'input[name=password]'}]);
+      const dense = await browser.measure('main');
+      assert.equal(dense.viewport.deviceScaleFactor, 2, 'actual density is preserved');
+      assert.deepEqual(dense.root, measured.root, 'DOM reports unchanged CSS logical bounds');
+      assert.equal(compareScreens(measured, dense).verdict, 'PASS', 'density alone does not alter logical scoring');
+    });
     assert.ok(!(await readdir(process.env.TMPDIR)).some(name => name.startsWith('fidelity-browser-')), 'owned browser profile removed');
   } finally {server.closeAllConnections(); await new Promise(resolve => server.close(resolve));}
 });

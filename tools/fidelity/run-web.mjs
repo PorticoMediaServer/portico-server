@@ -1,6 +1,6 @@
 import {resolve, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {writeFile, realpath} from 'node:fs/promises';
+import {readFile, writeFile, realpath} from 'node:fs/promises';
 import {basename, dirname, sep} from 'node:path';
 import {createServer} from 'vite';
 import {withMeasurementBrowser} from './browser.mjs';
@@ -9,8 +9,9 @@ import {compareCatalogueStrings} from './strings.mjs';
 import {compareTextMetrics} from './text-metrics.mjs';
 import {compareScreens} from './compare.mjs';
 import {auth4} from './auth4.mjs';
-import {colorDifference, parseColor} from './color.mjs';
+import {applyControlledState, checkControlledState} from './controlled-state.mjs';
 import {calibrateFrame} from './calibration.mjs';
+import {fontReadiness} from './readiness.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -27,43 +28,23 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
     return await withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       viewport, allowedOrigins: [new URL(referenceURL).origin, actualOrigin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
       await browser.navigate(referenceURL, referenceSelector);
-      const reference = await browser.measure(referenceSelector, adapter.reference, adapter.repeats.reference);
-      const deterministicReference = JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats.reference));
-      await browser.navigate(actualURL, actualSelector);
-      const point = await browser.evaluate('(()=>{const e=document.querySelector("input[name=password]");const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()');
-      await browser.call('Input.dispatchMouseEvent', {type: 'mousePressed', button: 'left', clickCount: 1, ...point});
-      await browser.call('Input.dispatchMouseEvent', {type: 'mouseReleased', button: 'left', clickCount: 1, ...point});
-      // Explicit PUBLIC fixture state: match the frame's ten masked characters.
-      // The inert existing DEV recorder cannot send this value to an auth API.
-      await browser.call('Input.insertText', {text: '0123456789'});
-      const actual = await browser.measure(actualSelector, adapter.actual, adapter.repeats.actual);
-      const deterministicActual = JSON.stringify(actual) === JSON.stringify(await browser.measure(actualSelector, adapter.actual, adapter.repeats.actual));
+      const reference = await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference);
+      const deterministicReference = JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference));
+      await browser.navigate(actualURL, adapter.readySelector ?? actualSelector);
+      await applyControlledState(browser, adapter.stateSteps);
+      const actual = await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual);
+      const deterministicActual = JSON.stringify(actual) === JSON.stringify(await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual));
       const comparison = compareScreens(reference, actual, adapter), strings = compareCatalogueStrings(reference, actual, enUS, adapter, comparison.cascadeRoots), textMetrics = compareTextMetrics(reference, actual);
       const differences = [...comparison.differences, ...strings.differences];
       const calibration = calibrateFrame(reference);
       if (!calibration.passed) differences.push({kind: 'calibration-failure', label: 'Frame self and single-fact perturbations', calibration});
-      for (const [side, screen] of [['reference', reference], ['actual', actual]]) {
-        const required = new Map(screen.strings.filter(value => value.style).map(value => [value.style.fontFamily + '|' + value.style.fontWeight, value.style]));
-        for (const style of required.values()) {
-          const family = style.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, ''), weight = Number(style.fontWeight);
-          if (['system-ui', 'sans-serif', 'serif', 'monospace'].includes(family)) continue;
-          if (!screen.fontFaces.some(face => {
-            const name = face.family.replace(/^['"]|['"]$/g, ''), range = face.weight.split(/\s+/).map(Number);
-            return name === family && face.status === 'loaded' && (range.length === 1 ? range[0] === weight : weight >= range[0] && weight <= range[1]);
-          })) differences.push({kind: 'font-not-loaded', label: `${side} ${family} ${weight}`});
-        }
-      }
-      const password = actual.elements.find(node => node.frame === 'password-input');
-      if (!password?.focused || password.input?.length !== 10 || password.input?.type !== 'password') differences.push({kind: 'fixture-state', label: 'Real password focus and ten masked characters', focused: password?.focused, length: password?.input?.length});
+      differences.push(...fontReadiness(reference, 'reference'), ...fontReadiness(actual, 'actual'));
+      const controlled = checkControlledState(actual, adapter.expectations);
+      differences.push(...controlled.differences);
       if (!deterministicReference || !deterministicActual) differences.push({kind: 'nondeterministic-extraction', label: 'Same-input determinism', reference: deterministicReference, actual: deterministicActual});
       if (browser.blocked.length || browser.pageErrors.length) differences.push({kind: 'page-readiness', label: 'Blocked or failed runtime resource', blocked: browser.blocked, pageErrors: browser.pageErrors});
-      const caretColor = password && colorDifference(password.style.color, password.style.caretColor);
-      const nativeCaret = {ruling: 27, focused: Boolean(password?.focused && actual.documentFocused),
-        collapsedSelection: password?.input?.selectionStart === 10 && password?.input?.selectionEnd === 10,
-        colorFollowsText: Boolean(caretColor && caretColor.deltaE2000 <= 2 && caretColor.alpha <= .02 && parseColor(password.style.caretColor)?.[3] > 0),
-        qualification: 'Native caret existence/focus, collapsed insertion point and CSS colour; platform governs x/width/blink. No pixel or blink-timing claim.'};
-      if (!nativeCaret.focused || !nativeCaret.collapsedSelection || !nativeCaret.colorFollowsText) differences.push({kind: 'native-caret-state', label: 'Native input caret', ...nativeCaret});
-      comparison.diagnostics.push({label: 'Native input caret illustration', scored: false, ruling: 27, properties: ['x', 'width', 'blink'], reason: 'Binding native-input illustration erratum; no fake caret or input metric compensation.'});
+      const nativeCarets = controlled.carets, nativeCaret = nativeCarets[0] ?? null;
+      if (nativeCarets.length) comparison.diagnostics.push({label: 'Native input caret illustration', scored: false, ruling: 27, properties: ['x', 'width', 'blink'], reason: 'Binding native-input illustration erratum; no fake caret or input metric compensation.'});
       const classification = {adapter: 0, stateOrReadiness: 0, copyOrCatalogue: 0, geometry: 0, computedStyle: 0, unmatchedElement: 0};
       for (const difference of differences) {
         if (['anchor-cardinality', 'list-cardinality', 'ambiguous-match', 'missing-content-slot'].includes(difference.kind)) classification.adapter++;
@@ -74,7 +55,7 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
         else classification.unmatchedElement++;
       }
       return {version: 1, id: adapter.id, state: adapter.state, scope: 'screen', viewport, reference, actual,
-        comparison, strings, textMetrics, nativeCaret, calibration, differences, differenceCount: differences.length, classification,
+        comparison, strings, textMetrics, nativeCaret, nativeCarets, calibration, differences, differenceCount: differences.length, classification,
         deterministic: {reference: deterministicReference, actual: deterministicActual},
         network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
         verdict: differences.length ? 'FAIL' : 'PASS', qualification: 'Controlled genuine full-screen state, not a complete authentication flow. Artwork contents excluded; image slot geometry/style included. No screenshot files or private source URLs.'};
@@ -88,10 +69,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!argv[index].startsWith('--') || argv[index + 1] === undefined) throw new Error('Named argument/value pairs required');
     const name = argv[index].slice(2); if (name in args) throw new Error('Duplicate argument'); args[name] = argv[index + 1];
   }
-  if (!args['reference-url'] || !args.output || Object.keys(args).some(key => !['reference-url', 'output'].includes(key))) throw new Error('Reference input and external output required');
+  if (!args['reference-url'] || !args.output || Object.keys(args).some(key => !['reference-url', 'output', 'adapter'].includes(key))) throw new Error('Reference input and external output required');
   const output = resolve(args.output), parent = await realpath(dirname(output));
   if (parent === root || parent.startsWith(root + sep)) throw new Error('Reference-derived output must stay outside public source');
-  const result = await compareWebScreen({referenceURL: args['reference-url']});
+  const adapter = args.adapter ? JSON.parse(await readFile(args.adapter, 'utf8')) : auth4;
+  const result = await compareWebScreen({referenceURL: args['reference-url'], adapter});
   await writeFile(join(parent, basename(output)), JSON.stringify(result, null, 2) + '\n', {flag: 'wx', mode: 0o600});
   console.log('FIDELITY_RESULT ' + JSON.stringify({id: result.id, state: result.state, verdict: result.verdict, differenceCount: result.differenceCount, classification: result.classification}));
 }

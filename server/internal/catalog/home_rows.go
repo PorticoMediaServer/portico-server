@@ -187,6 +187,7 @@ type homeSource struct {
 	// selfRestricted marks a projection whose SQL already applies the viewer's
 	// restriction itself, so the generic item wrap must not run again.
 	selfRestricted bool
+	evaluationAt   string
 	fingerprint    string
 	// candidates is an engine source's immutable ranking within this request.
 	// Recommended suppresses Trending's preview using this same scored list.
@@ -438,18 +439,19 @@ func (s *Service) homeLibraries(ids []string) ([]Library, error) {
 // --- paging ----------------------------------------------------------------
 
 type homeCursor struct {
-	Fingerprint string `json:"fingerprint,omitempty"`
-	Row         string `json:"row"`
-	Profile     string `json:"profile"`
-	Viewer      string `json:"viewer"`
-	Direction   string `json:"direction"`
-	Value       string `json:"value"`
-	ID          string `json:"id"`
-	Limit       int    `json:"limit"`
-	Offset      int    `json:"offset"`
-	Catalog     int64  `json:"catalog"`
-	Revision    int64  `json:"revision"`
-	Expires     int64  `json:"expires"`
+	EvaluationAt string `json:"evaluationAt,omitempty"`
+	Fingerprint  string `json:"fingerprint,omitempty"`
+	Row          string `json:"row"`
+	Profile      string `json:"profile"`
+	Viewer       string `json:"viewer"`
+	Direction    string `json:"direction"`
+	Value        string `json:"value"`
+	ID           string `json:"id"`
+	Limit        int    `json:"limit"`
+	Offset       int    `json:"offset"`
+	Catalog      int64  `json:"catalog"`
+	Revision     int64  `json:"revision"`
+	Expires      int64  `json:"expires"`
 }
 
 func (s *Service) encodeHomeCursor(value homeCursor) (string, error) {
@@ -466,7 +468,7 @@ func (s *Service) encodeHomeCursor(value homeCursor) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
-func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision ContentRevision) (homeCursor, error) {
+func (s *Service) readSignedHomeCursor(raw string) (homeCursor, error) {
 	var out homeCursor
 	if len(raw) > 4096 {
 		return out, ErrCursor
@@ -491,6 +493,14 @@ func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision Con
 	mac.Write(data)
 	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, &out) != nil {
 		return out, ErrCursor
+	}
+	return out, nil
+}
+
+func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision ContentRevision) (homeCursor, error) {
+	out, err := s.readSignedHomeCursor(raw)
+	if err != nil {
+		return out, err
 	}
 	if out.Row != expected.Row || out.Profile != expected.Profile || out.Viewer != expected.Viewer || out.Direction != expected.Direction || out.Limit != expected.Limit {
 		return out, ErrCursor
@@ -550,7 +560,7 @@ func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage,
 			return nil, 0, 0, "", "", e
 		}
 	}
-	base := homeCursor{Fingerprint: src.fingerprint, Row: spec.ID, Profile: profile, Viewer: viewer, Direction: spec.Direction, Limit: limit, Catalog: revision.Catalog, Revision: revision.Viewer}
+	base := homeCursor{EvaluationAt: src.evaluationAt, Fingerprint: src.fingerprint, Row: spec.ID, Profile: profile, Viewer: viewer, Direction: spec.Direction, Limit: limit, Catalog: revision.Catalog, Revision: revision.Viewer}
 	if page.Cursor != "" {
 		if page.Start != 0 || page.AnchorID != "" {
 			return nil, 0, 0, "", "", ErrCursor
@@ -728,6 +738,22 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 			row.SeeAll = &HomeSeeAll{Type: "collection", ResourceID: c.Collection.ID, LibraryID: c.Collection.LibraryID}
 		}
 		return row, nil
+	}
+	// Saved-view continuations evaluate the same relative window as page one.
+	if strings.HasPrefix(spec.ID, homeViewPrefix) && page.Cursor != "" {
+		cursor, err := s.readSignedHomeCursor(page.Cursor)
+		if err != nil {
+			return row, err
+		}
+		if cursor.EvaluationAt != "" {
+			at, err := time.Parse(time.RFC3339Nano, cursor.EvaluationAt)
+			if err != nil {
+				return row, ErrCursor
+			}
+			copy := *s
+			copy.browseInstant = at
+			s = &copy
+		}
 	}
 	src, e := s.homeSource(r, spec)
 	if e != nil {

@@ -13,11 +13,12 @@ import {installPlatformInstallationProvider} from '../../../web-next/src/platfor
 import {nativeInstallation} from './installation';
 import {createDesktopDownloadsHost} from './downloads-host.ts';
 import {createDesktopAppLifetime} from './app-lifetime.ts';
+import {installDesktopCloseHost} from './close-host.ts';
 
 const lifetime=createDesktopAppLifetime();
 const close=()=>{void lifetime.dispose().catch(()=>console.warn('desktop_shutdown_failed'));};
-window.addEventListener('pagehide',close,{once:true});
-lifetime.retain(()=>window.removeEventListener('pagehide',close));
+const closeHost=installDesktopCloseHost({events:window,disposeApp:()=>lifetime.dispose(),acknowledge:()=>nativeWindowBridge.action('close'),onError:()=>console.warn('desktop_shutdown_failed')});
+lifetime.retain(()=>closeHost.dispose());
 async function startDesktop(){
   const native=await nativeWindowBridge.read();lifetime.assertCurrent();
   lifetime.retain(installPlatformInstallationProvider(nativeInstallation));
@@ -39,6 +40,7 @@ async function startDesktop(){
   lifetime.retain(()=>downloads.dispose());
   // The original app owns all screen/router/React assembly and captured viewers.
   await lifetime.importWebApp(()=>import('../../../web-next/src/main.tsx'));
+  if(import.meta.env.DEV)void import('./dev-measurement.ts').then(module=>module.installDesktopMeasurement(lifetime.signal)).catch(()=>console.warn('desktop_measurement_unavailable'));
 }
 void startDesktop().catch(error=>{
   if(!lifetime.signal.aborted&&!(error instanceof DOMException&&error.name==='AbortError'))console.error('desktop_start_failed');

@@ -39,6 +39,9 @@ func registerHTTPContracts(registry *apikit.Registry) error {
 	if err := registerBrowseHTTPContracts(registry); err != nil {
 		return err
 	}
+	if err := registerMusicMixesHTTPContracts(registry); err != nil {
+		return err
+	}
 	if err := registerMetadataHTTPContracts(registry); err != nil {
 		return err
 	}

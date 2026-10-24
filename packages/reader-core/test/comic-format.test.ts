@@ -30,6 +30,25 @@ test('stored and deflated CBZ read actual images in natural page order, never hi
   await assert.rejects(archive.page(2,{width:300,signal:signal()}),{code:'page_invalid'});archive.dispose();await assert.rejects(archive.page(0,{width:300,signal:signal()}),{code:'closed'});
 });
 
+test('ComicInfo Manga Yes keeps default left-to-right reading and preserves archive metadata',async()=>{
+  const bytes=zip([{name:'page2.png',bytes:png},{name:'page1.png',bytes:png},{name:'ComicInfo.xml',bytes:Buffer.from('<ComicInfo><Title>A &amp; B &lt;C&gt;</Title><Writer>McCay &amp; Son</Writer><Manga>Yes</Manga></ComicInfo>')}]);
+  const input=source(bytes),archive=await openComicArchive(input,signal());
+  try {
+    assert.equal(archive.pageCount,2);assert.deepEqual(archive.metadata,{title:'A & B <C>',author:'McCay & Son',direction:'ltr'});
+    const pages=[await archive.page(0,{width:300,signal:signal()}),await archive.page(1,{width:300,signal:signal()})];
+    assert.deepEqual(pages.map(page=>page.name),['page1.png','page2.png']);assert.ok(pages.every(page=>Buffer.from(page.bytes).equals(png)));
+    assert.ok(input.reads.every(range=>range.endExclusive-range.start<=archiveLimits.rangeBytes));
+  }finally{archive.dispose();}
+});
+test('ComicInfo Manga direction is right-to-left only for YesAndRightToLeft',()=>{
+  const info=(manga?:string)=>comicInfo(Buffer.from(`<ComicInfo><Title>T &amp; T</Title><Writer>W &lt;X&gt;</Writer>${manga?`<Manga>${manga}</Manga>`:''}</ComicInfo>`));
+  assert.deepEqual(info('Yes'),{title:'T & T',author:'W <X>',direction:'ltr'});
+  assert.deepEqual(info('YesAndRightToLeft'),{title:'T & T',author:'W <X>',direction:'rtl'});
+  assert.deepEqual(info('No'),{title:'T & T',author:'W <X>',direction:'ltr'});
+  assert.deepEqual(info('Unknown'),{title:'T & T',author:'W <X>',direction:'ltr'});
+  assert.deepEqual(info(),{title:'T & T',author:'W <X>'});
+});
+
 test('offline deflated CBZ extraction does not require a native DecompressionStream',async()=>{
   const previous=Object.getOwnPropertyDescriptor(globalThis,'DecompressionStream');
   const bytes=zip([{name:'page.png',bytes:png,deflate:true}]);

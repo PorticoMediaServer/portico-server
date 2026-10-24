@@ -4,7 +4,8 @@ import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.
 import {parseMediaItem} from '@core/media-item.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
-import {QueueClient} from '@core/playback-v1/queue.ts';
+import {SessionsClient} from '@core/playback-v1/sessions.ts';
+import {QueueClient, type SegmentInput} from '@core/playback-v1/queue.ts';
 import {V1ChannelControl} from '@core/playback-v1/channel-control.ts';
 import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@core/home-selection/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
@@ -21,7 +22,7 @@ import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/opti
 import {audioStreamIndex, qualityChoiceOf, qualityRequest, offeredQualities, type QualityChoice} from '@core/playback-v1/choices.ts';
 import {PlayerOffersService, type PlayerOffersData} from '@core/player-offers.ts';
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitleSnapshot} from '@core/subtitles.ts';
-import type {PlaybackOptions, Session} from '@core/playback-v1/types.ts';
+import type {PlaybackOptions, QueueHeader, Session} from '@core/playback-v1/types.ts';
 import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
 import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyCommand, type PolicyView, type QueuePlaybackFence, type ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import {WebPlayback} from './web-playback.ts';
@@ -41,7 +42,7 @@ import {captureQueueSource, type WebPlaybackQueueSource} from './queue-source.ts
 import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
 import type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
 import type {VideoLike} from './web-media-player.ts';
-import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
+import type {WebPlaybackInfoRead, WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
 
 type ChannelTarget = Readonly<{channel: GuideChannel}>;
 type LocalQueueLease = {preparation: WebLocalQueuePreparation; release(): Promise<void>; retired: boolean; released: boolean};
@@ -55,6 +56,7 @@ type OfferBinding = {
 };
 type Stack = {
   mode: 'server' | 'local'; local?: Readonly<{controller: WebLocalQueue; lease: LocalQueueLease}>;
+  capabilityRejected?: boolean;
   web: WebPlayback; service: PlaybackService; queue: V1QueuePlayer; http: V1Http;
   life: AbortController; offers: PlayerOffersService; optionsClient: PlaybackOptionsClient;
   offs: (() => void)[]; unmount?: () => void; subtitles?: SubtitleService; offSubtitles?: () => void;
@@ -100,6 +102,7 @@ export class WebShellPlaybackRuntime {
   private detachGroup?: () => void;
   private groupRate = 1;
   private localRun = 0;
+  private cataloguePort?: Pick<V1QueuePlayer, 'playSegments'>;
   private readonly localLeases = new Set<LocalQueueLease>();
   private runtimeProblem?: string;
   private policyView: PolicyView | null = null;
@@ -199,10 +202,13 @@ export class WebShellPlaybackRuntime {
         try { const eq = await loadDeviceEqualizer(); if (this.current(stackReference)) stackReference.web.applyEqualizer(eq); }
         catch { if (this.current(stackReference)) { this.runtimeProblem = 'equalizer_unavailable'; this.sync(); } }
       }
+      stackReference.capabilityRejected = false;
       if (!this.env.capabilities && (typeof document === 'undefined' || typeof window === 'undefined')) return;
-      const profile = await (this.env.capabilities ?? browserClientProfile)();
-      if (!this.current(stackReference)) return;
-      await this.capabilityPublisher.publish(profile, life.signal);
+      try {
+        const profile = await (this.env.capabilities ?? browserClientProfile)();
+        if (!this.current(stackReference)) return;
+        await this.capabilityPublisher.publish(profile, life.signal);
+      } catch (error) {stackReference.capabilityRejected = true;throw error;}
     }});
     const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference)});
     // The actual controller retains its ordered stop barrier across consecutive channel starts.
@@ -496,6 +502,32 @@ export class WebShellPlaybackRuntime {
     return controller;
   }
 
+  /** Info reads the current committed report afresh. It neither adopts a session nor
+   * substitutes capabilities/options for source, delivery or renderer measurements. */
+  async readPlaybackInfo(expected:QueuePlaybackFence,signal:AbortSignal):Promise<WebPlaybackInfoRead|null> {
+    if(expected.kind!=='queue'||signal.aborted)return null;
+    const fence=playbackFence(expected),stack=this.require(fence),captured=this.snapshot.session;
+    if(stack.mode!=='server'||!captured||captured.kind!=='vod'||captured.state==='ended'
+      ||captured.id!==fence.sessionId||captured.itemId!==fence.itemId
+      ||captured.presentation.generation!==fence.generation||captured.queue?.entryId!==fence.entryId)return null;
+    const isCurrent=()=>!signal.aborted&&this.current(stack)&&this.matches(fence)
+      &&this.snapshot.session?.revision===captured.revision
+      &&this.snapshot.session?.state!=='ended';
+    if(!isCurrent())return null;
+    const retired=new AbortController(),off=this.subscribe(()=>{if(!isCurrent())retired.abort();});
+    try {
+      const fresh=await new SessionsClient(stack.http).get(fence.sessionId,AbortSignal.any([signal,stack.life.signal,this.life.signal,retired.signal]));
+      if(!isCurrent()||fresh.id!==captured.id||fresh.revision!==captured.revision
+        ||fresh.kind!==captured.kind||fresh.role!==captured.role||fresh.state==='ended'
+        ||fresh.itemId!==fence.itemId||fresh.versionId!==captured.versionId
+        ||fresh.presentation.generation!==fence.generation
+        ||fresh.queue?.queueId!==captured.queue?.queueId||fresh.queue?.entryId!==fence.entryId)return null;
+      return Object.freeze({fence,sessionRevision:fresh.revision,
+        ...(fresh.playbackInfo!==undefined?{playbackInfo:fresh.playbackInfo}:{}),
+        ...(fresh.observedPlayback!==undefined?{observedPlayback:fresh.observedPlayback}:{}),isCurrent});
+    } finally {off();}
+  }
+
   /** A chooser reads real current options without stopping the playing source. Its owner keeps
    * this read alive until the chosen start settles, then closes/disposes the chooser. */
   async readVersions(expected: QueuePlaybackFence, signal: AbortSignal, {excludeFailed = false}: Readonly<{excludeFailed?: boolean}> = {}): Promise<WebPlaybackVersionChoices | null> {
@@ -567,19 +599,39 @@ export class WebShellPlaybackRuntime {
 
   /** Start the whole genuine browse/resource selection. Never expand a visible page locally.
    * The immutable captured selector and original screen lifetime reach server POST and adopt. */
+  /** Canonical catalogue selections supply immutable, capability-checked segments.
+   * This port remains owned by the same viewer runtime and real queue/media stack. */
+  cataloguePlayback(): Pick<V1QueuePlayer, 'playSegments'> {
+    this.assertCurrent();
+    this.cataloguePort ??= Object.freeze<Pick<V1QueuePlayer, 'playSegments'>>({
+      playSegments: async (segments, options = {}) => {
+        if (!options.signal || typeof options.isCurrent !== 'function') problem('stale_selection_context');
+        return this.playQueueSegments(segments, {signal: options.signal, isCurrent: options.isCurrent}, options.startSeconds);
+      },
+    });
+    return this.cataloguePort;
+  }
+
   async playFromQueue(source: WebPlaybackQueueSource, context: WebPlaybackScreenLifetime, options: Readonly<{shuffle?: boolean}> = {}): Promise<void> {
+    this.assertCurrent();
+    if (context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
+    const captured = captureQueueSource(source);
+    if (options.shuffle !== undefined && typeof options.shuffle !== 'boolean') problem('invalid_queue_playback_source');
+    await this.playQueueSegments([{source: captured, order: {mode: options.shuffle ? 'shuffle' : 'source'}}], context);
+  }
+
+  private async playQueueSegments(segments: readonly SegmentInput[], context: WebPlaybackScreenLifetime, startSeconds?: number): Promise<QueueHeader> {
     const check = () => {
       this.assertCurrent();
       if (context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
     };
     check();
-    const captured = captureQueueSource(source);
-    if (options.shuffle !== undefined && typeof options.shuffle !== 'boolean') problem('invalid_queue_playback_source');
-    const shuffle = options.shuffle === true, serial = ++this.operation, stack = this.replace();
+    if (!Array.isArray(segments) || !segments.length || startSeconds !== undefined && !validSeconds(startSeconds)) problem('invalid_queue_playback_source');
+    const serial = ++this.operation, stack = this.replace();
     stack.expanded = true; // Actual metadata collapses music to its real dock in selectSource.
     const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
     const current = () => {
-      if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;
+      if (lifetime.aborted || !this.current(stack) || serial !== this.operation || stack.capabilityRejected) return false;
       try {check();return true;} catch {return false;}
     };
     const cancel = () => {if (this.current(stack) && serial === this.operation) {
@@ -587,12 +639,20 @@ export class WebShellPlaybackRuntime {
     }};
     lifetime.addEventListener('abort', cancel, {once: true});
     try {
-      const queue = await stack.queue.playSegments([{source: captured, order: {mode: shuffle ? 'shuffle' : 'source'}}], {signal: lifetime, isCurrent: current});
+      const queue = await stack.queue.playSegments(segments, {startSeconds, signal: lifetime, isCurrent: current});
       if (!current()) problem('stale_selection_context');
       const session = stack.queue.currentSession(), started = stack.service.getSnapshot();
       if (started.phase === 'error' || !session || session.queue?.queueId !== queue.id || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_start_failed');
-      this.sync();
-    } catch (error) {cancel();throw error;}
+      this.sync();return queue;
+    } catch (error) {
+      let admissionFailed = false;
+      if (stack.capabilityRejected && this.current(stack) && serial === this.operation) {
+        try {check();admissionFailed = true;} catch { /* Original caller retired. */ }
+      }
+      cancel();
+      if (admissionFailed) problem('playback_start_failed');
+      throw error;
+    }
     finally {lifetime.removeEventListener('abort', cancel);}
   }
 

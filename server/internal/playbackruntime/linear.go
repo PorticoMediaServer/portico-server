@@ -213,7 +213,7 @@ func (l *LinearRuntime) run(ctx context.Context) {
 	urgent, unsubscribe := l.owner.wake.Subscribe()
 	defer unsubscribe()
 	shared := workerloop.NewSignal()
-	unregister := dbwork.WakeOnCommit(shared)
+	unregister := watchLinearWork(shared)
 	defer unregister()
 	lastReconcile := time.Time{}
 	workerloop.RunWith(ctx, "playbackruntime.linear", urgent, shared, func(ctx context.Context) time.Duration {
@@ -1197,4 +1197,18 @@ func (l *LinearRuntime) checkProducerWithPatience(ctx context.Context, w playbac
 		case <-timer.C:
 		}
 	}
+}
+
+// watchLinearWork follows this runtime's durable inputs; clock-only expiry
+// still runs through worker.SafetyTick. Unrelated telemetry is not work.
+func watchLinearWork(signal *workerloop.Signal) func() {
+	return dbwork.WakeOnTables(signal,
+		"playback_channel_*", "lc_*", "live_source_*", "live_channel_*", "playback_sessions", "playback_v1_sessions", "playback_owner_policy",
+		"live_allocations", "live_sources", "live_source_settings", "live_channel_versions",
+		"live_programmes", "live_programme_metadata", "catalog_entities", "catalog_libraries",
+		"library_sources", "library_revisions", "server_settings", "console_settings_revision",
+		"authorization_*", "accounts", "direct_profiles", "direct_memberships",
+		"direct_profile_trust", "restrictions", "hosted_*", "identity_devices",
+		"profile_*", "media_process_*",
+	)
 }

@@ -1048,7 +1048,7 @@ func (h *HLS) noteServed(ctx context.Context, id string, index int, cfg Delivery
 
 func (h *HLS) Run(ctx context.Context) {
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnCommit(wake)
+	unregister := watchHLSMaintenance(wake)
 	defer unregister()
 	defer h.cancelAll()
 	defer h.closeOrphanDirectory()
@@ -1183,4 +1183,17 @@ func (h *HLS) observeConversion(ctx context.Context, id string, generation int) 
 		})
 	}
 	return observe, finish
+}
+
+// watchHLSMaintenance follows this runtime's durable inputs; clock-only expiry
+// still runs through worker.SafetyTick. Unrelated telemetry is not work.
+func watchHLSMaintenance(signal *worker.Signal) func() {
+	return dbwork.WakeOnTables(signal,
+		"playback_sessions", "playback_v1_sessions", "playback_source_pins", "playback_artifacts",
+		"playback_hls_reservations", "playback_hls_demand", "playback_hls_windows", "playback_delivery_plans",
+		"playback_owner_policy", "catalog_assets", "catalog_asset_links", "inventory_objects",
+		"library_sources", "server_settings", "console_settings_revision", "authorization_*",
+		"accounts", "direct_profiles", "direct_memberships", "profile_*",
+		"media_process_*",
+	)
 }

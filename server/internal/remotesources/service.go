@@ -123,12 +123,12 @@ func (s *Service) RefreshMounts(ctx context.Context) error {
 	tx := gated.Tx()
 	defer gated.Rollback()
 	for _, m := range rows {
-		_, err = tx.Exec(`INSERT INTO remote_sources(id,kind,name,root,generation,range_support,credential_present,mount_id) VALUES(?,'rclone',?,?,?,'sequential',1,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,generation=excluded.generation,removed=?,state=CASE WHEN ? THEN 'removing' WHEN remote_sources.generation!=excluded.generation THEN 'ready' ELSE remote_sources.state END,error_code=CASE WHEN remote_sources.generation!=excluded.generation THEN '' ELSE remote_sources.error_code END`, m.ID, m.Name, m.MountPath, m.BackendRevision, m.ID, m.RemovalPending, m.RemovalPending)
+		_, err = tx.Exec(`INSERT INTO remote_sources(id,kind,name,root,generation,range_support,credential_present,mount_id) VALUES(?,'rclone',?,?,?,'sequential',1,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,generation=excluded.generation,removed=?,state=CASE WHEN ? THEN 'removing' WHEN remote_sources.generation!=excluded.generation THEN 'ready' ELSE remote_sources.state END,error_code=CASE WHEN remote_sources.generation!=excluded.generation THEN '' ELSE remote_sources.error_code END WHERE remote_sources.name IS NOT excluded.name OR remote_sources.generation IS NOT excluded.generation OR remote_sources.removed IS NOT ?`, m.ID, m.Name, m.MountPath, m.BackendRevision, m.ID, m.RemovalPending, m.RemovalPending, m.RemovalPending)
 		if err != nil {
 			return err
 		}
 	}
-	if _, err = tx.Exec(`UPDATE remote_sources SET removed=1,state='removed' WHERE kind IN('rclone','sftp','smb') AND NOT EXISTS(SELECT 1 FROM managed_mounts m WHERE m.id=remote_sources.mount_id)`); err != nil {
+	if _, err = tx.Exec(`UPDATE remote_sources SET removed=1,state='removed' WHERE kind IN('rclone','sftp','smb') AND (removed!=1 OR state!='removed') AND NOT EXISTS(SELECT 1 FROM managed_mounts m WHERE m.id=remote_sources.mount_id)`); err != nil {
 		return err
 	}
 	if err = gated.Commit(); err != nil {
@@ -406,7 +406,8 @@ func (s *Service) Run(ctx context.Context) {
 		s.mu.Unlock()
 	}()
 	wake := worker.NewSignal()
-	dbwork.WakeOnCommit(wake)
+	stopWake := registerRemoteSourceWake(wake)
+	defer stopWake()
 	worker.Run(ctx, "remotesources", wake, func(ctx context.Context) time.Duration {
 		_ = s.RefreshMounts(ctx)
 		// Completed/failed old scan listings are disposable adapter cache; current

@@ -1396,6 +1396,7 @@ catalog_shows.network
 catalog_shows.original_title
 catalog_shows.overview
 catalog_shows.provider_match_status
+catalog_shows.source_edition
 catalog_shows.studio
 catalog_shows.tagline
 catalog_shows.tags
@@ -2243,6 +2244,13 @@ inventory_analysis_queue.object_id
 inventory_analysis_queue.policy_revision
 inventory_analysis_queue.revision
 inventory_analysis_queue.state
+inventory_artwork_candidates.art_key
+inventory_artwork_candidates.asset_id
+inventory_artwork_candidates.entity_id
+inventory_artwork_candidates.kind
+inventory_artwork_candidates.object_id
+inventory_artwork_candidates.role
+inventory_artwork_candidates.source_revision
 inventory_artwork_sources.art_key
 inventory_artwork_sources.asset_id
 inventory_artwork_sources.entity_id
@@ -4476,6 +4484,14 @@ reading_progress.source_revision
 reading_publications.asset_id
 reading_publications.format
 reading_publications.item_id
+reading_source_values.asset_id
+reading_source_values.field
+reading_source_values.inventory_object_id
+reading_source_values.item_id
+reading_source_values.number_value
+reading_source_values.source
+reading_source_values.source_revision
+reading_source_values.text_value
 rec_data_revision.id
 rec_data_revision.revision
 rec_profile_jobs.profile_id

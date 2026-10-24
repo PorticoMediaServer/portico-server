@@ -10,11 +10,11 @@ import {browseToolbarModel} from '../src/presentation/kit-model/browse.ts';
 const field = (id: string, type: string, operators: readonly string[]) => ({id, type, operators, labelKey: `browse.field.${id}`, controlHint: type === 'identity-set' ? 'facet-multi-select' : type === 'enum' ? 'select' : type === 'date' ? 'date-range' : 'number-range', ...(type === 'enum' ? {allowedValues: ['unplayed', 'in-progress', 'played']} : {}), applicableKinds: ['movie']});
 const caps = parseBrowseCapabilities({library: {id: 'actual-library', name: 'Movies', kind: 'movie', defaultView: 'browse'},
   pivots: [{id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid', 'list'], browsable: true}],
-  fields: [field('genre', 'identity-set', ['contains-any', 'in']), field('year', 'number', ['between', 'at-least']), field('decade', 'number', ['equals', 'in']), field('playState', 'enum', ['equals']), field('durationMs', 'number', ['at-most', 'at-least', 'between']), field('communityRating', 'number', ['at-least']), field('dateAdded', 'date', ['at-least'])],
+  fields: [field('genre', 'identity-set', ['contains-any', 'in']), field('year', 'number', ['between', 'at-least']), field('decade', 'number', ['equals', 'in']), field('playState', 'enum', ['equals']), field('durationMs', 'number', ['at-most', 'at-least', 'between']), field('communityRating', 'number', ['at-least']), field('dateAdded', 'date', ['at-least', 'within-last-days']), field('releaseDate', 'date', ['within-last-days']), field('lastPlayedAt', 'date', ['within-last-days'])],
   quickFilters: [{id: 'unwatched', labelKey: 'filter.unwatched', query: {field: 'playState', operator: 'equals', value: 'unplayed'}}, {id: 'in-progress', labelKey: 'filter.inProgress', query: {field: 'playState', operator: 'equals', value: 'in-progress'}}],
   sorts: ['title', 'added', 'duration', 'communityRating', 'lastPlayed'].map(id => ({id, labelKey: `sort.${id}`, directions: ['asc', 'desc'], defaultDirection: 'asc', applicableKinds: ['movie']})),
   queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 10000}});
-const node = (field: string, operator: 'equals' | 'contains-any' | 'in' | 'at-most' | 'at-least' | 'between', value: string | number | readonly (string | number)[]): BrowseNode => ({field, operator, value});
+const node = (field: string, operator: 'equals' | 'contains-any' | 'in' | 'at-most' | 'at-least' | 'between' | 'within-last-days', value: string | number | readonly (string | number)[]): BrowseNode => ({field, operator, value});
 const definition = (query: BrowseNode | null, field = 'title', direction: 'asc' | 'desc' = 'asc'): SavedDefinition => ({libraryId: 'actual-library', pivot: 'movies', query, sort: [{field, direction}], presentation: 'grid'});
 
 test('§38 six drawn Saved tile summaries and conditions-only TV names are exact', t => {
@@ -89,4 +89,19 @@ test('one shared stable field ordering feeds both toolbar models, retaining whol
   }
   const unranked = [{field: 'unranked-one', operator: 'equals', value: 1}, {all: [node('genre', 'contains-any', ['Action'])]}, {field: 'unranked-two', operator: 'equals', value: 2}];
   assert.deepEqual(orderToolbarPredicates(unranked), unranked);
+});
+
+
+test('relative date summaries retain their meaning on later days and use the §38 vector', t => {
+  t.mock.timers.enable({apis: ['Date'], now: new Date('2026-10-23T12:00:00Z')});
+  for (const count of [1, 7, 30, 90, 365, 36500]) {
+    const d = definition(node('dateAdded', 'within-last-days', count), 'added', 'desc');
+    const expected = `Added in the last ${new Intl.NumberFormat(defaultI18n.locale).format(count)} days. Newest first.`;
+    assert.equal(savedViewSummary(d, caps, defaultI18n)?.line, expected);
+    t.mock.timers.tick(86400000);
+    assert.equal(savedViewSummary(d, caps, defaultI18n)?.line, expected);
+  }
+  for (const [field, label] of [['releaseDate', 'Release date'], ['lastPlayedAt', 'Last played']]) {
+    assert.equal(savedViewSummary(definition(node(field, 'within-last-days', 30)), caps, defaultI18n)?.conditions, `${label} in the last 30 days`);
+  }
 });

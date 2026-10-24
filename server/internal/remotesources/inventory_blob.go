@@ -141,7 +141,7 @@ func inventorySidecarCandidate(operation, file string) bool {
 		return false
 	}
 	switch ext {
-	case ".nfo", ".opf", ".cue", ".jpg", ".jpeg", ".png", ".webp":
+	case ".nfo", ".opf", ".cue", ".jpg", ".jpeg", ".png", ".webp", ".tbn":
 		return true
 	case ".json":
 		return name == "metadata.json" || strings.HasSuffix(name, ".portico.json")

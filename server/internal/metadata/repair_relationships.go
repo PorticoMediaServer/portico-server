@@ -167,6 +167,9 @@ func (s *Service) RepairPreview(ctx context.Context, t RepairTarget, merge *Repa
 	if err != nil {
 		return out, err
 	}
+	if readingRepairKind(ent.itemKind) {
+		return out, ErrRepairInput
+	}
 	out.Revision, err = repairRevision(ctx, tx, t, snap, ent)
 	if err != nil {
 		return out, err

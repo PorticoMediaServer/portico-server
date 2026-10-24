@@ -17,6 +17,7 @@ import type {BrowseController, BrowseMember} from './controller';
 import type {BrowseItemActions} from './EntryCard';
 import styles from './browse.module.css';
 import {browsePresentation, type BrowsePresentation, type ScreenAppearance} from './appearance';
+import type {LibraryPlaySelection} from './play-selection';
 
 export type {BrowsePresentation} from './appearance';
 export type LibraryBindings = Readonly<{
@@ -35,7 +36,7 @@ export type LibraryBindings = Readonly<{
   onPivot?: (pivot: string) => void;
   libraryMenu: ReactNode;
   /** Required real selection bar and per-entry capabilities from the selected viewer. */
-  selection: Readonly<{toolbar?: ReactNode; actions: (member: BrowseMember, index: number) => BrowseItemActions; registerWindow?: (first: number, last: number) => void}>;
+  selection: Readonly<{toolbar?: ReactNode; actions: (member: BrowseMember, index: number) => BrowseItemActions; registerWindow?: (first: number, last: number) => void; playSelection?: LibraryPlaySelection}>;
   familyForEntry?: Parameters<typeof BrowseResults>[0]['familyForEntry'];
   scopeLibraries?: readonly Library[];
   shape?: 'poster' | 'square' | 'collection';
