@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {schemas} from '../src/schemas.ts';
 
 test('existing playback offers retain sparse source trace facts on their delivery plan', () => {
-  const plan = schemas.GetItemsIdPlaybackOffersResponse.properties.deliveryPlan.anyOf[0];
+  const plan = schemas.GetItemsIdPlaybackOffersResponse.properties.deliveryPlan;
   const video = plan.properties.trace.properties.video;
   const audio = plan.properties.trace.properties.audio;
   for (const key of ['interlaced', 'dolbyVisionRpu', 'dolbyVisionBaseLayer'] as const) {
