@@ -228,6 +228,7 @@ async function main() {
   }
 
   let signedIn = false;
+  let sessionProfileSwitch = false;
   const libraryNames = [];
   const check = (id, run, options) => report.check(id, async () => { await recover(); return run(); }, options);
 
@@ -685,9 +686,16 @@ async function main() {
         }
         assert(choice, `the menu offers no ${wanted} profile to switch to`);
         await choice.click({timeout: 8000});
-        await settle(page, {quiet: 2000});
-        const after = await who();
-        assert(after && new RegExp(wanted, 'i').test(after), `the shell still shows ${after} after choosing ${wanted}`);
+        await settle(page, {quiet: 1500});
+        // The shell rebuilds its facts after a switch; poll rather than trust one settle window.
+        let after = null;
+        for (let attempt = 0; attempt < 15; attempt++) {
+          after = await who();
+          if (after && new RegExp(wanted, 'i').test(after)) break;
+          await page.waitForTimeout(800);
+        }
+        assert(after && new RegExp(wanted, 'i').test(after), `the shell still shows ${after} after choosing ${wanted} (15 seconds)`);
+        sessionProfileSwitch = true;
         // Put it back so later checks run on the owner profile.
         const menu2 = await findAny(page, [{role: 'button', name: /account menu|switch profile/i}, {css: '[data-profile-menu]'}], {timeout: 4000});
         if (menu2) {
@@ -793,7 +801,7 @@ async function main() {
             const last = hits[hits.length - 1];
             return {path, status: last ? last.status : 'absent', count: hits.length};
           });
-          const payload = JSON.stringify({identityReads,
+          const payload = JSON.stringify({profileSwitchBeforeSettings: sessionProfileSwitch, identityReads,
             me: apiState.me ? {role: apiState.me.role, profileIdKnown: !!apiState.viewerProfileId} : null,
             account: apiState.account || null,
             direct: apiState.direct ? {canManage: apiState.direct.canManage, capabilityKeys: apiState.direct.capabilityKeys, granted: apiState.direct.granted,
