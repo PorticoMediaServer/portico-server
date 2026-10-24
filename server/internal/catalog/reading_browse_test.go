@@ -241,15 +241,19 @@ func TestReadingBrowseAvailabilityUsesOnlyTheSelectedReadingPublication(t *testi
 }
 
 func TestReadingBrowseRelativeFacetBindsItsEvaluationInstant(t *testing.T) {
-	c,s,viewer,items:=readingBrowseFixture(t,"book")
-	c.Exec(`INSERT INTO catalog_item_details(entity_id,added_text) VALUES(?,?) ON CONFLICT(entity_id) DO UPDATE SET added_text=excluded.added_text`,items[0].ID,"2026-10-24T12:00:00Z")
+	c, s, viewer, items := readingBrowseFixture(t, "book")
+	c.Exec(`INSERT INTO catalog_item_details(entity_id,added_text) VALUES(?,?) ON CONFLICT(entity_id) DO UPDATE SET added_text=excluded.added_text`, items[0].ID, "2026-10-24T12:00:00Z")
 	c.Drain()
-	now:=time.Date(2026,10,24,13,0,0,0,time.UTC)
-	s.Clock=func() time.Time{return now}
-	request:=FacetRequest{Library:"reading",Field:"author",Query:&BrowseNode{Field:"dateAdded",Operator:"within-last-days",Value:float64(1)}}
-	first,err:=s.Facets(viewer,request)
-	if err!=nil||first.Total!=1||len(first.Values)!=1||first.Values[0].Count!=1 {t.Fatalf("current relative facet %+v %v",first,err)}
-	now=now.Add(48*time.Hour)
-	later,err:=s.Facets(viewer,request)
-	if err!=nil||later.Total!=0||len(later.Values)!=0||later.Revision==first.Revision {t.Fatalf("relative facet reused an older instant %+v %v",later,err)}
+	now := time.Date(2026, 10, 24, 13, 0, 0, 0, time.UTC)
+	s.Clock = func() time.Time { return now }
+	request := FacetRequest{Library: "reading", Field: "author", Query: &BrowseNode{Field: "dateAdded", Operator: "within-last-days", Value: float64(1)}}
+	first, err := s.Facets(viewer, request)
+	if err != nil || first.Total != 1 || len(first.Values) != 1 || first.Values[0].Count != 1 {
+		t.Fatalf("current relative facet %+v %v", first, err)
+	}
+	now = now.Add(48 * time.Hour)
+	later, err := s.Facets(viewer, request)
+	if err != nil || later.Total != 0 || len(later.Values) != 0 || later.Revision == first.Revision {
+		t.Fatalf("relative facet reused an older instant %+v %v", later, err)
+	}
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
- "errors"
+	"errors"
 	"fmt"
 	"portico.local/server/internal/requestinput"
 	"sort"
@@ -528,7 +528,7 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 		}
 		var ok bool
 		pivot, ok = pivotForKind(lib.Kind, id)
-		if !ok || isReadingLibrary(lib.Kind)&&!pivot.Browsable {
+		if !ok || isReadingLibrary(lib.Kind) && !pivot.Browsable {
 			return "", nil, "", ErrBrowsePivot
 		}
 		if pivot.Aggregate != "" {
@@ -566,9 +566,11 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 			compiler.kinds = append(compiler.kinds, int(kind))
 		}
 	}
-	readingEligible,err:=s.bindReadingBrowse(request.Library,compiler)
-	if err!=nil {return "",nil,"",err}
-	where+=" AND "+readingEligible
+	readingEligible, err := s.bindReadingBrowse(request.Library, compiler)
+	if err != nil {
+		return "", nil, "", err
+	}
+	where += " AND " + readingEligible
 	clause, err := compiler.compile(withoutSelectedGenreAnchor(query, anchor))
 	if err != nil {
 		return "", nil, "", err
@@ -586,7 +588,9 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 	// The revision also binds the library and query vocabulary when used inside
 	// one library, so a cached aggregate cannot cross its pivot or source.
 	revision += ":" + request.Library + ":" + queryFingerprint(query)
-	if compiler.reading!=nil {revision += ":"+compiler.reading.fence()}
+	if compiler.reading != nil {
+		revision += ":" + compiler.reading.fence()
+	}
 	return `SELECT e.entity_id,e.library_id,e.year FROM catalog_browse_rows e WHERE ` + where, args, revision, nil
 }
 

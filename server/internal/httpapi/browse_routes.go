@@ -23,8 +23,8 @@ import (
 // browseFailure answers a validation error with the offending path so a client
 // can attach the message to the control that produced it.
 func browseFailure(w http.ResponseWriter, e error) {
-	if errors.Is(e,catalog.ErrReadingProjectionChanged) {
-		policyError(w,"revision_mismatch")
+	if errors.Is(e, catalog.ErrReadingProjectionChanged) {
+		policyError(w, "revision_mismatch")
 		return
 	}
 	var issue *catalog.BrowseValidationError
@@ -392,7 +392,7 @@ func (d Dependencies) projectBrowseDisplay(r *http.Request, p identity.Principal
 
 func registerBrowseCountRoutes(registry *apikit.Registry, d Dependencies) error {
 	failures := []string{"invalid_request", "invalid_query", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}
-	if err := apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_library_counts", Method: "POST", Path: "/v1/libraries/{id}/browse/counts", Summary: "Read bounded counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: append(append([]string{},failures...),"revision_mismatch")}, Serve: d.browseCountsHandler}); err != nil {
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_library_counts", Method: "POST", Path: "/v1/libraries/{id}/browse/counts", Summary: "Read bounded counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: append(append([]string{}, failures...), "revision_mismatch")}, Serve: d.browseCountsHandler}); err != nil {
 		return err
 	}
 	return apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_across_counts", Method: "POST", Path: "/v1/browse/counts", Summary: "Read bounded group counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: failures}, Serve: d.browseCountsHandler})
@@ -421,7 +421,13 @@ func (d Dependencies) browseCountsHandler(w http.ResponseWriter, r *http.Request
 	}
 	var out catalog.BrowseCountBatch
 	err = d.composeScope(r, viewer.Restrictions, func(ctx context.Context, cat *catalog.Service) error {
-		if library!="" {var e error;viewer,e=d.readingBrowseViewer(ctx,p,library,viewer);if e!=nil {return e}}
+		if library != "" {
+			var e error
+			viewer, e = d.readingBrowseViewer(ctx, p, library, viewer)
+			if e != nil {
+				return e
+			}
+		}
 		sources := map[string]catalog.HomeRowMembership{}
 		for _, q := range body.Queries {
 			rows, e := d.resolveHomeRows(r.WithContext(ctx), p, viewer, q.Query, cat)

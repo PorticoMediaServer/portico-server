@@ -176,10 +176,12 @@ func (s *Service) readingFacetPage(viewer Viewer, request FacetRequest, r *readi
 	if request.Sort != "" && request.Sort != "title" && request.Sort != "count" {
 		return out, browseIssue("sort", "Reading facets sort by title or count")
 	}
-	query:=browseAnd(request.Group,request.Query)
+	query := browseAnd(request.Group, request.Query)
 	var err error
-	s,err=s.withBrowseInstant(query,"")
-	if err!=nil {return out,err}
+	s, err = s.withBrowseInstant(query, "")
+	if err != nil {
+		return out, err
+	}
 	c := &browseCompiler{reading: r, now: s.recommendationNow(s.browseInstant), profile: viewer.Profile, restrictions: viewer.EffectiveRestrictions()}
 	clause, err := c.compile(query)
 	if err != nil {

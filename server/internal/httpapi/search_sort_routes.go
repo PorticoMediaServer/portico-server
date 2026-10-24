@@ -7,7 +7,7 @@ import (
 
 func registerSearchSortRoutes(registry *apikit.Registry, d Dependencies) error {
 	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}
-	libraryFailures := append(append([]string{},failures...),"revision_mismatch")
+	libraryFailures := append(append([]string{}, failures...), "revision_mismatch")
 	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, catalog.SearchEnvelope]{Metadata: apikit.Metadata{Admission: laneExpensive, ID: "search", Method: "GET", Path: "/v1/search", Summary: "Search titles, people, years and collections", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
 		Query: []string{"q", "group", "groups", "cursor", "limit", "sort", "direction", "libraryIds", "record"}, Errors: failures,
 	}, Serve: d.searchHandler}); err != nil {
