@@ -395,13 +395,22 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	// global IPv6 and a NAT'd IPv4 used to be skipped entirely and never learned its IPv4.
 	wanSource := ""
 	freshWAN := ""
-	if c.Enabled && q.Scope.ID != "" && !hasPublicIPv4(topo) {
+	if c.Enabled && q.Scope.ID != "" {
 		var ip netip.Addr
-		ip, wanSource = m.wan.Observe(ctx, topo, port, topologyChanged)
-		if ip.IsValid() && WANSourceFresh(wanSource) {
-			freshWAN = ip.String()
+		if hasPublicIPv4(topo) {
+			// A directly bound public interface is an address observation, not a
+			// reachability proof. Feed the ordinary certificate route namer too;
+			// otherwise its route tuple stays empty on a non-NAT host forever.
+			ip = directCertificateIPv4(topo, cert.Config.PublicAddress)
+		} else {
+			ip, wanSource = m.wan.Observe(ctx, topo, port, topologyChanged)
+			if ip.IsValid() && WANSourceFresh(wanSource) {
+				freshWAN = ip.String()
+			} else {
+				ip = netip.Addr{}
+			}
 		}
-		if freshWAN != "" && ip.String() != cert.Config.PublicAddress {
+		if ip.IsValid() && ip.String() != cert.Config.PublicAddress {
 			if changed, err := m.h.certificates.observedPublicAddress(ctx, ip.String()); err == nil && changed {
 				cert.Config.PublicAddress = ip.String()
 				state.NextAttempt = time.Time{}
