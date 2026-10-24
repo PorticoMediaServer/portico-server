@@ -656,6 +656,54 @@ async function main() {
       });
     }
 
+    if (signedIn && want('profile-switch')) {
+      await check('profile-switch', async () => {
+        const who = async () => page.evaluate(() => {
+          const button = [...document.querySelectorAll('button')].find(b => /account menu|switch profile/i.test(b.getAttribute('aria-label') || ''));
+          return button ? (button.getAttribute('aria-label') || '') : null;
+        });
+        await page.goto(origin + '/', {waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 1800});
+        const before = await who();
+        assert(before, 'the shell draws no account menu');
+        const wanted = /Review/i.test(before) ? 'justin' : 'Review';
+        const menu = await findAny(page, [{role: 'button', name: /account menu|switch profile/i}, {css: '[data-profile-menu]'}], {timeout: 4000});
+        assert(menu, 'the account menu is not reachable');
+        await menu.click({timeout: 8000});
+        await settle(page, {quiet: 700});
+        // The menu may list profiles directly or offer a "Switch profile" step first.
+        let choice = await findAny(page, [{role: 'menuitem', name: new RegExp(wanted, 'i')}, {role: 'button', name: new RegExp(wanted, 'i')}], {timeout: 2500});
+        if (!choice) {
+          const step = await findAny(page, [{role: 'menuitem', name: /switch profile/i}, {role: 'button', name: /switch profile/i}], {timeout: 2500});
+          if (step) {
+            await step.click({timeout: 8000});
+            await settle(page, {quiet: 1200});
+            choice = await findAny(page, [{role: 'button', name: new RegExp(wanted, 'i')}, {role: 'menuitem', name: new RegExp(wanted, 'i')}], {timeout: 3000});
+          }
+        }
+        assert(choice, `the menu offers no ${wanted} profile to switch to`);
+        await choice.click({timeout: 8000});
+        await settle(page, {quiet: 2000});
+        const after = await who();
+        assert(after && new RegExp(wanted, 'i').test(after), `the shell still shows ${after} after choosing ${wanted}`);
+        // Put it back so later checks run on the owner profile.
+        const menu2 = await findAny(page, [{role: 'button', name: /account menu|switch profile/i}, {css: '[data-profile-menu]'}], {timeout: 4000});
+        if (menu2) {
+          await menu2.click({timeout: 8000});
+          await settle(page, {quiet: 700});
+          let back = await findAny(page, [{role: 'menuitem', name: /justin/i}, {role: 'button', name: /justin/i}, {role: 'menuitem', name: /Review/i}], {timeout: 2500});
+          if (!back) {
+            const step = await findAny(page, [{role: 'menuitem', name: /switch profile/i}, {role: 'button', name: /switch profile/i}], {timeout: 2000});
+            if (step) { await step.click({timeout: 6000}); await settle(page, {quiet: 1000}); back = await findAny(page, [{role: 'button', name: /justin/i}, {role: 'menuitem', name: /justin/i}], {timeout: 3000}); }
+          }
+          if (back) { await back.click({timeout: 8000}); await settle(page, {quiet: 1800}); }
+        }
+        const restored = await who();
+        return {detail: `switched ${wanted === 'Review' ? 'justin -> Review' : 'Review -> justin'}; shell label now ${restored}`,
+          evidence: {screenshot: await evidence.shot(page, 'profile-switch'), before, after, restored}};
+      });
+    }
+
     if (signedIn && want('settings')) {
       await check('settings', async () => {
         await page.goto(origin + '/settings', {waitUntil: 'domcontentloaded'});
