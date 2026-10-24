@@ -121,7 +121,7 @@ test('compact Home keeps its account action and tab navigation without a private
   assert.ok(header);assert.equal(mounts, 0);
   assert.equal((header.match(/<button\b/g) ?? []).length, 1);
   assert.match(header, /aria-label="Actual profile, account menu"/);
-  assert.match(html, /<nav[^>]*class="tabbar"[^>]*>.*href="\/search".*href="\/libraries".*href="\/saved"/s);
+  assert.match(html, /<nav[^>]*class="tabbar"[^>]*>.*href="\/search".*>Libraries<\/span>.*href="\/saved"/s);
   assert.doesNotMatch(html, /phoneActivity|i-activity|aria-label="Server activity"|data-nav-activity|Owner-only reads/);
 });
 test('desktop retains only its existing real owner Activity component and non-Home mobile routes add no header glyph', () => {
