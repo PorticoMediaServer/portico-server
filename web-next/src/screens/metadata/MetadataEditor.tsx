@@ -9,7 +9,7 @@ import styles from './metadata.module.css';
 const t = defaultI18n.t;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
 type Draft = Readonly<Record<string, {value: string; locked: boolean}>>;
-type Tab = 'general' | 'artwork' | 'tags' | 'matching' | 'history';
+type Tab = 'general' | 'artwork' | 'tags' | 'people' | 'matching' | 'history';
 
 /** Only the tabs this type really has: no list fields means no Tags tab, no roles means no Artwork. */
 function tabsFor(data: RepairData | undefined): readonly Tab[] {
@@ -18,6 +18,8 @@ function tabsFor(data: RepairData | undefined): readonly Tab[] {
   if (!data || data.schema.some(spec => spec.type === 'list')) tabs.push('tags');
   // Only a type the server actually matches online has a Matching tab (frame 10); a local-only
   // book has none because there is nothing to match against (frame 13).
+  // Frame 9: credits exist only where the type carries them; an empty list is not a tab.
+  if (data && data.snapshot.relationships.length) tabs.push('people');
   if (data && (data.snapshot.identity || data.candidates.length)) tabs.push('matching');
   tabs.push('history');
   return tabs;
@@ -77,6 +79,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
     {data && state.phase !== 'loading' ? <>
       {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
+      {shown === 'people' ? <People data={data} busy={state.phase === 'saving'} onRemove={index => void run({action: 'edit_relationships', relationships: data.snapshot.relationships.filter((_, at) => at !== index)})} /> : null}
       {shown === 'matching' ? <Matching data={data} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
@@ -213,4 +216,16 @@ function Matching({data, busy, onSearch, onUse}: {
       </div>;
     })}
   </div>;
+}
+
+
+/** Frame 9: one row per credit from the server's own relationship list. Removal sends the
+ * remaining list back unchanged; adding a person needs the producer's new-relationship shape,
+ * so it is not drawn as a dead button here. */
+function People({data, busy, onRemove}: {data: RepairData; busy: boolean; onRemove: (index: number) => void}) {
+  return <div className={styles.fields}>{data.snapshot.relationships.map((row, index) =>
+    <div key={`${row.kind}:${row.targetId}:${row.ordinal}:${index}`} className={styles.candidate}>
+      <div><b>{row.label}</b><small>{[row.department, row.role].filter(Boolean).join(' · ')}{row.source ? ` · ${row.source}` : ''}{row.locked ? ` · ${t('web.metadata.locked')}` : ''}</small></div>
+      <Button size="small" disabled={busy || row.locked} onClick={() => onRemove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
+    </div>)}</div>;
 }
