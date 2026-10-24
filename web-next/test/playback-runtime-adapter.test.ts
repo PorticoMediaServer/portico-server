@@ -2461,8 +2461,9 @@ test('subtitle choices preserve the offered clock exactly and refuse fractional 
    if(!request.path.includes('/playback-offers?'))return response;
    const body=response.body as {current:{sessionId:string;generation:number;sourceId:string};controls:{id:string;enabled:boolean;reason:string}[]};
    const current=body.current;
-   return {...response,body:{...body,controls:body.controls.map(control=>control.id==='subtitles'?{...control,enabled:true,reason:''}:control),subtitlePlan:{version:1,sessionId:current.sessionId,generation:current.generation,sourceId:current.sourceId,revision:1,catalogRevision:1,
-    renderer:'external_text',mode:'off',offAvailable:true,offsetUs:'0',selected:null,resources:[{id:'s4',sourceId:current.sourceId,revision:1,scope:'personal',language:'en',title:'English',format:'vtt',origin:'upload',rights:'Own transcript',offsetUs,canManage:true,enabled:true}],discovered:[]}}};
+   const resource={id:'s4',sourceId:current.sourceId,revision:1,scope:'personal',language:'en',title:'English',format:'vtt',origin:'upload',rights:'Own transcript',offsetUs,canManage:true,enabled:true};
+   return {...response,body:{...body,current:{...current,subtitleSelection:'track'},controls:body.controls.map(control=>control.id==='subtitles'?{...control,enabled:true,reason:''}:control),subtitlePlan:{version:1,sessionId:current.sessionId,generation:current.generation,sourceId:current.sourceId,revision:1,catalogRevision:1,
+    renderer:'external_text',mode:'track',offAvailable:true,offsetUs,selected:{...resource,pinned:true,renderer:'external_text'},documentUrl:'/v1/media/subtitles/grant/s4/1',resources:[resource],discovered:[]}}};
   });
   await f.runtime.play('movie');await f.arrive();const fence=f.runtime.getSnapshot().fence!;
   assert.equal(f.runtime.getSnapshot().offers!.subtitlePlan!.resources[0]!.offsetUs,offsetUs);
