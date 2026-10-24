@@ -59,6 +59,7 @@ test('frame 3 draws About with Rated and the collection banner with honest membe
     assert.match(body, /About/);
     assert.match(body, /Rated/);
     assert.match(body, /PG-13/);
+    assert.match(body, /from the novel by Frank Herbert/);
     // The producer counts every visible member; it never claims a film-only total.
     assert.match(body, /Part of a collection/);
     assert.match(body, /Dune/);

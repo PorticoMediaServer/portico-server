@@ -225,14 +225,15 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
 export function TitleDetails({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const {item, facts, metadata} = data, collection = data.collections?.[0], {artwork} = binding.context;
   const language = (code: string) => { try { return new Intl.DisplayNames(locale(), {type: 'language'}).of(code) ?? code; } catch { return code; } };
-  const directors = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director'), writers = metadata.credits.filter(credit => /writer|writing|screenplay|teleplay|novel/i.test(credit.role));
+  const directors = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director'), writers = metadata.credits.filter(credit => /writer|writing|screenplay|teleplay/i.test(credit.role)), novelists = metadata.credits.filter(credit => /novel/i.test(credit.role));
+  const fromNovel = () => { const [before, after] = t('next.detail.fromNovel', {names: '\uFFF0'}).split('\uFFF0'); return <>{before}<CreditNames binding={binding} data={data} credits={novelists} />{after}</>; };
   const rows: (readonly [string, ReactNode])[] = [
     [t('title.releaseDate'), calendarDate(facts?.releaseDate, locale())],
     [t('library.column.runtime'), titleFactParts({durationSeconds: item.duration}, env).find(part => part.id === 'duration')?.text],
     [t('title.genres'), metadata.genres.length ? <GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /> : undefined],
     [t('next.show.rated'), facts?.contentRating],
     [t('title.directedByLabel'), directors.length ? <CreditNames binding={binding} data={data} credits={directors} /> : undefined],
-    [t('title.writtenByLabel'), writers.length ? <CreditNames binding={binding} data={data} credits={writers} /> : undefined],
+    [t('title.writtenByLabel'), writers.length || novelists.length ? <>{writers.length > 0 && <CreditNames binding={binding} data={data} credits={writers} />}{writers.length > 0 && novelists.length > 0 && ', '}{novelists.length > 0 && fromNovel()}</> : undefined],
     [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country], [t('title.edition'), facts?.edition],
     [t('next.selection.language'), facts?.originalLanguage ? language(facts.originalLanguage) : undefined],
     [t('title.audio'), data.languages.audio.map(language).join(', ')], [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')],
