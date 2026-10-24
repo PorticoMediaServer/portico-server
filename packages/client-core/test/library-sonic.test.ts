@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {librarySonicAvailable,readLibrarySonic,retryLibrarySonic,saveLibrarySonic} from '../src/server-admin/library-sonic.ts';
 import type {LibraryContentApi} from '../src/library-content.ts';
 
-const status=(changes:Record<string,unknown>={})=>({libraryId:'library/a',available:true,enabled:false,revision:3,policyAllows:false,state:'disabled',done:2,total:4,policyRevision:5,observedAtMs:1000,...changes});
+const status=(changes:Record<string,unknown>={})=>({libraryId:'library/a',available:true,enabled:false,defaultEnabled:true,revision:3,policyAllows:false,state:'disabled',done:2,total:4,policyRevision:5,observedAtMs:1000,...changes});
 function api(handler:(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>unknown):LibraryContentApi{
  return {async request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>{return await handler(path,method,body,signal) as T;}};
 }
@@ -21,6 +21,12 @@ test('Sonic parser refuses missing or malformed readiness, wrong library and unk
  for(const value of [missing,status({available:null}),status({available:'ready'}),status({available:1}),status({libraryId:'other'}),status({state:'ready'}),status({revision:0}),status({done:-1})]){
   await assert.rejects(readLibrarySonic(api(()=>value),'library/a'));
  }
+});
+test('Sonic factory default is a required producer fact independent of the stored choice',async()=>{
+ const missing=status();delete (missing as Partial<typeof missing>).defaultEnabled;
+ for(const value of [missing,status({defaultEnabled:null}),status({defaultEnabled:'true'}),status({defaultEnabled:1})])await assert.rejects(readLibrarySonic(api(()=>value),'library/a'));
+ const doc=await readLibrarySonic(api(()=>status()),'library/a');
+ assert.equal(doc.enabled,false);assert.equal(doc.defaultEnabled,true);assert.equal(doc.revision,3);
 });
 test('Sonic read, CAS save and retry use only the generated library routes and exact bodies',async()=>{
  const calls:unknown[][]=[];

@@ -11,6 +11,7 @@ import type {PlaybackApi, PlaybackSession} from '../index.ts';
 import {idempotencyKey, PlaybackApiError, type V1Http} from './http.ts';
 import {PlaybackOptionsClient} from './options.ts';
 import {SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
+import {requireSessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
 import {parseSessionEnd, type Session, type SessionEnd} from './types.ts';
@@ -93,23 +94,35 @@ export class V1PlaybackApi implements PlaybackApi {
    * engine) at the player's position. A revision that moved meanwhile is read again once, so the
    * viewer only ever sees a conflict when the session really ended.
    */
-  async change(id: string, change: SessionChange, durationSeconds?: number): Promise<{session: Session; playback: PlaybackSession}> {
+  async change(id: string, change: SessionChange, durationSeconds?: number, context?: SessionChangeContext): Promise<{session: Session; playback: PlaybackSession}> {
+    requireSessionChangeCurrent(context);
     const t = this.tracked.get(id);
     // The new stream starts where this device is: the change says so itself, and the server is
     // told first as well, so its record of the old presentation ends at the same place.
     const positionMs = change.positionMs ?? change.seek?.positionMs ?? t?.positionMs;
     const body: SessionChange = positionMs !== undefined && change.positionMs === undefined && change.seek === undefined ? {...change, positionMs: Math.max(0, Math.round(positionMs))} : change;
-    if (t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
-    let current = await this.sessions.get(id);
+    // A strict command carries the same measured position in PATCH; an extra timeline
+    // flush could independently invoke ended-session recovery before its guarded replan.
+    if (context?.recoverEnded !== false && t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
+    requireSessionChangeCurrent(context);
+    const checkSession = (session: Session) => {
+      requireSessionChangeCurrent(context);
+      if (context && session.id !== id) throw new Error('Playback session changed during replan');
+      if (context?.recoverEnded === false && session.state === 'ended') throw new PlaybackApiError(410, 'session_ended', 'never');
+    };
+    let current = await this.sessions.get(id, context?.signal);checkSession(current);
     let updated: Session;
     try {
-      updated = await this.sessions.patch(id, current.revision, body);
+      updated = await this.sessions.patch(id, current.revision, body, context?.signal);
     } catch (e) {
+      requireSessionChangeCurrent(context);
       if (!(e instanceof PlaybackApiError) || e.status !== 412) throw e;
-      current = (e.current as Session | undefined) ?? await this.sessions.get(id);
-      updated = await this.sessions.patch(id, current.revision, body);
+      current = (e.current as Session | undefined) ?? await this.sessions.get(id, context?.signal);checkSession(current);
+      updated = await this.sessions.patch(id, current.revision, body, context?.signal);
     }
-    const duration = durationSeconds ?? await this.duration(updated.itemId ?? '', updated.versionId);
+    checkSession(updated);
+    const duration = durationSeconds ?? await this.duration(updated.itemId ?? '', updated.versionId, context?.signal);
+    checkSession(updated);
     return {session: updated, playback: this.adopt(updated, duration)};
   }
 

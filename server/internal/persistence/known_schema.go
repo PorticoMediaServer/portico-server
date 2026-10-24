@@ -417,6 +417,7 @@ index mb_song_recording
 index mb_song_release
 index mb_tag_source_field
 index media_analysis_item_candidates
+index metadata_artwork_size_requests_due
 index metadata_details_provider
 index metadata_discovery_snapshot
 index metadata_document_freshness_checked
@@ -1065,6 +1066,8 @@ table media_analysis_formats
 table media_analysis_item_mappings
 table media_analysis_streams
 table member_password_resets
+table metadata_artwork_size_requests
+table metadata_artwork_size_sweep
 table metadata_details
 table metadata_discovery_items
 table metadata_discovery_refresh

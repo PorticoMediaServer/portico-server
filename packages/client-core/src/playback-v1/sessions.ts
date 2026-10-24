@@ -20,6 +20,8 @@ import type {QualityRequest} from './quality.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
 import {TimelineReporter, type TimelineReport, type TimelineReporterOptions} from './timeline.ts';
 import {parseSession, parseSessionEnd, type Session, type SessionEnd} from './types.ts';
+import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
+export type {SessionChangeContext} from './change-context.ts';
 
 export type StartTarget =
   | Readonly<{itemId: string}>
@@ -231,7 +233,7 @@ export class PlaybackSessionController {
     const body: StartOptions = {...options, ...(previous && this.state.phase === 'active' && !options.replacesSessionId ? {replacesSessionId: previous.id} : {})};
     this.lastStart = {target, options};
     this.retireReporter();
-    this.publish({phase: 'starting', error: undefined, ended: undefined});
+    this.publish({phase: 'starting', error: undefined, ended: undefined, changing: false});
     try {
       const session = await this.client.start(target, body, this.key(), {signal, onPreparing: () => { if (token === this.startToken) this.publish({phase: 'preparing'}); }});
       if (token !== this.startToken || this.disposed || signal?.aborted) {
@@ -394,9 +396,12 @@ export class PlaybackSessionController {
    * Send a change. Changes are serialised; on 412 the controller adopts the server's session and
    * re-applies this change only if no newer change is waiting (newest intent wins, invariant 2).
    */
-  change(change: SessionChange): Promise<Session | undefined> {
+  change(change: SessionChange, context?: SessionChangeContext): Promise<Session | undefined> {
+    try {requireSessionChangeCurrent(context);} catch (error) {return Promise.reject(error);}
     const token = this.startToken, sessionId = this.state.session?.id;
-    const owns = () => !this.disposed && token === this.startToken && sessionId === this.state.session?.id && this.state.phase === 'active';
+    const holds = () => !this.disposed && token === this.startToken && sessionId === this.state.session?.id && this.state.phase === 'active';
+    const owns = () => holds() && (!context || serial === this.changeSerial && sessionChangeCurrent(context));
+    const check = () => {if (!owns()) throw new DOMException('Playback change retired', 'AbortError');};
     // A change that re-plans carries where the player is, so the new presentation starts there
     // and not at the last report (which can be a report interval old).
     const at = this.state.observation?.positionMs;
@@ -404,26 +409,29 @@ export class PlaybackSessionController {
     const serial = ++this.changeSerial;
     const run = async (): Promise<Session | undefined> => {
       const session = this.state.session;
-      if (!session || !owns()) return undefined;
-      this.publish({changing: true});
       try {
+        if (!session || !owns()) {if (context) check();return undefined;}
+        this.publish({changing: true});
         // A change that makes new bytes resumes where the server last heard this device was:
         // tell it now, so the new stream starts at the picture's position, not ten seconds back.
-        if (change.quality || change.audio || change.versionId || change.partIndex !== undefined) await this.reporter?.flush().catch(() => {});
-        if (!owns()) return undefined;
+        if (context?.recoverEnded !== false && (change.quality || change.audio || change.versionId || change.partIndex !== undefined)) await this.reporter?.flush().catch(() => {});
+        if (!owns()) {if (context) check();return undefined;}
         let updated: Session;
         try {
-          updated = await this.client.patch(session.id, session.revision, change);
+          updated = await this.client.patch(session.id, session.revision, change, context?.signal);
         } catch (e) {
-          if (!owns()) return undefined;
+          if (!owns()) {if (context) check();return undefined;}
           if (!(e instanceof PlaybackApiError) || e.status !== 412 || !e.current) throw e;
           if ((e.current as Session).id !== session.id) throw e;
-          if ((e.current as Session).state === 'ended') { void this.serverEnded((e.current as Session).end); return undefined; }
+          if ((e.current as Session).state === 'ended') {if (context?.recoverEnded === false) throw new PlaybackApiError(410, 'session_ended', 'never');void this.serverEnded((e.current as Session).end); return undefined;}
+          if (context) check();
           this.adopt(e.current as Session, this.wantsPlaying ? this.wantsPlaying() : this.state.observation?.state !== 'paused');
           if (serial !== this.changeSerial) return this.state.session;
-          updated = await this.client.patch((e.current as Session).id, (e.current as Session).revision, change);
+          updated = await this.client.patch((e.current as Session).id, (e.current as Session).revision, change, context?.signal);
         }
-        if (!owns()) return undefined; // replaced meanwhile
+        if (!owns()) {if (context) check();return undefined;} // replaced meanwhile
+        if (context && (updated.id !== session.id || updated.presentation.generation < (this.state.session?.presentation.generation ?? 0))) throw new Error('Playback session changed during replan');
+        if (context?.recoverEnded === false && updated.state === 'ended') throw new PlaybackApiError(410, 'session_ended', 'never');
         // The old stream kept playing while the server prepared the new one: the new one starts
         // where the picture is now, not where it was when the change was asked for.
         const now = this.player.observe();
@@ -431,12 +439,12 @@ export class PlaybackSessionController {
         this.adopt(updated, this.autoplay(updated), resume);
         return updated;
       } catch (e) {
-        if (!owns()) return undefined;
-        if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) { void this.serverEnded(); return undefined; }
+        if (!owns()) {if (context) check();return undefined;}
+        if (context?.recoverEnded !== false && e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) { void this.serverEnded(); return undefined; }
         this.publish({error: e as Error});
         throw e;
       } finally {
-        if (owns() && serial === this.changeSerial) this.publish({changing: false});
+        if (holds() && serial === this.changeSerial) this.publish({changing: false});
       }
     };
     const p = this.changeChain.then(run, run);

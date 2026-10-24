@@ -138,6 +138,11 @@ func readingOwnerLogin(t *testing.T, r *readingFixture) identity.DirectSignIn {
 
 func readingScan(t *testing.T, f *v1Fixture, library string) {
 	t.Helper()
+	readingScanWithin(t, f, library, 30*time.Second)
+}
+
+func readingScanWithin(t *testing.T, f *v1Fixture, library string, timeout time.Duration) {
+	t.Helper()
 	scan := ingestion.New(f.db, f.cat, assets.Probe{})
 	scan.SetStorage(f.deps.Storage)
 	job, err := scan.Queue(library)
@@ -155,7 +160,7 @@ func readingScan(t *testing.T, f *v1Fixture, library string) {
 			t.Error("reading scanner did not stop")
 		}
 	})
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(timeout)
 	for {
 		state, err := scan.Get(job.ID)
 		if err != nil {
