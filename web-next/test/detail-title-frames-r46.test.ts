@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
+import {readFileSync} from 'node:fs';
 import {defaultI18n} from '@i18n';
 import {transformTsx} from './transform-tsx.mjs';
 
@@ -107,4 +108,13 @@ test('frame 3 draws About with Rated and the collection banner with honest membe
     assert.match(body, new RegExp(defaultI18n.t('next.home.openCollection')));
     assert.match(body, new RegExp(defaultI18n.t('shelf.seeAllCount', {count: 64}).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   } finally { service.dispose(); }
+});
+
+test('the phone route owns its drawn back bar instead of the shell chrome', () => {
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
+  const route = read('../src/screens/detail/Item.route.tsx'), detail = read('../src/screens/detail/Detail.tsx'), css = read('../src/screens/detail/detail.module.css');
+  assert.match(route, /phoneChrome: 'standalone'/);
+  assert.match(detail, /standalonePhone/);
+  assert.match(detail, /styles\.phoneTopBar/);
+  assert.match(css, /\.phoneTopBar/);
 });
