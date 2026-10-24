@@ -8,10 +8,10 @@ const viewer: Viewer = {accountId: 'account', profileId: 'profile', serverId: 's
 const json = (value: unknown) => new Response(JSON.stringify(value), {status: 200, headers: {'Content-Type': 'application/json'}});
 const row = (over: Partial<GetReadingItemsResponse['items'][number]> = {}) => ({id: 'book', libraryId: 'library', title: 'Stored title', format: 'pdf', sourceId: 'asset', inventoryAvailable: true, ...over});
 function setup(reply: (path: string) => unknown) {
-  const calls: URL[] = [];
+  const calls: {url: URL; headers: Headers}[] = [];
   let current = true;
-  const fetcher: typeof fetch = async input => {
-    const url = new URL(String(input)); calls.push(url); return json(reply(url.pathname));
+  const fetcher: typeof fetch = async (input, init = {}) => {
+    const url = new URL(String(input)); calls.push({url, headers: new Headers(init.headers)}); return json(reply(url.pathname));
   };
   const client = new HttpLocalApi('http://127.0.0.1:39117', 'captured-token', fetcher).reading({viewer, isCurrent: () => current});
   return {client, calls, retire() { current = false; }};
