@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/rcloneprogram"
 	"sync/atomic"
 
@@ -22,6 +23,10 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 		return nil, storage.ErrRemoteConfig
 	}
 	if err := s.authorize(life, authorize); err != nil {
+		return nil, err
+	}
+	profile, err := s.candidateProfile(life, input.Current)
+	if err != nil {
 		return nil, err
 	}
 	raw := append([]byte(nil), input.Configuration...)
@@ -83,7 +88,7 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 				return storage.ErrRemoteConfig
 			}
 			defer clear(raw)
-			err := s.testCandidate(ctx, input, raw, program, approved, approvals, authorize)
+			err := s.testCandidate(ctx, input, raw, program, approved, approvals, profile, authorize)
 			if err == nil {
 				tested.Store(true)
 			}
@@ -105,6 +110,20 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 			if err := s.authorize(ctx, authorize); err != nil {
 				return err
 			}
+			if input.Current != nil {
+				snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+				if err != nil {
+					return err
+				}
+				actual, err := SourceReadProfileTx(ctx, snapshot.Tx(), input.Current.ID)
+				snapshot.Rollback()
+				if err != nil {
+					return err
+				}
+				if actual != profile {
+					return storage.ErrRemoteChanged
+				}
+			}
 			checked.Store(true)
 			return nil
 		},
@@ -117,6 +136,15 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 			}
 			if err := authorize(tx); err != nil {
 				return err
+			}
+			if input.Current != nil {
+				actual, err := SourceReadProfileTx(ctx, tx, input.Current.ID)
+				if err != nil {
+					return err
+				}
+				if actual != profile {
+					return storage.ErrRemoteChanged
+				}
 			}
 			var generation int64
 			var root, selectedRemote string

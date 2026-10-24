@@ -114,11 +114,8 @@ func (s *Service) candidateProfile(ctx context.Context, current *mounts.Mount) (
 	return SourceReadProfileTx(ctx, snapshot.Tx(), current.ID)
 }
 
-func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidateInput, raw []byte, program rcloneprogram.Program, digest string, approvals []remotemedia.Approval, authorize func(*sql.Tx) error) error {
-	profile, err := s.candidateProfile(ctx, input.Current)
-	if err != nil {
-		return err
-	}
+func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidateInput, raw []byte, program rcloneprogram.Program, digest string, approvals []remotemedia.Approval, profile SourceReadProfile, authorize func(*sql.Tx) error) error {
+	var err error
 	check := func(ctx context.Context) error {
 		snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
 		if err != nil {

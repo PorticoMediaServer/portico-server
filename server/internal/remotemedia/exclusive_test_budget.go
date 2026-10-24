@@ -47,9 +47,11 @@ func (b *OperationBudget) AcquireTest(ctx context.Context) (*ExclusiveTest, erro
 		return nil, ErrBusy
 	}
 	test := &ExclusiveTest{budget: b}
+	test.life, test.cancel = context.WithTimeout(ctx, sourceTestHold)
 	b.mu.Lock()
 	if b.exclusive != nil {
 		b.mu.Unlock()
+		test.cancel()
 		return nil, ErrBusy
 	}
 	b.exclusive = test
@@ -60,7 +62,7 @@ func (b *OperationBudget) AcquireTest(ctx context.Context) (*ExclusiveTest, erro
 			test.Close()
 		}
 	}()
-	drain, cancelDrain := context.WithTimeout(ctx, sourceTestDrain)
+	drain, cancelDrain := context.WithTimeout(test.life, sourceTestDrain)
 	defer cancelDrain()
 	for {
 		b.mu.Lock()
@@ -70,6 +72,9 @@ func (b *OperationBudget) AcquireTest(ctx context.Context) (*ExclusiveTest, erro
 			return nil, err
 		}
 		if err := b.life.Err(); err != nil {
+			return nil, err
+		}
+		if err := test.life.Err(); err != nil {
 			return nil, err
 		}
 		if active == 0 {
@@ -86,7 +91,6 @@ func (b *OperationBudget) AcquireTest(ctx context.Context) (*ExclusiveTest, erro
 			return nil, b.life.Err()
 		}
 	}
-	test.life, test.cancel = context.WithTimeout(ctx, sourceTestHold)
 	stopSource := context.AfterFunc(b.life, test.cancel)
 	test.operations = NewOperationBudget(test.life, b.capacity)
 	context.AfterFunc(test.life, func() { test.Close(); stopSource() })
