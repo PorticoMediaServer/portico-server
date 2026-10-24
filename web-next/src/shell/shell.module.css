@@ -49,7 +49,7 @@
 .shell[data-pointer='coarse'] button, .shell[data-pointer='coarse'] a { min-height: 44px; min-width: 44px; }
 .navigation { position: relative; z-index: var(--layer-navigation); view-transition-name: nav; }
 .topnav { position: fixed; z-index: var(--layer-navigation); inset: 0 0 auto; height: 76px; display: flex; align-items: center; gap: 40px; padding: 0 var(--shell-gutter); background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 78%, transparent), transparent); }
-.topnav[data-solid='true'] { background: color-mix(in srgb, var(--color-ink) 88%, transparent); backdrop-filter: blur(24px); }
+.topnav[data-solid='true'] { background: color-mix(in srgb, var(--color-ink) 88%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.2); backdrop-filter: blur(22px) saturate(1.2); box-shadow: 0 1px 0 color-mix(in srgb, var(--color-text) 8%, transparent); }
 .topnav .avatar[data-current] { box-shadow: 0 0 0 2px var(--color-ink), 0 0 0 4px var(--color-accent); }
 /* Only the installed native host supplies these OS/fullscreen facts. Shared media siblings inherit the clearances. */
 :global(:root:has([data-window-os='macos'][data-window-fullscreen='false'])) { --window-chrome-left-clearance: 104px; }
