@@ -38,7 +38,10 @@ def main():
             assert len(result.stdout) == 8 + 250 * 4 and result.stdout[:8] == b"PSNC0001"
             numeric = struct.unpack("<250f", result.stdout[8:])
             assert all(math.isfinite(value) for value in numeric)
-            assert abs(sum(value * value for value in numeric[:200]) - 1) < 1e-5
+            # PSNC0001 carries the original dense activations, not unit vectors.
+            # Runtime.Run averages patches and normalizes before publication.
+            energy = sum(value * value for value in numeric[:200])
+            assert math.isfinite(energy) and energy > 0, (case, energy)
             assert all(0 <= value <= 1 for value in numeric[200:])
             outputs.append(numeric)
         error = max(abs(a - b) for a, b in zip(*outputs))
