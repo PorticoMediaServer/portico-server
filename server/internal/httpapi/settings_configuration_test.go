@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 )
 
@@ -77,5 +78,50 @@ func TestSettingsConfigurationOwnerReadAndCommittedRuntimeRefresh(t *testing.T) 
 	}
 	if current := adapter.Delivery(); calls != 2 || current.MaxMusicQuality != "original" || current.ConversionMode != "all" {
 		t.Fatal("owner save did not refresh current delivery exactly once", calls, current)
+	}
+}
+
+func TestSettingsConfigurationRestrictionClassificationAndOwnerMainProfile(t *testing.T) {
+	const pattern = "GET /v1/admin/settings/configuration"
+	route, ok := restrictionRoutes()[pattern]
+	if !ok || route.probe == nil || route.reason != "" {
+		t.Fatal("configuration needs a genuine restricted-viewer probe, not an admin exemption")
+	}
+	m := buildRestrictionMatrix(t)
+	paths := route.probe(m)
+	if len(paths) != 1 || paths[0] != "/v1/admin/settings/configuration" {
+		t.Fatal("configuration probe missed its actual route", paths)
+	}
+	m.check(t, pattern, "restricted", "GET", paths[0], "")
+	if code, body := m.call("GET", paths[0], "", "restricted"); code != 403 {
+		t.Fatalf("valid restricted viewer: %d %s", code, body)
+	}
+	f := administrationFixtureNew(t)
+	ctx := context.Background()
+	if err := f.deps.Console.InitializeConfiguration(ctx, filepath.Join(t.TempDir(), "portico.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if response := f.call("GET", paths[0], f.owner, ""); response.Code != 200 {
+		t.Fatal("current owner main profile refused", response.Code, response.Body.String())
+	}
+	profiles, err := f.deps.Identity.CreateDirectProfile(ctx, f.owner, "Secondary owner", "blue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var child string
+	for _, profile := range profiles.Profiles {
+		if !profile.Primary && profile.Name == "Secondary owner" {
+			child = profile.ID
+		}
+	}
+	if child == "" {
+		t.Fatal("no genuine secondary owner profile")
+	}
+	selected, err := f.deps.Identity.SelectDirectProfile(ctx, f.owner, child, identity.DirectSelection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := f.call("GET", paths[0], selected.Session.AccessToken, ""); response.Code != 403 {
+		t.Fatal("secondary owner profile read server configuration", response.Code, response.Body.String())
 	}
 }
