@@ -1,8 +1,6 @@
 import {createRoot} from 'react-dom/client';
 import type {HttpLocalApi} from '@core/index.ts';
 import {FreshnessProvider} from '../../platform/freshness';
-import {createArtworkRuntime} from '../../kit/artwork/source';
-import type {ArtworkImage} from '../../kit/artwork/types';
 import {SearchScreen} from './Search';
 import {createSearchBindings} from './bindings';
 import {IconSprite} from '../../kit/Icon';
@@ -54,7 +52,6 @@ const guideChannel = (channel: ChannelFixture, programmes: readonly unknown[]) =
   preferenceRevision: 0, programmes, tuneAvailable: true, recordAvailable: true, favorite: false, hidden: false, mark: channel.mark});
 const programme = (channel: ChannelFixture) => ({id: 'programme-' + channel.id, channelId: channel.id, title: channel.title,
   subtitle: channel.subtitle, start: channel.start, end: channel.end, flags: channel.live ? {live: true} : undefined});
-const artworkData = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="36"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2f4f63"/><stop offset="1" stop-color="#10212d"/></linearGradient></defs><rect width="64" height="36" fill="url(#g)"/></svg>');
 
 async function fixture(path: string): Promise<unknown> {
   const url = new URL(path, 'https://fixture.invalid');
@@ -75,8 +72,6 @@ async function fixture(path: string): Promise<unknown> {
   throw new Error('No specimen fixture for ' + url.pathname);
 }
 
-const artwork = createArtworkRuntime({scopeKey: serverId, classify: () => ({retryable: false}),
-  load: async (): Promise<ArtworkImage> => ({src: artworkData, bytes: 0, width: 64, height: 36})});
 const effective = {'search.rememberHistory': true, 'appearance.cardSizePercent': 100, 'appearance.showBackdrops': true};
 const preferenceSnapshot = {effective} as never;
 const preferences = {getSnapshot: () => preferenceSnapshot, subscribe: () => () => {}};
@@ -89,7 +84,8 @@ const api = {
 const context = {
   api: api as unknown as HttpLocalApi, events: null, scope: {serverId, viewerId: '["local","account","profile"]'},
   isCurrent: () => true, identity: {liveAvailable: true} as never, preferences,
-  artwork: {foreground: (url: string | undefined) => url ? artwork.source({url, cacheKey: url}) : undefined, ambient: () => undefined} as never,
+  // No fabricated paint: the kit's own empty art slot is the specimen's neutral picture.
+  artwork: {foreground: () => undefined, ambient: () => undefined} as never,
   effects: {openEntry: () => {}, openSettings: () => {}, openBrowse: () => {}, play: async () => {}, reportError: () => {}},
 } as unknown as ScreenContext;
 const binding = createSearchBindings(context);
