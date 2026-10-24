@@ -622,3 +622,56 @@ func TestSeedLocalArtworkRefreshesAKeyRetainedUnderAnOldFence(t *testing.T) {
 		t.Fatalf("refresh duplicated the candidate: %d (%v)", rows, err)
 	}
 }
+
+// A committed prefix longer than the reader's full page must not hide a missing
+// tail: the domain reader excludes committed tuples, so the missing page holds
+// exactly the tail.
+func TestSeedLocalArtworkMaterializesAMissingTailPastACommittedPrefix(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "alttail")
+	first := namedCandidate{"poster-first.jpg", 1, fmt.Sprintf("%064x", 9999)}
+	seedNamedAlternatives(t, db, "alttail", movie, "poster", []namedCandidate{first})
+	fence := seedLocalArtworkToCompletion(t, db, "item", movie)
+	for n := 1; n <= 1105; n++ {
+		key := fmt.Sprintf("%064x", n)
+		mustExec(t, db, `INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,'item',?,'poster','','local',?,?,'Local artwork',?,'now')`,
+			fmt.Sprintf("prefix-%d", n), movie.ID, key, "local:"+key, fence)
+	}
+	tail := make([]namedCandidate, 0, 10)
+	for n := 1300; n < 1310; n++ {
+		tail = append(tail, namedCandidate{fmt.Sprintf("poster-%d.jpg", n), int64(1024 + n), fmt.Sprintf("%064x", n)})
+	}
+	seedNamedAlternatives(t, db, "alttail", movie, "poster", tail)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(origins) != 1105+1+len(tail) {
+		t.Fatalf("materialized %d rows, want the committed prefix plus the missing tail", len(origins))
+	}
+	for _, candidate := range tail {
+		if !containsOrigin(origins, candidate.key) {
+			t.Fatalf("missing tail image %s was not materialized", candidate.name)
+		}
+	}
+}
+
+// A rank/name-only change among already-materialized keys moves the preferred
+// default even though no candidate is missing, because the helper runs for
+// every slot on every pass.
+func TestSeedLocalArtworkRequeuesWhenOnlyTheRankOrderChanges(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altrank")
+	a, b := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	seedNamedAlternatives(t, db, "altrank", movie, "poster", []namedCandidate{
+		{"poster-a.jpg", 1025, a},
+		{"poster-b.jpg", 1026, b},
+	})
+	seedLocalArtworkToCompletion(t, db, "item", movie)
+	if jobs := localArtworkJobs(t, db, movie.ID, "poster"); len(jobs) != 1 || jobs[0] != "local:"+a {
+		t.Fatalf("initial default %v, want poster-a", jobs)
+	}
+	// Rank-only change: b becomes preferred and nothing is missing.
+	mustExec(t, db, `UPDATE inventory_artwork_candidates SET source_rank=1024 WHERE art_key=?`, b)
+	mustExec(t, db, `UPDATE inventory_artwork_candidates SET source_rank=1027 WHERE art_key=?`, a)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
+	if jobs := localArtworkJobs(t, db, movie.ID, "poster"); len(jobs) != 1 || jobs[0] != "local:"+b {
+		t.Fatalf("rank change did not move the default: %v", jobs)
+	}
+}

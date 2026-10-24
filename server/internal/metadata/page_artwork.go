@@ -194,26 +194,16 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 }
 
 // localArtworkCandidatePage bounds the materialization work of one discovery
-// call: at most this many candidates are written for a slot and committed. The
-// locate read may use the reader's full 128-tuple page so a restarted process
-// finds the first unseeded ordered tuple in a bounded number of index reads.
-const (
-	localArtworkCandidatePage   = 8
-	localArtworkCandidateLocate = 128
-	// localArtworkCandidateLocatePages bounds one call's locate reads. The
-	// current reader cannot exclude committed tuples, so a slot with more than
-	// this many accepted tuples keeps its dirty row and waits for the domain
-	// page that skips them; it never walks an unbounded page stream in one call.
-	localArtworkCandidateLocatePages = 8
-)
+// call: at most this many candidates are written for a slot and committed,
+// including the primary upserts.
+const localArtworkCandidatePage = 8
 
 // seedLocalArtworkAlternatives seeds the numbered sidecar images the scan
 // accepted for a head's slot (inventory_artwork_candidates), after the primary
-// local_artwork images above. The primary, an owner lock or a pending local job
-// already holds the slot, so an alternative only queues a fetch when nothing
-// else does — it never replaces a choice. One worker call advances at most one
-// slot by one page; the caller keeps the target's dirty row until every slot
-// reports a short page, so later calls continue from committed progress.
+// local_artwork images above. One worker call materializes at most one bounded
+// missing page for one slot; the caller keeps the target's dirty row until every
+// slot reports no missing accepted image, so later calls continue from committed
+// progress.
 func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, fence, now string, budget int) (bool, error) {
 	if t.Kind != "item" && t.Kind != "show" && t.Kind != "season" {
 		return true, nil
@@ -221,118 +211,58 @@ func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarge
 	complete := true
 	seeded := false
 	for _, role := range []string{"poster", "backdrop", "logo"} {
-		if seeded {
+		if !seeded {
+			done, count, err := seedLocalArtworkCandidateCall(ctx, tx, t, entity, role, fence, now, budget)
+			if err != nil {
+				return false, err
+			}
+			if count > 0 {
+				seeded = true
+			}
+			if !done {
+				complete = false
+			}
+		} else {
 			// This role was not examined in this call; the dirty row keeps it
 			// for the next one.
 			complete = false
-			break
 		}
-		done, count, err := seedLocalArtworkCandidateCall(ctx, tx, t, entity, role, fence, now, budget)
-		if err != nil {
+		// Always let the central helper re-evaluate the preferred default: a
+		// rank/name-only change among already-materialized keys moves it even
+		// when no candidate is missing.
+		if err := queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
 			return false, err
-		}
-		if count > 0 {
-			seeded = true
-		}
-		if !done {
-			complete = false
 		}
 	}
 	return complete, nil
 }
 
-// seedLocalArtworkCandidateCall materializes at most one page (eight) of the
-// ordered accepted images for one slot and reports whether that was the rest of
-// the stream. It only records candidates: the central ranked-default helper then
-// queues the preferred already-materialized image, so no alternate auto-selects
-// itself and the helper consumes none of the eight-candidate budget. The
-// committed candidate rows are the whole continuation state: a later call (or a
-// restarted process) rederives the first unseeded ordered tuple from them, so no
-// cursor column, filename guess or private position is stored.
+// seedLocalArtworkCandidateCall materializes one bounded page of the ordered
+// accepted images that have no current-fence local candidate yet, and reports
+// whether that was the whole missing page. The domain reader exempts committed
+// tuples, so one query per slot is enough: no history map, no locate loop and no
+// stored cursor, and a late accepted image below or inside the committed range
+// still surfaces first. It only records candidates; the checked ranked-default
+// helper (invoked by the caller for every slot) queues the preferred one.
 func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string, budget int) (bool, int, error) {
-	var after *catalog.LocalArtworkCandidateCursor
-	var err error
-	page := []catalog.LocalArtworkCandidateCursor{}
-	index := -1
-	for read := 0; ; read++ {
-		if read == localArtworkCandidateLocatePages {
-			// Bounded: this call stops rather than reading the whole stream.
-			// The dirty row stays, and the domain page that skips committed
-			// tuples is the minimal way to finish larger slots.
-			if err = queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
-				return false, 0, err
-			}
-			return false, 0, nil
-		}
-		page, err = catalog.ReadLocalArtworkCandidatePageTx(ctx, tx, t.Kind, entity, role, after, localArtworkCandidateLocate)
-		if err != nil {
-			return false, 0, err
-		}
-		seeded, err := localArtworkPageSeeded(ctx, tx, t, entity, role, fence, page)
-		if err != nil {
-			return false, 0, err
-		}
-		for n, candidate := range page {
-			if !seeded[candidate.Key] {
-				index = n
-				break
-			}
-		}
-		if index >= 0 || len(page) < localArtworkCandidateLocate {
-			break
-		}
-		last := page[len(page)-1]
-		after = &last
+	limit := budget
+	if limit < 1 {
+		limit = 1
 	}
-	if index < 0 {
-		if err = queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
-			return false, 0, err
-		}
-		return true, 0, nil
+	page, err := catalog.ReadUnmaterializedLocalArtworkCandidatePageTx(ctx, tx, t.Kind, entity, role, fence, nil, limit)
+	if err != nil {
+		return false, 0, err
 	}
-	remaining := len(page) - index
-	seed := remaining
-	if seed > budget {
-		seed = budget
+	seed := 0
+	if budget > 0 {
+		seed = len(page)
 	}
-	for _, candidate := range page[index : index+seed] {
+	for _, candidate := range page[:seed] {
 		origin := "local:" + candidate.Key
 		if _, err = insertArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, "", artworkAttribution("local"), fence, now, 0); err != nil {
 			return false, 0, err
 		}
 	}
-	if err = queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
-		return false, 0, err
-	}
-	return len(page) < localArtworkCandidateLocate && remaining <= seed, seed, nil
+	return len(page) < limit, seed, nil
 }
 
-// localArtworkPageSeeded reports which of one locate page's keys are already
-// committed under the current source fence. A key retained under an older fence
-// is deliberately not seeded, so a later call refreshes it within the same
-// eight-write budget. Only this page's keys are read, never the slot's history.
-func localArtworkPageSeeded(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence string, page []catalog.LocalArtworkCandidateCursor) (map[string]bool, error) {
-	out := map[string]bool{}
-	if len(page) == 0 {
-		return out, nil
-	}
-	args := []any{t.Kind, entity, role, fence}
-	marks := make([]string, 0, len(page))
-	for _, candidate := range page {
-		marks = append(marks, "?")
-		args = append(args, "local:"+candidate.Key)
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT origin FROM artwork_candidates WHERE kind=? AND entity_id=? AND role=? AND provider='local' AND source_fence=? AND origin IN (`+strings.Join(marks, ",")+`)`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var origin string
-		if err = rows.Scan(&origin); err != nil {
-			return nil, err
-		}
-		out[strings.TrimPrefix(origin, "local:")] = true
-	}
-	return out, rows.Err()
-}
