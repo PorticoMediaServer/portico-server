@@ -228,5 +228,7 @@ if [[ "$PHASE" == working ]]; then
 else
   "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$WORK/bundle"
 fi
-tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1' -cf "$WORK/$archive_name" .
+# The payload includes the compressed corresponding-source archive. Keep this
+# outer compression pass fast; the manifest seals every extracted file.
+tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1 -0' -cf "$WORK/$archive_name" .
 echo "$WORK/$archive_name"
