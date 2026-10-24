@@ -13,7 +13,7 @@ function fixture(){
   {id:'v1',label:'First',durationMs:120000,parts:[],video:[],audio:[{id:'a1',codec:'aac',title:'Wrong version'}],subtitles:[]},
   {id:'v2',label:'Chosen',durationMs:120000,parts:[],video:[{id:'v0',codec:'h264',height:1080,interlaced:false}],audio:[
    {id:'a3',codec:'ac3',language:'en',channels:6,layout:'5.1',default:false},
-   {id:'a4',codec:'aac',language:'en',title:'Commentary',channels:2,layout:'stereo',default:true}],subtitles:[]}],qualities:[],chapters:[],markers:[]});
+   {id:'a4',codec:'aac',language:'en',title:'Commentary',channels:2,layout:'stereo',default:true}],subtitles:[]}],qualities:[{mode:'original'},{mode:'automatic'},{mode:'fixed',id:'720p-low'}],chapters:[],markers:[]});
  const session=parseSession({id:'session',revision:'1',kind:'vod',role:'local',state:'playing',itemId:'movie',versionId:'v2',queue:{queueId:'queue',entryId:'entry'},
   presentation:{generation:1,mode:'direct',url:'/v1/media/current',startPositionMs:0,subtitles:[],decision:{},audioTrackId:'a3',quality:{mode:'automatic',id:'720p-low'}}});
  const resource:SubtitleResource={id:'real-subtitle',sourceId:'source',revision:1,scope:'personal',language:'en',title:'',format:'srt',origin:'sidecar',rights:'owned',offsetUs:'-500000',canManage:true,enabled:true,renderer:'external_text',default:false,forced:false};
@@ -71,4 +71,15 @@ test('same-title replacement and refreshed original metadata invalidate old row 
 test('an unknown selected audio ID stays unselected, and absent automatic step retains the genuine Original state',()=>{
  const f=fixture();f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,audioTrackId:undefined,quality:{mode:'automatic'}}}});
  const model=f.model()!;assert.ok(model.audio.every(row=>!row.selected));assert.equal(model.audioLabel,undefined);assert.equal(model.qualityLabel,'Original');
+});
+
+
+test('Off availability and Options applicability remain real command preconditions',async()=>{
+ const f=fixture();f.set({...f.live,options:{...f.live.options!,qualities:f.live.options!.qualities.filter(q=>q.mode!=='automatic')},
+  offers:{...f.live.offers!,subtitlePlan:{...f.live.offers!.subtitlePlan!,offAvailable:false}}});
+ const model=f.model()!;assert.equal(model.subtitles.find(row=>row.id==='off')?.unavailable,true);
+ assert.equal(model.quality.find(row=>row.id==='auto')?.enabled,false);
+ await assert.rejects(model.selectSubtitle('off'),/unavailable/);await assert.rejects(model.selectQuality('auto'),/unavailable/);assert.deepEqual(f.calls,[]);
+ f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,quality:{mode:'automatic',id:'original'}}}});
+ assert.equal(f.model()!.qualityLabel,'Original');
 });

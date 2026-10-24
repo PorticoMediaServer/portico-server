@@ -25,6 +25,7 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  if(snapshot.disposed||!fence||fence.kind!=='queue'||!session||!offers||!current||!options
   ||session.kind!=='vod'||session.id!==fence.sessionId||session.itemId!==fence.itemId||session.queue?.entryId!==fence.entryId
   ||session.presentation.generation!==fence.generation||options.itemId!==fence.itemId||offers.scope.itemId!==fence.itemId
+  ||offers.scope.serverId!==snapshot.authority.serverId||offers.scope.viewerFence!==snapshot.authority.viewerFence
   ||current.sessionId!==fence.sessionId||current.generation!==fence.generation||current.sourceId!==fence.sourceId)return null;
  const version=options.versions.find(v=>v.id===session.versionId),source=offers.sources.find(s=>s.id===fence.sourceId);
  if(!version||!source||!source.available)return null;
@@ -38,7 +39,7 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  const plan=offers.subtitlePlan,matched=!!plan&&plan.sessionId===fence.sessionId&&plan.generation===fence.generation&&plan.sourceId===fence.sourceId;
  const subtitleIds=new Map<string,string|null>();const subtitleRows:TrackChoice[]=[];
  if(matched){
-  subtitleIds.set('off',null);subtitleRows.push({id:'off',primary:t('player.opt.off'),fullName:t('player.opt.off'),selected:plan.mode==='off'});
+  subtitleIds.set('off',null);subtitleRows.push({id:'off',primary:t('player.opt.off'),fullName:t('player.opt.off'),selected:plan.mode==='off',unavailable:!plan.offAvailable});
   for(const resource of plan.resources.filter(r=>r.sourceId===fence.sourceId&&!r.retired)){
    const facts={...resource,sdh:resource.hearingImpaired,source:resource.origin==='embedded'?'embedded' as const:resource.origin==='sidecar'?'sidecar' as const:'downloaded' as const};
    const name=videoTrackName(facts,words);
@@ -49,7 +50,7 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  }
  const selected=qualityChoiceOf(session.presentation.quality),qualityRows:WatchRadioChoice[]=[],qualityIds=new Map<string,QualityChoice>();
  const actualStep=fixedQuality(session.presentation.quality.id);
- const qualityLabel=actualStep?heightLabel(actualStep.height,t):selected==='original'||selected==='automatic'&&session.presentation.quality.id===undefined?t('next.kit.quality.original'):undefined;
+ const qualityLabel=actualStep?heightLabel(actualStep.height,t):selected==='original'||selected==='automatic'&&(session.presentation.quality.id===undefined||session.presentation.quality.id==='original')?t('next.kit.quality.original'):undefined;
  for(const offer of source.qualities){
   const choice=offer.kind==='automatic'?'automatic':offer.kind==='original'?'original':isQualityChoice(offer.id)?offer.id:undefined;
   if(!choice)continue;qualityIds.set(offer.id,choice);
@@ -57,7 +58,8 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   if(!label)continue;
   const detail=choice==='automatic'&&qualityLabel?t('next.kit.quality.adjusts',{quality:qualityLabel}):choice==='original'?t('next.kit.quality.originalDetail'):
    typeof offer.maxVideoBitrateBps==='number'?t('web.player.quality.rate',{mbps:offer.maxVideoBitrateBps/1e6}):undefined;
-  qualityRows.push({id:offer.id,label,detail,selected:selected===choice,enabled:offer.enabled});
+  const enabled=offer.enabled&&options.qualities.some(option=>option.applicable!==false&&qualityChoiceOf(option)===choice);
+  qualityRows.push({id:offer.id,label,detail,selected:selected===choice,enabled});
  }
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
