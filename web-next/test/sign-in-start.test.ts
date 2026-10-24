@@ -48,6 +48,14 @@ test('move proof failure never restores a saved session or retries without the e
   await assert.rejects(initializeAccountSignIn(f.entry, {...f.ports, takeMove: () => link}), error => error === failure);
   assert.deepEqual(f.calls, [['move', f.ports.pageOrigin, link]]);
 });
+test('an invalid synchronously scrubbed move capture is terminal before any saved-session read', async () => {
+  const f = setup(), failure = new Error('invalid move link');
+  let takes = 0;
+  await assert.rejects(initializeAccountSignIn(f.entry, {...f.ports,
+    takeMove: () => {takes++;throw failure;},
+  }), error => error === failure);
+  assert.equal(takes, 1);assert.deepEqual(f.calls, []);
+});
 test('retirement while taking a move capture prevents its dispatch', async () => {
   const f = setup();let current = true;
   await initializeAccountSignIn(f.entry, {...f.ports, isCurrent: () => current,
