@@ -25,6 +25,81 @@ function result(path:string,changes:Record<string,unknown>={}):any{
 function service(fn:(path:string,signal?:AbortSignal)=>Promise<unknown>,timeoutMs=1000){return new SearchService({scope,timeoutMs,api:{request:<T>(path:string,_m?:string,_b?:unknown,signal?:AbortSignal)=>fn(path,signal) as Promise<T>}});}
 function deferred(){let resolve!:(value:unknown)=>void;const promise=new Promise<unknown>(r=>resolve=r);return {promise,resolve};}
 
+test('pause retains only the arrived page with its actual cursor and aborts a pending continuation',async()=>{
+ const held=deferred();const paths:string[]=[];let signal:AbortSignal|undefined;
+ const s=service(async(path,provided)=>{paths.push(path);if(paths.length===2){signal=provided;return held.promise;}return result(path,{groups:[group('movies',[paths.length===1?'first':'fresh'],paths.length===1?'next-cursor':'')]});});
+ try{
+  await s.select('harbor',{group:'movies'});const shown=s.getSnapshot().data;
+  const read=s.next('movies');assert.equal(s.getSnapshot().pagination.cursor,'next-cursor');
+  s.pause();assert.equal(signal?.aborted,true);assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().data,shown);
+  assert.equal(s.getSnapshot().pagination.cursor,null);assert.equal(s.getSnapshot().pagination.canPrevious,false);
+  held.resolve(result(paths[1],{groups:[group('movies',['late'])]}));await read;
+  assert.equal(s.getSnapshot().data,shown);await s.next('movies');
+  assert.equal(new URL(paths[2],'https://local.invalid').searchParams.get('cursor'),'next-cursor');
+  assert.equal(s.getSnapshot().groups[0].items[0].id,'fresh');
+ }finally{s.dispose();}
+});
+
+test('pause cannot relabel a pending different query with old results',async()=>{
+ const held=deferred();let path='';
+ const s=service(async p=>{path=p;return new URL(p,'https://local.invalid').searchParams.get('q')==='after'?held.promise:result(p);});
+ try{
+  await s.select('before',{group:'movies'});const read=s.select('after',{group:'movies'});
+  assert.equal(s.getSnapshot().data,null);s.pause();assert.equal(s.getSnapshot().phase,'idle');assert.equal(s.getSnapshot().query,null);
+  held.resolve(result(path));await read;assert.equal(s.getSnapshot().data,null);
+ }finally{s.dispose();}
+});
+
+test('pause aborts quiet revalidation and refuses its late replacement',async()=>{
+ const held=deferred();let reads=0,path='';let signal:AbortSignal|undefined;
+ const s=service(async(p,provided)=>{path=p;if(++reads===2){signal=provided;return held.promise;}return result(p);});
+ try{
+  await s.select('harbor',{group:'movies'});const shown=s.getSnapshot().data,read=s.revalidate();
+  s.pause();assert.equal(signal?.aborted,true);held.resolve(result(path,{groups:[group('movies',['late'])]}));await read;
+  assert.equal(s.getSnapshot().data,shown);assert.equal(s.getSnapshot().phase,'ready');
+  const aborted=new AbortController();aborted.abort();await s.revalidate({signal:aborted.signal});assert.equal(reads,2);
+ }finally{s.dispose();}
+});
+
+test('a continuation viewer-fence change withdraws the old page before automatic refresh can be paused',async()=>{
+ const held=deferred();let reads=0,refreshPath='';
+ const refreshing=deferred();
+ const s=service(async path=>{
+  reads++;
+  if(reads===1)return result(path,{groups:[group('movies',['old'],'next-cursor')]});
+  if(reads===2){const raw=result(path);return {...raw,scope:{...raw.scope,viewerFence:'different-viewer-fence'}};}
+  refreshPath=path;refreshing.resolve(undefined);return held.promise;
+ });
+ try{
+  await s.select('harbor',{group:'movies'});const read=s.next('movies');await refreshing.promise;
+  assert.equal(s.getSnapshot().data,null);s.pause();assert.equal(s.getSnapshot().phase,'idle');
+  held.resolve(result(refreshPath));await read;assert.equal(s.getSnapshot().data,null);
+ }finally{s.dispose();}
+});
+
+test('terminal authorization failure cannot be made ready again by pause',async()=>{
+ let fail=false;
+ const s=service(async path=>{if(fail)throw Object.assign(new Error('denied'),{status:403});return result(path,{groups:[group('movies',['old'],'next-cursor')]});});
+ try{
+  await s.select('harbor',{group:'movies'});fail=true;await s.next('movies');assert.equal(s.getSnapshot().data,null);
+  s.pause();assert.equal(s.getSnapshot().phase,'idle');assert.deepEqual(s.getSnapshot().groups,[]);
+ }finally{s.dispose();}
+});
+
+test('disposal erases the actual private Search snapshot and stops subsequent work',async()=>{
+ const s=service(async path=>result(path));await s.select('harbor');assert(s.getSnapshot().data);
+ s.dispose();assert.equal(s.getSnapshot().data,null);assert.equal(s.getSnapshot().query,null);assert.deepEqual(s.getSnapshot().groups,[]);
+ assert.throws(()=>s.pause(),/disposed/);assert.throws(()=>s.select('next'),/disposed/);s.dispose();
+});
+
+test('a subscriber pausing the new loading state prevents its HTTP request from starting',async()=>{
+ let reads=0;
+ const s=service(async path=>{reads++;return result(path);});
+ const off=s.subscribe(()=>{if(s.getSnapshot().phase==='loading')s.pause();});
+ try{await s.select('harbor',{group:'movies'});assert.equal(reads,0);assert.equal(s.getSnapshot().phase,'idle');}
+ finally{off();s.dispose();}
+});
+
 test('preserves server group order and publishes per-group capabilities',async()=>{
  const s=service(async path=>result(path,{groups:[group('books'),group('shows'),group('movies')],query:{...result(path).query,groups:['books','shows','movies']}}));
  await s.select('harbor');
