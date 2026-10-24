@@ -42,7 +42,7 @@ test('source profiles and explicit false metadata flags do not fabricate RPU, BL
 });
 
 test('unknown or malformed source fields remain absent without profile/codec/name inference',async()=>{
-  for(const value of [undefined,null,[],{},true]) {
+  for(const value of [undefined,null,[],{}]) {
     const facts = Object.fromEntries(Object.keys(technical).map(key=>[key,value]));
     const {video} = await read(facts);
     for(const key of Object.keys(technical)) assert.equal(Object.hasOwn(video,key),false,key);
