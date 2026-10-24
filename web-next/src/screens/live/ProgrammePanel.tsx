@@ -69,8 +69,9 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
   const range = facts.find(part => part.id === 'time-range')?.text;
   const categories = programme?.categories?.join(', ');
   const episodeInfo = programme?.episode;
-  const episode = episodeInfo?.display ?? (episodeInfo?.season !== undefined && episodeInfo.number !== undefined
-    ? t('downloads.title.episode', {season: episodeInfo.season, episode: episodeInfo.number}) : undefined);
+  const episodeNumber = episodeInfo?.number ?? (episodeInfo as {number?: number; episode?: number} | undefined)?.episode;
+  const episode = episodeInfo?.display ?? (episodeInfo?.season !== undefined && episodeNumber !== undefined
+    ? t('downloads.title.episode', {season: episodeInfo.season, episode: episodeNumber}) : undefined);
   const canRecord = !!programme && channel.recordAvailable && !ended;
   const started = programme ? Math.max(0, Math.round((now - programme.start) / 60_000)) : 0;
   const left = programme ? Math.max(0, Math.round((programme.end - now) / 60_000)) : 0;
@@ -90,7 +91,7 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
     <span className={styles.programmeGlyph} aria-hidden="true">{mark.text.slice(0, 1)}</span>
     <button type="button" className={styles.programmeClose} aria-label={t('next.overlays.close')} onClick={onClose}><Icon name="i-close" size={22}/></button>
     <div className={styles.programmeChannel}>
-      <ChannelMark mark={mark} size={40}/>
+      <ChannelMark mark={mark} size={34}/>
       <span className={styles.programmeChannelText}>
         <b>{channel.name}{channel.favorite && <Icon className={styles.programmeFavorite} name="i-star-f" size={13}/>}</b>
         <small>{channel.number}{channel.group && <><i className={styles.gap}/>{channel.group}</>}</small>
@@ -119,7 +120,7 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
     <div className={styles.programmeActions}>
       {onWatch && <Button className={styles.programmeAction} variant="primary" icon="i-play" onClick={onWatch} disabled={!channel.tuneAvailable}>{watchLabel}</Button>}
       {canRecord && (recordingFact
-        ? <Menu open={recordingOpen} onOpenChange={open => setRecordingOpen(open)} trigger={<Button className={styles.programmeAction} variant="glass" icon="i-rec" aria-label={t('next.live.recordingOptions')} aria-haspopup="menu" disabled={busy || !snapshot.recording}>{t('next.kit.recording')}</Button>}
+        ? <Menu open={recordingOpen} onOpenChange={open => setRecordingOpen(open)} trigger={<Button className={styles.programmeAction} variant="glass" aria-label={t('next.live.recordingOptions')} aria-haspopup="menu" disabled={busy || !snapshot.recording}><span className={styles.recordingDot} aria-hidden="true"/>{t('next.kit.recording')}</Button>}
           title={t('next.live.recordingOptions')} items={recordingMenu}/>
         : <Button className={styles.programmeAction} variant="glass" icon="i-rec" onClick={onRecord} disabled={busy} loading={snapshot.busy === 'record'}>{t('guide.record')}</Button>)}
       {canRecord && <Button className={`${styles.programmeAction} ${seriesOpen ? styles.programmeActionOpen : ''}`} variant="glass"
@@ -148,7 +149,7 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
       </div>
     </div>}
     {snapshot.preview && snapshot.preview.airings.length > 0 && <section className={styles.airings} aria-label={t('next.live.moreAirings')}>
-      <h3 className={styles.airingsHead}>{t('next.live.moreAirings')}<span>{t('next.live.airingsOn', {title: programme?.title ?? channel.name, channel: channel.name})}</span></h3>
+      <h3 className={styles.airingsHead}>{t('next.live.moreAirings')}<span>{t('next.live.airingsOn', {title: programme?.title ?? channel.name, channel: channel.name, day: snapshot.preview.airings[0]?.day ?? t('guide.today')})}</span></h3>
       {snapshot.preview.airings.map(item => {
         const on = reminders.includes(item.id);
         return <div className={styles.airingRow} key={item.id}>
