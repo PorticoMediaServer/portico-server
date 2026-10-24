@@ -23,7 +23,7 @@ import {NeedsAttention} from '../metadata/NeedsAttention';
 import {LibraryDiscoveryScreen} from './Discovery';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
 import {useScreenAppearance} from './screen-preferences';
-import {parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
+import {browseConjunction, parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
 import {SaveView} from './SaveView';
 import {ReadLibraryEntry} from '../read';
 import {isReadingLibrary} from './reading-library';
@@ -50,7 +50,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
   const browse = !!pivot && !search.entityId && !search.category && !search.q && view !== 'discover';
-  const sourceKey = JSON.stringify({libraryId: library.id, pivot: pivot ?? '', predicates: search.query ? [search.query] : undefined,
+  const sourceKey = JSON.stringify({libraryId: library.id, pivot: pivot ?? '', predicates: search.query ? browseConjunction(search.query) : undefined,
     sorts: search.sort ?? (requested?.defaultSort ? [requested.defaultSort] : undefined)});
   const resources = useMemo(() => {
     const life = screenLifetime(context), source: ConstructorParameters<typeof BrowseController>[1] = JSON.parse(sourceKey);

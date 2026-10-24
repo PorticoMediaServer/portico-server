@@ -9,6 +9,12 @@ function text(value: unknown, max = 256): string | undefined {
   return value;
 }
 export type LibraryScreenSearch = Readonly<{view?: ContentView; entityId?: string; category?: string; pivot?: string; unmatched?: boolean; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
+/** A saved or shared view may arrive as one top-level conjunction. The toolbar chips and the
+ * empty state name each condition, so the controller keeps those leaves apart; `{all: [...]}`
+ * and the same conditions in the implicit conjunction build the identical query. */
+export function browseConjunction(node: BrowseNode): readonly BrowseNode[] {
+  return 'all' in node && node.all.length > 0 ? node.all : [node];
+}
 /** A malformed owned predicate must not silently broaden the destination. */
 export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryScreenSearch {
   const view = raw.view === undefined ? undefined : views.find(view => view === raw.view);

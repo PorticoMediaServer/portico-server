@@ -3,6 +3,9 @@
    gutter so the drawn poster row still reaches the gutter like frame #grid's fluid grid. */
 .results { position: relative; min-height: 280px; margin: 0 var(--shell-gutter, var(--gutter-desktop)); margin-right: calc(var(--shell-gutter, var(--gutter-desktop)) - var(--grid-overflow, 0px)); }
 .results[data-view='grid'] { padding-top: 26px; }
+.results[data-shape='collection'], .results[data-empty] { padding-top: 0; }
+.collectionsNote { display: flex; align-items: center; gap: 10px; margin: 0; padding: 22px 0 22px; font-size: calc(var(--type-body-size) - 1px); color: var(--color-text-tertiary); }
+.collectionsNote svg { flex: none; color: var(--color-accent-strong); }
 .results[data-view='list'] { padding-top: 22px; }
 .rail { position: absolute; right: calc(-46px + var(--grid-overflow, 0px)); top: 28px; }
 .listHead, .listRow { display: grid; grid-template-columns: minmax(0,1fr) 84px 118px 86px 112px 136px 60px 92px; align-items: center; column-gap: 8px; padding: 0 12px; }
@@ -19,6 +22,7 @@
 .listTitle > button > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .listArt { display: block; flex: none; width: 36px; height: 54px; border-radius: 5px; overflow: hidden; }
 .resolution { padding: 2px 7px; border-radius: 6px; font-size: var(--type-card-subtitle-size); font-weight: var(--type-row-heading-weight); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 22%, transparent); }
+.listWatched { display: flex; justify-content: center; align-items: center; }
 .miniProgress { display: inline-block; width: 34px; height: 4px; border-radius: 4px; overflow: hidden; background: var(--color-line); }
 .miniProgress > span { display: block; height: 100%; background: var(--color-accent-strong); }
 .listActions { display: flex; justify-content: flex-end; gap: 6px; opacity: 0; }
