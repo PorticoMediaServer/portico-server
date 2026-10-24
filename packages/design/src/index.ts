@@ -126,6 +126,9 @@ const handheldType = {
   stopBody: type(15, 23.25, 500), stopField: type(16, 'normal', 600), stopHelp: type(13.5, 'normal', 400),
 };
 export type TypeRole = keyof typeof handheldType;
+/** The legacy web's desktop display cap (42px); TitleHero and Text clamp up to it. */
+export const displayDesktopSize = 42;
+
 /** The desktop, phone and TV drawings are separate columns; tablet uses the phone layout. */
 export const typeScale: Readonly<Record<'desktop' | 'handheld' | 'tenFoot', Readonly<Record<TypeRole, TypeStyle>>>> = {
   handheld: handheldType,
