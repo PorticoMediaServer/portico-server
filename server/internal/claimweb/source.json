@@ -1,6 +1,6 @@
 {
   "sourceRepository": "PorticoMediaServer/portico-internal",
-  "sourceCommit": "835536254702a46a1ecfa4f5031cd49041cb2290",
+  "sourceCommit": "dc4d15dffda8ac9172d7c08d01efed7f0e5eb77c",
   "importMapping": {
     "portico.local/hosted/internal/serverreturn": "portico.local/server/internal/serverreturn",
     "portico.local/hosted/internal/wirejson": "portico.local/server/internal/wirejson"
@@ -72,9 +72,9 @@
     {
       "source": "hosted-services/hosted/claimweb/pending_request_test.go",
       "target": "server/internal/claimweb/pending_request_test.go",
-      "sourceBlob": "9bf51b3429b2feb3debd92f682952b1ffa348d30",
-      "sourceSHA256": "cb193cbe2e95b0fd40a371134f75e85a2a43747ebe346339910dacbca20da8dd",
-      "targetSHA256": "cb193cbe2e95b0fd40a371134f75e85a2a43747ebe346339910dacbca20da8dd"
+      "sourceBlob": "e66f92d0f8743ca1f52c520247bd38ad931985e0",
+      "sourceSHA256": "f44e749d6352e4634ef4aa99ae045e37dd7b0986fec55db79881feca79c62d3a",
+      "targetSHA256": "f44e749d6352e4634ef4aa99ae045e37dd7b0986fec55db79881feca79c62d3a"
     },
     {
       "source": "hosted-services/hosted/internal/serverreturn/registration.go",
