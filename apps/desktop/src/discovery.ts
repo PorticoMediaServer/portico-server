@@ -33,7 +33,8 @@ export function createDesktopDiscovery(bridge:Bridge=native,clock=Date.now,nextI
     const signal=AbortSignal.any([caller,life.signal]);signal.throwIfAborted();
     const id=nextId();let abort!:()=>void;
     const cancelled=new Promise<never>((_,reject)=>{abort=()=>{
-      void bridge.cancel(id).catch(()=>{});reject(new DOMException('Aborted','AbortError'));
+      void Promise.resolve().then(()=>bridge.cancel(id)).catch(()=>{});
+      reject(new DOMException('Aborted','AbortError'));
     };});
     signal.addEventListener('abort',abort,{once:true});
     try{

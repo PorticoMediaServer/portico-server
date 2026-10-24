@@ -30,3 +30,9 @@ test('provider is inert and disposal cancels independent captured calls without 
   const owner=createDesktopDiscovery({browse:async()=>{throw new Error('/private/native details')},async cancel(id){cancelled.push(id)}},()=>1000,()=>++count);
   assert.equal(count,0);await assert.rejects(owner.discover(new AbortController().signal),/^Error: discovery_unavailable$/);assert.equal(count,1);assert.deepEqual(cancelled,[]);owner.dispose();
 });
+test('even a synchronous cancel bridge failure cannot prevent retirement or surface native details',async()=>{
+  let complete!:(value:unknown)=>void;
+  const owner=createDesktopDiscovery({browse:()=>new Promise(resolve=>{complete=resolve}),cancel(){throw new Error('/private/native detail')}},()=>1000,()=>31);
+  const pending=owner.discover(new AbortController().signal);assert.doesNotThrow(()=>owner.dispose());
+  await assert.rejects(pending,{name:'AbortError'});complete([row()]);
+});
