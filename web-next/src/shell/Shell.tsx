@@ -7,7 +7,7 @@ import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../kit/Icon';
 import {MenuItem,Dialog} from '../kit/overlays';
 import {TextField,Button} from '../kit/controls';
-import {isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
+import {activeLibraryId, isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
 import {useShellScrolled} from './viewport';
 import {useSizeClass, useCoarsePointer, useWindowScrollAnchor} from '../kit/theme';
 import type {ManagementCapabilities} from '@core/profile-management.ts';
@@ -63,6 +63,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
   useEffect(()=>()=>profileRequest.current?.abort(),[]);
   const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile)return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(undefined);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch(error){if(!controller.signal.aborted)setProfileError(error);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
   const home = pathname === '/', settingsArea = pathname === '/settings' || pathname === '/dashboard', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
+  const heroPage = home || pathname.startsWith('/item/') || pathname.startsWith('/person/');
   const {viewer} = identity;
   useEffect(() => {
     if (!pathname.startsWith('/library/')) return;
@@ -70,6 +71,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
     try { id = decodeURIComponent(pathname.slice('/library/'.length).split('/')[0]); } catch { return; }
     rememberLibrary(libraryMemory(), viewer, identity.libraries, id);
   }, [pathname, viewer, identity.libraries]);
+  const activeLibrary = activeLibraryId(pathname, rememberedLibrary(libraryMemory(), viewer, identity.libraries));
   useEffect(() => { setAccountOpen(false); setMoreOpen(false); }, [pathname]);
   const openLibraries = () => {
     const id = rememberedLibrary(libraryMemory(), viewer, identity.libraries);
@@ -103,9 +105,9 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
     <a className={styles.skip} href="#portico-content">{t('next.home.shell.skip')}</a>
     {windowChrome && <div data-window-chrome-host data-window-no-drag>{windowChrome}</div>}
     <div className={styles.navigation} data-shell-navigation>
-      {desktop ? <nav className={styles.topnav} data-solid={scrolled || !home && !settingsArea} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
+      {desktop ? <nav className={styles.topnav} data-solid={scrolled || (!heroPage && !settingsArea)} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
         <Link className={styles.brand} to="/" data-window-no-drag aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
-        <DesktopNavigation libraries={identity.libraries} liveAvailable={identity.liveAvailable} pathname={pathname} moreOpen={moreOpen} onMoreOpenChange={setMoreOpen} />
+        <DesktopNavigation libraries={identity.libraries} liveAvailable={identity.liveAvailable} activeLibraryId={activeLibrary} moreOpen={moreOpen} onMoreOpenChange={setMoreOpen} />
         <div className={styles.tools} data-window-no-drag>
           <Link className={styles.icon} to="/search" search={{q: lastSearch.current}} aria-label={t('next.home.shell.search')} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /></Link>
           <Link className={styles.icon} to="/saved" aria-label={t('next.home.shell.saved')} activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /></Link>
@@ -123,7 +125,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
           <Link className={styles.railItem} to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span data-nav-label>{t('next.home.shell.search')}</span></Link>
           <Link className={styles.railItem} to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span data-nav-label>{t('next.home.shell.home')}</span></Link>
         </div>
-        <LibraryNavigation libraries={identity.libraries} sidebar={navigation === 'sidebar'} />
+        <LibraryNavigation libraries={identity.libraries} sidebar={navigation === 'sidebar'} activeLibraryId={activeLibrary} />
         <div className={styles.railFixed} data-window-no-drag>
           <div className={styles.railDivider} />
           {identity.liveAvailable && <Link className={styles.railItem} to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-live" size={22} /><span data-nav-label>{t('next.home.shell.live')}</span></Link>}
@@ -142,7 +144,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
         {phoneSelection ?? <nav className={styles.tabbar} aria-label={t('next.home.shell.main')}>
           <Link to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span>{t('next.home.shell.home')}</span></Link>
           <Link to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span>{t('next.home.shell.search')}</span></Link>
-          <button type="button" aria-current={isLibraryLocation(pathname) ? 'page' : undefined} onClick={openLibraries}><Icon name="i-grid" size={22} /><span>{t('next.home.shell.libraries')}</span></button>
+          <button type="button" aria-current={isLibraryLocation(pathname) || activeLibrary ? 'page' : undefined} onClick={openLibraries}><Icon name="i-grid" size={22} /><span>{t('next.home.shell.libraries')}</span></button>
           {identity.liveAvailable && <Link to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-tv" size={22} /><span>{t('next.home.shell.live')}</span></Link>}
           <Link to="/saved" activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /><span>{t('next.home.shell.saved')}</span></Link>
         </nav>}

@@ -26,6 +26,13 @@ export function rememberLibrary(storage: LibraryMemoryStorage | undefined, scope
 }
 export function showOwnerActivity(role: string, desktop: boolean): boolean { return role === 'owner' && desktop; }
 export function isLibraryLocation(path: string): boolean { return path === '/libraries' || path.startsWith('/library/'); }
+/** Title and person pages stay inside the library that opened them; a bare direct visit claims none. */
+export function activeLibraryId(path: string, remembered: string | undefined): string | undefined {
+  if (path.startsWith('/library/')) {
+    try { return decodeURIComponent(path.slice('/library/'.length).split('/')[0]) || undefined; } catch { return undefined; }
+  }
+  return remembered && (path.startsWith('/item/') || path.startsWith('/person/')) ? remembered : undefined;
+}
 export function shellGutter(width: number): number { return width < 1024 ? 20 : Math.min(64, 32 + (width - 1024) / 13); }
 
 export function browserOwnsBackTransition(event: {hasUAVisualTransition?: boolean}, environment: {iphoneSafari: boolean; traversal: boolean}): boolean {
