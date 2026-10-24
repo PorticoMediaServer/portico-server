@@ -68,7 +68,7 @@ export function ServicesTerms({provider}: {provider?: IdentityProvider} = {}) {
   return <p className={styles.terms}>{provider && <>{t('services.provider.privacy', {provider: t(provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}{' '}</>}{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'terms' ? <a key={index} href="https://getportico.tv/terms">{t('services.signup.terms')}</a> : part.kind === 'arg' && part.name === 'privacy' ? <a key={index} href="https://getportico.tv/privacy">{t('services.signup.privacy')}</a> : null)}</p>;
 }
 export function ServicesFacts({items}: {items: readonly {id: string; label: ReactNode; value: ReactNode}[]}) {
-  return <dl className={styles.facts}>{items.map(item => <div key={item.id}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>;
+  return <dl className={styles.facts}>{items.map(item => <div key={item.id} data-fact={item.id}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>;
 }
 export function ServicesCodeChip({label, code}: {label: ReactNode; code: string}) {
   return <div className={styles.codeChip}><Icon name="i-tv" size={18} />{label}<b>{code}</b></div>;
