@@ -30,7 +30,7 @@ import '../../bootstrap.css';
  */
 if (!import.meta.env.DEV) throw new Error('Show specimens require the development server.');
 const frame = new URLSearchParams(location.search).get('frame');
-if (frame !== null && frame !== '4') throw new Error('The show specimen measures desktop frame 4 only.');
+if (frame !== null && frame !== '4' && frame !== '5') throw new Error('The show specimen measures desktop frames 4 and 5 only.');
 
 type SpecimenEvent = Readonly<{kind: string; at: number; value?: unknown}>;
 
@@ -88,16 +88,16 @@ const credits = [
 ] as const;
 
 const episodes = [
-  {id: 'ep-1', title: 'When You’re Lost in the Darkness', airDate: '2023-01-15', progressSeconds: 30205, watched: false, overview: episodeOverview}, // lint-strings-allow
-  {id: 'ep-2', title: 'Infected', airDate: '2023-01-22', progressSeconds: 0, watched: false, overview: 'A horrifying discovery forces Joel and Tess to change course.'}, // lint-strings-allow
-  {id: 'ep-3', title: 'Long, Long Time', airDate: '2023-01-29', progressSeconds: 0, watched: false, overview: 'A stranger asks Bill and Frank for help.'}, // lint-strings-allow
-  {id: 'ep-4', title: 'Kin', airDate: '2023-02-05', progressSeconds: 0, watched: false, overview: 'Joel and Ellie reach the Capitol and meet an old friend.'}, // lint-strings-allow
+  {id: 'ep-1', title: 'When You’re Lost in the Darkness', airDate: '2023-01-15', duration: 4860, progressSeconds: 3256, watched: false, overview: episodeOverview}, // lint-strings-allow
+  {id: 'ep-2', title: 'Infected', airDate: '2023-01-22', duration: 3180, progressSeconds: 0, watched: false, overview: 'A horrifying discovery forces Joel and Tess to change course.'}, // lint-strings-allow
+  {id: 'ep-3', title: 'Long, Long Time', airDate: '2023-01-29', duration: 4560, progressSeconds: 0, watched: false, overview: 'Doomsday prepper Bill prepares to ride out the apocalypse alone, until a mysterious stranger upends his plans. Years later, Joel and Ellie seek Bill’s guidance and find themselves at a crossroads.'}, // lint-strings-allow
+  {id: 'ep-4', title: 'Please Hold to My Hand', airDate: '2023-02-05', duration: 2760, progressSeconds: 0, watched: false, overview: 'After a harrowing trek across a desolate United States, Joel and Ellie find themselves navigating a dangerous Kansas City on foot, while a rebel leader hunts them.'}, // lint-strings-allow
 ] as const;
 
 const episodeEntry = (index: number) => {
   const episode = episodes[index];
   return {id: episode.id, kind: 'episode', libraryId, title: episode.title, seasonNumber: 1, episodeNumber: index + 1,
-    airDate: episode.airDate, duration: 45_000, progressSeconds: episode.progressSeconds, watched: episode.watched,
+    airDate: episode.airDate, durationMs: episode.duration * 1000, progressMs: episode.progressSeconds * 1000, watched: episode.watched,
     overview: episode.overview, stillUrl: imageArt('still', episode.id), available: true,
     navigation: {view: 'item', entityId: episode.id}, playback: {itemId: episode.id}};
 };
@@ -126,23 +126,30 @@ function showWorkspace() {
 
 const containerState = () => ({scope: {serverId, libraryId, viewerFence}, revision: 1, watched: false, watermark: '', watchlisted: false, favorite: false, watchedCount: 0, unwatchedCount: episodes.length, libraryId});
 
-function episodeDetail() {
+function episodeDetail(index = 0) {
   const revision = {catalog: 1, viewer: 1};
+  const episode = episodes[index] ?? episodes[0];
+  const credits = index === 2
+    ? [{id: 'nick-offerman', name: 'Nick Offerman', role: 'Bill', department: 'Acting', provider: 'specimen'},
+      {id: 'murray-bartlett', name: 'Murray Bartlett', role: 'Frank', department: 'Acting', provider: 'specimen'},
+      {id: 'peter-hoar', name: 'Peter Hoar', role: 'Director', department: 'Directing', provider: 'specimen'},
+      {id: 'craig-mazin', name: 'Craig Mazin', role: 'Writer', department: 'Writing', provider: 'specimen'}]
+    : [{id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', provider: 'specimen'},
+      {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', provider: 'specimen'}];
+  const neighbours = index === 2 ? {previous: {id: 'ep-2', number: 2, title: 'Infected'}, next: {id: 'ep-4', number: 4, title: 'Please Hold to My Hand'}} : {};
   return {
-    scope: {serverId, libraryId, itemId: 'ep-1', viewerFence}, revision,
-    item: {id: 'ep-1', libraryId, kind: 'episode', title: episodes[0].title, year: 2023, durationMs: 45_000, progressMs: 30_205,
-      available: true, addedAt: '2026-10-17T00:00:00Z', overview: episodeOverview,
-      posterUrl: imageArt('poster', 'ep-1'), backdropUrl: imageArt('backdrop', 'ep-1')},
-    personal: {watchlisted: false, favorite: false, rating: null, revision: 1, watched: false, progressMs: 30_205, lastPlayedAt: '', status: 'current', conflicts: []},
-    actions: [{id: 'play', labelKey: 'entry.play', enabled: true, playback: {itemId: 'ep-1', startMs: 0}},
+    scope: {serverId, libraryId, itemId: episode.id, viewerFence}, revision,
+    item: {id: episode.id, libraryId, kind: 'episode', title: episode.title, year: 2023, durationMs: episode.duration * 1000, progressMs: episode.progressSeconds * 1000,
+      available: true, addedAt: '2026-10-17T00:00:00Z', overview: episode.overview,
+      posterUrl: imageArt('poster', episode.id), backdropUrl: imageArt('backdrop', episode.id)},
+    personal: {watchlisted: false, favorite: false, rating: null, revision: 1, watched: false, progressMs: episode.progressSeconds, lastPlayedAt: '', status: 'current', conflicts: []},
+    actions: [{id: 'play', labelKey: 'entry.play', enabled: true, playback: {itemId: episode.id, startMs: 0}},
       {id: 'watchlist', labelKey: 'entry.addToWatchlist', enabled: true},
       {id: 'watched', labelKey: 'entry.markWatched', enabled: true}],
-    facts: {contentRating: 'TV-MA', releaseDate: '2023-01-15', studio: 'PlayStation Productions', country: 'United States', originalLanguage: 'en'}, // lint-strings-allow
-    metadata: {status: 'available', ratings: [], attributions: [], genres: [{id: 'drama', name: 'Drama', provider: 'specimen'}], // lint-strings-allow
-      credits: [{id: 'craig-mazin', name: 'Craig Mazin', role: 'Writer', department: 'Writing', provider: 'specimen'}, // lint-strings-allow
-        {id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', provider: 'specimen'}, // lint-strings-allow
-        {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', provider: 'specimen'}], // lint-strings-allow
-      creditTotals: {cast: 2, crew: 1}},
+    facts: {contentRating: 'TV-MA', releaseDate: episode.airDate, studio: 'PlayStation Productions', country: 'United States', originalLanguage: 'en'},
+    episodeDetails: {contentRating: 'TV-MA', ...neighbours},
+    metadata: {status: 'available', ratings: [], attributions: [], genres: [{id: 'drama', name: 'Drama', provider: 'specimen'}],
+      credits, creditTotals: {cast: credits.filter(credit => credit.department === 'Acting').length, crew: credits.filter(credit => credit.department !== 'Acting').length}},
     languages: {audio: ['en'], subtitles: ['en']},
     collections: [], markers: [],
   };
@@ -165,7 +172,7 @@ const request = async <T,>(path: string, method = 'GET', body?: unknown): Promis
   record('request', {path: route, method});
   if (method === 'GET' && route === `/v1/libraries/${libraryId}/show-workspace`) return showWorkspace() as T;
   if (method === 'GET' && route === `/v1/containers/show/${showId}/personal-state`) return containerState() as T;
-  if (method === 'GET' && route === '/v1/items/ep-1/detail') return episodeDetail() as T;
+  if (method === 'GET' && /^\/v1\/items\/ep-\d+\/detail$/.test(route)) return episodeDetail(Number(route.split('/')[3].slice(3)) - 1) as T;
   if (method === 'PUT' && route === `/v1/admin/libraries/${libraryId}/shows/${showId}/settings`) {
     const settings = (body ?? {}) as Record<string, unknown>;
     record('show-settings', settings);
@@ -249,10 +256,17 @@ createRoot(document.getElementById('root')!).render(
   </WebScreenProvider>,
 );
 
-/** Frame 4 is the scrolled Details tab with the owner's Episode display menu open. */
+/** Frame 4 is the scrolled Details tab; frame 5 opens the third episode in place. */
 let tries = 0;
 const activate = () => {
   if (++tries > 600) return;
+  if (frame === '5') {
+    const tile = document.querySelector<HTMLElement>('button[aria-label="Long, Long Time"]');
+    if (!tile) { requestAnimationFrame(activate); return; }
+    tile.click();
+    requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.setAttribute('data-show-frame5-ready', 'true')));
+    return;
+  }
   const details = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.textContent?.trim() === defaultI18n.t('next.controls.details'));
   if (!details) { requestAnimationFrame(activate); return; }
   if (details.getAttribute('aria-selected') !== 'true') {

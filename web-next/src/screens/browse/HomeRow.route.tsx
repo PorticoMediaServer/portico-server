@@ -49,13 +49,17 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
   const library = context.identity?.libraries.find(library => library.id === row.libraryId);
   const browse: LibraryBrowseBindings = {controller: owner.controller, library: {id: '*', name: row.title, kind: library?.kind ?? ''},
     pivot: owner.controller.source.pivot, artwork: context.artwork,
-    appearance: {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 170) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size},
+    appearance: {view: appearance.libraryView, cardWidth: (width < 600 ? 103 : 170) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size},
     preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
     shape: row.artworkShape === 'square' ? 'square' : 'poster',
     onAppearanceChange: change => {if (!context.isCurrent()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);},
     owner: context.identity?.viewer.role === 'owner', reducedMotion: appearance.reducedMotion,
     env: {t: defaultI18n.t, locale: defaultI18n.region.formatLocale}, reportError: context.effects.reportError,
     canSaveView: false, empty: undefined,
+    // Frame #seeall draws one quick toggle and names the row's own order "Best match";
+    // the scope chips take the viewer's library names ("TV Shows"), not the kind's generic name.
+    sortLabel: defaultI18n.t('next.browse.bestMatch'), quickIds: ['unwatched'],
+    scopeLabel: kind => context.identity?.libraries.find(library => library.kind === kind)?.name ?? kind,
     familyForEntry: entry => context.identity?.libraries.find(library => library.id === entry.libraryId)?.kind,
     scopeLibraries: context.identity?.libraries,
     selection: {actions: member => ({onOpen: () => context.effects.openEntry(member.entry),

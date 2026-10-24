@@ -74,6 +74,7 @@ export const channelMessages = {
   'guide.premiere': 'Premiere',
   'guide.onNow': 'On now',
   'guide.onNowAt': 'On now at {time}',
+  'guide.until': 'Until {time}',
   'guide.nextColumn': 'Next',
   'guide.laterColumn': 'Later',
   'guide.minutesLeft': '{count, plural, one {# min left} other {# min left}}',

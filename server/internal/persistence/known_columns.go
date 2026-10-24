@@ -4598,6 +4598,14 @@ remote_source_read_profiles.revision
 remote_source_read_profiles.scan_depth
 remote_source_read_profiles.source_id
 remote_source_read_profiles.whole_file_reads
+remote_source_webdav_tests.config_digest
+remote_source_webdav_tests.leaf_remote
+remote_source_webdav_tests.object_path
+remote_source_webdav_tests.object_size
+remote_source_webdav_tests.observed_ms
+remote_source_webdav_tests.range_support
+remote_source_webdav_tests.source_generation
+remote_source_webdav_tests.source_id
 remote_sources.config
 remote_sources.credential_present
 remote_sources.error_code
@@ -4612,6 +4620,7 @@ remote_sources.range_support
 remote_sources.removed
 remote_sources.root
 remote_sources.state
+remote_sources.webdav_leaf_count
 reset_file_sessions.family_id
 reset_file_sessions.kind
 restriction_outbox.body

@@ -19,4 +19,5 @@ export const showMessages = {
   'next.show.membersNeverSee': 'Members never see this. Changes here apply for everyone on this server.',
   'next.show.howListed': 'How episodes are listed on every device.',
   'next.show.change': 'Change',
+  'next.show.guestStars': 'Guest stars',
 } as const;

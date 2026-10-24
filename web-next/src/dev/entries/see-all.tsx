@@ -346,7 +346,7 @@ async function mount(element: HTMLElement) {
     unread: 3, showNotificationDot: true,
     capabilities: {manageAccount: false, managePeople: false, manageServer: true, manageSignIn: false},
   };
-  const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl+0AAAAASUVORK5CYII=';
+  const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mOoctMBAAIqAO0ezPdVAAAAAElFTkSuQmCC';
   const runtime = createArtworkRuntime({
     scopeKey: 'see-all-specimen', classify: () => ({retryable: false}),
     load: async (_request, signal) => {

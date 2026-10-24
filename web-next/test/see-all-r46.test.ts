@@ -132,9 +132,21 @@ test('the row screen is the drawn see-all header over the kit page, seven column
   assert.match(screen, /variant="primary" size="hero" icon="i-play"/);
   assert.match(screen, /variant="glass" size="hero" icon="i-shuffle"/);
   // The frame draws seven fluid columns at 1440 on Medium; 170 is that column's card size.
-  assert.match(route, /cardWidth: \(width < 600 \? 112 : 170\)/);
+  assert.match(route, /cardWidth: \(width < 600 \? 103 : 170\)/);
   assert.match(route, /ambient=\{ambient\}/);
   assert.match(css, /\.title \{ margin: 14px 0 12px; font-size: var\(--type-lockup-long-size\)/);
   assert.match(css, /\.why \{ max-width: 760px; margin: 0 0 26px;/);
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?)\(/);
+});
+
+test('the bar is the frame toolbar: one quick toggle, Best match, the viewer library names', () => {
+  const route = read('../src/screens/browse/HomeRow.route.tsx'), toolbar = read('../src/kit/browse/BrowseToolbar.tsx');
+  const catalogue = read('../../packages/i18n/src/catalog/en-US/next/browse.ts');
+  assert.match(route, /sortLabel: defaultI18n\.t\('next\.browse\.bestMatch'\)/);
+  assert.match(route, /quickIds: \['unwatched'\]/);
+  assert.match(route, /scopeLabel: kind => context\.identity\?\.libraries\.find/);
+  assert.match(toolbar, /sortLabel\?: string/);
+  assert.match(toolbar, /quickIds\?: readonly string\[\]/);
+  assert.match(toolbar, /const quick = quickIds === undefined \? model\.quick : model\.quick\.filter/);
+  assert.match(catalogue, /'next\.browse\.bestMatch': 'Best match'/);
 });

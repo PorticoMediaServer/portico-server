@@ -1,4 +1,4 @@
-.episodes { padding: 28px 64px 80px; }
+.episodes { padding: 28px 64px 82px; }
 
 .toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
 
@@ -141,6 +141,8 @@
 
 @media(max-width:1023px) { .detailsTab { padding: 24px 20px 110px; }
 
+.expanded { margin-top: -24px; }
+
 .detailsGrid { display: block; }
 
 .castBlock { margin-top: 36px; }
@@ -152,3 +154,41 @@
 .ownerCell > button { position: static; margin-top: 12px; }
 
 }
+
+.expanded { margin-top: -28px; }
+
+.contextShow { color: var(--color-text-secondary); }
+
+.episodeSide { display: flex; flex-direction: column; gap: 10px; }
+
+.episodeNav { display: flex; align-items: center; gap: 14px; margin: 0 -8px; padding: 8px; border: 0; border-radius: 12px; background: none; color: inherit; text-align: left; cursor: pointer; }
+
+.episodeNav:hover { background: color-mix(in srgb,var(--color-text) 6%,transparent); }
+
+.episodeNav:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: 0; }
+
+.episodeNavArt { position: relative; width: 112px; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; flex: none; background: var(--color-raised); }
+
+.episodeNavArt > * { width: 100%; height: 100%; }
+
+.episodeNavCopy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.episodeNavCopy small { display: flex; align-items: center; gap: 2px; font-size: var(--type-caption-strong-size); font-weight: var(--type-caption-strong-weight); color: var(--color-text-tertiary); }
+
+.episodeNavCopy b { font-size: var(--type-episode-title-size); font-weight: var(--type-episode-title-weight); color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.episodeCredits { display: grid; grid-template-columns: 96px 1fr; gap: 10px 14px; margin: 14px 0 0; padding-top: 18px; border-top: 1px solid color-mix(in srgb,var(--color-line) 60%,transparent); font-size: var(--type-starring-size); line-height: calc(var(--type-starring-size) * 1.45); }
+
+.episodeCredits dt { color: var(--color-text-tertiary); }
+
+.episodeCredits dd { display: flex; flex-direction: column; gap: 2px; margin: 0; color: var(--color-text-secondary); }
+
+.guestLine { display: flex; align-items: baseline; gap: 8px; }
+
+.guestLine > span:last-child { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+
+.episodeRow [class*="episodeTitle"] { font-size: var(--type-wide-title-size); }
+
+.episodeRow [data-role="status"] { color: var(--color-accent-strong); font-weight: var(--type-caption-strong-weight); }
+
+.episodeRow [data-role="supplement"] { color: var(--color-text-secondary); }

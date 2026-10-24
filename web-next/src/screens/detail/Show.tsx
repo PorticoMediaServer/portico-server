@@ -4,7 +4,8 @@ import {preferenceValue} from '@core/preferences.ts';
 import type {ShowWorkspaceRoute, ShowWorkspaceData, ShowSettings, WorkspaceShowCredit} from '@core/show-workspace.ts';
 import {cardText, episodeLabel, titleFactParts, type FactPart} from '@core/presentation/kit-model';
 import {Button, Chip, ResumeButton, Tabs, Segmented, Switch} from '../../kit/controls';
-import {AmbientArt} from '../../kit/artwork';
+import {AmbientArt, Artwork} from '../../kit/artwork';
+import {Icon} from '../../kit/Icon';
 import {Lockup} from '../../kit/layout';
 import {EpisodeTile} from '../../kit/cards';
 import {Menu, MenuItem, Popover} from '../../kit/overlays';
@@ -22,7 +23,7 @@ import detail from './detail.module.css';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
 import {EpisodeDetailsLayout, TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
-import {TitlePeople, ShowPeople} from './People';
+import {TitlePeople, ShowPeople, CreditNames} from './People';
 import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
@@ -80,9 +81,8 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
           {snapshot.seasonPagination.canPrevious && <MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.previousSeasons(); })}>{t('title.earlierSeasons')}</MenuItem>}
           {snapshot.seasonPagination.nextCursor && <MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.nextSeasons(); })}>{t('title.laterSeasons')}</MenuItem>}
         </Menu>
-        {selectedSeason?.episodeCount !== undefined && selectedSeason.watchedCount !== undefined && <span className={styles.progress}>{t('title.seasonProgress', {watched: selectedSeason.watchedCount, total: selectedSeason.episodeCount})}</span>}
+        {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
         <label className={styles.hide}>{t('next.controls.hideWatched')}<Switch checked={snapshot.route?.playState === 'unplayed'} onCheckedChange={checked => runScreenCommand(binding.context, () => { binding.current(data); const route = snapshot.route; if (route) return binding.select({...route, playState: checked ? 'unplayed' : 'all'}); })} /></label>
-        {!phone && <Segmented value={layout} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'list' || value === 'grid') binding.view.layout(value); })} aria-label={t('title.episodeLayout')} variant="view" items={[{value: 'list', label: t('title.viewList'), icon: 'i-list'}, {value: 'grid', label: t('title.viewGrid'), icon: 'i-grid'}]} />}
       </div>
       {snapshot.phase === 'error' || snapshot.phase === 'refresh-required' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : null}
       {!episodes.length && snapshot.phase === 'ready' && <StateView title={t('title.noEpisodes')} body={t('title.noEpisodesBody')} />}
@@ -112,14 +112,42 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
 export function EpisodeBody({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
   const snapshot = useSyncExternalStore(binding.episode.service.subscribe, binding.episode.service.getSnapshot, binding.episode.service.getSnapshot), episode = snapshot.data;
   if (!episode) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.episode.service.retry(); }} /> : <DetailLoading shape="episode" />;
-  const adjacent = <div className={styles.adjacent}>{(['previous', 'next'] as const).map(direction => { const target = episode.episodeDetails?.[direction]; return target && <Button key={direction} variant="text" size="small" aria-label={t(direction === 'previous' ? 'title.previousEpisode' : 'title.nextEpisode')} onClick={() => {
-        runScreenCommand(binding.context, () => { binding.current(data); return binding.select({libraryId: data.scope.libraryId, showId: data.show.id, episodeId: target.id}); });
-      }}>{target.title}<small>{t('next.kit.episode', {number: target.number})}</small></Button>; })}</div>;
-  return <EpisodeDetailsLayout title={episode.item.title} onClose={() => runScreenCommand(binding.context, binding.closeEpisode)} context={<b>{data.show.title}</b>}
+  const season = data.seasons.find(value => value.id === data.selected.seasonId);
+  const listed = data.episodes.sections[0]?.entries ?? [];
+  const entry = listed.find(value => value.id === episode.item.id);
+  const code = entry ? episodeCode(entry, t) : undefined, aired = entry?.airDate ? calendarDate(entry.airDate, locale()) : undefined;
+  const open = (id: string) => runScreenCommand(binding.context, () => { binding.current(data); return binding.select({libraryId: data.scope.libraryId, showId: data.show.id, episodeId: id}); });
+  const neighbours = (['previous', 'next'] as const).map(direction => {
+    const target = episode.episodeDetails?.[direction];
+    if (!target) return null;
+    const art = listed.find(value => value.id === target.id);
+    return <button key={direction} type="button" className={styles.episodeNav} aria-label={t(direction === 'previous' ? 'title.previousEpisode' : 'title.nextEpisode')} onClick={() => open(target.id)}>
+      <span className={styles.episodeNavArt}><Artwork source={binding.context.artwork.foreground(art?.stillUrl ?? art?.backdropUrl ?? data.show.backdropUrl, 224, 16 / 9)} alt="" /></span>
+      <span className={styles.episodeNavCopy}><small>{direction === 'previous' && <Icon name="i-left" size={14} />}{t(direction === 'previous' ? 'title.previousEpisode' : 'title.nextEpisode')}{direction === 'next' && <Icon name="i-right" size={14} />}</small><b>{target.title}</b><small>{t('next.kit.episode', {number: target.number})}</small></span>
+    </button>;
+  });
+  const credits = episode.metadata.credits;
+  const guests = credits.filter(credit => /acting|cast/i.test(credit.department ?? ''));
+  const directors = credits.filter(credit => /directing|director/i.test(`${credit.department ?? ''} ${credit.role ?? ''}`));
+  const writers = credits.filter(credit => /writing|writer|screenplay|teleplay/i.test(`${credit.department ?? ''} ${credit.role ?? ''}`));
+  const facts: FactPart[] = [
+    ...(code ? [{id: 'episode-code', text: code, role: 'context' as const}] : []),
+    ...(aired ? [{id: 'aired', text: t('title.airedOn', {date: aired}), role: 'context' as const}] : []),
+    ...titleFactParts({durationSeconds: episode.item.duration, contentRating: episode.episodeDetails?.contentRating}, env),
+  ];
+  const side = <div className={styles.episodeSide}>
+    {neighbours}
+    {(guests.length > 0 || directors.length > 0 || writers.length > 0) && <dl className={styles.episodeCredits}>
+      {guests.length > 0 && <><dt>{t('next.show.guestStars')}</dt><dd>{guests.map(credit => <span key={credit.id ?? credit.name} className={styles.guestLine}><CreditNames binding={binding.episode} data={episode} credits={[credit]} /><span>{credit.role}</span></span>)}</dd></>}
+      {directors.length > 0 && <><dt>{t('title.directedByLabel')}</dt><dd><CreditNames binding={binding.episode} data={episode} credits={directors} /></dd></>}
+      {writers.length > 0 && <><dt>{t('title.writtenByLabel')}</dt><dd><CreditNames binding={binding.episode} data={episode} credits={writers} /></dd></>}
+    </dl>}
+  </div>;
+  return <EpisodeDetailsLayout title={episode.item.title} onClose={() => runScreenCommand(binding.context, binding.closeEpisode)} context={<><b className={styles.contextShow}>{data.show.title}</b>{season && <span>{season.title}</span>}</>}
     artwork={binding.context.artwork.foreground(episode.item.stillUrl ?? data.show.backdropUrl, 880, 16 / 9)} backdrop={!episode.item.stillUrl}
-    facts={<TitleFactsLine parts={titleFactParts({durationSeconds: episode.item.duration, contentRating: episode.episodeDetails?.contentRating}, env)} />}
-    synopsis={episode.item.overview} actions={<TitleActions binding={binding.episode} data={episode} />} adjacent={adjacent}
-    credits={<TitlePeople binding={binding.episode} data={episode} episode />} />;
+    facts={<TitleFactsLine parts={facts} />}
+    synopsis={episode.item.overview} actions={<TitleActions binding={binding.episode} data={episode} />}
+    credits={side} />;
 }
 
 /** The drawn About column: the show's own stored facts, never a file fact. */
