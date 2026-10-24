@@ -55,11 +55,19 @@ func TestMusicWavPackLosslessLowBitrateUsesRequestedActualEncode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if original.AudioCodec != "wavpack" || original.AudioBitrateBPS <= 0 || original.AudioBitrateBPS >= 96000 {
-		t.Fatal("fixture is not the actual low-bitrate lossless case", original.AudioCodec, original.AudioBitrateBPS)
+	if original.AudioCodec != "wavpack" || original.Duration <= 0 {
+		t.Fatal("actual WavPack timing missing", original.AudioCodec, original.Duration)
+	}
+	// WavPack does not report a stream bitrate. Download selection measures
+	// file bytes over its validated duration; keep that distinct from a
+	// nonexistent ffprobe stream-bit-rate assertion.
+	measuredByteRate := int(float64(len(data)) * 8 / original.Duration)
+	if measuredByteRate <= 0 || measuredByteRate >= 96000 {
+		t.Fatal("fixture is not low-byte-rate lossless audio", measuredByteRate)
 	}
 	original = musicSourceFacts(original, tags)
 	source := original.recipeSource()
+	source.AudioBitrateBPS = measuredByteRate
 	bridge := httptest.NewServer(http.FileServer(http.Dir(filepath.Dir(path))))
 	defer bridge.Close()
 	for _, codec := range []string{"aac", "opus"} {
