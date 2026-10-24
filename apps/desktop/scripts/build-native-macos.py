@@ -120,7 +120,7 @@ print('EXACT_102_CANONICAL_SOURCE_INVENTORY_PASS')
  print('FFMPEG_SHARED_102_BUILD_PASS',flush=True)
  mpv_archive=args.mpv_archive;assert sha(mpv_archive)=='ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209'
  mpv_root=job/'mpv-source';unpack(mpv_archive,mpv_root);mpv_source=next(mpv_root.iterdir());mpv_build=job/'build/mpv'
- run([meson,'setup',mpv_build,mpv_source,'--prefix='+str(prefix),'--buildtype=release','-Doptimization=2','-Db_lto=false','-Dlibmpv=true','-Dcplayer=false','-Dtests=false','-Dcocoa=enabled','-Dvulkan=enabled','-Dhtml-build=disabled','-Dmanpage-build=disabled'])
+ run([meson,'setup',mpv_build,mpv_source,'--prefix='+str(prefix),'--buildtype=release','-Doptimization=2','-Db_lto=false','-Dlibmpv=true','-Dcplayer=false','-Dtests=false','-Dlua=disabled','-Djavascript=disabled','-Dcocoa=enabled','-Dvulkan=enabled','-Dhtml-build=disabled','-Dmanpage-build=disabled'])
  run([ninja,'-C',mpv_build,'-j1']);run([meson,'install','-C',mpv_build,'--no-rebuild'])
  stage=job/'native-stage';run(['/usr/bin/python3',native/'scripts/stage-native-macos.py','--mpv',prefix/'lib/libmpv.2.dylib','--ffmpeg-prefix',prefix,'--dependency-directory',deps/'lib','--ffmpeg-receipt',receipt,'--lock',native/'native-deps.lock.json','--output',stage])
  for name,major in {'avcodec':62,'avformat':62,'avutil':60,'avfilter':11,'avdevice':62,'swscale':9,'swresample':6}.items():
