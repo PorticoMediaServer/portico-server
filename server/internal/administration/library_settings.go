@@ -477,7 +477,7 @@ func (s *Service) LibrarySettingsFor(ctx context.Context, auth Authorize, id str
 		if err != nil {
 			return err
 		}
-		return s.librarySonicEligibility(ctx, tx, &out, sonic)
+		return s.librarySonicEligibility(ctx, tx, &out, sonic, false)
 	})
 	return out, err
 }
@@ -507,7 +507,7 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		}
 		if replayed {
 			out = stored
-			return s.librarySonicEligibility(ctx, tx, &out, sonic)
+			return s.librarySonicEligibility(ctx, tx, &out, sonic, true)
 		}
 		_, kind, _, err := librarySettingsIdentity(ctx, tx, id)
 		if err != nil {
@@ -549,7 +549,7 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		if out, err = s.libraryDocument(ctx, tx, id); err != nil {
 			return err
 		}
-		if err = s.librarySonicEligibility(ctx, tx, &out, sonic); err != nil {
+		if err = s.librarySonicEligibility(ctx, tx, &out, sonic, false); err != nil {
 			return err
 		}
 		return saveReceipt(ctx, tx, scope, change.OperationID, digest, out, at)
