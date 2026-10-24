@@ -12,7 +12,7 @@
 .sessions b { display: block; font-weight: 700; }
 .sessions small { display: block; color: var(--color-text-tertiary); font-size: 12.5px; margin-top: 1px; }
 .scanStage { position: relative; height: 100%; background: var(--color-ink); }
-.detailsHeading { margin: 26px 0 -14px; font-size: 13.5px; color: var(--color-text-tertiary); font-weight: 700; }
+.detailsHeading { margin: 26px 0 -14px; font-size: var(--type-activity-detail-size); color: var(--color-text-tertiary); font-weight: var(--type-row-heading-weight); }
 .slowNotice { position: absolute; top: 88px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 18px 0 14px; border-radius: 20px; white-space: nowrap; background: rgba(16,33,45,.9); backdrop-filter: blur(24px); box-shadow: 0 14px 30px -12px rgba(0,0,0,.8),inset 0 0 0 1px rgba(237,245,250,.1); font-size: 14px; line-height: normal; font-weight: 600; color: var(--color-text-secondary); }
 .slowNotice b { color: var(--color-text); font-weight: 700; }
 .waitingDot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-amber); box-shadow: 0 0 0 4px rgba(232,188,106,.16); flex: none; }
