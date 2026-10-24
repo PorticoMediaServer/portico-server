@@ -3,6 +3,9 @@ package dbwork
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"io"
 	"path/filepath"
 	"portico.local/server/internal/worker"
 	"testing"
@@ -138,6 +141,149 @@ func TestExecWriteWakesMountLikeWorkerButReadDoesNot(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+func TestExecWriteTracksKnownRootsAndKeepsUnknownBroadcast(t *testing.T) {
+	db := testDB(t)
+	if _, err := db.Exec(`CREATE TABLE unrelated_jobs(id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	rows, unrelated := worker.NewSignal(), worker.NewSignal()
+	directRows, directUnrelated := worker.NewSignal(), worker.NewSignal()
+	for _, stop := range []func(){WakeOnTables(rows, "rows"), WakeOnTables(unrelated, "unrelated_jobs"), WakeOnDirectWrites(directRows, "rows"), WakeOnDirectWrites(directUnrelated, "unrelated_jobs")} {
+		defer stop()
+	}
+	for _, tc := range []struct {
+		name, query     string
+		wantErr, change bool
+		unknown         bool
+	}{
+		{"insert", `INSERT INTO rows(id,value) VALUES(1,'first')`, false, true, false},
+		{"update", `UPDATE rows SET value='second' WHERE id=1`, false, true, false},
+		{"no change", `UPDATE rows SET value='absent' WHERE id=-1`, false, false, false},
+		{"failure", `INSERT INTO rows(id,value) VALUES(1,'duplicate')`, true, false, false},
+		{"CTE", `WITH value(id) AS (SELECT 2) INSERT INTO rows(id,value) SELECT id,'cte' FROM value`, false, true, true},
+		{"multiple statements", `INSERT INTO rows(id,value) VALUES(3,'multi'); INSERT INTO unrelated_jobs VALUES(1)`, false, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ExecWrite(ctx, db, ClassInteractive, tc.query)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("write error %v, wantErr %v", err, tc.wantErr)
+			}
+			if got := rows.Take(); got != tc.change {
+				t.Fatalf("source wake %v, want %v", got, tc.change)
+			}
+			if got := directRows.Take(); got != tc.change {
+				t.Fatalf("direct source wake %v, want %v", got, tc.change)
+			}
+			if got := unrelated.Take(); got != tc.unknown {
+				t.Fatalf("unrelated wake %v, want unknown broadcast %v", got, tc.unknown)
+			}
+			if got := directUnrelated.Take(); got != tc.unknown {
+				t.Fatalf("direct unrelated wake %v, want unknown broadcast %v", got, tc.unknown)
+			}
+		})
+	}
+	if err := WithWriteTxContext(ctx, db, ClassInteractive, func(inner context.Context, _ *sql.Tx) error {
+		_, err := ExecWrite(inner, db, ClassInteractive, `INSERT INTO rows(id,value) VALUES(4,'nested')`)
+		if rows.Take() || directRows.Take() || unrelated.Take() || directUnrelated.Take() {
+			t.Fatal("nested write notified before its actual transaction committed")
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !rows.Take() || unrelated.Take() || directRows.Take() || directUnrelated.Take() {
+		t.Fatal("nested write lost its transaction scope or gained direct notifications")
+	}
+}
+
+func TestExecWriteTracksTriggerAndForeignKeyDependents(t *testing.T) {
+	db := testDB(t)
+	_, err := db.Exec(`CREATE TABLE scope_parent(id INTEGER PRIMARY KEY);CREATE TABLE scope_child(id INTEGER PRIMARY KEY,parent INTEGER REFERENCES scope_parent(id) ON DELETE CASCADE);CREATE TABLE scope_source(id INTEGER PRIMARY KEY);CREATE TABLE unrelated_jobs(id INTEGER PRIMARY KEY);CREATE TRIGGER scope_enqueue AFTER INSERT ON scope_source BEGIN INSERT INTO scope_child VALUES(NEW.id,1);END;INSERT INTO scope_parent VALUES(1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := InstallWakeDependencies(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	child, unrelated := worker.NewSignal(), worker.NewSignal()
+	stopChild, stopUnrelated := WakeOnTables(child, "scope_child"), WakeOnTables(unrelated, "unrelated_jobs")
+	defer stopChild()
+	defer stopUnrelated()
+	for _, query := range []string{`INSERT INTO scope_source VALUES(7)`, `DELETE FROM scope_parent WHERE id=1`} {
+		if _, err := ExecWrite(ctx, db, ClassInteractive, query); err != nil {
+			t.Fatal(err)
+		}
+		if !child.Take() || unrelated.Take() {
+			t.Fatal("dependent write was lost or broadcast to an unrelated subscriber")
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM scope_child`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("foreign-key delete did not actually cascade: count %d, error %v", count, err)
+	}
+}
+
+func TestExecWritePostCountFailureBroadcastsWithoutReplaying(t *testing.T) {
+	conn := &postCountFailureConn{}
+	db := sql.OpenDB(postCountFailureConnector{conn})
+	defer db.Close()
+	source, unrelated := worker.NewSignal(), worker.NewSignal()
+	direct := worker.NewSignal()
+	for _, stop := range []func(){WakeOnTables(source, "rows"), WakeOnTables(unrelated, "unrelated_jobs"), WakeOnDirectWrites(direct, "unrelated_jobs")} {
+		defer stop()
+	}
+	result, err := ExecWrite(context.Background(), db, ClassInteractive, `INSERT INTO rows(value) VALUES('committed')`)
+	if err != nil || result == nil || conn.executed != 1 || conn.counts != 2 {
+		t.Fatalf("committed statement was failed or replayed: err %v, executions %d, counts %d", err, conn.executed, conn.counts)
+	}
+	if !source.Take() || !unrelated.Take() || !direct.Take() {
+		t.Fatal("a committed write with unknown post-count did not broadcast conservatively")
+	}
+}
+
+// This public-handle driver commits once, then fails only the post-write count.
+// ExecWrite must not retry a statement whose commit already happened.
+type postCountFailureConn struct{ counts, executed int }
+
+func (c *postCountFailureConn) Prepare(string) (driver.Stmt, error) {
+	return nil, errors.New("unexpected prepare")
+}
+func (c *postCountFailureConn) Close() error { return nil }
+func (c *postCountFailureConn) Begin() (driver.Tx, error) {
+	return nil, errors.New("unexpected transaction")
+}
+func (c *postCountFailureConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
+	c.executed++
+	return driver.RowsAffected(1), nil
+}
+func (c *postCountFailureConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+	c.counts++
+	if c.counts > 1 {
+		return nil, errors.New("post-write count unavailable")
+	}
+	return &postCountFailureRows{}, nil
+}
+
+type postCountFailureConnector struct{ conn *postCountFailureConn }
+
+func (c postCountFailureConnector) Connect(context.Context) (driver.Conn, error) { return c.conn, nil }
+func (c postCountFailureConnector) Driver() driver.Driver                        { return c }
+func (c postCountFailureConnector) Open(string) (driver.Conn, error)             { return c.conn, nil }
+
+type postCountFailureRows struct{ read bool }
+
+func (*postCountFailureRows) Columns() []string { return []string{"total_changes()"} }
+func (*postCountFailureRows) Close() error      { return nil }
+func (r *postCountFailureRows) Next(values []driver.Value) error {
+	if r.read {
+		return io.EOF
+	}
+	r.read, values[0] = true, int64(0)
+	return nil
 }
 
 // WakeOnTableWrites wakes only for a write that names one of its tables: not

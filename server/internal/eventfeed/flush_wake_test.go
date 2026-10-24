@@ -71,22 +71,22 @@ func TestRetiringOwnFlushWakePreservesPeerPublications(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	before := dbwork.Publications()
+	before := dbwork.ChangingCommits()
 	commit()
-	retireOwnFlushWake(signal, before)
+	retireOwnFlushWake(signal, before, true)
 	if signal.Take() {
 		t.Fatal("own covered publication retained work")
 	}
-	before = dbwork.Publications()
+	before = dbwork.ChangingCommits()
 	commit()
 	commit()
-	retireOwnFlushWake(signal, before)
+	retireOwnFlushWake(signal, before, true)
 	if !signal.Take() {
 		t.Fatal("peer publication during flush was lost")
 	}
-	before = dbwork.Publications()
+	before = dbwork.ChangingCommits()
 	commit()
-	retireOwnFlushWake(signal, before)
+	retireOwnFlushWake(signal, before, true)
 	commit()
 	if !signal.Take() {
 		t.Fatal("peer publication after retirement was lost")
@@ -95,9 +95,8 @@ func TestRetiringOwnFlushWakePreservesPeerPublications(t *testing.T) {
 
 // TestEmptyFlushPublishesOneCommit ties the retirement rule to the actual write
 // gate. An outbox pass with nothing to send still commits one gated
-// transaction, and that commit is a publication, so a peer publication is
-// always separated from the pass's own by at least two. This is the load-bearing
-// fact TestHubStaysQuietWhenTheOutboxStartsEmpty observes at the real call site.
+// transaction, and that commit is a publication even though it cannot wake
+// subscribers. Wake retirement must distinguish that from a changing commit.
 func TestEmptyFlushPublishesOneCommit(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "emptyflush.sqlite"))
 	if err != nil {
@@ -122,19 +121,14 @@ func TestEmptyFlushPublishesOneCommit(t *testing.T) {
 	}
 }
 
-// TestRetiringOwnFlushWakeDefensiveZeroDeltaDoesNotRearm covers the defensive
-// branch directly: a delta of zero is not reachable through the current gate
-// (TestEmptyFlushPublishesOneCommit proves the empty pass publishes +1), but if
-// the gate ever stopped publishing a no-change commit, a still-pending wake was
-// already read through. Re-arming it is what would turn the feed's two-second
-// floor into an endless empty loop.
-func TestRetiringOwnFlushWakeDefensiveZeroDeltaDoesNotRearm(t *testing.T) {
+// A pass with no changing commit has already covered its pending wake.
+func TestRetiringOwnFlushWakeWithNoChangesDoesNotRearm(t *testing.T) {
 	signal := worker.NewSignal()
 	signal.Wake()
-	before := dbwork.Publications()
-	retireOwnFlushWake(signal, before)
+	before := dbwork.ChangingCommits()
+	retireOwnFlushWake(signal, before, false)
 	if signal.Take() {
-		t.Fatal("a pass that published nothing re-armed a covered wake")
+		t.Fatal("a pass that changed nothing re-armed a covered wake")
 	}
 }
 
@@ -150,7 +144,7 @@ func TestRetiringOwnFlushWakeRetainsAnUnknownPeerPublication(t *testing.T) {
 	signal := worker.NewSignal()
 	stop := dbwork.WakeOnTables(signal, "api_events")
 	defer stop()
-	before := dbwork.Publications()
+	before := dbwork.ChangingCommits()
 	// The pass's own flush commit, then an unknown-scope peer commit.
 	if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO api_events(audience,type,at_ms) VALUES('server','settings.changed',0)`)
@@ -161,7 +155,7 @@ func TestRetiringOwnFlushWakeRetainsAnUnknownPeerPublication(t *testing.T) {
 	if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `WITH row(audience) AS (SELECT 'server') INSERT INTO api_events(audience,type,at_ms) SELECT audience,'settings.changed',0 FROM row`); err != nil {
 		t.Fatal(err)
 	}
-	retireOwnFlushWake(signal, before)
+	retireOwnFlushWake(signal, before, true)
 	if !signal.Take() {
 		t.Fatal("an unknown-scope peer publication was retired with the flush")
 	}

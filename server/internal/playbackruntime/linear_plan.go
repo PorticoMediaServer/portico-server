@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
-	"strings"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/decoder"
@@ -12,21 +11,40 @@ import (
 )
 
 type linearProbeStream struct {
-	FieldOrder  string `json:"field_order"`
-	Level       int    `json:"level"`
-	FrameRate   string `json:"avg_frame_rate"`
-	Kind        string `json:"codec_type"`
-	Codec       string `json:"codec_name"`
-	Profile     string `json:"profile"`
-	PixelFormat string `json:"pix_fmt"`
-	Transfer    string `json:"color_transfer"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-	Channels    int    `json:"channels"`
-	SampleRate  string `json:"sample_rate"`
-	Layout      string `json:"channel_layout"`
-	Bitrate     string `json:"bit_rate"`
-	AudioDepth  string `json:"bits_per_raw_sample"`
+	FieldOrder    string `json:"field_order"`
+	Level         int    `json:"level"`
+	FrameRate     string `json:"avg_frame_rate"`
+	RealFrameRate string `json:"r_frame_rate"`
+	Kind          string `json:"codec_type"`
+	Codec         string `json:"codec_name"`
+	Profile       string `json:"profile"`
+	PixelFormat   string `json:"pix_fmt"`
+	Transfer      string `json:"color_transfer"`
+	Width         int    `json:"width"`
+	Height        int    `json:"height"`
+	Channels      int    `json:"channels"`
+	SampleRate    string `json:"sample_rate"`
+	Layout        string `json:"channel_layout"`
+	Bitrate       string `json:"bit_rate"`
+	AudioDepth    string `json:"bits_per_raw_sample"`
+	videoDetail   *assets.StreamDetail
+}
+
+func (s *linearProbeStream) UnmarshalJSON(raw []byte) error {
+	type plain linearProbeStream
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	if decoded.Kind == "video" {
+		detail, err := assets.VideoStreamDetailFromProbeJSON(raw)
+		if err != nil {
+			return err
+		}
+		decoded.videoDetail = &detail
+	}
+	*s = linearProbeStream(decoded)
+	return nil
 }
 
 // Plan from probed elementary streams and the admitted engine's declarations.
@@ -120,15 +138,10 @@ func linearVideoSource(video *linearProbeStream) *playback.SourceVideo {
 	if video == nil {
 		return nil
 	}
-	fps := 0.0
-	parts := strings.Split(video.FrameRate, "/")
-	if len(parts) == 2 {
-		a, _ := strconv.ParseFloat(parts[0], 64)
-		b, _ := strconv.ParseFloat(parts[1], 64)
-		if b > 0 {
-			fps = a / b
-		}
+	if video.videoDetail != nil {
+		return &playback.SourceVideo{Codec: video.Codec, StreamDetail: *video.videoDetail}
 	}
+	fps, numerator, denominator := assets.VideoProbeFrameRate(video.FrameRate, video.RealFrameRate)
 	bitrate, _ := strconv.ParseInt(video.Bitrate, 10, 64)
 	interlaced, analysis := assets.VideoProbeInterlace(video.FieldOrder)
 	return &playback.SourceVideo{Codec: video.Codec, StreamDetail: assets.StreamDetail{
@@ -136,6 +149,6 @@ func linearVideoSource(video *linearProbeStream) *playback.SourceVideo {
 		Width: video.Width, Height: video.Height,
 		BitDepth:  assets.VideoProbeBitDepth(video.AudioDepth, video.PixelFormat),
 		FrameRate: fps, DynamicRange: assets.DynamicRangeOf(video.Transfer, 0),
-		Interlaced: interlaced, StreamBreadth: assets.StreamBreadth{InterlaceAnalysis: analysis},
+		Interlaced: interlaced, StreamBreadth: assets.StreamBreadth{InterlaceAnalysis: analysis, FrameRateNumerator: numerator, FrameRateDenominator: denominator},
 	}}
 }

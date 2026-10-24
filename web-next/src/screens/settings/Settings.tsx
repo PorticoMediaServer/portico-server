@@ -11,7 +11,8 @@ import {useShellWidth} from '../../shell/viewport';
 import {configurationFieldEligible} from './eligibility';
 import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
 import {useWebAction} from '../../route-registry-view';
-import styles from '../../kit/settings/settings.module.css';
+import kitStyles from '../../kit/settings/settings.module.css';
+import styles from './settings.module.css';
 
 const t = defaultI18n.t;
 export type SettingsContext = Readonly<{section: SettingsSection; panelId?: string; tabId?: string; recordId?: string}>;
@@ -102,7 +103,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   const panelState = bindings.panel?.(panelContext);
   const audience = bindings.audience(section);
   const fact = configuration.find(fact => fact.key === configurationKey);
-  return <SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
+  return <div className={styles.screen}><SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
     {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} facts={bindings.serverFacts()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} facts={bindings.serverFacts()} />)}
     <SettingsPageHeading title={t(section.title)} saveState={snapshot.saveState} />
     {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <SettingsPageFailure retry={() => {void bindings.load(section);}} home={bindings.openHome} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
@@ -110,10 +111,10 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}
     </SettingsPanel>}
-  </SettingsWorkspace>;
+  </SettingsWorkspace></div>;
 }
 
 function ConfigurationFact({fact}: {fact: SettingsConfigurationMatch}) {
   const value = (value: unknown) => value === null ? t('next.settings.notSet') : typeof value === 'string' ? value : JSON.stringify(value);
-  return <section className={styles.configurationNote} aria-label={fact.label}><Icon name="i-info" size={20} /><span>{fact.label}{fact.label ? '. ' : ''}{t('next.settings.configOnly.before')}{' '}<code>{fact.key}</code>{' = '}<code>{value(fact.default)}</code>{t('next.settings.configOnly.after')}</span></section>;
+  return <section className={kitStyles.configurationNote} aria-label={fact.label}><Icon name="i-info" size={20} /><span>{fact.label}{fact.label ? '. ' : ''}{t('next.settings.configOnly.before')}{' '}<code>{fact.key}</code>{' = '}<code>{value(fact.default)}</code>{t('next.settings.configOnly.after')}</span></section>;
 }

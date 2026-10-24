@@ -7,10 +7,10 @@ import {App} from './App';
 import {ShellBootstrap} from './shell/bootstrap';
 import {assembleShellBindings} from './shell/assembly';
 import {initializeAppInstallation} from './platform/installation-provider';
-import {captureWebAccountReturn} from './route-registry-return';
+import {captureWebAccountArrival} from './route-registry-arrival';
 import {AppLifetime} from './AppLifetime';
 
-const takeAccountReturn = captureWebAccountReturn(location, history);
+const accountArrival = captureWebAccountArrival(location, history);
 const styleNonce = document.querySelector<HTMLMetaElement>('meta[name="portico-style-nonce"]')?.content;
 if (styleNonce && styleNonce !== '__PORTICO_STYLE_NONCE__') {
   (window as Window & {__webpack_nonce__?: string}).__webpack_nonce__ = styleNonce;
@@ -19,7 +19,7 @@ const lifetime = new AppLifetime();
 /** Desktop closes the real app before removing native brokers/platform ports.
  * This retires mounted owners, never signs out or clears protected credentials. */
 export function disposeApp(): void {
-  try { lifetime.dispose(); } finally { takeAccountReturn?.(); }
+  try { lifetime.dispose(); } finally { accountArrival.dispose(); }
 }
 // Core services own real effects; test their lifecycle directly instead of double mounting them.
 function start() { return lifetime.start(signal => initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '', signal), () => {
@@ -28,7 +28,7 @@ function start() { return lifetime.start(signal => initializeAppInstallation(imp
   const unmount = () => {try { bootstrap?.dispose(); } finally { root?.unmount(); root = undefined; }};
   try {
     root = createRoot(document.getElementById('root')!);
-    root.render(<App bootstrap={bootstrap} takeAccountReturn={takeAccountReturn} />);
+    root.render(<App bootstrap={bootstrap} takeAccountReturn={accountArrival.takeAccountReturn} takeAccountMove={accountArrival.takeAccountMove} />);
     return unmount;
   } catch (error) { unmount(); throw error; }
 }); }
