@@ -230,3 +230,21 @@ func TestArchiveMemberSourceFailureIsNotMalformedContent(t *testing.T) {
 		t.Fatal("temporary source failure poisoned the archive", string(body), err)
 	}
 }
+
+func TestEPUBMimetypeSourceFailureIsNotMalformedContent(t *testing.T) {
+	raw := fixtureEPUB(t, `<html><body>Original authored text.</body></html>`)
+	r := &interruptedArchiveReader{ReaderAt: bytes.NewReader(raw)}
+	a, err := openArchive(r, int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted := errors.New("temporary source refusal")
+	r.err = interrupted
+	if _, err = openEPUBArchive(context.Background(), a); !errors.Is(err, interrupted) || errors.Is(err, ErrInvalid) {
+		t.Fatal("mimetype source refusal was replaced by a format error", err)
+	}
+	r.err = nil
+	if _, err = openEPUBArchive(context.Background(), a); err != nil {
+		t.Fatal("temporary refusal poisoned the EPUB", err)
+	}
+}
