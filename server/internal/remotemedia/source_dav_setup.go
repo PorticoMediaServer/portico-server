@@ -70,7 +70,7 @@ const (
 // fence. A full pacing window separates the stopped serve's requests from these
 // at-most-three direct origin requests; no independent concurrent pacer exists.
 func (d *DAV) DiagnoseSetupRanges(ctx context.Context, file DAVEntry, test *ExclusiveTest, rps int, bps int64, check func(context.Context) error) (SetupRangeSupport, error) {
-	if d == nil || !d.policy.SourceEndpoints || test == nil || test.Operations() == nil || check == nil || file.Directory || file.Deleted || file.Size < 1 || file.Relative == "" || rps < 1 || rps > 50 || bps < 0 {
+	if d == nil || !d.policy.SourceEndpoints || test == nil || test.Operations() == nil || check == nil || file.Directory || file.Deleted || file.Size < 1 || file.Relative == "" || rps < 1 || rps > 50 || bps < 0 || bps > 1_000_000_000 {
 		return SetupRangeUnknown, ErrPolicy
 	}
 	ctx, release, err := test.Operations().enter(ctx)
@@ -100,14 +100,13 @@ func (d *DAV) DiagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 		if err = check(ctx); err != nil {
 			return SetupRangeUnknown, err
 		}
-		nextRequest = time.Now().Add(time.Second / time.Duration(rps))
 		policy := d.policy
 		policy.ManualRedirects = true
 		client, err := NewAuthenticated(ctx, locator, policy, d.config.Username, d.config.Password)
 		if err != nil {
 			return SetupRangeUnknown, err
 		}
-		response, err := client.Open(ctx, "GET", fmt.Sprintf("bytes=%d-%d", start, start+length-1))
+		response, err := client.Request(ctx, http.MethodGet, nil, http.Header{"Range": []string{fmt.Sprintf("bytes=%d-%d", start, start+length-1)}})
 		if err != nil {
 			client.Close()
 			return SetupRangeUnknown, err
@@ -121,6 +120,7 @@ func (d *DAV) DiagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 		if err = check(ctx); err != nil {
 			return SetupRangeUnknown, err
 		}
+		nextRequest = time.Now().Add(time.Second / time.Duration(rps))
 		if support != SetupRangeSupported {
 			return support, nil
 		}

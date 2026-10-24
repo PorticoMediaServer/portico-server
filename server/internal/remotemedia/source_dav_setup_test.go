@@ -47,7 +47,7 @@ func privateSetupServer(t *testing.T, handler http.Handler) *httptest.Server {
 }
 
 func TestSourceDAVSetupRangeFactsNeverInferSupport(t *testing.T) {
-	for _, mode := range []string{"supported", "ignored", "wrong", "short", "long", "timeout", "redirect"} {
+	for _, mode := range []string{"supported", "ignored", "wrong", "wrong_start", "wrong_end", "bad_header", "short", "long", "timeout", "redirect"} {
 		t.Run(mode, func(t *testing.T) {
 			budget := NewOperationBudget(context.Background(), 1)
 			hold, err := budget.AcquireTest(context.Background())
@@ -96,7 +96,17 @@ func TestSourceDAVSetupRangeFactsNeverInferSupport(t *testing.T) {
 				if mode == "wrong" {
 					total++
 				}
-				w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, total))
+				rangeStart, rangeEnd := start, end
+				if mode == "wrong_start" {
+					rangeStart++
+				}
+				if mode == "wrong_end" {
+					rangeEnd--
+				}
+				w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rangeStart, rangeEnd, total))
+				if mode == "bad_header" {
+					w.Header().Set("Content-Range", "invalid")
+				}
 				if mode != "long" {
 					w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 				}
