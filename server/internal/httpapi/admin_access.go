@@ -260,7 +260,16 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		out, e := store.IssueShortInvitation(r.Context(), d.accessAuthority(p, identity.TierAdmin), p, r.PathValue("id"), q)
 		if e != nil {
-			accessFailure(w, e)
+			switch {
+			case errors.Is(e, access.ErrExpired):
+				policyError(w, "invitation_not_found")
+			case errors.Is(e, access.ErrConflict):
+				policyError(w, "revision_mismatch")
+			case errors.Is(e, access.ErrIdempotencyKeyReused):
+				policyError(w, "idempotency_key_reused")
+			default:
+				accessFailure(w, e)
+			}
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
