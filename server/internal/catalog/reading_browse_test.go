@@ -118,6 +118,10 @@ func TestReadingBrowseLeavesFacetsAndCompilerShareTheReadyScope(t *testing.T) {
 			if facets.TotalIsLowerBound || facets.Values[0].CountIsLowerBound {
 				t.Fatal("small exact facet became a lower bound")
 			}
+			seriesFacets, err := s.Facets(viewer, FacetRequest{Library: "reading", Field: "series"})
+			if err != nil || len(seriesFacets.Values) != 1 || string(seriesFacets.Values[0].SeriesID) != compactcatalog.ReadingSeriesID("reading", "Real Series") || facets.Values[0].SeriesID != "" {
+				t.Fatalf("opaque series navigation identity %+v %v", seriesFacets, err)
+			}
 			filtered, err := s.Facets(viewer, FacetRequest{Library: "reading", Field: "author", Query: query})
 			if err != nil || filtered.Total != 1 || filtered.Values[0].Count != 2 {
 				t.Fatalf("query facets %+v %v", filtered, err)
