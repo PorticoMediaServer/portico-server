@@ -216,6 +216,9 @@ func (s *Service) stopServeProcess(source string) {
 func (s *Service) stopServeProcesses() {
 	s.serveMu.Lock()
 	s.serveClosed = true
+	for _, scope := range s.sourceTests {
+		scope.cancel()
+	}
 	for _, lease := range s.serveLeases {
 		lease.cancel()
 	}
