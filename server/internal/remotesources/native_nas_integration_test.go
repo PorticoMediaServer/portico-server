@@ -52,7 +52,12 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	f, managed, identities, owner, _, _ := nativeSaveFixture(t)
-	f.s.private = t.TempDir()
+	// The listing path needs the actual service constructor's local worker
+	// capacity and lifecycle hooks, not the smaller DB-only save fixture.
+	f.s, err = New(f.s.db, t.TempDir(), managed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := f.s.startReadRuntime(ctx); err != nil {
 		t.Fatal(err)
 	}
