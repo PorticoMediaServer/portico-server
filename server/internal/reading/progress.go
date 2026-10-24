@@ -105,6 +105,11 @@ func (f *Source) Progress() (*Progress, error) {
 	if v.Revision != f.Revision {
 		return nil, ErrChanged
 	}
+	if f.remoteSession != nil {
+		if err = f.remoteSession.remote.CheckTx(ctx, g.Tx()); err != nil {
+			return nil, err
+		}
+	}
 	progress, err := progressTx(ctx, g.Tx(), identity.PersonalKey(p.Viewer), v)
 	g.Rollback()
 	if err == nil {
@@ -192,6 +197,11 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 	if v.Revision != f.Revision {
 		return nil, false, ErrChanged
 	}
+	if f.remoteSession != nil {
+		if err = f.remoteSession.remote.CheckTx(ctx, tx); err != nil {
+			return nil, false, err
+		}
+	}
 	owner := identity.PersonalKey(p.Viewer)
 	current, err := progressTx(ctx, tx, owner, v)
 	if err != nil {
@@ -228,6 +238,11 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, false, err
+	}
+	if f.remoteSession != nil {
+		if err = f.remoteSession.remote.CheckTx(ctx, tx); err != nil {
+			return nil, false, err
+		}
 	}
 	if err = g.Commit(); err != nil {
 		return nil, false, err

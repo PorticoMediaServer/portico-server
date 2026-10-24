@@ -25,6 +25,7 @@ import (
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/reading"
 	"portico.local/server/internal/readingtest"
 	"portico.local/server/internal/remotesources"
 )
@@ -348,6 +349,79 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 			}
 			if w = readingHTTP(t, h, "POST", "/v1/reading/sessions", token, "", ReadingSessionRequest{item.ID, item.SourceID}); w.Code != 404 {
 				t.Fatal("revoked remote library still readable", w.Code, w.Body.String())
+			}
+			if kind == "book" {
+				var pdf ReadingItem
+				for _, candidate := range items.Items {
+					if candidate.Format == "pdf" {
+						pdf = candidate
+					}
+				}
+				ownerPrincipal, err := f.id.Authenticate(f.owner.AccessToken)
+				if err != nil || pdf.ID == "" {
+					t.Fatal("actual owner/PDF for profile race", err)
+				}
+				session, _, err := d.Reading.Prepare(context.Background(), ownerPrincipal, pdf.ID, pdf.SourceID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer d.Reading.CloseSession(ownerPrincipal, session.ID)
+				captured, err := d.Reading.OpenSession(context.Background(), ownerPrincipal, session.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer captured.Close()
+				before := readingRestrictionProgress(t, &readingFixture{f: f})
+				hold, err := dbwork.Begin(context.Background(), f.db, dbwork.ClassInteractive)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer hold.Rollback()
+				type outcome struct {
+					progress *reading.Progress
+					saved    bool
+					err      error
+				}
+				result := make(chan outcome, 1)
+				go func() {
+					page := int64(0)
+					p, saved, err := captured.SaveProgress(0, reading.Location{Format: "pdf", PageIndex: &page, Progression: .2})
+					result <- outcome{p, saved, err}
+				}()
+				deadline := time.Now().Add(30 * time.Second)
+				for dbwork.WriteGate().Waiting()[dbwork.ClassInteractive.String()] == 0 {
+					select {
+					case got := <-result:
+						t.Fatal("progress did not reach the actual queued writer", got)
+					default:
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("progress never queued behind the profile writer")
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				profile, err := remotesources.SourceReadProfileTx(context.Background(), hold.Tx(), configured.Source.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				profile.Limits.RequestsPerSecond--
+				if _, err = remote.ApplySourceReadProfileTx(context.Background(), hold.Tx(), f.id, ownerPrincipal, remotesources.SourceReadProfileChange{SourceID: configured.Source.ID, Generation: "1", ExpectedRevision: profile.Revision, Profile: profile}); err != nil {
+					t.Fatal(err)
+				}
+				if err = hold.Commit(); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case got := <-result:
+					if got.err == nil || got.saved || got.progress != nil {
+						t.Fatal("queued progress committed across actual source-profile CAS", got)
+					}
+				case <-time.After(10 * time.Second):
+					t.Fatal("profile-fenced progress writer did not return")
+				}
+				if after := readingRestrictionProgress(t, &readingFixture{f: f}); after != before {
+					t.Fatal("profile-fenced writer changed persisted reading progress")
+				}
 			}
 			if kind == "comic" {
 				// Change the actual upstream file after a successful owner extent.
