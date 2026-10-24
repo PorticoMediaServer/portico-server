@@ -74,3 +74,20 @@ func TestDeviceSelectionRefusesRemovalDuringProbeAndCancellation(t *testing.T) {
 		t.Fatal("cancelled selection published", err)
 	}
 }
+
+func TestDeviceSelectionExplicitlyRetriesItsObservedDeviceCircuit(t *testing.T) {
+	backend := supportedTestBackend(t)
+	device := HardwareDevice{ID: "drm-observed-refresh", Path: "controlled-observed-path", Backends: []HardwareBackend{backend}}
+	clearDeviceCircuit(backend, device.Path)
+	t.Cleanup(func() { clearDeviceCircuit(backend, device.Path) })
+	for range 3 {
+		RecordHardwareDeviceFailure(backend, device.Path)
+	}
+	calls := 0
+	d := HardwareDetector{Devices: func(context.Context) []HardwareDevice { return []HardwareDevice{device} },
+		Run: func(context.Context, *exec.Cmd) error { calls++; return nil }}
+	probe, err := d.SelectDevice(context.Background(), fakeFFmpeg(t), device.ID)
+	if err != nil || !probe.Available || probe.SelectedDeviceID != device.ID || calls == 0 || deviceCircuitOpen(backend, device.Path) {
+		t.Fatal("explicit observed-device operation reused the old failure circuit", probe, err, calls)
+	}
+}
