@@ -74,6 +74,8 @@ type Service struct {
 	BulkCommands BulkCommandHooks
 	// Clock supplies the composition instant; nil uses the system clock.
 	Clock func() time.Time
+	// browseInstant binds relative conditions to one read or signed continuation.
+	browseInstant time.Time
 	// OwnerMetadataRevision preserves the shared repair history without a package cycle.
 	OwnerMetadataRevision func(context.Context, *sql.Tx, string, string) (func() error, error)
 	db                    *sql.DB

@@ -465,6 +465,11 @@ func withoutFacet(node *BrowseNode, field string) *BrowseNode {
 // keeps the source as SQL through filtering and aggregation, with no ID list
 // ceiling. Only the subsequent count/aggregate may be bounded.
 func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (string, []any, string, error) {
+	var instantErr error
+	s, instantErr = s.withBrowseInstant(browseAnd(request.Query, request.Group), "")
+	if instantErr != nil {
+		return "", nil, "", instantErr
+	}
 	query := request.Query
 	if request.Group != nil {
 		query = browseAnd(request.Group, query)
@@ -522,7 +527,7 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 			args = append(args, ma...)
 		}
 	}
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: request.Rows, rowSources: request.RowSources, itemPivot: playablePivot(pivot), count: s.countRows, ids: s.entityIDs}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: viewer.Profile, restrictions: viewer.Restrictions, rows: request.Rows, rowSources: request.RowSources, itemPivot: playablePivot(pivot), count: s.countRows, ids: s.entityIDs}
 	for _, member := range entityKindMembers(pivot) {
 		if kind, err := compactcatalog.ParseKind(member); err == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))

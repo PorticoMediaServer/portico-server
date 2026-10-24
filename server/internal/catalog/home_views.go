@@ -52,6 +52,10 @@ func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, e
 		return homeSource{}, ErrHomeRowUnknown
 	}
 	d := view.Definition
+	s, err = s.withBrowseInstant(d.Query, "")
+	if err != nil {
+		return homeSource{}, err
+	}
 	if !r.Viewer.AllowsLibrary(d.LibraryID) {
 		return homeSource{}, ErrHomeRowUnknown
 	}
@@ -68,7 +72,7 @@ func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, e
 		return homeSource{}, err
 	}
 	where, args := browseScopeSQL(d.LibraryID, pivot)
-	compiler := &browseCompiler{profile: r.Profile, restrictions: r.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: r.Profile, restrictions: r.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
 	for _, member := range entityKindMembers(pivot) {
 		kind, err := compactcatalog.ParseKind(member)
 		if err != nil {
@@ -110,7 +114,7 @@ func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, e
 	if err != nil {
 		return homeSource{}, err
 	}
-	return homeSource{base: `SELECT pid(ce.public_id) AS id,printf('%020d',ROW_NUMBER() OVER(ORDER BY ` + order + `)) AS ord FROM ` + from + ` WHERE ` + where, args: append(orderArgs, args...), selfRestricted: true, fingerprint: fmt.Sprintf("%d:%s", view.Revision, revision)}, nil
+	return homeSource{evaluationAt: s.relativeBrowseTime(d.Query), base: `SELECT pid(ce.public_id) AS id,printf('%020d',ROW_NUMBER() OVER(ORDER BY ` + order + `)) AS ord FROM ` + from + ` WHERE ` + where, args: append(orderArgs, args...), selfRestricted: true, fingerprint: fmt.Sprintf("%d:%s", view.Revision, revision)}, nil
 }
 
 func homeViewActor(profile string) (ResourceActor, bool) {
