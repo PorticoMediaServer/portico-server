@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
 import {peopleStreamLimits, settingsBinding} from '@core/presentation/settings-bindings.ts';
+import {settingsRowIndex} from '@core/presentation/settings-spec.ts';
 import {captureReportContext, type ReportContext} from '@core/report-context.ts';
 import {SettingsPeopleClient} from '@core/settings-people.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
@@ -25,6 +26,8 @@ import {SignInSettingsSource} from './signin-source';
 import {SettingsOwnerSwitch} from './owner-switch';
 import {DeviceRowControl} from './device-rows';
 import {deviceRowState, isDeviceSyntheticRow} from './device-rows-model';
+import {AudioSubtitleLanguageList, SubtitlePreview, isSubtitlePreview, preferredLanguageKind} from './audio-subtitles-rows';
+import {subtitlePreviewPaint} from './audio-subtitles-model';
 import {browserAccountOrigin} from '../../platform/account-origin';
 import {SettingsInvitations} from './invitations';
 
@@ -51,6 +54,8 @@ export function SettingsEntry() {
     const authorityListeners = new Set<() => void>();
     const current = () => active && context.isCurrent();
     const reportError = () => {if (current()) setFailure(true);};
+    const language = snapshot ? shellLanguage(snapshot) : defaultI18n;
+    const uiLocale = language.locale, appLocale = language.region.formatLocale;
     const identity = context.facts.identity, viewer = context.session().viewer;
     const role = viewer.role === 'owner' || viewer.role === 'admin' ? viewer.role : 'member';
     const openHome = () => {if (current()) void router.navigate({to: '/'});};
@@ -101,14 +106,26 @@ export function SettingsEntry() {
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
-      special: row => isDeviceSyntheticRow(row.id) ? <DeviceRowControl row={row} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>
-        : row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null,
+      special: (row, state, context) => {
+        const languageKind = preferredLanguageKind(row.id);
+        if (languageKind) return <AudioSubtitleLanguageList row={row} state={state} locale={uiLocale} appLocale={appLocale}
+          onChange={value => {if (current()) controller.change(row, value, context);}} onError={reportError} />;
+        if (isSubtitlePreview(row.id)) {
+          const value = (id: string) => controller.rowState(settingsRowIndex.get(id)!.row, context).value;
+          return <SubtitlePreview paint={subtitlePreviewPaint({size: value('audioSubtitles.subtitleSize'), color: value('audioSubtitles.subtitleColor'),
+            background: value('audioSubtitles.subtitleBackground'), position: value('audioSubtitles.subtitlePosition')})}
+            text={defaultI18n.t('next.settingsSpec.account.audio-subtitles.groups.2.rows.0.control.text')} />;
+        }
+        if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl row={row} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
+        return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
+      },
       section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
-      eligible: (row, selected) => isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
+      eligible: (row, selected) => isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
       rowState: (row, selected) => {
+        if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
         return device ?? (row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
       },

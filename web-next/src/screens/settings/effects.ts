@@ -20,6 +20,12 @@ const preferenceEffects = new Set([
   // `shellLanguage` builds the shell's one I18n from regionPreferences, so words, clock,
   // formats, date order, week start and file sizes all have a real web consumer.
   'region.locale', 'region.hourCycle', 'region.formats', 'region.dateOrder', 'region.firstDay', 'region.sizeUnits',
+  /* Account Audio & subtitles: the server applies the preferred languages and
+     subtitle mode when it builds the playback session (delivery_context.go,
+     subtitles/provider.go), and the web player applies the four appearance
+     values to its own cue surface (preference-effects.ts -> subtitle-surface.ts). */
+  'playback.preferredAudioLanguages', 'playback.preferredSubtitleLanguages', 'playback.subtitleMode',
+  'playback.subtitleSize', 'playback.subtitleColor', 'playback.subtitleBackground', 'playback.subtitlePosition',
 ]);
 function preferenceEffect(binding: SettingsBinding): boolean {
   if (preferenceEffects.has(binding.key) || binding.key.startsWith('subtitles.')) return true;
