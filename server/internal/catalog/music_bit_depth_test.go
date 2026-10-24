@@ -114,7 +114,7 @@ func TestMusicProbedBitDepthReachesBrowseFacts(t *testing.T) {
 			if depth == 16 {
 				format = "s16"
 			}
-			command := exec.Command(ffmpeg, "-v", "error", "-nostdin", "-f", "lavfi", "-i", "anullsrc=r=96000:cl=stereo", "-t", "0.1", "-c:a", "flac", "-sample_fmt", format, "-bits_per_raw_sample", strconv.Itoa(depth), path)
+			command := exec.Command(ffmpeg, "-v", "error", "-nostdin", "-f", "lavfi", "-i", "anullsrc=r=96000:cl=stereo", "-t", "0.1", "-c:a", "flac", "-sample_fmt", format, "-bits_per_raw_sample", strconv.Itoa(depth), "-strict", "-2", path)
 			if output, err := command.CombinedOutput(); err != nil {
 				t.Fatal(err, string(output))
 			}
