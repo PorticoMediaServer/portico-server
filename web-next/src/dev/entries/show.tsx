@@ -249,7 +249,10 @@ const activate = () => {
   if (++tries > 600) return;
   const details = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.textContent?.trim() === defaultI18n.t('next.controls.details'));
   if (!details) { requestAnimationFrame(activate); return; }
-  if (details.getAttribute('aria-selected') !== 'true') details.click();
+  if (details.getAttribute('aria-selected') !== 'true') {
+    details.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}));
+    details.click();
+  }
   requestAnimationFrame(() => {
     const change = document.querySelector<HTMLElement>('[data-show-settings] button');
     if (change && change.getAttribute('aria-expanded') !== 'true') change.click();
