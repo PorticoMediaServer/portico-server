@@ -69,7 +69,7 @@ export class SearchOnNowController {
         const programmes = await source.programs(channels.map(channel => channel.id), now, now + 1, signal);
         if (!this.active() || generation !== this.generation || signal.aborted) throw cancelled();
         const cards = Object.freeze(channels.map(channel => Object.freeze({
-          channel: Object.freeze({sourceId: channel.sourceId, id: channel.id, name: channel.name,
+          channel: Object.freeze({sourceId: channel.sourceId ?? '', id: channel.id, name: channel.name,
             ...(channel.number !== undefined ? {number: channel.number} : {}), ...(channel.mark ? {mark: channel.mark} : {}),
             ...(channel.logoUrl ? {logoUrl: channel.logoUrl} : {})}),
           programmes: Object.freeze(programmes[channel.id] ?? []),
