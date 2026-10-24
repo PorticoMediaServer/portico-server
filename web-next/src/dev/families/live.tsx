@@ -1,4 +1,4 @@
-import type {CSSProperties} from 'react';
+import {useEffect, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {liveRulesFixtures as f} from '../../../../packages/i18n/src/catalog/en-US/next/dev/live-fixtures';
 import {referenceDvrTints as tint} from '../../kit/artwork/dev-colors';
@@ -85,7 +85,21 @@ function FrameChrome() {
 
 function SeriesRulesFrame() {
   // A capture shows the frame's settled state, never the panel's entry animation.
-  if (new URLSearchParams(window.location.search).get('capture') === 'true') document.documentElement.dataset.reduceMotion = 'true';
+  const capture = new URLSearchParams(window.location.search).get('capture') === 'true';
+  if (capture) document.documentElement.dataset.reduceMotion = 'true';
+  useEffect(() => {
+    if (!capture) return;
+    // The kit's entrance animation leaves the panel on a composited layer, which changes
+    // text antialiasing. Cancel it so the captured panel rasters like the flat frame.
+    const frame = requestAnimationFrame(() => {
+      for (const panel of document.querySelectorAll<HTMLElement>('aside[data-state]')) {
+        for (const animation of panel.getAnimations({subtree: true})) animation.cancel();
+        panel.style.opacity = '';
+        panel.style.transform = '';
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [capture]);
   return <div style={{'--shell-gutter': 'var(--gutter-desktop)'} as CSSProperties}>
     <FrameChrome />
     <SeriesRulesScreen model={model} initialOpenRuleId="clockmakers" />
