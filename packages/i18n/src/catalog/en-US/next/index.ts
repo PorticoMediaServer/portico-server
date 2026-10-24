@@ -34,6 +34,7 @@ import {settingsSpecMessages} from './settings-spec.ts';
 import {readerMessages} from './reader.ts';
 import {searchMessages} from './search.ts';
 import {showMessages} from './show.ts';
+import {detailMessages} from './detail.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -72,6 +73,7 @@ export const nextMessages = {
   ...searchMessages,
   ...showMessages,
   ...ownerLibrariesMessages,
+  ...detailMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;
