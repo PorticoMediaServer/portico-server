@@ -162,3 +162,53 @@ func TestWakeOnTableWritesIsExact(t *testing.T) {
 		t.Fatal("a write naming the table didn't wake it")
 	}
 }
+
+func TestAutocommitWriteScopeNamesSourceAndPreservesUnknown(t *testing.T) {
+	db, err := OpenHandle(filepath.Join(t.TempDir(), "autocommit.sqlite"), DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE TABLE autocommit_source(id INTEGER PRIMARY KEY); CREATE TABLE autocommit_derived(id INTEGER PRIMARY KEY); CREATE TABLE autocommit_unrelated(id INTEGER PRIMARY KEY); CREATE TRIGGER autocommit_derive AFTER INSERT ON autocommit_source BEGIN INSERT INTO autocommit_derived VALUES(NEW.id); END;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = InstallWakeDependencies(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	source, derived, unrelated := worker.NewSignal(), worker.NewSignal(), worker.NewSignal()
+	stopSource := WakeOnTables(source, "autocommit_source")
+	defer stopSource()
+	stopDerived := WakeOnTables(derived, "autocommit_derived")
+	defer stopDerived()
+	stopUnrelated := WakeOnTables(unrelated, "autocommit_unrelated")
+	defer stopUnrelated()
+	ctx := context.Background()
+	if _, err = ExecWrite(ctx, db, ClassInteractive, `INSERT INTO autocommit_source VALUES(?)`, 1); err != nil {
+		t.Fatal(err)
+	}
+	if !source.Take() || !derived.Take() {
+		t.Fatal("known autocommit lost source or trigger wake")
+	}
+	if unrelated.Take() {
+		t.Fatal("known autocommit broadcast to unrelated table")
+	}
+	if _, err = ExecWrite(ctx, db, ClassInteractive, `WITH candidate(id) AS (VALUES(2)) INSERT INTO autocommit_source SELECT id FROM candidate`); err != nil {
+		t.Fatal(err)
+	}
+	if !source.Take() || !derived.Take() || !unrelated.Take() {
+		t.Fatal("unknown write shape lost conservative broadcast")
+	}
+	if _, err = ExecWrite(ctx, db, ClassInteractive, `UPDATE autocommit_source SET id=id WHERE id=?`, 100); err != nil {
+		t.Fatal(err)
+	}
+	if source.Take() || derived.Take() || unrelated.Take() {
+		t.Fatal("unchanged autocommit woke workers")
+	}
+	if _, err = ExecWrite(ctx, db, ClassInteractive, `INSERT INTO autocommit_source VALUES(?)`, 1); err == nil {
+		t.Fatal("duplicate insert accepted")
+	}
+	if source.Take() || derived.Take() || unrelated.Take() {
+		t.Fatal("failed autocommit woke workers")
+	}
+}
