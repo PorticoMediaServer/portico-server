@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 
 for (const family of ['layout', 'browse']) {
   test(`${family} obtains its own external DEV inputs without importing private HTML or raw responses`, () => {
     const url = new URL(`../src/dev/families/${family}.tsx`, import.meta.url);
-    const source = ts.createSourceFile(url.pathname, readFileSync(url, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const source = ts.createSourceFile(fileURLToPath(url), readFileSync(url, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const imports = source.statements.filter(ts.isImportDeclaration);
     for (const declaration of imports) {
       assert.ok(ts.isStringLiteral(declaration.moduleSpecifier));
