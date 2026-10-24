@@ -49,6 +49,7 @@ type cursorScope struct {
 	Collection string `json:"collection,omitempty"`
 }
 type cursorValue struct {
+	EvaluationAt string `json:"evaluationAt,omitempty"`
 	// Keys carries the sort key of the last row the previous page returned, so
 	// the next page can seek to it instead of skipping to it. The cursor is
 	// opaque and HMAC-signed, so what it holds is this server's business; what a
@@ -133,7 +134,7 @@ func (s *Service) decodeCursor(raw string, scope cursorScope) (cursorValue, erro
 	}
 	return s.decodeRevisionCursor(raw, scope, revision)
 }
-func (s *Service) decodeRevisionCursor(raw string, scope cursorScope, revision ContentRevision) (cursorValue, error) {
+func (s *Service) readSignedBrowseCursor(raw string) (cursorValue, error) {
 	var out cursorValue
 	if len(raw) > 4096 {
 		return out, ErrCursor
@@ -156,7 +157,18 @@ func (s *Service) decodeRevisionCursor(raw string, scope cursorScope, revision C
 	}
 	mac := hmac.New(sha256.New, key)
 	mac.Write(data)
-	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, &out) != nil || out.Scope != scope {
+	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, &out) != nil {
+		return out, ErrCursor
+	}
+	return out, nil
+}
+
+func (s *Service) decodeRevisionCursor(raw string, scope cursorScope, revision ContentRevision) (cursorValue, error) {
+	out, err := s.readSignedBrowseCursor(raw)
+	if err != nil {
+		return out, err
+	}
+	if out.Scope != scope {
 		return out, ErrCursor
 	}
 	if out.Expires < time.Now().Unix() {
