@@ -61,6 +61,8 @@ export type MobileChooserAttempt =
   | Readonly<{kind: 'opening'; row: MobileChooserRow}>
   | Readonly<{kind: 'waiting'; row: MobileChooserRow; seconds: number; total: number}>
   | Readonly<{kind: 'unreachable'; row: MobileChooserRow}>
+  | Readonly<{kind: 'refused'; row: MobileChooserRow}>
+  | Readonly<{kind: 'unconfirmed'; row: MobileChooserRow}>
   | Readonly<{kind: 'loadFailed'}>;
 export type MobileChooserProps = Readonly<{
   rows: readonly MobileChooserRow[];
@@ -129,25 +131,33 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
     const title = state === 'loading' ? t('web.chooser.loading') : state === 'loadFailed' ? t('web.chooser.loadFailed')
       : state === 'opening' ? t('web.chooser.connecting', {server: row!.label})
       : state === 'waiting' ? t('web.chooser.waitingTitle', {server: row!.label})
+      : state === 'refused' ? t('web.chooser.refusedTitle', {server: row!.label})
+      : state === 'unconfirmed' ? t('web.chooser.unconfirmedTitle', {server: row!.label})
       : t('web.chooser.unreachableTitle', {server: row!.label});
     const body = state === 'loadFailed' ? notice : state === 'waiting' ? t('web.chooser.waitingBody')
+      : state === 'refused' ? t('web.chooser.refusedBody') : state === 'unconfirmed' ? t('web.chooser.unconfirmedBody')
       : state === 'unreachable' ? unreachableText(row!, formatSeen) : undefined;
-    const primaryLabel = state === 'waiting' ? t('web.chooser.checkNow') : state === 'unreachable' ? t('web.chooser.tryAgain') : state === 'loadFailed' ? t('web.chooser.tryAgain') : undefined;
+    const primaryLabel = state === 'waiting' ? t('web.chooser.checkNow') : state === 'unreachable' || state === 'unconfirmed' ? t('web.chooser.tryAgain') : state === 'loadFailed' ? t('web.chooser.tryAgain') : undefined;
     const onPrimary = state === 'loadFailed' ? onRefresh : onCheckNow;
     return <section className={styles.page} data-mweb-server-chooser data-state={state}>
       <ColourBackdrop shape="top" />
       <ChooserHeader initial={initial} />
       <div className={styles.state}>
-        <div className={styles.stateIcon} data-accent={state === 'opening' || state === 'loading' || undefined} data-bad={state === 'loadFailed' || undefined}>
-          {state === 'opening' || state === 'loading' ? <span className={styles.spinner} aria-hidden="true" /> : <Icon name={state === 'loadFailed' ? 'i-warn' : 'i-srvoff'} size={34} />}
+        <div className={styles.stateIcon} data-accent={state === 'opening' || state === 'loading' || undefined} data-bad={state === 'loadFailed' || state === 'refused' || undefined}>
+          {state === 'opening' || state === 'loading' ? <span className={styles.spinner} aria-hidden="true" /> : <Icon name={state === 'loadFailed' ? 'i-warn' : state === 'refused' ? 'i-userx' : state === 'unconfirmed' ? 'i-question' : 'i-srvoff'} size={34} />}
         </div>
         <h2>{title}</h2>
         {body && <p>{body}</p>}
         {state === 'waiting' && <div className={styles.alive}><CountdownRing progress={attempt.kind === 'waiting' ? attempt.seconds / Math.max(1, attempt.total) : null} /><span>{t('web.chooser.checkingAgain', {seconds: attempt.kind === 'waiting' ? attempt.seconds : 0})}</span></div>}
         <div className={styles.stateActions}>
-          {primaryLabel && <Button variant="primary" className={styles.stateButton} icon={state === 'unreachable' || state === 'loadFailed' ? 'i-retry' : undefined} onClick={onPrimary}>{primaryLabel}</Button>}
-          {state === 'waiting' || state === 'unreachable' ? <Button variant="glass" className={styles.stateButton} onClick={onOther}>{t('web.chooser.otherServer')}</Button>
-            : state === 'opening' ? <Button variant="text" className={styles.otherLink} onClick={onOther}>{t('web.chooser.otherServer')}</Button> : null}
+          {state === 'refused' ? <>
+            <Button variant="primary" className={styles.stateButton} onClick={onOther}>{t('web.chooser.otherServer')}</Button>
+            <Button variant="glass" className={styles.stateButton} onClick={onRefresh}>{t('web.servers.refresh')}</Button>
+          </> : <>
+            {primaryLabel && <Button variant="primary" className={styles.stateButton} icon={state === 'unreachable' || state === 'unconfirmed' || state === 'loadFailed' ? 'i-retry' : undefined} onClick={onPrimary}>{primaryLabel}</Button>}
+            {state === 'waiting' || state === 'unreachable' || state === 'unconfirmed' ? <Button variant="glass" className={styles.stateButton} onClick={onOther}>{t('web.chooser.otherServer')}</Button>
+              : state === 'opening' ? <Button variant="text" className={styles.otherLink} onClick={onOther}>{t('web.chooser.otherServer')}</Button> : null}
+          </>}
         </div>
       </div>
     </section>;
@@ -196,6 +206,16 @@ function initialOf(name: string | undefined) {
 }
 /** A failed probe is a wait only when the transport said it could come back; everything
  * else is the honest can't-reach state with the real action. */
+export type ChooserFailureState = 'waiting' | 'unreachable' | 'refused' | 'unconfirmed';
+/** Map only the real failures the chooser can prove: a 403/removal is refused,
+ * an identity disagreement is unconfirmed, and transport timeouts keep waiting. */
+export function chooserFailureState(error: unknown): ChooserFailureState {
+  if (!error || typeof error !== 'object') return retryableFailure(error) ? 'waiting' : 'unreachable';
+  const value = error as {status?: unknown; code?: unknown};
+  if (value.status === 403 || ['access_refused', 'forbidden', 'permission_changed', 'access_revoked', 'owner_required', 'remote_denied', 'remote_sign_in_not_allowed', 'outside_allowed_hours'].includes(String(value.code))) return 'refused';
+  if (['identity_mismatch', 'wrong_server', 'session_identity_mismatch', 'stale_continuation'].includes(String(value.code))) return 'unconfirmed';
+  return retryableFailure(error) ? 'waiting' : 'unreachable';
+}
 function retryableFailure(error: unknown) {
   if (error instanceof TypeError) return true;
   if (!error || typeof error !== 'object') return false;
@@ -276,11 +296,14 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
     const fail = (failure: unknown) => {
       if (!alive.current || !lock.owns(token)) return;
       setError(failure);
-      if (retryableFailure(failure)) {
+      const state = chooserFailureState(failure);
+      if (state === 'waiting') {
         const seconds = retryDelay.current;
         setAttempt({kind: 'waiting', row, seconds, total: seconds});
         retryDelay.current = Math.min(seconds * 2, 300);
-      } else setAttempt({kind: 'unreachable', row});
+      } else if (state === 'refused') setAttempt({kind: 'refused', row});
+      else if (state === 'unconfirmed') setAttempt({kind: 'unconfirmed', row});
+      else setAttempt({kind: 'unreachable', row});
     };
     try {
       await browserAppSessionActions().switchServer(row.id, () => alive.current && lock.owns(token));
@@ -352,7 +375,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
     const mobileAttempt = attempt ?? (busy && !rows.length ? {kind: 'loading'} as const : error && !rows.length ? {kind: 'loadFailed'} as const : undefined);
     return <MobileServerChooser rows={rows} initial={initialOf(accountState.session?.account.displayName)}
       attempt={mobileAttempt} busy={busy || working} notice={notice}
-      onChoose={row => {retryDelay.current = 20; void openServer(row);}} onRefresh={() => void refresh()}
+      onChoose={row => {retryDelay.current = 20; void openServer(row);}} onRefresh={() => {setAttempt(undefined); setError(undefined); void refresh();}}
       onLocal={() => {form.clear(); entry.cancel(); setError(undefined); setMode('address');}} onDifferentAccount={rows.some(row => row.signIn === 'portico') ? differentAccount : undefined}
       onCheckNow={checkNow} onOther={other} />;
   }

@@ -17,7 +17,7 @@ registerHooks({load(url, context, next) {
   if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
   return next(url, context);
 }});
-const {MobileServerChooser, AttemptLock, waitingStep, mobileChooserRows} = await import('../src/screens/accounts/Servers.route');
+const {MobileServerChooser, AttemptLock, waitingStep, mobileChooserRows, chooserFailureState} = await import('../src/screens/accounts/Servers.route');
 
 const seenAt = new Date(2026, 9, 12, 12, 0, 0).toISOString();
 const rows: readonly MobileChooserRow[] = [
@@ -174,4 +174,34 @@ test('a cancelled durable selection cannot commit over its successor or advance 
   assert.equal((await store.read()).selectedServerId, 'second');
   assert.equal((await store.read()).revision, 2, 'only the successor advanced the admission fence');
   actions.dispose();
+});
+
+test('real permission and identity failures map to the drawn refused and unconfirmed states', () => {
+  assert.equal(chooserFailureState({status: 403, code: 'forbidden'}), 'refused');
+  assert.equal(chooserFailureState({code: 'access_refused'}), 'refused');
+  assert.equal(chooserFailureState({code: 'identity_mismatch'}), 'unconfirmed');
+  assert.equal(chooserFailureState({code: 'wrong_server'}), 'unconfirmed');
+  assert.equal(chooserFailureState(new TypeError('network')), 'waiting');
+  assert.equal(chooserFailureState({code: 'probe_timeout'}), 'waiting');
+  assert.equal(chooserFailureState({status: 500, retryable: true}), 'waiting');
+  assert.equal(chooserFailureState({status: 400, code: 'invalid_system'}), 'unreachable');
+  assert.equal(chooserFailureState(undefined), 'unreachable');
+});
+
+test('frame 4c refused state says what happened and offers only real recovery controls', () => {
+  const html = attempt({kind: 'refused', row: rows[1]!});
+  assert.match(html, /You no longer have access to The cottage/);
+  assert.match(html, /The owner removed you or ended your invitation\. They can invite you again\./);
+  assert.match(html, /Choose another server/);
+  assert.match(html, /Refresh servers/);
+  assert.doesNotMatch(html, /<input|<form|Password|Check now|Try again/);
+});
+
+test('frame 5c unconfirmed state says nothing was sent and offers Try again plus another server', () => {
+  const html = attempt({kind: 'unconfirmed', row: rows[1]!});
+  assert.match(html, /Portico couldn’t confirm this is The cottage/);
+  assert.match(html, /Nothing was sent to it\. Try again, or ask its owner to check the server\./);
+  assert.match(html, /Try again/);
+  assert.match(html, /Choose another server/);
+  assert.doesNotMatch(html, /<input|<form|Password|Refresh servers/);
 });
