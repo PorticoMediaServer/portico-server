@@ -62,7 +62,7 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   qualityRows.push({id:offer.id,label,detail,selected:selected===choice,enabled});
  }
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
- const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('pref.unit.speedNormal'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
+ const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
  return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,

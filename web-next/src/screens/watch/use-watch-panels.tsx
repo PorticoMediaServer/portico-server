@@ -1,4 +1,5 @@
 import {useMemo,useSyncExternalStore} from 'react';
+import {router} from '../../router';
 import {defaultI18n} from '@i18n';
 import {shellLanguage} from '../../shell/settings';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
@@ -20,7 +21,7 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
  if(model?.audio.length)available.push('audio');if(model?.subtitles.length)available.push('subtitles');
  if(model?.quality.some(row=>row.enabled))available.push('quality');if(model?.speed.length)available.push('speed');
  if(available.length)available.push('options');
- return {available,render:panel=>model&&panel.panel&&available.includes(panel.panel)&&model.isCurrent()?<WatchOptions model={model} context={panel} i18n={i18n} reportError={binding.reportError}/>:null,
+ return {available,render:panel=>model&&panel.panel&&available.includes(panel.panel)&&model.isCurrent()?<WatchOptions model={model} context={panel} i18n={i18n} reportError={binding.reportError} openSettings={()=>{if(!context.isCurrent()||!model.isCurrent())throw new DOMException('Playback source retired','AbortError');return router.navigate({to:'/settings'});}}/>:null,
   quality:model?.qualityLabel&&model.qualityAccessibleLabel&&available.includes('quality')?{fence:model.fence,automatic:model.automatic,label:model.qualityLabel,accessibleLabel:model.qualityAccessibleLabel}:undefined,
   tracks:model?{fence:model.fence,audio:model.audioLabel,subtitles:model.subtitleLabel}:undefined,
   together:<WatchRoomPill binding={together} snapshot={snapshot} reportError={binding.reportError}/>,

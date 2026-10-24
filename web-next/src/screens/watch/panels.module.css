@@ -24,3 +24,10 @@
 .person > span { flex: 1; min-width: 0; }
 .person small { display: block; color: var(--color-text-secondary); }
 @media (max-width: 1023px) { .columns { grid-template-columns: 1fr; gap: 24px; } .columns > div + div::before { display: none; } }
+
+.note { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 14px 12px 0; border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); font-size: 14px; color: var(--color-text-tertiary); }
+.note > svg { flex: none; color: var(--color-accent-strong); }
+.note b { color: var(--color-text); font-weight: 700; }
+
+.note a { margin-left: auto; color: var(--color-text-secondary); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 2px; }
+.note a:hover { color: var(--color-text); }

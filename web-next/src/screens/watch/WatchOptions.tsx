@@ -22,7 +22,7 @@ function RadioColumn({title,rows,select,reportError}:{title:string;rows:readonly
 }
 /** The drawn single options panel. Every visible radio row has actual source membership and
  * every action calls that same runtime with its captured full fence. No optimistic selection. */
-export function WatchOptions({model,context,i18n,reportError}:{model:WatchPanelModel;context:WatchPanelContext;i18n:I18n;reportError(error:unknown):void}){
+export function WatchOptions({model,context,i18n,reportError,openSettings}:{openSettings():void|Promise<void>;model:WatchPanelModel;context:WatchPanelContext;i18n:I18n;reportError(error:unknown):void}){
  const root=useRef<HTMLDivElement>(null),t=i18n.t;
  useLayoutEffect(()=>{
   if(!context.returnFocusRef.current?.matches(':focus-visible'))return;
@@ -32,7 +32,7 @@ export function WatchOptions({model,context,i18n,reportError}:{model:WatchPanelM
  },[context.panel,context.returnFocusRef]);
  useEffect(()=>()=>{const button=context.returnFocusRef.current;if(button?.isConnected)button.focus({preventScroll:true});},[context.returnFocusRef]);
  if(!model.isCurrent())return null;
- const content=<div ref={root} className={styles.columns} onKeyDown={event=>{
+ const content=<><div ref={root} className={styles.columns} onKeyDown={event=>{
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}
   else if(event.defaultPrevented&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))event.stopPropagation();
  }}>
@@ -47,7 +47,7 @@ export function WatchOptions({model,context,i18n,reportError}:{model:WatchPanelM
     items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
     onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
   </div>}
- </div>;
+ </div><div className={styles.note}><Icon name="i-info" size={20}/><span><b>{t('player.opt.temporaryChanges')}</b>{' '}{t('player.opt.defaultsUnchanged')}</span><a href="/settings" onClick={event=>{if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();try{context.close();void Promise.resolve(openSettings()).catch(reportError);}catch(error){reportError(error);}}}>{t('next.reader.openSettings')}<Icon name="i-right" size={16}/></a></div></>;
  return context.layout==='phone'?<BottomSheet open title={t('next.dock.options')} onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}
   detents={[Math.max(1,(typeof window==='undefined'?context.phoneTop:window.visualViewport?.height??window.innerHeight)-context.phoneTop)]}>{content}</BottomSheet>
   :<section className={styles.options} role="dialog" aria-label={t('next.dock.options')}>{content}</section>;
