@@ -81,7 +81,7 @@
 
 .castBlock button small { margin-top: 2px; font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: normal; }
 
-.showPage [class*="pinnedDesktopTitle"] { font-size: var(--type-row-heading-size); line-height: var(--type-row-heading-line); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-row-heading-tracking); }
+.showPage [class*="pinnedDesktopTitle"] { font-size: var(--type-detail-heading-size); line-height: var(--type-detail-heading-line); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-detail-heading-tracking); }
 
 .pinActions { gap: 10px; }
 
