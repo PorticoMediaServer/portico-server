@@ -5,8 +5,8 @@ export const detailMessages = {
   // so the sentence keeps the neutral title noun the hero link already uses.
   'next.detail.collectionSummary': '{count, plural, one {# title} other {# titles}} on your server, from {from, number, ::group-off} to {to, number, ::group-off}.',
   'next.detail.seasons': '{count, plural, one {# season} other {# seasons}}',
-  'next.detail.seasonYears': '{first} to {last}',
+  'next.detail.seasonYears': '{first, number, ::group-off} to {last, number, ::group-off}',
   'next.detail.jumpSeason': 'Season',
-  'next.detail.seasonNumberRange': '{first} to {last}',
+  'next.detail.seasonNumberRange': '{first, number, ::group-off} to {last, number, ::group-off}',
   'next.detail.watched': 'Watched',
 };
