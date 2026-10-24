@@ -7,6 +7,7 @@ import {ServicesAuthFlow} from './auth-flow';
 import type {ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
+import signInStyles from './services-signin-r46.module.css';
 
 type Props = {account: ServicesAccount; onSignedIn: (gesture?: boolean) => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
 export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', initialUsername = '', embedded = false, invitation = false, heading, lead, before, after}: Props) {
@@ -34,7 +35,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
   const title = mode === 'create' ? t('auth.createYourAccount') : mode === 'verify' || mode === 'sent' ? t('auth.checkEmail') : mode === 'forgot' ? t('auth.forgotPasswordTitle') : mode === 'factor' ? t('auth.enterVerificationCode') : mode === 'recovery' ? t('services.signin.recovery') : mode === 'provider' ? t('auth.chooseUsername') : mode === 'ready' ? t('services.provider.ready') : heading ?? t('auth.welcomeHome');
   const body = mode === 'create' ? t('auth.oneAccount') : mode === 'verify' && state.registration ? t('auth.codeSentTo', {address: state.registration.maskedAddress}) : mode === 'sent' ? t('auth.resetLinkSent') : mode === 'forgot' ? t('auth.resetLinkLedeEmail') : mode === 'factor' ? t('services.signin.twoStep') : mode === 'recovery' ? t('services.signin.recoveryBody') : mode === 'provider' ? t('services.provider.lastThing') : mode === 'ready' ? t('services.provider.readyBody') : lead ?? t('auth.accountLead');
   const providers = state.options?.providers.filter(item => item.enabled).sort((a, b) => a.id.localeCompare(b.id)) ?? [];
-  const providerButtons = <>{providers.map(item => <ServicesProviderButton key={item.id} provider={item.id} disabled={busy} onClick={() => void flow.provider(item.id)}>{t(item.id === 'apple' ? 'services.provider.apple' : 'services.provider.google')}</ServicesProviderButton>)}{providers.length > 0 && state.options?.password && <ServicesDivider>{t(mode === 'create' ? 'services.provider.createDivider' : 'auth.orWithEmail')}</ServicesDivider>}</>;
+  const providerButtons = <>{providers.map(item => <ServicesProviderButton key={item.id} provider={item.id} disabled={busy} onClick={() => void flow.provider(item.id)}>{t(item.id === 'apple' ? 'services.provider.apple' : 'services.provider.google')}</ServicesProviderButton>)}{providers.length > 0 && state.options?.password && <div className={mode === 'signin' ? signInStyles.divider : undefined}><ServicesDivider>{t(mode === 'create' ? 'services.provider.createDivider' : 'auth.orWithEmail')}</ServicesDivider></div>}</>;
   const content = <>
     {mode === 'verify' && <ServicesStateIcon tone="info" icon="i-mail" size={32} />}
     {mode === 'ready' && <ServicesStateIcon />}
@@ -46,8 +47,8 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
     {mode === 'signin' && state.options?.password && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
         <TextField variant="auth" label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required />
-        <AuthPasswordField label={t('auth.password')} placeholder={t('auth.password')} name="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required />
-        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim() || !password}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
+        <AuthPasswordField containerClassName={signInStyles.password} label={t('auth.password')} placeholder={t('auth.password')} name="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required />
+        <div className={signInStyles.submit}><ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim() || !password}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions></div>
       </form>
       <AuthLinks>{state.options.recovery && <button type="button" disabled={busy} onClick={() => flow.go('forgot')}>{t('auth.forgotPassword')}</button>}{state.options.registration && <button type="button" disabled={busy} onClick={() => flow.go('create')}>{t('auth.createAccount')}</button>}</AuthLinks>
     </>}
