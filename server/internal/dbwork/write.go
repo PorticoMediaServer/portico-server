@@ -370,6 +370,10 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 			return err
 		}
 		changes := &changeSet{}
+		// Autocommit does not enter the driver's BeginTx hook. Carry the
+		// supplied statement's scope explicitly; CTE/multi-statement shapes
+		// remain unknown and retain the conservative broadcast.
+		changes.note(query)
 		writeCtx := context.WithValue(ctx, changeKey{}, changes)
 		var before, after int64
 		if err = conn.QueryRowContext(writeCtx, `SELECT total_changes()`).Scan(&before); err == nil {
