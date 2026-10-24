@@ -13,6 +13,8 @@ export type BrowserSetupPortsInput = Readonly<{
   acceptLocal: SetupPorts['acceptLocal'];
   continueHosted: SetupPorts['continueHosted'];
   resumeHosted?: SetupPorts['resumeHosted'];
+  /** The composition binds this to the admitted owner's authenticated API. */
+  addLibrary: SetupPorts['addLibrary'];
   complete: () => void;
   origin?: () => string;
 }>;
@@ -40,13 +42,7 @@ export function createBrowserSetupPorts(input: BrowserSetupPortsInput): SetupPor
     acceptLocal: input.acceptLocal,
     continueHosted: input.continueHosted,
     ...(input.resumeHosted ? {resumeHosted: input.resumeHosted} : {}),
-    addLibrary: async (server, library) => {
-      const created = await server.api.request<{id?: unknown}>(routePath('post_libraries'), 'POST',
-        {name: library.name, kind: library.kind, path: library.path, metadataAgent: 'local'});
-      if (typeof created?.id !== 'string' || !created.id) throw Object.assign(new Error('The library was not created.'), {code: 'request_failed'});
-      // The library exists even if the first scan cannot start; Settings › Libraries can scan it.
-      await server.api.request(routePath('post_libraries_id_scans', {id: encodeURIComponent(created.id)}), 'POST', {}).catch(() => undefined);
-    },
+    addLibrary: input.addLibrary,
     complete: input.complete,
     hostname: () => location.hostname,
   });
