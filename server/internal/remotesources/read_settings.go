@@ -187,6 +187,18 @@ func (s *Service) finishReadSettings(_ context.Context, source string, committed
 	if err != nil {
 		return err
 	}
+	var removed bool
+	err = snapshot.Tx().QueryRowContext(cleanup, `SELECT removed FROM remote_sources WHERE id=?`, source).Scan(&removed)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && removed {
+		snapshot.Rollback()
+		s.stopServeProcess(source)
+		s.stopReadLeases(source, storage.ErrRemoteChanged, nil)
+		return nil
+	}
+	if err != nil {
+		snapshot.Rollback()
+		return err
+	}
 	profile, err := SourceReadProfileTx(cleanup, snapshot.Tx(), source)
 	snapshot.Rollback()
 	if err != nil {
