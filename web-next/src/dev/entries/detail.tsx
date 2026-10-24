@@ -8,6 +8,7 @@ import {router} from '../../router';
 import {WebScreenProvider} from '../../route-registry-view';
 import {ShellBindingsProvider, type ShellBindings} from '../../shell/bindings';
 import {FreshnessProvider} from '../../platform/freshness';
+import {presentError} from '@core/presentation/errors.ts';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {createOwnerActivity} from '../../shell/Activity';
 import type {ShellIdentity} from '../../shell/Shell';
@@ -72,7 +73,7 @@ const home: HomeBindings = {
   effects: {
     play: async () => { specimen.record('play'); }, playChannel: async () => {}, openEntry: () => {},
     openSeeAll: () => {}, openMore: () => {}, setMyList: async () => {},
-    reportError: error => { specimen.record('report-error', String(error)); },
+    reportError: error => { const problem = presentError(error, 'detail', {operation: 'action'}); specimen.record('report-error', problem.messageId); },
   },
 };
 const contextBase = {
