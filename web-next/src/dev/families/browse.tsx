@@ -12,7 +12,7 @@ import {Artwork, AmbientArt, createArtworkRuntime, type ArtworkSource, type Ambi
 import {Popover} from '../../kit/overlays';
 import {OwnerTag} from '../../kit/shell';
 import {SelectionCircle} from '../../kit/selection';
-import {BrowseToolbar, FilterBuilder, FilteredEmpty, LibraryHeader, LibraryMenu, LibrarySwitcher, SongRow, SortMenu, StickyBrowseHeader, TrackTable, FieldTile,
+import {BrowseToolbar, FilterBuilder, FilteredEmpty, LibraryHeader, LibrarySwitcher, SongRow, SortMenu, StickyBrowseHeader, TrackTable, FieldTile,
   type BrowseLabels, type BrowsePlatform, type FilterFieldChange, type FilterFieldState, type TrackRowData} from '../../kit/browse';
 import styles from '../../kit/browse/gallery.module.css';
 
@@ -82,7 +82,7 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
   return function HeaderCase() {
     const ambient = useBrowseAmbientEvidence();
     const [library, setLibrary] = useState(mode === 'music' ? 'music' : mode === 'read' ? 'books' : 'movies');
-    const [switcherOpen, setSwitcherOpen] = useState(mode === 'switcher'), [menuOpen, setMenuOpen] = useState(mode === 'owner' || mode === 'member' || mode === 'read');
+    const [switcherOpen, setSwitcherOpen] = useState(mode === 'switcher');
     const [outcome, setOutcome] = useState(''), [pivot, setPivot] = useState(['music', 'phone', 'switcher', 'long'].includes(mode) ? 'discover' : mode === 'read' ? '1' : 'browse');
     const choices: {id: string; name: string; count?: string}[] = (['movies', 'tv', 'anime', 'music', 'audiobooks', 'books', 'comics'] as const).map(id => ({id, name: fixture(`next.browse.example.${id}`)}));
     if (mode === 'switcher') {
@@ -94,16 +94,12 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
     if (mode === 'long') current.name = fixture('next.browse.example.chapter6');
     const phone = !['desktop', 'music'].includes(mode);
     const switcher = <LibrarySwitcher libraries={choices} value={library} onValueChange={setLibrary} compact={phone} open={switcherOpen} onOpenChange={setSwitcherOpen}/>;
-    const menuProps = {onSaveView: () => setOutcome(t('next.browse.saveThisView')), onMarkAll: () => setOutcome(t(mode === 'read' ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')),
-      onEditPins: () => setOutcome(t('next.browse.editPins')), read: mode === 'read', open: menuOpen, onOpenChange: setMenuOpen,
-      ownerMark: <OwnerTag size="phone"/>, viewSummary: `${t('next.browse.title')} ${t('next.browse.asc.alpha')}`, countSummary: mode === 'read' ? t('next.kit.books', {count: 342}) : fixture('next.browse.example.movieCount', {count: 80})};
-    const menu = mode === 'member' ? <LibraryMenu {...menuProps} owner={false}/> : <LibraryMenu {...menuProps} owner onLibrarySettings={() => setOutcome(t('next.browse.librarySettings'))} onScan={() => setOutcome(t('next.browse.scan'))}/>;
     const kind: Readonly<Record<string, string>> = {movies: 'movie', tv: 'tv', anime: 'anime', music: 'music', audiobooks: 'audiobook'};
     const tabItems = mode === 'read' ? Array.from(new DOMParser().parseFromString(drawnRead, 'text/html').querySelectorAll('#grid-s .tabs .tab')).map((item, index) => ({value: String(index), label: item.textContent!})) : libraryTabs(kind[library] ?? 'movie').map(tab => ({value: tab.id, label: t(tab.label)}));
     const tabs = <Tabs phone={phone} value={pivot} onValueChange={setPivot} className={phone ? styles.phoneTabs : [styles.headerTabs, mode === 'music' && styles.musicHeaderTabs].filter(Boolean).join(' ')}
       items={tabItems}/>;
-    return <Stage outcome={outcome}>{phone ? <StickyBrowseHeader name={current.name} switcher={switcher} menu={menu} topInset={0} onLibraries={() => setOutcome(t('next.browse.libraries'))}>{tabs}</StickyBrowseHeader> :
-      <LibraryHeader ambient={mode === 'desktop' && ambient ? <AmbientArt source={ambient} treatment="library" width="100%" height={560}/> : undefined} name={current.name} switcher={switcher} menu={mode === 'music' ? <><Button size="small" icon="i-shuffle" className={styles.headerAction} onClick={() => setOutcome(new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent!)}>{new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent}</Button>{menu}</> : menu} counts={mode === 'music' ? [
+    return <Stage outcome={outcome}>{phone ? <StickyBrowseHeader name={current.name} switcher={switcher} topInset={0} onLibraries={() => setOutcome(t('next.browse.libraries'))}>{tabs}</StickyBrowseHeader> :
+      <LibraryHeader ambient={mode === 'desktop' && ambient ? <AmbientArt source={ambient} treatment="library" width="100%" height={560}/> : undefined} name={current.name} switcher={switcher} menu={mode === 'music' ? <><Button size="small" icon="i-shuffle" className={styles.headerAction} onClick={() => setOutcome(new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent!)}>{new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent}</Button></> : undefined} counts={mode === 'music' ? [
         {id: 'artists', text: fixture('next.browse.example.musicCounts'), role: 'value'}, {id: 'albums', text: fixture('next.browse.example.albumCounts'), role: 'value'},
         {id: 'songs', text: fixture('next.browse.example.songCount', {count: 40}), role: 'value'},
       ] : undefined}>{tabs}</LibraryHeader>}</Stage>;
@@ -287,9 +283,6 @@ export default defineGalleryFamily({id: 'browse', labelKey: 'next.browse.family'
   {id: 'library-long', labelKey: 'next.browse.phoneHeader', width: 390, height: 94, render: headerCase('long')},
   {id: 'library-phone', labelKey: 'next.browse.phoneHeader', width: 390, height: 94, render: headerCase('phone')},
   {id: 'library-switcher', labelKey: 'next.browse.switchLibrary', width: 390, height: 450, render: headerCase('switcher')},
-  {id: 'library-menu-owner', labelKey: 'next.browse.libraryOptions', width: 390, height: 450, render: headerCase('owner')},
-  {id: 'library-menu-member', labelKey: 'next.browse.libraryOptions', width: 390, height: 350, render: headerCase('member')},
-  {id: 'library-menu-read', labelKey: 'next.browse.libraryOptions', width: 390, height: 450, render: headerCase('read')},
   {id: 'toolbar-desktop', labelKey: 'next.browse.toolbarCase', width: 1440, height: 80, render: toolbarCase('desktop')},
   {id: 'toolbar-filtered', labelKey: 'next.browse.toolbarCase', width: 1440, height: 120, render: toolbarCase('desktop', true)},
   {id: 'toolbar-sticky', labelKey: 'next.browse.toolbarCase', width: 1440, height: 100, render: toolbarCase('desktop', true, true)},
