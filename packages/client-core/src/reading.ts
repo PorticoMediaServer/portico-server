@@ -1,8 +1,8 @@
 import {
-  routePath, errors, decodeGetReadingDiscoverResponse, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
+  routePath, errors, decodeGetReadingSeriesItemsResponse, decodeGetReadingDiscoverResponse, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
   decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
   decodePutReadingSessionsSessionIdProgressResponse,
-  type GetReadingDiscoverResponse, type GetReadingContinueResponse, type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
+  type GetReadingSeriesItemsResponse, type GetReadingDiscoverResponse, type GetReadingContinueResponse, type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
   type PostReadingSessionsRequest, type PostReadingSessionsResponse,
   type GetReadingSessionsSessionIdProgressResponse,
   type PutReadingSessionsSessionIdProgressRequest, type PutReadingSessionsSessionIdProgressResponse,
@@ -16,6 +16,7 @@ export type ReadingManifest = Immutable<PostReadingSessionsResponse>;
 export type ReadingItem = GetReadingItemsResponse['items'][number];
 export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
 export type ReadingDiscover = GetReadingDiscoverResponse;
+export type ReadingSeriesPage = GetReadingSeriesItemsResponse;
 export type ReadingAuthor = NonNullable<ReadingItem['author']>;
 export type ReadingSeries = NonNullable<ReadingItem['series']>;
 export type ReadingAttributionSource = ReadingAuthor['source'];
@@ -278,6 +279,18 @@ export class ReadingClient {
     const seen = new Set<string>();
     for (const item of out.rows[0].items) {
       if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || (options.libraryId !== undefined && item.libraryId !== options.libraryId)) fail('invalid_document');
+      seen.add(item.id);
+    }
+    return out;
+  }
+  async series(libraryId: string, seriesId: string, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingSeriesPage> {
+    const cursor = options.cursor;
+    if (!id(libraryId) || !/^[A-Za-z0-9_-]{43}$/.test(seriesId) || !integer(options.limit ?? 50, 1, 100) || (cursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(cursor))) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_series_items', {libraryId, seriesId}), options), 'GET', undefined, signal, decodeGetReadingSeriesItemsResponse, 2 << 20);
+    if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(out.nextCursor))) fail('invalid_document');
+    const seen = new Set<string>();
+    for (const item of out.items) {
+      if (!id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
     return out;
