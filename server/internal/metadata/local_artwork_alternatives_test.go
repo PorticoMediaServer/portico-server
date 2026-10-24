@@ -92,13 +92,12 @@ func openAlternativesFixture(t *testing.T, library string) (*sql.DB, catalogtest
 	t.Cleanup(func() { db.Close() })
 	c := catalogtest.New(t, db)
 	c.Library(library, "Movies", "movie", "/"+library)
-	c.Exec(`INSERT INTO library_sources(id,library_id,kind,name,configured_root,root) VALUES(?,?,'local','Movies',?,?)`, library, library, "/"+library, "/"+library)
-	var incarnation string
-	if err := db.QueryRow(`SELECT incarnation FROM library_sources WHERE id=?`, library).Scan(&incarnation); err != nil {
+	var source, incarnation string
+	if err := db.QueryRow(`SELECT id,incarnation FROM library_sources WHERE library_id=?`, library).Scan(&source, &incarnation); err != nil {
 		t.Fatal(err)
 	}
 	movie := c.Movie(c.Handle(library), "/"+library+"/Film.mkv", "Film", 2000)
-	mustExec(t, db, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES(?,?,?,?,'Film.mkv','r1','{}',1,1)`, "object-"+library, library, movie.Token, incarnation)
+	mustExec(t, db, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES(?,?,?,?,'Film.mkv','r1','{}',1,1)`, "object-"+library, source, movie.Token, incarnation)
 	return db, movie
 }
 
