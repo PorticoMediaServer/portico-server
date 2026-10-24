@@ -31,8 +31,10 @@ export type SortMenuProps = Readonly<{
   label: BrowseLabels['sort']; open?: boolean; onOpenChange?: (open: boolean) => void; onReshuffle?: () => void;
   /** A surface that names its own order draws no direction word beside it. */
   showOrder?: boolean;
+  /** `saved` is the Saved toolbar's drawn chip: a 15px inset and a 4px rule before the order word. */
+  variant?: 'default' | 'saved';
 }>;
-export function SortMenu({sorts, value, onValueChange, label, open: controlledOpen, onOpenChange, onReshuffle, showOrder: allowOrder = true}: SortMenuProps) {
+export function SortMenu({sorts, value, onValueChange, label, open: controlledOpen, onOpenChange, onReshuffle, showOrder: allowOrder = true, variant = 'default'}: SortMenuProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
