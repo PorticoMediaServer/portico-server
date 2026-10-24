@@ -35,7 +35,7 @@ export function OwnerResetFile({serverName, location, writtenAt, busy, error, on
     <p className={styles.eyebrow}>{serverName}</p><h1>{t('accounts.recovery.fileTitle')}</h1><p className={styles.lede}>{t('accounts.recovery.fileBody')}</p>
     <AuthError error={error ?? copyError} />
     <div className={styles.resetFilePath}><div><small>{t('accounts.recovery.fileSystem', {system: location.systemKind})}</small><code>{path}</code></div>
-      <button type="button" aria-label={t('action.copy')} onClick={() => {void navigator.clipboard.writeText(path).catch(setCopyError);}}><Icon name="i-copy" size={20} /></button></div>
+      <button type="button" aria-label={t('web.twoStep.copy')} onClick={() => {void navigator.clipboard.writeText(path).catch(setCopyError);}}><Icon name="i-copy" size={20} /></button></div>
     <details className={styles.resetFilePlatforms}><summary><Icon name="i-down" size={18} />{t('accounts.recovery.fileOtherSystems')}</summary>
       <dl><div><dt>{t('accounts.recovery.windows')}</dt><dd><code>{t('accounts.recovery.windowsPath')}</code></dd></div><div><dt>{t('accounts.recovery.macos')}</dt><dd><code>{t('accounts.recovery.macosPath')}</code></dd></div><div><dt>{t('accounts.recovery.docker')}</dt><dd><code>{t('accounts.recovery.dockerPath')}</code> {t('accounts.recovery.inContainer')}</dd></div></dl>
     </details>

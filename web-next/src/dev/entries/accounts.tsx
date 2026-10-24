@@ -2,6 +2,8 @@ import {createRoot} from 'react-dom/client';
 import {useState} from 'react';
 import {IconSprite} from '../../kit/Icon';
 import {LocalServerSignIn, PorticoServerSignIn, ServerProfiles, ServerProfilePIN} from '../../kit/accounts';
+import {LocalPasswordRecovery} from '../../kit/accounts/LocalPasswordRecovery';
+import {OwnerResetFile, OwnerResetPassword} from '../../kit/accounts/OwnerPasswordRecovery';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
 import '../../bootstrap.css';
@@ -22,6 +24,9 @@ function Specimen() {
   const frame = new URLSearchParams(location.search).get('frame') ?? '4';
   const [remember, setRemember] = useState(false);
   const record = (kind: string, value?: unknown) => {document.documentElement.dataset.accountAction = JSON.stringify({kind, value});};
+  if (frame === '20') return <LocalPasswordRecovery serverName="Portico demo" initialUsername="demo" onWriteFile={() => record('write-file')} onMemberReset={() => record('member-reset')} onBack={() => record('back')} />;
+  if (frame === '20b') return <OwnerResetFile serverName="Portico demo" location={{systemKind: 'linux', dataDirectory: '/var/lib/portico-media-server', fileDirectory: '/var/lib/portico-media-server', fileName: 'reset-code.txt', retryAfterSeconds: 0}} writtenAt={0} onVerify={() => record('verify-file')} onRewrite={() => record('write-file')} onBack={() => record('back')} />;
+  if (frame === '20c') return <OwnerResetPassword serverName="Portico demo" username="demo" twoStepEnabled onSubmit={(_password, turnOffTwoStep) => record('owner-password', {turnOffTwoStep})} />;
   if (frame === '13') return <ServerProfiles serverName="Portico demo" profiles={profiles} onSelect={value => record('profile', value.id)} onSwitchServer={() => record('servers')} autoFocusId="alex" />;
   if (frame === '14') return <ServerProfilePIN serverName="Portico demo" profile={profiles[1]} remember={remember} onRememberChange={setRemember} error
     onComplete={value => record('pin', value)} onOtherProfiles={() => record('profiles')} onForgotPIN={() => record('forgot-pin')} onSwitchServer={() => record('servers')} />;
