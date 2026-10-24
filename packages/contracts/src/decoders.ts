@@ -315,6 +315,7 @@ export function decodeGetQueueWindowResponse(input: unknown): types.GetQueueWind
 export function decodeGetRatingSystemsResponse(input: unknown): types.GetRatingSystemsResponse { return decode("GetRatingSystemsResponse", input) as types.GetRatingSystemsResponse; }
 export function decodeGetReadinessResponse(input: unknown): types.GetReadinessResponse { return decode("GetReadinessResponse", input) as types.GetReadinessResponse; }
 export function decodeGetReadingContinueResponse(input: unknown): types.GetReadingContinueResponse { return decode("GetReadingContinueResponse", input) as types.GetReadingContinueResponse; }
+export function decodeGetReadingDiscoverResponse(input: unknown): types.GetReadingDiscoverResponse { return decode("GetReadingDiscoverResponse", input) as types.GetReadingDiscoverResponse; }
 export function decodeGetReadingItemsResponse(input: unknown): types.GetReadingItemsResponse { return decode("GetReadingItemsResponse", input) as types.GetReadingItemsResponse; }
 export function decodeGetReadingSessionsSessionIdAssetsResponse(input: unknown): types.GetReadingSessionsSessionIdAssetsResponse { return decode("GetReadingSessionsSessionIdAssetsResponse", input) as types.GetReadingSessionsSessionIdAssetsResponse; }
 export function decodeGetReadingSessionsSessionIdPagesPageIndexResponse(input: unknown): types.GetReadingSessionsSessionIdPagesPageIndexResponse { return decode("GetReadingSessionsSessionIdPagesPageIndexResponse", input) as types.GetReadingSessionsSessionIdPagesPageIndexResponse; }

@@ -1,8 +1,8 @@
 import {
-  routePath, errors, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
+  routePath, errors, decodeGetReadingDiscoverResponse, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
   decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
   decodePutReadingSessionsSessionIdProgressResponse,
-  type GetReadingContinueResponse, type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
+  type GetReadingDiscoverResponse, type GetReadingContinueResponse, type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
   type PostReadingSessionsRequest, type PostReadingSessionsResponse,
   type GetReadingSessionsSessionIdProgressResponse,
   type PutReadingSessionsSessionIdProgressRequest, type PutReadingSessionsSessionIdProgressResponse,
@@ -15,6 +15,7 @@ export type ReadingManifest = Immutable<PostReadingSessionsResponse>;
 /** Derived from the generated official response, never a hand-written mirror. */
 export type ReadingItem = GetReadingItemsResponse['items'][number];
 export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
+export type ReadingDiscover = GetReadingDiscoverResponse;
 export type ReadingAuthor = NonNullable<ReadingItem['author']>;
 export type ReadingSeries = NonNullable<ReadingItem['series']>;
 export type ReadingAttributionSource = ReadingAuthor['source'];
@@ -268,6 +269,17 @@ export class ReadingClient {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_items'), options), 'GET', undefined, signal, decodeGetReadingItemsResponse, 256 << 10);
     if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format))) fail('invalid_document');
+    return out;
+  }
+  async discover(options: Readonly<{libraryId?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
+    if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 20, 1, 100)) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal, decodeGetReadingDiscoverResponse, 256 << 10);
+    if (out.rows.length !== 1 || out.rows[0].key !== 'recent' || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
+    const seen = new Set<string>();
+    for (const item of out.rows[0].items) {
+      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || (options.libraryId !== undefined && item.libraryId !== options.libraryId)) fail('invalid_document');
+      seen.add(item.id);
+    }
     return out;
   }
   async continue(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingContinueResponse> {

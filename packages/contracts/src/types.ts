@@ -627,6 +627,8 @@ export type GetReadinessRequest = {  };
 export type GetReadinessResponse = { "ready": boolean; "status": string };
 export type GetReadingContinueRequest = {  };
 export type GetReadingContinueResponse = { "items": Array<{ "item": { "author"?: { "source": string; "value": string }; "format": string; "id": string; "inventoryAvailable": boolean; "libraryId": string; "series"?: { "id": string; "name": string; "number"?: number; "source": string }; "sourceId": string; "title": string }; "progress": { "location": { "cfi"?: string; "format": string; "pageIndex"?: number; "progression": number; "section"?: string }; "observedAt": number; "revision": number; "sourceId": string; "sourceRevision": string; "stale": boolean } }>; "nextCursor"?: string };
+export type GetReadingDiscoverRequest = {  };
+export type GetReadingDiscoverResponse = { "rows": Array<{ "items": Array<{ "author"?: { "source": string; "value": string }; "format": string; "id": string; "inventoryAvailable": boolean; "libraryId": string; "series"?: { "id": string; "name": string; "number"?: number; "source": string }; "sourceId": string; "title": string }>; "key": string }> };
 export type GetReadingItemsRequest = {  };
 export type GetReadingItemsResponse = { "items": Array<{ "author"?: { "source": string; "value": string }; "format": string; "id": string; "inventoryAvailable": boolean; "libraryId": string; "series"?: { "id": string; "name": string; "number"?: number; "source": string }; "sourceId": string; "title": string }>; "nextCursor"?: string };
 export type GetReadingSessionsSessionIdAssetsRequest = {  };
@@ -1756,6 +1758,7 @@ export type RouteContracts = {
 "get_rating_systems": { request: GetRatingSystemsRequest; response: GetRatingSystemsResponse };
 "get_readiness": { request: GetReadinessRequest; response: GetReadinessResponse };
 "get_reading_continue": { request: GetReadingContinueRequest; response: GetReadingContinueResponse };
+"get_reading_discover": { request: GetReadingDiscoverRequest; response: GetReadingDiscoverResponse };
 "get_reading_items": { request: GetReadingItemsRequest; response: GetReadingItemsResponse };
 "get_reading_sessions_sessionId_assets": { request: GetReadingSessionsSessionIdAssetsRequest; response: GetReadingSessionsSessionIdAssetsResponse };
 "get_reading_sessions_sessionId_pages_pageIndex": { request: GetReadingSessionsSessionIdPagesPageIndexRequest; response: GetReadingSessionsSessionIdPagesPageIndexResponse };

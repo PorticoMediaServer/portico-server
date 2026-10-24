@@ -349,6 +349,7 @@ var routeLanes = map[string]string{
 	"GET /v1/rating-systems":                                                     "default",
 	"GET /v1/readiness":                                                          "default",
 	"GET /v1/reading/continue":                                                   "browsing",
+	"GET /v1/reading/discover":                                                   "browsing",
 	"GET /v1/reading/items":                                                      "browsing",
 	"GET /v1/reading/sessions/{sessionId}/assets":                                "media-body",
 	"GET /v1/reading/sessions/{sessionId}/pages/{pageIndex}":                     "media-body",

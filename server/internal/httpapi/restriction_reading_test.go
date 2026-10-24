@@ -78,7 +78,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			}
 		}
 		method, template, _ := strings.Cut(pattern, " ")
-		isList := template == "/v1/reading/items" || template == "/v1/reading/continue"
+		isList := template == "/v1/reading/items" || template == "/v1/reading/continue" || template == "/v1/reading/discover"
 		if template == "/v1/reading/continue" {
 			page := int64(0)
 			w := readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+manifest.SessionID+"/progress", token, manifest.Revision, ReadingProgressRequest{Location: ReadingLocation{Format: "pdf", PageIndex: &page, Progression: .25}})
@@ -196,7 +196,12 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 		if method != "DELETE" {
 			w := request(token, manifest)
 			assertPrivate(w)
-			if isList {
+			if template == "/v1/reading/discover" {
+				var page ReadingDiscoverResponse
+				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.Rows) != 1 || page.Rows[0].Key != "recent" || len(page.Rows[0].Items) != 0 {
+					t.Fatal("restricted discover rows", w.Code, w.Body.String())
+				}
+			} else if isList {
 				var list ReadingItemsResponse
 				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Items) != 0 || list.NextCursor != "" {
 					t.Fatal("restricted bounded list", w.Code, w.Body.String())
