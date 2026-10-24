@@ -40,10 +40,9 @@ func (s *Service) waitSourceTest(ctx context.Context, source string) (bool, erro
 	}
 }
 
-func (s *Service) beginCandidateTest(ctx context.Context, current *mounts.Mount, limits ReadLimits) (*remotemedia.ExclusiveTest, func(), error) {
-	source := identity.Token()
-	if current != nil {
-		source = current.ID
+func (s *Service) beginCandidateTest(ctx context.Context, source string, limits ReadLimits) (*remotemedia.ExclusiveTest, func(), error) {
+	if source == "" {
+		source = identity.Token()
 	}
 	s.serveMu.Lock()
 	if s.sourceTests == nil {
@@ -165,17 +164,33 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	if err = check(ctx); err != nil {
 		return err
 	}
-	hold, finish, err := s.beginCandidateTest(ctx, input.Current, profile.Limits)
-	if err != nil {
-		return err
+	source, generation := "", "1"
+	if input.Current != nil {
+		source = input.Current.ID
+		generation = strconv.FormatInt(input.Current.BackendRevision, 10)
 	}
-	defer finish()
-	life := hold.Context()
 	policy := remotemedia.Policy{Resolver: s.resolver, SourceEndpoints: true}
 	for _, a := range approvals {
 		if len(a.Root) >= 4 && a.Root[:4] == "http" {
 			policy.Approvals = append(policy.Approvals, a)
 		}
+	}
+	return s.runCandidateServe(ctx, source, generation, profile, raw, input.Remote, program, digest, policy, check, nil)
+}
+
+type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remotemedia.ExclusiveTest) (func(context.Context) error, error)
+
+// runCandidateServe holds source I/O exclusively through both phases. The
+// observer's second phase runs only after physical Wait, under the SAME hold.
+func (s *Service) runCandidateServe(ctx context.Context, source, generation string, profile SourceReadProfile, raw []byte, remote string, program rcloneprogram.Program, digest string, policy remotemedia.Policy, check func(context.Context) error, observe candidateObserver) error {
+	hold, finish, err := s.beginCandidateTest(ctx, source, profile.Limits)
+	if err != nil {
+		return err
+	}
+	defer finish()
+	life := hold.Context()
+	if source == "" {
+		source = identity.Token()
 	}
 	proxy, err := remotemedia.StartPolicyProxy(life, policy, identity.Token(), identity.Token(), check)
 	if err != nil {
@@ -190,12 +205,7 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	if err != nil {
 		return err
 	}
-	source, generation := identity.Token(), "1"
-	if input.Current != nil {
-		source = input.Current.ID
-		generation = strconv.FormatInt(input.Current.BackendRevision, 10)
-	}
-	spec := rcloneprogram.ServeCommandSpec{SourceID: source, SourceGeneration: generation, ApprovedProgramDigest: digest, PrivateDirectory: s.private, Configuration: raw, Remote: input.Remote, Port: port, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: profile.Limits.Connections, RequestsPerSecond: profile.Limits.RequestsPerSecond, BytesPerSecond: profile.Limits.BytesPerSecond, SharedOperations: hold.Operations(), Enforce: func(cmd *exec.Cmd) error {
+	spec := rcloneprogram.ServeCommandSpec{SourceID: source, SourceGeneration: generation, ApprovedProgramDigest: digest, PrivateDirectory: s.private, Configuration: raw, Remote: remote, Port: port, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: profile.Limits.Connections, RequestsPerSecond: profile.Limits.RequestsPerSecond, BytesPerSecond: profile.Limits.BytesPerSecond, SharedOperations: hold.Operations(), Enforce: func(cmd *exec.Cmd) error {
 		if err := check(life); err != nil {
 			return err
 		}
@@ -209,7 +219,20 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 		}
 		return mapError(err)
 	}
-	defer func() { process.Stop(); _ = process.Wait(context.Background()) }()
+	stopped := false
+	stopProcess := func() error {
+		if stopped {
+			return nil
+		}
+		stopped = true
+		process.Stop()
+		err := process.Wait(context.Background())
+		if err != nil && err != rcloneprogram.ErrServeStopped {
+			return err
+		}
+		return nil
+	}
+	defer stopProcess()
 	if err = check(life); err != nil {
 		return err
 	}
@@ -220,11 +243,11 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	if err = metadataClient.CheckRoot(life, check); err != nil {
 		return mapError(err)
 	}
-	leaves, err := configuredBackends(raw, input.Remote)
+	leaves, err := configuredBackends(raw, remote)
 	if err != nil {
 		return err
 	}
-	checked := map[string]bool{input.Remote: true}
+	checked := map[string]bool{remote: true}
 	for _, leaf := range leaves {
 		if checked[leaf.Remote] {
 			continue
@@ -241,6 +264,24 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 				return life.Err()
 			}
 			return mapError(err)
+		}
+	}
+	var afterStop func(context.Context) error
+	if observe != nil {
+		afterStop, err = observe(life, process, hold)
+		if err != nil {
+			return err
+		}
+	}
+	if err = stopProcess(); err != nil {
+		return err
+	}
+	if err = check(life); err != nil {
+		return err
+	}
+	if afterStop != nil {
+		if err = afterStop(life); err != nil {
+			return err
 		}
 	}
 	return check(life)

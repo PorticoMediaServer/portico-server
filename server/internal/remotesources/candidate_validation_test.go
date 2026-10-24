@@ -187,7 +187,7 @@ func TestCandidateSourceTestStuckReaderBusyAndTwentySecondChildTimeout(t *testin
 
 func TestCandidateExclusiveScopeRetiresWithServiceEvenWithoutCurrentProcess(t *testing.T) {
 	s := &Service{}
-	hold, finish, err := s.beginCandidateTest(context.Background(), nil, ReadLimits{Connections: 1, RequestsPerSecond: 2})
+	hold, finish, err := s.beginCandidateTest(context.Background(), "", ReadLimits{Connections: 1, RequestsPerSecond: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestCandidateExclusiveScopeRetiresWithServiceEvenWithoutCurrentProcess(t *t
 	case <-time.After(time.Second):
 		t.Fatal("cold-source candidate survived service retirement")
 	}
-	if _, _, err = s.beginCandidateTest(context.Background(), nil, ReadLimits{Connections: 1}); !errors.Is(err, storage.ErrRemoteOffline) {
+	if _, _, err = s.beginCandidateTest(context.Background(), "", ReadLimits{Connections: 1}); !errors.Is(err, storage.ErrRemoteOffline) {
 		t.Fatal("retired service admitted another test", err)
 	}
 	finish()
