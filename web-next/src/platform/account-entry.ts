@@ -4,8 +4,9 @@ import {directSignIn, directSignInContinuation, shouldRetireAccountSession, comp
 import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, connectHostedServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {assertFirstContactIdentity, RouteError, sameServerPin, type ServerPin} from '@core/route-identity.ts';
 import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
-import {acceptPorticoInvitation, porticoSignIn, type HostedRequestApi} from '@core/portico-servers.ts';
+import {acceptPorticoInvitation, acceptShortPorticoInvitation, porticoSignIn, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
+import {parseShortInvitationCode} from '@core/short-invitation-code.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, ownerResetSecurity, finishOwnerResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
 import {MemberAccountMoveClient, type MoveCodePreview, type MoveCodeLink} from '@core/account-move.ts';
@@ -25,6 +26,7 @@ import {createBrowserSetupClaim, type BrowserSetupClaim} from './setup-claim';
 import {buildHostedSignInStartURL} from '@core/hosted-sign-in-start.ts';
 import type {AccountServerAccess} from './account-server-access';
 
+type InvitationCapability=Readonly<{code:string}|{shortCode:string}>;
 type RegisteredController=Pick<BrowserRegisteredSignIn,'prepare'|'finish'|'completeChallenge'|'cancel'>;
 type RegisteredCompletion=Awaited<ReturnType<RegisteredController['finish']>>;
 type OwnerReturnController=Pick<BrowserOwnerClaim,'pendingReturn'|'finish'|'cancel'>;
@@ -69,7 +71,7 @@ export class BrowserAccountEntry {
  private epoch=0;private controller?:AbortController;private api?:HttpLocalApi;private session?:LocalSession;
  private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private challengeRevision?:number;private disposed=false;
  private registered?:RegisteredController;private registeredChallenge?:RegisteredController;private ownerReturn?:ContinuationReturnController;
- private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
+ private invitationCapability?:InvitationCapability;private joinedAccountId?:string;private joinedUsername?:string;
  private ownerReset?:OwnerResetCapture;private ownerResetTimer?:ReturnType<typeof setTimeout>;
  private moveProof?:Readonly<{code:string;revision:number;preview:MoveCodePreview}>;
  private moveTicket?:Readonly<{ticket:string;revision:number;expiresAt:string}>;
@@ -125,7 +127,7 @@ export class BrowserAccountEntry {
   if(!current()){stopped=true;off();return;}
   this.offSelection=()=>{stopped=true;off();};void check();
  }
- cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.invitationCode=undefined;this.joinedAccountId=undefined;this.joinedUsername=undefined;this.publish({phase:'welcome'});}
+ cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.invitationCapability=undefined;this.joinedAccountId=undefined;this.joinedUsername=undefined;this.publish({phase:'welcome'});}
  address(){this.cancel();this.publish({phase:'address'});}
  private clearHostedChallenge(){const off=this.offHostedChallenge;this.hostedChallenge=undefined;this.offHostedChallenge=undefined;off?.();}
  private watchHostedChallenge(account:AccountServerAccess,hosted:NonNullable<RememberedServer['hosted']>){
@@ -222,7 +224,7 @@ export class BrowserAccountEntry {
    if(this.state.invitation&&this.ports.invitationDestination==='server-origin'){
     await this.retire(api,result.session);
     if(op.current())this.publish({...this.state,phase:'joined',joined:{origin:this.state.origin!,signIn:this.state.server.signIn},busy:false,error:undefined});
-    this.invitationCode=undefined;return;
+    this.invitationCapability=undefined;return;
    }
    const previous=await this.ports.store.selected(),pin=api.getRouteConnection()?.pin;
    if(!op.current())throw new CodedError('cancelled','The server selection changed.');
@@ -245,27 +247,37 @@ export class BrowserAccountEntry {
  /** The link code is not posted until the kind, private-key proof, link id and
   * all remembered ownership of this origin have passed the normal entry guard. */
  async inspectInvitation(link:JoinLink){
-  const inspected=await this.inspect(link.server,link.id);if(!inspected?.current())return;
+  return this.inspectInvitationCapability(link.server,Object.freeze({code:link.code}),link.id);
+ }
+ /** Human entry uses its own capability after the entered address passes the
+  * same identity/transport/remembered-route checks as an ordinary link. */
+ async inspectShortInvitation(address:string,raw:string){
+  const shortCode=parseShortInvitationCode(raw);
+  if(!shortCode){this.cancel();this.publish({phase:'address',error:new CodedError('invitation_incomplete','This invitation code is not complete.')});return;}
+  return this.inspectInvitationCapability(address,Object.freeze({shortCode}));
+ }
+ private async inspectInvitationCapability(address:string,capability:InvitationCapability,linkId?:string){
+  const inspected=await this.inspect(address,linkId);if(!inspected?.current())return;
   const state=this.state,api=inspected.api;
   if(!api||!state.server||!['password','portico'].includes(state.phase))return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
   try{
-   const preview=decodePreviewInvitationResponse(await api.request(routePath('preview_invitation'),'POST',{code:link.code},op.signal));
+   const preview=decodePreviewInvitationResponse(await api.request(routePath('preview_invitation'),'POST',capability,op.signal));
    if(!op.current())return;
    if(preview.signInMethod!==state.server.signIn||!['member','admin'].includes(preview.role))throw new CodedError('invalid_response','The invitation sign-in method changed.');
-   this.invitationCode=link.code;this.publish({...state,invitation:preview,busy:false});
+   this.invitationCapability=capability;this.publish({...state,invitation:preview,busy:false});
   }catch(error){if(op.current())this.publish({...state,busy:false,error});}
  }
  async joinLocal(username:string,password:string,name=''){
-  const state=this.state,api=this.api,code=this.invitationCode,trimmed=username.trim();
-  if(state.phase!=='password'||state.server?.signIn!=='local'||!state.invitation||!api||!code||state.busy)return;
+  const state=this.state,api=this.api,capability=this.invitationCapability,trimmed=username.trim();
+  if(state.phase!=='password'||state.server?.signIn!=='local'||!state.invitation||!api||!capability||state.busy)return;
   if(trimmed.length<3||trimmed.length>64||/[\s@]/.test(trimmed)||!passwordStrength(password).acceptable)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
   try{
    const revision=(await this.ports.store.read()).revision;if(!op.current())return;
    if(this.joinedUsername!==undefined&&this.joinedUsername!==trimmed)throw new CodedError('invitation_used','Continue with the account already created.');
    if(this.joinedUsername===undefined){
-    const member=decodePostAccessInvitationsAcceptResponse(await api.request(routePath('post_access_invitations_accept'),'POST',{code,username:trimmed,password,...(name.trim()?{name:name.trim()}:{})},op.signal));
+    const member=decodePostAccessInvitationsAcceptResponse(await api.request(routePath('post_access_invitations_accept'),'POST',{...capability,username:trimmed,password,...(name.trim()?{name:name.trim()}:{})},op.signal));
     if(!op.current())return;
     if(!('accountId' in member)||!member.accountId||member.username!==trimmed)throw new CodedError('invalid_response','The invitation account could not be read.');
     this.joinedAccountId=member.accountId;this.joinedUsername=trimmed;
@@ -275,8 +287,8 @@ export class BrowserAccountEntry {
   }catch(error){if(op.current())this.publish({...state,busy:false,error});}
  }
  async joinPortico(account:Readonly<{origin:string;accountId:string;request:HostedRequestApi['request'];isCurrent:()=>boolean}>){
-  const state=this.state,code=this.invitationCode;
-  if(state.phase!=='portico'||state.server?.signIn!=='portico'||!state.invitation||!state.pin||!state.origin||!code||state.busy||!account.isCurrent())return;
+  const state=this.state,capability=this.invitationCapability;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||!state.invitation||!state.pin||!state.origin||!capability||state.busy||!account.isCurrent())return;
   const op=this.operation(),guard={...op,current:()=>op.current()&&account.isCurrent()};this.publish({...state,busy:true,error:undefined});
   let paired:Awaited<ReturnType<typeof connectPairedPorticoServer>>|undefined;
   try{
@@ -287,7 +299,8 @@ export class BrowserAccountEntry {
     {origin:account.origin,accountId:account.accountId,request:(path,signal)=>request(path,'GET',undefined,signal)},this.ports.environment(state.server.id),op.signal);
    if(!guard.current()){paired.connection.dispose();return;}
    const server=paired.api;
-   const result=await acceptPorticoInvitation({request},account.origin,{request:(path,method,body,signal)=>{check();return server.request(path,method,body,signal);}},state.server.id,code,op.signal);
+   const short='shortCode' in capability,acceptInvitation=short?acceptShortPorticoInvitation:acceptPorticoInvitation;
+   const result=await acceptInvitation({request},account.origin,{request:(path,method,body,signal)=>{check();return server.request(path,method,body,signal);}},state.server.id,'shortCode' in capability?capability.shortCode:capability.code,op.signal);
    if(result.kind!=='signed-in')throw new CodedError('invalid_response','The Portico invitation returned an unexpected challenge.');
    if(!guard.current()||result.snapshot.account.hostedAccountId!==account.accountId){await this.retire(paired.api,result.session);throw new CodedError('cancelled','The Portico Account changed.');}
    const previous=this.api;this.api=paired.api;previous?.getRouteConnection()?.dispose();
