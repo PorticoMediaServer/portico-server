@@ -109,4 +109,6 @@ export const channelMessages = {
   'guide.stale': 'This guide may be out of date. The last refresh didn’t finish.',
   'guide.openSource': 'Open source settings',
   'guide.keyboardHint': 'Arrow keys move, Enter opens, W watches, R records, N jumps to now.',
+  // phone-guide.html frame 6 day-menu note, copied verbatim (ds-native-live-r2).
+  'guide.dayMenuNote': 'Picking another day jumps to {time} that evening. This guide has listings through {day}.',
 } as const satisfies Record<string, string>;
