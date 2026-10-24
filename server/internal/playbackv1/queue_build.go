@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -88,6 +89,25 @@ type selectorKeys struct {
 // its key query (see openKeys).
 func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principal, in SegmentInput) (selectorKeys, error) {
 	switch {
+	case isRadioSource(in.Source):
+		if s.RadioKeys == nil {
+			return selectorKeys{}, ErrUnsupportedSelector
+		}
+		if in.Order != nil && in.Order.Mode != "source" {
+			return selectorKeys{}, &FieldError{Path: "order.mode"}
+		}
+		batch, err := s.RadioKeys(ctx, tx, p, catalog.RadioBatchRequest{Seed: in.Source.Container.ID, Start: true, Limit: radioBatchSize, Now: s.now()})
+		if err != nil {
+			return selectorKeys{}, err
+		}
+		if len(batch.IDs) == 0 {
+			return selectorKeys{}, ErrNotFound
+		}
+		var label string
+		if err = tx.QueryRowContext(ctx, `SELECT title FROM catalog_entities WHERE public_id=pid_blob(?) AND retired=0`, in.Source.Container.ID).Scan(&label); err != nil {
+			return selectorKeys{}, err
+		}
+		return selectorKeys{query: `SELECT value FROM json_each(?) ORDER BY CAST(key AS INTEGER)`, args: []any{jsonList(batch.IDs)}, kind: "radio", label: label}, nil
 	case in.Source.isQuery():
 		if s.QueryKeys == nil {
 			return selectorKeys{}, ErrUnsupportedSelector

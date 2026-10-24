@@ -23,6 +23,7 @@ type RadioBatchRequest struct {
 	Exclude        []string
 	Cycle          int64
 	Limit          int
+	Start          bool
 	Now            time.Time
 }
 type RadioBatch struct {
@@ -82,7 +83,7 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		}
 		excluded[id] = true
 	}
-	if dbwork.Snapshot(s.Context()) == nil {
+	if dbwork.Snapshot(s.Context()) == nil && s.readTx == nil {
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var err error
 			out, err = s.WithContext(ctx).MusicRadioBatch(viewer, request)
@@ -237,6 +238,9 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		if a.excluded != b.excluded {
 			return !a.excluded
 		}
+		if (a.public == request.LastItem) != (b.public == request.LastItem) {
+			return a.public != request.LastItem
+		}
 		if (a.recent > 0) != (b.recent > 0) {
 			return a.recent == 0
 		}
@@ -260,6 +264,34 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		}
 		return a.id < b.id
 	})
+	if request.Start {
+		// A song radio starts with the actual seed; an album/artist starts
+		// with its first permitted available song in canonical release order.
+		var first int64
+		err = s.read().QueryRow(`SELECT item.id FROM catalog_entities item
+ JOIN catalog_libraries library ON library.id=item.library_id
+ JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
+ JOIN catalog_entities album_item ON album_item.id=album.entity_id AND album_item.retired=0
+ WHERE ((?=7 AND item.id=?) OR (?=6 AND song.album_id=?) OR (?=5 AND album.artist_id=?))
+ AND `+visible+` AND `+currentSonicEligibleSQL+`
+ AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
+ ORDER BY album_item.year,album_item.sort_key,album_item.id,COALESCE(song.disc_number,1),COALESCE(song.track_number,0),item.id LIMIT 1`, append([]any{kind, seed, kind, seed, kind, seed}, args...)...).Scan(&first)
+		if err != nil {
+			return out, err
+		}
+		for i, item := range pool {
+			if item.id == first {
+				out.IDs = append(out.IDs, item.public)
+				out.BySound = item.sound
+				lastArtists = item.artists
+				pool = append(pool[:i], pool[i+1:]...)
+				break
+			}
+		}
+		if len(out.IDs) == 0 {
+			return out, sql.ErrNoRows
+		}
+	}
 	for len(out.IDs) < limit && len(pool) > 0 {
 		chosen := 0
 		// Prefer a different actually credited artist when one remains. With
@@ -284,4 +316,15 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		pool = append(pool[:chosen], pool[chosen+1:]...)
 	}
 	return out, nil
+}
+
+// MusicRadioBatchTx keeps source selection and the caller's current permission
+// facts on the same admitted read transaction used to build a v1 snapshot.
+func (s *Service) MusicRadioBatchTx(ctx context.Context, tx *sql.Tx, viewer Viewer, request RadioBatchRequest) (RadioBatch, error) {
+	if tx == nil {
+		return RadioBatch{}, ErrAdminQuery
+	}
+	clone := *s.WithContext(ctx)
+	clone.readTx = tx
+	return clone.MusicRadioBatch(viewer, request)
 }
