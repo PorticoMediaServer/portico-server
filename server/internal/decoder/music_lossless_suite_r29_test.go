@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"portico.local/server/internal/testtier"
 	"time"
 
 	"portico.local/server/internal/audiofacts"
@@ -20,6 +22,7 @@ import (
 
 // All bundled suite inputs are synthesised tones, not copied recordings.
 func TestMusicLosslessFormatsR29(t *testing.T) {
+	testtier.Media(t, "encodes and decodes actual bounded music fixtures through FFmpeg")
 	ff, e := exec.LookPath("ffmpeg")
 	if e != nil {
 		t.Skip("ffmpeg unavailable")
@@ -48,12 +51,15 @@ func TestMusicLosslessFormatsR29(t *testing.T) {
 			if out, e := exec.Command(ff, args...).CombinedOutput(); e != nil {
 				t.Fatalf("fixture generation: %v %s", e, out)
 			}
-			exerciseMusicFormat(t, ff, probe, path, tc.codec, tc.rate, true)
+			facts := exerciseMusicFormat(t, ff, probe, path, tc.codec, tc.rate, true)
+			if facts.BitDepth != tc.depth {
+				t.Fatalf("fixture intended %dbit but measured %dbit", tc.depth, facts.BitDepth)
+			}
 		})
 	}
 }
 
-func exerciseMusicFormat(t *testing.T, ff, probe, path, codec string, rate int, lossless bool, expectedFrames ...int64) {
+func exerciseMusicFormat(t *testing.T, ff, probe, path, codec string, rate int, lossless bool, expectedFrames ...int64) audiofacts.Facts {
 	t.Helper()
 	file, e := os.Open(path)
 	if e != nil {
@@ -115,12 +121,14 @@ func exerciseMusicFormat(t *testing.T, ff, probe, path, codec string, rate int, 
 	}
 	sum := sha256.Sum256(source)
 	t.Logf("%s %dHz %dbit %dch source sha256=%x -> FLAC %dbit, %d audible frames", codec, facts.SampleRate, facts.BitDepth, facts.Channels, sum, depth, facts.DurationFrames)
+	return facts
 }
 
 // The bundled inputs are procedural tones with construction counts and tool
 // provenance. Optional external recordings stay outside Git and require an
 // explicit absolute-path/hash/rights manifest.
 func TestMusicAPEAndMusepackFormatsR29(t *testing.T) {
+	testtier.Media(t, "encodes and decodes actual bounded music fixtures through FFmpeg")
 	manifest := os.Getenv("PORTICO_MUSIC_FORMAT_FIXTURES")
 	bundled := manifest == ""
 	if manifest == "" {

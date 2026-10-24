@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// readRemoteSmall uses a single retained/conditional acquisition. The path stays
-// server-private, rooted scan policy is checked before acquisition and after the
-// bounded read, and native sources never fall through to their empty mount path.
+// readRemoteSmall keeps the path server-private and the read bounded. Inventory
+// invocations use their typed current-job producer; rooted scan checks surround
+// the read, and native sources never fall through to an empty mount path.
 func (c *Client) readRemoteSmall(ctx context.Context, path string, limit int64) ([]byte, error) {
 	return c.readRemoteBlob(ctx, path, limit, 8<<20)
 }
@@ -16,17 +16,35 @@ func (c *Client) readRemoteBlob(ctx context.Context, path string, limit, maximum
 	if limit <= 0 || limit > maximum {
 		return nil, ErrRemoteLimit
 	}
-	if err := CheckScanRead(ctx, path); err != nil {
-		return nil, err
-	}
 	req, input, err := inventoryReadRequest(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 	if input != nil {
-		if _, err = c.InventoryStat(ctx, input.source, req); err != nil {
+		reader, ok := c.Remote.(RemoteInventoryBlobReader)
+		if !ok || input.client != c || input.blob == nil {
+			return nil, ErrRemoteConfig
+		}
+		if err = CheckScanRead(ctx, path); err != nil {
 			return nil, err
 		}
+		raw, err := reader.ReadInventoryBlob(ctx, input.source, req, *input.blob, limit)
+		if err != nil {
+			clear(raw)
+			return nil, err
+		}
+		if int64(len(raw)) > limit {
+			clear(raw)
+			return nil, ErrRemoteLimit
+		}
+		if err = CheckScanRead(ctx, path); err != nil {
+			clear(raw)
+			return nil, err
+		}
+		return raw, nil
+	}
+	if err = CheckScanRead(ctx, path); err != nil {
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

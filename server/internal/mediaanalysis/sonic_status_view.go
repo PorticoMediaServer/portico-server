@@ -6,7 +6,9 @@ import "portico.local/server/internal/sonic"
 // policy rows nor paths/errors, and never treats installed bytes as a song.
 // HTTP authentication/registration belongs at the normal owner boundary.
 type SonicStatusView struct {
-	LibraryID                 string          `json:"libraryId"`
+	LibraryID string `json:"libraryId"`
+	// Available reports verified runtime readiness independently of the library choice.
+	Available                 bool            `json:"available"`
 	Enabled                   bool            `json:"enabled"`
 	Revision                  int64           `json:"revision"`
 	PolicyAllows              bool            `json:"policyAllows"`
@@ -22,7 +24,7 @@ type SonicStatusView struct {
 }
 
 func (status SonicStatus) OwnerView(library string) SonicStatusView {
-	out := SonicStatusView{LibraryID: library, Enabled: status.Settings.Enabled, Revision: status.Settings.Revision,
+	out := SonicStatusView{LibraryID: library, Available: status.Runtime.State == "ready", Enabled: status.Settings.Enabled, Revision: status.Settings.Revision,
 		PolicyAllows: status.PolicyAllows, Done: status.Analyzed, Total: status.Total, Model: status.Runtime.Model,
 		PolicyRevision: status.Work.Revision, ObservedAtMS: status.Work.ObservedAt.UnixMilli()}
 	switch {

@@ -1,4 +1,5 @@
 export const browseMessages = {
+  'next.browse.native.libraryOrderHint': 'Live TV has its own tab. Edit pins changes this order on all your devices.',
   'next.browse.countAtLeast': '{count, number}+',
   'next.browse.filmCount': '{count, plural, one {# film} other {# films}}',
   'next.browse.filmCountAtLeast': '{count, number}+ films',
