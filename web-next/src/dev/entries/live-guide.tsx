@@ -134,7 +134,7 @@ function Specimen() {
   const onNow = <Row className={live.onNow} heading={t('web.live.onNow')} subtitle={t('next.live.favoritesFirst')}>
     <div className={live.nowViewport}>
       <div className={live.nowSpace} style={{width: 5 * 364 - 20}}>
-        {channels.slice(0, 5).map((channel, index) => {
+        {[...channels.filter(channel => channel.favorite), ...channels.filter(channel => !channel.favorite)].slice(0, 5).map((channel, index) => {
           const programs = channel.programmes.map(item => program(channel, item));
           return <div className={live.nowSlot} style={{left: index * 364}} key={channel.id}>
             <LiveCard large channel={{id: channel.id, sourceId: 'synthetic', name: channel.name, number: channel.number, mark: mark(channel.mark), favorite: channel.favorite === true}}

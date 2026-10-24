@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {legacyChannel, layoutRow, type GuideCell, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
+import {layoutRow, type GuideCell, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {rulerTicks} from '@core/guide/time.ts';
 import {programmeFactParts, type ChannelMarkModel, type FactPart} from '@portico/client-core/kit-model';
 import {ChannelMark} from '../../kit/artwork';
@@ -113,7 +113,7 @@ function CellButton({cell, channel, now, timezone, selected, onSelect}: Readonly
 
 function GuideChannelCell({channel, list, phone}: Readonly<{channel?: GuideChannelRow; list: boolean; phone: boolean}>) {
   if (!channel) return <div className={styles.guideChannel}><Skeleton width={phone ? 36 : 180} height={34}/></div>;
-  const native = legacyChannel(channel), mark: ChannelMarkModel | undefined = channel.mark && native ? {...channel.mark, sourceId: native.sourceId, id: native.id} : undefined;
+  const mark: ChannelMarkModel | undefined = channel.mark ? {sourceId: channel.sourceId ?? '', id: channel.id, text: channel.mark.text, seed: channel.mark.seed} : undefined;
   return <div className={styles.guideChannel}>
     {mark ? <ChannelMark className={styles.guideChannelMark} mark={mark} size={40}/> : <span className={`${styles.guideChannelMark} ${styles.guideChannelMarkEmpty}`} aria-hidden="true"/>}
     <span className={styles.guideChannelText}>
@@ -160,8 +160,9 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
     if (event.key === 'n' || event.key === 'N') {event.preventDefault();time.onNow();}
   };
 
-  return <section className={styles.guideScreen}>
-    <header className={styles.guideHeader}>
+  return <section className={styles.guideScreen} data-guide-screen>
+    <div className={styles.guideAmbient} data-guide-ambient aria-hidden="true"/>
+    <header className={styles.guideHeader} data-guide-header>
       <h1>{title}</h1>
       {switcher && <Select className={styles.guideSwitcher} aria-label={t('channels.source')} value={switcher.value} options={switcher.options} onValueChange={switcher.onChange}/>}
       {summary && <p className={styles.guideSource}>
@@ -170,15 +171,15 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
         {summary.through && <span>{summary.through}</span>}
       </p>}
     </header>
-    <Tabs className={styles.guideTabs} listClassName={styles.guideTabList} value="guide" aria-label={t('next.home.shell.live')}
+    <Tabs className={styles.guideTabs} data-guide-tabs listClassName={styles.guideTabList} value="guide" aria-label={t('next.home.shell.live')}
       onValueChange={value => {if (value === 'recordings') onTabChange?.(value);}}
       items={[{value: 'guide', label: t('channels.viewGuide')},
         {value: 'recordings', label: <>{t('recordings.title')}{conflicts !== undefined && <span className={styles.guideTabNote}>{t('next.live.conflicts', {count: conflicts})}</span>}</>}]}/>
-    <div className={styles.guideChips} role="group" aria-label={t('channels.filters')}>
+    <div className={styles.guideChips} data-guide-chips role="group" aria-label={t('channels.filters')}>
       {chips.map(chip => <Chip className={styles.guideChip} key={chip.id} selected={chip.selected} count={chip.count} icon={chip.favorites ? 'i-star' : undefined} onClick={chip.onSelect}>{chip.label}</Chip>)}
     </div>
     {onNow}
-    <div className={styles.guideTime}>
+    <div className={styles.guideTime} data-guide-time>
       <Select className={styles.guideDay} aria-label={day.label} value={day.value} options={day.options} onValueChange={day.onChange}/>
       <div className={styles.guideStepper} role="group" aria-label={t('guide.twoHours')}>
         <button type="button" className={styles.guideStep} aria-label={time.earlier} onClick={time.onEarlier}><Icon name="i-left" size={18}/>{t('guide.twoHours')}</button>
@@ -193,7 +194,7 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
       </div>
     </div>
     {problem && <div className={styles.guideProblem}>{problem}</div>}
-    {empty ?? <div className={styles.guide} role="grid" aria-label={t('guide.label')} data-view={view} style={{'--guide-column': `${column}px`, '--guide-row': `${rowHeight}px`} as CSSProperties}>
+    {empty ?? <div className={styles.guide} data-guide-grid role="grid" aria-label={t('guide.label')} data-view={view} style={{'--guide-column': `${column}px`, '--guide-row': `${rowHeight}px`} as CSSProperties}>
       {view === 'guide' && <div className={styles.guideRuler}>
         <div className={styles.guideCorner}>{phone ? <button type="button" className={styles.guideCornerNow} onClick={time.onNow}>{time.now}</button> : t('guide.channelColumn')}</div>
         <div className={styles.guideLane}>
@@ -233,6 +234,6 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
         {view === 'guide' && nowX !== undefined && <div className={styles.guideNowLine} style={{left: nowX}} aria-hidden="true"/>}
       </div>
     </div>}
-    <p className={styles.guideKbd}>{t('guide.keyboardHint')}</p>
+    <p className={styles.guideKbd} data-guide-kbd>{t('guide.keyboardHint')}</p>
   </section>;
 }
