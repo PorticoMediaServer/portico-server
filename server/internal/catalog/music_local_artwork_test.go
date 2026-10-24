@@ -3,10 +3,10 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
-	"portico.local/server/internal/compactcatalog"
 )
 
 func TestMusicAlbumBackgroundUsesNormalAutomaticSourceAndPreservesOwner(t *testing.T) {
@@ -24,18 +24,30 @@ func TestMusicAlbumBackgroundUsesNormalAutomaticSourceAndPreservesOwner(t *testi
 		if value != "local:album-background" {
 			t.Fatal(value)
 		}
-		if err := compactcatalog.SetFieldsTx(ctx, tx, album.ID, compactcatalog.Owner, map[string]any{"backdrop_url": "local:owner-background"}); err != nil {
-			return err
-		}
-		if err := musicAlbumBackdropTx(ctx, tx, album.ID, map[string]string{"album/backdrop": "artist-fallback"}); err != nil {
-			return err
-		}
-		if err := tx.QueryRowContext(ctx, `SELECT backdrop_url FROM catalog_item_details WHERE entity_id=?`, album.ID).Scan(&value); err != nil {
-			return err
-		}
-		if value != "local:owner-background" {
-			t.Fatal("scan displaced owner background", value)
-		}
 		return nil
 	})
+	digest := strings.Repeat("a", 64)
+	c.Exec(`INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, digest)
+	c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owned-background','album',?,'backdrop','local','owner','local:owner-background','Local file','fence','now')`, album.ID)
+	c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('album',?,'backdrop','owned-background',?,?,1,'owner','now')`, album.ID, digest, digest)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return musicAlbumBackdropTx(ctx, tx, album.ID, map[string]string{"album/backdrop": "artist-fallback"})
+	})
+	target := artworkTarget{Kind: "album", ID: album.Public}
+	got, err := New(c.DB).resolveArtwork([]artworkTarget{target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := selectedArtworkURL("album", album.Public, "backdrop", "", digest, 1920)
+	if got[target].BackdropURL != want {
+		t.Fatal("automatic art displaced actual owner selection", got[target], want)
+	}
+	var candidate string
+	var locked bool
+	if err := c.DB.QueryRow(`SELECT candidate_id,locked FROM artwork_selections WHERE kind='album' AND entity_id=? AND role='backdrop'`, album.ID).Scan(&candidate, &locked); err != nil {
+		t.Fatal(err)
+	}
+	if candidate != "owned-background" || !locked {
+		t.Fatal(candidate, locked)
+	}
 }
