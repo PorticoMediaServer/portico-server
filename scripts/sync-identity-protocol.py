@@ -24,6 +24,8 @@ FILES = {
     "internal/serverreturn/transport_validation.go": "serverreturn/transport_validation.go",
     "internal/serverreturn/exchange.go": "serverreturn/exchange.go",
     "internal/serverreturn/owner_exchange.go": "serverreturn/owner_exchange.go",
+    "internal/serverreturn/setup_exchange.go": "serverreturn/setup_exchange.go",
+    "internal/serverreturn/setup_exchange_test.go": "serverreturn/setup_exchange_test.go",
     "internal/serverreturn/owner_exchange_test.go": "serverreturn/owner_exchange_test.go",
     "internal/wirejson/object.go": "wirejson/object.go",
 }
