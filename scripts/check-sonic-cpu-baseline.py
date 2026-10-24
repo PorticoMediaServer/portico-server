@@ -28,7 +28,8 @@ def main():
     emulated = [str(args.qemu), "-cpu", "Nehalem", *native]
     maximum = 0.0
     for case in range(3):
-        values = [0.0 if case == 0 else math.sin(index * .013 * case) + math.cos(index * .003) for index in range(187 * 96)]
+        values = [0.0 if case == 0 else 2 + math.sin(index * .013 * case) + math.cos(index * .003) for index in range(187 * 96)]
+        assert all(0 <= value <= 16 for value in values), "fixture must satisfy the actual log-mel input contract"
         payload = struct.pack("<" + "f" * len(values), *values)
         outputs = []
         for command in (native, emulated):
