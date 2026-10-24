@@ -12,7 +12,7 @@ import styles from './services-signin-r46.module.css';
 /** auth5's quiet return link: drawn chevron, server name from the signed handoff only. */
 function ReturnLink({href, server}: {href: string; server: string}) {
   const {t} = servicesI18n();
-  return <div className={styles.returnLink}><a href={href}><Icon name="i-left" size={18} />{t('services.return.back', {server})}</a></div>;
+  return <div className={styles.returnLink}><a href={href}><span><Icon name="i-left" size={18} />{t('services.return.back', {server})}</span></a></div>;
 }
 
 /** Auth5 + connect19b, composed by ruling29. Only Continue issues an answer. */
