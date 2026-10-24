@@ -382,7 +382,7 @@ async function main() {
     if (signedIn && want('detail-show')) {
       await check('detail-show', async () => {
         await openLibrary('TV Shows').catch(() => openLibrary('Anime'));
-        const showsTab = await findAny(page, [{role: 'button', name: /^Shows$/}, {role: 'tab', name: /^Shows$/}]);
+        const showsTab = await findAny(page, [{role: 'button', name: /^Shows/}, {role: 'tab', name: /^Shows/}, {text: /^Shows$/}]);
         if (showsTab) { await showsTab.click({timeout: 6000}).catch(() => {}); await settle(page, {quiet: 1500}); }
         const card = page.locator('article[data-card-kind] button[aria-label]').first();
         assert(await card.count() > 0, `the Anime library lists no show to open (Shows tab ${showsTab ? 'present' : 'absent'})`);
@@ -508,6 +508,9 @@ async function main() {
         await settle(page, {quiet: 2500});
         const text = await bodyText(page);
         assert(/\/item\//.test(page.url()), `album ${FIXTURES.album} did not resolve to an item screen (at ${page.url()})`);
+        if (/That page isn't here|not available|no longer/i.test(text)) {
+          throw blocked(`the album fixture ${FIXTURES.album} is not on this deployment: ${text.replace(/\n/g, ' ').slice(0, 160)}`);
+        }
         assert(/Abbey Road|album|song|track/i.test(text), `item ${FIXTURES.album} does not look like the album: ${text.replace(/\n/g, ' ').slice(0, 200)}`);
         const play = await findAny(page, [{role: 'button', name: /^(Play|Play all|Shuffle)/}, {css: '[data-size=hero][data-variant=primary]'}]);
         if (!play) return {detail: `album screen drew no play control; text ${text.slice(0, 120)}`, evidence: {screenshot: await evidence.shot(page, 'album')}};
