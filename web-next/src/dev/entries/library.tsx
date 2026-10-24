@@ -336,7 +336,8 @@ async function mount(element: HTMLElement) {
   };
   const activity = createOwnerActivity(contextBase as never, time, () => record('open-dashboard'), () => record('open-update'));
   const playback = {artwork, environment: time, skips: {back: 10, forward: 30}, reportError: (error: unknown) => record('report-error', String(error)),
-    runtime: {playFromQueue: async (source: unknown, _context: unknown, options: {shuffle?: boolean}) => { record('play-from-queue', {source, shuffle: options.shuffle === true}); }}};
+    runtime: {playFromQueue: async (source: unknown, _context: unknown, options: {shuffle?: boolean}) => { record('play-from-queue', {source, shuffle: options.shuffle === true}); },
+      cataloguePlayback: () => undefined}};
   const home = {
     service: {getSnapshot: () => ({phase: 'idle'}), subscribe: () => () => {}}, artwork, time, serverName: identity.serverName, reducedMotion: true,
     selection: {toolbar: null, card: () => undefined, channel: () => undefined, collection: () => undefined, registerWindow: () => undefined,
