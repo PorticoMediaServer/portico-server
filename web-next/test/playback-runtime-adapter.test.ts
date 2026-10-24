@@ -2528,8 +2528,12 @@ test('catalogue playback retains original caller guards through queue POST and a
 });
 
 test('catalogue playback cannot manufacture a queue when actual capability admission fails',async t=>{
- const f=setup(t,{}, {capabilities:async()=>{throw new Error('capability probe unavailable');}});
- await assert.rejects(f.runtime.cataloguePlayback().playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true}));
+ const {webDeclaredProfile}=await import('../../packages/client-core/src/client-profile.ts');let rejected=true;
+ const f=setup(t,{}, {capabilities:async()=>{if(rejected)throw new Error('capability probe unavailable');return webDeclaredProfile({app:'catalogue-test'});}});
+ const port=f.runtime.cataloguePlayback();
+ await assert.rejects(port.playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true}),/playback_start_failed/);
  assert.equal(f.log.some(r=>r.method==='POST'&&r.path==='/v1/queues'),false);
  assert.equal(f.runtime.getSnapshot().queueView,null);assert.equal(f.runtime.getSnapshot().presentation,undefined);
+ rejected=false;const header=await port.playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true});await f.arrive();
+ assert.equal(f.runtime.getSnapshot().queueView!.queue.id,header.id,'the same captured port can retry after a genuine successful admission');
 });

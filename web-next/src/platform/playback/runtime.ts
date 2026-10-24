@@ -55,6 +55,7 @@ type OfferBinding = {
 };
 type Stack = {
   mode: 'server' | 'local'; local?: Readonly<{controller: WebLocalQueue; lease: LocalQueueLease}>;
+  capabilityRejected?: boolean;
   web: WebPlayback; service: PlaybackService; queue: V1QueuePlayer; http: V1Http;
   life: AbortController; offers: PlayerOffersService; optionsClient: PlaybackOptionsClient;
   offs: (() => void)[]; unmount?: () => void; subtitles?: SubtitleService; offSubtitles?: () => void;
@@ -200,10 +201,13 @@ export class WebShellPlaybackRuntime {
         try { const eq = await loadDeviceEqualizer(); if (this.current(stackReference)) stackReference.web.applyEqualizer(eq); }
         catch { if (this.current(stackReference)) { this.runtimeProblem = 'equalizer_unavailable'; this.sync(); } }
       }
+      stackReference.capabilityRejected = false;
       if (!this.env.capabilities && (typeof document === 'undefined' || typeof window === 'undefined')) return;
-      const profile = await (this.env.capabilities ?? browserClientProfile)();
-      if (!this.current(stackReference)) return;
-      await this.capabilityPublisher.publish(profile, life.signal);
+      try {
+        const profile = await (this.env.capabilities ?? browserClientProfile)();
+        if (!this.current(stackReference)) return;
+        await this.capabilityPublisher.publish(profile, life.signal);
+      } catch (error) {stackReference.capabilityRejected = true;throw error;}
     }});
     const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference)});
     // The actual controller retains its ordered stop barrier across consecutive channel starts.
@@ -600,7 +604,7 @@ export class WebShellPlaybackRuntime {
     stack.expanded = true; // Actual metadata collapses music to its real dock in selectSource.
     const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
     const current = () => {
-      if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;
+      if (lifetime.aborted || !this.current(stack) || serial !== this.operation || stack.capabilityRejected) return false;
       try {check();return true;} catch {return false;}
     };
     const cancel = () => {if (this.current(stack) && serial === this.operation) {
@@ -613,7 +617,15 @@ export class WebShellPlaybackRuntime {
       const session = stack.queue.currentSession(), started = stack.service.getSnapshot();
       if (started.phase === 'error' || !session || session.queue?.queueId !== queue.id || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_start_failed');
       this.sync();return queue;
-    } catch (error) {cancel();throw error;}
+    } catch (error) {
+      let admissionFailed = false;
+      if (stack.capabilityRejected && this.current(stack) && serial === this.operation) {
+        try {check();admissionFailed = true;} catch { /* Original caller retired. */ }
+      }
+      cancel();
+      if (admissionFailed) problem('playback_start_failed');
+      throw error;
+    }
     finally {lifetime.removeEventListener('abort', cancel);}
   }
 
