@@ -117,7 +117,15 @@ func (p Probe) probeOutput(ctx context.Context, path, input string, options []st
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
-	if handled, err := storage.RunScanCommand(ctx, bin, args, path, out); handled {
+	runScan := storage.RunScanCommand
+	if input != path {
+		// Only the validated disc reader uses a prefixed input. The storage
+		// bridge accepts exactly bluray:path and retains that prefix on FD3.
+		runScan = func(ctx context.Context, binary string, args []string, path string, out io.Writer) (bool, error) {
+			return storage.RunDiscScanCommand(ctx, binary, args, path, true, out)
+		}
+	}
+	if handled, err := runScan(ctx, bin, args, path, out); handled {
 		runErr = err
 	} else if p.Supervisor != nil {
 		cmd, err := mediaexec.Command(probeJob(bin, args, path))
