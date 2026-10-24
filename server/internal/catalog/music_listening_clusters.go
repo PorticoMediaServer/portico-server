@@ -82,7 +82,7 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 		var track musicPlayedTrack
 		var data []byte
 		var artists string
-		if err = rows.Scan(&id, &track.public, &track.weight, &data, &artists, &track.album.ID, &track.album.Title); err != nil {
+		if err = rows.Scan(&id, &track.public, &track.weight, &data, &artists, &track.album.ID, &track.album.Name); err != nil {
 			break
 		}
 		out.EligibleTracks++
@@ -179,7 +179,7 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 		for rows.Next() {
 			var id int64
 			var ref ContentEntityRef
-			if err = rows.Scan(&id, &ref.ID, &ref.Title); err != nil {
+			if err = rows.Scan(&id, &ref.ID, &ref.Name); err != nil {
 				break
 			}
 			refs[id] = ref
