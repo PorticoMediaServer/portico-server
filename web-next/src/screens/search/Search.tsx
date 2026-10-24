@@ -4,7 +4,7 @@ import {preferenceValue} from '@core/preferences.ts';
 import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult} from '@core/search.ts';
 import {SEARCH_CHIPS, orderedSearchGroups, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
 import {Button, Chip, TextField} from '../../kit/controls';
-import {PosterCard, SquareCard, CircleCard, EpisodeTile} from '../../kit/cards';
+import {PosterCard, SquareCard, CircleCard, EpisodeTile, GenreTile, LiveCard} from '../../kit/cards';
 import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
 import {Skeleton} from '../../kit/states';
@@ -15,6 +15,7 @@ import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
 import {Icon} from '../../kit/Icon';
 import type {SearchBindings} from './bindings';
+import type {SearchOnNowCard} from './on-now';
 import {appendedWindow} from './window';
 import styles from './search.module.css';
 import {TopResult} from './TopResult';
@@ -23,12 +24,25 @@ import {useLoadingClock} from '../detail/Loading';
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {useShellWidth} from '../../shell/viewport';
 import {RecentSearches} from './RecentSearches';
+import {nowNext} from '@core/guide/index.ts';
+import {channelTint, type FactPart} from '@portico/client-core/kit-model';
+import {defaultI18n} from '@i18n';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
-export type SearchScreenProps = {binding: SearchBindings; linkedQuery?: string; onConsumeLinkedQuery?: () => void};
+const searchTimezone = () => defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+const onNowTime = (at: number) => new Intl.DateTimeFormat(locale(), {hour: 'numeric', minute: '2-digit', timeZone: searchTimezone()}).format(new Date(at));
+function onNowProgramme(card: SearchOnNowCard, now: number) {
+  const current = nowNext(card.programmes, now), programme = current.now;
+  if (!programme) return {title: t('guide.noInformation'), facts: [] as readonly FactPart[]};
+  const facts: FactPart[] = [];
+  if (programme.subtitle) facts.push({id: 'programme-subtitle', role: 'context', text: programme.subtitle});
+  facts.push({id: 'ends', role: 'context', text: t('guide.ends', {time: onNowTime(programme.end)})});
+  return {title: programme.title, facts, progress: current.progress, live: programme.flags?.live === true};
+}
+export type SearchScreenProps = {binding: SearchBindings; linkedQuery?: string; onConsumeLinkedQuery?: () => void; onOpenLive?: (sourceId?: string) => void};
 
-export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: SearchScreenProps) {
+export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpenLive}: SearchScreenProps) {
   const compact = useShellWidth() < 600;
   const {service, context} = binding, initial = binding.session();
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
@@ -36,6 +50,9 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
   const preferences = useSyncExternalStore(context.preferences.subscribe, context.preferences.getSnapshot, context.preferences.getSnapshot);
   const [text, setText] = useState(linkedQuery ?? initial.text), [chip, setChip] = useState<ChipId>(initial.group ?? 'all');
   const [recent, setRecent] = useState<readonly string[]>([]), [clearFailed, setClearFailed] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const genres = useSyncExternalStore(binding.genres.subscribe, binding.genres.getSnapshot, binding.genres.getSnapshot);
+  const onNow = useSyncExternalStore(binding.onNow.subscribe, binding.onNow.getSnapshot, binding.onNow.getSnapshot);
   const input = useRef<HTMLInputElement>(null), results = useRef<HTMLDivElement>(null), committed = useRef('');
   const group = chip === 'all' ? undefined : chip, problem = searchQueryProblem(text);
   const remember = preferences.effective['search.rememberHistory'] === true;
@@ -58,6 +75,19 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
     void binding.recent().then(page => { if (active && context.isCurrent()) setRecent(page.entries.slice(0, 8).map(item => item.q)); }, () => {});
     return () => { active = false; };
   }, [binding, context, remember]);
+  useEffect(() => {
+    if (text.trim()) return;
+    if (binding.genres.getSnapshot().phase === 'idle') void binding.genres.load().catch(() => {});
+  }, [binding, text]);
+  useEffect(() => {
+    if (text.trim() || context.identity?.liveAvailable !== true) return;
+    if (binding.onNow.getSnapshot().phase === 'idle') void binding.onNow.load().catch(() => {});
+  }, [binding, context.identity?.liveAvailable, text]);
+  useEffect(() => {
+    if (text.trim()) return;
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [text]);
   const commit = () => { if (remember && text.trim() && !problem && committed.current !== text.trim()) { committed.current = text.trim(); submit(true); } };
   const showing = snapshot.data?.query.q === text.trim() && snapshot.data.query.group === (group ?? '') ? snapshot.data : null;
   const groups = showing ? snapshot.groups : [], top = !group ? topSearchResult(text, groups) : undefined;
@@ -69,6 +99,33 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
     onClear={() => {
       void binding.clearRecent().then(() => {if (context.isCurrent()) {setRecent([]);setClearFailed(false);}}, () => {if (context.isCurrent()) setClearFailed(true);});
     }}/>;
+  const videoKinds = new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format([
+    t('web.libraryKind.plural', {kind: 'movie'}), t('web.libraryKind.plural', {kind: 'tv'}), t('web.libraryKind.plural', {kind: 'anime'})]);
+  const liveSourceCount = new Set(onNow.cards.map(card => card.channel.sourceId)).size;
+  const beforeTyping = <div className={styles.empty}>
+    {recentBlock}
+    {genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-genres">
+      <header><h2 id="search-genres">{t('next.search.browseByGenre')}</h2><span>{videoKinds}</span></header>
+      <div className={styles.genres}>{genres.genres.flatMap((genre, index) => {
+        if (!genre.backdrop) return [];
+        const art = context.artwork.foreground(genre.backdrop.path, 632, 16 / 9, {group: 'search-genres', order: index});
+        if (!art) return [];
+        return [<GenreTile key={genre.value} variant="video" context="search" artwork={art} visible
+          model={{title: genre.label, caption: [{id: 'count', role: 'supplement', text: t('next.selection.titles', {count: genre.count})}]}}
+          onNavigate={() => runScreenCommand(context, () => {const browse = context.effects.openBrowse;if (browse) browse(binding.genres.browseTarget(genre));})} />];
+      })}</div>
+    </section>}
+    {context.identity?.liveAvailable === true && onNow.phase === 'ready' && onNow.cards.length > 0 && <section className={styles.emptySection} aria-labelledby="search-on-now">
+      <header><h2 id="search-on-now">{t('next.home.onNow')}</h2><span>{onNow.sourceNames.length ? onNow.sourceNames.join(', ') : t('next.live.sources', {count: liveSourceCount})}</span>
+        <Button variant="text" size="small" className={styles.trailingLink} icon="i-right" disabled={!onOpenLive} onClick={() => onOpenLive?.()}>{t('next.controls.guide')}</Button></header>
+      <div className={styles.lives}>{onNow.cards.map(card => <LiveCard key={card.channel.sourceId + ':' + card.channel.id}
+        channel={{sourceId: card.channel.sourceId, id: card.channel.id, name: card.channel.name, ...(card.channel.number !== undefined ? {number: card.channel.number} : {}),
+          ...(card.channel.mark ? {mark: {...card.channel.mark, sourceId: card.channel.sourceId, id: card.channel.id}} : {})}}
+        tint={card.channel.mark ? channelTint(card.channel.mark.seed) : undefined}
+        logo={card.channel.logoUrl ? context.artwork.foreground(card.channel.logoUrl, 68, 1) : undefined}
+        programme={onNowProgramme(card, now)} onNavigate={() => onOpenLive?.(card.channel.sourceId)} />)}</div>
+    </section>}
+  </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
     <div className={styles.wash} aria-hidden="true" />
     <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
@@ -87,7 +144,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
         count={!off && result?.totalCountExact ? result.totalCount : undefined} onClick={() => { setChip(value.id); }}>{t(value.label)}</Chip>;
     })}</div>}
     <div ref={results} className={styles.results}>
-      {!text.trim() && recentBlock}
+      {!text.trim() && beforeTyping}
       {clearFailed && <p role="alert">{t('web.search.clearFailed')}</p>}
       {problem && <p role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</p>}
       {snapshot.phase === 'loading' && !showing && <SearchLoading key={snapshot.generation} />}
