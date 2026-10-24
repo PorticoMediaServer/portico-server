@@ -73,7 +73,6 @@ export class ListeningService {
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
  private pausedBook?:{session:string;at:number};
- private localSource=false;private resetLocalRate=false;
  /** A speed chosen in the player: for this playback only (`playbackRun`), never saved. */
  private heldRate?:{run:number;kind:string;rate:number};
  private activityRevision=0;private activityAtMs=Date.now();
@@ -85,10 +84,9 @@ export class ListeningService {
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
- private isLocal(){return this.playback.getSnapshot().session?.mode==='local';}
  private syncNativePolicy(){
-  const local=this.isLocal(),timer=local?null:this.state.timer;
-  this.playback.setListeningPolicy?.({preferences:!local&&this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,
+  const timer=this.state.timer;
+  this.playback.setListeningPolicy?.({preferences:this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,
    activityRevision:this.activityRevision,activityAtMs:this.activityAtMs,timerRevision:this.timerGeneration,
    timer:timer?{choice:timer.choice,label:timer.label,...(timer.wallDeadline===undefined?{}:{wallDeadline:timer.wallDeadline}),...(timer.endSeconds===undefined?{}:{endSeconds:timer.endSeconds}),...(timer.itemId?{itemId:timer.itemId}:{}),...(timer.bookId?{bookId:timer.bookId}:{}),...(timer.sessionId?{sessionId:timer.sessionId,generation:timer.generation}:{}),...(timer.libraryId?{libraryId:timer.libraryId}:{})}:null});
  }
@@ -101,7 +99,7 @@ export class ListeningService {
  }
  /** The speed for this playback, chosen in the player. Settings keep the default a new playback
   * starts at; this goes on through the queue and is forgotten when the viewer starts something new. */
- async setRate(rate:number){const context=this.state.context,p=this.state.preferences;if(this.isLocal()||!context||!['song','audiobook_file'].includes(context.kind))throw new Error('Choose a music or audiobook item first.');
+ async setRate(rate:number){const context=this.state.context,p=this.state.preferences;if(!context||!['song','audiobook_file'].includes(context.kind))throw new Error('Choose a music or audiobook item first.');
   if(!p)throw new Error('Load listening preferences before changing the speed.');
   if(context.kind==='song'){if(rate!==1)throw new Error('Music plays at recorded speed.');}
   else parseListeningPreferences({...p,bookRate:rate});
@@ -109,26 +107,12 @@ export class ListeningService {
  private run(){return this.playback.getSnapshot().playbackRun??0;}
  private rateFor(kind:string){if(kind!=='audiobook_file')return 1;const p=this.state.preferences,held=this.heldRate;if(held&&held.kind===kind&&held.run===this.run())return held.rate;return p?.bookRate??1;}
  interact(){if(this.disposed)return;this.lastActivity=this.now();this.activityAtMs=Date.now();this.activityRevision++;if(this.state.stopped)this.publish({stopped:false,message:null});else this.syncNativePolicy();}
- private applyRate(){const p=this.state.preferences,c=this.state.context,s=this.playback.getSnapshot();if(this.isLocal()||!p||!c||!['song','audiobook_file'].includes(c.kind)){this.lastRateKey='';if(this.state.rate!==1)this.publish({rate:1});return;}const rate=this.rateFor(c.kind);const key=`${s.session?.id??''}:${s.session?.generation??0}:${rate}`;
-  if(this.state.rate!==rate)this.publish({rate});if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.()){this.resetLocalRate=rate!==1;this.playback.setPlaybackRate(rate);}}
+ private applyRate(){const p=this.state.preferences,c=this.state.context,s=this.playback.getSnapshot();if(!p||!c||!['song','audiobook_file'].includes(c.kind)){this.lastRateKey='';if(this.state.rate!==1)this.publish({rate:1});return;}const rate=this.rateFor(c.kind);const key=`${s.session?.id??''}:${s.session?.generation??0}:${rate}`;
+  if(this.state.rate!==rate)this.publish({rate});if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
  }
- private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=p.channel||p.session?.mode==='local'?'':p.itemId??'';
+ private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=p.channel?'':p.itemId??'';
   const eqApplied=p.audioEffects.eqApplied,levelingApplied=p.audioEffects.levelingApplied;
   if(this.state.eqApplied!==eqApplied||this.state.levelingApplied!==levelingApplied)this.publish({eqApplied,levelingApplied});
-  // A verified device-local session is not a server item context, even when its itemId
-  // matches the preceding book or the queue's unknown-session kind hook admits it.
-  if(p.session?.mode==='local'){
-   if(!this.localSource){
-    this.localSource=true;this.itemId='';++this.contextGeneration;++this.timerGeneration;
-    this.chapters?.dispose();this.chapters=undefined;this.heldRate=undefined;this.pausedBook=undefined;this.lastRateKey='';
-    const resetRate=this.resetLocalRate;this.resetLocalRate=false;
-    this.publish({context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null,rewind:undefined});
-    // Only undo a rate this server-context service applied; a local engine's own rate is not ours.
-    if(resetRate)this.playback.setPlaybackRate(1);
-   }
-   return;
-  }
-  this.localSource=false;
   // With a kind hook, an item is decided once its session exists (until then it waits).
   if(item&&this.listens&&item!==this.itemId&&!p.session)item=this.itemId;
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
@@ -150,7 +134,7 @@ export class ListeningService {
  clearTimer(message:string|null=null){++this.timerGeneration;this.chapters?.dispose();this.chapters=undefined;this.publish({timer:null,timerLoading:false,message});}
  private installTimer(timer:ListeningTimer){++this.timerGeneration;this.publish({timer,timerLoading:false});}
  async setTimer(choice:SleepChoice){this.interact();this.clearTimer();if(choice==='off')return;
-  const p=this.playback.getSnapshot(),c=this.state.context;if(!c||!p.session||p.channel||p.session.mode==='local'||!['song','audiobook_file'].includes(c.kind))throw new Error('Start a music or audiobook item before setting a timer.');
+  const p=this.playback.getSnapshot(),c=this.state.context;if(!c||!p.session||p.channel||!['song','audiobook_file'].includes(c.kind))throw new Error('Start a music or audiobook item before setting a timer.');
   if(typeof choice==='number'){if(![15,30,45,60,90].includes(choice))throw new Error('Invalid timer choice.');this.installTimer(Object.freeze({choice,label:`${choice} minutes`,deadline:this.now()+choice*60000,wallDeadline:Date.now()+choice*60000,libraryId:c.libraryId}));return;}
   if(choice==='item'){this.installTimer(Object.freeze({choice,label:'End of this item',itemId:c.itemId,libraryId:c.libraryId}));return;}
   if(choice==='book'){if(!c.bookId||!c.lastBookItemId||c.bookEndAvailable!==true)throw new Error('The final book part is unavailable. Choose a minute, item or verified chapter timer instead.');this.installTimer(Object.freeze({choice,label:'End of this book',bookId:c.bookId,itemId:c.lastBookItemId,libraryId:c.libraryId}));return;}
@@ -168,7 +152,7 @@ export class ListeningService {
   finally{chapters.dispose();if(this.chapters===chapters)this.chapters=undefined;}
  }
  /** Called before natural advancement, and on foreground ticks/observations. */
- tick(){if(this.disposed)return;const p=this.playback.getSnapshot(),c=this.state.context;if(p.session?.mode==='local')return;
+ tick(){if(this.disposed)return;const p=this.playback.getSnapshot(),c=this.state.context;
   if(p.nativeListening){
    const native=p.nativeListening;
    if(native.timerStopped&&!this.state.stopped){this.publish({stopped:true,message:'The listening timer paused playback.'});}
@@ -192,7 +176,7 @@ export class ListeningService {
   if(t?.choice==='chapter'||t&&(t.choice==='item'||t.choice==='book')&&t.itemId===p.itemId)return false;
   if(!Number.isFinite(remainingSeconds)||remainingSeconds<0)return false;
   if(t?.deadline!==undefined&&this.now()+remainingSeconds*1000>=t.deadline||t?.wallDeadline!==undefined&&Date.now()+remainingSeconds*1000>=t.wallDeadline)return false;
-  const minutes=this.isLocal()?0:this.state.preferences?.passoutMinutes??0;
+  const minutes=this.state.preferences?.passoutMinutes??0;
   return !minutes||this.now()+remainingSeconds*1000<this.lastActivity+minutes*60000;
  }
  /** Listening queues continue unless stopped by a timer or awaiting their item's context.
