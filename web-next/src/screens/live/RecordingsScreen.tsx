@@ -65,7 +65,7 @@ function RecordingCopy({recording}: {recording: Recording}) {
     <small className={styles.recMeta}>{recording.programme.flags?.live && <span className={styles.recFlag} data-kind="live">{t('guide.live')}</span>}{recording.programme.flags?.new && <span className={styles.recFlag} data-kind="new">{t('guide.new')}</span>}{recording.channel && <span>{mark && <ChannelMark mark={mark} size={18}/>}{recording.channel.name}</span>}{recording.ruleId ? <span><Icon name="i-series" size={15}/>{t('next.live.seriesRule')}</span> : <span>{t('next.live.oneTime')}</span>}</small>
   </div>;
 }
-function RecordingRow({recording, onCancel, onDetails}: {recording: Recording; now?: number; onCancel?: () => void; onDetails?: () => void}) {
+function RecordingRow({recording, now, onCancel, onDetails}: {recording: Recording; now: number; onCancel?: () => void; onDetails?: () => void}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const items: readonly MenuEntry[] = [
     ...(onCancel ? [{id: 'cancel', label: t('recordings.cancelAction'), icon: 'i-close' as const, destructive: true, onSelect: onCancel}] : []),
