@@ -71,7 +71,7 @@ func TestReadingOwnerMetadataUsesExistingRouteAndCurrentLibraryAuthority(t *test
 	}
 	allowed := get(admin.AccessToken, a.Public)
 	w = f.call("GET", "/v1/metadata/item/"+b.Public, admin.AccessToken, "")
-	if w.Code != 401 && w.Code != 403 {
+	if w.Code != 404 {
 		t.Fatal("hidden library metadata disclosed", w.Code)
 	}
 	other := "Scoped owner edit"
