@@ -114,7 +114,7 @@ function CellButton({cell, channel, now, timezone, selected, onSelect}: Readonly
 function GuideChannelCell({channel, list, phone}: Readonly<{channel?: GuideChannelRow; list: boolean; phone: boolean}>) {
   if (!channel) return <div className={styles.guideChannel}><Skeleton width={phone ? 36 : 180} height={34}/></div>;
   const mark: ChannelMarkModel | undefined = channel.mark ? {sourceId: channel.sourceId ?? '', id: channel.id, text: channel.mark.text, seed: channel.mark.seed} : undefined;
-  return <div className={styles.guideChannel}>
+  return <div className={list ? styles.guideListChannel : styles.guideChannel}>
     {mark ? <ChannelMark className={styles.guideChannelMark} mark={mark} size={40}/> : <span className={`${styles.guideChannelMark} ${styles.guideChannelMarkEmpty}`} aria-hidden="true"/>}
     <span className={styles.guideChannelText}>
       <b>{channel.name}{channel.favorite && <Icon className={styles.guideFavorite} name="i-star-f" size={13}/>}</b>
@@ -220,7 +220,9 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
           </div>
         </>}
       <div className={styles.guideRight}>
-        <Select className={styles.guideSort} aria-label={t('channels.sort')} value={sort.value} options={sort.options} onValueChange={sort.onChange}/>
+        <div className={styles.guideSortField}><span className={styles.guideSortPrefix}>{t('channels.sort')}</span>
+          <Select className={styles.guideSort} aria-label={t('channels.sort')} value={sort.value} options={sort.options} onValueChange={sort.onChange}/>
+        </div>
         <Segmented className={styles.guideView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
           items={[{value: 'guide', label: t('title.viewGrid'), icon: 'i-timeline', accessibleLabel: t('title.viewGrid')},
             {value: 'list', label: t('title.viewList'), icon: 'i-list', accessibleLabel: t('title.viewList')}]}/>
@@ -278,7 +280,9 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
                 <div className={styles.guideListNow}>{current
                   ? <ProgrammeSummary programme={current} now={now} timezone={timezone} current onSelect={() => onSelect(row.channel!, current)}/>
                   : <><b><span className={styles.guideListMuted}>{row.channel?.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}</span></b>
-                    {row.channel?.guide === 'none' && <small>{t('guide.noGuideBody')}</small>}</>}</div>
+                    {row.channel?.guide === 'none'
+                      ? <small>{t('guide.noGuideBody')}</small>
+                      : liveListPrograms(row.programs, now)[1] ? <small>{t('guide.until', {time: defaultI18n.time(liveListPrograms(row.programs, now)[1]!.start)})}</small> : null}</>}</div>
                 <div className={styles.guideListNext}>{next ? <ProgrammeSummary programme={next} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, next)}/> : null}</div>
                 <div className={styles.guideListNext}>{later ? <ProgrammeSummary programme={later} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, later)}/> : null}</div>
                 <div className={styles.guideListActions}>{row.channel?.tuneAvailable && onPlay && <Button size="compact" icon="i-play" onClick={() => onPlay(row.channel!)}>{t('channels.watch')}</Button>}</div>
@@ -286,6 +290,6 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
             })()}
         </div>)}
       </div>)}
-    <p className={styles.guideKbd} data-guide-kbd>{t('guide.keyboardHint')}</p>
+    {view === 'guide' && <p className={styles.guideKbd} data-guide-kbd>{t('guide.keyboardHint')}</p>}
   </section>;
 }
