@@ -165,7 +165,7 @@
 /* The account panel's field (connect.html frame 46c): the server page's own panel, not the full-page
    auth stage, so it keeps the auth paint at the panel's size — 46px control, 15.5px text, 13px label. */
 .field[data-variant="account-panel"] .inputShell {height: 46px; border-radius: 11px; padding: 0 14px; background: color-mix(in srgb, var(--color-ink) 62%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);}
-.field[data-variant="account-panel"] .input {font-size: 15.5px;}
+.field[data-variant="account-panel"] .input {font-size: 15.5px; caret-color: var(--color-accent-strong);}
 .field[data-variant="account-panel"] .fieldLabel {font-size: 13px; margin-bottom: 6px;}
 .field[data-variant="account-panel"] .inputTrailing {gap: 6px; font-size: 13px;}
 .field[data-variant="account-panel"] .inputTrailing svg {width: 18px; height: 18px;}

@@ -28,6 +28,7 @@ test('the account-panel field is the frame 46c control: 46px, 15.5px text, 13px 
     assert.ok(declarations('.field[data-variant="account-panel"] .inputShell').includes(declaration), declaration);
   }
   assert.ok(declarations('.field[data-variant="account-panel"] .input').includes('font-size: 15.5px'));
+  assert.ok(declarations('.field[data-variant="account-panel"] .input').includes('caret-color: var(--color-accent-strong)'));
   const label = declarations('.field[data-variant="account-panel"] .fieldLabel');
   assert.ok(label.includes('font-size: 13px')); assert.ok(label.includes('margin-bottom: 6px'));
   assert.ok(declarations('.field[data-variant="account-panel"] .inputTrailing').includes('font-size: 13px'));
