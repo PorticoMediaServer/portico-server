@@ -47,7 +47,11 @@ async function mount(options: {pager?: any; scope?: any} = {}) {
     react: h.react,
     '@tanstack/react-router': {useParams: () => ({rowId: 'recommended'}), useSearch: () => ({}), useNavigate: () => (to: any) => { navigated.push(to); return Promise.resolve(); }},
     '@core/home-row-page.ts': {HomeRowPager: class { constructor() { Object.assign(this, pager); } }},
-    '../../app/home': {homeRowTitle: (_id: string, title: string) => title},
+    '../../app/home': {
+      homeRowTitle: (_id: string, title: string) => title,
+      // The one-line rule this screen now uses: a cursor means more, none means the row again.
+      retryHomeRow: (pager: any, nextCursor: string) => (nextCursor ? pager.more() : pager.load()),
+    },
     '../../app/session': {useSession: () => ({api})},
     '../../app/libraries': {useLibrariesContext: () => ({items: [{id: 'library', name: 'Movies'}], loading: false})},
     '../../app/errors': {ErrorNotice: 'ErrorNotice', ErrorState: 'ErrorState', errorText: (error: any) => String(error?.message ?? 'failed')},
@@ -102,7 +106,7 @@ test('a first read that fails offers one recovery that reads the row again', asy
   assert.deepEqual(screen.reads, ['load']);
 });
 
-test('with the row still on screen, the recovery re-reads the row rather than asking for a page that is not there', {todo: 'FIX P2-HOME-ROW-RETRY-001: the screen passes pager.more() as retry; with no cursor it does nothing'}, async () => {
+test('with the row still on screen, the recovery re-reads the row rather than asking for a page that is not there', async () => {
   // A refused cursor restarts the row; the restart can fail with the row still shown and no
   // cursor left. The recovery control must then read the row, not call more() on an empty cursor.
   const pager = pagerWith({phase: 'error', nextCursor: '', error: {code: 'request_failed', message: 'Home could not refresh.', retryable: true}});
@@ -111,6 +115,11 @@ test('with the row still on screen, the recovery re-reads the row rather than as
   screen.reads.length = 0;
   one(screen.flat(), 'ErrorNotice').props.retry();
   assert.deepEqual(screen.reads, ['load'], 'Try again re-reads the row');
+  // With a cursor still offered, the same control asks for the next page instead.
+  const paged = await mount({pager: pagerWith({phase: 'error', nextCursor: 'cursor-2', error: {code: 'request_failed', message: 'Home could not refresh.', retryable: true}})});
+  paged.reads.length = 0;
+  one(paged.flat(), 'ErrorNotice').props.retry();
+  assert.deepEqual(paged.reads, ['more']);
 });
 
 test('More reads the next page only when the server offered a cursor', async () => {

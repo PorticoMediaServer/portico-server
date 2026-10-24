@@ -85,6 +85,7 @@ export function tree(node, out = []) {
     if (node.props.actions) tree(node.props.actions, out);
     if (node.props.action) tree(node.props.action, out);
     if (node.props.secondaryAction) tree(node.props.secondaryAction, out);
+    if (node.props.trigger) tree(node.props.trigger, out);
   }
   return out;
 }
