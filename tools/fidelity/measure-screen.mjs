@@ -48,7 +48,7 @@ export async function measureScreen({selector, expectedViewport} = {}) {
     const id = path.join('.'), tag = element.localName;
     if (rect.width > 0 && rect.height > 0) {
       const record = {id, tag, box: box(rect), style: style(computed),
-        role: element.getAttribute('role'), label: element.getAttribute('aria-label'),
+        role: element.getAttribute('role'), label: element.getAttribute('aria-label') ?? element.getAttribute('alt'),
         testId: element.getAttribute('data-testid'), focused: element === document.activeElement,
         disabled: 'disabled' in element ? Boolean(element.disabled) : element.getAttribute('aria-disabled') === 'true'};
       if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
@@ -57,6 +57,7 @@ export async function measureScreen({selector, expectedViewport} = {}) {
           redacted: secret, length: element.value.length, placeholder: element.getAttribute('placeholder'),
           labels: [...(element.labels ?? [])].map(label => label.innerText)};
         if (!secret && element.value) strings.push({id: `${id}:value`, kind: 'value', text: element.value, box: box(rect)});
+        if (record.input.placeholder) strings.push({id: `${id}:placeholder`, kind: 'placeholder', text: record.input.placeholder});
       }
       if (element instanceof HTMLImageElement) {
         let pixels = null, unavailable;
@@ -82,7 +83,7 @@ export async function measureScreen({selector, expectedViewport} = {}) {
       for (const pseudo of ['::before', '::after']) {
         const value = getComputedStyle(element, pseudo);
         if (value.content !== 'none' && value.content !== 'normal' && value.display !== 'none')
-          elements.push({id: id + pseudo, tag: pseudo, owner: id, style: style(value), content: value.content});
+          elements.push({id: id + pseudo, tag: pseudo, owner: id, style: style(value), content: scrubURLs(value.content)});
       }
       let textIndex = 0;
       for (const child of element.childNodes) {
