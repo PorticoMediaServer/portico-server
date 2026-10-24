@@ -92,6 +92,7 @@ func (h *Hub) Run(ctx context.Context) {
 	})
 	var after int64
 	runChanges(ctx, signal, func(ctx context.Context) time.Duration {
+		before := dbwork.Publications()
 		count := 0
 		err := dbwork.WithWriteTx(ctx, h.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error { var err error; count, err = apievents.Flush(ctx, tx, 64); return err })
 		if err != nil {
@@ -124,9 +125,21 @@ func (h *Hub) Run(ctx context.Context) {
 		if count == 64 || read == 1000 {
 			return 2 * time.Second
 		}
+		retireOwnFlushWake(signal, before)
 		return 0
 	})
 
+}
+
+// The flush committed exactly one gated transaction and read through its
+// events. Consume its own notification, then recheck the publication counter:
+// any peer commit before/during the take must retain a pass. A later commit
+// wakes the signal normally, so this cannot swallow newly queued work.
+func retireOwnFlushWake(signal *worker.Signal, before uint64) {
+	signal.Take()
+	if dbwork.Publications() != before+1 {
+		signal.Wake()
+	}
 }
 
 func (h *Hub) Wake() {

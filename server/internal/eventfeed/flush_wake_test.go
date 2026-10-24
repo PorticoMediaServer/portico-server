@@ -2,6 +2,7 @@ package eventfeed
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/worker"
 )
 
 func TestHubDoesNotWakeItselfAfterDrainingItsOwnFlush(t *testing.T) {
@@ -46,5 +48,46 @@ func TestHubDoesNotWakeItselfAfterDrainingItsOwnFlush(t *testing.T) {
 	}
 	if reads != 1 {
 		t.Fatalf("own flush scheduled %d outbox passes", reads)
+	}
+}
+
+func TestRetiringOwnFlushWakePreservesPeerPublications(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "peer.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	signal := worker.NewSignal()
+	stop := dbwork.WakeOnTables(signal, "api_events")
+	defer stop()
+	commit := func() {
+		t.Helper()
+		if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `INSERT INTO api_events(audience,type,at_ms) VALUES('server','settings.changed',0)`)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := dbwork.Publications()
+	commit()
+	retireOwnFlushWake(signal, before)
+	if signal.Take() {
+		t.Fatal("own covered publication retained work")
+	}
+	before = dbwork.Publications()
+	commit()
+	commit()
+	retireOwnFlushWake(signal, before)
+	if !signal.Take() {
+		t.Fatal("peer publication during flush was lost")
+	}
+	before = dbwork.Publications()
+	commit()
+	retireOwnFlushWake(signal, before)
+	commit()
+	if !signal.Take() {
+		t.Fatal("peer publication after retirement was lost")
 	}
 }
