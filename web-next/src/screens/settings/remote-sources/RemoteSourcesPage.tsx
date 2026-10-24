@@ -64,6 +64,9 @@ function SourceStatus({source}: {source: RemoteSource}) {
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '';
 }
+function refreshFailure(error: unknown): boolean {
+  return !!error && typeof error === 'object' && (error as {code?: string}).code === 'refresh_failed';
+}
 
 export type RemoteSourcesPageProps = Readonly<{
   api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean;
@@ -112,6 +115,7 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
   const [result, setResult] = useState<DAVConnectionResult>();
   const [error, setError] = useState('');
   const [created, setCreated] = useState<RemoteSource>();
+  const nextSourceId = useRef('');
   const [profile, setProfile] = useState<SourceReadSettings>();
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('once'));
   const [busy, setBusy] = useState(false);
@@ -131,7 +135,7 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
       await service.configure(null, davConfiguration(null, draft));
       const state = service.getSnapshot();
       if (state.error || !state.receipt) {if (isCurrent()) setError(state.error || 'The source was not confirmed.');return;}
-      const source = state.receipt.source;setCreated(source);setStep('reading');setLoadingProfile(true);
+      const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);
       try {const next = await service.readProfile(source.id);if (isCurrent()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
       catch (value) {if (isCurrent()) setError(errorText(value));}
       finally {if (isCurrent()) setLoadingProfile(false);}
@@ -147,8 +151,11 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
       setProfile(next);
       const saved = created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId);
       if (saved) onCreated(saved); else onClose();
-    } catch (value) {if (isCurrent()) setError(errorText(value));}
-    finally {if (isCurrent()) setBusy(false);}
+    } catch (value) {
+      if (!isCurrent()) return;
+      const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
+      if (refreshFailure(value) && saved) onCreated(saved); else setError(errorText(value));
+    } finally {if (isCurrent()) setBusy(false);}
   };
   const close = () => {if (!busy) onClose();};
   const footer = step === 'connection'
@@ -218,7 +225,7 @@ function ManageSourceDialog({service, source, isCurrent, onClose, onRemoved}: Re
     if (!profile) return;
     setError('');setBusy(true);
     try {const next = await service.saveProfile(profile, values);if (!isCurrent()) return;if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}setProfile(next);}
-    catch (value) {if (isCurrent()) setError(errorText(value));}
+    catch (value) {if (!isCurrent()) return;if (refreshFailure(value)) onClose(); else setError(errorText(value));}
     finally {if (isCurrent()) setBusy(false);}
   };
   const disconnect = async () => {

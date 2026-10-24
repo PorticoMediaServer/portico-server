@@ -237,3 +237,19 @@ test('saving a read profile sends the exact revisioned body and returns the rece
  await service.load();const value=await service.saveProfile({sourceId:'dav',generation:'7',revision:2,saved:true,values:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}},settings.values);
  assert.deepEqual(body,{operationId:op,expectedGeneration:'7',expectedRevision:2,values:settings.values});assert.deepEqual(value,settings);assert.equal(service.getSnapshot().receipt?.operationId,op);assert.equal(service.getSnapshot().busy,false);service.dispose();
 });
+
+test('read-profile binds the returned source and a refresh failure never becomes an ambiguous write',async()=>{
+ const {sourceReadPreset}=await import('../src/remote-sources.ts');
+ const foreign={sourceId:'other',generation:'1',revision:1,saved:true,values:sourceReadPreset('once')};
+ const read=new RemoteSourceService(api(async()=>({scope:wire,settings:foreign})),scope,async()=>op);
+ await assert.rejects(read.readProfile('dav'));read.dispose();
+ const before={sourceId:'dav',generation:'1',revision:1,saved:true,values:sourceReadPreset('once')};
+ const wrongReceipt=new RemoteSourceService(api(async()=>({scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source({id:'other'}),readSettings:{...foreign,sourceId:'other'}}})),scope,async()=>op);
+ await assert.rejects(wrongReceipt.saveProfile(before,sourceReadPreset('once')));wrongReceipt.dispose();
+ const wrongSettings=new RemoteSourceService(api(async()=>({scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source(),readSettings:{...foreign,sourceId:'other'}}})),scope,async()=>op);
+ await assert.rejects(wrongSettings.saveProfile(before,sourceReadPreset('once')));wrongSettings.dispose();
+ let puts=0,gets=0;
+ const refresh=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}gets++;throw new Error('refresh failed');}),scope,async()=>op);
+ await assert.rejects(refresh.saveProfile(before,sourceReadPreset('once')),/refreshed values could not be read/);
+ assert.equal(puts,1);assert.equal(gets,1);assert.equal(refresh.getSnapshot().ambiguous,false);assert.equal(refresh.getSnapshot().errorCode,'refresh_failed');assert.equal(refresh.getSnapshot().receipt?.operationId,op);refresh.dispose();
+});

@@ -161,7 +161,8 @@ export class RemoteSourceService{
  const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_storage_source_read_profile",{"id":encodeURIComponent(id)}));
  if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
  this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
- return sourceReadSettings(raw.settings);
+ const settings=sourceReadSettings(raw.settings);if(settings.sourceId!==id)invalid();
+ return settings;
 }
 async saveProfile(profile:SourceReadSettings,values:SourceReadValues):Promise<SourceReadSettings>{
  if(this.disposed||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
@@ -169,7 +170,7 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues):Promise<So
  if(!profile.sourceId||!profile.generation||!Number.isSafeInteger(profile.revision)||profile.revision<0)throw new Error('Invalid source profile.');
  const epoch=this.epoch;
  this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});
- let submitted=false;
+ let submitted=false,accepted=false;
  try{
   const op=await this.operationId();if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
   if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();
@@ -177,17 +178,22 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues):Promise<So
   const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(profile.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",{operationId:op,expectedGeneration:profile.generation,expectedRevision:profile.revision,values:parsed}));
   if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
   const receipt=this.parseReceipt(raw,op);
+  if(receipt.source.id!==profile.sourceId)invalid();
   const next=record(raw)&&record(raw.receipt)&&raw.receipt.readSettings!==undefined?sourceReadSettings(raw.receipt.readSettings):undefined;
-  this.publish({receipt,ambiguous:false});
-  return next??await this.readProfile(profile.sourceId);
+  if(next&&next.sourceId!==profile.sourceId)invalid();
+  accepted=true;this.publish({receipt,ambiguous:false});
+  if(next)return next;
+  try{return await this.readProfile(profile.sourceId);}
+  catch{throw Object.assign(new Error('The profile was saved, but the refreshed values could not be read.'),{code:'refresh_failed'});}
  }catch(error){
   if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
   const code=record(error)&&typeof error.code==='string'?error.code:'';
   const rejected=['storage_command_conflict','storage_operation_expired','revision_mismatch','idempotency_key_reused','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden','not_permitted','invalid_request'].includes(code);
-  this.publish({ambiguous:submitted&&!rejected,error:safeError(error),errorCode:code});
+  this.publish(accepted?{ambiguous:false,error:'The profile was saved, but the refreshed values could not be read.',errorCode:'refresh_failed'}:{ambiguous:submitted&&!rejected,error:safeError(error),errorCode:code});
   throw error;
  }finally{if(epoch===this.epoch)this.publish({busy:false});}
 }
+
 async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_network_roots", {"id": encodeURIComponent(libraryId)}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==libraryId||!integer(raw.policy.revision)||!Array.isArray(raw.policy.origins)||raw.policy.origins.length>8||!raw.policy.origins.every(origin=>text(origin,8192)))invalid();return Object.freeze({libraryId,revision:raw.policy.revision,origins:Object.freeze(raw.policy.origins as string[])});}
  async setNetworkPolicy(policy:NetworkPolicy,roots:readonly string[]):Promise<NetworkPolicy>{if(roots.length>8||roots.some(root=>!text(root,8192)))throw new Error('Invalid network roots.');const epoch=this.epoch;await this.request(encodedRoutePath("post_libraries_id_network_roots", {"id": encodeURIComponent(policy.libraryId)}),'POST',routeBody("post_libraries_id_network_roots", {roots,expectedRevision:policy.revision}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');return this.networkPolicy(policy.libraryId);}
 
