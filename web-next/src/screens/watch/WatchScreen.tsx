@@ -133,7 +133,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     if (expanded) return;
     const timer = setTimeout(() => {
       if (expandedNow.current) return;
-      pictureInput.cancel(); setTapFeedback(null); clearTimer(); setPanel(null); setMore(false);
+      pictureInput.cancel(); setTapFeedback(null); clearTimer(); setMore(false);
       setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null);
     }, 250);
     return () => clearTimeout(timer);
