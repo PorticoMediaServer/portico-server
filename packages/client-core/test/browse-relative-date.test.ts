@@ -4,6 +4,7 @@ import {defaultI18n} from '../../i18n/src/index.ts';
 import {parseBrowseCapabilities, parseBrowseNode, validateBrowseQuery, type BrowseNode, type BrowseSortSelection} from '../src/browse.ts';
 import type {SavedDefinition} from '../src/personal-saved.ts';
 import {activeRangePreset, appliedFilterLabel, rangePresets} from '../src/presentation/browse-toolbar.ts';
+import {appliedFilterParts, type KitTranslate} from '../src/presentation/kit-model/index.ts';
 import {savedViewSummary} from '../src/presentation/saved-view-summary.ts';
 
 const field = (id: string, type: string, operators: readonly string[]) => ({id, type, operators, labelKey: `browse.field.${id}`, controlHint: type === 'date' ? 'date-range' : 'select', applicableKinds: ['movie']});
@@ -46,6 +47,14 @@ test('the chip uses the existing preset wording, with last year for 365', () => 
   assert.equal(appliedFilterLabel({field: 'dateAdded', operator: 'within-last-days', value: 30}, () => 'Date added', defaultI18n.t), 'In the last 30 days');
   assert.equal(appliedFilterLabel({field: 'lastPlayedAt', operator: 'within-last-days', value: 7}, () => 'Last played', defaultI18n.t), 'In the last 7 days');
   assert.equal(appliedFilterLabel({field: 'dateAdded', operator: 'within-last-days', value: 365}, () => 'Date added', defaultI18n.t), 'In the last year');
+});
+
+test('the kit chip renders one preset phrase, not a field/operator/value triple', () => {
+  const env = {t: defaultI18n.t as unknown as KitTranslate, locale: 'en-US'};
+  const thirty = appliedFilterParts({field: 'dateAdded', operator: 'within-last-days', value: 30}, () => 'Date added', env);
+  assert.equal(thirty.field.text, 'In the last 30 days');
+  assert.deepEqual(thirty.values, []);
+  assert.equal(appliedFilterParts({field: 'dateAdded', operator: 'within-last-days', value: 365}, () => 'Date added', env).field.text, 'In the last year');
 });
 
 test('the summary maps relative date windows for dateAdded and every other date field', () => {

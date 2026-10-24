@@ -14,16 +14,26 @@ const operators = {
   'greater-than': 'next.kit.filter.greaterThan', 'at-most': 'next.kit.filter.atMost', 'less-than': 'next.kit.filter.lessThan',
   between: 'next.kit.filter.between', 'starts-with': 'next.kit.filter.startsWith',
   contains: 'next.kit.filter.contains', 'contains-any': 'next.kit.filter.containsAny', 'contains-all': 'next.kit.filter.containsAll',
-} as const satisfies Record<FilterOperator, KitMessageId>;
+} as const satisfies Record<Exclude<FilterOperator, 'within-last-days'>, KitMessageId>;
+
+/** The preset's own existing wording, the same words the old chip formatter uses. */
+function lastDaysText(count: number, env: TextEnvironment): string {
+  const t = env.t as unknown as (id: string, values?: {count?: number}) => string;
+  return count === 365 ? t('filter.preset.lastYear') : t('filter.preset.lastDays', {count});
+}
 
 /** Value labels come from the capability owner; arbitrary metadata punctuation is preserved. */
 export function appliedFilterParts(predicate: AppliedFilter, fieldName: (id: string) => string, env: TextEnvironment, valueName: (value: string | number) => string = String): AppliedFilterModel {
   const {t} = env, fieldId = predicate.field === 'decade' ? 'year' : predicate.field;
   const presence = predicate.operator === 'is-present' ? 'present' : predicate.operator === 'is-missing' ? 'missing' : undefined;
+  // A relative date window is one phrase ("In the last 30 days"), never the
+  // field/operator/value triple a scalar filter draws.
+  const relative = predicate.operator === 'within-last-days';
+  const operator = predicate.operator;
   const raw = Array.isArray(predicate.value) ? predicate.value : [predicate.value];
-  const values = presence ? [] : raw.filter((v): v is string | number | boolean => v !== null && v !== undefined && (typeof v !== 'number' || Number.isFinite(v))).map((v, i) => part(`value-${i}`, typeof v === 'boolean' ? t(v ? 'next.kit.yes' : 'next.kit.no') : predicate.field === 'decade' ? t('next.kit.filter.decade', {year: String(v)}) : valueName(v), 'value'));
-  return Object.freeze({rawValue: predicate.value, fieldId, field: part('field', fieldName(fieldId), 'context'), operator: predicate.operator,
-    operatorPart: part('operator', t(operators[predicate.operator]), 'context'), values: Object.freeze(values),
+  const values = presence || relative ? [] : raw.filter((v): v is string | number | boolean => v !== null && v !== undefined && (typeof v !== 'number' || Number.isFinite(v))).map((v, i) => part(`value-${i}`, typeof v === 'boolean' ? t(v ? 'next.kit.yes' : 'next.kit.no') : predicate.field === 'decade' ? t('next.kit.filter.decade', {year: String(v)}) : valueName(v), 'value'));
+  return Object.freeze({rawValue: predicate.value, fieldId, field: part('field', relative ? lastDaysText(Number(predicate.value), env) : fieldName(fieldId), 'context'), operator,
+    operatorPart: part('operator', relative ? '' : t(operators[operator as Exclude<FilterOperator, 'within-last-days'>]), 'context'), values: Object.freeze(values),
     negated: predicate.operator === 'not-equals' || predicate.operator === 'not-in' || predicate.operator === 'is-missing', presence,
   });
 }
