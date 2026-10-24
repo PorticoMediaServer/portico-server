@@ -2,6 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {ApiError,ServerListWatcher,SERVER_LIST_INTERVAL_MS,SERVER_LIST_SPREAD_MS,hostedGate,porticoSignIn,acceptPorticoInvitation,transferPorticoOwnership,acceptPorticoCustody,leavePorticoServer,isAccessRefused,isSessionMigrated,isClockSkew,routeBase64,type ServerListRecord} from '../src/index.ts';
 import {parseDirectSnapshot} from '../src/profile-management.ts';
 import {webRouteCrypto,type RouteCrypto} from '../src/route-identity.ts';
+import {acceptShortPorticoInvitation} from '../src/portico-servers.ts';
 
 const clock=(start=1_800_000_000_000)=>{let now=start,random=0.5;return{now:()=>now,random:()=>random,advance:(ms:number)=>{now+=ms;},roll:(v:number)=>{random=v;}};};
 const answer=(version:string,items:unknown[]=[])=>({items,version,watch:'d2F0Y2g.mac'});
@@ -108,6 +109,24 @@ const fakeServer=(calls:unknown[],answer:unknown=signIn,prove:Prover=me.prove)=>
  if(path==='/v1/direct/portico-challenge')return {challenge,expiresAt:'2099-01-01T00:00:00Z',proof:await prove(challenge,(body as {nonce:string}).nonce)} as T;
  return answer as T;
 }});
+
+test('short invitation is a distinct verified-server capability and rejects long links before any request',async()=>{
+ const hostedCalls:unknown[]=[],serverCalls:unknown[]=[];
+ const hosted={request:async<T,>(path:string,method?:string,body?:unknown)=>{hostedCalls.push([method,path,body]);return assertionBody as T;}};
+ const server=fakeServer(serverCalls);
+ const result=await acceptShortPorticoInvitation(hosted,origin(),server,me.id,'0123-4567-89ab-cdef');
+ assert.equal(result.kind,'signed-in');
+ assert.deepEqual(serverCalls.at(-1),['POST','/v1/access/invitations/accept',{shortCode:'0123456789ABCDEF',porticoIdentity:assertionBody}]);
+ const before=[hostedCalls.length,serverCalls.length];
+ for(const raw of ['x'.repeat(43),'https://server.example/join?code=0123456789ABCDEF','0123-4567-89ab-cdei',' 0123456789ABCDEF'])await assert.rejects(acceptShortPorticoInvitation(hosted,origin(),server,me.id,raw));
+ assert.deepEqual([hostedCalls.length,serverCalls.length],before);
+ await assert.rejects(acceptPorticoInvitation(hosted,origin(),server,me.id,'0123456789ABCDEF'));
+ assert.deepEqual([hostedCalls.length,serverCalls.length],before);
+ const otherCalls:unknown[]=[];
+ await assert.rejects(acceptShortPorticoInvitation(hosted,origin(),fakeServer(otherCalls,signIn,impostor.prove),me.id,'0123456789ABCDEF'));
+ assert.equal(otherCalls.length,1,'an unproven server never receives the capability');
+ assert.equal(hostedCalls.length,before[0],'an unproven server never obtains a Hosted assertion');
+});
 
 test('Portico sign-in answers the server\'s challenge with an identity assertion from Hosted',async()=>{
  const o=origin(),hostedCalls:unknown[]=[],serverCalls:unknown[]=[];
