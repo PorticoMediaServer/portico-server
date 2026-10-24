@@ -437,3 +437,133 @@ func TestSeedLocalArtworkCompositeCursorAcrossReaderBound(t *testing.T) {
 		t.Fatalf("default %v, want the lowest rank", jobs)
 	}
 }
+
+// An owner choice counts even when it is unlocked: a selection with an actor, or
+// a pending owner job, keeps the slot and is never replaced by a materialized
+// alternative.
+func TestSeedLocalArtworkNeverOverridesAnOwnerChoice(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altown")
+	digest := strings.Repeat("d", 64)
+	key := strings.Repeat("e", 64)
+	mustExec(t, db, `INSERT INTO artwork_objects(digest,mime,width,height,bytes,created_at) VALUES(?,'image/jpeg',1,1,1,'now')`, digest)
+	mustExec(t, db, `INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('owner-unlocked','item',?,'poster','tmdb','remote','https://example.invalid/p.jpg','TMDB','older-fence','now')`, movie.ID)
+	mustExec(t, db, `INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,locked,actor,observed_at) VALUES('item',?,'poster','owner-unlocked',?,?,0,'owner','now')`, movie.ID, digest, digest)
+	seedScannedAlternatives(t, db, "altown", movie, "poster", key)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
+	if jobs := localArtworkJobs(t, db, movie.ID, "poster"); len(jobs) != 0 {
+		t.Fatalf("an unlocked owner choice queued %v", jobs)
+	}
+	var selected string
+	if err := db.QueryRow(`SELECT candidate_id FROM artwork_selections WHERE kind='item' AND entity_id=? AND role='poster'`, movie.ID).Scan(&selected); err != nil || selected != "owner-unlocked" {
+		t.Fatalf("owner selection changed to %q (%v)", selected, err)
+	}
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	if !containsOrigin(origins, key) {
+		t.Fatalf("accepted image was not materialized: %v", origins)
+	}
+
+	// A pending owner job holds the slot just as firmly.
+	otherCatalog := catalogtest.New(t, db)
+	other := otherCatalog.Movie(otherCatalog.Handle("altown"), "/altown/Other.mkv", "Other", 2001)
+	mustExec(t, db, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns)
+ SELECT 'object-other',s.id,a.token,s.incarnation,'Other.mkv','r1','{}',1,1 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN library_sources s ON s.library_id=cl.library_id WHERE a.token=? LIMIT 1`, other.Token)
+	mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES('object-other','r1',?,'item',?,'poster',?)`, other.Token, other.ID, strings.Repeat("f", 64))
+	mustExec(t, db, `INSERT INTO artwork_jobs(id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,status,actor,locked,created_at) VALUES('owner-job','item',?,'poster','','owner-unlocked','https://example.invalid/p.jpg','tmdb','older-fence','pending','owner',1,'now')`, other.ID)
+	seedLocalArtworkToCompletion(t, db, "item", other)
+	jobs, _ := localArtworkJobIDs(t, db, other.ID, "poster")
+	if len(jobs) != 1 || jobs[0] != "owner-job" {
+		t.Fatalf("a pending owner job was replaced: %v", jobs)
+	}
+}
+
+// A newly accepted image that sorts before or in the middle of committed
+// progress is still found: locating the first unseeded ordered tuple never
+// assumes the previous position is the end of the prefix.
+func TestSeedLocalArtworkFindsNewAcceptedImagesBelowAndInsideProgress(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altlate")
+	early := make([]namedCandidate, 0, 10)
+	for n := 1; n <= 10; n++ {
+		early = append(early, namedCandidate{fmt.Sprintf("poster-%d.jpg", n), int64(1024 + n), fmt.Sprintf("%064x", n)})
+	}
+	seedNamedAlternatives(t, db, "altlate", movie, "poster", early[:8])
+	seedLocalArtworkToCompletion(t, db, "item", movie)
+	// New acceptance arrives under the same fence: one canonical image before
+	// the whole prefix and one numbered image in its middle.
+	late := []namedCandidate{
+		{"poster.jpg", 16, strings.Repeat("a", 64)},
+		{"poster-4b.jpg", 1029, strings.Repeat("b", 64)},
+	}
+	seedNamedAlternatives(t, db, "altlate", movie, "poster", late)
+	seedLocalArtworkToCompletion(t, db, "item", movie)
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	for _, candidate := range late {
+		if !containsOrigin(origins, candidate.key) {
+			t.Fatalf("late accepted image %s was skipped", candidate.name)
+		}
+	}
+	if len(origins) != 10 {
+		t.Fatalf("materialized %d of 10 accepted images", len(origins))
+	}
+}
+
+// The dirty row survives every call that has not completed all slots; the real
+// discovery pass clears it only after the last page, and the whole run keeps the
+// primary plus page materialization bounded per call.
+func TestSeedLocalArtworkKeepsDirtyUntilEverySlotCompletes(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altdirty")
+	primary := strings.Repeat("c", 64)
+	mustExec(t, db, `INSERT INTO local_artwork(library_id,kind,entity_id,role,art_key,observed_at) VALUES('altdirty','item',?,'poster',?,'now')`, movie.ID, primary)
+	candidates := make([]namedCandidate, 0, 20)
+	for n := 1; n <= 20; n++ {
+		candidates = append(candidates, namedCandidate{fmt.Sprintf("poster-%d.jpg", n), int64(1024 + n), fmt.Sprintf("%064x", n)})
+	}
+	seedNamedAlternatives(t, db, "altdirty", movie, "poster", candidates)
+	mustExec(t, db, `INSERT INTO artwork_dirty(kind,entity_id) VALUES('item',?)`, movie.ID)
+	s := New(db, "test-token")
+	dirtyRows := func() int {
+		var count int
+		if err := db.QueryRow(`SELECT count(*) FROM artwork_dirty WHERE kind='item' AND entity_id=?`, movie.ID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if err := s.seedArtwork(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if dirtyRows() != 1 {
+		t.Fatal("the dirty row was cleared before every slot completed")
+	}
+	for call := 0; call < 64; call++ {
+		if err := s.seedArtwork(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if dirtyRows() == 0 {
+			break
+		}
+	}
+	if dirtyRows() != 0 {
+		t.Fatal("the dirty row survived a completed continuation")
+	}
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(origins) != len(candidates)+1 {
+		t.Fatalf("materialized %d of %d with the primary", len(origins), len(candidates)+1)
+	}
+}
+
+func localArtworkJobIDs(t *testing.T, db *sql.DB, entity int64, role string) ([]string, error) {
+	t.Helper()
+	rows, err := db.Query(`SELECT id FROM artwork_jobs WHERE kind='item' AND entity_id=? AND role=? ORDER BY created_at,id`, entity, role)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
