@@ -27,12 +27,21 @@ import (
 // owned copy/mux -> private publisher path beyond the configured startup
 // buffer. A finite three-second probe cannot establish this continuation.
 func TestOwnedRollingLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
-	t.Run("mpegts", func(t *testing.T) { rollingLiveCapture(t, false, 0) })
-	t.Run("fragmented-mp4", func(t *testing.T) { rollingLiveCapture(t, true, 0) })
-	t.Run("pts-wrap", func(t *testing.T) { rollingLiveCapture(t, false, 95430) })
+	t.Run("mpegts", func(t *testing.T) { rollingLiveCapture(t, false, 0, "") })
+	t.Run("fragmented-mp4", func(t *testing.T) { rollingLiveCapture(t, true, 0, "") })
+	t.Run("pts-wrap", func(t *testing.T) { rollingLiveCapture(t, false, 95430, "") })
 }
 
-func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int) {
+// This opt-in reproduction consumes the campaign's approved public fixture;
+// normal test runs never depend on an external server.
+func TestOwnedPublicLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
+	if os.Getenv("PORTICO_M0_PUBLIC_LIVE_REPRO") != "1" {
+		t.Skip("campaign public fixture reproduction not requested")
+	}
+	rollingLiveCapture(t, false, 0, "https://demo.getportico.tv/m0-fixtures/live/demo-cinema/index.m3u8")
+}
+
+func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int, publicURL string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
 	defer cancel()
 	ffmpeg, ffprobe := decodertest.QualifiedFFmpeg(t), decodertest.QualifiedFFprobe(t)
@@ -54,44 +63,48 @@ func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	pattern := filepath.Join(dir, "pattern.mp4")
-	generate := exec.CommandContext(ctx, ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "6", "-c:v", "libx264", "-threads:v", "1", "-g", "50", "-keyint_min", "50", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", pattern)
-	if output, err := generate.CombinedOutput(); err != nil {
-		t.Fatalf("generate procedural source: %v: %s", err, output)
-	}
-	originArgs := []string{"-nostdin", "-v", "error", "-re", "-stream_loop", "-1", "-i", pattern, "-c", "copy"}
-	if sourceClockSeconds != 0 {
-		// A long-running MPEG-TS source wraps its 33-bit 90kHz clock. Start
-		// near that real boundary without waiting twenty-six hours.
-		originArgs = append(originArgs, "-output_ts_offset", strconv.Itoa(sourceClockSeconds))
-	}
-	originArgs = append(originArgs, "-f", "hls", "-hls_time", "2", "-hls_list_size", "12", "-hls_delete_threshold", "4", "-hls_flags", "delete_segments+omit_endlist+temp_file", "-hls_segment_filename", filepath.Join(dir, "segment-%09d.ts"), filepath.Join(dir, "index.m3u8"))
-	origin := exec.CommandContext(ctx, ffmpeg, originArgs...)
+	inputURL := publicURL
+	if inputURL == "" {
+		pattern := filepath.Join(dir, "pattern.mp4")
+		generate := exec.CommandContext(ctx, ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "6", "-c:v", "libx264", "-threads:v", "1", "-g", "50", "-keyint_min", "50", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", pattern)
+		if output, err := generate.CombinedOutput(); err != nil {
+			t.Fatalf("generate procedural source: %v: %s", err, output)
+		}
+		originArgs := []string{"-nostdin", "-v", "error", "-re", "-stream_loop", "-1", "-i", pattern, "-c", "copy"}
+		if sourceClockSeconds != 0 {
+			// A long-running MPEG-TS source wraps its 33-bit 90kHz clock. Start
+			// near that real boundary without waiting twenty-six hours.
+			originArgs = append(originArgs, "-output_ts_offset", strconv.Itoa(sourceClockSeconds))
+		}
+		originArgs = append(originArgs, "-f", "hls", "-hls_time", "2", "-hls_list_size", "12", "-hls_delete_threshold", "4", "-hls_flags", "delete_segments+omit_endlist+temp_file", "-hls_segment_filename", filepath.Join(dir, "segment-%09d.ts"), filepath.Join(dir, "index.m3u8"))
+		origin := exec.CommandContext(ctx, ffmpeg, originArgs...)
 
-	if err = origin.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = origin.Process.Kill(); _ = origin.Wait() }()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		data, _ := os.ReadFile(filepath.Join(dir, "index.m3u8"))
-		if strings.Count(string(data), "#EXTINF:") >= 3 {
-			break
+		if err = origin.Start(); err != nil {
+			t.Fatal(err)
 		}
-		select {
-		case <-ctx.Done():
-			t.Fatal("procedural origin did not publish", ctx.Err())
-		case <-ticker.C:
+		defer func() { _ = origin.Process.Kill(); _ = origin.Wait() }()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			data, _ := os.ReadFile(filepath.Join(dir, "index.m3u8"))
+			if strings.Count(string(data), "#EXTINF:") >= 3 {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("procedural origin did not publish", ctx.Err())
+			case <-ticker.C:
+			}
 		}
+		server := httptest.NewServer(http.FileServer(http.Dir(dir)))
+		defer server.Close()
+		inputURL = server.URL + "/index.m3u8"
 	}
-	server := httptest.NewServer(http.FileServer(http.Dir(dir)))
-	defer server.Close()
-	approval, err := (remotemedia.Policy{}).Approve(ctx, server.URL+"/")
+	approval, err := (remotemedia.Policy{}).Approve(ctx, inputURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gateway, err := linearinput.Open(ctx, livechannels.Input{SourceID: server.URL, ChannelID: "procedural", Locator: server.URL + "/index.m3u8", Policy: remotemedia.Policy{Approvals: []remotemedia.Approval{approval}}, RetryWindowSeconds: 5})
+	gateway, err := linearinput.Open(ctx, livechannels.Input{SourceID: inputURL, ChannelID: "procedural", Locator: inputURL, Policy: remotemedia.Policy{Approvals: []remotemedia.Approval{approval}}, RetryWindowSeconds: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
