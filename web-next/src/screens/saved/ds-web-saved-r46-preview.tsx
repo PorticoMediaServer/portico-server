@@ -7,6 +7,8 @@ import {useState} from 'react';
 import type {SavedApi} from '@core/saved.ts';
 import {IconSprite} from '../../kit/Icon';
 import {createArtworkRuntime} from '../../kit/artwork/source';
+import {FreshnessProvider} from '../../platform/freshness';
+import type {HttpLocalApi} from '@core/index.ts';
 import type {ShellArtwork} from '../../shell/artwork';
 import {SavedScreen, type SavedEffects} from './Saved';
 import {createSavedRuntime, type SavedScreenRoute} from './runtime';
@@ -132,4 +134,7 @@ function Preview() {
     presentation={{view, cardWidth: 174, backdrops: true, reducedMotion: true, setView}} effects={effects} />;
 }
 
-createRoot(document.getElementById('root')!).render(<><IconSprite /><Preview /></>);
+// The screen's quiet refresh reads the shell's freshness runtime; this is the
+// same provider with a fixture-transport route snapshot and no event feed.
+const freshnessApi = {baseUrl: 'http://fixture.invalid', getRouteSnapshot: () => ({phase: 'ready'}), subscribeRoute: () => () => {}} as unknown as HttpLocalApi;
+createRoot(document.getElementById('root')!).render(<FreshnessProvider api={freshnessApi} viewerId="fixture-viewer" serverId="r46-saved" events={null}><IconSprite /><Preview /></FreshnessProvider>);
