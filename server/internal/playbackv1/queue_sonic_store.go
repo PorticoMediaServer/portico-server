@@ -39,6 +39,9 @@ func readSonicWindowTx(ctx context.Context, tx *sql.Tx, key sonicWindowKey, ordi
 		out.model = &sonic.Identity{ID: id, Version: version, SHA256: digest}
 	}
 	out.ordinals, err = sonicWindowOrdinals(raw, ordinary)
+	if err == nil && out.model == nil && !slices.Equal(out.ordinals, ordinary) {
+		return out, errSonicWindow
+	}
 	return out, err
 }
 

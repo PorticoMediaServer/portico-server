@@ -1,6 +1,10 @@
 package playbackv1
 
-import "testing"
+import (
+	"testing"
+
+	"portico.local/server/internal/sonic"
+)
 
 func TestCapturedSonicOrderKeepsSeededWindowsInverseAndOriginalOrder(t *testing.T) {
 	l := &layout{
@@ -16,7 +20,7 @@ func TestCapturedSonicOrderKeepsSeededWindowsInverseAndOriginalOrder(t *testing.
 		for left, right := 1, 255; left < right; left, right = left+1, right-1 {
 			ordinals[left], ordinals[right] = ordinals[right], ordinals[left]
 		}
-		l.sonicWindows[window] = sonicWindowCapture{ordinals: ordinals}
+		l.sonicWindows[window] = sonicWindowCapture{ordinals: ordinals, model: &sonic.Identity{ID: sonic.ModelID, Version: sonic.ModelVersion, SHA256: sonic.ModelSHA256}}
 	}
 	for position := int64(0); position < 512; position++ {
 		source := l.orderToSource(position)

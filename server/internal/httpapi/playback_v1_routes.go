@@ -107,6 +107,16 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		}
 		return journey.Tracks, err
 	}
+	s.SmoothOrder = func(ctx context.Context, tx *sql.Tx, p identity.Principal, ids []string) (catalog.MusicSmoothOrder, error) {
+		if d.Catalog == nil {
+			return catalog.MusicSmoothOrder{}, playbackv1.ErrUnsupportedSelector
+		}
+		viewer, err := d.queueCatalogViewerTx(ctx, tx, p)
+		if err != nil {
+			return catalog.MusicSmoothOrder{}, err
+		}
+		return d.Catalog.MusicSmoothOrderTx(ctx, tx, viewer, ids)
+	}
 	s.LibraryCheck = func(ctx context.Context, tx *sql.Tx, p identity.Principal, library string) error {
 		return d.allowedLibraryTx(ctx, p, library, tx)
 	}
