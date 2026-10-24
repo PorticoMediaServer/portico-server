@@ -162,7 +162,8 @@ export class ServerListWatcher{
  private readonly clock:Clock;private readonly timeoutMs:number;
  constructor(options:{hostedOrigin:string;listServers:(signal?:AbortSignal)=>Promise<ServerListAnswer>;onServers:(answer:ServerListAnswer)=>void;storage?:ServerListStorage;fetcher?:typeof fetch;clock?:Clock;timeoutMs?:number}){
   this.timeoutMs=options.timeoutMs??SERVER_LIST_TIMEOUT_MS;
-  this.origin=new URL(options.hostedOrigin).origin;this.fetcher=options.fetcher??((input,init)=>globalThis.fetch(input,init));
+  const fetcher=options.fetcher??((input,init)=>globalThis.fetch(input,init));
+  this.origin=new URL(options.hostedOrigin).origin;this.fetcher=(input,init)=>fetcher(input,init);
   this.storage=options.storage;this.listServers=options.listServers;this.onServers=options.onServers;
   this.clock=options.clock??{now:()=>Date.now(),random:()=>Math.random()};
   let stored:ServerListRecord|null=null;try{stored=this.storage?.load()??null;}catch{}
