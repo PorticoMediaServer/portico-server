@@ -196,6 +196,20 @@ async function shot(name, selector, pageWidth, url, ready) {
 
 const report = {commit: (process.env.PORTICO_RUNNER_COMMIT ?? '').toString(), reference: {}, actual: {}, pageErrors, media: reportMedia};
 await mkdir(output, {recursive: true});
+const extras = options.extras === '1';
+if (extras) {
+  if (only !== 'actual') {
+    await setViewport(2048, 1400);
+    await open(`${frameOrigin}/mock.html`, '#extras');
+    report.reference.extras = await shot('web-home-extras-reference', '#extras .extras > div:first-child', 2048, `${frameOrigin}/mock.html`, '#extras');
+  }
+  if (only !== 'reference') {
+    const url = `${buildOrigin}/src/screens/home/ds-web-home-r46.html?mode=extras&assets=${encodeURIComponent(frameOrigin + '/')}`;
+    await setViewport(858, 900);
+    await open(url, '[data-home-extras]');
+    report.actual.extras = await shot('web-home-extras-actual', '[data-home-extras]', 858, url, '[data-home-extras]');
+  }
+} else {
 if (only !== 'actual') {
   await setViewport(2048, 1400);
   await open(`${frameOrigin}/mock.html`, '#home');
@@ -249,6 +263,7 @@ if (only !== 'reference') {
   report.actual.hero = await evaluate(`(()=>{const h=document.querySelector('[data-home-document] section'),c=h.querySelector('div[class*="copy"]'),th=h.querySelector('div[class*="thumbnail"]');const r=n=>n?n.getBoundingClientRect().toJSON():null;
     const wash=h.querySelector('[class*="washLayer"]'),ambient=h.querySelector('[class*="ambientImage"]');
     return {hero:r(h),copy:r(c),thumbs:r(th),firstArt:r(h.querySelector('[data-active="true"] [data-foreground-art]')),washMask:wash?getComputedStyle(wash).maskImage:null,ambient:ambient?{status:ambient.closest('[data-artwork-status]')?.dataset.artworkStatus??null,hasImage:!!ambient.querySelector('img')}:null}})()`);
+}
 }
 report.vite = viteLog.slice(-400);
 await writeFile(join(output, 'web-home-r46-capture.json'), JSON.stringify(report, null, 2) + '\n');

@@ -57,6 +57,27 @@ const pageSubscribe = (listener: () => void) => { document.addEventListener('vis
 /** The frame draws a long hero title at the long lockup size; no shorter drawn rule decides it (mock.html#home). */
 const longHeroTitle = (title: string) => [...title.trim()].length > 20;
 
+type HeroArtworkSlide = Readonly<{title: string; artwork: Readonly<{backdropUrl?: string; posterUrl?: string}>}>;
+type HeroArtworkContext = Readonly<{index: number; visible: boolean; onReady?: () => void; onError?: () => void}>;
+/**
+ * The drawn hero uses only the artwork the entry actually has: a backdrop, a poster only
+ * (mock.html#extras poster treatment) or no artwork (the generated title letter).
+ */
+export function HomeHeroArtwork({slide, context, platform, artwork, appearance, heroPixels, variant = 'hero'}: {slide: HeroArtworkSlide; context: HeroArtworkContext; platform: LayoutPlatform; artwork: ShellArtwork; appearance?: ScreenAppearance; heroPixels: number; variant?: 'hero' | 'panel'}) {
+  const backdrop = slide.artwork.backdropUrl, poster = slide.artwork.posterUrl;
+  if (appearance?.showBackdrops === false) return <ColourBackdrop shape="side" fill/>;
+  if (!backdrop && !poster) return <GeneratedArt glyph={Array.from(slide.title.trim())[0] ?? ''}/>;
+  if (!backdrop) return <div className={styles.heroPoster}>
+    <span className={styles.heroPosterWash}><Artwork source={artwork.foreground(poster, heroPixels, 2 / 3, {group: 'home-hero-poster', order: context.index, priority: 'high'})} visible={context.visible} onReady={context.onReady} onError={context.onError}/></span>
+    <span className={styles.heroPosterShade}/>
+    <span className={styles.heroPosterArt}><Artwork source={artwork.foreground(poster, 740 * devicePixelRatio, 2 / 3, {group: 'home-hero-poster-art', order: context.index, priority: 'high', large: true})} visible={context.visible}/></span>
+  </div>;
+  if (variant === 'panel') return <span className={styles.heroPanelBackdrop}><Artwork source={artwork.foreground(backdrop, heroPixels, 16 / 9, {group: 'home-hero-panel', order: context.index})} visible={context.visible} onReady={context.onReady} onError={context.onError}/></span>;
+  return <AmbientArt className={platform === 'desktop' ? styles.heroAmbient : undefined} source={artwork.ambient(backdrop, {group: 'home-hero', order: context.index, priority: 'high'})}
+    foreground={artwork.foreground(backdrop, heroPixels, 16 / 9, {group: 'home-hero', order: context.index, priority: 'high', large: true})}
+    treatment={platform === 'desktop' ? 'hero' : 'phone'} visible={context.visible} onReady={context.onReady} onError={context.onError} />;
+}
+
 function useVisible() {
   const ref = useRef<HTMLDivElement>(null), [intersects, setIntersects] = useState(false);
   const foreground = useSyncExternalStore(pageSubscribe, () => document.visibilityState !== 'hidden', () => false);
@@ -149,9 +170,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
     {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} visible={hero.visible} reducedMotion={appearance?.reducedMotion ?? reducedMotion}
       renderReason={slide => slide.reason}
       renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} />}
-      renderArtwork={(slide, context) => appearance?.showBackdrops === false ? <ColourBackdrop shape="side" fill/> : <AmbientArt className={platform === 'desktop' ? styles.heroAmbient : undefined} source={artwork.ambient(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, {group: 'home-hero', order: context.index, priority: 'high'})}
-        foreground={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, heroPixels, 16 / 9, {group: 'home-hero', order: context.index, priority: 'high', large: true})}
-        treatment={platform === 'desktop' ? 'hero' : 'phone'} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
+      renderArtwork={(slide, context) => <HomeHeroArtwork slide={slide} context={context} platform={platform} artwork={artwork} appearance={appearance} heroPixels={heroPixels} />}
       renderThumbnail={(slide, context) => <Artwork source={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, 132 * devicePixelRatio, 16 / 9, {group: 'home-thumbnails', order: context.index})} alt="" visible={context.visible} />}
       renderActions={slide => <>
         {slide.primary && homePlaybackTarget(slide.entry, slide.primary.entry) && <Button variant="primary" size="hero" phone={platform !== 'desktop'} icon="i-play" onClick={() => play(slide.entry, slide.primary!.entry)}>{t(slide.primary.label.key, slide.primary.label.params)}</Button>}

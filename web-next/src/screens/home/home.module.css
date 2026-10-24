@@ -2,6 +2,15 @@
 /* The frame's hero wash is the full-height blurred backdrop; the shared treatment fades it
    below 30%, which darkens the drawn lower hero. Desktop Home restores the drawn wash. */
 .heroAmbient [class*='washLayer'] { -webkit-mask-image: none; mask-image: none; }
+/* mock.html#extras: a poster-only hero uses its poster for the wash and a sharp side poster. */
+.heroPoster { position: absolute; inset: 0; overflow: hidden; background: var(--color-ink); }
+.heroPosterWash { position: absolute; inset: -20%; width: 140%; height: 140%; opacity: .55; }
+.heroPosterWash img { filter: blur(70px) saturate(1.5); }
+.heroPosterShade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,16,24,.85), rgba(7,16,24,.35)); }
+.heroPosterArt { position: absolute; right: 44px; top: 11%; height: 78%; aspect-ratio: 2/3; border-radius: 10px; overflow: hidden; box-shadow: 0 24px 40px -14px #000; }
+/* The authored extras panel draws the backdrop at 72% with only the left mask. */
+.heroPanelBackdrop { position: absolute; inset: 0 0 0 auto; width: 72%; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 40%); mask-image: linear-gradient(90deg, transparent, #000 40%); }
+.heroPanelBackdrop img { object-position: center 30%; }
 .rows { position: relative; z-index: var(--layer-content); padding-bottom: 72px; }
 .rows[data-with-hero='true'] { margin-top: -40px; }
 .rowSlot + .rowSlot { margin-top: 44px; }
@@ -17,6 +26,8 @@
 .slowNotice b { color: var(--color-text); font-weight: var(--type-row-heading-weight); }
 .waitingDot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-amber); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-amber) 16%, transparent); flex: none; }
 @media (max-width: 1023px) {
+  .heroPosterArt { right: 0; top: 0; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+  .heroPosterShade { background: linear-gradient(180deg, rgba(7,16,24,.35), rgba(7,16,24,.85)); }
   .scaledRanked > div > span { width: calc(70px * var(--home-card-scale)); height: calc(172px * var(--home-card-scale)); margin-right: calc(-16px * var(--home-card-scale)); font-size: calc(120px * var(--home-card-scale)); }
   .scaledRanked [data-card-kind='poster'] { width: calc(116px * var(--home-card-scale)); }
   .rows { padding-bottom: 32px; }

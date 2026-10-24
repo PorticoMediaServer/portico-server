@@ -1,0 +1,9 @@
+/* DEV-only gallery for mock.html#extras; the same production hero artwork treatments. */
+.gallery { width: 858px; padding: 56px 0 64px; }
+.gallery h3 { margin: 0 0 6px; font-size: 22px; font-weight: 700; letter-spacing: -.015em; }
+.lead { max-width: 620px; margin: 0 0 22px; font-size: 15px; line-height: 1.5; color: var(--color-text-tertiary); }
+.fb { position: relative; height: 236px; margin-bottom: 20px; border-radius: 14px; overflow: hidden; background: var(--color-raised-soft, #0c1a25); }
+.label { position: absolute; z-index: 3; right: 16px; top: 14px; padding: 4px 9px; border-radius: 6px; background: rgba(7,16,24,.7); font-size: 12px; font-weight: 700; color: var(--color-text-secondary); }
+.copy { position: absolute; z-index: 2; left: 36px; bottom: 34px; width: 420px; }
+.title { margin: 0 0 12px; font-size: 52px; line-height: .94; font-weight: 800; letter-spacing: -.045em; color: var(--color-text); text-shadow: 0 2px 30px rgba(7,16,24,.5); }
+.copy [class*='facts'] { margin: 0; font-size: 14px; }
