@@ -97,9 +97,9 @@ function BrowseListRow({member, index, artwork, env, actions}: BrowseResultsProp
   return <div className={styles.listRow} data-browse-entry={entry.id} onKeyDown={event => {if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
     <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>}
       <button type="button" data-layout-primary onClick={action.onOpen}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span>{title}</span></button></div>
-    <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating !== undefined && <><Icon name="i-star" size={13}/>{defaultI18n.number(entry.rating, {maximumFractionDigits: 1})}</>}</span>
+    <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating === undefined ? '–' : defaultI18n.number(entry.rating, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</span>
     <span>{resolution && <span className={styles.resolution}>{resolution}</span>}</span><span>{added}</span>
-    <span>{entry.watched ? <Icon name="i-check" size={18}/> : progress !== undefined && <span className={styles.miniProgress}><span style={{width: `${progress * 100}%`}}/></span>}</span>
+    <span className={styles.listWatched}>{entry.watched ? <Icon name="i-check" size={18}/> : progress !== undefined && <span className={styles.miniProgress}><span style={{width: `${progress * 100}%`}}/></span>}</span>
     <span className={styles.listActions}>{action.onPlay && <Button variant="primary" size="small" icon="i-play" iconOnly onClick={action.onPlay} aria-label={t('next.browse.play', {title})}/>}{action.onMore && <Button variant="icon" size="small" icon="i-more" iconOnly onClick={event => action.onMore?.(event.currentTarget)} aria-label={t('next.browse.moreFor', {title})}/>}</span>
   </div>;
 }
