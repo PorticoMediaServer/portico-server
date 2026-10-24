@@ -7970,7 +7970,7 @@ CREATE TRIGGER identity_access_tokens_disabled AFTER UPDATE OF access_tokens ON 
 END;
 CREATE TRIGGER identity_access_tokens_insert BEFORE INSERT ON api_credentials WHEN NEW.kind='token' AND NOT EXISTS(SELECT 1 FROM direct_memberships WHERE account_id=NEW.account_id AND access_tokens=1 AND disabled=0) BEGIN SELECT RAISE(ABORT,'access_tokens_off');END;
 
-CREATE TABLE identity_moves(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,owner_revision INTEGER NOT NULL,from_kind TEXT NOT NULL CHECK(from_kind IN('portico','local')),to_kind TEXT NOT NULL CHECK(to_kind IN('portico','local')),start_over INTEGER NOT NULL CHECK(start_over IN(0,1)),stage TEXT NOT NULL CHECK(stage IN('preview','moving_to_portico','moving_to_local','complete','cancelled')),revision INTEGER NOT NULL CHECK(revision>0),people INTEGER NOT NULL,devices INTEGER NOT NULL,profiles INTEGER NOT NULL,server_name TEXT NOT NULL,created_ms INTEGER NOT NULL,confirmed_ms INTEGER NOT NULL DEFAULT 0,confirmation TEXT NOT NULL DEFAULT '',invitations INTEGER NOT NULL DEFAULT 0,owner_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(owner_confirmed IN(0,1)),CHECK(from_kind<>to_kind)) STRICT;
+CREATE TABLE identity_moves(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,owner_revision INTEGER NOT NULL,from_kind TEXT NOT NULL CHECK(from_kind IN('portico','local')),to_kind TEXT NOT NULL CHECK(to_kind IN('portico','local')),start_over INTEGER NOT NULL CHECK(start_over IN(0,1)),stage TEXT NOT NULL CHECK(stage IN('preview','moving_to_portico','moving_to_local','complete','cancelled')),revision INTEGER NOT NULL CHECK(revision>0),people INTEGER NOT NULL,other_people_count INTEGER NULL CHECK(other_people_count BETWEEN 0 AND 10000),devices INTEGER NOT NULL,profiles INTEGER NOT NULL,server_name TEXT NOT NULL,created_ms INTEGER NOT NULL,confirmed_ms INTEGER NOT NULL DEFAULT 0,confirmation TEXT NOT NULL DEFAULT '',invitations INTEGER NOT NULL DEFAULT 0,owner_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(owner_confirmed IN(0,1)),CHECK(from_kind<>to_kind)) STRICT;
 CREATE UNIQUE INDEX identity_one_move ON identity_moves((1)) WHERE stage NOT IN('complete','cancelled');
 CREATE TABLE identity_owner_completions(
  operation_id TEXT PRIMARY KEY REFERENCES networking_claim_intents(operation_id),
@@ -7983,12 +7983,15 @@ CREATE TABLE identity_owner_completions(
  claim_hash TEXT NOT NULL CHECK(length(claim_hash)=43),claim_payload BLOB NOT NULL,
  claim_signature BLOB NOT NULL CHECK(length(claim_signature)=64),start_payload BLOB NOT NULL,
  start_signature BLOB NOT NULL CHECK(length(start_signature)=64),state_hash TEXT NOT NULL,
+ switch_count_payload BLOB NULL CHECK(switch_count_payload IS NULL OR length(switch_count_payload) BETWEEN 1 AND 8192),
+ switch_count_signature BLOB NULL CHECK(switch_count_signature IS NULL OR length(switch_count_signature)=64),
  code_challenge TEXT NOT NULL CHECK(length(code_challenge)=43),installation_id TEXT NOT NULL,server_challenge_hash TEXT NOT NULL,
  created_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms),
  installed_ms INTEGER NOT NULL DEFAULT 0,completed_ms INTEGER NOT NULL DEFAULT 0,consumed_ms INTEGER NOT NULL DEFAULT 0,
  attempt_id TEXT NOT NULL DEFAULT '',transaction_id TEXT NOT NULL DEFAULT '',move_revision INTEGER NOT NULL CHECK(move_revision>0),
  registration_id TEXT NOT NULL DEFAULT '',registration_origin TEXT NOT NULL DEFAULT '',
- route_generation INTEGER NOT NULL DEFAULT 0 CHECK(route_generation>=0)
+ route_generation INTEGER NOT NULL DEFAULT 0 CHECK(route_generation>=0),
+ CHECK((switch_count_payload IS NULL AND switch_count_signature IS NULL) OR (switch_count_payload IS NOT NULL AND switch_count_signature IS NOT NULL))
 ) STRICT;
 CREATE TABLE identity_move_link_tickets(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,epoch INTEGER NOT NULL,expires_ms INTEGER NOT NULL,UNIQUE(account_id,installation_id)) STRICT;
 CREATE TABLE identity_move_codes(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,move_id TEXT NOT NULL REFERENCES identity_moves(id),code_hash TEXT NOT NULL UNIQUE,expires_ms INTEGER NOT NULL) STRICT;
