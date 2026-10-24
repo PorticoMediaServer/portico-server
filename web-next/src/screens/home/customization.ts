@@ -1,10 +1,12 @@
 import type {HomeService} from '@core/home-service.ts';
 import type {PersonalResource, PersonalSavedService} from '@core/personal-saved.ts';
 import {addHomeDraftView, homeDraftIntent, homeLayoutDraft, moveHomeDraftRow, removeHomeDraftView, showHomeDraftRow, type HomeLayoutDraft} from './layout-draft';
+import type {ReadSavedViewCapabilities} from '../saved/view-capabilities';
 
 export type HomeCustomizationBindings = Readonly<{
   /** A fresh dialog-owned service, captured to this signed-in transport and SavedScope. */
   createSavedViews: () => PersonalSavedService;
+  readViewCapabilities?: ReadSavedViewCapabilities;
   requestId: () => string;
   isCurrent: () => boolean;
 }>;

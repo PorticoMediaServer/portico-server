@@ -1,5 +1,7 @@
 import {useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
+import {SavedViewDescription} from '../saved/ViewDescription';
+import type {ReadSavedViewCapabilities} from '../saved/view-capabilities';
 import {homeViewResourceId, homeViewRowId} from '@core/home.ts';
 import type {PersonalResource, PersonalSavedService} from '@core/personal-saved.ts';
 import type {HomeService} from '@core/home-service.ts';
@@ -42,13 +44,13 @@ export function HomeCustomizeEntry({service, binding}: {service: HomeService; bi
       const next = new HomeCustomization(service, binding);active.current = next;setOpened({controller: next, service, binding});void next.load();
     }}>{t('home.customize.action')}</Button>
     <p>{copy.entryDescription}</p>
-    {opened && opened.service === service && opened.binding.isCurrent() && <HomeCustomizeDialog controller={opened.controller} createSavedViews={opened.binding.createSavedViews} isCurrent={opened.binding.isCurrent} copy={copy} onClose={close} returnFocusRef={trigger}/>}
+    {opened && opened.service === service && opened.binding.isCurrent() && <HomeCustomizeDialog controller={opened.controller} createSavedViews={opened.binding.createSavedViews} readViewCapabilities={opened.binding.readViewCapabilities} isCurrent={opened.binding.isCurrent} copy={copy} onClose={close} returnFocusRef={trigger}/>}
   </div>;
 }
 
 /** The Home entry owns this controller's lifetime; closing abandons only its local draft. */
-export function HomeCustomizeDialog({controller, createSavedViews, isCurrent, copy, onClose, returnFocusRef}: {
-  controller: HomeCustomization; createSavedViews: () => PersonalSavedService; isCurrent: () => boolean; copy: HomeCustomizeCopy;
+export function HomeCustomizeDialog({controller, createSavedViews, readViewCapabilities, isCurrent, copy, onClose, returnFocusRef}: {
+  controller: HomeCustomization; createSavedViews: () => PersonalSavedService; readViewCapabilities?: ReadSavedViewCapabilities; isCurrent: () => boolean; copy: HomeCustomizeCopy;
   onClose: () => void; returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), compact = useShellWidth() < 600;
@@ -105,7 +107,7 @@ export function HomeCustomizeDialog({controller, createSavedViews, isCurrent, co
       returnFocusRef={returnFocusRef} dismissOnOutsidePress={!busy} dismissOnBack={!busy && !moving}
       footer={picking ? <Button variant="glass" onClick={() => setPicking(false)}>{t('action.cancel')}</Button> : <><Button variant="text" className={styles.reset} disabled={busy || state.phase !== 'ready'} onClick={() => setResetting(true)}>{t('action.resetToDefault')}</Button><span className={styles.spacer}/>
         {!compact && <Button variant="glass" disabled={busy} onClick={cancel}>{t('action.cancel')}</Button>}<Button variant="primary" loading={state.pending === 'save'} disabled={busy || state.phase !== 'ready' || state.conflict || !isCurrent()} onClick={() => {void save();}}>{t('action.save')}</Button></>}>
-      {picking && draft ? <SavedViewPicker create={createSavedViews} isCurrent={isCurrent} exclude={draft.order} copy={copy} onPick={resource => {if (isCurrent()) {controller.add(resource);setPicking(false);}}}/> : <>
+      {picking && draft ? <SavedViewPicker create={createSavedViews} readViewCapabilities={readViewCapabilities} isCurrent={isCurrent} exclude={draft.order} copy={copy} onPick={resource => {if (isCurrent()) {controller.add(resource);setPicking(false);}}}/> : <>
         {state.conflict && <div className={styles.notice} role="alert"><Icon name="i-warn" size={22}/><div><b>{t('next.home.layoutChangedTitle')}</b><p>{copy.conflictBody}</p><div className={styles.noticeActions}><Button ref={reload} variant="primary" size="small" onClick={() => {finish(true);void controller.load();}}>{copy.reloadLayout}</Button><Button variant="glass" size="small" onClick={() => root.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()}>{copy.keepEditing}</Button></div></div></div>}
         {error && <div className={styles.notice} role="alert"><Icon name="i-warn" size={22}/><div><b>{error.title}</b><p>{state.phase === 'load-error' ? copy.loadFailedBody : error.body}</p>{state.phase === 'load-error' && <Button size="small" variant="primary" onClick={() => {void controller.load();}}>{t('action.tryAgain')}</Button>}</div></div>}
         {state.phase === 'loading' && <div className={styles.loading}>{Array.from({length: 6}, (_, index) => <Skeleton key={index} height={compact ? 54 : 56}/>)}</div>}
@@ -123,18 +125,18 @@ export function HomeCustomizeDialog({controller, createSavedViews, isCurrent, co
   </>;
 }
 
-function SavedViewPicker({create, isCurrent, exclude, copy, onPick}: {create: () => PersonalSavedService; isCurrent: () => boolean; exclude: readonly string[]; copy: HomeCustomizeCopy; onPick: (resource: PersonalResource) => void}) {
+function SavedViewPicker({create, readViewCapabilities, isCurrent, exclude, copy, onPick}: {create: () => PersonalSavedService; readViewCapabilities?: ReadSavedViewCapabilities; isCurrent: () => boolean; exclude: readonly string[]; copy: HomeCustomizeCopy; onPick: (resource: PersonalResource) => void}) {
   const factory = useRef(create), [service, setService] = useState<PersonalSavedService>();
   useEffect(() => {if (!isCurrent()) return;const next = factory.current();setService(next);void next.select({view: 'views'});return () => next.dispose();}, [isCurrent]);
-  return service ? <SavedViewChoices service={service} isCurrent={isCurrent} exclude={exclude} copy={copy} onPick={onPick}/> : <Skeleton height={56}/>;
+  return service ? <SavedViewChoices service={service} readViewCapabilities={readViewCapabilities} isCurrent={isCurrent} exclude={exclude} copy={copy} onPick={onPick}/> : <Skeleton height={56}/>;
 }
-function SavedViewChoices({service, isCurrent, exclude, copy, onPick}: {service: PersonalSavedService; isCurrent: () => boolean; exclude: readonly string[]; copy: HomeCustomizeCopy; onPick: (resource: PersonalResource) => void}) {
+function SavedViewChoices({service, readViewCapabilities, isCurrent, exclude, copy, onPick}: {service: PersonalSavedService; readViewCapabilities?: ReadSavedViewCapabilities; isCurrent: () => boolean; exclude: readonly string[]; copy: HomeCustomizeCopy; onPick: (resource: PersonalResource) => void}) {
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const choices = state.resources.filter(resource => resource.kind === 'view' && resource.status === 'ready' && resource.definition && !exclude.includes(homeViewRowId(resource.id)));
   const error = state.error && presentError(state.error, 'home');
   return <div className={styles.picker}>
     {error && <div className={styles.notice} role="alert"><Icon name="i-warn" size={22}/><div><b>{error.title}</b><p>{error.body}</p><Button size="small" onClick={() => {if (isCurrent()) void service.retryRead();}}>{t('action.tryAgain')}</Button></div></div>}
-    {choices.map(resource => <button key={resource.id} type="button" className={styles.choice} disabled={state.loading || !isCurrent()} onClick={() => onPick(resource)}><span className={styles.choiceMark}><Icon name="i-filter" size={22}/></span><span><b>{resource.name}</b>{resource.summary && <small>{resource.summary}</small>}</span></button>)}
+    {choices.map(resource => <button key={resource.id} type="button" className={styles.choice} disabled={state.loading || !isCurrent()} onClick={() => onPick(resource)}><span className={styles.choiceMark}><Icon name="i-filter" size={22}/></span><span><b>{resource.name}</b><SavedViewDescription resource={resource} readCapabilities={readViewCapabilities}/></span></button>)}
     {state.loading && <Skeleton height={56}/>}
     {!state.loading && !state.error && !choices.length && !state.nextCursor && <div className={styles.empty}><b>{copy.noViewsTitle}</b><p>{copy.noViewsBody}</p></div>}
     {state.nextCursor && <Button variant="glass" size="small" disabled={state.loading || !isCurrent()} onClick={() => {if (isCurrent()) void service.next();}}>{t('action.showMore')}</Button>}
