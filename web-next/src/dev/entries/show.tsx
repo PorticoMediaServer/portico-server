@@ -2,7 +2,8 @@ import {createRoot} from 'react-dom/client';
 import {RouterProvider, createMemoryHistory} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {HttpLocalApi, Library, LocalSession, Viewer} from '@core/index.ts';
-import type {PreferenceSnapshot} from '@core/preferences.ts';
+import {parsePreferenceSnapshot} from '@core/preferences.ts';
+import bootstrapWire from '../../../../server/testdata/contracts/get-bootstrap.json?raw';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {ShellArtwork} from '../../shell/artwork';
 import {createArtworkRuntime} from '../../kit/artwork/source';
@@ -201,7 +202,7 @@ const artwork = {
 } as unknown as ShellArtwork;
 
 const events = {on: () => () => {}, onResync: () => () => {}, onAny: () => () => {}, getStatus: () => ({connected: true}), subscribeStatus: () => () => {}} as unknown as EventsClient;
-const preferences = {deviceClass: 'web', registry: {fields: [], revision: 'show-specimen'}, documents: [], effective: {'appearance.showBackdrops': true}, effectiveSource: {}, clampedFields: [], registryRevision: 'show-specimen'} as unknown as PreferenceSnapshot;
+const preferences = parsePreferenceSnapshot((JSON.parse(bootstrapWire) as {response: {preferences: unknown}}).response.preferences);
 const subscribePreferences = () => () => {};
 const api = {
   request, requestRaw, getRouteSnapshot: () => ({phase: 'ready'}), subscribeRoute: () => () => {},
