@@ -81,7 +81,9 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
       void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal(),
         () => resources.life.current() && (!browse || resources.controller.contains(entry))).catch(context.effects.reportError);
     } : undefined});
-  const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 190) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
+  // Frame #grid: seven fluid columns at 1440 on Medium. 170 is the Medium card size the
+  // drawn column paints; the screen fills each column to the gutter.
+  const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 170) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
   const header = {library, libraries: context.identity?.libraries ?? [], pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
     appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
     artwork: context.artwork, libraryMenu: undefined,
