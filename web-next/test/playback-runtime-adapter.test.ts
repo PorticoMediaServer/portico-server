@@ -2597,3 +2597,33 @@ test('Info advertises no VOD report for an audio session or an already canceled 
  before=f.log.length;assert.equal(await f.runtime.readPlaybackInfo(fence,new AbortController().signal),null);assert.equal(f.log.length,before);
  await assert.rejects(f.runtime.readPlaybackInfo(old,new AbortController().signal),/stale_playback_command/);
 });
+
+
+test('runtime exposes only its actual loaded media observations, clears on replacement and terminal retirement', async t => {
+  const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+  let facts: import('@core/playback-v1/observed-playback.ts').ObservedPlayback|undefined;
+  const f=setup(t,{}, {createRender:null,subtitleSurface:false,createPlayer:(video,options)=>{
+    const player=new WebMediaPlayer(video,options),observe=player.observe.bind(player),load=player.load.bind(player);
+    player.observe=()=>({...observe(),observedPlayback:facts});player.load=source=>{facts=undefined;load(source);};return player;
+  }});
+  assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);
+  await f.runtime.play('movie');assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);await f.arrive();
+  facts={audio:{handling:'pcm',sampleRate:48000,channels:2}};f.video.advance(10);await settle();
+  const first=f.runtime.getSnapshot();assert.deepEqual(first.observedPlayback,facts);assert.ok(Object.isFrozen(first.observedPlayback!.audio));
+  facts={};f.video.advance(11);await settle();assert.deepEqual(f.runtime.getSnapshot().observedPlayback,{});
+  facts={audio:{sampleRate:96000}};await f.runtime.play('movie_replacement');assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);await f.arrive();
+  assert.equal(f.runtime.getSnapshot().observedPlayback,undefined,'new load has no measurements until its own producer reports');
+  facts={audio:{sampleRate:44100}};f.video.advance(12);await settle();assert.equal(f.runtime.getSnapshot().observedPlayback?.audio?.sampleRate,44100);
+  f.video.finish();await settle();assert.equal(f.runtime.getSnapshot().observedPlayback,undefined,'terminal output clears even if adapter retains old facts');
+  f.runtime.dispose();assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);
+});
+
+test('verified app-local output follows its actual local fence and clears between ordered members',async t=>{
+ const port=new ControlledLocalMedia(),f=setup(t,{}, {createPlayer:()=>port,createRender:null},localScope);
+ await f.runtime.playLocalQueue({preparation:localPreparation(),release:async()=>{}},{signal:new AbortController().signal,isCurrent:()=>true});
+ port.emit({observedPlayback:{audio:{handling:'pcm',sampleRate:48000}}});assert.equal(f.runtime.getSnapshot().observedPlayback?.audio?.sampleRate,48000);
+ const fence=f.runtime.getSnapshot().fence!;await f.runtime.next(fence);assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);
+ port.emit({observedPlayback:{}});assert.deepEqual(f.runtime.getSnapshot().observedPlayback,{});
+ port.emit({observedPlayback:{audio:{sampleRate:44100}}});assert.equal(f.runtime.getSnapshot().observedPlayback?.audio?.sampleRate,44100);
+ f.invalidate();port.emit();assert.equal(f.runtime.getSnapshot().disposed,true);assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);
+});

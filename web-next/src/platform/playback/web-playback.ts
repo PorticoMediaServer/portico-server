@@ -39,6 +39,8 @@ import {saveDeviceEqualizer} from './audio/equalizer-store';
 import type {BrowserAudioFacts} from './audio/output';
 import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
 import type {Session} from '@core/playback-v1/types.ts';
+import {parseObservedPlayback, type ObservedPlayback} from '@core/playback-v1/observed-playback.ts';
+import {sameLocalScope, type PlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
 
@@ -204,6 +206,26 @@ export class PlayerSlot implements MediaPlayer {
   }
   /** The generation the element has loaded (0: nothing). */
   get loaded(): number { return this.real && !this.held && (!this.source || !('kind' in this.source) || !!this.localReceipt) ? this.real.loaded : 0; }
+  /** Measured output belongs to the actual load, not merely a reused public generation. */
+  readObservedPlayback(fence: PlaybackFence): ObservedPlayback | undefined {
+    const source = this.source, real = this.real, epoch = this.loadEpoch, receipt = this.localReceipt;
+    const current = () => {
+      if (!source || !real || this.source !== source || this.real !== real || this.loadEpoch !== epoch || this.held
+        || source.generation !== fence.generation || this.loaded !== fence.generation || real.loaded !== fence.generation || real.settling) return false;
+      if ('kind' in source) return fence.kind === 'local' && receipt === this.localReceipt && !!receipt
+        && sameLocalScope(receipt.scope, fence.playback.scope) && receipt.sessionId === fence.sessionId && receipt.playId === fence.playId
+        && receipt.itemId === fence.itemId && receipt.entryId === fence.entryId
+        && receipt.artifact.sha256 === fence.artifact.sha256 && receipt.artifact.bytes === fence.artifact.bytes;
+      return fence.kind !== 'local' && source.sessionId === fence.sessionId;
+    };
+    try {
+      if (!current()) return;
+      const observed = real!.observe();
+      if (!current() || observed.generation !== fence.generation || !['playing', 'paused', 'buffering'].includes(observed.state)) return;
+      const facts = parseObservedPlayback(observed.observedPlayback);
+      return current() ? facts : undefined;
+    } catch { return undefined; } // Optional malformed/retired measurements never interrupt playback.
+  }
   get audioProcessing(): PlaybackMediaPort['audioProcessing'] {
     const source = this.source, real = this.real;
     if (this.held || !source || !real || !this.loaded || real.loaded !== source.generation) return undefined;

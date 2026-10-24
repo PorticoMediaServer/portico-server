@@ -651,3 +651,29 @@ test('a presentation the service was handed by the subtitle route loads, and the
   assert.equal(t.server.session(before.id)!.reports.at(-1)!.positionMs, 52_000);
   assert.equal(t.server.session(before.id)!.ended, false);
 });
+
+
+test('renderer observations require the loaded source session, generation and active state, with canonical copied fields only', () => {
+  const slot = new PlayerSlot();let loaded = 0, generation = 1, state: import('@core/playback-v1/port.ts').PlayerState = 'paused', settling = false;
+  let facts: unknown = {audio:{handling:'pcm',sampleRate:48000,channels:2},privateDevice:'not-public'};
+  let replace = false;
+  const source = {url:'/current',sessionId:'session',generation:1,mode:'direct' as const,startPositionMs:0,subtitles:[],autoplay:false};
+  const fence: import('../../packages/player-core/src/index.ts').QueuePlaybackFence = {kind:'queue',playback:{scope:{serverId:'s',authority:'local',accountId:'a',profileId:'p',controllerId:'c',controllerEpoch:'e',commandLaneId:'l'},run:1},sessionId:'session',itemId:'item',entryId:'entry',sourceId:'source',generation:1};
+  const real: PlaybackMediaPort = {get loaded(){return loaded;},get settling(){return settling;},
+    load(){loaded=0;},play(){},pause(){},seek(){},setRate(){},selectSidecarSubtitle(){},
+    observe(){if(replace){replace=false;slot.load({...source,sessionId:'new-session'});loaded=1;}return {generation,state,positionMs:0,rate:1,observedPlayback:facts as import('@core/playback-v1/observed-playback.ts').ObservedPlayback};},
+    onEvent:()=>()=>{},onNotice:()=>()=>{},unload(){},suspend(){},resume(){},dispose(){}};
+  slot.mount(real);slot.load(source);assert.equal(slot.readObservedPlayback(fence),undefined);loaded=1;
+  const first=slot.readObservedPlayback(fence)!;assert.deepEqual(first,{audio:{handling:'pcm',sampleRate:48000,channels:2}});assert.ok(Object.isFrozen(first.audio));
+  (facts as {audio:{sampleRate:number}}).audio.sampleRate=96000;assert.equal(first.audio!.sampleRate,48000,'snapshot is detached from mutable adapter state');
+  for(state of ['loading','idle','ended','error'])assert.equal(slot.readObservedPlayback(fence),undefined);
+  state='paused';generation=2;assert.equal(slot.readObservedPlayback(fence),undefined);generation=1;
+  settling=true;assert.equal(slot.readObservedPlayback(fence),undefined);settling=false;
+  slot.hold(true);assert.equal(slot.readObservedPlayback(fence),undefined);slot.hold(false);
+  facts={};assert.deepEqual(slot.readObservedPlayback(fence),{},'empty observation clears');facts=undefined;assert.equal(slot.readObservedPlayback(fence),undefined);
+  facts={audio:{sampleRate:-1}};assert.equal(slot.readObservedPlayback(fence),undefined,'malformed optional measurements are not exposed');
+  facts={audio:{sampleRate:48000}};replace=true;assert.equal(slot.readObservedPlayback(fence),undefined,'replacement inside observe retires the captured read');
+  assert.equal(slot.readObservedPlayback(fence),undefined,'old session cannot read a same-generation replacement');
+  assert.deepEqual(slot.readObservedPlayback({...fence,sessionId:'new-session'}),{audio:{sampleRate:48000}});
+  slot.unload();assert.equal(slot.readObservedPlayback({...fence,sessionId:'new-session'}),undefined);slot.dispose();
+});

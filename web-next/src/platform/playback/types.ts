@@ -4,6 +4,7 @@ import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
 import type {PlayerOffersData} from '@core/player-offers.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {V1Viewer} from '@core/playback-v1/v1-queue-player.ts';
+import type {ObservedPlayback} from '@core/playback-v1/observed-playback.ts';
 import type {PlaybackOptions, Session} from '@core/playback-v1/types.ts';
 import type {Timers} from '@core/playback-v1/sessions.ts';
 import type {SubtitlePreferences} from '@core/preference-effects.ts';
@@ -83,6 +84,8 @@ export type WebPlaybackInfoRead = Readonly<{
   isCurrent():boolean;
 }>;
 export type WebPlaybackRuntimeSnapshot = Readonly<{
+  /** Current loaded renderer measurements only; never the server's stored report or source facts. */
+  observedPlayback?: ObservedPlayback;
   /** Actual app-local receipt/queue state, never projected as a V1 session or queueView. */
   local?: WebLocalQueueSnapshot;
   nativeVideoSurfaceActive: boolean;

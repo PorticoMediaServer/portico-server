@@ -779,6 +779,24 @@ export class WebShellPlaybackRuntime {
     return playbackFence({kind: 'queue', playback: {scope: queueScope({...this.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}), run: playback.playbackRun}, sessionId: session.id, itemId: session.itemId, sourceId: offers.current.sourceId, entryId: session.queue.entryId, generation: playback.session.generation, ...(stack.showId ? {showId: stack.showId} : {}), ...(stack.seasonId ? {seasonId: stack.seasonId} : {})});
   }
 
+  private outputObservations(stack: Stack, fence: PlaybackFence | undefined) {
+    const current = () => {
+      if (!fence || !this.current(stack) || this.dock.getSnapshot().remote?.phase === 'playing') return false;
+      if (fence.kind === 'local') {
+        const local = stack.local?.controller.getSnapshot();
+        return local?.phase === 'ready' && sameFence(local.fence, fence);
+      }
+      const playback = stack.service.getSnapshot();
+      if (playback.ended || ['idle', 'ended', 'error'].includes(playback.phase)) return false;
+      const held = stack.web.session(playback.session?.id) ?? stack.queue.currentSession();
+      const session = held?.id === playback.session?.id ? held : undefined;
+      return sameFence(this.fence(stack, playback, session, this.offers(stack, playback)), fence);
+    };
+    if (!fence || !current()) return undefined;
+    const facts = stack.web.slot.readObservedPlayback(fence);
+    return current() ? facts : undefined;
+  }
+
   private syncLocal(stack: Stack): void {
     this.clearTimer(this.timer);this.timer = undefined;
     const state = stack.local?.controller.getSnapshot(), member = state?.preparation.items[state.index], title = member?.title, fence = state?.fence, observed = state?.observation;
@@ -808,7 +826,7 @@ export class WebShellPlaybackRuntime {
           playing: local.playing, expanded: stack.expanded, finished, controls, volume: observed.volume ?? 1, muted: observed.muted ?? false, rate: observed.rate, policy: null};
       }
     }
-    this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!presentation && presentation.kind === 'video' && stack.web.slot.nativeSurfaceActive,
+    this.snapshot = Object.freeze({observedPlayback: this.outputObservations(stack, fence), nativeVideoSurfaceActive: !!presentation && presentation.kind === 'video' && stack.web.slot.nativeSurfaceActive,
       authority: this.authority, sequence: ++this.sequence, playback: stack.service.getSnapshot(), dock: this.dock.getSnapshot(), fence, subject: stack.subject,
       presentation, presentations: this.presentations(presentation), local: state, queueView: null, offers: null, options: null, problem: state?.problem ?? this.runtimeProblem, disposed: false});
     this.rememberCurrent();this.trimLocalLeases();for (const listener of [...this.listeners]) listener();
@@ -901,7 +919,7 @@ export class WebShellPlaybackRuntime {
         presentation = {fence, subject: stack.subject, kind: stack.subject.kind === 'channel' ? 'video' : stack.subject.kind, posterUrl: stack.posterUrl, backdropUrl: stack.backdropUrl, durationSeconds: playback.duration, positionSeconds: local.positionSeconds, playing: local.playing, expanded: stack.expanded, finished, controls, volume: this.video?.volume ?? 1, muted: this.video?.muted ?? false, rate: speed, policy: this.policyView, ...(playback.channel && playback.linear ? {seekWindow: {startSeconds: Number(playback.linear.media.windowStartUs) / 1e6, endSeconds: Number(playback.linear.media.windowEndUs) / 1e6}} : {})};
         this.renderSubtitles(stack);
       }
-      this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!fence && stack.subject?.kind === 'video' && stack.web.slot.nativeSurfaceActive, authority: this.authority, sequence: ++this.sequence, playback, dock: this.dock.getSnapshot(), fence, subject: stack.subject, presentation, presentations: this.presentations(presentation), queueView: stack.queue.getSnapshot().view, session, offers, options: stack.options, problem: this.runtimeProblem, disposed: false});
+      this.snapshot = Object.freeze({observedPlayback: this.outputObservations(stack, fence), nativeVideoSurfaceActive: !!fence && stack.subject?.kind === 'video' && stack.web.slot.nativeSurfaceActive, authority: this.authority, sequence: ++this.sequence, playback, dock: this.dock.getSnapshot(), fence, subject: stack.subject, presentation, presentations: this.presentations(presentation), queueView: stack.queue.getSnapshot().view, session, offers, options: stack.options, problem: this.runtimeProblem, disposed: false});
       this.rememberCurrent();
       for (const listener of [...this.listeners]) listener();
       this.schedulePolicy();
