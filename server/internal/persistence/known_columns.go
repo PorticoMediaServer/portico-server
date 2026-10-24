@@ -7,8 +7,7 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `
-access_invitations.accepted_ms
+const knownSchemaColumns = `access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -4510,6 +4509,27 @@ quick_connect_v1.secret_hash
 quick_connect_v1.status
 quick_connect_v1.token_hash
 quick_connect_v1.user_hash
+reading_attribution_members.author_key
+reading_attribution_members.author_source
+reading_attribution_members.author_value
+reading_attribution_members.generation
+reading_attribution_members.item_id
+reading_attribution_members.library_id
+reading_attribution_members.number_value
+reading_attribution_members.numbered_order
+reading_attribution_members.series_id
+reading_attribution_members.series_key
+reading_attribution_members.series_source
+reading_attribution_members.series_value
+reading_attribution_members.sort_key
+reading_attribution_state.after_item
+reading_attribution_state.build_generation
+reading_attribution_state.input_generation
+reading_attribution_state.library_id
+reading_attribution_state.namespace
+reading_attribution_state.phase
+reading_attribution_state.ready_generation
+reading_attribution_state.served_ms
 reading_progress.asset_id
 reading_progress.cfi
 reading_progress.format
@@ -5431,5 +5451,4 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url
-`
+webhooks.url`

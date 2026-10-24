@@ -78,9 +78,9 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
 		return 0, err
 	}
 	type title struct {
-		id int64
+		id                  int64
 		sort, publicLibrary string
-		eligible bool
+		eligible            bool
 	}
 	var titles []title
 	var ids []int64
