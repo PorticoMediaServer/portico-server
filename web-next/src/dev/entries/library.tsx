@@ -139,6 +139,7 @@ function filmEntry(fact: FilmFact): ContentEntry {
 function collectionEntry(fact: (typeof collections)[number]): ContentEntry {
   const id = slug(fact.name), covers = films.slice(0, Math.min(4, fact.films)).map(film => `specimen-art://poster/${slug(film[0])}`);
   return Object.freeze({id: `collection-${id}`, kind: 'collection', libraryId, title: fact.name, count: fact.films, yearMin: fact.from, yearMax: fact.to,
+    ...(fact.watched === undefined ? {} : {watchedCount: fact.watched, unwatchedCount: fact.films - fact.watched}),
     origin: 'automatic', available: true, missing: false, watched: fact.watched === undefined ? false : fact.watched >= fact.films,
     addedAt: '2026-10-17T03:10:02.549Z', artworkPaths: Object.freeze(covers), backdropUrl: `specimen-art://backdrop/${id}`,
     posterUrl: `specimen-art://poster/${id}`, navigation: Object.freeze({view: 'browse' as const, category: id}),

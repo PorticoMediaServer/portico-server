@@ -86,6 +86,7 @@ export const browseMessages = {
   'next.browse.emptyAnything': 'Anything',
   'next.browse.clearFilters': 'Clear filters',
   'next.browse.try': 'Or try',
+  'next.browse.watchedOf': '{watched} of {count} watched',
   'next.browse.collectionsAutomatic': 'Portico groups films from the same series once two or more are on the server. Owners can add their own from any title’s menu.',
   'next.browse.play': 'Play {title}',
   'next.browse.resume': 'Resume {title}',

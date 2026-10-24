@@ -70,3 +70,26 @@ test('filters parse their exact option counts', async () => {
   assert.equal(nav.getSnapshot().projection!.filters[0]!.options[0]!.count, 5);
   nav.dispose();
 });
+
+test('a collection keeps exact watched tallies and absence is never zero', async () => {
+  const nav = service(async path => {
+    const data = projection(path);
+    data.sections[0].entries = [
+      {...entry('watched'), kind: 'collection', count: 2, watchedCount: 1, unwatchedCount: 1},
+      {...entry('absent'), kind: 'collection', count: 2},
+      {...entry('invalid'), kind: 'collection', count: 2, watchedCount: -1, unwatchedCount: 1.5},
+    ];
+    return data;
+  });
+  try {
+    await nav.select(route);
+    assert.equal(nav.getSnapshot().phase, 'ready');
+    const [watched, absent, invalid] = nav.getSnapshot().sections[0].entries;
+    assert.equal(watched.watchedCount, 1);
+    assert.equal(watched.unwatchedCount, 1);
+    assert.equal('watchedCount' in absent, false);
+    assert.equal('unwatchedCount' in absent, false);
+    assert.equal('watchedCount' in invalid, false);
+    assert.equal('unwatchedCount' in invalid, false);
+  } finally {nav.dispose();}
+});
