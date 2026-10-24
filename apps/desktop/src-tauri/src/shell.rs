@@ -7,11 +7,11 @@ use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::Equa
 /// Called by the Linux executable before Tauri/GTK or any application threads.
 #[cfg(target_os="linux")]
 pub fn configure_linux_webview(){
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none(){
+    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none(){
         // SAFETY: main invokes this before initializing any runtime or threads.
-        unsafe{std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER","1");}
+        unsafe{std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE","1");}
     }
-    crate::spike::record("linux-dmabuf-disabled",if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref()==Ok("1"){0}else{-1});
+    crate::spike::record("linux-compositing-disabled",if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref()==Ok("1"){0}else{-1});
 }
 
 #[cfg(target_os="linux")]
