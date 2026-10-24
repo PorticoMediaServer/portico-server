@@ -1,5 +1,7 @@
 import {defaultI18n} from '@i18n';
 import {formatBehindSec} from '@core/presentation/index.ts';
+import {sameFence, type ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import type {WebPlaybackAuthority, WebPlaybackRuntimeSnapshot} from '../../platform/playback';
 import type {LiveChromePort, LiveChromeWindow} from './live-chrome-types';
 
 const t = defaultI18n.t;
@@ -31,8 +33,16 @@ export function liveBehindLabel(seconds: number): string | undefined {
   return t('player.live.behindLive', {duration});
 }
 
-export function liveRecordLabel(programme: LiveChromePort['programme']): string {
-  return programme?.recording ? t('next.kit.recording') : t('guide.record');
+export function liveRecordLabel(programme: LiveChromePort['programme']): string | undefined {
+  const state = programme?.recording;
+  if (!state) return t('guide.record');
+  if (state === 'recording' || state === 'scheduled') return t('next.kit.recording');
+  if (state === 'conflicted') return t('dvr.state.conflicted');
+  if (state === 'waiting-source') return t('dvr.state.waitingSource');
+  if (state === 'waiting-guide') return t('dvr.state.waitingGuide');
+  if (state === 'preparing') return t('dvr.state.preparing');
+  if (state === 'finalizing') return t('dvr.state.finalizing');
+  return undefined;
 }
 
 export function liveNeighbour(port: LiveChromePort, direction: -1 | 1) {
@@ -42,4 +52,25 @@ export function liveNeighbour(port: LiveChromePort, direction: -1 | 1) {
 /** The next programme line is the session's actual next airing, never a title guessed from the guide page. */
 export function liveNextLine(port: LiveChromePort): string | undefined {
   return port.nextProgramme ? t('next.live.then', {title: port.nextProgramme.title}) : undefined;
+}
+
+
+/** The wall-clock rail is display only. The channel service takes stream-relative seconds,
+ * measured from the exact media origin captured with this window. */
+export function liveSeekSeconds(window: LiveChromeWindow, wallClockMs: number): number {
+  return (wallClockMs - window.mediaOriginMs) / 1000;
+}
+
+/** Both the retained screen authority and this exact channel fence must still be live. */
+export function liveNavigationAllowed(screenCurrent: boolean, portCurrent: boolean): boolean {
+  return screenCurrent && portCurrent;
+}
+
+/** The runtime snapshot still holds this exact channel fence, authority, source generation
+ * and channel association. A replacement or a source generation change is never current. */
+export function liveChannelCurrent(fence: ChannelPlaybackFence, authority: WebPlaybackAuthority, live: WebPlaybackRuntimeSnapshot): boolean {
+  if (live.disposed || live.authority !== authority || !live.fence || live.fence.kind !== 'channel' || !sameFence(live.fence, fence)) return false;
+  const channel = live.playback.channel;
+  return !!channel && channel.kind === fence.channelKind && channel.sourceId === fence.sourceId && channel.channelId === fence.channelId
+    && channel.generation === fence.channelGeneration && live.playback.linear?.channel.generation === fence.channelGeneration;
 }

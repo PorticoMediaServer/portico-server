@@ -1,4 +1,5 @@
 import type {ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import type {RecordingState} from '@core/dvr.ts';
 
 /** The narrow facts the drawn Live chrome needs. Everything here is a genuine guide or
  * channel-session fact: a missing optional fact leaves its drawn element out, never guessed. */
@@ -22,14 +23,16 @@ export type LiveChromeProgramme = Readonly<{
   episode?: Readonly<{season?: number; number?: number; display?: string}>;
   startMs: number;
   endMs: number;
-  /** The guide's own one-off recording fact for this airing. */
-  recording?: 'recording' | 'scheduled';
+  /** The real DVR state for this airing's one-off recording, when the server has one. */
+  recording?: RecordingState;
 }>;
 
 export type LiveChromeWindow = Readonly<{
   /** Absent when the session has no programme facts; never inferred from the media window. */
   programmeStartMs?: number;
   programmeEndMs?: number;
+  /** The exact wall-clock origin the media window's relative seconds are measured from. */
+  mediaOriginMs: number;
   /** The actual retained stream window, not the programme's wall-clock span. */
   seekStartMs: number;
   seekEndMs: number;

@@ -32,7 +32,7 @@ const rows = [
 ];
 const port: LiveChromePort = {fence: {} as never, channel: sse, programme: current,
   nextProgramme: {title: 'Cycling: Mountain Stage', startMs: at(17, 0), endMs: at(17, 30)},
-  window: {programmeStartMs: at(14, 0), programmeEndMs: at(17, 0), seekStartMs: at(15, 35), seekEndMs: now, liveEdgeMs: now,
+  window: {mediaOriginMs: at(15, 35), programmeStartMs: at(14, 0), programmeEndMs: at(17, 0), seekStartMs: at(15, 35), seekEndMs: now, liveEdgeMs: now,
     positionMs: at(16, 3), behindSeconds: 120, atLive: false},
   down: rows[0], up: rows[2], miniGuide: rows, skipBackSeconds: 10, skipForwardSeconds: 30,
   isCurrent: () => true, record: async () => {}, goLive: async () => {}, tune: async () => {}, tuneTo: async () => {},

@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {ChannelMark} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Icon, type IconName} from '../../kit/Icon';
-import {liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveTimeRange} from './live-chrome-model';
+import {liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveSeekSeconds, liveTimeRange} from './live-chrome-model';
 import type {LiveChromePort} from './live-chrome-types';
 import styles from './live-chrome.module.css';
 
@@ -46,6 +46,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
   const displayWindow = scrub === undefined ? window : {...window, positionMs: scrub};
   const railFacts = liveRail(displayWindow), behindSeconds = Math.max(0, (window.liveEdgeMs - displayWindow.positionMs) / 1000);
   const behind = liveBehindLabel(behindSeconds), next = liveNextLine(port), range = programme ? liveTimeRange(programme.startMs, programme.endMs, time) : undefined;
+  const recordLabel = liveRecordLabel(programme);
   const openGuide = (value: boolean) => { setMiniGuide(value); onMiniGuideOpenChange?.(value); };
   useEffect(() => { if (!miniGuide) return; const rows = guide.current?.querySelectorAll<HTMLButtonElement>('[data-mini-row]'); if (rows?.length) (rows[Math.min(2, rows.length - 1)] ?? rows[0])?.focus(); }, [miniGuide]);
   const run = (work: () => void) => { if (port.isCurrent()) work(); };
@@ -68,11 +69,11 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
   const railKeys = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!port.isCurrent()) return;
     const bounds = [window.seekStartMs, window.liveEdgeMs];
-    const step = (seconds: number) => Math.min(bounds[1], Math.max(bounds[0], window.positionMs + seconds * 1000)) / 1000;
+    const step = (seconds: number) => Math.min(bounds[1], Math.max(bounds[0], window.positionMs + seconds * 1000));
     const amount = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -10 : event.key === 'ArrowRight' || event.key === 'ArrowUp' ? 10
       : event.key === 'PageDown' ? -60 : event.key === 'PageUp' ? 60 : undefined;
-    const target = event.key === 'Home' ? bounds[0] / 1000 : event.key === 'End' ? bounds[1] / 1000 : amount === undefined ? undefined : step(amount);
-    if (target !== undefined) {event.preventDefault();onSeek(target);}
+    const target = event.key === 'Home' ? bounds[0] : event.key === 'End' ? bounds[1] : amount === undefined ? undefined : step(amount);
+    if (target !== undefined) {event.preventDefault();onSeek(liveSeekSeconds(window, target));}
   };
   const guideKeys = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {event.preventDefault();openGuide(false);return;}
@@ -93,7 +94,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         {(range || next) && <p>{range}{range && next && <i className={styles.gap}/>}{next}</p>}
       </div>
       <div className={styles.tools}>
-        {channel.recordAvailable && programme && <Button className={styles.record} variant="glass" size="small" icon="i-rec" disabled={recordingBusy} onClick={record}>{liveRecordLabel(programme)}</Button>}
+        {channel.recordAvailable && programme && recordLabel && <Button className={styles.record} variant="glass" size="small" icon="i-rec" disabled={recordingBusy} onClick={record}>{recordLabel}</Button>}
         <button type="button" className={styles.control} aria-label={t('player.more')} title={t('player.more')} onClick={event => onMore(event.currentTarget)}><Icon name="i-more" size={24}/></button>
         <LiveControl icon="i-close" label={t('player.close')} onClick={onStop}/>
       </div>
@@ -122,11 +123,11 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
     <div className={styles.bottom}>
       <div className={styles.seek}>
         <div ref={rail} className={styles.rail} role="slider" aria-label={t('player.position')}
-          aria-valuemin={Math.round(window.seekStartMs / 1000)} aria-valuemax={Math.round(window.liveEdgeMs / 1000)} aria-valuenow={Math.round(displayWindow.positionMs / 1000)}
+          aria-valuemin={Math.round(liveSeekSeconds(window, window.seekStartMs))} aria-valuemax={Math.round(liveSeekSeconds(window, window.liveEdgeMs))} aria-valuenow={Math.round(liveSeekSeconds(window, displayWindow.positionMs))}
           aria-disabled={!canSeek || undefined} tabIndex={canSeek ? 0 : -1} aria-valuetext={`${time(displayWindow.positionMs)}${behind ? `, ${behind}` : ''}`} onKeyDown={railKeys}
           onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = true;event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
           onPointerMove={event => {if (drag.current) seekAt(event.clientX);}}
-          onPointerUp={event => {if (!drag.current) return;drag.current = false;if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);if (scrub !== undefined && port.isCurrent()) onSeek(scrub / 1000);setScrub(undefined);}}
+          onPointerUp={event => {if (!drag.current) return;drag.current = false;if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);if (scrub !== undefined && port.isCurrent()) onSeek(liveSeekSeconds(window, scrub));setScrub(undefined);}}
           onPointerCancel={() => {drag.current = false;setScrub(undefined);}}>
           <i className={styles.gone} style={{width: `${railFacts.gone}%`}}/>
           <i className={styles.buffer} style={{left: `${railFacts.gone}%`, width: `${railFacts.buffer}%`}}/>

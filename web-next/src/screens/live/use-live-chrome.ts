@@ -1,21 +1,24 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
-import {DVRClient, defaultRecordingOptions, type RecordingState} from '@core/dvr.ts';
+import {DVRClient, defaultRecordingOptions, type Recording} from '@core/dvr.ts';
 import {channelTimeline} from '@core/playback/channel-timeline.ts';
 import {legacyChannel, legacyChannelRow, legacyGuideSource, legacyProgramme, type GuideChannelRow} from '@core/guide/index.ts';
 import type {GuideChannel, GuideProgramme} from '@core/channel-guide.ts';
-import {sameFence, type ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import type {ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../platform/playback';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {router} from '../../router';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createLiveBindings} from './bindings';
+import {liveChannelCurrent, liveNavigationAllowed} from './live-chrome-model';
 import type {LiveChromeChannel, LiveChromeGuideChannel, LiveChromeGuideTarget, LiveChromePort, LiveChromeProgramme} from './live-chrome-types';
 
 const randomHex = async () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
+const recordingStates: ReadonlySet<string> = new Set(['scheduled', 'conflicted', 'waiting-source', 'waiting-guide', 'preparing', 'recording', 'finalizing', 'completed', 'incomplete-playable', 'failed', 'cancelled', 'pending-delete', 'deleted']);
+const recordingActionable: ReadonlySet<string> = new Set(['scheduled', 'conflicted', 'waiting-source', 'waiting-guide', 'recording', 'preparing', 'finalizing']);
 const recordingState = (programme: GuideProgramme | undefined): LiveChromeProgramme['recording'] => {
-  if (!programme?.recordingId) return undefined;
-  return programme.recordingState === 'recording' ? 'recording' : 'scheduled';
+  if (!programme?.recordingId || !recordingStates.has(programme.recordingState)) return undefined;
+  return programme.recordingState as LiveChromeProgramme['recording'];
 };
 const asChromeChannel = (channel: GuideChannel): LiveChromeChannel => ({id: channel.id, sourceId: channel.sourceId, kind: channel.provenance,
   generation: channel.generation, number: channel.number, name: channel.name, ...(channel.mark ? {mark: {text: channel.mark.text, seed: channel.mark.seed}} : {}),
@@ -58,7 +61,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const client = useMemo(() => life && screen ? new DVRClient(life.api, screen.scope.serverId, randomHex) : undefined, [life, screen]);
   useEffect(() => () => {client?.dispose();life?.dispose();}, [client, life]);
   const [facts, setFacts] = useState<GuideFacts>();
-  const [recorded, setRecorded] = useState<Readonly<{programmeId: string; state: 'recording' | 'scheduled'}>>();
+  const [recorded, setRecorded] = useState<Readonly<{programmeId: string; recording: Recording}>>();
   const [refresh, setRefresh] = useState(0);
   const input = useRef({fence, channelRef});input.current = {fence, channelRef};
   useEffect(() => { setRecorded(undefined); }, [fenceKey]);
@@ -103,10 +106,11 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const currentGuideProgramme = !!facts && facts.fenceKey === fenceKey ? facts.programmes.get(fence.channelId) : undefined;
   const guideProgramme = !!facts && facts.fenceKey === fenceKey && linear.programme
     ? (currentGuideProgramme?.id === linear.programme.id ? currentGuideProgramme : facts.current.programmes.find(programme => programme.id === linear.programme!.id)) : undefined;
-  const authoritative: LiveChromeChannel = channel && currentGuide ? {...channel, recordAvailable: channel.recordAvailable && !!guideProgramme} : {id: fence.channelId, sourceId: linear.channel.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
+  const recordKnown = !guideProgramme?.recordingId || recordingActionable.has(guideProgramme.recordingState);
+  const authoritative: LiveChromeChannel = channel && currentGuide ? {...channel, recordAvailable: channel.recordAvailable && !!guideProgramme && recordKnown} : {id: fence.channelId, sourceId: linear.channel.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
     number: '', name: linear.name, favorite: false, recordAvailable: false, tuneAvailable: true};
   const factsRecording = recordingState(guideProgramme);
-  const localRecording = recorded && recorded.programmeId === linear.programme?.id ? recorded.state : undefined;
+  const localRecording = recorded && recorded.programmeId === linear.programme?.id ? recorded.recording.state : undefined;
   const currentRecording = factsRecording ?? localRecording;
   const programme: LiveChromeProgramme | undefined = linear.programme ? {id: linear.programme.id, title: linear.programme.title,
     startMs: linear.programme.startMs, endMs: linear.programme.endMs, ...(currentRecording ? {recording: currentRecording} : {})} : undefined;
@@ -120,14 +124,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const down = downRow ? asMini(downRow, facts!.programmes.get(downRow.id)) : undefined;
   const up = upRow ? asMini(upRow, facts!.programmes.get(upRow.id)) : undefined;
   const currentFence = fence, authority = snapshot.authority;
-  const isCurrent = () => {
-    const live = runtime.getSnapshot();
-    if (live.disposed || live.authority !== authority || !live.fence || !sameFence(live.fence, currentFence) || live.fence.kind !== 'channel') return false;
-    const active = live.playback.channel;
-    return !!active && active.kind === currentFence.channelKind && active.sourceId === currentFence.sourceId
-      && active.channelId === currentFence.channelId && active.generation === currentFence.channelGeneration
-      && live.playback.linear?.channel.generation === currentFence.channelGeneration;
-  };
+  const isCurrent = () => liveChannelCurrent(currentFence, authority, runtime.getSnapshot());
   const guideTarget = (target: LiveChromeGuideTarget): GuideChannel | undefined => {
     const row = facts?.rows.find(item => item.id === target.channelId && item.sourceId === target.sourceId);
     const raw = row ? legacyChannel(row) : undefined;
@@ -144,19 +141,24 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const record = async (): Promise<void> => {
     const guideChannel = facts?.current;
     if (!isCurrent() || !client || !guideProgramme || !guideChannel) return;
+    const local = recorded?.programmeId === guideProgramme.id ? recorded.recording : undefined;
     if (guideProgramme.recordingId) {
+      if (!recordingActionable.has(guideProgramme.recordingState)) return;
       const detail = await client.detail(guideProgramme.recordingId);
       if (!isCurrent()) return;
       await client.cancel(detail.recording);
       if (!isCurrent()) return;
       setRecorded(undefined);setRefresh(value => value + 1);return;
     }
+    if (local) {
+      if (!recordingActionable.has(local.state)) return;
+      await client.cancel(local);
+      if (!isCurrent()) return;
+      setRecorded(undefined);setRefresh(value => value + 1);return;
+    }
     const scheduled = await client.schedule({channel: guideChannel, programme: guideProgramme, series: false}, defaultRecordingOptions);
     if (!isCurrent()) return;
-    const state: RecordingState = scheduled.state;
-    if (['recording', 'preparing', 'scheduled', 'conflicted', 'waiting-source', 'waiting-guide'].includes(state)) {
-      setRecorded({programmeId: guideProgramme.id, state: state === 'recording' || state === 'preparing' ? 'recording' : 'scheduled'});
-    }
+    setRecorded({programmeId: guideProgramme.id, recording: scheduled});
     setRefresh(value => value + 1);
   };
   const goLive = async (): Promise<void> => { if (isCurrent()) runtime.goLive(currentFence); };
@@ -164,14 +166,14 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
     fence: currentFence, channel: authoritative, ...(programme ? {programme} : {}),
     ...(linear.next ? {nextProgramme: {title: linear.next.title, startMs: linear.next.startMs, endMs: linear.next.endMs}} : {}),
     window: {...(linear.programme ? {programmeStartMs: linear.programme.startMs, programmeEndMs: linear.programme.endMs} : {}),
-      seekStartMs: origin + timeline.start * 1000, seekEndMs: origin + timeline.end * 1000, liveEdgeMs: origin + timeline.edge * 1000,
+      mediaOriginMs: origin, seekStartMs: origin + timeline.start * 1000, seekEndMs: origin + timeline.end * 1000, liveEdgeMs: origin + timeline.edge * 1000,
       positionMs: origin + position * 1000, behindSeconds: timeline.behind, atLive: timeline.behind <= 2},
     ...(down ? {down} : {}), ...(up ? {up} : {}), miniGuide, skipBackSeconds: skips.back, skipForwardSeconds: skips.forward,
     isCurrent, record, goLive,
     tune: async direction => { const row = direction === -1 ? down : up; if (row) await tuneTarget(guideRowTarget(row)); },
     tuneTo: tuneTarget,
-    openFullGuide: () => { if (screen.isCurrent()) void router.navigate({to: '/live', search: {tab: 'guide'}}).catch(() => {}); },
-    openRecordings: () => { if (screen.isCurrent()) void router.navigate({to: '/live', search: {tab: 'recordings', dvr: 'upcoming'}}).catch(() => {}); },
+    openFullGuide: () => { if (liveNavigationAllowed(screen.isCurrent(), isCurrent())) void router.navigate({to: '/live', search: {tab: 'guide'}}).catch(() => {}); },
+    openRecordings: () => { if (liveNavigationAllowed(screen.isCurrent(), isCurrent())) void router.navigate({to: '/live', search: {tab: 'recordings', dvr: 'upcoming'}}).catch(() => {}); },
   };
   return port;
 }
