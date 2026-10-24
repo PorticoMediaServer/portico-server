@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/metadataprovider"
 )
 
@@ -179,6 +180,34 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 		origin := "local:" + v.key
 		if err = seedArtworkCandidate(ctx, tx, t, v.role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
 			return err
+		}
+	}
+	return seedLocalArtworkAlternatives(ctx, tx, t, entity, fence, now)
+}
+
+// localArtworkCandidatePage bounds the numbered images one dirty entity adds to
+// a slot; the scan's own candidate set is bounded already.
+const localArtworkCandidatePage = 8
+
+// seedLocalArtworkAlternatives seeds the numbered sidecar images the scan
+// accepted for a head's slot (inventory_artwork_candidates), after the primary
+// local_artwork images above. The primary, an owner lock or a pending local job
+// already holds the slot, so an alternative only queues a fetch when nothing
+// else does — it never replaces a choice.
+func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, fence, now string) error {
+	if t.Kind != "item" && t.Kind != "show" && t.Kind != "season" {
+		return nil
+	}
+	for _, role := range []string{"poster", "backdrop", "logo"} {
+		keys, err := catalog.ReadLocalArtworkCandidatesTx(ctx, tx, t.Kind, entity, role, "", localArtworkCandidatePage)
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			origin := "local:" + key
+			if err = seedArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
