@@ -160,4 +160,13 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));cancelled.store(true,Ordering::Release);
         assert_eq!(worker.join().unwrap(),Err(BrowseError::Cancelled));assert!(started.elapsed()<Duration::from_secs(3));
     }
+    #[test]
+    #[ignore="explicit private runner DNS-SD fixture; candidate only, no server endpoint or trust claim"]
+    fn actual_dns_sd_publisher_is_observed_as_an_untrusted_candidate(){
+        let publisher=Daemon(ServiceDaemon::new_with_port(15354).unwrap());
+        publisher.0.register(service(10443)).unwrap();
+        let rows=browse(&AtomicBool::new(false),15354).unwrap();
+        assert_eq!(rows.len(),1);assert_eq!(rows[0].base_url,"https://192.168.77.8:10443");
+        assert!(rows[0].expires_at>now().unwrap());
+    }
 }
