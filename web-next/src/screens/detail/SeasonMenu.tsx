@@ -23,7 +23,7 @@ export function SeasonMenu({open, onOpenChange, label, seasons, selectedId, tota
   onJump: (number: number) => Promise<boolean>;
 }>) {
   const [query, setQuery] = useState('');
-  const firstRow = useRef<HTMLButtonElement>(null), jump = useRef<HTMLInputElement>(null);
+  const firstRow = useRef<HTMLButtonElement>(null), jump = useRef<HTMLInputElement>(null), list = useRef<HTMLDivElement>(null);
   useEffect(() => { if (!open) setQuery(''); }, [open]);
   const submit = async () => {
     const number = Number(query);
@@ -39,7 +39,14 @@ export function SeasonMenu({open, onOpenChange, label, seasons, selectedId, tota
           trailing={<span>{t('next.detail.seasonNumberRange', {first: 1, last: totalCount})}</span>} />
       </form>}
     </header>
-    <div className={styles.seasonList} role="listbox" aria-label={t('title.seasonMenu')}>
+    <div ref={list} className={styles.seasonList} role="listbox" aria-label={t('title.seasonMenu')} onKeyDown={event => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      const rows = [...(list.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? [])];
+      if (!rows.length) return;
+      const index = rows.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : index < 0 ? 0 : (index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+      event.preventDefault(); rows[next]?.focus();
+    }}>
       {seasons.map((season, index) => {
         const progress = seasonProgress(season.watchedCount, season.unwatchedCount);
         const complete = !!progress && progress.total > 0 && progress.watched >= progress.total;
