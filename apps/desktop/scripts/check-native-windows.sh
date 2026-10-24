@@ -13,6 +13,10 @@ import shutil
 memory=int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:')))*1024
 if memory<4*1024**3 or shutil.disk_usage('.').free<28*1024**3:raise SystemExit(75)
 PRECHECK
+# The committed PNG is the source; generate the required Windows resource format
+# with the already pinned Tauri CLI, without modifying any source pixels/styles.
+node apps/desktop/node_modules/@tauri-apps/cli/tauri.js icon apps/desktop/src-tauri/icons/icon.png --output "$TMPDIR/windows-icons"
+cp "$TMPDIR/windows-icons/icon.ico" apps/desktop/src-tauri/icons/icon.ico
 docker build --network=host --label portico=desktop-r29 --tag "$image" --file apps/desktop/test/native-windows-check.Dockerfile .
 mkdir -p "$TMPDIR/windows-check/home"
 docker_user=(--user "$(id -u):$(id -g)")
