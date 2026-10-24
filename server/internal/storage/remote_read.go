@@ -24,9 +24,24 @@ func (c *Client) readRemoteBlob(ctx context.Context, path string, limit, maximum
 		return nil, err
 	}
 	if input != nil {
-		if _, err = c.InventoryStat(ctx, input.source, req); err != nil {
+		reader, ok := c.Remote.(RemoteInventoryBlobReader)
+		if !ok || input.client != c || input.blob == nil {
+			return nil, ErrRemoteConfig
+		}
+		raw, err := reader.ReadInventoryBlob(ctx, input.source, req, *input.blob, limit)
+		if err != nil {
+			clear(raw)
 			return nil, err
 		}
+		if int64(len(raw)) > limit {
+			clear(raw)
+			return nil, ErrRemoteLimit
+		}
+		if err = CheckScanRead(ctx, path); err != nil {
+			clear(raw)
+			return nil, err
+		}
+		return raw, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
