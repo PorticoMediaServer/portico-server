@@ -11,6 +11,7 @@
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:http';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {extname, join, resolve} from 'node:path';
 import {randomBytes, randomUUID} from 'node:crypto';
 import net from 'node:net';
@@ -18,7 +19,7 @@ import net from 'node:net';
 const output = process.env.PORTICO_RUNNER_OUTPUT;
 const secondary = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
 const binary = process.env.PORTICO_SERVER_BIN;
-const chromium = process.env.PORTICO_CHROMIUM || '/usr/bin/chromium';
+const chromium = process.env.PORTICO_CHROMIUM || ['/usr/bin/chromium', '/snap/bin/chromium', '/usr/bin/google-chrome'].find(existsSync);
 if (!output || !secondary || !binary) throw new Error('PORTICO_RUNNER_OUTPUT, PORTICO_RUNNER_SECONDARY_SOURCE and PORTICO_SERVER_BIN are required');
 const root = process.cwd();
 const design = resolve(secondary, 'design/ui-v1');

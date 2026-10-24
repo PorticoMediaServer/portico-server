@@ -23,8 +23,7 @@ if [ "$mode" = capture ]; then
   npm exec -w web-next -- vite build --logLevel warn
   mkdir -p dist
   (cd server && GOTOOLCHAIN=go1.26.10 CGO_ENABLED=0 go build -trimpath -o "$OLDPWD/dist/portico-server" ./cmd/server)
-  PORTICO_CHROMIUM="${PORTICO_CHROMIUM:-/usr/bin/chromium}" PORTICO_SERVER_BIN="$PWD/dist/portico-server" \
-    node web-next/src/screens/settings/ds-web-settings-r46-capture.mjs
+  PORTICO_SERVER_BIN="$PWD/dist/portico-server" node web-next/src/screens/settings/ds-web-settings-r46-capture.mjs
   exit 0
 fi
 cd web-next
