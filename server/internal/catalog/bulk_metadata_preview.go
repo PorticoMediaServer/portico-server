@@ -118,11 +118,16 @@ func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Vie
 			compiler.kinds = append(compiler.kinds, int(kind))
 		}
 	}
+	readingEligible, err := s.bindReadingBrowse(q.LibraryID, compiler)
+	if err != nil {
+		return out, err
+	}
 	filter, err := compiler.compile(node)
 	if err != nil {
 		return out, err
 	}
 	where, args := browseScopeSQL(q.LibraryID, pivot)
+	where += " AND " + readingEligible
 	visible, bound := v.entityVisibilitySQL("e.entity_id", "l.library_id")
 	out.SQL = `SELECT e.entity_id AS id FROM catalog_browse_rows e JOIN catalog_libraries l ON l.id=e.library_id WHERE ` + where + ` AND ` + filter + ` AND ` + visible
 	out.Args = append(args, compiler.args...)
