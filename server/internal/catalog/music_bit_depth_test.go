@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -49,7 +50,7 @@ func assertMusicDepthReaders(t *testing.T, s *Service, item string, depth int) {
 		t.Fatal(err)
 	}
 	page := items[item].AudioFacts
-	if page == nil || *page != *single {
+	if page == nil || !reflect.DeepEqual(page, single) {
 		t.Fatal("page music facts differ", page, single)
 	}
 	raw, err := json.Marshal(single)
