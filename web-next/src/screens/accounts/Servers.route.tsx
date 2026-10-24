@@ -100,7 +100,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
         </div>
         <h2>{title}</h2>
         {body && <p>{body}</p>}
-        {state === 'waiting' && <div className={styles.alive}><CountdownRing progress={attempt.kind === 'waiting' ? attempt.seconds / Math.max(1, attempt.total) : null} /><span>{t('next.states.retrying')}</span></div>}
+        {state === 'waiting' && <div className={styles.alive}><CountdownRing progress={attempt.kind === 'waiting' ? attempt.seconds / Math.max(1, attempt.total) : null} /><span>{t('next.states.retryIn', {seconds: attempt.kind === 'waiting' ? attempt.seconds : 0})}</span></div>}
         <div className={styles.stateActions}>
           {primaryLabel && <Button variant="primary" className={styles.stateButton} icon={state === 'unreachable' || state === 'loadFailed' ? 'i-retry' : undefined} onClick={onPrimary}>{primaryLabel}</Button>}
           {state === 'waiting' || state === 'unreachable' ? <Button variant="glass" className={styles.stateButton} onClick={onOther}>{t('web.chooser.otherServer')}</Button>
@@ -129,7 +129,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
           </button>;
         })}
       </div>
-      <Button variant="glass" icon="i-refresh" className={styles.refresh} loading={busy} onClick={onRefresh} disabled={busy}>{t('accounts.servers.refresh')}</Button>
+      <Button variant="glass" icon="i-refresh" iconSize={18} className={styles.refresh} loading={busy} onClick={onRefresh} disabled={busy}>{t('accounts.servers.refresh')}</Button>
       <div className={styles.links}>
         {showPortico && onDifferentAccount && <button type="button" disabled={busy} onClick={onDifferentAccount}>{t('accounts.move.differentAccount')}</button>}
         <button type="button" disabled={busy} onClick={onLocal}>{t('accounts.signIn.local')}</button>

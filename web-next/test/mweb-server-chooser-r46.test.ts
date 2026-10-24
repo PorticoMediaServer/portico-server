@@ -60,7 +60,7 @@ test('frame 6b is the real waiting state with a countdown ring and the two recov
   const html = attempt({kind: 'waiting', row: rows[1]!, seconds: 20, total: 20});
   assert.match(html, /Waiting for The cottage/);
   assert.match(html, /Portico will connect automatically when it’s back\./);
-  assert.match(html, /Trying again/);
+  assert.match(html, /Trying again in 20 seconds/);
   assert.match(html, /data-progress="1"/);
   assert.match(html, /Check now/);
   assert.match(html, /Choose another server/);

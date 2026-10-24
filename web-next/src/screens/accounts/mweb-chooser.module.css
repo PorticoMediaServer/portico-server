@@ -49,7 +49,7 @@
 .state p { margin: 0 0 24px; font-size: var(--type-body-size); line-height: var(--mweb-state-body-line); color: var(--color-text-secondary); text-wrap: pretty; }
 .alive { display: flex; align-items: center; gap: 12px; margin: -6px 0 20px; color: var(--color-text); font-size: var(--type-caption-size); font-weight: var(--type-nav-weight); }
 .alive span { color: var(--color-text-tertiary); }
-.stateActions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.stateButton { width: 100%; height: 48px; border-radius: 11px; font-size: calc(var(--type-button-size) + 1px); }
+.stateActions { display: flex; flex-direction: column; width: 100%; }
+.stateButton { width: 100%; height: 48px; margin-bottom: 10px; border-radius: 11px; font-size: calc(var(--type-button-size) + 1px); }
 .otherLink { margin: 2px auto 0; font-size: calc(var(--type-body-size) - .5px); color: var(--color-text-tertiary); }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; border-top-color: color-mix(in srgb, var(--color-text) 16%, transparent); } }
