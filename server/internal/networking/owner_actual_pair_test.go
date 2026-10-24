@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"portico.local/server/internal/authoritygate"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/claimweb"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/hosted"
 	trust "portico.local/server/internal/hostedtrust"
 	"portico.local/server/internal/httpapi"
@@ -48,6 +50,7 @@ type ownerPairBridge struct {
 	in                                    io.WriteCloser
 	out                                   *bufio.Scanner
 	mu                                    sync.Mutex
+	afterHTTP                             func(*http.Request, ownerPairReply) error
 	approved                              chan struct{}
 	Root, AccountID, OwnerToken, Audience string
 }
@@ -153,6 +156,12 @@ func (b *ownerPairBridge) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, errors.New("invalid pair HTTP request")
 	}
 	out := b.call(map[string]any{"Action": "http", "Method": r.Method, "Path": r.URL.RequestURI(), "Headers": r.Header, "Body": json.RawMessage(raw)})
+	if b.afterHTTP != nil {
+		if err := b.afterHTTP(r, out); err != nil {
+			clear(out.Body)
+			return nil, err
+		}
+	}
 	payload := out.Body
 	if out.BodyEmpty {
 		payload = nil
@@ -189,6 +198,16 @@ func TestOwnerPairRefusalProbesUseRegisteredAccountRoutes(t *testing.T) {
 }
 
 func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testing.T) {
+	runActualOwnerContinuation(t, "success")
+}
+
+func TestActualOwnerContinuationPreinstallDenialReconcilesGenuineHostedCommit(t *testing.T) {
+	for _, mode := range []string{"expiry-after-finalize", "signout-after-finalize", "lost-finalize-after-signout", "lost-result-after-signout"} {
+		t.Run(mode, func(t *testing.T) { runActualOwnerContinuation(t, mode) })
+	}
+}
+
+func runActualOwnerContinuation(t *testing.T, mode string) {
 	b := newOwnerPairBridge(t)
 	initial := b.call(map[string]string{"Action": "snapshot"})
 	var empty struct {
@@ -325,6 +344,83 @@ func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testin
 	if status.Operation == nil {
 		t.Fatal("actual claim operation absent")
 	}
+	operation := status.Operation.OperationID
+	var faulted atomic.Bool
+	faultDone := make(chan struct{})
+	var faultMu sync.Mutex
+	var armedPayload, armedSignature, cancelReceipt []byte
+	var lateIntent networking.Intent
+	var lateResult networking.Result
+	t.Cleanup(func() {
+		if lateResult.Credential != nil {
+			lateResult.Credential.Clear()
+		}
+		clear(armedPayload)
+		clear(armedSignature)
+		clear(cancelReceipt)
+	})
+	if mode != "success" {
+		// Install the hook before web approval starts a background watch. It
+		// observes an actual handler reply; it never fabricates approval,
+		// commit, result, credential or cancellation response bytes.
+		b.afterHTTP = func(r *http.Request, out ownerPairReply) error {
+			if r.URL.Path == "/v1/server-claims/cancel" && out.Status == 200 {
+				faultMu.Lock()
+				cancelReceipt = append([]byte(nil), out.Body...)
+				faultMu.Unlock()
+			}
+			target := "/v1/server-claims/finalize"
+			if mode == "lost-result-after-signout" {
+				target = "/v1/server-claims/result"
+			}
+			if r.URL.Path != target || out.Status != 200 || !faulted.CompareAndSwap(false, true) {
+				return nil
+			}
+			defer close(faultDone)
+			if err := db.QueryRow(`SELECT payload,signature FROM networking_claim_cancellations WHERE operation_id=? AND mode='intent' AND claim_generation='' AND state='pending'`, operation).Scan(&armedPayload, &armedSignature); err != nil {
+				t.Fatal("positive request preceded durable original-key cancellation")
+			}
+			if mode == "lost-result-after-signout" {
+				var result struct {
+					OperationID          string `json:"operationId"`
+					ServerID             string `json:"serverId"`
+					ClaimGeneration      string `json:"claimGeneration"`
+					CredentialGeneration string `json:"credentialGeneration"`
+					ServerCredential     string `json:"serverCredential"`
+				}
+				if json.Unmarshal(out.Body, &result) != nil || result.OperationID != operation {
+					t.Fatal("actual result capture failed")
+				}
+				lateIntent, err = store.Load(r.Context(), operation)
+				if err != nil {
+					t.Fatal("actual retrieving intent unavailable")
+				}
+				secret, e := networking.NewSecret([]byte(result.ServerCredential))
+				result.ServerCredential = ""
+				if e != nil {
+					t.Fatal("actual result credential unavailable")
+				}
+				lateResult = networking.Result{Commit: networking.Commit{OperationID: result.OperationID, ServerID: result.ServerID, ClaimGeneration: result.ClaimGeneration, CredentialGeneration: result.CredentialGeneration}, Credential: secret}
+			}
+			if mode == "expiry-after-finalize" {
+				// A controlled local deadline withdrawal between the genuine
+				// central commit and local install. Original signed bytes and
+				// Hosted time/authority remain untouched; no five-minute sleep.
+				if e := dbwork.WithWriteTx(ctx, db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+					_, e := tx.ExecContext(ctx, `UPDATE identity_owner_completions SET expires_ms=created_ms+1 WHERE operation_id=? AND phase='prepared'`, operation)
+					return e
+				}); e != nil {
+					t.Fatal("local deadline withdrawal failed")
+				}
+			} else if w := request("DELETE", "/v1/sessions/current", nil); w.Code != http.StatusNoContent {
+				t.Fatalf("actual initiating family signout status=%d", w.Code)
+			}
+			if strings.HasPrefix(mode, "lost-") {
+				return io.ErrUnexpectedEOF
+			}
+			return nil
+		}
+	}
 	stateBytes, verifierBytes := sha256.Sum256([]byte(identity.Token())), sha256.Sum256([]byte(identity.Token()))
 	stateValue, pkce := base64.RawURLEncoding.EncodeToString(stateBytes[:]), base64.RawURLEncoding.EncodeToString(verifierBytes[:])
 	challenge := sha256.Sum256([]byte(pkce))
@@ -342,7 +438,97 @@ func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testin
 		t.Fatalf("actual approval status=%d", approved.Status)
 	}
 	close(b.approved)
-	read(request("POST", "/v1/networking/claim/await-approval", map[string]any{"expected": status.Operation}), &status)
+	awaited := request("POST", "/v1/networking/claim/await-approval", map[string]any{"expected": status.Operation})
+	if mode != "success" {
+		if !faulted.Load() {
+			t.Fatal("denial did not cross actual Hosted commit/result boundary")
+		}
+		select {
+		case <-faultDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("controlled denial did not finish")
+		}
+		var stage string
+		if err := db.QueryRow(`SELECT stage FROM networking_claim_intents WHERE operation_id=?`, operation).Scan(&stage); err != nil {
+			t.Fatal("local claim phase unavailable")
+		}
+		if stage == "installed" {
+			t.Fatal("late revoked/expired continuation installed")
+		}
+		// Recreate the store over its existing protected state, as after a
+		// process restart. Recovery may use only the already armed denial.
+		freshCipher, e := networking.OpenClaimCipher(ctx, db, state)
+		if e != nil {
+			t.Fatal("saved cancellation cipher could not reopen")
+		}
+		restarted, e := networking.NewSQLiteStore(db, freshCipher, networking.GuardLocalOwner, networking.GuardInstalledClaim, verifier, b.Audience)
+		if e != nil {
+			t.Fatal("saved claim store could not reopen")
+		}
+		if e = restarted.SetTerminalRevoker(control.RevokeClaimTx); e != nil {
+			t.Fatal("actual denial callback unavailable")
+		}
+		if stage != "cancelled" {
+			coordinator, e := networking.NewCoordinator(operation, b.Audience, restarted, transport, keys)
+			if e != nil {
+				t.Fatal("original cancellation coordinator unavailable")
+			}
+			if e = runner.Do(ctx, func(ctx context.Context) error { _, e := coordinator.ReconcilePreinstallCancellation(ctx); return e }); e != nil {
+				t.Fatal("original-key committed cancellation failed")
+			}
+		}
+		var phase, kind, cancellationState string
+		var installedCount int
+		var payload, signature []byte
+		if e = db.QueryRow(`SELECT i.stage,c.phase,s.sign_in_kind,x.state,x.payload,x.signature,(SELECT count(*) FROM networking_claim_credentials) FROM networking_claim_intents i JOIN identity_owner_completions c ON c.operation_id=i.operation_id JOIN identity_state s JOIN networking_claim_cancellations x ON x.operation_id=i.operation_id WHERE i.operation_id=?`, operation).Scan(&stage, &phase, &kind, &cancellationState, &payload, &signature, &installedCount); e != nil || stage != "cancelled" || phase != "cancelled" || kind != "local" || cancellationState != "acknowledged" || installedCount != 0 || !bytes.Equal(payload, armedPayload) || !bytes.Equal(signature, armedSignature) {
+			t.Fatal("reconciliation lost original proof, local authority or cancellation CAS")
+		}
+		if _, e = id.AuthenticateContext(ctx, setup.AccessToken); e == nil {
+			t.Fatal("cancelled initiating family retained authority")
+		}
+		if lateResult.Credential != nil {
+			if e = runner.Do(ctx, func(ctx context.Context) error { _, e := restarted.Install(ctx, lateIntent, lateResult); return e }); e == nil {
+				t.Fatal("actual late result installed after cancellation")
+			}
+			var lateAck ownerPairReply
+			if e = lateResult.Credential.Use(func(token []byte) error {
+				lateAck = b.http("POST", "/v1/server-claims/ack", string(token), map[string]string{"operationId": lateResult.OperationID, "serverId": lateResult.ServerID, "claimGeneration": lateResult.ClaimGeneration, "credentialGeneration": lateResult.CredentialGeneration})
+				return nil
+			}); e != nil {
+				t.Fatal("late ACK proof unavailable")
+			}
+			var refused struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			if lateAck.Status != http.StatusConflict || json.Unmarshal(lateAck.Body, &refused) != nil || refused.Error.Code != "claim_stale" {
+				t.Fatalf("cancelled original credential ACK status=%d", lateAck.Status)
+			}
+		}
+		replay := b.http("POST", "/v1/server-claims/cancel", "", map[string]string{"payload": base64.RawURLEncoding.EncodeToString(payload), "signature": base64.RawURLEncoding.EncodeToString(signature)})
+		faultMu.Lock()
+		receipt := append([]byte(nil), cancelReceipt...)
+		faultMu.Unlock()
+		if replay.Status != 200 || len(receipt) == 0 || !bytes.Equal(receipt, replay.Body) {
+			t.Fatal("exact original-key cancellation replay changed receipt")
+		}
+		snapshot := b.call(map[string]string{"Action": "snapshot", "ServerID": id.ID()})
+		var central struct {
+			Server *struct {
+				Revoked bool `json:"revoked"`
+			} `json:"server"`
+			OwnerStarts []struct {
+				Phase string `json:"phase"`
+			} `json:"ownerStarts"`
+			Counts map[string]int `json:"counts"`
+		}
+		if snapshot.Status != 200 || snapshot.FinalizeRequests != 1 || snapshot.ExchangeRequests != 0 || json.Unmarshal(snapshot.Body, &central) != nil || central.Server == nil || !central.Server.Revoked || len(central.OwnerStarts) != 1 || central.OwnerStarts[0].Phase != "cancelled" || central.Counts["cancellations"] != 1 {
+			t.Fatal("committed denial left live central claim or repeated positive work")
+		}
+		return
+	}
+	read(awaited, &status)
 	if status.State != "installed" || !status.InstallationAcknowledged || status.Operation == nil {
 		t.Fatal("actual approval did not install and ACK")
 	}
