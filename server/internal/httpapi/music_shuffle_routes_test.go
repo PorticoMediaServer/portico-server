@@ -56,6 +56,17 @@ func TestMusicShuffleMountedCapturesOrderAndKeepsItAfterSonicOff(t *testing.T) {
 		}
 		seen[entry.ItemID] = true
 	}
+	// A manual move cuts the captured base order into spans. The occurrence
+	// moved and its untouched neighbours must retain the exact heard identity.
+	var moved playbackv1.QueueReply
+	f.call("POST", "/v1/queues/"+q.Queue.ID+"/entries/"+first[5].EntryID+":move", map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"before": first[1].EntryID}, 200, &moved)
+	wantMoved := append([]playbackv1.QueueEntry{first[0], first[5]}, first[1:5]...)
+	first = read(q.Queue.ID)
+	for index, entry := range first {
+		if entry.EntryID != wantMoved[index].EntryID || entry.ItemID != wantMoved[index].ItemID {
+			t.Fatal("move changed another captured occurrence", index, entry, wantMoved[index])
+		}
+	}
 	f.catalogTest.Exec(`INSERT INTO library_sonic_settings(library_id,enabled,revision) VALUES('mix-music',0,1)`)
 	if after := read(q.Queue.ID); !reflect.DeepEqual(first, after) {
 		t.Fatal("Sonic Off rewrote a heard/captured window", first, after)
@@ -72,6 +83,14 @@ func TestMusicShuffleMountedCapturesOrderAndKeepsItAfterSonicOff(t *testing.T) {
 	if after := read(qOff.Queue.ID); !reflect.DeepEqual(off, after) {
 		t.Fatal("turning On rewrote an already captured ordinary window", off, after)
 	}
+	var restored playbackv1.QueueReply
+	f.call("PATCH", "/v1/queues/"+qOff.Queue.ID, map[string]string{"If-Match": qOff.Queue.Revision}, map[string]any{"shuffle": map[string]any{"on": false}}, 200, &restored)
+	for index, entry := range read(qOff.Queue.ID) {
+		if entry.ItemID != ids[index] {
+			t.Fatal("shuffle Off lost the original source order", index, entry)
+		}
+	}
+
 }
 
 func TestMusicShuffleMountedReadCapturesAnUnvisitedWindowBeforeReturningIt(t *testing.T) {
