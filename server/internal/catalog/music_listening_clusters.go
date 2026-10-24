@@ -155,13 +155,17 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 			}
 			return members[i] < members[j]
 		})
-		group := MusicListeningCluster{Tracks: []string{}, Artists: []ContentEntityRef{}, CoverAlbums: []ContentEntityRef{}, Tags: []MusicClusterTag{}, Weight: cluster.Weight}
+		// A mix is a finite ordinary playlist selection. Use that writer's
+		// existing bound, so Save copies every playable mix key exactly.
+		members = members[:min(MaxPlaylistEntries, len(members))]
+		group := MusicListeningCluster{Tracks: []string{}, Artists: []ContentEntityRef{}, CoverAlbums: []ContentEntityRef{}, Tags: []MusicClusterTag{}}
 		var tagSums [sonic.TagCount]float64
 		inputs := [][]any{}
 		weights := map[int64]float64{}
 		albums := map[string]bool{}
 		for _, id := range members {
 			track := tracks[id]
+			group.Weight += track.weight
 			group.Tracks = append(group.Tracks, track.public)
 			inputs = append(inputs, []any{track.public, track.result, track.weight})
 			if track.tags != nil {
@@ -182,7 +186,7 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 		}
 		if group.TaggedTracks == len(members) {
 			for index, sum := range tagSums {
-				group.Tags = append(group.Tags, MusicClusterTag{Index: index, Score: sum / cluster.Weight})
+				group.Tags = append(group.Tags, MusicClusterTag{Index: index, Score: sum / group.Weight})
 			}
 		}
 		encoded, _ := json.Marshal(inputs)

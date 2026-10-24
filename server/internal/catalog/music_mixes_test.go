@@ -56,6 +56,31 @@ func TestMusicMixesSeparateHistoryCoverageAndExpirePrivateSelections(t *testing.
 			t.Fatal("fabricated cover sample or tint", row)
 		}
 	}
+	actor := ResourceActor{Authority: "local", AccountID: "account", ProfileID: "profile"}
+	operation := identity.Token()
+	resolves := 0
+	current := func(*sql.Tx) (Viewer, error) { resolves++; return viewer, nil }
+	authorize := func(*sql.Tx) error { return nil }
+	saved, err := s.SaveMusicMix(context.Background(), actor, id, operation, "Actual artist mix", at, current, authorize)
+	if err != nil || saved.PlaylistID == "" || resolves != 1 {
+		t.Fatal(saved, resolves, err)
+	}
+	stored := []string{}
+	rows, err := c.DB.Query(`SELECT pid(item.public_id) FROM catalog_playlist_entries entry JOIN catalog_playlists playlist ON playlist.id=entry.playlist_id JOIN catalog_entities item ON item.id=entry.item_id WHERE playlist.token=? ORDER BY entry.order_key,entry.id`, saved.PlaylistID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var key string
+		if err = rows.Scan(&key); err != nil {
+			break
+		}
+		stored = append(stored, key)
+	}
+	rows.Close()
+	if err != nil || !reflect.DeepEqual(stored, keys) {
+		t.Fatal("playlist did not copy exactly captured keys", stored, keys, err)
+	}
 	other := viewer
 	other.Profile = identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "other"})
 	if _, err := s.MusicMixKeys(other, at, id); !errors.Is(err, sql.ErrNoRows) {
@@ -69,6 +94,16 @@ func TestMusicMixesSeparateHistoryCoverageAndExpirePrivateSelections(t *testing.
 	c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms,completed) VALUES('new-play','local','account','profile','Fixture',?,'music',7,?,?,?,100000,1)`, items[0].ID, items[0].Public, at.Add(-time.Minute).UnixMilli(), at.Add(-time.Minute).UnixMilli())
 	if _, err := s.MusicMixKeys(viewer, at, id); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("changed listening retained old mix identity", err)
+	}
+	replay, err := s.SaveMusicMix(context.Background(), actor, id, operation, "Actual artist mix", at, current, authorize)
+	if err != nil || replay.PlaylistID != saved.PlaylistID || resolves != 1 {
+		t.Fatal("stale recommendation prevented ordinary creation replay", replay, resolves, err)
+	}
+	if _, err := s.SaveMusicMix(context.Background(), actor, id, operation, "Different name", at, current, authorize); !errors.Is(err, ErrOperationConflict) {
+		t.Fatal("changed copy request replayed", err)
+	}
+	if _, err := s.SaveMusicMix(context.Background(), actor, id, operation, "Actual artist mix", at, current, func(*sql.Tx) error { return identity.ErrUnauthorized }); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatal("receipt bypassed current actor authorization", err)
 	}
 	got, err = s.MusicMixes(viewer, at)
 	if err != nil || len(got.Mixes) != 1 || got.Mixes[0].ID == id {
