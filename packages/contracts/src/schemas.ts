@@ -33163,6 +33163,13 @@ export const schemas = {
               "type": "string"
             },
             "role": {
+              "enum": [
+                "album",
+                "ep",
+                "single",
+                "compilation",
+                "appearance"
+              ],
               "type": "string"
             },
             "title": {
