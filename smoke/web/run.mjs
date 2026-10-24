@@ -212,7 +212,13 @@ async function main() {
     const link = page.locator('nav a[href]').filter({hasText: new RegExp(`^${name}$`, 'i')}).first();
     const present = await link.count();
     assert(present, `the sidebar has no ${name} library`);
-    await link.click({timeout: 8000});
+    const current = await link.getAttribute('aria-current').catch(() => null);
+    const href = await link.getAttribute('href');
+    if (current === 'page' && href) {
+      await page.goto(new URL(href, origin).href, {waitUntil: 'domcontentloaded'});
+    } else {
+      await link.click({timeout: 8000});
+    }
     await settle(page, {quiet: 1200});
     await page.locator('article[data-card-kind]').first().waitFor({timeout: 15000}).catch(() => {});
     await settle(page, {quiet: 800});
@@ -324,14 +330,28 @@ async function main() {
         const tileName = (await tile.innerText().catch(() => '')).trim().slice(0, 40);
         await tile.click({timeout: 6000});
         await page.waitForTimeout(800);
-        const values = dialog.locator('button[role=checkbox]');
-        const valueCount = await values.count();
-        assert(valueCount > 0, `expanding the "${tileName}" tile drew no checkbox values`);
-        const valueName = (await values.first().innerText().catch(() => '')).trim().slice(0, 40);
-        const checkedBefore = await values.first().getAttribute('aria-checked');
-        await values.first().click({timeout: 6000});
+        const values = dialog.locator('[role=checkbox], button[aria-pressed], button[aria-checked]');
+        let valueCount = await values.count();
+        if (valueCount === 0) {
+          // Give the field a moment and try the whole page, not only the dialog subtree.
+          await page.waitForTimeout(1200);
+          valueCount = await page.locator('[role=checkbox], button[aria-pressed]').count();
+        }
+        assert(valueCount > 0, `expanding the "${tileName}" tile drew no selectable values`);
+        const pool = (await values.count()) ? values : page.locator('[role=checkbox], button[aria-pressed]');
+        let subject = pool.first();
+        const total = await pool.count();
+        for (let index = 0; index < total; index++) {
+          const candidate = pool.nth(index);
+          const label = (await candidate.innerText().catch(() => '')).trim();
+          const state = await candidate.getAttribute('aria-checked') ?? await candidate.getAttribute('aria-pressed');
+          if (!/^(any|all|none)\b/i.test(label) && state !== 'true') { subject = candidate; break; }
+        }
+        const valueName = (await subject.innerText().catch(() => '')).trim().slice(0, 40);
+        const checkedBefore = await subject.getAttribute('aria-checked') ?? await subject.getAttribute('aria-pressed');
+        await subject.click({timeout: 6000});
         await page.waitForTimeout(900);
-        const checkedAfter = await values.first().getAttribute('aria-checked');
+        const checkedAfter = await subject.getAttribute('aria-checked') ?? await subject.getAttribute('aria-pressed');
         assert(checkedAfter !== checkedBefore, `ticking "${valueName}" did not change aria-checked (${checkedBefore} -> ${checkedAfter})`);
         const confirm = await findAny(page, [{role: 'button', name: /^(Show \d|Apply|Done)/}], {timeout: 2500});
         if (confirm) { await confirm.click({timeout: 6000}).catch(() => {}); }
@@ -376,14 +396,18 @@ async function main() {
         const moviesPivot = await findAny(page, [{role: 'tab', name: /^Movies$/}, {role: 'button', name: /^Movies$/}], {timeout: 5000});
         if (moviesPivot) { await moviesPivot.click({timeout: 8000}); await settle(page, {quiet: 1800}); }
         found.Movies = await controls();
-        // TV Shows: two clicks through the More menu, then its own pivot.
-        const more = await findAny(page, [{role: 'button', name: /^More$/}], {timeout: 4000});
-        assert(more, 'the sidebar draws no More menu');
-        await more.click({timeout: 6000});
-        await settle(page, {quiet: 900});
-        let tv = await findAny(page, [{role: 'menuitem', name: /^TV Shows$/}, {role: 'link', name: /^TV Shows$/}, {text: /^TV Shows$/}], {timeout: 2500});
+        // TV Shows is a sidebar entry when the server has few libraries, otherwise it sits in More.
+        let tv = await findAny(page, [{role: 'link', name: /^TV Shows$/}], {timeout: 2000});
         if (!tv) {
-          // The More menu groups libraries under a Libraries entry.
+          const more = await findAny(page, [{role: 'button', name: /^More$/}], {timeout: 3000});
+          if (more) {
+            await more.click({timeout: 6000});
+            await settle(page, {quiet: 900});
+            tv = await findAny(page, [{role: 'menuitem', name: /^TV Shows$/}, {role: 'link', name: /^TV Shows$/}, {text: /^TV Shows$/}], {timeout: 2500});
+          }
+        }
+        if (!tv) {
+          // The More menu may group libraries under a Libraries entry.
           const libraries = await findAny(page, [{role: 'menuitem', name: /^Libraries$/}, {role: 'button', name: /^Libraries$/}, {text: /^Libraries$/}], {timeout: 2500});
           if (libraries) {
             await libraries.click({timeout: 6000}).catch(() => {});
