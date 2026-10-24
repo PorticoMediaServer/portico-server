@@ -817,8 +817,42 @@ async function main() {
             clientWidth: document.documentElement.clientWidth,
           }));
           const cards = await run.page.locator('article[data-card-kind]').count();
-          return {detail: `${state.url}: ${cards} cards, ${state.textLength} chars; horizontal overflow ${overflow.scrollWidth > overflow.clientWidth + 1 ? `yes (${overflow.scrollWidth}>${overflow.clientWidth})` : 'no'}`,
-            evidence: {screenshot: await mobileEvidence.shot(run.page, 'mobile-home'), overflow, cards}};
+          const walked = [];
+          const step = async (name, action) => {
+            const before = Date.now();
+            await action();
+            await settle(run.page, {quiet: 1500});
+            const info = await run.page.evaluate(() => ({
+              path: location.pathname,
+              textLength: (document.body.innerText || '').trim().length,
+              cards: document.querySelectorAll('article[data-card-kind]').length,
+              overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            }));
+            await mobileEvidence.shot(run.page, `mobile-${name}`);
+            walked.push({name, ms: Date.now() - before, ...info});
+          };
+          // Core flows at phone width: browse, detail, search, settings. No playback here.
+          await step('library', async () => {
+            const link = run.page.locator('nav a[href]').filter({hasText: /^Movies$/}).first();
+            if (await link.count()) await link.click({timeout: 12000});
+          });
+          await step('detail', async () => {
+            const card = run.page.locator('article[data-card-kind] button[aria-label]').first();
+            if (await card.count()) { await card.focus(); await run.page.keyboard.press('Enter'); await run.page.waitForTimeout(2500); }
+          });
+          await step('search', async () => {
+            await run.page.goto(origin + '/search', {waitUntil: 'domcontentloaded'});
+            const input = run.page.locator('input[type=search], input[name=q], input').first();
+            if (await input.count()) { await input.fill('angry', {timeout: 8000}); await run.page.keyboard.press('Enter'); await run.page.waitForTimeout(2500); }
+          });
+          await step('settings', async () => {
+            await run.page.goto(origin + '/settings', {waitUntil: 'domcontentloaded'});
+            await run.page.waitForTimeout(1500);
+          });
+          const failed = walked.filter(item => item.textLength < 40 || item.overflow > 1);
+          assert(failed.length === 0, `phone-width steps failed: ${failed.map(item => `${item.name} text ${item.textLength} overflow ${item.overflow}`).join('; ')}`);
+          return {detail: `${state.url}: ${cards} cards at home, then ${walked.map(item => `${item.name}(${item.textLength})`).join(', ')}; overflow ${overflow.scrollWidth > overflow.clientWidth + 1 ? 'on home' : 'none'}`,
+            evidence: {screenshot: await mobileEvidence.shot(run.page, 'mobile-home'), overflow, cards, walked}};
         } finally {
           await run.context.close();
           await run.browser.close();
