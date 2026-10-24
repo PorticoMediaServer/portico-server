@@ -28,8 +28,9 @@ function samePaint(a, b) {
 }
 
 /** Deterministic anchor -> role/text/order matching. Never widens policy to pass. */
-export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = {}) {
+export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = {}, {referenceSelf = false} = {}) {
   const differences = [], diagnostics = [], ambiguous = [], matches = [], used = new Set(), itemMatches = new Map();
+  if (actual.diagnostics?.fontScale !== undefined) diagnostics.push({label: 'screen', property: 'diagnostics.fontScale', actual: actual.diagnostics.fontScale, scored: false, reason: 'Actual system font scale is diagnostic metadata; measured font/run facts are never multiplied, divided or normalized by it.'});
   const unavailable = (screen, node, property) => screen.unavailable?.some(fact => fact.element === node?.id && fact.property === property);
   const cascadeRoots = {reference: [], actual: []};
   const invalidAnchors = new Set([...(reference.anchorIssues ?? []), ...(actual.anchorIssues ?? [])].map(issue => issue.name));
@@ -51,7 +52,9 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   const expected = reference.elements.filter(node => significant(node) && !exclude.has(node.frame) && !within(node.id, cascadeRoots.reference));
   const observed = actual.elements.filter(node => significant(node) && !actualContentOnly.includes(node.frame) && !within(node.id, cascadeRoots.actual));
   const actualLogical = usesLogicalCoordinates(actual);
-  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
+  const referenceSelfCanvas = referenceSelf && reference.measurement?.sourceRole === 'reference-frame' && actual.measurement?.sourceRole === 'reference-frame' &&
+    JSON.stringify(reference.referencePresentation) === JSON.stringify(actual.referencePresentation) && JSON.stringify(reference.viewport) === JSON.stringify(actual.viewport);
+  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport && !referenceSelfCanvas || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
     differences.push({kind: 'screen-state', label: 'Complete same-size measured logical screen', expected: reference.root, actual: actual.root});
   for (const [side, screen] of [['reference', reference], ['actual', actual]]) for (const fact of screen.unavailable ?? []) differences.push({kind: 'unavailable-measurement', label: `${side} ${fact.element ?? 'screen'}`, property: fact.property, reason: fact.reason});
   if (focus && !actual.elements.some(node => unavailable(actual, node, 'focused'))) {
@@ -61,7 +64,8 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   }
   for (const node of expected) {
     let candidates = observed.filter(other => !used.has(other.id)), method;
-    if (node.repeat) {
+    if (referenceSelf) {candidates = candidates.filter(other => other.id === node.id); method = 'same-observation-id';}
+    else if (node.repeat) {
       candidates = candidates.filter(other => other.repeat?.list === node.repeat.list && other.repeat?.part === node.repeat.part);
       if (node.repeat.part) candidates = candidates.filter(other => other.repeat.item === itemMatches.get(node.repeat.item));
       else {
@@ -84,7 +88,8 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     const add = (property, left, right, detail) => differences.push({kind: 'measured-difference', label, property, expected: left, actual: right, ...(detail ? {detail} : {})});
     const paintOnly = textHandledBySlots.includes(node.frame);
     const containsCascade = cascadeRoots.reference.some(root => root.startsWith(node.id + '.')) || cascadeRoots.actual.some(root => root.startsWith(other.id + '.'));
-    if (!paintOnly && !containsCascade && text(node) !== text(other)) add('text', text(node), text(other));
+    const unknownText = [node, other].some((value, index) => ['ownText', 'normalizedText'].some(property => unavailable(index ? actual : reference, value, property)));
+    if (!paintOnly && !containsCascade && !unknownText && text(node) !== text(other)) add('text', text(node), text(other));
     if (node.box && other.box) for (const property of ['x', 'y', 'width', 'height']) if (Math.abs(node.box[property] - other.box[property]) > policy.boxPixels) add(`box.${property}`, node.box[property], other.box[property]);
     if (!paintOnly && (node.ownText || other.ownText)) for (const property of textStyles) if (!unavailable(reference, node, property) && !unavailable(actual, other, property) && node.style?.[property] !== other.style?.[property]) add(property, node.style?.[property], other.style?.[property]);
     if (!paintOnly && !containsCascade && (node.ownText || other.ownText || node.frame && !node.anchoredDescendants)) {
