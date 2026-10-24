@@ -1,0 +1,31 @@
+import {readFile, realpath, writeFile} from 'node:fs/promises';
+import {basename, dirname, join, resolve, sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {withMeasurementBrowser} from './browser.mjs';
+import {authoredReferenceScreen} from './reference-screen.mjs';
+import {fontReadiness} from './readiness.mjs';
+import {validateMeasurement} from './contract.mjs';
+
+/** Read a verified complete authored viewport without moving or rewriting its DOM. */
+export async function extractReference({url, selector, windowViewport, viewport, anchors = {}, repeats = []}) {
+  return withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    viewport: windowViewport, allowedOrigins: [new URL(url).origin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
+    await browser.navigate(url, selector);
+    const first = await browser.measure(selector, anchors, repeats), second = await browser.measure(selector, anchors, repeats);
+    if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error('Reference extraction is nondeterministic');
+    if (browser.blocked.length || browser.pageErrors.length || fontReadiness(first, 'reference').length) throw new Error('Reference resources or fonts are not ready');
+    const screen = authoredReferenceScreen(first, viewport), errors = validateMeasurement(screen, {reference: true});
+    if (errors.length) throw new Error('Invalid reference measurement: ' + errors.join(', '));
+    return screen;
+  });
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const args = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, index, values) => {if (index % 2 === 0) pairs.push([value.replace(/^--/, ''), values[index + 1]]); return pairs;}, []));
+  if (!args.url || !args.adapter || !args.output || Object.keys(args).some(key => !['url', 'adapter', 'output'].includes(key))) throw new Error('Expected --url --adapter --output');
+  const parent = await realpath(dirname(resolve(args.output))), source = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+  if (parent === source || parent.startsWith(source + sep)) throw new Error('Reference output must stay outside public source');
+  const adapter = JSON.parse(await readFile(args.adapter, 'utf8')), screen = await extractReference({...adapter, url: args.url});
+  await writeFile(join(parent, basename(args.output)), JSON.stringify(screen, null, 2) + '\n', {flag: 'wx', mode: 0o600});
+  console.log(JSON.stringify({scope: screen.scope, elements: screen.elements.length, viewport: screen.viewport}));
+}

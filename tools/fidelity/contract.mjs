@@ -19,13 +19,19 @@ export function usesLogicalCoordinates(screen) {
     (value.platform === 'android' && value.coordinateUnit === 'dp' || ['ios', 'tvos'].includes(value.platform) && value.coordinateUnit === 'pt');
 }
 
-export function validateMeasurement(screen) {
+export function validateMeasurement(screen, {reference = false} = {}) {
   const errors = [];
   const need = (condition, path) => {if (!condition) errors.push(path);};
   need(screen?.version === contractVersion, 'version');
   need(screen?.scope === 'screen', 'scope');
   need(rect(screen?.root), 'root');
-  need(screen?.fullViewport === true, 'fullViewport');
+  const referenceFrame = screen?.measurement?.sourceRole === 'reference-frame';
+  need(screen?.fullViewport === true || reference && referenceFrame && screen?.fullViewport === false, 'fullViewport');
+  if (referenceFrame) {
+    need(reference, 'measurement.sourceRole');
+    const origin = screen.referencePresentation;
+    need(rect(origin?.windowBounds) && origin.windowBounds.width === screen.root?.width && origin.windowBounds.height === screen.root?.height && origin.windowViewport?.deviceScaleFactor === 1 && screen.viewport?.deviceScaleFactor === 1 && typeof origin.fullWindowViewport === 'boolean', 'referencePresentation');
+  }
   need(finite(screen?.viewport?.width) && screen.viewport.width > 0 && finite(screen?.viewport?.height) && screen.viewport.height > 0 && finite(screen?.viewport?.deviceScaleFactor) && screen.viewport.deviceScaleFactor > 0, 'viewport');
   need(screen?.root?.x === 0 && screen?.root?.y === 0 && screen?.root?.width === screen?.viewport?.width && screen?.root?.height === screen?.viewport?.height, 'root.viewport');
   if (screen?.measurement) {
@@ -52,7 +58,7 @@ export function validateMeasurement(screen) {
     // Pseudo-elements have no separate box or semantic focus target.
     if (node.tag?.startsWith('::')) continue;
     need(rect(node.box), path + '.box');
-    need(typeof node.ownText === 'string' && typeof node.normalizedText === 'string', path + '.text');
+    need((typeof node.ownText === 'string' || node.ownText == null && declared('ownText')) && (typeof node.normalizedText === 'string' || node.normalizedText == null && declared('normalizedText')), path + '.text');
     need(typeof node.focused === 'boolean' || node.focused == null && declared('focused'), path + '.focused');
     need(node.style && typeof node.style === 'object', path + '.style');
     need(finite(node.effectiveOpacity) && node.effectiveOpacity >= 0 && node.effectiveOpacity <= 1 || node.effectiveOpacity == null && declared('effectiveOpacity'), path + '.effectiveOpacity');

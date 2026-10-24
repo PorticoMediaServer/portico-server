@@ -103,3 +103,22 @@ facts in a clone, never the real screen DOM/layout. The offline CLI includes
 these 0/1/1 results. Missing calibration text cannot silently pass. Geometry is
 2 logical units, effective opacity .02, CIEDE2000 <=2/alpha .02, unchanged from
 the checked web implementation. A harness pass is not media/hardware/system proof.
+
+## Complete authored screens inside a contact sheet
+
+The reference-only helper `authoredReferenceScreen(measured, viewport)` selects a
+verified complete authored screen at its exact natural logical size. Element/run
+coordinates are already relative to that root and are not changed. It records
+the original browser viewport/window bounds in referencePresentation, preserves
+truthful fullViewport (which may be false), and labels sourceRole reference-frame.
+This is an origin convention for the full authored window, not an actual-app
+crop or a per-frame coordinate correction. Scaled/wrong-sized roots are rejected.
+The actual side cannot use this helper's reference-only sourceRole.
+
+`extract-reference.mjs --url PRIVATE --adapter PRIVATE.json --output PRIVATE.log`
+reads the immutable reference with fonts ready/two deterministic snapshots. The
+external adapter supplies selector, actual windowViewport, authored viewport and
+semantic anchors/repeats. It changes no DOM/styles and emits no asset URLs/paths.
+Only our machines may run it. Pass its JSON to the same offline comparator.
+This is needed when an authored phone is one complete column of a contact sheet;
+never select just its actions/content and call that a whole screen.

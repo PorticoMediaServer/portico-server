@@ -7,7 +7,7 @@ import {validateMeasurement} from './contract.mjs';
 
 /** Native and desktop callers use this same comparator; never duplicate its math. */
 export function compareMeasurements(reference, actual, adapter = {}) {
-  const invalid = [['reference', reference], ['actual', actual]].flatMap(([side, screen]) => validateMeasurement(screen).map(path => ({kind: 'invalid-measurement', label: `${side}.${path}`})));
+  const invalid = [['reference', reference], ['actual', actual]].flatMap(([side, screen]) => validateMeasurement(screen, {reference: side === 'reference'}).map(path => ({kind: 'invalid-measurement', label: `${side}.${path}`})));
   if (invalid.length) return {verdict: 'FAIL', differenceCount: invalid.length, differences: invalid};
   const comparison = compareScreens(reference, actual, adapter), calibration = calibrateFrame(reference);
   const differences = [...comparison.differences];
