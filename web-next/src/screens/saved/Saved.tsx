@@ -104,7 +104,7 @@ export function SavedScreen(bindings: SavedBindings) {
       : route.view === 'history' ? <SavedHistory key={viewKey} bindings={viewBindings} />
         : route.view === 'collections' || route.view === 'views' ? <PersonalResources key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'collection'})} />
           : <SavedLists key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'playlist'})} />}
-    <CreateResourceDialog key={viewKey} kind={creating?.viewKey === viewKey ? creating.kind : undefined} bindings={viewBindings} close={() => setCreating(undefined)} />
+    <CreateResourceDialog key={`create:${viewKey}`} kind={creating?.viewKey === viewKey ? creating.kind : undefined} bindings={viewBindings} close={() => setCreating(undefined)} />
   </main>;
 }
 const noSubscribe = () => () => {};
