@@ -1,8 +1,9 @@
 import {installPlaybackEnvironment} from '../../../web-next/src/platform/playback/index.ts';
+import {installSavedDownloadsBinder} from '../../../web-next/src/screens/saved/native-binding.ts';
 import {nativeBridge} from './bridge';
 import {DesktopMediaPlayer} from './player';
 import {installWindowChromeHost,type WindowChromeInstallation} from '../../../web-next/src/platform/window-chrome.ts';
-import {createDesktopWindowChromeHost} from './window-host';
+import {createDesktopNativeWindowHost} from './window-native-host.ts';
 import {nativeWindowBridge} from './window';
 import {installSettingsPlatform} from '../../../web-next/src/platform/settings-platform.ts';
 import {DesktopSettingsEqualizer,desktopEqualizerPort} from './SettingsEqualizer';
@@ -10,28 +11,36 @@ import {createDesktopDevicePort,nativeDeviceFacts} from './device';
 import {nativeCapabilities} from './capabilities';
 import {installPlatformInstallationProvider} from '../../../web-next/src/platform/installation-provider.ts';
 import {nativeInstallation} from './installation';
+import {createDesktopDownloadsHost} from './downloads-host.ts';
+import {createDesktopAppLifetime} from './app-lifetime.ts';
 
-async function startDesktop() {
-  // The Settings shell captures its platform before restoration. Only the native
-  // window can identify this OS; viewport width and the WebView UA are not authority.
-  const native=await nativeWindowBridge.read();
-  const stopInstallation=installPlatformInstallationProvider(nativeInstallation);
-  const facts=await nativeDeviceFacts().catch(()=>undefined);
-  const device=facts?createDesktopDevicePort(facts):undefined;
-  const stopSettings=installSettingsPlatform({environment:{platform:'desktop',os:native.os},...(device?{device}:{}),Equalizer:DesktopSettingsEqualizer});
+const lifetime=createDesktopAppLifetime();
+const close=()=>{void lifetime.dispose().catch(()=>console.warn('desktop_shutdown_failed'));};
+window.addEventListener('pagehide',close,{once:true});
+lifetime.retain(()=>window.removeEventListener('pagehide',close));
+async function startDesktop(){
+  const native=await nativeWindowBridge.read();lifetime.assertCurrent();
+  lifetime.retain(installPlatformInstallationProvider(nativeInstallation));
+  const facts=await nativeDeviceFacts().catch(()=>undefined);lifetime.assertCurrent();
+  const device=facts?createDesktopDevicePort(facts):undefined;if(device)lifetime.retain(()=>device.dispose());
+  lifetime.retain(installSettingsPlatform({environment:{platform:'desktop',os:native.os},...(device?{device}:{}),Equalizer:DesktopSettingsEqualizer}));
   let windowChrome:WindowChromeInstallation|undefined;
-  const windowHost=createDesktopWindowChromeHost({onEnvironment:environment=>windowChrome?.updateEnvironment(environment)});
-  windowChrome=installWindowChromeHost(windowHost);
-  windowChrome.updateEnvironment({os:native.os,fullscreen:native.fullscreen});
-  window.addEventListener('pagehide',()=>{stopInstallation();stopSettings();device?.dispose();windowChrome?.dispose();},{once:true});
-  installPlaybackEnvironment({
-    // Provider presence blocks WebView codec/output fallback even on native failure.
-    capabilities:()=>facts?nativeCapabilities(native.os,facts.appVersion!):Promise.reject(new Error('engine_unavailable')),
-    createPlayer: (video, options) => new DesktopMediaPlayer(video, options, nativeBridge),
-    createRender: null,
-    subtitleSurface: false,
-    equalizerPort: desktopEqualizerPort,
-  });
-  await import('../../../web-next/src/main.tsx');
+  const windowHost=createDesktopNativeWindowHost({onEnvironment:value=>windowChrome?.updateEnvironment(value),prepareToClose:()=>lifetime.dispose()});
+  windowChrome=installWindowChromeHost(windowHost);windowChrome.updateEnvironment({os:native.os,fullscreen:native.fullscreen});
+  lifetime.retain(()=>{windowChrome?.dispose();return windowHost.dispose();});
+  const downloads=createDesktopDownloadsHost({reportFailure:()=>console.warn('downloads_unavailable')});
+  lifetime.retain(installSavedDownloadsBinder(downloads.bindSaved));
+  lifetime.retain(installPlaybackEnvironment({
+    capabilities:()=>facts?.appVersion?nativeCapabilities(native.os,facts.appVersion):Promise.reject(new Error('engine_unavailable')),
+    createPlayer:(video,options)=>new DesktopMediaPlayer(video,options,nativeBridge,true,downloads.broker),
+    attachLocalQueue:downloads.attachLocalQueue,
+    createRender:null,subtitleSurface:false,equalizerPort:desktopEqualizerPort,
+  }));
+  lifetime.retain(()=>downloads.dispose());
+  // The original app owns all screen/router/React assembly and captured viewers.
+  await lifetime.importWebApp(()=>import('../../../web-next/src/main.tsx'));
 }
-void startDesktop().catch(()=>console.error('desktop_start_failed'));
+void startDesktop().catch(error=>{
+  if(!lifetime.signal.aborted&&!(error instanceof DOMException&&error.name==='AbortError'))console.error('desktop_start_failed');
+  close();
+});
