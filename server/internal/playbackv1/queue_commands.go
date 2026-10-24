@@ -352,6 +352,11 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 	if len(segments) == 0 || len(segments) > 16 {
 		return QueueReply{}, &FieldError{Path: "segments"}
 	}
+	for _, segment := range segments {
+		if isRadioSource(segment.Source) && len(segments) > 0 && segments[0].Order != nil && segments[0].Order.Mode == "shuffle" {
+			return QueueReply{}, &FieldError{Path: "shuffle"}
+		}
+	}
 	switch req.Repeat {
 	case "", "off", "one", "all":
 	default:
@@ -791,6 +796,9 @@ func (s *Service) AddSegment(ctx context.Context, c Caller, id, ifMatch string, 
 	if err != nil {
 		return QueueReply{}, err
 	}
+	if q.shuffle && isRadioSource(req.Source) {
+		return QueueReply{}, &FieldError{Path: "source.container.kind"}
+	}
 	// Scanned before the queue's write, in a read snapshot (P16), within what
 	// the queue has room for.
 	room := s.queueKeyLimit()
@@ -1098,6 +1106,9 @@ func (s *Service) UpdateQueue(ctx context.Context, c Caller, id, ifMatch string,
 			l.q.repeat, changed = change.Repeat, true
 		}
 		if sh := change.Shuffle; sh != nil {
+			if sh.On && radioSegment(l) >= 0 {
+				return false, &FieldError{Path: "shuffle"}
+			}
 			// A shuffle's domain is the queue's size: not while a segment is growing.
 			if len(l.building) > 0 {
 				return false, ErrQueueBuilding
@@ -1170,6 +1181,13 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 	if err != nil {
 		return QueueReply{}, err
 	}
+	var refill *radioRefill
+	if req.Reason == "next" || req.Reason == "completion" {
+		refill, err = s.prepareRadioRefill(ctx, c, q)
+		if err != nil {
+			return QueueReply{}, err
+		}
+	}
 	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
 		if err := s.castQueueAuthorityTx(ctx, tx, c, id); err != nil {
 			return false, err
@@ -1199,6 +1217,9 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 			}
 		} else {
 			l.q.automatic = 0
+		}
+		if err := s.appendRadioTx(ctx, tx, l, c.Principal, refill); err != nil {
+			return false, err
 		}
 		total := l.total()
 		switch {

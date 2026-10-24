@@ -105,11 +105,11 @@ var BasicScanOperations = []string{"probe", "local_metadata", "subtitles"}
 // Intro and credits detection is not a scan stage: mediaanalysis runs it as
 // its own background work, compared across a show's episodes, under the
 // server's and each library's detection mode.
-var DeepScanOperations = []string{"checksum", "chapter_images", "trickplay", "waveform", "loudness", "fingerprint", SonicOperation}
+var DeepScanOperations = []string{"checksum", "chapter_images", "trickplay", "waveform", "loudness", "fingerprint", SonicOperation, EpisodeThumbnailOperation}
 
 // Complete prepares the navigation and audio features viewers can use. An owner
 // can explicitly request integrity reads or diagnostic fingerprints in Custom.
-var CompleteScanOperations = []string{"chapter_images", "trickplay", "waveform", "loudness"}
+var CompleteScanOperations = []string{"chapter_images", "trickplay", "waveform", "loudness", EpisodeThumbnailOperation}
 
 func (p ScanPolicy) Allows(operation string) bool {
 	if p.Tier == "file_list_only" {
@@ -161,7 +161,7 @@ func ValidateScanPolicy(p ScanPolicy) (ScanPolicy, error) {
 		}
 		// Local extraction/subtitle timing requires a bounded probe. Do not silently
 		// broaden an owner's Custom content-read permission to satisfy dependencies.
-		if (seen["local_metadata"] || seen["subtitles"] || seen["chapter_images"] || seen["trickplay"] || seen["waveform"] || seen["loudness"] || seen["fingerprint"] || seen[SonicOperation]) && !seen["probe"] {
+		if (seen["local_metadata"] || seen["subtitles"] || seen["chapter_images"] || seen["trickplay"] || seen["waveform"] || seen["loudness"] || seen["fingerprint"] || seen[SonicOperation] || seen[EpisodeThumbnailOperation]) && !seen["probe"] {
 			return p, ErrAdminQuery
 		}
 		if p.Operations == nil {

@@ -44,6 +44,7 @@ export function createSettingsBindings(controller: SettingsController, options: 
     section: sections.section,
     panel: sections.panel,
     load: section => section.scope === 'server' && section.id === 'signin' && sections.signIn && controller.sectionVisible(section) ? sections.signIn.load() : controller.load(section),
+    loadContext: controller.loadContext,
     openHome: sections.openHome,
   };
 }
