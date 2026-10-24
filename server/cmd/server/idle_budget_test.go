@@ -20,9 +20,11 @@ import (
 )
 
 type idleBudgetReport struct {
-	WindowSeconds float64                        `json:"windowSeconds"`
-	Statements    []uint64                       `json:"statements"`
-	Top           []dbwork.StatementProfileEntry `json:"top,omitempty"`
+	WindowSeconds    float64                        `json:"windowSeconds"`
+	SettleStatements uint64                         `json:"settleStatements"`
+	SettleTop        []dbwork.StatementProfileEntry `json:"settleTop,omitempty"`
+	Statements       []uint64                       `json:"statements"`
+	Top              []dbwork.StatementProfileEntry `json:"top,omitempty"`
 }
 
 // The default mode catches accidentally restored subsecond polling in a real
@@ -116,12 +118,17 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 			return
 		}
 		// Let the remaining commit subscribers finish their first pass.
+		dbwork.ProfileStatements(true)
+		settleStart := dbwork.Reads().Statements
 		time.Sleep(2 * time.Second)
+		settle := dbwork.Reads().Statements - settleStart
+		settleProfile := dbwork.StatementProfile()
+		dbwork.ProfileStatements(false)
 		window, windows := time.Minute, 1
 		if os.Getenv("PORTICO_FULL_IDLE") == "1" {
 			window, windows = time.Minute, 6
 		}
-		report := idleBudgetReport{WindowSeconds: window.Seconds()}
+		report := idleBudgetReport{WindowSeconds: window.Seconds(), SettleStatements: settle, SettleTop: settleProfile}
 		for i := 0; i < windows; i++ {
 			dbwork.ProfileStatements(true)
 			before := dbwork.Reads().Statements
