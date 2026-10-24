@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/remotemedia"
+	"portico.local/server/internal/storage"
 )
 
 // This qualifies the real process/configuration/diagnostic component. Its
@@ -209,6 +211,10 @@ func publishActualWebDAVSetup(t *testing.T, ctx context.Context, program, config
 	wantSequential := strings.HasSuffix(mode, "/ignored") || strings.HasSuffix(mode, "/unknown") || strings.HasPrefix(mode, "union/")
 	if err != nil || sequential != wantSequential || gets.Load() != before {
 		t.Fatal("published capability did not control DB-only range mode", sequential, err)
+	}
+	sequentialErr := f.s.requireWebDAVSequential(ctx, receipt.MountID)
+	if wantSequential && !errors.Is(sequentialErr, storage.ErrRemoteRange) || !wantSequential && sequentialErr != nil || gets.Load() != before {
+		t.Fatal("actual unqualified wrapper reached byte admission", sequentialErr)
 	}
 	if _, err = f.s.db.ExecContext(ctx, `UPDATE authorization_session_families SET revoked=1 WHERE id=?`, family); err != nil {
 		t.Fatal(err)
