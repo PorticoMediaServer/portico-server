@@ -278,47 +278,99 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -3412,47 +3464,99 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -5008,48 +5112,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -5192,48 +5348,100 @@ export const schemas = {
       "applied": {
         "properties": {
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "seek": {
             "properties": {
@@ -6657,48 +6865,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -6841,48 +7101,100 @@ export const schemas = {
       "applied": {
         "properties": {
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "seek": {
             "properties": {
@@ -14104,47 +14416,99 @@ export const schemas = {
                       "type": "string"
                     },
                     "query": {
-                      "additionalProperties": false,
-                      "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                      "properties": {
-                        "all": {
-                          "items": {
-                            "additionalProperties": {},
-                            "properties": {},
-                            "required": [],
-                            "type": "object"
+                      "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                          "properties": {
+                            "field": {
+                              "enum": [
+                                "releaseDate",
+                                "dateAdded",
+                                "lastPlayedAt"
+                              ],
+                              "type": "string"
+                            },
+                            "operator": {
+                              "enum": [
+                                "within-last-days"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "maximum": 36500,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
                           },
-                          "maxItems": 40,
-                          "minItems": 1,
-                          "type": "array"
-                        },
-                        "any": {
-                          "items": {
-                            "additionalProperties": {},
-                            "properties": {},
-                            "required": [],
-                            "type": "object"
-                          },
-                          "maxItems": 40,
-                          "minItems": 1,
-                          "type": "array"
-                        },
-                        "field": {
-                          "type": "string"
-                        },
-                        "not": {
-                          "additionalProperties": {},
-                          "properties": {},
-                          "required": [],
+                          "required": [
+                            "field",
+                            "operator",
+                            "value"
+                          ],
                           "type": "object"
                         },
-                        "operator": {
-                          "type": "string"
-                        },
-                        "value": {}
-                      },
-                      "required": [],
-                      "type": "object"
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "all": {
+                              "items": {
+                                "additionalProperties": {},
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "maxItems": 40,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "any": {
+                              "items": {
+                                "additionalProperties": {},
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "maxItems": 40,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "not": {
+                              "additionalProperties": {},
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "operator": {
+                              "enum": [
+                                "equals",
+                                "not-equals",
+                                "in",
+                                "not-in",
+                                "contains",
+                                "starts-with",
+                                "is-present",
+                                "is-missing",
+                                "less-than",
+                                "at-most",
+                                "greater-than",
+                                "at-least",
+                                "between",
+                                "contains-any",
+                                "contains-all"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {}
+                          },
+                          "required": [],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "sort": {
                       "items": {
@@ -14238,47 +14602,99 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -17886,48 +18302,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -18160,48 +18628,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -33816,48 +34336,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -98598,48 +99170,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -126988,48 +127612,100 @@ export const schemas = {
           "applied": {
             "properties": {
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "seek": {
                 "properties": {
@@ -129752,48 +130428,100 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -129962,48 +130690,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -130241,48 +131021,100 @@ export const schemas = {
                   "type": "string"
                 },
                 "query": {
-                  "additionalProperties": false,
-                  "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                  "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
                   "nullable": true,
-                  "properties": {
-                    "all": {
-                      "items": {
-                        "additionalProperties": {},
-                        "properties": {},
-                        "required": [],
-                        "type": "object"
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                      "properties": {
+                        "field": {
+                          "enum": [
+                            "releaseDate",
+                            "dateAdded",
+                            "lastPlayedAt"
+                          ],
+                          "type": "string"
+                        },
+                        "operator": {
+                          "enum": [
+                            "within-last-days"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "maximum": 36500,
+                          "minimum": 1,
+                          "type": "integer"
+                        }
                       },
-                      "maxItems": 40,
-                      "minItems": 1,
-                      "type": "array"
-                    },
-                    "any": {
-                      "items": {
-                        "additionalProperties": {},
-                        "properties": {},
-                        "required": [],
-                        "type": "object"
-                      },
-                      "maxItems": 40,
-                      "minItems": 1,
-                      "type": "array"
-                    },
-                    "field": {
-                      "type": "string"
-                    },
-                    "not": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
+                      "required": [
+                        "field",
+                        "operator",
+                        "value"
+                      ],
                       "type": "object"
                     },
-                    "operator": {
-                      "type": "string"
-                    },
-                    "value": {}
-                  },
-                  "required": [],
-                  "type": "object"
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "all": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "any": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "field": {
+                          "type": "string"
+                        },
+                        "not": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "operator": {
+                          "enum": [
+                            "equals",
+                            "not-equals",
+                            "in",
+                            "not-in",
+                            "contains",
+                            "starts-with",
+                            "is-present",
+                            "is-missing",
+                            "less-than",
+                            "at-most",
+                            "greater-than",
+                            "at-least",
+                            "between",
+                            "contains-any",
+                            "contains-all"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {}
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  ]
                 },
                 "sort": {
                   "items": {
@@ -153606,48 +154438,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -177330,48 +178214,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -189732,48 +190668,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -190006,48 +190994,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -192418,48 +193458,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
