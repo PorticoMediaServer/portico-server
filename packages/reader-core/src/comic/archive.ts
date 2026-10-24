@@ -12,12 +12,15 @@ export type ComicPageProvider=Readonly<{
 }>;
 export async function openComicArchive(source:ReaderSource,signal:AbortSignal,limits:ArchiveLimits=archiveLimits):Promise<ComicPageProvider> {
   const id=source.id,revision=source.revision,size=source.size;
+  const unchanged=()=>source.id===id&&source.revision===revision&&source.size===size;
   const entries=await readDirectory(source,signal,limits);
+  if(!unchanged())throw new ComicInputError('archive_invalid');
   const pages=entries.filter(e=>/\.(?:jpe?g|png|webp|gif)$/i.test(e.name)&&!e.name.split('/').some(p=>p.startsWith('.')||p==='__MACOSX')).sort((a,b)=>naturalCompare(a.name,b.name));
   if(!pages.length)throw new ComicInputError('image_invalid');
   const info:ZipEntry|undefined=entries.find(e=>/(?:^|\/)ComicInfo\.xml$/i.test(e.name));
   if(info&&info.size>128*1024)throw new ComicInputError('archive_limit');
   const metadata=info?comicInfo(await readEntry(source,info,signal,limits)):{};
+  if(!unchanged())throw new ComicInputError('archive_invalid');
   let closed=false;const life=new AbortController();
   return Object.freeze({id,revision,pageCount:pages.length,metadata,
     async page(index:number,options:{width:number;signal:AbortSignal}):Promise<ComicPage>{
