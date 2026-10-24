@@ -149,6 +149,9 @@ python3 /inputs/verify-hdr10plus-encode.py --ffmpeg /opt/ffbuild/bin/ffmpeg \
     if (hdr_encode.get('passed') is not True or hdr_encode.get('encoder') != 'libx265' or
             hdr_encode.get('frames') != 24 or hdr_encode.get('metadataFrames') != 24 or
             hdr_encode.get('perFrameMetadataIdentical') is not True or
+            hdr_encode.get('encoderOption') != 'hdr10plus' or hdr_encode.get('optionDefaultFalse') is not True or
+            hdr_encode.get('defaultOffFrames') != 24 or hdr_encode.get('defaultOffMetadataFrames') != 0 or
+            hdr_encode.get('explicitOffFrames') != 24 or hdr_encode.get('explicitOffMetadataFrames') != 0 or
             hdr_encode.get('ffmpegSHA256') != pair['ffmpeg'] or hdr_encode.get('ffprobeSHA256') != pair['ffprobe']):
         raise ValueError('Canonical libx265 HDR10+ encoder gate did not pass')
     if any(digest(prefix / 'bin' / name) != value for name, value in pair.items()):
@@ -207,7 +210,7 @@ def inside():
     run([ffmpeg, '-v', 'error', '-nostdin', '-threads', '1', '-i', str(source), '-map', '0:v:0',
          '-an', '-c:v', 'copy', '-use_editlist', '0', str(copied)])
     run([ffmpeg, '-v', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1', '-i', str(source),
-         '-map', '0:v:0', '-an', '-frames:v', '24', '-c:v', 'libx265', '-threads:v', '1',
+         '-map', '0:v:0', '-an', '-frames:v', '24', '-c:v', 'libx265', '-hdr10plus', '1', '-threads:v', '1',
          '-pix_fmt', 'yuv420p10le', '-x265-params',
          'pools=none:frame-threads=1:wpp=0:repeat-headers=1',
          '-f', 'hevc', str(encoded)])

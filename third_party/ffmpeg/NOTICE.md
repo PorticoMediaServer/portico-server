@@ -46,3 +46,6 @@ The libx265 HDR10+ adapter follows FFmpeg's registered ITU-T T.35 encoding
 used by its libaom adapter, using the existing libavutil serializer. It remains
 under the source file's LGPL-2.1-or-later terms. Per-frame target encode proof
 is required; encoder names do not establish preservation through a pipeline.
+The hdr10plus encoder boolean defaults off. Only an explicitly selected,
+qualified unchanged-rendering recipe may opt in; a binary replacement alone
+does not enable metadata carry in existing recipes.

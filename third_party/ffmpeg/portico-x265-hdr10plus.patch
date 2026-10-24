@@ -15,7 +15,15 @@
  #include "dovi_rpu.h"
  #include "encode.h"
  #include "atsc_a53.h"
-@@ -698,6 +701,58 @@
+@@ -78,6 +81,7 @@
+     int sei_data_size;
+     int udu_sei;
+     int a53_cc;
++    int hdr10plus;
+ 
+     ReorderedData *rd;
+     int         nb_rd;
+@@ -698,6 +702,58 @@
      return 0;
  }
  
@@ -31,7 +39,7 @@
 +    size_t size;
 +    int ret;
 +
-+    if (!sd)
++    if (!ctx->hdr10plus || !sd)
 +        return 0;
 +    if (sd->size != sizeof(AVDynamicHDRPlus))
 +        return AVERROR_INVALIDDATA;
@@ -74,7 +82,7 @@
  static void free_picture(libx265Context *ctx, x265_picture *pic)
  {
      x265_sei *sei = &pic->userSEI;
-@@ -783,6 +838,12 @@
+@@ -783,6 +839,12 @@
          }
  
          x265pic.userData = (void*)(intptr_t)(rd_idx + 1);
@@ -87,3 +95,11 @@
  
          if (ctx->a53_cc) {
              void *sei_data;
+@@ -1050,6 +1112,7 @@
+     { "x265-stats",  "Filename for 2 pass stats",                                                   OFFSET(stats),     AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
+     { "udu_sei",     "Use user data unregistered SEI if available",                                 OFFSET(udu_sei),   AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
+     { "a53cc",       "Use A53 Closed Captions (if available)",                                      OFFSET(a53_cc),    AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
++    { "hdr10plus",   "Carry frame HDR10+ metadata (requires unchanged HDR rendering)", OFFSET(hdr10plus), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+     { "x265-params", "set the x265 configuration using a :-separated list of key=value parameters", OFFSET(x265_opts), AV_OPT_TYPE_DICT,   { 0 }, 0, 0, VE },
+ #if X265_BUILD >= 167
+     { "dolbyvision", "Enable Dolby Vision RPU coding", OFFSET(dovi.enable), AV_OPT_TYPE_BOOL, {.i64 = FF_DOVI_AUTOMATIC }, -1, 1, VE, .unit = "dovi" },

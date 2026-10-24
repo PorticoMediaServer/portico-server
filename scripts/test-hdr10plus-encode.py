@@ -30,6 +30,13 @@ class FrameMetadataGateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gate.compare_frames([{} for _ in range(24)], self.frames())
 
+    def test_disabled_carry_rejects_implicit_metadata(self):
+        gate.check_disabled([{} for _ in range(24)])
+        with self.assertRaises(ValueError):
+            gate.check_disabled(self.frames())
+        with self.assertRaises(ValueError):
+            gate.check_disabled([{} for _ in range(23)])
+
 
 if __name__ == '__main__':
     unittest.main()

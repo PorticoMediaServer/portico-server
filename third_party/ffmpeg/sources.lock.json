@@ -433,7 +433,7 @@
       },
       {
         "path": "third_party/ffmpeg/portico-x265-hdr10plus.patch",
-        "sha256": "a9a191eb861f49f1f941c0c7472853837b3007f53a462a102c379c622254cb96",
+        "sha256": "dbbecf5f7de57b425ac585c64e5b43f4cae00a668b57c1ab559bd738f6331200",
         "qualification": "Actual per-frame libx265 target encode gate; no hardware, scaling or tone-map preservation grant."
       }
     ]
@@ -607,6 +607,6 @@
   },
   "sourceAuthority": {
     "path": "third_party/ffmpeg/source-authority.v1.json",
-    "sha256": "182986c0bf405e0d8c4a4fcdd7cbad926d6f0efc08d1aae905085844805fd2c9"
+    "sha256": "8186e18b5d7c15c7cad78476bef482c429b10fcad5c0a194d0131287a003238a"
   }
 }

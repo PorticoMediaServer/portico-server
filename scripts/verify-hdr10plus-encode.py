@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -25,6 +26,11 @@ def compare_frames(before, after):
         raise ValueError('Encoded libx265 frames did not retain exact per-frame HDR10+ metadata')
 
 
+def check_disabled(frames):
+    if len(frames) != 24 or any(hdr_metadata(frame) for frame in frames):
+        raise ValueError('Disabled libx265 HDR10+ carry must keep the previous 24-frame behavior')
+
+
 def qualify(ffmpeg, ffprobe, fixtures, scratch):
     manifest = fixtures / 'manifest.json'
     inventory = json.loads(manifest.read_text())
@@ -37,28 +43,45 @@ def qualify(ffmpeg, ffprobe, fixtures, scratch):
     if os.name == 'nt':
         environment['SystemRoot'] = os.environ['SystemRoot']
     with (scratch / 'process.log').open('wb') as log:
-        def run(args, probe=False):
+        def run(args, probe=False, capture=False):
             result = subprocess.run([str(value) for value in args], stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE if probe else subprocess.DEVNULL, stderr=log,
+                stdout=subprocess.PIPE if probe or capture else subprocess.DEVNULL, stderr=log,
                 env=environment, timeout=45, check=True)
             if probe:
                 if len(result.stdout) > 2 << 20:
                     raise ValueError('Frame metadata output exceeded its bound')
                 return json.loads(result.stdout)['frames']
+            if capture:
+                if len(result.stdout) > 2 << 20:
+                    raise ValueError('Encoder help output exceeded its bound')
+                return result.stdout.decode('utf-8')
         def frames(path):
             return run([ffprobe, '-v', 'error', '-select_streams', 'v:0', '-show_frames', '-of', 'json', path], True)
         before = frames(fixture)
-        output = scratch / 'encoded.hevc'
-        run([ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error', '-y', '-threads', '1',
+        help_text = run([ffmpeg, '-hide_banner', '-h', 'encoder=libx265'], capture=True)
+        if not re.search(r'(?m)^\s+-hdr10plus\s+<boolean>.*\(default false\)', help_text):
+            raise ValueError('HDR10+ carry must expose an explicit default-false boolean')
+        def encode(output, option):
+            run([ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error', '-y', '-threads', '1',
              '-i', fixture, '-map', '0:v:0', '-c:v', 'libx265', '-threads', '1',
+             *option,
              '-x265-params', 'pools=none:frame-threads=1:wpp=0:hdr10=1:log-level=error',
              '-pix_fmt', 'yuv420p10le', '-color_primaries', 'bt2020', '-color_trc', 'smpte2084',
              '-colorspace', 'bt2020nc', '-frames:v', '24', '-an', '-sn', '-dn', '-f', 'hevc', output])
+        output = scratch / 'encoded.hevc'
+        encode(output, ['-hdr10plus', '1'])
         compare_frames(before, frames(output))
+        for name, option in [('default', []), ('explicit-off', ['-hdr10plus', '0'])]:
+            disabled = scratch / (name + '.hevc')
+            encode(disabled, option)
+            check_disabled(frames(disabled))
     if digest(fixture) != expected:
         raise ValueError('Input fixture changed during qualification')
     return {'passed': True, 'encoder': 'libx265', 'frames': 24, 'metadataFrames': 24,
             'perFrameMetadataIdentical': True, 'fixtureSHA256': expected,
+            'encoderOption': 'hdr10plus', 'optionDefaultFalse': True,
+            'defaultOffFrames': 24, 'defaultOffMetadataFrames': 0,
+            'explicitOffFrames': 24, 'explicitOffMetadataFrames': 0,
             'ffmpegSHA256': digest(ffmpeg), 'ffprobeSHA256': digest(ffprobe),
             'scope': 'Same-size/frame-rate CPU encoder metadata only; no scaling, tone-map, application, hardware or other-encoder claim.'}
 
