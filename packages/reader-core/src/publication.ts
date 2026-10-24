@@ -52,13 +52,13 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
   // The operation scope must outlive the headers: retain it until EOF, consumer
   // cancellation or authority retirement. Pull one bounded chunk, never a body.
   async function openSequential(taskSignal:AbortSignal):Promise<ReadableStream<Uint8Array>> {
-    current();const task=abortScope([signal,taskSignal]);let stream:ReadableStream<Uint8Array>;
+    current();const task=abortScope([signal,taskSignal]);let stream:Awaited<ReturnType<NonNullable<ReaderSessionInput['openSequential']>>>;
     try {
       throwIfAborted(task.signal);if(typeof session.openSequential!=='function')throw new ReaderError('invalid_source');
       stream=await session.openSequential(task.signal);
       try{throwIfAborted(task.signal);current();}catch(error){await stream.cancel(error).catch(()=>{});throw error;}
     }catch(error){task.dispose();throw error;}
-    let reader:ReadableStreamDefaultReader<Uint8Array>;
+    let reader:ReturnType<typeof stream.getReader>;
     try{reader=stream.getReader();}catch(error){task.dispose();throw error;}
     let controller:ReadableStreamDefaultController<Uint8Array>,ended=false,total=0;
     const unlock=()=>{try{reader.releaseLock();}catch{/* pending read releases after cancellation */}};
