@@ -14,7 +14,8 @@ test('real local PlaybackService and V1QueuePlayer never request a server listen
     return {status: 200, headers: {}, body: {scope: viewer, data: {revision: 0, bookRate: 1.5, passoutMinutes: 15}}};
   }};
   const api = new V1PlaybackApi(http);
-  const playback = new PlaybackService(api, () => 'local-intent');
+  let serial = 0;
+  const playback = new PlaybackService(api, () => `local-intent-${++serial}`);
   const player = new V1QueuePlayer({http, api, playback, viewer});
   t.after(() => { player.dispose(); playback.leave(); });
   player.connect();
