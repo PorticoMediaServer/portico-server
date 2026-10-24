@@ -11,6 +11,11 @@ export type ShortCodeState =
 
 export type ShortCodeRun = (operationId: string, signal: AbortSignal) => Promise<ServerShortInvitation>;
 
+/** A copy belongs only to this live authority and this exact issued code. */
+export function sameShortCode(current: () => boolean, state: ShortCodeState, operationId: string, code: string): boolean {
+  return current() && state.phase === 'ready' && state.operationId === operationId && state.code === code;
+}
+
 /** The same cryptographic generator the other settings operation IDs use.
  * If the browser has no cryptographic source, this throws and no code is issued. */
 export const freshShortCodeOperationId = randomId;

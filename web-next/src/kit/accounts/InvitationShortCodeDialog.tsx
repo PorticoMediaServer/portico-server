@@ -4,7 +4,7 @@ import type {ServerShortInvitation} from '@core/direct-account.ts';
 import {Button} from '../controls/Button';
 import {Dialog} from '../overlays/Dialog';
 import {AuthError} from './AuthStage';
-import {ShortCodeIssuer, type ShortCodeRun} from './invitation-short-code';
+import {sameShortCode, ShortCodeIssuer, type ShortCodeRun} from './invitation-short-code';
 import styles from './invitation-short-code.module.css';
 
 const t = defaultI18n.t;
@@ -18,6 +18,8 @@ export type InvitationShortCodeDialogProps = Readonly<{
   /** True only for the explicit creation that opened this card. */
   issueOnOpen?: boolean;
   createOperationId?: () => string;
+  /** The captured owner/viewer lifetime used for this issuance. */
+  isCurrent?: () => boolean;
   returnFocusRef?: RefObject<HTMLElement | null>;
 }>;
 
@@ -32,23 +34,28 @@ export function InvitationShortCodeDialog(props: InvitationShortCodeDialogProps)
 }
 
 type IssuerDialogProps = InvitationShortCodeDialogProps & Readonly<{identity: string}>;
-function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createOperationId, returnFocusRef, identity}: IssuerDialogProps) {
+function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createOperationId, isCurrent, returnFocusRef, identity}: IssuerDialogProps) {
   const createRef = useRef(createOperationId);
   createRef.current = createOperationId;
   const issuer = useMemo(() => new ShortCodeIssuer(createRef.current), []);
   const state = useSyncExternalStore(issuer.subscribe, issuer.getSnapshot, issuer.getSnapshot);
   const [copied, setCopied] = useState(false), [copyError, setCopyError] = useState<unknown>();
-  const alive = useRef(true), openRef = useRef(open), requestRef = useRef(request), runRef = useRef<ShortCodeRun>(() => Promise.reject(new Error('invitation_operation_unavailable')));
+  const alive = useRef(true), openRef = useRef(open), requestRef = useRef(request), isCurrentRef = useRef(isCurrent), issuedCurrent = useRef<(() => boolean) | undefined>(undefined), runRef = useRef<ShortCodeRun>(() => Promise.reject(new Error('invitation_operation_unavailable')));
   const autoIssued = useRef<string | undefined>(undefined);
-  openRef.current = open; requestRef.current = request;
-  runRef.current = (operationId, signal) => requestRef.current(operationId, signal, () => alive.current && openRef.current);
+  openRef.current = open; requestRef.current = request; isCurrentRef.current = isCurrent;
+  runRef.current = (operationId, signal) => {
+    const ownerCurrent = isCurrentRef.current;
+    const captured = () => alive.current && openRef.current && (ownerCurrent?.() ?? true);
+    issuedCurrent.current = captured;
+    return requestRef.current(operationId, signal, captured);
+  };
 
   useEffect(() => {
     alive.current = true;
-    return () => {alive.current = false;issuer.dispose();};
+    return () => {alive.current = false;issuedCurrent.current = undefined;issuer.dispose();};
   }, [issuer]);
   useEffect(() => {
-    if (!open) {issuer.reset();setCopied(false);setCopyError(undefined);return;}
+    if (!open) {issuer.reset();issuedCurrent.current = undefined;setCopied(false);setCopyError(undefined);return;}
     if (!issueOnOpen || autoIssued.current === identity) return;
     autoIssued.current = identity;
     void issuer.issue(true, runRef.current);
@@ -57,18 +64,19 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
 
   const busy = state.phase === 'issuing';
   const copy = async () => {
-    if (!alive.current || !openRef.current) return;
+    const current = issuedCurrent.current;
+    if (!current || !current()) return;
     const snapshot = issuer.getSnapshot();
     if (snapshot.phase !== 'ready') return;
     const code = snapshot.code, operationId = snapshot.operationId;
-    if (!navigator.clipboard) {setCopyError(new Error('clipboard_unavailable'));return;}
+    const same = () => sameShortCode(current, issuer.getSnapshot(), operationId, code);
+    if (!same()) return;
+    if (!navigator.clipboard) {if (same()) setCopyError(new Error('clipboard_unavailable'));return;}
     try {
       await navigator.clipboard.writeText(code);
-      if (!alive.current || !openRef.current) return;
-      const latest = issuer.getSnapshot();
-      if (latest.phase === 'ready' && latest.operationId === operationId && latest.code === code) setCopied(true);
+      if (same()) setCopied(true);
     } catch (error) {
-      if (alive.current && openRef.current) setCopyError(error);
+      if (same()) setCopyError(error);
     }
   };
   const expiry = state.phase === 'ready' || state.phase === 'unavailable'

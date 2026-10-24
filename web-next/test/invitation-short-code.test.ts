@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ShortCodeIssuer} from '../src/kit/accounts/invitation-short-code.ts';
+import {sameShortCode, ShortCodeIssuer} from '../src/kit/accounts/invitation-short-code.ts';
 
 const serverId = 'srv_' + 's'.repeat(43), expiresAt = '2099-01-01T00:00:00Z';
 
@@ -87,4 +87,13 @@ test('dispose drops a ready code without emitting a stale state', async () => {
     assert.equal(notified, 0);
     off();
   } finally {issuer.dispose();}
+});
+
+test('a copy belongs only to the live authority and the exact issued code', () => {
+  const ready = {phase: 'ready' as const, operationId: 'captured-operation', code: '008J-4CT4-ANK7-F24S', expiresAt};
+  assert.equal(sameShortCode(() => true, ready, 'captured-operation', '008J-4CT4-ANK7-F24S'), true);
+  assert.equal(sameShortCode(() => false, ready, 'captured-operation', '008J-4CT4-ANK7-F24S'), false);
+  assert.equal(sameShortCode(() => true, {phase: 'idle'}, 'captured-operation', '008J-4CT4-ANK7-F24S'), false);
+  assert.equal(sameShortCode(() => true, ready, 'new-operation', '008J-4CT4-ANK7-F24S'), false);
+  assert.equal(sameShortCode(() => true, ready, 'captured-operation', '1111-1111-1111-1111'), false);
 });

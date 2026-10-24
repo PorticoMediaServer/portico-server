@@ -12,6 +12,7 @@ import {ServerChallenge} from '../../kit/accounts/ServerChallenge';
 import {Button} from '../../kit/controls';
 import {AccountSignInForm} from './sign-in-form';
 import {ShortInvitationEntry} from './ShortInvitationEntry';
+import {canOpenShortInvitation} from './short-invitation-join';
 import {initializeAccountSignIn} from './sign-in-start';
 import {RequiredFactorDialogs} from './RequiredSetup';
 
@@ -39,7 +40,9 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     }
   }, [entry, form, state, input, initializing, joining]);
   const join = () => {
-    joinOrigin.current = entry.getSnapshot().origin ?? pageOrigin;
+    const current = entry.getSnapshot(), currentForm = form.getSnapshot();
+    if (!canOpenShortInvitation(current, state, currentForm, alive.current, joining, initializing)) return;
+    joinOrigin.current = current.origin ?? pageOrigin;
     form.clear();
     entry.cancel();
     setJoining(true);
