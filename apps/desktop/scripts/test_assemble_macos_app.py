@@ -53,8 +53,8 @@ class Fixture:
         self.stage = root / "native-stage"
         self.stage.mkdir()
         self.dylibs = {
-            "libmpv.2.dylib": macho(MH_DYLIB, payload=b"mpv"),
-            "libavcodec.62.dylib": macho(MH_DYLIB, payload=b"codec"),
+            "libmpv.2.dylib": macho(filetype=MH_DYLIB, payload=b"mpv"),
+            "libavcodec.62.dylib": macho(filetype=MH_DYLIB, payload=b"codec"),
         }
         records = []
         for name, data in self.dylibs.items():
@@ -246,7 +246,7 @@ class AssemblyTests(unittest.TestCase):
             (fixture.stage / "libavcodec.62.dylib").unlink()
 
         def extra_stage_file(fixture):
-            (fixture.stage / "libextra.dylib").write_bytes(macho(MH_DYLIB))
+            (fixture.stage / "libextra.dylib").write_bytes(macho(filetype=MH_DYLIB))
 
         def missing_web(fixture):
             shutil.rmtree(fixture.web)
