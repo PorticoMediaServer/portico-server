@@ -181,7 +181,7 @@ function HomeRowView(props: HomeRowProps) {
     if (!liveCurrent) { refreshLive(); return; }
     return selection.registerWindow(row, rowIndex, range[0], range[1]);
   }, [interest.visible, liveCurrent, refreshLive, selection, row, rowIndex, range]);
-  return <div ref={interest.ref}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
+  return <div ref={interest.ref} className={styles.rowSlot}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
 }
 function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};
@@ -217,7 +217,7 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
 function VisibleCollection({row, rowIndex, artwork, effects, selection, time, appearance}: HomePresentation & {row: HomeRow; rowIndex: number}) {
   const interest = useVisible(), collection = row.collection!;
   const open = () => effects.openSeeAll({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId});
-  return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: homeCollectionCaption(collection, {t, locale: time.locale})}} kindLabel={t('next.home.collection')}
+  return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: []}} description={homeCollectionCaption(collection, {t, locale: time.locale})[0]?.text} kindLabel={t('next.home.collection')}
     visible={interest.visible}
     selection={selection.collection(row)}
     artwork={appearance?.showBackdrops === false ? undefined : artwork.foreground(collection.backdropUrl, 1312 * devicePixelRatio, 16 / 9, {order: rowIndex * 1000, group: row.id})}
@@ -237,7 +237,9 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
   const left = continued?.detail.find(part => part.id === 'remaining');
   const model = continued && left ? {...continued, caption: [left], detail: []} : homeCardModel(wide ? resume : entry, wide, {t, locale: time.locale});
   const source = wide ? entry.backdropUrl ?? entry.posterUrl : entry.posterUrl;
-  const props = {model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%'},
+  // The drawn ranked card carries the number and the title only (mock.html#home).
+  const ranked = row.id === 'community_watching' && !!row.period;
+  const props = {model: ranked ? {...model, caption: []} : model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%'},
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
     ambient: square && appearance?.showBackdrops !== false ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
     fallback: <GeneratedArt glyph={Array.from((entry.displayTitle ?? entry.title).trim())[0] ?? ''} />,
@@ -246,7 +248,6 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
     selection: selection.card(row, entry),
     onMore: selection.moreAvailable(entry) ? (anchor: HTMLButtonElement) => effects.openMore(row, entry, anchor) : undefined,
     moreExpanded: selection.moreExpanded(row, entry)};
-  const ranked = row.id === 'community_watching' && !!row.period;
   return <div ref={interest.ref} className={ranked ? styles.scaledRanked : undefined} style={ranked ? {'--home-card-scale': scale} as CSSProperties : undefined}>{ranked ? <RankedCard {...props} rank={row.start + index + 1} /> : wide ? <WideCard {...props} /> : square ? <SquareCard {...props} progressPlacement={left ? 'below' : 'edge'} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'} /> : <PosterCard {...props} />}</div>;
 }
 

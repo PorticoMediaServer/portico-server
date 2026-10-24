@@ -122,7 +122,9 @@ const setViewport = (width, height) => call('Emulation.setDeviceMetricsOverride'
 const fontCss = `@font-face{font-family:Manrope;font-style:normal;font-weight:200 800;font-display:block;src:url('${frameOrigin}/font/manrope.woff2') format('woff2')}`;
 await call('Page.enable', {}, sessionId);
 await call('Runtime.enable', {}, sessionId);
-await call('Emulation.setEmulatedMedia', {features: [{name: 'prefers-reduced-motion', value: 'reduce'}]}, sessionId);
+const media = async features => { try { await call('Emulation.setEmulatedMedia', {features}, sessionId); } catch (error) { reportMedia.push(String(error)); } };
+const reportMedia = [];
+await media([{name: 'prefers-reduced-motion', value: 'reduce'}, {name: 'hover', value: 'hover'}, {name: 'pointer', value: 'fine'}]);
 await call('Fetch.enable', {patterns: [{urlPattern: 'https://fonts.googleapis.com/*'}, {urlPattern: 'https://fonts.gstatic.com/*'}]}, sessionId);
 listeners.push(async message => {
   if (message.method !== 'Fetch.requestPaused') return;
@@ -175,7 +177,7 @@ async function shot(name, selector, pageWidth) {
   return rect;
 }
 
-const report = {commit: (process.env.PORTICO_RUNNER_COMMIT ?? '').toString(), reference: {}, actual: {}, pageErrors};
+const report = {commit: (process.env.PORTICO_RUNNER_COMMIT ?? '').toString(), reference: {}, actual: {}, pageErrors, media: reportMedia};
 await mkdir(output, {recursive: true});
 if (only !== 'actual') {
   await setViewport(2048, 1400);
@@ -184,7 +186,7 @@ if (only !== 'actual') {
   report.reference.rect = await shot('web-home-r46-reference', '#home', 2048);
   report.reference.pointer = await evaluate(`({hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches})`);
   report.reference.rows = await evaluate(`[...document.querySelectorAll('#home .rows > .row')].map(row=>{const r=row.getBoundingClientRect(),track=row.querySelector('.track'),head=row.querySelector('.row-head');
-    return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), trackPadding:track?getComputedStyle(track).paddingLeft:null,
+    return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), headBox:head?Math.round(head.getBoundingClientRect().height):null, trackPadding:track?getComputedStyle(track).paddingLeft:null,
       firstCard:track?.firstElementChild?Math.round(track.firstElementChild.getBoundingClientRect().width):null, cards:track?.children.length??0, link:head?.querySelector('.all')?.textContent??null, linkOpacity:head?.querySelector('.all')?getComputedStyle(head.querySelector('.all')).opacity:null}})`.replace(/\n/g, ' '));
   report.reference.collection = await evaluate(`(()=>{const el=document.querySelector('#home .banner');if(!el)return null;const r=el.getBoundingClientRect();
     const copy=el.querySelector('.in'),minis=el.querySelector('.minis');
@@ -209,11 +211,11 @@ if (only !== 'reference') {
   report.actual.poster = await evaluate(`(()=>{const card=[...document.querySelectorAll('[data-home-document] [data-card-kind="poster"]')].find(el=>el.closest('section'));
     if(!card)return null;const art=card.querySelector('[class*="art"]'),title=card.querySelector('[class*="title"]'),cap=card.querySelector('[class*="caption"]'),sub=card.querySelector('[class*="subtitle"]');
     return {card:card.getBoundingClientRect().toJSON(),art:art?.getBoundingClientRect().toJSON()??null,title:title?.getBoundingClientRect().toJSON()??null,caption:cap?.getBoundingClientRect().toJSON()??null,subtitle:sub?.getBoundingClientRect().toJSON()??null}})()`);
-  report.actual.ranked = await evaluate(`(()=>{const first=[...document.querySelectorAll('[data-home-document] [data-home-card-scale]')][0];if(!first)return null;
+  report.actual.ranked = await evaluate(`(()=>{const first=[...document.querySelectorAll('[data-home-document] [class*="scaledRanked"]')][0];if(!first)return null;
     const number=first.children[0]?.children[0],card=first.querySelector('[data-card-kind="poster"]');
     return {wrapper:first.getBoundingClientRect().toJSON(),number:number?.getBoundingClientRect().toJSON()??null,card:card?.getBoundingClientRect().toJSON()??null}})()`);
   report.actual.rows = await evaluate(`[...document.querySelectorAll('[data-home-document] section[data-platform]')].map(row=>{const r=row.getBoundingClientRect(),track=row.querySelector('div[class*="track"]'),head=row.querySelector('header');
-    return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), trackPadding:track?getComputedStyle(track).paddingLeft:null,
+    return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), headBox:head?Math.round(head.getBoundingClientRect().height):null, trackPadding:track?getComputedStyle(track).paddingLeft:null,
       firstCard:track?.firstElementChild?Math.round(track.firstElementChild.getBoundingClientRect().width):null, cards:track?.children.length??0, link:head?.querySelector('a,button')?.textContent??null, linkOpacity:head?.querySelector('a,button')?getComputedStyle(head.querySelector('a,button')).opacity:null}})`.replace(/\n/g, ' '));
   report.actual.hero = await evaluate(`(()=>{const h=document.querySelector('[data-home-document] section'),c=h.querySelector('div[class*="copy"]'),th=h.querySelector('div[class*="thumbnail"]');const r=n=>n?n.getBoundingClientRect().toJSON():null;
     return {hero:r(h),copy:r(c),thumbs:r(th),firstArt:r(h.querySelector('[data-active="true"] [data-foreground-art]'))}})()`);
