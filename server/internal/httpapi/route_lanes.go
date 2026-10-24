@@ -422,6 +422,7 @@ var routeLanes = map[string]string{
 	"POST /v1/access/invitations/accept":                                         "default",
 	"POST /v1/access/invitations/preview":                                        "default",
 	"POST /v1/admin/access/invitations":                                          "admin",
+	"POST /v1/admin/access/invitations/{id}/short-code":                          "security-fence",
 	"POST /v1/admin/access/invitations/{id}/link":                                "security-fence",
 	"POST /v1/admin/access/invitations/{id}/revoke":                              "security-fence",
 	"POST /v1/admin/access/members/bulk":                                         "security-fence",
