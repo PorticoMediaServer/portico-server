@@ -288,6 +288,7 @@ var routeLanes = map[string]string{
 	"GET /v1/libraries/{id}/show-workspace":                                      "browsing",
 	"GET /v1/libraries/{id}/shows":                                               "browsing",
 	"GET /v1/libraries/{id}/strm-analysis-policy":                                "browsing",
+	"GET /v1/libraries/{libraryId}/reading/series/{seriesId}":                    "browsing",
 	"GET /v1/library-channels/{id}/logo":                                         "default",
 	"GET /v1/library-kinds/{kind}/metadata-agents":                               "browsing",
 	"GET /v1/listening/preferences":                                              "browsing",

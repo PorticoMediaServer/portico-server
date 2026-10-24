@@ -16,100 +16,155 @@ import (
 // in the caller's snapshot. None of these facts may come from a request body.
 type SeriesScope struct {
 	Profile, Fence, RestrictionFence string
-	Catalog, Viewer int64
+	Catalog, Viewer                  int64
 }
-type SeriesScopeResolver func(context.Context,*sql.Tx,identity.Principal,string) (SeriesScope,error)
+type SeriesScopeResolver func(context.Context, *sql.Tx, identity.Principal, string) (SeriesScope, error)
 type SeriesPage struct {
-	Items []LibraryRow
+	Items      []LibraryRow
 	NextCursor string
 }
 
 // Series reads only a complete immutable attribution generation. Its anchor
 // names an indexed member, then verifies the full ordering tuple digest in this
 // same authorized snapshot. The cursor never carries a truncated sort key.
-func (s *Service) Series(ctx context.Context, p identity.Principal, library, series, cursor string, limit int) (SeriesPage,error) {
+func (s *Service) Series(ctx context.Context, p identity.Principal, library, series, cursor string, limit int) (SeriesPage, error) {
 	out := SeriesPage{Items: []LibraryRow{}}
 	if s == nil || s.DB == nil || s.Visible == nil || s.SeriesScope == nil {
-		return out,identity.ErrForbidden
+		return out, identity.ErrForbidden
 	}
-	if library == "" || len(library)>128 || len(series)!=43 || limit<1 || limit>100 || len(cursor)>4096 {
-		return out,ErrInvalid
+	if library == "" || len(library) > 128 || len(series) != 43 || limit < 1 || limit > 100 || len(cursor) > 4096 {
+		return out, ErrInvalid
 	}
-	g,err := dbwork.BeginSnapshot(ctx,s.DB)
-	if err!=nil {return out,err}; defer g.Rollback()
-	tx:=g.Tx()
-	scope,err:=s.SeriesScope(ctx,tx,p,library)
-	if err!=nil {return out,err}
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return out, err
+	}
+	defer g.Rollback()
+	tx := g.Tx()
+	scope, err := s.SeriesScope(ctx, tx, p, library)
+	if err != nil {
+		return out, err
+	}
 	var handle int64
 	var kind string
-	if err=tx.QueryRowContext(ctx,`SELECT cl.id,lib.kind FROM catalog_libraries cl JOIN libraries lib ON lib.id=cl.library_id WHERE cl.library_id=? AND cl.retired=0 AND lib.kind IN('book','comic')`,library).Scan(&handle,&kind); err!=nil {return out,err}
-	generation,err:=compactcatalog.ReadingProjectionReadyTx(ctx,tx,handle)
-	if errors.Is(err,compactcatalog.ErrBuilding) {return out,ErrChanged}
-	if err!=nil {return out,err}
-	filter,visibleArgs,err:=s.Visible(ctx,tx,p,"e.id")
-	if err!=nil {return out,err}; if filter=="" {return out,identity.ErrForbidden}
-	digest,err:=seriesScopeDigest(library,series,kind,scope,limit)
-	if err!=nil {return out,err}
+	if err = tx.QueryRowContext(ctx, `SELECT cl.id,lib.kind FROM catalog_libraries cl JOIN libraries lib ON lib.id=cl.library_id WHERE cl.library_id=? AND cl.retired=0 AND lib.kind IN('book','comic')`, library).Scan(&handle, &kind); err != nil {
+		return out, err
+	}
+	generation, err := compactcatalog.ReadingProjectionReadyTx(ctx, tx, handle)
+	if errors.Is(err, compactcatalog.ErrBuilding) {
+		return out, ErrChanged
+	}
+	if err != nil {
+		return out, err
+	}
+	filter, visibleArgs, err := s.Visible(ctx, tx, p, "e.id")
+	if err != nil {
+		return out, err
+	}
+	if filter == "" {
+		return out, identity.ErrForbidden
+	}
+	digest, err := seriesScopeDigest(library, series, kind, scope, limit)
+	if err != nil {
+		return out, err
+	}
 	var encoded string
-	if err=tx.QueryRowContext(ctx,`SELECT value FROM configuration WHERE key='catalog_cursor_key'`).Scan(&encoded); err!=nil {return out,err}
-	key,err:=hex.DecodeString(encoded)
-	if err!=nil || len(key)!=32 {return out,ErrChanged}
-	current:=seriesCursor{Namespace:generation.Namespace,Input:generation.Input,Ready:generation.Ready,Catalog:scope.Catalog,Viewer:scope.Viewer,Expiry:time.Now().Add(30*time.Minute).Unix(),Scope:digest}
-	base:=` FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
+	if err = tx.QueryRowContext(ctx, `SELECT value FROM configuration WHERE key='catalog_cursor_key'`).Scan(&encoded); err != nil {
+		return out, err
+	}
+	key, err := hex.DecodeString(encoded)
+	if err != nil || len(key) != 32 {
+		return out, ErrChanged
+	}
+	current := seriesCursor{Namespace: generation.Namespace, Input: generation.Input, Ready: generation.Ready, Catalog: scope.Catalog, Viewer: scope.Viewer, Expiry: time.Now().Add(30 * time.Minute).Unix(), Scope: digest}
+	base := ` FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
  JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
- JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=`+primaryPublicationSQL+`
+ JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=p.asset_id
  WHERE m.library_id=? AND m.generation=? AND m.series_id=? AND e.retired=0 AND cl.retired=0
  AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf')))
- AND (`+filter+`)`
-	args:=append([]any{handle,generation.Ready,series},visibleArgs...)
+ AND (` + filter + `)`
+	args := append([]any{handle, generation.Ready, series}, visibleArgs...)
 	var after *seriesTuple
-	if cursor!="" {
-		captured,e:=decodeSeriesCursor(cursor,key,time.Now())
-		if e!=nil {return out,e}
-		if captured.Namespace!=current.Namespace || captured.Input!=current.Input || captured.Ready!=current.Ready || captured.Catalog!=current.Catalog || captured.Viewer!=current.Viewer || captured.Scope!=current.Scope {return out,ErrChanged}
-		anchor:=seriesTuple{}
-		anchorArgs:=append(append([]any{},args...),captured.Anchor)
-		if err=tx.QueryRowContext(ctx,`SELECT m.numbered_order,m.number_value,m.sort_key,m.item_id`+base+` AND m.item_id=?`,anchorArgs...).Scan(&anchor.Numbered,&anchor.Number,&anchor.Sort,&anchor.Item); err!=nil {
-			if errors.Is(err,sql.ErrNoRows) {return out,ErrChanged}; return out,err
+	if cursor != "" {
+		captured, e := decodeSeriesCursor(cursor, key, time.Now())
+		if e != nil {
+			return out, e
 		}
-		tuple,e:=anchor.digest()
-		if e!=nil || tuple!=captured.Tuple {return out,ErrChanged}
-		after=&anchor; current.Expiry=captured.Expiry
+		if captured.Namespace != current.Namespace || captured.Input != current.Input || captured.Ready != current.Ready || captured.Catalog != current.Catalog || captured.Viewer != current.Viewer || captured.Scope != current.Scope {
+			return out, ErrChanged
+		}
+		anchor := seriesTuple{}
+		anchorArgs := append(append([]any{}, args...), captured.Anchor)
+		if err = tx.QueryRowContext(ctx, `SELECT m.numbered_order,m.number_value,m.sort_key,m.item_id`+base+` AND m.item_id=?`, anchorArgs...).Scan(&anchor.Numbered, &anchor.Number, &anchor.Sort, &anchor.Item); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return out, ErrChanged
+			}
+			return out, err
+		}
+		tuple, e := anchor.digest()
+		if e != nil || tuple != captured.Tuple {
+			return out, ErrChanged
+		}
+		after = &anchor
+		current.Expiry = captured.Expiry
 	}
-	query:=`SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
+	query := `SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1),
- m.numbered_order,m.number_value,m.sort_key`+base
-	if after!=nil {
-		query+=` AND (m.numbered_order,m.number_value,m.sort_key COLLATE BINARY,m.item_id)>(?,?,?,?)`
-		args=append(args,after.Numbered,after.Number,after.Sort,after.Item)
+ m.numbered_order,m.number_value,m.sort_key` + base
+	if after != nil {
+		query += ` AND (m.numbered_order,m.number_value,m.sort_key COLLATE BINARY,m.item_id)>(?,?,?,?)`
+		args = append(args, after.Numbered, after.Number, after.Sort, after.Item)
 	}
-	query+=` ORDER BY m.numbered_order,m.number_value,m.sort_key COLLATE BINARY,m.item_id LIMIT ?`
-	args=append(args,limit+1)
-	rows,err:=tx.QueryContext(ctx,query,args...)
-	if err!=nil {return out,err}
+	query += ` ORDER BY m.numbered_order,m.number_value,m.sort_key COLLATE BINARY,m.item_id LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return out, err
+	}
 	var tuples []seriesTuple
 	for rows.Next() {
 		var item LibraryRow
 		var tuple seriesTuple
-		if err=rows.Scan(&item.entity,&item.ID,&item.LibraryID,&item.Title,&item.Format,&item.SourceID,&item.InventoryAvailable,&tuple.Numbered,&tuple.Number,&tuple.Sort); err!=nil {rows.Close();return out,err}
-		tuple.Item=item.entity
-		if _,err=tuple.digest();err!=nil {rows.Close();return out,err}
-		out.Items=append(out.Items,item); tuples=append(tuples,tuple)
+		if err = rows.Scan(&item.entity, &item.ID, &item.LibraryID, &item.Title, &item.Format, &item.SourceID, &item.InventoryAvailable, &tuple.Numbered, &tuple.Number, &tuple.Sort); err != nil {
+			rows.Close()
+			return out, err
+		}
+		tuple.Item = item.entity
+		if _, err = tuple.digest(); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.Items = append(out.Items, item)
+		tuples = append(tuples, tuple)
 	}
-	err=rows.Err();rows.Close()
-	if err!=nil {return out,err}
-	if len(out.Items)==0 && cursor=="" {return out,ErrUnavailable}
-	if len(out.Items)>limit {
-		out.Items=out.Items[:limit]; tuples=tuples[:limit]
-		last:=tuples[len(tuples)-1]
-		current.Anchor=last.Item
-		current.Tuple,err=last.digest()
-		if err!=nil {return out,err}
-		out.NextCursor,err=current.encode(key)
-		if err!=nil {return out,err}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
 	}
-	if err=readingAttributionProjectionTx(ctx,tx,out.Items);err!=nil {return SeriesPage{},err}
-	if !time.Unix(current.Expiry,0).After(time.Now()) {return SeriesPage{},ErrChanged}
-	return out,nil
+	if len(out.Items) == 0 && cursor == "" {
+		return out, ErrUnavailable
+	}
+	if len(out.Items) > limit {
+		out.Items = out.Items[:limit]
+		tuples = tuples[:limit]
+		last := tuples[len(tuples)-1]
+		current.Anchor = last.Item
+		current.Tuple, err = last.digest()
+		if err != nil {
+			return out, err
+		}
+		out.NextCursor, err = current.encode(key)
+		if err != nil {
+			return out, err
+		}
+	}
+	if err = readingAttributionProjectionTx(ctx, tx, out.Items); err != nil {
+		return SeriesPage{}, err
+	}
+	if !time.Unix(current.Expiry, 0).After(time.Now()) {
+		return SeriesPage{}, ErrChanged
+	}
+	return out, nil
 }

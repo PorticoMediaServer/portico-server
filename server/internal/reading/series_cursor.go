@@ -15,9 +15,9 @@ const seriesCursorMagic = "PRDSER01"
 
 type seriesTuple struct {
 	Numbered int
-	Number float64
-	Sort string
-	Item int64
+	Number   float64
+	Sort     string
+	Item     int64
 }
 
 func (t seriesTuple) digest() ([32]byte, error) {
@@ -32,9 +32,13 @@ func (t seriesTuple) digest() ([32]byte, error) {
 	h.Write([]byte("portico.reading.series.tuple.v1\x00"))
 	h.Write([]byte{byte(t.Numbered)})
 	var u [8]byte
-	binary.BigEndian.PutUint64(u[:], math.Float64bits(number)); h.Write(u[:])
-	binary.BigEndian.PutUint64(u[:], uint64(len(t.Sort))); h.Write(u[:]); h.Write([]byte(t.Sort))
-	binary.BigEndian.PutUint64(u[:], uint64(t.Item)); h.Write(u[:])
+	binary.BigEndian.PutUint64(u[:], math.Float64bits(number))
+	h.Write(u[:])
+	binary.BigEndian.PutUint64(u[:], uint64(len(t.Sort)))
+	h.Write(u[:])
+	h.Write([]byte(t.Sort))
+	binary.BigEndian.PutUint64(u[:], uint64(t.Item))
+	h.Write(u[:])
 	var out [32]byte
 	copy(out[:], h.Sum(nil))
 	return out, nil
@@ -51,10 +55,13 @@ func seriesScopeDigest(library, series, kind string, scope SeriesScope, limit in
 		if !utf8.ValidString(value) {
 			return [32]byte{}, ErrChanged
 		}
-		binary.BigEndian.PutUint64(u[:], uint64(len(value))); h.Write(u[:]); h.Write([]byte(value))
+		binary.BigEndian.PutUint64(u[:], uint64(len(value)))
+		h.Write(u[:])
+		h.Write([]byte(value))
 	}
 	var n [2]byte
-	binary.BigEndian.PutUint16(n[:], uint16(limit)); h.Write(n[:])
+	binary.BigEndian.PutUint16(n[:], uint16(limit))
+	h.Write(n[:])
 	var out [32]byte
 	copy(out[:], h.Sum(nil))
 	return out, nil
@@ -62,7 +69,7 @@ func seriesScopeDigest(library, series, kind string, scope SeriesScope, limit in
 
 type seriesCursor struct {
 	Namespace, Input, Ready, Catalog, Viewer, Anchor, Expiry int64
-	Scope, Tuple [32]byte
+	Scope, Tuple                                             [32]byte
 }
 
 func (c seriesCursor) valid(now time.Time) bool {
@@ -75,12 +82,14 @@ func (c seriesCursor) encode(key []byte) (string, error) {
 	}
 	raw := make([]byte, 128)
 	copy(raw, seriesCursorMagic)
-	for i, value := range []int64{c.Namespace,c.Input,c.Ready,c.Catalog,c.Viewer,c.Anchor,c.Expiry} {
+	for i, value := range []int64{c.Namespace, c.Input, c.Ready, c.Catalog, c.Viewer, c.Anchor, c.Expiry} {
 		binary.BigEndian.PutUint64(raw[8+i*8:], uint64(value))
 	}
-	copy(raw[64:96], c.Scope[:]); copy(raw[96:], c.Tuple[:])
-	mac := hmac.New(sha256.New, key); mac.Write(raw)
-	return base64.RawURLEncoding.EncodeToString(raw)+"."+base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+	copy(raw[64:96], c.Scope[:])
+	copy(raw[96:], c.Tuple[:])
+	mac := hmac.New(sha256.New, key)
+	mac.Write(raw)
+	return base64.RawURLEncoding.EncodeToString(raw) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
 func decodeSeriesCursor(value string, key []byte, now time.Time) (seriesCursor, error) {
@@ -97,20 +106,22 @@ func decodeSeriesCursor(value string, key []byte, now time.Time) (seriesCursor, 
 		return c, ErrChanged
 	}
 	signed, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])
-	mac := hmac.New(sha256.New,key); mac.Write(raw)
-	if err != nil || len(signed) != 32 || base64.RawURLEncoding.EncodeToString(signed) != parts[1] || !hmac.Equal(signed,mac.Sum(nil)) {
+	mac := hmac.New(sha256.New, key)
+	mac.Write(raw)
+	if err != nil || len(signed) != 32 || base64.RawURLEncoding.EncodeToString(signed) != parts[1] || !hmac.Equal(signed, mac.Sum(nil)) {
 		return c, ErrChanged
 	}
-	for i, target := range []*int64{&c.Namespace,&c.Input,&c.Ready,&c.Catalog,&c.Viewer,&c.Anchor,&c.Expiry} {
+	for i, target := range []*int64{&c.Namespace, &c.Input, &c.Ready, &c.Catalog, &c.Viewer, &c.Anchor, &c.Expiry} {
 		value := binary.BigEndian.Uint64(raw[8+i*8:])
 		if value > math.MaxInt64 {
 			return seriesCursor{}, ErrChanged
 		}
 		*target = int64(value)
 	}
-	copy(c.Scope[:],raw[64:96]); copy(c.Tuple[:],raw[96:])
+	copy(c.Scope[:], raw[64:96])
+	copy(c.Tuple[:], raw[96:])
 	if !c.valid(now) {
 		return seriesCursor{}, ErrChanged
 	}
-	return c,nil
+	return c, nil
 }
