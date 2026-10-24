@@ -20,6 +20,9 @@ var ErrMoveConfirmation = errors.New("Type the server's name exactly to confirm.
 var ErrMoveCode = errors.New("This move code is no longer usable. Ask the server owner for another.")
 
 type AccountMove struct {
+	// Captured informational input for the separately signed owner-switch proof.
+	// It never appears as an unsigned field in the public move DTO.
+	otherPeopleCount   *int
 	ID                 string     `json:"id"`
 	From               SignInKind `json:"from"`
 	To                 SignInKind `json:"to"`
@@ -107,7 +110,12 @@ func (s *Service) moveOwnerTx(ctx context.Context, tx *sql.Tx, bearer string) (d
 }
 func readMoveTx(ctx context.Context, tx *sql.Tx, id string) (out AccountMove, err error) {
 	var devices int
-	err = tx.QueryRowContext(ctx, `SELECT id,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,invitations FROM identity_moves WHERE id=?`, id).Scan(&out.ID, &out.From, &out.To, &out.StartOver, &out.Stage, &out.Revision, &out.People, &devices, &out.Profiles, &out.ServerName, &out.Invitations)
+	var count sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT id,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,invitations,other_people_count FROM identity_moves WHERE id=?`, id).Scan(&out.ID, &out.From, &out.To, &out.StartOver, &out.Stage, &out.Revision, &out.People, &devices, &out.Profiles, &out.ServerName, &out.Invitations, &count)
+	if err == nil && count.Valid && count.Int64 >= 0 && count.Int64 <= 10000 {
+		value := int(count.Int64)
+		out.otherPeopleCount = &value
+	}
 	if !out.StartOver {
 		out.Devices = &devices
 	}
@@ -154,13 +162,19 @@ func (s *Service) PreviewAccountMove(ctx context.Context, bearer string, q MoveP
 		if e = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM accounts WHERE id<>?1),(SELECT count(*) FROM identity_devices WHERE platform<>'api'),(SELECT count(*) FROM direct_profiles WHERE deleted=0)`, c.account.ID).Scan(&out.People, &devices, &out.Profiles); e != nil {
 			return e
 		}
+		if kind == SignInLocal && q.To == SignInPortico {
+			out.otherPeopleCount, e = captureOwnerSwitchCountTx(ctx, tx, c.account.ID)
+			if e != nil {
+				return e
+			}
+		}
 		if !q.StartOver {
 			out.Devices = &devices
 		}
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM access_invitations WHERE state='pending'`).Scan(&out.Invitations); e != nil {
 			return e
 		}
-		_, e = tx.ExecContext(ctx, `INSERT INTO identity_moves(id,owner_id,owner_revision,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,created_ms,invitations) VALUES(?,?,?,?,?,?,'preview',1,?,?,?,?,?,?)`, out.ID, c.account.ID, c.account.Revision, kind, q.To, q.StartOver, out.People, devices, out.Profiles, out.ServerName, time.Now().UnixMilli(), out.Invitations)
+		_, e = tx.ExecContext(ctx, `INSERT INTO identity_moves(id,owner_id,owner_revision,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,created_ms,invitations,other_people_count) VALUES(?,?,?,?,?,?,'preview',1,?,?,?,?,?,?,?)`, out.ID, c.account.ID, c.account.Revision, kind, q.To, q.StartOver, out.People, devices, out.Profiles, out.ServerName, time.Now().UnixMilli(), out.Invitations, out.otherPeopleCount)
 		return e
 	})
 	return
