@@ -76,6 +76,8 @@ function watchApi(page, calls = [], state = {}) {
       response.json().then(body => {
         state.direct = {
           canManage: body.canManage,
+          capabilityKeys: Object.keys(body.capabilities || {}),
+          granted: Object.keys(body.capabilities || {}).filter(key => body.capabilities[key] === true),
           profiles: (body.profiles || []).map(profile => ({id: profile.id, name: profile.name, primary: profile.primary === true})),
         };
       }).catch(() => {});
@@ -784,9 +786,20 @@ async function main() {
         assert(libs.trim().length > 40, 'owner Libraries settings rendered almost no text');
         const scan = await findAny(page, [{role: 'button', name: /scan/i}, {text: /^Scan/}], {timeout: 4000});
         if (!scan) {
-          const payload = JSON.stringify({me: apiState.me ? {role: apiState.me.role, profileIdKnown: !!apiState.viewerProfileId} : null,
-            account: apiState.account || null, direct: apiState.direct ? {canManage: apiState.direct.canManage, profiles: apiState.direct.profiles.map(p => ({name: p.name, primary: p.primary}))} : null});
-          throw blocked(`no scan control on the owner Libraries page; ${profileNote}; at ${new URL(page.url()).pathname}${new URL(page.url()).search}; payload ${payload.slice(0, 420)}; page was: ${libs.replace(/\n/g, ' ').slice(0, 160)}`);
+          const identityPaths = ['/v1/libraries', '/v1/system', '/v1/direct', '/v1/direct/account', '/v1/preferences', '/v1/guide/sources'];
+          // The guide read is a member of the shell identity Promise.all too.
+          const identityReads = identityPaths.map(path => {
+            const hits = api.filter(call => call.path === path);
+            const last = hits[hits.length - 1];
+            return {path, status: last ? last.status : 'absent', count: hits.length};
+          });
+          const payload = JSON.stringify({identityReads,
+            me: apiState.me ? {role: apiState.me.role, profileIdKnown: !!apiState.viewerProfileId} : null,
+            account: apiState.account || null,
+            direct: apiState.direct ? {canManage: apiState.direct.canManage, capabilityKeys: apiState.direct.capabilityKeys, granted: apiState.direct.granted,
+              profiles: apiState.direct.profiles.map(p => ({name: p.name, primary: p.primary}))} : null});
+          throw blocked(`no scan control on the owner Libraries page; ${profileNote}; at ${new URL(page.url()).pathname}${new URL(page.url()).search}; page was: ${libs.replace(/\n/g, ' ').slice(0, 160)}`,
+            {identityPayload: JSON.parse(payload)});
         }
         await scan.click({timeout: 8000});
         await page.waitForTimeout(3000);
