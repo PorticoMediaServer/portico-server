@@ -5,7 +5,7 @@ cd "$(dirname "$0")/../../.."
 job="desktop-r29-$(date +%s)-$$"
 image="portico/$job"
 scope="${1:-engine}"
-case "$scope" in shell|startup|engine) ;; *) exit 64 ;; esac
+case "$scope" in shell|api|startup|engine) ;; *) exit 64 ;; esac
 cleanup(){
   if [ "$scope" = startup ] && [ -n "${PORTICO_RUNNER_OUTPUT:-}" ]; then
     if [ -f "$TMPDIR/native-work/startup-report.native.log" ]; then
@@ -42,7 +42,9 @@ if [ "$PORTICO_NATIVE_CHECK" = engine ]; then
 else
   if [ "$PORTICO_NATIVE_CHECK" != startup ]; then
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib -- --test-threads=1
-  cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib mpv::local_source_tests -- --ignored --test-threads=1
+  if [ "$PORTICO_NATIVE_CHECK" = shell ]; then
+    cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib mpv::local_source_tests -- --ignored --test-threads=1
+  fi
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib shell::tests -- --ignored --test-threads=1
   fi
   cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --bin portico-desktop
