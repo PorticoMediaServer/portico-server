@@ -164,3 +164,50 @@ func TestReaderLifetimesCoverImplicitRowsPreparedRowsAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReaderLifetimeScopeIsolatesForeignFixture(t *testing.T) {
+	fixture := readerFixture(t)
+	foreign := readerFixture(t)
+	scope := readerScopeForTest(t, fixture)
+	foreignScope := readerScopeForTest(t, foreign)
+	baseline := scope.stats().Snapshots
+
+	_, closeForeign, err := BeginRead(context.Background(), foreign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeForeign()
+	if stats := foreignScope.stats(); stats.Snapshots != 1 {
+		t.Fatalf("foreign snapshot lifetime: %+v, want1", stats)
+	}
+	if stats := scope.stats(); stats.Snapshots != baseline {
+		t.Fatalf("foreign lease entered the fixture scope: %+v, want%d", stats, baseline)
+	}
+	if stats := ReaderLifetimes(); stats.Snapshots < baseline+1 {
+		t.Fatalf("process-wide lifetime missed the foreign lease: %+v", stats)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tx, err := fixture.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM sample`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if stats := scope.stats(); stats.Snapshots != baseline+1 {
+		t.Fatalf("fixture snapshot lifetime: %+v, want%d", stats, baseline+1)
+	}
+	cancel()
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
+	// The foreign lease is deliberately still held: convergence here proves the
+	// fixture measures its own scope, not the process-wide aggregate that made
+	// the old baseline non-deterministic.
+	if stats := foreignScope.stats(); stats.Snapshots != 1 {
+		t.Fatalf("foreign snapshot ended during fixture convergence: %+v", stats)
+	}
+	if stats := ReaderLifetimes(); stats.Snapshots < baseline+1 {
+		t.Fatalf("process-wide lifetime lost the foreign lease: %+v", stats)
+	}
+}
