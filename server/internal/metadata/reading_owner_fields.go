@@ -6,6 +6,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"portico.local/server/internal/compactcatalog"
 )
 
 func readingRepairKind(kind string) bool { return kind == "ebook" || kind == "comic" }
@@ -21,27 +23,57 @@ func readingAttributionSpec(field, label string) RepairFieldSpec {
 	return spec
 }
 
-// Reading attribution is scalar owner data. It never creates a person, an
-// audiobook Author/Book, or a provider/archive/artwork permission.
-func readReadingOwnerFields(ctx context.Context, tx *sql.Tx, entity int64) (map[string]string, error) {
-	out := map[string]string{}
-	rows, err := tx.QueryContext(ctx, `SELECT field,value,automatic_value,locked FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field IN('author','series','seriesNumber')`, entity)
+// readReadingOwnerFields returns the effective scalar owner values for Reading
+// attribution together with the genuine automatic values. The canonical source
+// is the whole automatic value: a field it omits is genuinely absent, so a
+// recorded automatic column never stands in for it. Locked owner values then
+// overlay that canonical base, whether or not an owner row exists at all.
+func readReadingOwnerFields(ctx context.Context, tx *sql.Tx, entity int64) (map[string]string, map[string]string, error) {
+	automatic, err := readingAutomaticOwnerValues(ctx, tx, entity)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	out := map[string]string{"author": "", "series": "", "seriesNumber": ""}
+	for field, value := range automatic {
+		out[field] = value
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT field,value,locked FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field IN('author','series','seriesNumber')`, entity)
+	if err != nil {
+		return nil, nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var field, value, automatic string
+		var field, value string
 		var locked bool
-		if err = rows.Scan(&field, &value, &automatic, &locked); err != nil {
-			return nil, err
+		if err = rows.Scan(&field, &value, &locked); err != nil {
+			return nil, nil, err
 		}
-		if !locked || strings.TrimSpace(value) == "" {
-			value = automatic
+		if locked && strings.TrimSpace(value) != "" {
+			out[field] = value
 		}
-		out[field] = value
 	}
-	return out, rows.Err()
+	return out, automatic, rows.Err()
+}
+
+// readingAutomaticOwnerValues reads the genuine automatic Reading attribution
+// in the caller's transaction. Only fields a current source value carries are
+// reported; an omitted field is genuine absence.
+func readingAutomaticOwnerValues(ctx context.Context, tx *sql.Tx, entity int64) (map[string]string, error) {
+	values, err := compactcatalog.ReadingAutomaticFieldsTx(ctx, tx, entity)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	if values.Author != nil {
+		out["author"] = values.Author.Value
+	}
+	if values.Series != nil {
+		out["series"] = values.Series.Value
+	}
+	if values.SeriesNumber != nil {
+		out["seriesNumber"] = strconv.FormatFloat(values.SeriesNumber.Value, 'g', -1, 64)
+	}
+	return out, nil
 }
 
 func readingAttributionEdit(field string, current RepairField, edit RepairFieldEdit) (RepairFieldEdit, error) {
