@@ -210,7 +210,7 @@ function useArtwork() {
     ambient: (url: string | undefined, request?: Parameters<typeof runtime.source>[1]) => url
       ? {...runtime.source({url, cacheKey: url}, request), version: '1', variant: 'ambient-v1' as const, maxEdge: 64 as const}
       : undefined,
-  }) as unknown as ShellArtwork), [runtime]);
+  } as unknown as ShellArtwork), [runtime]);
 }
 
 const effects: HomeEffects = {
