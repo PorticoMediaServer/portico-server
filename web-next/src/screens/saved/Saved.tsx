@@ -5,6 +5,7 @@ import type {SavedEntry, SavedListFilter, SavedProjection, SavedRoute, SavedServ
 import type {PlaylistListFilter} from '@core/saved.ts';
 import type {PersonalResource, PersonalResourceEntry, PersonalSavedService} from '@core/personal-saved.ts';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
+import {episodeLabel} from '@portico/client-core/kit-model';
 import {shapeFor} from '@core/presentation/card-shape.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
 import {Button, Chip, Select, Tabs, Switch} from '../../kit/controls';
@@ -16,7 +17,7 @@ import {WindowedGrid} from '../../kit/layout';
 import {Skeleton, StateView} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useQuietRefresh} from '../../platform/freshness';
-import {homeCardModel} from '../home/model';
+import {homeCardModel, homeCardSubject} from '../home/model';
 import {BrowseEntryCard} from '../browse';
 import {LocalDownloads, ServerDownloads, type SavedDownloadEffects} from './Downloads';
 import {sameSavedDownloadsScope, type SavedDownloadsPort} from './downloads-port.ts';
@@ -61,6 +62,12 @@ export type SavedBindings = Readonly<{
   effects: SavedEffects;
 }>;
 export type SavedViewBindings = SavedBindings & Readonly<{operations: SavedOperations}>;
+/** The drawn time-left phrase for a started title, in the kit's own units. */
+export function remainingLabel(duration: number | undefined, position: number | undefined): string | undefined {
+  if (duration === undefined || position === undefined || !Number.isFinite(duration) || !Number.isFinite(position) || duration <= position) return undefined;
+  const minutes = Math.round((duration - position) / 60);
+  return minutes >= 60 ? t(minutes % 60 ? 'next.kit.duration.hoursMinutes' : 'next.kit.duration.hours', {hours: Math.floor(minutes / 60), minutes: minutes % 60}) : t('next.kit.duration.minutes', {minutes});
+}
 const tabLabels = {watchlist: 'saved.tab.watchlist', favorites: 'saved.tab.favorites', playlists: 'saved.tab.playlists', collections: 'saved.tab.collections', views: 'saved.tab.savedViews', history: 'saved.tab.history', downloads: 'downloads.title'} as const;
 
 export function SavedScreen(bindings: SavedBindings) {
@@ -236,6 +243,17 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
           onMore: bindings.onMore ? (anchor: HTMLButtonElement) => bindings.onMore!(entry, anchor)
             : effects.openMore ? (anchor: HTMLButtonElement) => effects.openMore!(service, section.id, entry, anchor) : undefined};
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
+        // A started episode keeps the show's poster and progress, and names the
+        // episode code with the time left underneath, as the frame draws it.
+        const position = media.progressSeconds ?? 0, left = media.kind === 'episode' ? remainingLabel(media.duration, position) : undefined;
+        if (left) {
+          const code = episodeLabel(homeCardSubject(media).episode, 'ordinary', {t, locale: defaultI18n.region.formatLocale})?.text;
+          const resumed = {id: media.id, title: media.show?.name ?? media.displayTitle ?? media.title,
+            caption: Object.freeze([...(code ? [{id: 'episode', role: 'context' as const, text: code}] : []), {id: 'remaining', role: 'supplement' as const, text: t('next.kit.remaining', {time: left})}]),
+            detail: Object.freeze([]), progress: media.duration && media.duration > 0 ? Math.min(1, position / media.duration) : undefined};
+          return <PosterCard model={resumed} artwork={common.artwork} selection={cardSelection} context="grid" watched={media.watched} progressPlacement="inset"
+            onNavigate={common.onNavigate} onPlay={common.onPlay} onMore={common.onMore} style={{'--cards-width': `${presentation.cardWidth}px`}} />;
+        }
         return <BrowseEntryCard entry={media} artwork={artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={presentation.cardWidth} mixed visible order={context.index} group={`saved:${section.id}`} backdrops={presentation.backdrops}
           actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: cardSelection}} />;
       }} />

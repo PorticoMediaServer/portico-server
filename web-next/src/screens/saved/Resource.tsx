@@ -16,7 +16,7 @@ import {WindowedGrid} from '../../kit/layout';
 import {homeCardModel, homeCardSubject} from '../home/model';
 import {BrowseEntryCard} from '../browse';
 import type {SavedViewBindings} from './Saved';
-import {SavedSection} from './Saved';
+import {remainingLabel, SavedSection} from './Saved';
 import {sameSavedRoute} from './route.ts';
 import {playlistRemovalUndo, type PlaylistRemovalUndo} from './removal.ts';
 import {RemovalUndo} from './RemovalUndo';
@@ -204,8 +204,7 @@ function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entr
   const title = media.kind === 'episode' ? media.show?.name ?? media.displayTitle ?? media.title : media.displayTitle ?? media.title;
   const subtitles = historySubtitle(media), position = entry.positionSeconds ?? 0, duration = media.duration;
   const progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
-  const left = !entry.completed && duration !== undefined && duration > position ? Math.round((duration - position) / 60) : undefined;
-  const remaining = left === undefined ? undefined : left >= 60 ? t(left % 60 ? 'next.kit.duration.hoursMinutes' : 'next.kit.duration.hours', {hours: Math.floor(left / 60), minutes: left % 60}) : t('next.kit.duration.minutes', {minutes: left});
+  const remaining = entry.completed ? undefined : remainingLabel(duration, position);
   const square = shapeFor(media.kind) === 'square', source = bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9);
   return <div className={styles.historyRow} data-shape={square ? 'square' : 'wide'}>
     <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} onClick={() => bindings.effects.openEntry(media)} aria-label={title}>
