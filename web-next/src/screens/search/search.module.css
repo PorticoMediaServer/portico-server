@@ -36,6 +36,9 @@
 
 .section header > button,.recent header > button,.emptySection header > button { margin-left: auto; }
 
+/* The drawn See all: the words, then a 2px-stated 18px right chevron. */
+.seeAll { display: inline-flex; align-items: center; gap: 2px; }
+
 .emptySection header > .trailingLink { flex-direction: row-reverse; }
 
 .cards { display: flex; gap: 16px; align-items: start; }
@@ -53,6 +56,13 @@
 .section[data-group=people] .cards > *,.section[data-group=artists] .cards > * { width: 124px; }
 
 .section[data-group=songs] { flex: 1 1 452px; }
+
+/* Live TV results are the kit's channel cards: the last section takes what's left of its line. */
+.section[data-group=live-tv] { flex: 1 1 auto; }
+
+.section[data-group=live-tv] .cards > * { flex: 1 0 300px; width: auto; }
+
+.liveCard { width: 300px; }
 
 .section[data-group=songs] .cards { display: block; }
 
@@ -122,6 +132,8 @@
 .chips > * { flex: none; }
 
 .top { flex-wrap: wrap; }
+
+.section[data-group=live-tv] .cards > * { flex: none; width: min(300px, 84vw); }
 
 .skeleton { grid-template-columns: repeat(3,1fr); }
  }

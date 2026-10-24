@@ -26,6 +26,7 @@ import {useShellWidth} from '../../shell/viewport';
 import {RecentSearches} from './RecentSearches';
 import {nowNext} from '@core/guide/index.ts';
 import {channelTint, type FactPart} from '@portico/client-core/kit-model';
+import {clockText, durationText} from '@core/presentation/kit-model/text.ts';
 import {defaultI18n} from '@i18n';
 
 type ChipId = SearchGroup | 'all';
@@ -160,7 +161,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpen
           if (!entries.length) return null;
           return <section key={result.id} className={styles.section} data-group={result.id}>
             <header><h2>{t(searchGroupLabel(result.id))}</h2>{result.totalCountExact && <span>{result.totalCount > cap ? t('web.search.someOf', {shown: Math.min(cap, entries.length), total: result.totalCount}) : result.totalCount}</span>}
-              {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" icon="i-right" onClick={() => setChip(result.id)}>{t('web.search.seeAll')}</Button>}</header>
+              {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}</header>
             <div className={styles.cards}>{entries.slice(0, cap).map(entry => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} onCommit={commit} />)}</div>
           </section>;
         })}
@@ -175,15 +176,21 @@ function SearchLoading() {
 
 export function SearchResult({entry, binding, onCommit}: {entry: SearchEntry; binding: SearchBindings; onCommit: () => void}) {
   const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
+  const liveCards = useSyncExternalStore(binding.live.subscribe, binding.live.getSnapshot, binding.live.getSnapshot);
   const art = context.artwork.foreground(entry.posterUrl, 380, 2 / 3);
-  if (entry.kind === 'channel') return <button className={styles.channel} type="button" onClick={open}><Icon name="i-tv" size={24} /><b>{entry.title}</b>{entry.subtitle && <small>{entry.subtitle}</small>}</button>;
+  if (entry.kind === 'channel') {
+    const live = liveCards.get(entry.id);
+    if (live) return <LiveCard className={styles.liveCard} context="search" channel={live.channel}
+      programme={live.programme} tint={live.tint} results onNavigate={open} logo={live.channel.logoUrl ? context.artwork.foreground(live.channel.logoUrl, 68, 1) : undefined} />;
+    return <button className={styles.channel} type="button" onClick={open}><Icon name="i-tv" size={24} /><b>{entry.title}</b>{entry.subtitle && <small>{entry.subtitle}</small>}</button>;
+  }
   if (!('libraryId' in entry)) return <CircleCard context="search" model={{title: entry.title, caption: entry.subtitle ? [{id: 'caption', text: entry.subtitle, role: 'context'}] : []}} covers={art ? [art] : []}
     initials={entry.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} onNavigate={open} />;
   const model = entryCard(entry, {t, locale: locale()}, 'search'), playable = entry.available === true && !!entry.playback;
   const props = {model, context: 'search' as const, watched: entry.watched, isNew: entry.new, onNavigate: open,
     onPlay: playable ? () => { void binding.play(entry).then(onCommit).catch(context.effects.reportError); } : undefined};
-  if (entry.kind === 'song') return <button className={styles.song} type="button" onClick={playable ? () => { void binding.play(entry).then(onCommit).catch(context.effects.reportError); } : open}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{model.detail.find(part => part.id === 'duration')?.text}</span></button>;
-  if (entry.kind === 'episode') return <EpisodeTile {...props} artwork={context.artwork.foreground(entry.stillUrl ?? entry.backdropUrl, 632, 16 / 9)} artworkKind={entry.stillUrl ? 'still' : 'backdrop'} description={entry.overview} />;
+  if (entry.kind === 'song') return <button className={styles.song} type="button" onClick={playable ? () => { void binding.play(entry).then(onCommit).catch(context.effects.reportError); } : open}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{clockText(entry.duration)}</span></button>;
+  if (entry.kind === 'episode') return <EpisodeTile {...props} length={durationText(entry.duration, t)} artwork={context.artwork.foreground(entry.stillUrl ?? entry.backdropUrl, 632, 16 / 9)} artworkKind={entry.stillUrl ? 'still' : 'backdrop'} description={entry.overview} />;
   if (entry.kind === 'artist') return <CircleCard {...props} covers={art ? [art] : []} variant="artist" />;
   if (['album', 'book', 'audiobook_file'].includes(entry.kind)) return <SquareCard {...props} artwork={context.artwork.foreground(entry.posterUrl, 300, 1)} />;
   return <PosterCard {...props} artwork={art} progressPlacement="inset" />;
