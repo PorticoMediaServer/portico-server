@@ -13,6 +13,7 @@ import {Skeleton, StateView} from '../../kit/states';
 import {createReadBindings} from './bindings';
 import {createReadingCollection, createReadingContinueCollection, type ReadingContinueItem, type ReadingLibraryItem} from './library-collection';
 import {readDestination} from './navigation';
+import {recentCards, type RecentReadingItem} from './recent-cards';
 import {ReadDiscovery, type ReadDiscoveryRow, type ReadResumeItem} from './ReadLibrary';
 import styles from './entry.module.css';
 
@@ -43,10 +44,11 @@ function resumeRows(resources: Resources, items: readonly ReadingContinueItem[])
   }}));
 }
 
-function LibraryRows({resources, name, comic, onMore, onRetry}: {resources: Resources; name: string; comic: boolean; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; onRetry: () => void}) {
+function LibraryRows({resources, libraryId, name, comic, onMore, onRetry}: {resources: Resources; libraryId: string; name: string; comic: boolean; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; onRetry: () => void}) {
   const grid = useRef<HTMLDivElement>(null), width = useShellWidth(), reducedMotion = useReducedMotion(), [height, setHeight] = useState(600);
   const state = useSyncExternalStore(resources.books.collection.subscribe, resources.books.collection.getSnapshot, resources.books.collection.getSnapshot), failed = state.status === 'error';
   const reading = useSyncExternalStore(resources.resume.collection.subscribe, resources.resume.collection.getSnapshot, resources.resume.collection.getSnapshot);
+  const [recent, setRecent] = useState<readonly RecentReadingItem[]>();
   useLayoutEffect(() => {
     const element = grid.current; if (!element) return;
     const read = () => setHeight(Math.max(280, window.innerHeight - element.getBoundingClientRect().top));
@@ -54,6 +56,15 @@ function LibraryRows({resources, name, comic, onMore, onRetry}: {resources: Reso
     return () => {observer.disconnect(); window.removeEventListener('resize', read);};
   }, [failed, reading.status]);
   useEffect(() => {resources.resume.collection.ensureRange(0, 11);}, [resources]);
+  /** phone-read 1: the server's own recently-added row. A failed or empty row leaves the library
+   *  without it; no date, count or membership is made up in its place. */
+  useEffect(() => {
+    const operation = new AbortController();
+    resources.bindings.client.discover({libraryId, limit: 20}, operation.signal)
+      .then(response => {if (!operation.signal.aborted) setRecent(response.rows[0]?.items ?? []);})
+      .catch(() => {if (!operation.signal.aborted) setRecent([]);});
+    return () => operation.abort();
+  }, [resources, libraryId]);
   const cardWidth = width < 600 ? 108 : 190;
   /** The same rows at phone width take the handheld scale and gutters (phone-read 1). */
   const platform = width < 600 ? 'phone-web' as const : 'desktop' as const;
@@ -61,7 +72,15 @@ function LibraryRows({resources, name, comic, onMore, onRetry}: {resources: Reso
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: onRetry}}/>;
   const resume = reading.status === 'error' ? [] : resources.resume.collection.residentItems();
   if (state.total === 0 && resume.length === 0) return <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
-  const rows: readonly ReadDiscoveryRow[] = resume.length > 0 ? [{id: 'continue', kind: 'resume', heading: t('next.cards.read'), items: resumeRows(resources, resume)}] : [];
+  const rows: readonly ReadDiscoveryRow[] = [
+    ...(resume.length > 0 ? [{id: 'continue', kind: 'resume' as const, heading: t('next.cards.read'), items: resumeRows(resources, resume)}] : []),
+    ...(recent && recent.length > 0 ? [{
+      id: 'recent', kind: 'covers' as const, heading: t('next.layout.recentIn', {library: name}),
+      items: recentCards(recent, {read: t('next.reader.read'),
+        open: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.id}}).catch(resources.reportError);},
+        play: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.id, entry.sourceId)).catch(resources.reportError);}}),
+    }] : []),
+  ];
   return <div className={styles.library}>
     <ReadDiscovery rows={rows} platform={platform} reducedMotion={reducedMotion}
       onVisibleRange={(_row, range) => resources.resume.collection.ensureRange(0, Math.max(0, range.last))}>
@@ -102,5 +121,5 @@ function BoundReadLibrary({captured, libraryId, header, onMore}: {captured: Capt
   if (!isReading || !library) return <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
   const again = () => setRetry(value => value + 1);
   return <>{header}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
-    : resources ? <LibraryRows resources={resources} name={library.name} comic={library.kind === 'comic'} onMore={onMore} onRetry={again}/> : <Skeleton height={320}/>}</>;
+    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} onMore={onMore} onRetry={again}/> : <Skeleton height={320}/>}</>;
 }
