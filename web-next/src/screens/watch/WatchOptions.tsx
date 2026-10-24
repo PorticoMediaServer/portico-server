@@ -68,7 +68,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings}:{open
    <Segmented className={styles.speeds} aria-label={sectionTitle('speed')} value={model.speed.find(row=>row.selected)?.id??''}
     items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
     onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
-   </div>:<RadioRows rows={sectionRows(section)} select={id=>sectionSelect(section,id)} reportError={reportError} label={sectionTitle(section)}/>}</div>:null;
+   </div>:<><RadioRows rows={sectionRows(section)} select={id=>sectionSelect(section,id)} reportError={reportError} label={sectionTitle(section)}/>{section==='quality'&&model.qualityNote&&<p className={styles.qualityNote}>{model.qualityNote}</p>}</>}</div>:null;
  const list=<div ref={root} className={styles.phoneRows} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}}}>
   <p className={styles.phoneNote}><Icon name="i-info" size={18}/><span>{t('player.opt.temporaryChanges')}{' '}{t('player.opt.defaultsUnchanged')}</span></p>
   {sections.map(row=><button key={row.id} type="button" className={styles.phoneRow}

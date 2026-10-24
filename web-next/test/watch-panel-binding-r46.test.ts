@@ -123,3 +123,11 @@ test('the phone options rows carry only real current choices in drawn order',()=
  f.set({...f.live,offers:{...f.live.offers!,subtitlePlan:null}});
  assert.deepEqual(phoneOptionRows(f.model()!,defaultI18n.t).map(row=>row.id),['audio','quality','speed']);
 });
+
+test('the quality panel names only the real current conversion',()=>{
+ const f=fixture();assert.equal(f.model()!.qualityNote,undefined);
+ f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,decision:{video:{action:'transcode',to:'av1'}}}}});
+ assert.equal(f.model()!.qualityNote,'Converting to 720p');
+ f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,decision:{video:{action:'direct'}}}}});
+ assert.equal(f.model()!.qualityNote,'Playing the original file');
+});
