@@ -5,6 +5,8 @@ parser.add_argument('job',type=pathlib.Path)
 for name in ['build-tools','rust-tools','cargo-home','dependency-prefix','pkg-config','pkg-config-dir','mpv-archive']:
  parser.add_argument('--'+name,required=True,type=pathlib.Path)
 args=parser.parse_args()
+if sys.platform!="darwin":parser.error("requires the actual macOS SDK")
+if any(not value.is_absolute() for value in vars(args).values()):parser.error("all build inputs must use absolute paths")
 job=args.job.resolve();root=pathlib.Path.home()/"PorticoBuild/desktop-r29"
 assert job.parent==root and job.name.startswith("native-shared-f3-")
 lock=(root.parent/".xcode-build.lock").open("r+");acquired=False;peak=0
