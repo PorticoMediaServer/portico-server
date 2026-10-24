@@ -1,4 +1,4 @@
-import {DVRClient, DVRModel, dvrMessage, isAccessError,
+import {DVRClient, DVRModel, activeRecording, dvrMessage, isAccessError, mutableRecording,
   type DVRPage, type DVRSummary, type Recording, type RecordingDetail, type RecordingGroups, type RecordingStorage} from '@core/dvr.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
 
@@ -24,8 +24,15 @@ export type RecordingsSnapshot = Readonly<{
   /** The order the resident groups were read with; `groups.nextCursor` is the server's. */
   groupsSort: RecordingsSort;
   accessDenied: boolean;
+  /** The last destination/refresh failure. A failed command is never folded into it. */
   error: string;
+  /** A command is in flight through the same private model. */
+  mutating: boolean;
+  /** The last command failure; cleared by the next committed command. */
+  commandError: string;
 }>;
+/** A command's actual outcome: the ACK and the genuine reload are separate facts. */
+export type RecordingsCommandOutcome = Readonly<{committed: boolean; refreshed: boolean; busy: boolean}>;
 export type RecordingsControllerOptions = Readonly<{
   api: ChannelApi;
   serverId: string;
@@ -42,6 +49,10 @@ const receiptText = /^[a-f0-9]{48}$/;
 const recordingText = /^[a-f0-9]{64}$/;
 const cancelled = () => new DOMException('recordings-scope-closed', 'AbortError');
 const invalid = () => Object.assign(new Error('recordings-query-invalid'), {code: 'recordings-query-invalid'});
+const staleRow = () => Object.assign(new Error('recordings-row-stale'), {code: 'recordings-row-stale'});
+const notOffered = () => Object.assign(new Error('recordings-command-not-offered'), {code: 'recordings-command-not-offered'});
+/** The legacy keepable states: a failure that produced a file can still be kept. */
+const keepable: readonly string[] = ['completed', 'incomplete-playable', 'failed'];
 const isCancelled = (failure: unknown) => failure instanceof DOMException && failure.name === 'AbortError';
 
 /** Headless, captured-parent adapter for the Recordings door. Construction performs
@@ -71,12 +82,12 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
    * group and receipt reads are profile-wide and may finish across a local
    * destination change on the same lease; this fences them across actual retirement. */
   let epoch = 0, summarySerial = 0, groupsSerial = 0;
-  let loading = false, accessDenied = false, errorText = '';
+  let loading = false, accessDenied = false, errorText = '', commandError = '';
   let query: RecordingsQuery = Object.freeze({view: 'upcoming'});
   let page: DVRPage | null = null, detail: RecordingDetail | null = null, storage: RecordingStorage | null = null;
   let summary: DVRSummary | null = null, groups: RecordingGroups | null = null, groupsSort: RecordingsSort = 'recent';
   let state: RecordingsSnapshot = Object.freeze({query, phase: 'idle', page: null, detail: null, storage: null, summary: null, groups: null,
-    groupsSort: 'recent', accessDenied: false, error: ''});
+    groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
 
   function notify() { for (const listener of [...listeners]) listener(); }
   function current() {
@@ -86,11 +97,12 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   }
   function derive(): RecordingsSnapshot {
     const snapshot = model.getSnapshot();
-    const error = closed ? '' : errorText || (snapshot.error ?? '');
+    const error = closed ? '' : errorText;
     const phase: RecordingsPhase = closed ? 'retired' : loading ? 'loading' : error ? 'error'
       : page || detail || storage || summary || groups ? 'ready' : 'idle';
     return Object.freeze({query, phase, page, detail, storage, summary, groups, groupsSort,
-      accessDenied: closed ? false : accessDenied || snapshot.accessDenied, error});
+      accessDenied: closed ? false : accessDenied || snapshot.accessDenied, error,
+      mutating: closed ? false : snapshot.mutating, commandError: closed ? '' : commandError});
   }
   function publish() {
     if (closed) return;
@@ -101,6 +113,10 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   function dropResident() {
     page = detail = storage = null;
   }
+  /** Exact resident object identity, never an id match. */
+  function resident(recording: Recording): boolean {
+    return (page?.recordings.includes(recording) ?? false) || detail?.recording === recording;
+  }
   const sameDestination = (left: RecordingsQuery, right: RecordingsQuery) => left.view === right.view
     && (left.cursor ?? '') === (right.cursor ?? '') && (left.recordingId ?? '') === (right.recordingId ?? '');
   /** One authority change erases every private fact — page, detail, storage and
@@ -109,7 +125,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     if (closed) return;
     epoch++;summarySerial++;groupsSerial++;
     dropResident();summary = groups = null;groupsSort = 'recent';
-    accessDenied = denied;errorText = '';
+    accessDenied = denied;errorText = '';commandError = '';
     publish();
   }
   function recordFailure(failure: unknown) {
@@ -117,6 +133,42 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     if (isAccessError(failure)) { clearFacts(true); return; }
     errorText = dvrMessage(failure);
     publish();
+  }
+  /** Adopt the model's own facts after a command; the model owns the post-ACK
+   * reload and its captured, genuine destination query. */
+  function adoptFacts() {
+    const snapshot = model.getSnapshot();
+    page = snapshot.page;detail = snapshot.detail;storage = snapshot.storage;
+    accessDenied = snapshot.accessDenied;loading = false;
+  }
+  /** Every command targets one exact resident object of a settled destination. */
+  function commandTarget(recording: Recording): Recording {
+    if (!current()) throw cancelled();
+    if (derive().phase !== 'ready' || !resident(recording)) throw staleRow();
+    return recording;
+  }
+  /** One command through the same private model: no retry, no rebase, no
+   * optimistic fact, and the ACK and its reload are reported separately. */
+  async function command(work: () => Promise<unknown>): Promise<RecordingsCommandOutcome> {
+    if (!current()) throw cancelled();
+    if (model.getSnapshot().mutating) return Object.freeze({committed: false, refreshed: false, busy: true});
+    const committed = await model.act(work);
+    if (!current()) throw cancelled();
+    const snapshot = model.getSnapshot();
+    if (snapshot.accessDenied) {
+      clearFacts(true);
+      return Object.freeze({committed: false, refreshed: false, busy: false});
+    }
+    adoptFacts();
+    if (!committed) {
+      commandError = snapshot.error ?? '';
+      publish();
+      return Object.freeze({committed: false, refreshed: false, busy: false});
+    }
+    commandError = '';
+    errorText = snapshot.error ?? '';
+    publish();
+    return Object.freeze({committed: true, refreshed: !snapshot.error, busy: false});
   }
   /** Retires this captured viewer once. A silent retirement is for a snapshot read
    * inside a render; it still erases and unsubscribes. */
@@ -127,9 +179,9 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     loadSerial++;epoch++;summarySerial++;groupsSerial++;
     model.dispose();
     page = detail = storage = null;summary = groups = null;groupsSort = 'recent';
-    loading = false;accessDenied = false;errorText = '';
+    loading = false;accessDenied = false;errorText = '';commandError = '';
     state = Object.freeze({query, phase: 'retired', page: null, detail: null, storage: null, summary: null, groups: null,
-      groupsSort: 'recent', accessDenied: false, error: ''});
+      groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
     try { if (!silent) notify(); } finally { listeners.clear(); }
   }
   function onAbort() { retire(); }
@@ -166,7 +218,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     contains(recording: Recording): boolean {
       if (!current()) return false;
       if (derive().phase !== 'ready') return false;
-      return (page?.recordings.includes(recording) ?? false) || detail?.recording === recording;
+      return resident(recording);
     },
     getSnapshot(): RecordingsSnapshot {
       if (!closed && (signal.aborted || !isCurrent())) retire(true);
@@ -191,7 +243,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
         // summary/group facts and the receipt lease are deliberately untouched.
         dropResident();
       }
-      query = captured;loading = true;errorText = '';
+      query = captured;loading = true;errorText = '';commandError = '';
       publish();
       try {
         await model.load(captured);
@@ -267,6 +319,20 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
       if (at !== epoch) throw cancelled();
       if (typeof value !== 'string' || !receiptText.test(value)) throw invalid();
       return value;
+    },
+    /** Cancel one exact resident recording through the same private model, using
+     * the canonical mutable/active states the legacy menu offers. */
+    async cancel(recording: Recording): Promise<RecordingsCommandOutcome> {
+      const target = commandTarget(recording);
+      if (!mutableRecording(target) && !activeRecording(target)) throw notOffered();
+      return command(() => model.client.cancel(target));
+    },
+    /** Keep or stop keeping one exact resident recording, only in the legacy
+     * keepable states; the client sends the toggled value for this revision. */
+    async keep(recording: Recording): Promise<RecordingsCommandOutcome> {
+      const target = commandTarget(recording);
+      if (!keepable.includes(target.state)) throw notOffered();
+      return command(() => model.client.keep(target));
     },
     dispose,
   };

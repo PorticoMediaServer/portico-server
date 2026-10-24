@@ -60,7 +60,7 @@ test('construction is inert: no HTTP, no minted receipt and an empty snapshot', 
   assert.equal(calls.length, 0);
   assert.equal(receipts, 0);
   assert.deepEqual(controller.getSnapshot(), {query: {view: 'upcoming'}, phase: 'idle', page: null, detail: null, storage: null,
-    summary: null, groups: null, groupsSort: 'recent', accessDenied: false, error: ''});
+    summary: null, groups: null, groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
   controller.dispose();
   assert.equal(calls.length, 0);
   assert.equal(receipts, 0);
@@ -747,5 +747,112 @@ test('a resident detail dies with its generation and a 403 retires it without re
     await controller.load({view: 'recorded', recordingId: id});
     assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
     assert.equal(controller.contains(fresh), false, 'the recovered object is a new generation');
+  } finally { controller.dispose(); }
+});
+
+// Step 1 — resident Cancel and Keep through the same private model.
+const commandRecording = (id: string, patch: Record<string, unknown> = {}) => recording(id, patch);
+const commandPage = () => pageOf([commandRecording(hex(64, '1')),
+  commandRecording(hex(64, '2'), {state: 'completed'}), commandRecording(hex(64, '3'), {state: 'failed'})], 'page-two', 1);
+
+test('a held cancel keeps the resident row until the ACK, then adopts the genuine reload', async () => {
+  const cancelReply = held<unknown>();
+  let pageServed = 0;
+  const {api, calls} = fixtureServer(call => {
+    if (call.method !== 'GET') return cancelReply.promise;
+    pageServed++;
+    return pageOf([commandRecording(hex(64, '1'), {revision: pageServed === 1 ? 1 : 2, state: pageServed === 1 ? 'scheduled' : 'cancelled'})], 'page-two', pageServed);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded', cursor: 'page-two'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const pending = controller.cancel(row);
+    assert.equal(controller.getSnapshot().mutating, true, 'the command is in flight');
+    assert.equal(controller.getSnapshot().page?.recordings[0], row, 'no optimistic removal or rewrite');
+    assert.equal(controller.contains(row), true, 'the row is still the resident object until the ACK');
+    const command = calls.at(-1)!;
+    assert.equal(command.method, 'POST');
+    assert.equal(pathname(command), '/v1/dvr/recordings/' + hex(64, '1') + '/cancel');
+    assert.deepEqual(Object.keys(command.body as object).sort(), ['expectedRevision', 'requestId']);
+    assert.equal((command.body as {expectedRevision: number}).expectedRevision, 1);
+    assert.match(String((command.body as {requestId: string}).requestId), /^[a-f0-9]{48}$/);
+
+    cancelReply.resolve(commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'}));
+    const outcome = await pending;
+    assert.deepEqual(outcome, {committed: true, refreshed: true, busy: false});
+    const reload = calls.at(-1)!;
+    assert.equal(reload.method, 'GET', 'the genuine destination is reloaded after the ACK');
+    assert.equal(params(reload).get('state'), 'recorded');
+    assert.equal(params(reload).get('cursor'), 'page-two', 'the offered cursor is the one reloaded');
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.mutating, false);
+    assert.equal(snapshot.commandError, '');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.equal(snapshot.page?.recordings[0].state, 'cancelled');
+    assert.equal(controller.contains(row), false, 'the ACK republishes new resident objects');
+    assert.equal(controller.contains(snapshot.page!.recordings[0]), true);
+  } finally { controller.dispose(); }
+});
+
+test('keep toggles only the legacy keepable states and cancel only live states', async () => {
+  const {api, calls} = fixtureServer(call => call.method !== 'GET'
+    ? commandRecording(hex(64, '2'), {revision: 2, keep: true}) : commandPage());
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const [scheduled, completed, failed] = controller.getSnapshot().page!.recordings;
+    await assert.rejects(controller.keep(scheduled), /recordings-command-not-offered/);
+    await assert.rejects(controller.cancel(completed), /recordings-command-not-offered/);
+    await assert.rejects(controller.cancel(failed), /recordings-command-not-offered/);
+    await assert.rejects(controller.cancel({...scheduled}), /recordings-row-stale/);
+    assert.equal(calls.filter(call => call.method !== 'GET').length, 0, 'a refused command performs no request');
+
+    const outcome = await controller.keep(completed);
+    assert.deepEqual(outcome, {committed: true, refreshed: true, busy: false});
+    const command = calls.filter(call => call.method !== 'GET').at(-1)!;
+    assert.equal(command.method, 'PUT');
+    assert.equal(pathname(command), '/v1/dvr/recordings/' + hex(64, '2') + '/keep');
+    assert.equal((command.body as {keep: boolean}).keep, true, 'the kept value is the exact toggle for this revision');
+    assert.equal((command.body as {expectedRevision: number}).expectedRevision, 1);
+
+    await assert.rejects(controller.keep(controller.getSnapshot().page!.recordings[0]), /recordings-command-not-offered/);
+  } finally { controller.dispose(); }
+});
+
+test('a refused command keeps the resident facts, its revision and the genuine error fact', async () => {
+  const {api, calls} = fixtureServer(call => {
+    if (call.method !== 'GET') throw {status: 409};
+    return commandPage();
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const outcome = await controller.cancel(row);
+    assert.deepEqual(outcome, {committed: false, refreshed: false, busy: false});
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.page?.recordings[0], row, 'no optimistic or rebased row');
+    assert.equal(snapshot.page?.recordings[0].revision, 1, 'the genuine revision stays with the row');
+    assert.equal(controller.contains(row), true, 'a refused command leaves the row retryable');
+    assert.equal(snapshot.commandError.length > 0, true, 'the conflict is a command fact');
+    assert.equal(snapshot.error, '', 'a command failure is not a destination failure');
+    assert.equal(calls.filter(call => call.method === 'GET').length, 1, 'a failed command reloads nothing');
+  } finally { controller.dispose(); }
+});
+
+test('a second command while one is in flight is busy and sends nothing', async () => {
+  const heldReply = held<unknown>();
+  const {api, calls} = fixtureServer(call => call.method !== 'GET' ? heldReply.promise : commandPage());
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const first = controller.cancel(row);
+    const second = await controller.cancel(row);
+    assert.deepEqual(second, {committed: false, refreshed: false, busy: true});
+    assert.equal(calls.filter(call => call.method !== 'GET').length, 1, 'one click sends one command');
+    heldReply.resolve(commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'}));
+    assert.deepEqual(await first, {committed: true, refreshed: true, busy: false});
   } finally { controller.dispose(); }
 });
