@@ -148,15 +148,34 @@ func (s *Service) continueSave(ctx context.Context, profile, key string) (progre
 	if windows == nil {
 		return false, nil // a snapshot the queue needs is still building
 	}
+	if s.SaveReadCheck != nil {
+		s.SaveReadCheck()
+	}
 	if len(windows) == 0 {
 		// Nothing left to read (a step that wrote the last window but not
-		// the state): finish rather than pick the same row again.
-		_, err = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassBackgroundMedia, `UPDATE queue_v1_saves SET state='saved',updated_ms=? WHERE profile_id=? AND key=? AND state='building'`, s.now().UnixMilli(), profile, key)
+		// the state): finish rather than pick the same row again, but only if
+		// the queue still has the order this copy started from.
+		changedNow := false
+		err = dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			unchanged, err := s.saveOrderUnchanged(ctx, tx, r)
+			if err != nil {
+				return err
+			}
+			if !unchanged {
+				changedNow = true
+				return nil
+			}
+			_, err = tx.ExecContext(ctx, `UPDATE queue_v1_saves SET state='saved',updated_ms=? WHERE profile_id=? AND key=? AND state='building'`, s.now().UnixMilli(), profile, key)
+			return err
+		})
+		if changedNow {
+			return true, s.endSave(ctx, profile, key, "queue_changed")
+		}
 		return true, err
 	}
 	actor := catalog.ResourceActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}
 	for _, w := range windows {
-		stop := false
+		stop, changedNow := false, false
 		err = dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			var state string
 			var next int64
@@ -165,6 +184,18 @@ func (s *Service) continueSave(ctx context.Context, profile, key string) (progre
 			}
 			if state != "building" || next != w.from {
 				stop = true // another step got here first, or the copy ended
+				return nil
+			}
+			// The read snapshot that produced these windows is gone; refuse the
+			// write if the queue's play order changed in the gap. What earlier
+			// windows copied stays, as with every queue_changed stop.
+			unchanged, err := s.saveOrderUnchanged(ctx, tx, r)
+			if err != nil {
+				return err
+			}
+			if !unchanged {
+				changedNow = true
+				stop = true
 				return nil
 			}
 			_, appended, err := catalog.AppendPlaylistItemsTx(ctx, tx, actor, r.playlist, w.items)
@@ -183,6 +214,9 @@ func (s *Service) continueSave(ctx context.Context, profile, key string) (progre
 			_, err = tx.ExecContext(ctx, `UPDATE queue_v1_saves SET next_ordinal=?,saved=saved+?,state=?,updated_ms=? WHERE profile_id=? AND key=?`, w.next, appended, state, s.now().UnixMilli(), profile, key)
 			return err
 		})
+		if changedNow {
+			return true, s.endSave(ctx, profile, key, "queue_changed")
+		}
 		if err != nil || stop {
 			return true, err
 		}
@@ -191,6 +225,25 @@ func (s *Service) continueSave(ctx context.Context, profile, key string) (progre
 		}
 	}
 	return true, nil
+}
+
+// saveOrderUnchanged re-reads the queue's order metadata in the caller's
+// transaction and says whether it is still the order the copy started from.
+// Only queue tables are read: no Sonic capture or provider work, and the
+// caller's own open transaction is never nested.
+func (s *Service) saveOrderUnchanged(ctx context.Context, tx *sql.Tx, r saveRow) (bool, error) {
+	q, err := loadQueue(ctx, tx, r.queue)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	l, err := s.readLayout(ctx, tx, q)
+	if err != nil {
+		return false, err
+	}
+	return l.orderDigest() == r.order && l.total() == r.total, nil
 }
 
 // readSaveWindows reads the next saveStepEntries of the queue, in play order,
@@ -207,6 +260,13 @@ func (s *Service) readSaveWindows(ctx context.Context, r saveRow, p identity.Pri
 		}
 		return l.sonicWindowsForRange(r.next, min(int64(saveStepEntries), max(0, r.total-r.next)))
 	}, func(l *layout) error {
+		// The fence must also run when the layout has no Sonic window to select
+		// (every queue that is not shuffled): an append, removal or reorder that
+		// lands while the copy waits is still a different play order.
+		if l.orderDigest() != r.order || l.total() != r.total {
+			changed = true
+			return ErrRevision
+		}
 		windows = []saveWindow{}
 		for from := r.next; from < r.total && from < r.next+saveStepEntries; from += WindowMax {
 			n := min(int64(WindowMax), r.total-from)
