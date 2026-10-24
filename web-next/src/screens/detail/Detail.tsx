@@ -193,7 +193,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const differentVersion = versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1;
   const personal = (phone && offered('watched')) || offered('favorite') || offered('rating');
   return <>
-    <Menu open={open} onOpenChange={setOpen} title={data.item.title} width={280} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} />}>
+    <Menu open={open} onOpenChange={setOpen} title={data.item.title} width={280} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} className={open ? styles.moreOpen : undefined} />}>
       {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
       {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
       {offered('rating') && <MenuItem icon="i-star" onSelect={() => setRating(true)}>{t('entry.rate')}</MenuItem>}
