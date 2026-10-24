@@ -296,7 +296,13 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	listed := s.scanListed(ctx, job, source)
 	artworkObserved := true
 	readContext := func(operation string) context.Context {
-		rooted := storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks})
+		// The original media target is the invocation, not the observation of a
+		// separately inventoried NFO, cover or subtitle candidate read below.
+		admission := storage.InventoryBlobAdmission{Purpose: storage.InventoryBlobAnalysisSidecar,
+			JobID: job, LibraryID: source.LibraryID, LibrarySourceID: source.ID,
+			RootIncarnation: source.Incarnation, RootIdentity: source.RootIdentity, SourceGeneration: source.Generation,
+			PolicyRevision: policy.Revision, ObjectID: object, SourceRevision: revision, Operation: operation}
+		rooted := storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}, admission)
 		// What this scan saw when it listed the directory spares a helper
 		// process for every sidecar that is not there.
 		rooted = localmetadata.WithListing(rooted, listed)
