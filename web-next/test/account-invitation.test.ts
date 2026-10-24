@@ -17,7 +17,7 @@ function response() {
 }
 function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
   const calls: {path: string; body?: unknown}[] = [], retired: string[] = [], admitted: string[] = [], tokens: string[] = [];
-  let selected: unknown;
+  let selected: unknown, proofRefused=false;
   let currentOrigin = origin, previewAnswer: unknown = preview, failSignIn = false;
   let family = 'issued-family', token = 'issued-access';
   let retirementGate: Promise<void> | undefined, releaseRetirement: (() => void) | undefined;
@@ -41,11 +41,11 @@ function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
   const entry = new BrowserAccountEntry({
     store: {selected: async () => selected, read: async () => ({version: 1, revision: 7, servers: []}), connectionStorage: (_id: string, admission: {expectedRevision: number}) => {assert.equal(admission.expectedRevision, 7); return storage;}} as never,
     actions: {} as never, environment: () => ({storage}), restore: async () => undefined,
-    inspect: async () => pin, connect: (async () => ({api, connection})) as never,
+    inspect: async () => {if(proofRefused)throw Object.assign(new Error('unproven'),{code:'identity_mismatch'});return pin;}, connect: (async () => ({api, connection})) as never,
     remember: async (_api, session, _env, _hosted, current) => {assert.equal(current?.(), true); admitted.push(session.sessionFamilyId);selected = {signIn: 'local', connection: {pin, session}};},
     retire: async (_api, session) => {retired.push(session.sessionFamilyId);if (retirementGate) await retirementGate;}, invitationDestination: destination,
   }, probe);
-  return {entry, calls, retired, admitted, tokens, successorGrant: () => {family = 'successor-family';token = 'successor-access';},
+  return {entry, calls, retired, admitted, tokens, refuseProof:()=>{proofRefused=true;}, successorGrant: () => {family = 'successor-family';token = 'successor-access';},
     holdRetirement: () => {retirementGate = new Promise(resolve => {releaseRetirement = resolve;});}, releaseRetirement: () => {releaseRetirement?.();}, preview: (value: unknown) => {previewAnswer = value;}, failSignIn: (value: boolean) => {failSignIn = value;},
     holdSignIn: () => {signInGate = new Promise(resolve => {releaseSignIn = resolve;});}, releaseSignIn: () => {releaseSignIn?.(); signInGate = undefined;},
     holdProbe: () => {probeGate = new Promise(resolve => {releaseProbe = resolve;});}, releaseProbe: () => {releaseProbe?.();}};
@@ -112,4 +112,24 @@ test('late cleanup cannot clear a successor admitted through the same captured A
   assert.deepEqual(f.admitted, ['successor-family']);assert.deepEqual(f.tokens, ['successor-access']);
   f.releaseRetirement();await abandoned;
   assert.deepEqual(f.tokens, ['successor-access']);assert.equal(f.entry.getSnapshot().phase, 'ready');f.entry.dispose();
+});
+
+
+test('human short code uses the verified entry and existing one-use local join without a long secret',async()=>{
+ const f=fixture();await f.entry.inspectShortInvitation(origin,'0123-4567-89ab-cdef');
+ assert.deepEqual(f.calls.map(v=>v.path),['/v1/system','/v1/access/invitations/preview']);
+ assert.deepEqual(f.calls[1].body,{shortCode:'0123456789ABCDEF'});
+ assert.equal(JSON.stringify(f.entry.getSnapshot()).includes('0123456789ABCDEF'),false);
+ await f.entry.joinLocal('new_user','long enough password','New person');
+ assert.deepEqual(f.calls.find(v=>v.path==='/v1/access/invitations/accept')?.body,{shortCode:'0123456789ABCDEF',username:'new_user',password:'long enough password',name:'New person'});
+ assert.deepEqual(f.admitted,['issued-family']);f.entry.dispose();
+});
+
+test('short code is never sent after failed proof, invalid syntax or abandoned address inspection',async()=>{
+ const f=fixture();f.refuseProof();await f.entry.inspectShortInvitation(origin,'0123456789ABCDEF');
+ assert.equal(f.calls.some(v=>v.path.includes('invitations')),false);f.entry.dispose();
+ const invalid=fixture();await invalid.entry.inspectShortInvitation(origin,'x'.repeat(43));assert.equal(invalid.calls.length,0);invalid.entry.dispose();
+ const cancelled=fixture();cancelled.holdProbe();const old=cancelled.entry.inspectShortInvitation(origin,'0123456789ABCDEF');
+ await new Promise(resolve=>setImmediate(resolve));await cancelled.entry.inspect('https://successor.example');cancelled.releaseProbe();await old;
+ assert.equal(cancelled.calls.some(v=>v.path.includes('invitations')),false);cancelled.entry.dispose();
 });
