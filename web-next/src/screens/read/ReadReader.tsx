@@ -1,4 +1,4 @@
-import {useCallback, useSyncExternalStore, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode} from 'react';
 import {readerErrorCode, type ReaderController, type ReaderSnapshot} from '@portico/reader-core';
 import {ReaderChrome, type ReaderChromeProps} from './ReaderChrome';
 import {ReaderSurface, type ReaderSurfaceProps} from './ReaderSurface';
@@ -17,6 +17,20 @@ export type ReadReaderProps<P extends object> = ReaderSurfaceProps<P> & Readonly
 /** The checked main controller is the single state and navigation owner for all formats. */
 export function ReadReader<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, reportError, presentation, state, onBack}: ReadReaderProps<P>) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  // Temporary P0-CBZ diagnostic (throwaway branch only): the safe controller
+  // error, the format and the viewport. No ids, bodies, manifests or URLs.
+  const reported = useMemo(() => ({error: false}), []);
+  useEffect(() => {
+    const report = () => {
+      const current = controller.getSnapshot() as unknown as Readonly<{status?: string; error?: unknown; format?: string}>;
+      if (current.status !== 'error' || reported.error) return;
+      reported.error = true;
+      console.info('P0-CBZ ' + JSON.stringify({marker: 'P0-CBZ', error: current.error ?? null, format,
+        viewport: [window.innerWidth, window.innerHeight, window.devicePixelRatio]}));
+    };
+    report();
+    return controller.subscribe(report);
+  }, [controller, format, reported]);
   const chrome = presentation(snapshot);
   const navigate = useCallback((target: Parameters<ReaderController<P>['navigate']>[0]) => {
     if (!authority.isCurrent() || controller.getSnapshot().status !== 'ready') return;
