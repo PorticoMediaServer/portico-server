@@ -29,10 +29,10 @@ func davConnectionFailure(err error) error {
 		code = "invalid_request"
 	case errors.Is(err, storage.ErrRemoteCredentials):
 		code = "source_credentials_required"
-	case errors.Is(err, identity.ErrUnauthorized):
-		code = "unauthorized"
 	case errors.Is(err, identity.ErrForbidden):
 		code = "not_permitted"
+	case errors.Is(err, identity.ErrUnauthorized):
+		code = "unauthorized"
 	}
 	return &apierror.Error{Code: code}
 }
