@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/remotemedia"
 )
 
 // This child models process custody and authenticated readiness only. It is
@@ -47,6 +49,12 @@ func TestServeProcessChild(t *testing.T) {
 		user, pass, ok := r.BasicAuth()
 		if mode == "unauthorized" || !ok || user != os.Getenv("RCLONE_USER") || pass != os.Getenv("RCLONE_PASS") {
 			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if mode == "stream" && r.Method == "GET" && r.URL.Path == "/file" {
+			w.Header().Set("ETag", `"fixture"`)
+			w.Header().Set("Content-Length", "16")
+			_, _ = io.WriteString(w, "0123456789abcdef")
 			return
 		}
 		if r.Method != "PROPFIND" || r.Header.Get("Depth") != "0" || r.URL.Path != "/" {
@@ -220,5 +228,84 @@ func TestServeProcessWaitRemovesRecreatedTransientFilesOnly(t *testing.T) {
 	}
 	if raw, err := os.ReadFile(retained); err != nil || string(raw) != "fixture-original" {
 		t.Fatal("retained source configuration changed", err)
+	}
+}
+
+func TestServeProcessSharedOperationsKeepOneBudgetAndLifetime(t *testing.T) {
+	// Controlled children prove shared resource/lifecycle custody only. They
+	// supply no provider, owner-save, content-access or outbound policy proof.
+	spec, firstLease, _ := serveProcessFixture(t, "stream")
+	spec.Connections = 1
+	first, err := StartServe(context.Background(), Program{Path: "/fixture", Included: true}, spec, firstLease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Stop()
+	budget, err := first.SharedOperations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, secondLease, _ := serveProcessFixture(t, "ready")
+	other.Connections, other.SharedOperations = 1, budget
+	second, err := StartServe(context.Background(), Program{Path: "/fixture", Included: true}, other, secondLease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Stop()
+	endpoint, err := first.Endpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := endpoint.OpenFromStart(context.Background(), "file", `"fixture"`, 16, first.Check)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer body.Close()
+	observer, err := second.ObservationEndpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSlot, cancelSlot := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	_, err = observer.Stat(waitSlot, "", second.Check)
+	cancelSlot()
+	if !errors.Is(err, context.DeadlineExceeded) || first.OperationCounts().Active != 1 || second.OperationCounts() != first.OperationCounts() {
+		t.Fatal("second process bypassed the source operation", err, first.OperationCounts(), second.OperationCounts())
+	}
+	body.Close()
+	if _, err = observer.Stat(context.Background(), "", second.Check); err != nil || budget.Counts().Peak != 1 || budget.Counts().Active != 0 {
+		t.Fatal("shared slot was not returned", err, budget.Counts())
+	}
+	first.Stop()
+	wait, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	for _, process := range []*ServeProcess{first, second} {
+		if err = process.Wait(wait); !errors.Is(err, ErrServeStopped) {
+			t.Fatal("shared resource revocation left a physical child", err)
+		}
+	}
+	if firstLease.released.Load() != 1 || secondLease.released.Load() != 1 {
+		t.Fatal("shared budget confused physical lease release", firstLease.released.Load(), secondLease.released.Load())
+	}
+}
+
+func TestServeProcessSharedBudgetRejectsUnknownCapacityAndExpiredLifetime(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		spec, lease, _ := serveProcessFixture(t, "ready")
+		life, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		spec.SharedOperations = remotemedia.NewOperationBudget(life, 1)
+		if expired {
+			spec.Connections = 1
+			cancel()
+		}
+		called := false
+		spec.Enforce = func(*exec.Cmd) error { called = true; return nil }
+		if process, err := StartServe(context.Background(), Program{Path: "/unused", Included: true}, spec, lease); !errors.Is(err, ErrServeConfiguration) || process != nil || called || lease.released.Load() != 1 {
+			t.Fatal("invalid shared resource reached a child boundary", process, err, called, lease.released.Load())
+		}
+		entries, err := os.ReadDir(spec.PrivateDirectory)
+		if err != nil || len(entries) != 0 {
+			t.Fatal("invalid shared resource created private configuration", entries, err)
+		}
 	}
 }
