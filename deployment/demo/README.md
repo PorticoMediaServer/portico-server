@@ -75,7 +75,7 @@ python3 scripts/build-review.py FULL_MAIN_SHA --repo /path/to/server-checkout --
 scripts/deploy-demo.sh FULL_MAIN_SHA /path/to/artifacts --cycle review-CYCLE --stage-only
 ```
 
-Staging uses a separate fresh structured data directory and loopback port32504. Complete normal public local-owner setup, create the second profile, and disable transcoding through the owner settings API before scanning. Keep the existing `/srv/portico-demo-20260919` media and synthetic Live TV services. Credentials and the cycle's arm64 embedded-JavaScript testing APK link belong only in `_program/private/REVIEW-SERVER.md`, mode0600; never in this repository or logs.
+Staging uses a separate fresh structured data directory and loopback port32504. Complete normal public local-owner setup, create the second profile, and set canonical `conversionMode` to `never` through the owner settings API before scanning. Keep the existing `/srv/portico-demo-20260919` media and synthetic Live TV services. Credentials and the cycle's arm64 embedded-JavaScript testing APK link belong only in `_program/private/REVIEW-SERVER.md`, mode0600; never in this repository or logs.
 
 After setup verification, activate explicitly:
 
@@ -89,7 +89,7 @@ The old service/configuration and old database remain available for rollback; a 
 
 ### Setup and catalogue guards
 
-Complete fresh setup through `POST /v1/setup/browser`, `POST /v1/setup` with local auth, then `GET /v1/setup/state` and `POST /v1/setup/finish` with the returned revision. Create the second profile with `POST /v1/direct/profiles`; profile lists come back in that response. Disable transcoding with the revisioned owner console-settings API and verify `effective.transcodingEnabled` is false. Never carry an old session, server identity, database or installation into the fresh cycle.
+Complete fresh setup through `POST /v1/setup/browser`, `POST /v1/setup` with local auth, then `GET /v1/setup/state` and `POST /v1/setup/finish` with the returned revision. Create the second profile with `POST /v1/direct/profiles`; profile lists come back in that response. Set `requested.conversionMode` to `never` with the complete revisioned owner console-settings document and verify `effective.conversionMode` is `never`. The retired `transcodingEnabled` write field is intentionally rejected. `prepare-review.py --resume` resumes the same partially configured stage through real sign-in and explicit primary-profile selection, without resetting its database; private publication additionally validates the matching four-check browser result. Never carry an old session, server identity, database or installation into the fresh cycle.
 
 Create Movies, TV Shows, Anime, Music and Audiobooks through `POST /v1/libraries`, then scan each with `POST /v1/libraries/{id}/scans`. Follow the returned job through `GET /v1/admin/ingestion/jobs/{jobId}`. Health readiness does not imply catalogue analysis is finished. The approved review view `/srv/portico-review-r40` preserves the original `/srv/portico-demo-20260919` files and contains the retained continuous Infected/Rick/Solo timelines plus four full-duration Rumours FLACs. Other retained clips keep their actual lengths; never substitute a title-runtime manifest for probe results.
 
