@@ -8,7 +8,7 @@ import {BrowserAccountEntry} from '../src/platform/account-entry.ts';
 
 /** Browser lifecycle proof with real challenge signatures. Hosted admission is a
  * controlled response here, not a cross-repository Hosted/Server acceptance test. */
-async function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
+async function fixture(destination: 'adopt' | 'server-origin' = 'adopt',short=false) {
   const keys = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']) as CryptoKeyPair;
   const publicBytes = new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey));
   const context = new TextEncoder().encode('portico.server.identity.v1\0'), input = new Uint8Array(context.length + publicBytes.length);
@@ -39,7 +39,7 @@ async function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
       const signature = new Uint8Array(await crypto.subtle.sign('Ed25519', keys.privateKey, payload)); if (invalidProof) signature[0] ^= 1;
       return {challenge, proof: {payload: routeBase64(payload), signature: routeBase64(signature)}};
     }
-    if (path === '/v1/access/invitations/accept') {assert.deepEqual(Object.keys(body as object).sort(), ['code', 'porticoIdentity']); assert.equal((body as {code: string}).code, code); if (grantGate) await grantGate; return grant();}
+    if (path === '/v1/access/invitations/accept') {assert.deepEqual(Object.keys(body as object).sort(), short?['porticoIdentity','shortCode']:['code','porticoIdentity']); if(short)assert.equal((body as {shortCode:string}).shortCode,'0123456789ABCDEF');else assert.equal((body as {code: string}).code, code); if (grantGate) await grantGate; return grant();}
     throw new Error('Unexpected request: ' + path);
   }) as HttpLocalApi['request'];
   const account = {origin: hostedOrigin, accountId, isCurrent: () => current, request: (async (path: string, method: string, body: unknown) => {
@@ -54,7 +54,7 @@ async function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
     remember: async (_api, session, _environment, _hosted, guard) => {assert.equal(guard?.(), true); admitted.push(session.sessionFamilyId);selected = {signIn: 'portico', connection: {pin, session}};},
     retire: async (_api, session) => {retired.push(session.sessionFamilyId);}, invitationDestination: destination,
   }, {inspect: async () => system, getSnapshot: () => ({origin}), cancel: () => {}, dispose: () => {}} as unknown as ServerSignInProbe);
-  await entry.inspectInvitation({server: origin, id: serverId, code});
+  if(short)await entry.inspectShortInvitation(origin,'0123-4567-89ab-cdef');else await entry.inspectInvitation({server: origin, id: serverId, code});
   return {entry, account, calls, retired, admitted, tokens, origin, changeAccount: () => {current = false;}, wrongGrantAccount: () => {grantAccount = 'different-account';}, invalidProof: () => {invalidProof = true;},
     holdIdentity: () => {identityGate = new Promise(resolve => {releaseIdentity = resolve;});}, releaseIdentity: () => releaseIdentity?.(),
     holdGrant: () => {grantGate = new Promise(resolve => {releaseGrant = resolve;});}, releaseGrant: () => releaseGrant?.()};
@@ -89,4 +89,10 @@ test('a different Hosted account in the returned grant is retired', async () => 
 test('Services gets only the verified Portico destination after retiring its transient server family', async () => {
   const f = await fixture('server-origin'); await f.entry.joinPortico(f.account);
   assert.deepEqual(f.entry.getSnapshot().joined, {origin: f.origin, signIn: 'portico'}); assert.deepEqual(f.admitted, []); assert.deepEqual(f.retired, ['issued-family']); assert.deepEqual(f.tokens, []); f.entry.dispose();
+});
+
+
+test('a short Portico invitation uses the exact proved destination and captured Hosted family',async()=>{
+ const f=await fixture('adopt',true);await f.entry.joinPortico(f.account);
+ assert.deepEqual(f.admitted,['issued-family']);assert.deepEqual(f.retired,[]);f.entry.dispose();
 });

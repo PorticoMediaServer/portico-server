@@ -3012,6 +3012,19 @@ CREATE TABLE access_invitations(
  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL, accepted_ms INTEGER,
  created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
  bound_username TEXT NOT NULL DEFAULT '') STRICT;
+-- A separately issued human-entry capability; never a recoverable long-link secret.
+CREATE TABLE access_invitation_short_codes(
+ invitation_id TEXT PRIMARY KEY REFERENCES access_invitations(id) ON DELETE CASCADE,
+ lookup_hash TEXT NOT NULL UNIQUE CHECK(length(lookup_hash)=64),
+ binding_hash TEXT NOT NULL CHECK(length(binding_hash)=64),
+ server_id TEXT NOT NULL, invitation_revision INTEGER NOT NULL CHECK(invitation_revision>0),
+ sign_in_kind TEXT NOT NULL CHECK(sign_in_kind IN('local','portico')),
+ kind_revision INTEGER NOT NULL CHECK(kind_revision>=0),
+ purpose TEXT NOT NULL CHECK(purpose='accept'), expires_ms INTEGER NOT NULL CHECK(expires_ms>0)
+) STRICT;
+CREATE TRIGGER access_invitation_short_retire AFTER UPDATE ON access_invitations
+ WHEN NEW.revision<>OLD.revision OR NEW.state<>'pending' OR NEW.expires_ms<>OLD.expires_ms
+ BEGIN DELETE FROM access_invitation_short_codes WHERE invitation_id=NEW.id; END;
 CREATE TABLE access_limits(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), updated_ms INTEGER NOT NULL,
@@ -7950,6 +7963,9 @@ CREATE TRIGGER owner_change_link_update BEFORE UPDATE OF hosted_account_id ON ac
 -- One identity authority per configured server. Before setup there is no row;
 -- setup defaults to Portico and installs its explicit choice before accounts.
 CREATE TABLE identity_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),sign_in_kind TEXT NOT NULL CHECK(sign_in_kind IN('portico','local')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+CREATE TRIGGER identity_kind_short_invitation_retire AFTER UPDATE OF sign_in_kind ON identity_state
+ WHEN NEW.sign_in_kind<>OLD.sign_in_kind
+ BEGIN DELETE FROM access_invitation_short_codes; END;
 CREATE TRIGGER identity_local_no_portico_link BEFORE INSERT ON account_portico_links
  WHEN (SELECT sign_in_kind FROM identity_state WHERE singleton=1)='local'
  BEGIN SELECT RAISE(ABORT,'sign_in_kind_local'); END;
@@ -8445,3 +8461,9 @@ CREATE TRIGGER reading_attribution_public_library BEFORE UPDATE OF id,kind,root 
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(OLD.id,NEW.id)); END;
 CREATE TRIGGER reading_attribution_public_kind AFTER UPDATE OF kind ON libraries WHEN NEW.kind IN('book','comic') BEGIN
  INSERT INTO reading_attribution_state(library_id) SELECT id FROM catalog_libraries WHERE library_id=NEW.id ON CONFLICT(library_id) DO NOTHING; END;
+
+CREATE TRIGGER identity_server_short_invitation_retire AFTER UPDATE ON networking_claim_identity
+ WHEN NEW.server_id<>OLD.server_id OR NEW.public_key<>OLD.public_key OR NEW.reset_generation<>OLD.reset_generation
+ BEGIN DELETE FROM access_invitation_short_codes; END;
+CREATE TRIGGER identity_server_short_invitation_deleted AFTER DELETE ON networking_claim_identity
+ BEGIN DELETE FROM access_invitation_short_codes; END;

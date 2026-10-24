@@ -74,6 +74,9 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[access.InvitationLinkRequest, access.InvitationLink](registry, apikit.Metadata{ID: "post_admin_access_invitation_link", Method: "POST", Path: "/v1/admin/access/invitations/{id}/link", Summary: "Manage invitation or private person notes", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	if err := apikit.RegisterHTTP[access.InvitationShortRequest, access.InvitationShortResponse](registry, apikit.Metadata{ID: "post_admin_access_invitation_short_code", Method: "POST", Path: "/v1/admin/access/invitations/{id}/short-code", Summary: "Issue a one-time display short invitation code", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "invitation_not_found", "idempotency_key_reused", "internal"}}); err != nil {
+		return err
+	}
 	// internal/httpapi/admin_access.go:139
 	if err := apikit.RegisterHTTP[InvitationAcceptRequest, InvitationAcceptanceResponse](registry, apikit.Metadata{ID: "post_access_invitations_accept", Method: "POST", Path: "/v1/access/invitations/accept", Summary: "Run access invitations accept", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "sign_in_kind_local", "sign_in_kind_portico", "factor_setup_required", "internal"}}); err != nil {
 		return err

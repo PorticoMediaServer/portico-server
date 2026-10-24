@@ -321,7 +321,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 			}
 			return empty, &apierror.Error{Code: "internal", Cause: err}
 		}
-		preview, err := d.Access.Access.Preview(ctx, body.Code)
+		preview, err := d.Access.Access.PreviewCapability(ctx, body)
 		if errors.Is(err, access.ErrInvitationNotFound) {
 			return empty, &apierror.Error{Code: "invitation_not_found"}
 		}

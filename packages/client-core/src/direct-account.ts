@@ -7,9 +7,11 @@ import {routePath,routeBody,type RouteRequest,type RouteResponse} from '../../co
 import type {ProfileAPI} from './profile-management.ts';
 import {CodedError} from './server-messages.ts';
 import {identityCode} from './route-identity.ts';
+import {formatShortInvitationCode,parseShortInvitationCode} from './short-invitation-code.ts';
 
 export type ServerInvitation=RouteResponse<'get_admin_access_invitation'>;
 export type ServerInvitationLink=Readonly<{code:string;expiresAt:string;serverId?:string}>;
+export type ServerShortInvitation=Readonly<{shortCode?:string;expiresAt:string;serverId:string}>;
 export type PeopleMember=RouteResponse<'get_admin_access_member'>;
 export type PublicInvitation=Readonly<{serverName:string;expiresAt:string;role:'admin'|'member';libraries:readonly {name:string;kind?:string}[];allLibraries:boolean;signInMethod:'local'|'portico';inviterUsername?:string}>;
 export type PeopleInvitationPage=Readonly<{items:readonly ServerInvitation[];limit:number;nextCursor:string;totalCount:number;matchedCount:number}>;
@@ -72,7 +74,21 @@ export class PeopleInvitationsClient{
   return Object.freeze({code:raw.code,expiresAt:raw.expiresAt,...(raw.serverId===undefined?{}:{serverId:raw.serverId as string})});
  }
  async revoke(invitation:Pick<ServerInvitation,'id'|'revision'>,operationId:string,signal?:AbortSignal):Promise<ServerInvitation>{return parseServerInvitation(await this.api.request(routePath('post_admin_access_invitations_id_revoke',{id:invitation.id}),'POST',routeBody('post_admin_access_invitations_id_revoke',{expectedRevision:invitation.revision,operationId}),signal));}
+ /** Explicit New code. A receipt replay intentionally has no plaintext and
+  * must not cause a second operation or silently rotate the current code. */
+ async shortCode(invitation:Pick<ServerInvitation,'id'|'revision'|'state'>,operationId:string,signal?:AbortSignal):Promise<ServerShortInvitation>{
+  if(invitation.state!=='pending'||!rev(invitation.revision))throw new CodedError('invitation_expired','This invitation is no longer usable.');
+  const raw=await this.api.request<unknown>(routePath('post_admin_access_invitation_short_code',{id:invitation.id}),'POST',routeBody('post_admin_access_invitation_short_code',{expectedRevision:invitation.revision,operationId}),signal);
+  if(!object(raw)||typeof raw.serverId!=='string'||!timestamp(raw.expiresAt)||Object.hasOwn(raw,'code'))invalidPeople();
+  try{identityCode(raw.serverId);}catch{invalidPeople();}
+  if(Object.hasOwn(raw,'shortCode')&&!parseShortInvitationCode(raw.shortCode))invalidPeople();
+  return Object.freeze({serverId:raw.serverId,expiresAt:raw.expiresAt,...(raw.shortCode===undefined?{}:{shortCode:formatShortInvitationCode(raw.shortCode)!})});
+ }
  async preview(code:string,signal?:AbortSignal):Promise<PublicInvitation>{return parsePublicInvitation(await this.api.request(routePath('preview_invitation'),'POST',routeBody('preview_invitation',{code}),signal));}
+ async previewShort(raw:string,signal?:AbortSignal):Promise<PublicInvitation>{
+  const shortCode=parseShortInvitationCode(raw);if(!shortCode)throw new CodedError('invitation_incomplete','This invitation code is not complete.');
+  return parsePublicInvitation(await this.api.request(routePath('preview_invitation'),'POST',routeBody('preview_invitation',{shortCode}),signal));
+ }
  async acceptLocal(input:Extract<RouteRequest<'post_access_invitations_accept'>,{username:string}>,signal?:AbortSignal):Promise<Readonly<{accountId:string;username:string;profileId:string;role:string;allowedLibraries:string[]}>>{
   const raw=await this.api.request<unknown>(routePath('post_access_invitations_accept'),'POST',routeBody('post_access_invitations_accept',input),signal);
   if(!object(raw)||!bounded(raw.accountId,128)||!bounded(raw.username,64)||!bounded(raw.profileId,128)||!['admin','member'].includes(String(raw.role))||!Array.isArray(raw.allowedLibraries)||raw.allowedLibraries.some(v=>!bounded(v,128))||Object.hasOwn(raw,'notes'))invalidPeople();
