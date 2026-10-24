@@ -5,6 +5,7 @@ export const browseMessages = {
   'next.browse.filmCountAtLeast': '{count, number}+ films',
   'next.browse.match': 'match',
   'next.browse.showCount': 'Show {count}',
+  'next.browse.bestMatch': 'Best match',
   'next.browse.kind.movie': 'Movie',
   'next.browse.kind.show': 'TV show',
   'next.browse.tvShows': 'TV shows',

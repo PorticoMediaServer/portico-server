@@ -56,6 +56,10 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
     owner: context.identity?.viewer.role === 'owner', reducedMotion: appearance.reducedMotion,
     env: {t: defaultI18n.t, locale: defaultI18n.region.formatLocale}, reportError: context.effects.reportError,
     canSaveView: false, empty: undefined,
+    // Frame #seeall draws one quick toggle and names the row's own order "Best match";
+    // the scope chips take the viewer's library names ("TV Shows"), not the kind's generic name.
+    sortLabel: defaultI18n.t('next.browse.bestMatch'), quickIds: ['unwatched'],
+    scopeLabel: kind => context.identity?.libraries.find(library => library.kind === kind)?.name ?? kind,
     familyForEntry: entry => context.identity?.libraries.find(library => library.id === entry.libraryId)?.kind,
     scopeLibraries: context.identity?.libraries,
     selection: {actions: member => ({onOpen: () => context.effects.openEntry(member.entry),

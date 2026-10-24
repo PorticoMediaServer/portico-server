@@ -29,12 +29,14 @@ export function QuickToggle({selected, onCheckedChange, icon, count, children, c
 export type SortMenuProps = Readonly<{
   sorts: readonly BrowseSortCapability[]; value: BrowseToolbarModel['sort']; onValueChange: (value: BrowseSortSelection) => void;
   label: BrowseLabels['sort']; open?: boolean; onOpenChange?: (open: boolean) => void; onReshuffle?: () => void;
+  /** A surface that names its own order draws no direction word beside it. */
+  showOrder?: boolean;
 }>;
-export function SortMenu({sorts, value, onValueChange, label, open: controlledOpen, onOpenChange, onReshuffle}: SortMenuProps) {
+export function SortMenu({sorts, value, onValueChange, label, open: controlledOpen, onOpenChange, onReshuffle, showOrder: allowOrder = true}: SortMenuProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
-  const selected = sorts.find(sort => sort.id === value.field), showOrder = value.flippable && selected;
+  const selected = sorts.find(sort => sort.id === value.field), showOrder = allowOrder && value.flippable && selected;
   const pick = (sort: BrowseSortCapability) => {
     if (sort.id === value.field && value.reshufflable) {
       if (onReshuffle) onReshuffle(); else onValueChange({field: value.field, direction: value.direction, seed: (value.seed ?? 0) + 1});
@@ -87,16 +89,22 @@ export type BrowseToolbarProps = Readonly<{
   onSortChange: (value: BrowseSortSelection) => void; onReshuffle?: () => void; view?: BrowseView; cardSize?: CardSizeControl;
   save?: SaveViewControl; applied?: readonly AppliedChip[]; onRemoveFilter?: (id: string) => void; onClearFilters?: () => void;
   onJump?: () => void; selection?: ReactNode; actions?: ReactNode; className?: string;
+  /** A surface that names its one sort itself (a row's own order reads "Best match"). */
+  sortLabel?: string;
+  /** The quick filters this surface draws, in the model's order; absent draws all offered. */
+  quickIds?: readonly string[];
 }>;
 export function BrowseToolbar({model, labels, resultCount, platform = 'desktop', sticky = false, topInset = 76, onQuickChange, onFilters, filtersOpen,
-  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className}: BrowseToolbarProps) {
-  const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={labels.sort} onReshuffle={onReshuffle}/>;
+  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className, sortLabel, quickIds}: BrowseToolbarProps) {
+  const sortLabels: BrowseLabels = sortLabel === undefined ? labels : {...labels, sort: (value: BrowseSortCapability) => value.id === model.sort.field ? sortLabel : labels.sort(value)};
+  const quick = quickIds === undefined ? model.quick : model.quick.filter(item => quickIds.includes(item.id));
+  const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={sortLabels.sort} onReshuffle={onReshuffle} showOrder={sortLabel === undefined}/>;
   const filters = <FiltersButton count={applied.length} open={filtersOpen} onClick={onFilters}/>;
   return <div className={[styles.toolbar, className].filter(Boolean).join(' ')} data-platform={platform} data-sticky={sticky || undefined} style={{top: topInset}}>
     {selection ?? <><div className={styles.toolbarMain}>
       {platform === 'tv' ? <>{sort}{filters}{onJump && <Chip onClick={onJump}>{t('next.browse.jump')}<Icon name="i-down" size={16}/></Chip>}</> : filters}
       {platform === 'phone' && sort}<span className={styles.separator} aria-hidden="true"/>
-      {actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
+      {actions}{quick.map(item => <QuickToggle key={item.id} selected={item.active} onCheckedChange={checked => onQuickChange(item.id, checked)}>{item.label?.text ?? labels.quick(item)}</QuickToggle>)}
       {platform !== 'phone' && <div className={styles.toolbarEnd}>{platform === 'desktop' && <span className={styles.resultCount}>{resultCount}</span>}{platform === 'desktop' && sort}
         {view && <ViewToggle {...view}/>} {cardSize && <CardSizeButton {...cardSize}/>} {save && <SaveViewButton {...save}/>}</div>}
     </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{view && <ViewToggle {...view}/>}</span></div>}

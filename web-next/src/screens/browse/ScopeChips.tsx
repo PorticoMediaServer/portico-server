@@ -9,7 +9,7 @@ import styles from './browse.module.css';
 
 /** Each chip is a separate server-evaluated count over the immutable Home row.
  * Multiple libraries of one kind are one query; their counts are never summed. */
-export function BrowseScopeChips({controller, libraries, reportError}: Readonly<{controller: BrowseController; libraries?: readonly Library[]; reportError: (error: unknown) => void}>) {
+export function BrowseScopeChips({controller, libraries, reportError, labelFor}: Readonly<{controller: BrowseController; libraries?: readonly Library[]; reportError: (error: unknown) => void; labelFor?: (kind: string) => string}>) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [scope, setScope] = useState<Readonly<{owner: BrowseController; counts: readonly BrowseCount[]; signature: string}> | undefined>(undefined);
   const offered = !!libraries && controller.source.libraryId === '*' && state.capabilities?.fields.some(field => field.id === 'library' && field.operators.includes('in'));
@@ -44,6 +44,6 @@ export function BrowseScopeChips({controller, libraries, reportError}: Readonly<
   return <><div className={styles.scopeChips} role="radiogroup" aria-label={defaultI18n.t('next.browse.libraries')}><Chip variant="quick" role="radio" aria-checked={!selected} selected={!selected} count={label(all)} onClick={() => change()}>{defaultI18n.t('next.controls.all')}</Chip>
     {groups.map(group => {
       const count = scope.counts.find(count => count.id === group.kind);
-      return count && (count.total > 0 || checked(group)) ? <Chip key={group.kind} variant="quick" role="radio" aria-checked={checked(group)} selected={checked(group)} count={label(count)} onClick={() => change(group.libraryIds)}>{defaultI18n.t(group.label)}</Chip> : null;
+      return count && (count.total > 0 || checked(group)) ? <Chip key={group.kind} variant="quick" role="radio" aria-checked={checked(group)} selected={checked(group)} count={label(count)} onClick={() => change(group.libraryIds)}>{labelFor?.(group.kind) ?? defaultI18n.t(group.label)}</Chip> : null;
     })}</div><span className={styles.scopeSeparator} aria-hidden="true"/></>;
 }
