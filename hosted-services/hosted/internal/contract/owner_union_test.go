@@ -78,7 +78,9 @@ func TestConformOwnerTransportVariants(t *testing.T) {
 	owner := serverreturn.OwnerExchange{TransactionID: "owner_transaction", State: strings.Repeat("s", 43), Verifier: strings.Repeat("v", 43), RegistrationID: "ret_actual", InstallationID: strings.Repeat("i", 43), ServerChallenge: strings.Repeat("c", 43), Purpose: "switch"}
 	normal := serverreturn.Exchange{Code: strings.Repeat("a", 43), TransactionID: "normal_transaction", Verifier: owner.Verifier, RegistrationID: owner.RegistrationID, InstallationID: owner.InstallationID, ServerChallenge: owner.ServerChallenge, Purpose: "sign-in"}
 	exchangeSchema := schema((serverreturn.ExchangeRequest{}).JSONSchema())
-	for _, valid := range []any{owner, normal} {
+	setup := serverreturn.SetupExchange(owner)
+	setup.Purpose = "setup"
+	for _, valid := range []any{owner, normal, setup} {
 		if problems := conform(exchangeSchema, decode(valid), "$"); len(problems) != 0 {
 			t.Fatalf("valid exchange variant refused: %v", problems)
 		}
@@ -88,7 +90,6 @@ func TestConformOwnerTransportVariants(t *testing.T) {
 		func(v map[string]any) { v["unknown"] = true },
 		func(v map[string]any) { delete(v, "state") },
 		func(v map[string]any) { v["state"] = nil },
-		func(v map[string]any) { v["purpose"] = "setup" },
 		func(v map[string]any) { v["purpose"] = "change-owner" },
 		func(v map[string]any) { v["purpose"] = "sign-in" },
 	} {
@@ -97,5 +98,22 @@ func TestConformOwnerTransportVariants(t *testing.T) {
 		if len(conform(exchangeSchema, v, "$")) == 0 {
 			t.Fatal("mixed or invalid owner exchange accepted")
 		}
+	}
+}
+
+func TestSetupTransportCannotConformToOwnerPurpose(t *testing.T) {
+	owner := serverreturn.OwnerExchange{TransactionID: "setup_transaction", State: strings.Repeat("s", 43), Verifier: strings.Repeat("v", 43), RegistrationID: "ret_actual", InstallationID: strings.Repeat("i", 43), ServerChallenge: strings.Repeat("c", 43), Purpose: "setup"}
+	raw, _ := json.Marshal(owner)
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatal(err)
+	}
+	shapeRaw, _ := json.Marshal((serverreturn.OwnerExchange{}).JSONSchema())
+	var shape map[string]any
+	if err := json.Unmarshal(shapeRaw, &shape); err != nil {
+		t.Fatal(err)
+	}
+	if len(conform(shape, value, "$")) == 0 {
+		t.Fatal("setup conformed to switch-only schema")
 	}
 }

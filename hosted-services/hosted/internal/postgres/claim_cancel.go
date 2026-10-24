@@ -113,6 +113,9 @@ func (s *Store) CancelClaim(ctx context.Context, w claims.CancelWire, digest [32
 	if _, e = tx.ExecContext(ctx, `DELETE FROM claim_approvals WHERE operation_id=$1`, w.OperationID); e != nil {
 		return empty, e
 	}
+	if _, e = tx.ExecContext(ctx, `UPDATE setup_claim_starts SET phase='cancelled' WHERE operation_id=$1 AND phase<>'consumed'`, w.OperationID); e != nil {
+		return empty, e
+	}
 	if _, e = tx.ExecContext(ctx, `UPDATE owner_claim_starts SET phase='cancelled' WHERE operation_id=$1 AND phase<>'consumed'`, w.OperationID); e != nil {
 		return empty, e
 	}

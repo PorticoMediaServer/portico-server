@@ -14,6 +14,7 @@ import (
 type PendingRequest struct {
 	Payload          string  `json:"payload"`
 	Signature        string  `json:"signature"`
+	SetupStart       *Signed `json:"setupStart,omitempty"`
 	OwnerStart       *Signed `json:"ownerStart,omitempty"`
 	OwnerSwitchCount *Signed `json:"ownerSwitchCount,omitempty"`
 }
@@ -24,7 +25,7 @@ func (PendingRequest) GoString() string   { return "[pending claim redacted]" }
 
 func (q *PendingRequest) UnmarshalJSON(raw []byte) error {
 	*q = PendingRequest{}
-	fields, e := wirejson.Object(raw, "payload", "signature", "ownerStart", "ownerSwitchCount")
+	fields, e := wirejson.Object(raw, "payload", "signature", "ownerStart", "ownerSwitchCount", "setupStart")
 	if e != nil {
 		return ErrInvalid
 	}
@@ -58,6 +59,20 @@ func (q *PendingRequest) UnmarshalJSON(raw []byte) error {
 		}
 		next.OwnerSwitchCount = &count
 	}
+	if rawStart, ok := fields["setupStart"]; ok {
+		if next.OwnerStart != nil || next.OwnerSwitchCount != nil {
+			return ErrInvalid
+		}
+		startFields, e := wirejson.Object(rawStart, "payload", "signature")
+		if e != nil {
+			return ErrInvalid
+		}
+		start, e := pendingSigned(startFields)
+		if e != nil {
+			return e
+		}
+		next.SetupStart = &start
+	}
 	*q = next
 	return nil
 }
@@ -88,5 +103,7 @@ func (PendingRequest) JSONSchema() map[string]any {
 	props["ownerStart"] = signed
 	props["ownerSwitchCount"] = signed
 	owner := map[string]any{"type": "object", "properties": props, "required": []string{"payload", "signature", "ownerStart"}, "additionalProperties": false}
-	return map[string]any{"oneOf": []any{signed, owner}}
+	setupProps := map[string]any{"payload": signed["properties"].(map[string]any)["payload"], "signature": signed["properties"].(map[string]any)["signature"], "setupStart": signed}
+	setup := map[string]any{"type": "object", "properties": setupProps, "required": []string{"payload", "signature", "setupStart"}, "additionalProperties": false}
+	return map[string]any{"oneOf": []any{signed, owner, setup}}
 }

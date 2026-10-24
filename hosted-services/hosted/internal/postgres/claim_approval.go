@@ -50,7 +50,7 @@ func (s *Store) ApproveClaim(ctx context.Context, expected identity.CurrentFamil
 		return empty, e
 	}
 	var ownerStart bool
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM owner_claim_starts WHERE operation_id=$1)`, in.OperationID).Scan(&ownerStart); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM owner_claim_starts WHERE operation_id=$1) OR EXISTS(SELECT 1 FROM setup_claim_starts WHERE operation_id=$1)`, in.OperationID).Scan(&ownerStart); e != nil {
 		return empty, e
 	}
 	if ownerStart {

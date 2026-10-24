@@ -61,6 +61,7 @@ func (OwnerExchange) JSONSchema() map[string]any {
 // only selects a parser, never an authentication policy or a callback branch.
 // Normal Exchange's code requirement and auth/cookie refusal remain mandatory.
 type ExchangeRequest struct {
+	Setup      *SetupExchange `json:"-"`
 	Registered *Exchange      `json:"-"`
 	Owner      *OwnerExchange `json:"-"`
 }
@@ -75,6 +76,18 @@ func (q *ExchangeRequest) UnmarshalJSON(raw []byte) error {
 		return ErrInvalid
 	}
 	if _, hasState := fields["state"]; hasState {
+		var purpose string
+		if json.Unmarshal(fields["purpose"], &purpose) != nil {
+			return ErrInvalid
+		}
+		if purpose == "setup" {
+			var setup SetupExchange
+			if json.Unmarshal(raw, &setup) != nil {
+				return ErrInvalid
+			}
+			q.Setup = &setup
+			return nil
+		}
 		var owner OwnerExchange
 		if json.Unmarshal(raw, &owner) != nil {
 			return ErrInvalid
@@ -91,8 +104,24 @@ func (q *ExchangeRequest) UnmarshalJSON(raw []byte) error {
 }
 
 func (q ExchangeRequest) MarshalJSON() ([]byte, error) {
-	if (q.Owner == nil) == (q.Registered == nil) {
+	variants := 0
+	if q.Owner != nil {
+		variants++
+	}
+	if q.Setup != nil {
+		variants++
+	}
+	if q.Registered != nil {
+		variants++
+	}
+	if variants != 1 {
 		return nil, ErrInvalid
+	}
+	if q.Setup != nil {
+		if !q.Setup.Valid() {
+			return nil, ErrInvalid
+		}
+		return json.Marshal(q.Setup)
 	}
 	if q.Owner != nil {
 		if !q.Owner.Valid() {
@@ -109,5 +138,5 @@ func (q ExchangeRequest) MarshalJSON() ([]byte, error) {
 func (ExchangeRequest) JSONSchema() map[string]any {
 	normal := (Exchange{}).JSONSchema()
 	normal["additionalProperties"] = false
-	return map[string]any{"oneOf": []any{normal, (OwnerExchange{}).JSONSchema()}}
+	return map[string]any{"oneOf": []any{normal, (OwnerExchange{}).JSONSchema(), (SetupExchange{}).JSONSchema()}}
 }

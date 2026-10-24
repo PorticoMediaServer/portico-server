@@ -44,6 +44,9 @@ func (s *Store) ServerReturnRegistration(ctx context.Context, a directory.Server
 		return out, e
 	}
 	out = serverreturn.Registration{ID: id, Origin: t.origin}
+	if e = bindSetupRegistrationTx(ctx, tx, a, out, t); e != nil {
+		return out, e
+	}
 	if e = bindOwnerRegistrationTx(ctx, tx, a, out, t); e != nil {
 		return serverreturn.Registration{}, e
 	}
@@ -187,6 +190,13 @@ func (s *Store) CompleteServerReturn(ctx context.Context, a identity.CurrentFami
 	defer tx.Rollback()
 	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, a)
 	if e != nil {
+		return out, e
+	}
+	setup, e := readSetupStart(ctx, tx, id, false, false)
+	if e == nil {
+		return completeSetupReturnTx(ctx, tx, a, setup, facts)
+	}
+	if !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
 	owner, e := readOwnerStart(ctx, tx, id, false, false)

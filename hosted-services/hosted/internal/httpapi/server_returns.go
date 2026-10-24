@@ -126,7 +126,7 @@ func (h *Handler) serverReturnRoutes(mux *http.ServeMux) {
 		}
 		var out serverreturn.Grant
 		var e error
-		if q.Owner != nil {
+		if q.Owner != nil || q.Setup != nil {
 			if !h.allowCredentialLookup(w, r, "server") {
 				return
 			}
@@ -145,7 +145,11 @@ func (h *Handler) serverReturnRoutes(mux *http.ServeMux) {
 				fail(w, 429, "rate_limited", "Try again shortly.", true)
 				return
 			}
-			out, e = h.ServerReturns.Store.ExchangeOwnerReturn(ctx, a, *q.Owner, h.ServerReturns.Directory.SignServerReturn)
+			if q.Setup != nil {
+				out, e = h.ServerReturns.Store.ExchangeSetupReturn(ctx, a, *q.Setup, h.ServerReturns.Directory.SignServerReturn)
+			} else {
+				out, e = h.ServerReturns.Store.ExchangeOwnerReturn(ctx, a, *q.Owner, h.ServerReturns.Directory.SignServerReturn)
+			}
 		} else {
 			if len(r.Header.Values("Authorization")) != 0 || q.Registered == nil {
 				returnFailure(w)

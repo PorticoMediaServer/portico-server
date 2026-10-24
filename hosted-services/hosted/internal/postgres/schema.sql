@@ -1702,7 +1702,7 @@ ALTER TABLE ONLY wake_state
 INSERT INTO account_identity_schema VALUES (true, 1);
 INSERT INTO account_security_schema VALUES (true, 1);
 INSERT INTO apple_notification_schema VALUES (true, 1);
-INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 26);
+INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 27);
 INSERT INTO hosted_signing_state VALUES (true, 0, '\x', false, '', '\x');
 INSERT INTO identity_protocol_policy VALUES (true, 1, false, NULL, clock_timestamp());
 
@@ -1768,3 +1768,59 @@ CREATE TABLE owner_claim_starts (
 CREATE INDEX owner_claim_starts_expiry ON owner_claim_starts(expires_at);
 CREATE INDEX owner_claim_starts_account ON owner_claim_starts(approved_account_id);
 CREATE INDEX owner_claim_starts_server ON owner_claim_starts(server_id);
+
+CREATE TABLE setup_claim_starts (
+    transaction_id text PRIMARY KEY CHECK (transaction_id ~ '^[A-Za-z0-9_-]{1,128}$'),
+    operation_id text NOT NULL UNIQUE REFERENCES claim_web_pending(operation_id) ON DELETE CASCADE,
+    server_id text NOT NULL,
+    public_key bytea NOT NULL CHECK (octet_length(public_key)=32),
+    local_generation bigint NOT NULL CHECK (local_generation>=0),
+    claim_hash bytea NOT NULL CHECK (octet_length(claim_hash)=32),
+    start_hash bytea NOT NULL CHECK (octet_length(start_hash)=32),
+    original_address text NOT NULL CHECK (octet_length(original_address) BETWEEN 1 AND 8192),
+    purpose text NOT NULL CHECK (purpose='setup'),
+    current_owner_account_id text NOT NULL,
+    previous_owner_role text NOT NULL CHECK (previous_owner_role=''),
+    state_hash bytea NOT NULL CHECK (octet_length(state_hash)=32),
+    code_challenge text NOT NULL CHECK (code_challenge ~ '^[A-Za-z0-9_-]{43}$'),
+    installation_id text NOT NULL CHECK (installation_id ~ '^[A-Za-z0-9_-]{32,128}$'),
+    server_challenge_hash bytea NOT NULL CHECK (octet_length(server_challenge_hash)=32),
+    issued_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    phase text NOT NULL DEFAULT 'prepared' CHECK (phase IN('prepared','approved','installed','completed','consumed','cancelled','expired','superseded')),
+    approved_account_id text REFERENCES accounts(id) ON DELETE CASCADE,
+    approved_username text,
+    family_id text REFERENCES session_families(id) ON DELETE CASCADE,
+    access_hash bytea CHECK (octet_length(access_hash)=32),
+    account_epoch bigint CHECK (account_epoch>=0),
+    family_generation bigint CHECK (family_generation>=0),
+    captured_session_mode text CHECK (captured_session_mode IN('browser','native')),
+    claim_generation bigint CHECK (claim_generation>0),
+    credential_generation bigint CHECK (credential_generation>0),
+    route_generation bigint CHECK (route_generation>0),
+    registration_id text,
+    registered_https_origin text,
+    completed_at timestamptz,
+    consumed_at timestamptz,
+    original_claim_payload bytea NOT NULL CHECK (octet_length(original_claim_payload) BETWEEN 1 AND 8192),
+    original_claim_signature bytea NOT NULL CHECK (octet_length(original_claim_signature)=64),
+    start_payload bytea NOT NULL CHECK (octet_length(start_payload) BETWEEN 1 AND 8192),
+    start_signature bytea NOT NULL CHECK (octet_length(start_signature)=64),
+    setup_request_id text NOT NULL CHECK (setup_request_id ~ '^[A-Za-z0-9_-]{1,128}$'),
+    setup_revision bigint NOT NULL CHECK (setup_revision>0),
+    CHECK (current_owner_account_id=''),
+    CHECK (expires_at>issued_at AND expires_at<=issued_at+interval '5 minutes'),
+    CHECK ((approved_account_id IS NULL AND approved_username IS NULL AND family_id IS NULL AND access_hash IS NULL AND account_epoch IS NULL AND family_generation IS NULL AND captured_session_mode IS NULL) OR
+           (approved_account_id IS NOT NULL AND approved_username IS NOT NULL AND family_id IS NOT NULL AND access_hash IS NOT NULL AND account_epoch IS NOT NULL AND family_generation IS NOT NULL AND captured_session_mode IS NOT NULL)),
+    CHECK (phase IN('prepared','cancelled','expired','superseded') OR approved_account_id IS NOT NULL),
+    CHECK ((registration_id IS NULL AND registered_https_origin IS NULL AND claim_generation IS NULL AND credential_generation IS NULL AND route_generation IS NULL) OR
+           (registration_id IS NOT NULL AND registered_https_origin IS NOT NULL AND claim_generation IS NOT NULL AND credential_generation IS NOT NULL AND route_generation IS NOT NULL)),
+    CHECK (phase NOT IN('installed','completed','consumed') OR registration_id IS NOT NULL),
+    CHECK (phase NOT IN('completed','consumed') OR completed_at IS NOT NULL),
+    CHECK (completed_at IS NULL OR registration_id IS NOT NULL),
+    CHECK ((phase='consumed')=(consumed_at IS NOT NULL)),
+    CHECK (consumed_at IS NULL OR consumed_at>=completed_at)
+);
+CREATE INDEX setup_claim_starts_expiry ON setup_claim_starts(expires_at);
+CREATE INDEX setup_claim_starts_account ON setup_claim_starts(approved_account_id);
+CREATE INDEX setup_claim_starts_server ON setup_claim_starts(server_id);

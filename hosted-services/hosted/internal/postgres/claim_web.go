@@ -82,6 +82,18 @@ func (s *Store) RegisterWebClaim(ctx context.Context, q claimweb.Request, key []
 		return claimweb.Pending{}, e
 	}
 	defer tx.Rollback()
+	// A captured setup cannot be replayed through the ordinary pending path.
+	// Serialize with its registration before checking its immutable journal.
+	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('claim-web:'||$1,0))`, q.ServerID); e != nil {
+		return claimweb.Pending{}, e
+	}
+	var setup bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM setup_claim_starts WHERE operation_id=$1)`, q.OperationID).Scan(&setup); e != nil {
+		return claimweb.Pending{}, e
+	}
+	if setup {
+		return claimweb.Pending{}, claims.ErrInvalid
+	}
 	out, e := registerWebClaimTx(ctx, tx, q, key)
 	if e != nil {
 		return claimweb.Pending{}, e
@@ -118,7 +130,7 @@ func registerWebClaimTx(ctx context.Context, tx *sql.Tx, q claimweb.Request, key
 	}
 	if !equalSecret(saved, hash) {
 		var frozen bool
-		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM owner_claim_starts WHERE operation_id=$1)`, q.OperationID).Scan(&frozen); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM owner_claim_starts WHERE operation_id=$1) OR EXISTS(SELECT 1 FROM setup_claim_starts WHERE operation_id=$1)`, q.OperationID).Scan(&frozen); e != nil {
 			return claimweb.Pending{}, e
 		}
 		if frozen {
@@ -177,6 +189,34 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 	p.Address = q.Address
 	p.Purpose = q.Purpose
 	p.PreviousOwnerRole = q.PreviousOwnerRole
+	setup, e := readSetupStart(ctx, tx, q.OperationID, true, false)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return p, e
+	}
+	if e == nil {
+		if q.Purpose != "setup" || !setup.liveAt(time.Now()) || (setup.a.AccountID != "" && !sameSetupFamily(setup.a, a)) {
+			return p, claims.ErrStale
+		}
+		p.SetupTransactionID, p.ExpiresAt = setup.id, setup.expiry
+		if setup.registration != "" {
+			t, err := setupTupleTx(ctx, tx, setup)
+			if err != nil || !sameReturnTuple(t, setup.t) {
+				return p, claims.ErrStale
+			}
+			p.ReturnRegistration = &serverreturn.Registration{ID: setup.registration, Origin: setup.t.origin}
+		}
+		var live bool
+		if e = tx.QueryRowContext(ctx, `SELECT expires_at>clock_timestamp() AND phase IN('prepared','approved','installed','completed') FROM setup_claim_starts WHERE transaction_id=$1`, setup.id).Scan(&live); e != nil {
+			return p, e
+		}
+		if !live {
+			return p, claims.ErrStale
+		}
+		if e = returnFresh(ctx, tx, facts); e != nil {
+			return p, e
+		}
+		return p, tx.Commit()
+	}
 	owner, e := readOwnerStart(ctx, tx, q.OperationID, true, false)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return p, e
@@ -303,6 +343,9 @@ func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 		if e = bindOwnerApprovalTx(ctx, tx, a, q, &approval); e != nil {
 			return e
 		}
+		if e = bindSetupApprovalTx(ctx, tx, a, q, &approval); e != nil {
+			return e
+		}
 		signed, e := service.SignWebApproval(approval)
 		if e != nil {
 			return e
@@ -313,6 +356,9 @@ func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 		}
 	}
 	if !approve {
+		if _, e = tx.ExecContext(ctx, `UPDATE setup_claim_starts SET phase='cancelled' WHERE operation_id=$1 AND phase<>'consumed'`, op); e != nil {
+			return e
+		}
 		if _, e = tx.ExecContext(ctx, `UPDATE owner_claim_starts SET phase='cancelled' WHERE operation_id=$1 AND phase<>'consumed'`, op); e != nil {
 			return e
 		}
