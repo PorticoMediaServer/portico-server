@@ -7,6 +7,8 @@ import {router} from '../../router';
 import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platform/account-entry';
 import {browserAccount} from '../../platform/account';
 import {browserAccountOrigin} from '../../platform/account-origin';
+import {servicesAccount, accountIdentity} from '../../services/session';
+import {workspaceApi} from '../../services/workspace-api';
 import {browserAppSessions, observeBrowserSessionChanges} from '../../platform/server-connections';
 import {browserAppSessionActions, signOutBrowserPorticoAccount} from '../../platform/app-sessions';
 import {browserServerDisplay} from '../../platform/server-display';
@@ -35,6 +37,24 @@ export type MobileChooserRow = Readonly<{
   status?: Readonly<{kind: 'online'}> | Readonly<{kind: 'seen'; at: string}> | Readonly<{kind: 'never'}>;
   owner?: boolean;
 }>;
+/** The directory facts the chooser can display; the account service owns their truth. */
+export type DirectoryFacts = Readonly<{
+  id: string; name: string; status: string;
+  presence: Readonly<{lastSeenAt: string | null}>;
+  ownedByMe: boolean;
+}>;
+/** Genuine account-directory facts enrich saved rows. A saved row with no directory
+ * entry keeps only its saved facts; a sign-in kind never stands in for presence. */
+export function mobileChooserRows(choices: readonly SavedServerChoice[], directory: readonly DirectoryFacts[]): readonly MobileChooserRow[] {
+  const byId = new Map(directory.map(item => [item.id, item]));
+  return choices.map(choice => {
+    const item = byId.get(choice.id);
+    if (!item) return choice;
+    const status: NonNullable<MobileChooserRow['status']> = item.status === 'active' ? {kind: 'online'}
+      : item.presence.lastSeenAt ? {kind: 'seen', at: item.presence.lastSeenAt} : {kind: 'never'};
+    return {...choice, label: item.name.trim() || choice.label, status, ...(item.ownedByMe ? {owner: true} : {})};
+  });
+}
 export type MobileChooserAttempt =
   | Readonly<{kind: 'loading'}>
   | Readonly<{kind: 'opening'; row: MobileChooserRow}>
@@ -58,11 +78,33 @@ export type MobileChooserProps = Readonly<{
 }>;
 
 const formatSeenDate = (iso: string) => defaultI18n.date(iso, 'dayMonth');
-function statusText(row: MobileChooserRow, formatSeen: (iso: string) => string): Readonly<{text: string; online?: boolean}> {
-  if (!row.status) return {text: t(row.signIn === 'local' ? 'accounts.session.local' : 'accounts.session.portico')};
+function statusText(row: MobileChooserRow, formatSeen: (iso: string) => string): Readonly<{text: string; online?: boolean}> | undefined {
+  if (!row.status) return undefined;
   if (row.status.kind === 'online') return {text: t('web.servers.online'), online: true};
   if (row.status.kind === 'never') return {text: t('web.chooser.neverSeen')};
   return {text: t('web.chooser.lastSeen', {date: formatSeen(row.status.at)})};
+}
+/** One work lock per chooser attempt. A cancelled attempt may never settle a successor,
+ * and a late settle may never leave the chooser disabled after the person chose another. */
+export class AttemptLock {
+  private generation = 0;
+  private active?: number;
+  begin() { const token = ++this.generation; this.active = token; return token; }
+  cancel() { ++this.generation; this.active = undefined; }
+  owns(token: number) { return this.active === token; }
+  settle(token: number) { if (!this.owns(token)) return false; this.active = undefined; return true; }
+  get running() { return this.active !== undefined; }
+}
+export type WaitingStep =
+  | Readonly<{kind: 'hold'}>
+  | Readonly<{kind: 'tick'; seconds: number}>
+  | Readonly<{kind: 'retry'}>
+  | Readonly<{kind: 'rearm'}>;
+/** Hidden tabs never poll or retry; becoming visible re-arms a positive countdown. */
+export function waitingStep(attempt: MobileChooserAttempt | undefined, event: 'timer' | 'visibility', visible: boolean): WaitingStep {
+  if (attempt?.kind !== 'waiting' || !visible) return {kind: 'hold'};
+  if (event === 'visibility') return attempt.seconds > 0 ? {kind: 'rearm'} : {kind: 'retry'};
+  return attempt.seconds > 0 ? {kind: 'tick', seconds: attempt.seconds - 1} : {kind: 'retry'};
 }
 function unreachableText(row: MobileChooserRow, formatSeen: (iso: string) => string): string {
   if (row.status?.kind === 'seen') return t('web.chooser.unreachableBody', {date: formatSeen(row.status.at)});
@@ -100,7 +142,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
         </div>
         <h2>{title}</h2>
         {body && <p>{body}</p>}
-        {state === 'waiting' && <div className={styles.alive}><CountdownRing progress={attempt.kind === 'waiting' ? attempt.seconds / Math.max(1, attempt.total) : null} /><span>{t('next.states.retryIn', {seconds: attempt.kind === 'waiting' ? attempt.seconds : 0})}</span></div>}
+        {state === 'waiting' && <div className={styles.alive}><CountdownRing progress={attempt.kind === 'waiting' ? attempt.seconds / Math.max(1, attempt.total) : null} /><span>{t('web.chooser.checkingAgain', {seconds: attempt.kind === 'waiting' ? attempt.seconds : 0})}</span></div>}
         <div className={styles.stateActions}>
           {primaryLabel && <Button variant="primary" className={styles.stateButton} icon={state === 'unreachable' || state === 'loadFailed' ? 'i-retry' : undefined} onClick={onPrimary}>{primaryLabel}</Button>}
           {state === 'waiting' || state === 'unreachable' ? <Button variant="glass" className={styles.stateButton} onClick={onOther}>{t('web.chooser.otherServer')}</Button>
@@ -122,8 +164,8 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
           const status = statusText(row, formatSeen);
           return <button key={row.id} type="button" className={styles.row} data-row={row.id} data-off={row.status && row.status.kind !== 'online' || undefined}
             disabled={busy} onClick={() => onChoose(row)}>
-            <span className={styles.rowIcon} data-online={status.online || undefined}><Icon name="i-server" size={18} /></span>
-            <span className={styles.rowText}>{row.label}<small data-online={status.online || undefined}>{status.text}</small></span>
+            <span className={styles.rowIcon} data-online={status?.online || undefined}><Icon name="i-server" size={18} /></span>
+            <span className={styles.rowText}>{row.label}{status && <small data-online={status.online || undefined}>{status.text}</small>}</span>
             {row.owner && <span className={styles.owner}>{t('web.hostedAccount.serverOwner')}</span>}
             <Icon name="i-right" size={18} />
           </button>;
@@ -177,9 +219,33 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
   const [choices, setChoices] = useState<readonly SavedServerChoice[]>([]), [busy, setBusy] = useState(false), [working, setWorking] = useState(false), [error, setError] = useState<unknown>();
   const [mode, setMode] = useState<'chooser' | 'address' | 'entry'>('chooser'), [origin, setOrigin] = useState<string>();
   const [attempt, setAttempt] = useState<MobileChooserAttempt>();
-  const alive = useRef(true), choosing = useRef(false), loading = useRef<AbortController>(undefined), record = useRef<AppSessionRecord>(undefined), currentChoices = useRef(choices);
-  const attemptEpoch = useRef(0), retryDelay = useRef(20);
-  currentChoices.current = choices;
+  const [directory, setDirectory] = useState<readonly DirectoryFacts[]>([]);
+  const alive = useRef(true), loading = useRef<AbortController>(undefined), record = useRef<AppSessionRecord>(undefined), currentChoices = useRef(choices);
+  const lockRef = useRef<AttemptLock | undefined>(undefined), attemptRef = useRef<MobileChooserAttempt | undefined>(attempt), retryDelay = useRef(20);
+  const lock = (lockRef.current ??= new AttemptLock());
+  currentChoices.current = choices; attemptRef.current = attempt;
+  const accountId = accountState.session?.account.id, familyId = accountState.session?.familyId;
+  useEffect(() => {
+    setDirectory([]);
+    if (!accountId || !familyId) return;
+    const controller = new AbortController();
+    let active = true;
+    const account = servicesAccount();
+    void (async () => {
+      try {
+        await account.service.synchronize();
+        const session = await account.service.accessSession();
+        if (!active) return;
+        const scope = accountIdentity(session);
+        const list = await workspaceApi(account, scope).servers(controller.signal);
+        if (!active || controller.signal.aborted) return;
+        const current = account.service.getSnapshot().session;
+        if (!current || current.account.id !== scope.accountId || current.familyId !== scope.familyId) return;
+        setDirectory(list.items);
+      } catch { /* The saved chooser keeps working without account presence. */ }
+    })();
+    return () => {active = false; controller.abort();};
+  }, [accountId, familyId]);
   const refresh = useCallback(async () => {
     loading.current?.abort(); const controller = loading.current = new AbortController();
     if (!alive.current) return;
@@ -197,15 +263,15 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
   useEffect(() => {
     alive.current = true; void refresh();
     const off = observeBrowserSessionChanges(() => {void refresh();});
-    return () => {alive.current = false; loading.current?.abort(); record.current = undefined; off();};
-  }, [refresh]);
+    return () => {alive.current = false; lock.cancel(); loading.current?.abort(); record.current = undefined; off();};
+  }, [refresh, lock]);
   const openServer = useCallback(async (row: MobileChooserRow) => {
     const saved = record.current?.servers.find(value => value.connection.pin.serverId === row.id);
-    if (!alive.current || choosing.current || !saved || !currentChoices.current.some(value => value.id === row.id)) return;
-    const epoch = ++attemptEpoch.current;
-    choosing.current = true; setWorking(true); setError(undefined); setAttempt({kind: 'opening', row}); form.clear();
+    if (!alive.current || lock.running || !saved || !currentChoices.current.some(value => value.id === row.id)) return;
+    const token = lock.begin();
+    setWorking(true); setError(undefined); setAttempt({kind: 'opening', row}); form.clear();
     const fail = (failure: unknown) => {
-      if (!alive.current || epoch !== attemptEpoch.current) return;
+      if (!alive.current || !lock.owns(token)) return;
       setError(failure);
       if (retryableFailure(failure)) {
         const seconds = retryDelay.current;
@@ -215,48 +281,54 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
     };
     try {
       await browserAppSessionActions().switchServer(row.id);
-      if (!alive.current || epoch !== attemptEpoch.current) return;
+      if (!alive.current || !lock.owns(token)) return;
       // All restoration/profile/factor checks remain in the one real Entry.
       await entry.loadProfiles();
-      if (!alive.current || epoch !== attemptEpoch.current) return;
+      if (!alive.current || !lock.owns(token)) return;
       const current = entry.getSnapshot();
       setOrigin(saved.connection.logicalOrigin);
       if (!current.snapshot) {
         const selected = await browserAppSessions().selected();
-        if (!alive.current || epoch !== attemptEpoch.current || selected?.connection.pin.serverId !== row.id) return;
+        if (!alive.current || !lock.owns(token) || selected?.connection.pin.serverId !== row.id) return;
         await entry.inspect(saved.connection.logicalOrigin);
       }
-      if (!alive.current || epoch !== attemptEpoch.current) return;
+      if (!alive.current || !lock.owns(token)) return;
       const result = entry.getSnapshot();
       if (result.snapshot || result.server) {setAttempt(undefined); setMode('entry');} else fail(result.error);
     } catch (failure) {fail(failure);}
-    finally {choosing.current = false; if (alive.current && epoch === attemptEpoch.current) setWorking(false);}
-  }, [entry, form]);
+    finally {if (lock.settle(token) && alive.current) setWorking(false);}
+  }, [entry, form, lock]);
   useEffect(() => {
     if (attempt?.kind !== 'waiting') return;
-    if (attempt.seconds > 0) {
-      const timer = setTimeout(() => {
-        if (document.visibilityState !== 'visible') return;
-        setAttempt(value => value?.kind === 'waiting' && value.seconds > 0 ? {...value, seconds: value.seconds - 1} : value);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-    if (attempt.seconds <= 0 && document.visibilityState === 'visible') void openServer(attempt.row);
-    return;
+    const step = waitingStep(attempt, 'timer', document.visibilityState === 'visible');
+    if (step.kind === 'retry') {void openServer(attempt.row); return;}
+    if (step.kind !== 'tick') return;
+    const timer = setTimeout(() => {
+      const current = attemptRef.current;
+      const next = waitingStep(current, 'timer', document.visibilityState === 'visible');
+      if (next.kind === 'tick') setAttempt(value => value?.kind === 'waiting' ? {...value, seconds: next.seconds} : value);
+      else if (next.kind === 'retry' && current?.kind === 'waiting') void openServer(current.row);
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [attempt, openServer]);
   useEffect(() => {
-    const wake = () => {if (document.visibilityState === 'visible') setAttempt(value => value?.kind === 'waiting' && value.seconds <= 0 ? {...value} : value);};
+    const wake = () => {
+      const current = attemptRef.current;
+      const step = waitingStep(current, 'visibility', document.visibilityState === 'visible');
+      if (step.kind === 'rearm') setAttempt(value => value?.kind === 'waiting' ? {...value} : value);
+      else if (step.kind === 'retry' && current?.kind === 'waiting') void openServer(current.row);
+    };
     document.addEventListener('visibilitychange', wake);
     return () => document.removeEventListener('visibilitychange', wake);
-  }, []);
+  }, [openServer]);
   const close = () => {form.clear(); entry.cancel(); void router.navigate({to: '/'});};
-  const other = () => {attemptEpoch.current++; entry.cancel(); setAttempt(undefined); setError(undefined);};
+  const other = () => {lock.cancel(); setWorking(false); entry.cancel(); setAttempt(undefined); setError(undefined);};
   const checkNow = () => {
     if (attempt?.kind === 'waiting' || attempt?.kind === 'unreachable') {retryDelay.current = 20; void openServer(attempt.row);}
   };
   const differentAccount = () => {
-    if (busy || choosing.current || !alive.current) return;
-    form.clear(); entry.cancel(); setWorking(true); setError(undefined);
+    if (busy || lock.running || !alive.current) return;
+    lock.cancel(); setAttempt(undefined); form.clear(); entry.cancel(); setWorking(true); setError(undefined);
     void signOutBrowserPorticoAccount().then(() => {
       if (!alive.current) return;
       location.assign(new URL('/', browserAccountOrigin(import.meta.env, location)).href);
@@ -271,7 +343,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
       if (result.server && (result.phase === 'password' || result.phase === 'portico')) {setOrigin(result.origin); setMode('entry');}
     });}} />;
   if (narrow) {
-    const rows: readonly MobileChooserRow[] = choices;
+    const rows = mobileChooserRows(choices, directory);
     const presented = error ? presentError(error, 'sign-in', {operation: 'load'}) : undefined;
     const notice = presented && !presented.silent ? presented.body : undefined;
     const mobileAttempt = attempt ?? (busy && !rows.length ? {kind: 'loading'} as const : error && !rows.length ? {kind: 'loadFailed'} as const : undefined);

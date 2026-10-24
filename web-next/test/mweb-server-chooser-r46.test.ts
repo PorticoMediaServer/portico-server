@@ -15,7 +15,7 @@ registerHooks({load(url, context, next) {
   if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
   return next(url, context);
 }});
-const {MobileServerChooser} = await import('../src/screens/accounts/Servers.route');
+const {MobileServerChooser, AttemptLock, waitingStep, mobileChooserRows} = await import('../src/screens/accounts/Servers.route');
 
 const seenAt = new Date(2026, 9, 12, 12, 0, 0).toISOString();
 const rows: readonly MobileChooserRow[] = [
@@ -50,17 +50,17 @@ test('frame 6a renders the authored list from the saved rows, with no invented c
   assert.match(html, /data-mweb-server-chooser/);
 });
 
-test('a production row without account presence shows its real saved sign-in kind instead of inventing Online', () => {
+test('a saved row without account presence keeps its name and invents neither presence nor a sign-in-kind substitute', () => {
   const html = render({rows: [{id: 'local', label: 'Studio', signIn: 'local', selected: false}], onDifferentAccount: undefined});
-  assert.match(html, /Studio<small>Signed in with a local account<\/small>/);
-  assert.doesNotMatch(html, /Online|Last seen|Never seen|Owner|Use a different Portico Account/);
+  assert.match(html, /Studio/);
+  assert.doesNotMatch(html, /Signed in with a local account|Signed in with your Portico Account|Online|Last seen|Never seen|Owner|Use a different Portico Account/);
 });
 
 test('frame 6b is the real waiting state with a countdown ring and the two recovery actions', () => {
   const html = attempt({kind: 'waiting', row: rows[1]!, seconds: 20, total: 20});
   assert.match(html, /Waiting for The cottage/);
   assert.match(html, /Portico will connect automatically when it’s back\./);
-  assert.match(html, /Trying again in 20 seconds/);
+  assert.match(html, /Checking again in 20 seconds/);
   assert.match(html, /data-progress="1"/);
   assert.match(html, /Check now/);
   assert.match(html, /Choose another server/);
@@ -92,4 +92,50 @@ test('opening, loading and list-failed are real transient states, not a second f
   assert.match(failed, /Your servers couldn’t be loaded/);
   assert.match(failed, /Your saved servers couldn’t be read\./);
   assert.match(failed, /Try again/);
+});
+
+test('genuine account-directory facts supply the drawn presence and owner; status/ownership unknowns grant nothing', () => {
+  const choices = [{id: 'a', label: 'Saved A', signIn: 'portico', selected: false}, {id: 'b', label: 'Saved B', signIn: 'portico', selected: false}, {id: 'c', label: 'Saved C', signIn: 'local', selected: false}];
+  const listed = mobileChooserRows(choices, [
+    {id: 'a', name: 'Portico demo', status: 'active', presence: {lastSeenAt: null}, ownedByMe: true},
+    {id: 'b', name: 'The cottage', status: 'quiet', presence: {lastSeenAt: seenAt}, ownedByMe: false},
+    {id: 'c', name: 'Lake house', status: 'dormant', presence: {lastSeenAt: null}, ownedByMe: false},
+  ] as const);
+  assert.deepEqual(listed[0], {...choices[0], label: 'Portico demo', status: {kind: 'online'}, owner: true});
+  assert.deepEqual(listed[1], {...choices[1], label: 'The cottage', status: {kind: 'seen', at: seenAt}});
+  assert.deepEqual(listed[2], {...choices[2], label: 'Lake house', status: {kind: 'never'}});
+  assert.equal(listed[1]!.owner, undefined); assert.equal(listed[2]!.owner, undefined);
+});
+
+test('a saved server absent from the account directory keeps only its saved facts', () => {
+  const choices = [{id: 'x', label: 'Studio', signIn: 'local', selected: false}];
+  assert.deepEqual(mobileChooserRows(choices, []), choices);
+  assert.deepEqual(mobileChooserRows(choices, [{id: 'y', name: 'Elsewhere', status: 'active', presence: {lastSeenAt: null}, ownedByMe: true}]), choices);
+});
+
+test('a cancelled attempt cannot let its late settle clear a successor or leave the chooser locked', () => {
+  const lock = new AttemptLock();
+  const first = lock.begin();
+  assert.equal(lock.running, true);
+  lock.cancel();
+  assert.equal(lock.running, false);
+  const second = lock.begin();
+  assert.equal(lock.settle(first), false);
+  assert.equal(lock.running, true);
+  assert.equal(lock.settle(second), true);
+  assert.equal(lock.running, false);
+  const third = lock.begin(); lock.cancel();
+  assert.equal(lock.settle(third), false); assert.equal(lock.running, false);
+});
+
+test('the waiting countdown holds hidden, re-arms a positive countdown on visibility, and retries only at zero', () => {
+  const waiting = {kind: 'waiting', row: rows[1]!, seconds: 20, total: 20} as const;
+  assert.deepEqual(waitingStep(waiting, 'timer', false), {kind: 'hold'});
+  assert.deepEqual(waitingStep(waiting, 'timer', true), {kind: 'tick', seconds: 19});
+  assert.deepEqual(waitingStep({...waiting, seconds: 0}, 'timer', false), {kind: 'hold'});
+  assert.deepEqual(waitingStep({...waiting, seconds: 0}, 'timer', true), {kind: 'retry'});
+  assert.deepEqual(waitingStep(waiting, 'visibility', true), {kind: 'rearm'});
+  assert.deepEqual(waitingStep({...waiting, seconds: 0}, 'visibility', true), {kind: 'retry'});
+  assert.deepEqual(waitingStep(undefined, 'visibility', true), {kind: 'hold'});
+  assert.deepEqual(waitingStep({kind: 'unreachable', row: rows[2]!}, 'visibility', true), {kind: 'hold'});
 });
