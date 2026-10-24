@@ -28,3 +28,35 @@ func captureOwnerSwitchCountTx(ctx context.Context, tx *sql.Tx, owner string) (*
 	}
 	return &count, nil
 }
+
+// OwnerSwitchCountFact is internal signing input from an already-authenticated
+// owner capture. It is never an unsigned API response or an authority grant.
+type OwnerSwitchCountFact struct {
+	PreviewID       string
+	PreviewRevision int64
+	Count           *int
+}
+
+// OwnerSwitchCountFactTx is read inside the same transaction that freezes the
+// original claim/start. The existing current-family/owner/main/epoch/operation
+// guard runs before the captured preview scalar can reach its fixed-kind signer.
+func (s *Service) OwnerSwitchCountFactTx(ctx context.Context, tx *sql.Tx, expected Principal, operation string) (OwnerSwitchCountFact, error) {
+	var out OwnerSwitchCountFact
+	capture, _, err := s.currentOwnerCompletionTx(ctx, tx, expected, operation, "")
+	if err != nil {
+		return out, err
+	}
+	if capture.phase != "prepared" {
+		return out, ErrForbidden
+	}
+	var count sql.NullInt64
+	if err = tx.QueryRowContext(ctx, `SELECT other_people_count FROM identity_moves WHERE id=? AND owner_id=? AND revision=? AND stage='preview'`, capture.move, capture.owner, capture.moveRevision).Scan(&count); err != nil {
+		return out, err
+	}
+	out.PreviewID, out.PreviewRevision = capture.move, capture.moveRevision
+	if count.Valid && count.Int64 >= 0 && count.Int64 <= 10000 {
+		value := int(count.Int64)
+		out.Count = &value
+	}
+	return out, nil
+}
