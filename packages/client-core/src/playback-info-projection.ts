@@ -76,12 +76,12 @@ export function playbackInfoProjection(info:PlaybackInfo,observed:ObservedPlayba
   const delivered=picture(info.delivered.video);
   // A screen mode is a separate actual observation, never a source HDR label.
   if(observed?.screen)delivered.screen=words.screen(observed.screen);
-  sections.push(Object.freeze({kind:'picture',route:info.routes.picture,rows:rows(picture(info.source.video),delivered,['container','codec','hdr','bitDepth','resolution','frameRate','screen']),losses:Object.freeze(info.losses.filter(loss=>loss.feature==='dolbyVision'||loss.feature==='hdr').map(words.loss))}));
+  sections.push(Object.freeze({kind:'picture',route:info.routes.picture,rows:rows(picture(info.source.video),delivered,['container','codec','hdr','bitDepth','resolution','frameRate','screen']),losses:Object.freeze(info.losses.filter(loss=>loss.feature==='dolbyVision'||loss.feature==='hdr').map(loss=>words.loss(loss)))}));
  }
  if(info.routes.sound){
   const delivered=sound(info.delivered.audio);
   if(observed?.audio)delivered.output=words.output(observed.audio);
-  sections.push(Object.freeze({kind:'sound',route:info.routes.sound,rows:rows(sound(info.source.audio),delivered,['format','channels','sampleRate','output']),losses:Object.freeze(info.losses.filter(loss=>loss.feature==='atmos'||loss.feature==='dtsx').map(words.loss))}));
+  sections.push(Object.freeze({kind:'sound',route:info.routes.sound,rows:rows(sound(info.source.audio),delivered,['format','channels','sampleRate','output']),losses:Object.freeze(info.losses.filter(loss=>loss.feature==='atmos'||loss.feature==='dtsx').map(loss=>words.loss(loss)))}));
  }
  if(info.routes.subtitles){
   sections.push(Object.freeze({kind:'subtitles',route:info.routes.subtitles,rows:rows({track:subtitleName(info.source.subtitles,words)},{track:subtitleName(info.delivered.subtitles,words),shown:observed?.subtitles?words.shown(observed.subtitles.rendering):undefined},['track','shown']),losses:Object.freeze([])}));
