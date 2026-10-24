@@ -6,6 +6,7 @@ import {browseNameId, filterControlOf, rangePresets} from '@core/presentation/br
 import {appliedFilterParts, browseToolbarModel, cardText, titleFactParts} from '@portico/client-core/kit-model';
 import {browseFixtures} from '../../../../packages/i18n/src/catalog/en-US/next/dev/browse-fixtures';
 import {defineGalleryFamily} from '../gallery-registry';
+import {loadGalleryInputs} from 'virtual:portico-kit-families';
 import {Button, Tabs} from '../../kit/controls';
 import {Artwork, AmbientArt, createArtworkRuntime, type ArtworkSource, type AmbientArtSource} from '../../kit/artwork';
 import {Popover} from '../../kit/overlays';
@@ -14,15 +15,8 @@ import {SelectionCircle} from '../../kit/selection';
 import {BrowseToolbar, FilterBuilder, FilteredEmpty, LibraryHeader, LibraryMenu, LibrarySwitcher, SongRow, SortMenu, StickyBrowseHeader, TrackTable, FieldTile,
   type BrowseLabels, type BrowsePlatform, type FilterFieldChange, type FilterFieldState, type TrackRowData} from '../../kit/browse';
 import styles from '../../kit/browse/gallery.module.css';
-import movieCapabilities from '../../../../../../design-ui-v1/design/ui-v1/raw/caps_movies.json?raw';
-import musicCapabilities from '../../../../../../design-ui-v1/design/ui-v1/raw/caps_music.json?raw';
-import songResponse from '../../../../../../design-ui-v1/design/ui-v1/raw/browse_songs.json?raw';
-import drawnListen from '../../../../../../design-ui-v1/design/ui-v1/desktop-listen.html?raw';
-import drawnTv from '../../../../../../design-ui-v1/design/ui-v1/tv.html?raw';
-import drawnBrowse from '../../../../../../design-ui-v1/design/ui-v1/desktop-browse.html?raw';
-import drawnRead from '../../../../../../design-ui-v1/design/ui-v1/desktop-read.html?raw';
-import drawnPhone from '../../../../../../design-ui-v1/design/ui-v1/phone-app.html?raw';
-import albumResponse from '../../../../../../design-ui-v1/design/ui-v1/raw/browse_albums.json?raw';
+
+const {movieCapabilities, musicCapabilities, songResponse, drawnListen, drawnTv, drawnBrowse, drawnRead, drawnPhone, albumResponse} = await loadGalleryInputs('browse');
 
 const t = defaultI18n.t;
 const fixture = (id: keyof typeof browseFixtures, values?: MessageValues) => formatMessage(browseFixtures[id], values ?? {}, {locale: 'en-US'});
