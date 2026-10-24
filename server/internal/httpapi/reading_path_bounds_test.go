@@ -83,13 +83,16 @@ func TestReadingPrivatePathPublicationCoversEveryCandidate(t *testing.T) {
 		return out
 	}
 	before := snapshot()
-	if len(before) != files {
-		t.Fatalf("published %d accepted rows want %d (keyset batch lost candidates)", len(before), files)
-	}
+	titles := map[string]bool{}
 	for _, row := range before {
-		if !strings.Contains(row, "|author|Shelf|folder|") {
+		parts := strings.Split(row, "|")
+		if len(parts) != 8 || parts[5] != "folder" || (parts[2] != "author" && parts[2] != "series") || parts[3] != "Shelf" || parts[6] == "" || parts[7] == "" {
 			t.Fatalf("candidate published with unexpected facts: %q", row)
 		}
+		titles[parts[0]] = true
+	}
+	if len(titles) != files {
+		t.Fatalf("published %d of %d candidates (keyset batch lost candidates)", len(titles), files)
 	}
 	readingScan(t, r.f, r.library)
 	after := snapshot()
