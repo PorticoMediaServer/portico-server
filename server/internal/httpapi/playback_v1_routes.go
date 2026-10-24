@@ -616,7 +616,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue", Method: "GET", Path: "/v1/queues/{id}", Summary: "Read a queue's header",
-		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found", "revision_mismatch"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.QueueView, error) {
 			out, err := d.playbackV1().Queue(ctx, caller(ctx, q), q.PathValue("id"))
 			if err == nil {
@@ -636,7 +636,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		return n, nil
 	}
 
-	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue_entry_for_item", Method: "GET", Path: "/v1/queues/{id}/entry", Summary: "Resolve a visible episode outside the loaded queue window for an in-player jump", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.SelectionAsync, Status: 200, Query: []string{"itemId"}, Errors: []string{"invalid_request", "unauthorized", "not_found", "queue_building"}}, func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.QueueItemView, error) {
+	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue_entry_for_item", Method: "GET", Path: "/v1/queues/{id}/entry", Summary: "Resolve a visible episode outside the loaded queue window for an in-player jump", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.SelectionAsync, Status: 200, Query: []string{"itemId"}, Errors: []string{"invalid_request", "unauthorized", "not_found", "queue_building", "revision_mismatch"}}, func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.QueueItemView, error) {
 		item := q.URL.Query().Get("itemId")
 		if item == "" || len(item) > 128 {
 			return playbackv1.QueueItemView{}, &playbackv1.FieldError{Path: "itemId"}
@@ -644,7 +644,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		return d.playbackV1().EntryForItem(ctx, caller(ctx, q), q.PathValue("id"), item)
 	})
 	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue_window", Method: "GET", Path: "/v1/queues/{id}/window", Summary: "Read the entries around the current one (at most 200)",
-		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"around", "before", "after"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"around", "before", "after"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found", "revision_mismatch"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.EntryPage, error) {
 			if around := q.URL.Query().Get("around"); around != "" && around != "current" {
 				return playbackv1.EntryPage{}, &playbackv1.FieldError{Path: "around"}
@@ -660,7 +660,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			return d.playbackV1().Window(ctx, caller(ctx, q), q.PathValue("id"), before, after)
 		})
 	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "list_queue_entries", Method: "GET", Path: "/v1/queues/{id}/entries", Summary: "Read a page of entries from a position (at most 200)",
-		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"from", "limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"from", "limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found", "revision_mismatch"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.EntryPage, error) {
 			from, err := number(q, "from", 0)
 			if err != nil {

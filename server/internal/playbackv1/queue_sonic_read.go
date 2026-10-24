@@ -11,6 +11,24 @@ import (
 
 type sonicWindowSelection func(*layout) ([]int64, error)
 
+func sonicCurrentWindow(l *layout) ([]int64, error) {
+	return l.sonicWindowsForRange(l.q.current, 1)
+}
+
+func sonicEntryWindow(entry string) sonicWindowSelection {
+	return func(l *layout) ([]int64, error) {
+		source, _, ok := l.sourceIndexOf(entry)
+		if !ok {
+			return nil, ErrNotFound
+		}
+		position := l.ordinarySourceToOrder(source)
+		if !l.q.shuffle || position < 0 || position >= l.q.domain {
+			return nil, nil
+		}
+		return []int64{position / sonic.SmoothWindowMax}, nil
+	}
+}
+
 func (l *layout) sonicWindowAt(position int64) (int64, bool) {
 	if !l.q.shuffle || position < 0 {
 		return 0, false
@@ -75,20 +93,31 @@ func (s *Service) withMusicLayout(ctx context.Context, caller Caller, id string,
 			if err != nil {
 				return err
 			}
-			if l.musicQueue() || q.shuffle && len(l.building) > 0 {
+			if q.shuffle && !l.waiting() {
+				canCapture := l.musicQueue() || len(l.building) > 0 && l.musicOnlySources()
 				windows, err := selectWindows(l)
 				if err != nil {
 					return err
 				}
+				if len(windows) > saveStepEntries {
+					return ErrQueueTooLarge
+				}
 				l.sonicWindows = map[int64]sonicWindowCapture{}
+				seen := map[int64]bool{}
 				for _, window := range windows {
+					if seen[window] {
+						continue
+					}
+					seen[window] = true
 					key, ordinary, _, _, err := l.sonicWindowSource(window, false)
 					if err != nil {
 						return err
 					}
 					captured, err := readSonicWindowTx(ctx, tx, key, ordinary)
 					if errors.Is(err, sql.ErrNoRows) {
-						missing = append(missing, window)
+						if canCapture {
+							missing = append(missing, window)
+						}
 					} else if err != nil {
 						return err
 					} else {

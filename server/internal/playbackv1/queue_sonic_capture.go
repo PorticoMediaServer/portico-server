@@ -77,7 +77,7 @@ func (l *layout) sonicWindowSource(window int64, readKeys bool) (sonicWindowKey,
 // profile/model read and atomically freeze either its order or ordinary order.
 func (s *Service) captureMusicWindowTx(ctx context.Context, tx *sql.Tx, caller Caller, l *layout, window int64) error {
 	readyMusic := l.musicQueue()
-	if !readyMusic && (!l.q.shuffle || len(l.building) == 0) {
+	if !l.q.shuffle || l.waiting() {
 		return nil
 	}
 	// Before a background snapshot completes, even its future keys may be
@@ -89,6 +89,13 @@ func (s *Service) captureMusicWindowTx(ctx context.Context, tx *sql.Tx, caller C
 	}
 	captured, err := readSonicWindowTx(ctx, tx, key, ordinary)
 	if errors.Is(err, sql.ErrNoRows) {
+		if !readyMusic && (len(l.building) == 0 || !l.musicOnlySources()) {
+			if l.sonicMisses == nil {
+				l.sonicMisses = map[int64]bool{}
+			}
+			l.sonicMisses[window] = true
+			return nil // a mixed queue cannot create new smoothed windows
+		}
 		err = nil
 		if readyMusic {
 			_, _, positions, ids, err = l.sonicWindowSource(window, true)
@@ -104,7 +111,7 @@ func (s *Service) captureMusicWindowTx(ctx context.Context, tx *sql.Tx, caller C
 			if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrUnsupportedSelector) || errors.Is(err, sonic.ErrUnavailable) {
 				err = nil // refused/unknown analysis cannot influence the ordinary order
 			} else if err == nil && order.BySound {
-				if order.Model == nil || len(order.Positions) != len(positions) {
+				if order.Model == nil || len(order.Positions) != len(positions) || order.Positions[0] != 0 {
 					return errSonicWindow
 				}
 				for index, from := range order.Positions {
