@@ -21,7 +21,7 @@ func (s *Service) CaptureSetupClaimTx(ctx context.Context, tx *sql.Tx, pending P
 		return err
 	}
 	claim, start, err := claimweb.VerifySetupStart(original, signed, audience, time.Now())
-	if err != nil || claim.AccountID != "" || claim.ServerID != s.ID() || start.SetupRequestID != pending.RequestID || start.SetupRevision != pending.Revision || !ownerReturnSecret32(start.State) || !validInstallationID(start.InstallationID) {
+	if err != nil || claim.AccountID != "" || claim.ServerID != s.ID() || start.IssuedAt.After(time.Now()) || start.ExpiresAt.After(time.Now().Add(claimweb.SetupStartLifetime)) || start.SetupRequestID != pending.RequestID || start.SetupRevision != pending.Revision || !ownerReturnSecret32(start.State) || !validInstallationID(start.InstallationID) {
 		return ErrUnauthorized
 	}
 	claimRaw, _ := base64.RawURLEncoding.DecodeString(original.Payload)
