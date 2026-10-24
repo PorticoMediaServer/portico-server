@@ -17,20 +17,32 @@ import (
 
 type scanInputKey struct{}
 type scanInput struct {
-	client *Client
-	source string
-	root   InventoryRequest
+	client               *Client
+	source               string
+	root                 InventoryRequest
+	blob                 *InventoryBlobAdmission
+	invalidBlobAdmission bool
 }
 
 // WithScanInput binds optional analysis reads to the same admitted inventory
-// root. It is not playback version evidence and does not affect provider I/O.
-func WithScanInput(ctx context.Context, client *Client, source string, root InventoryRequest) context.Context {
-	return context.WithValue(ctx, scanInputKey{}, scanInput{client, source, root})
+// root. An optional blob admission retains the actual job/policy/target facts
+// for a remote bounded reader; it supplies no authority by itself. Local helper
+// custody is unchanged, and no playback version evidence is created.
+func WithScanInput(ctx context.Context, client *Client, source string, root InventoryRequest, admission ...InventoryBlobAdmission) context.Context {
+	input := scanInput{client: client, source: source, root: root, invalidBlobAdmission: len(admission) > 1}
+	if len(admission) == 1 {
+		captured := admission[0]
+		input.blob = &captured
+	}
+	return context.WithValue(ctx, scanInputKey{}, input)
 }
 func inventoryReadRequest(ctx context.Context, path string) (InventoryRequest, *scanInput, error) {
 	input, ok := ctx.Value(scanInputKey{}).(scanInput)
 	if !ok || input.client == nil {
 		return InventoryRequest{}, nil, nil
+	}
+	if input.invalidBlobAdmission {
+		return InventoryRequest{}, nil, ErrRemoteConfig
 	}
 	relative, err := filepath.Rel(input.root.Root, path)
 	if err != nil || !filepath.IsLocal(relative) || relative == "." {
