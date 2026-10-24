@@ -72,9 +72,10 @@ test('where the cue box cannot be lifted with CSS, cues sit above the controls; 
 });
 
 test('drawn caption preferences apply to the native cues and system opt-in removes app styling', () => {
-  const h=host(), attrs=new Map<string,string>(), styles:{textContent:string;removed:boolean;remove():void}[]=[];
+  const h=host(), attrs=new Map<string,string>(), styles:{textContent:string;nonce:string;removed:boolean;remove():void}[]=[];
   const styled={...h,setAttribute:(key:string,value:string)=>attrs.set(key,value),removeAttribute:(key:string)=>attrs.delete(key),ownerDocument:{
-    createElement:()=>{const style={textContent:'',removed:false,remove(){this.removed=true;}};styles.push(style);return style;},head:{append(){}}
+    querySelector:(selector:string)=>{assert.equal(selector,'meta[name="portico-style-nonce"]');return {content:'document-caption-nonce'};},
+    createElement:()=>{const style={textContent:'',nonce:'',removed:false,remove(){this.removed=true;}};styles.push(style);return style;},head:{append(style:{nonce:string}){assert.equal(style.nonce,'document-caption-nonce','CSP authorizes the cue stylesheet before insertion');}}
   }};
   const surface=new SubtitleSurface(styled as any,{cue,lift:false});
   const preferences={size:'large',color:'yellow',background:'outline',position:'raised',font:'mono',keepStyling:false,useSystemCaptionStyle:false} as const;

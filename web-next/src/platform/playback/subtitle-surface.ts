@@ -78,6 +78,8 @@ export class SubtitleSurface implements SubtitleTimeline {
       const key = this.styleKey ??= 'portico-cue-' + (++styleSerial);
       this.host.setAttribute('data-portico-caption-style', key);
       this.style = this.host.ownerDocument.createElement('style');
+      const nonce = this.host.ownerDocument.querySelector<HTMLMetaElement>('meta[name="portico-style-nonce"]')?.content;
+      if (nonce && nonce !== '__PORTICO_STYLE_NONCE__') this.style.nonce = nonce;
       this.style.textContent = captionStyle(key, preferences);
       this.host.ownerDocument.head.append(this.style);
     } else this.host.removeAttribute?.('data-portico-caption-style');
