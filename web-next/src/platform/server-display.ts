@@ -21,6 +21,8 @@ export class BrowserServerDisplay {
   const id=route.pin.serverId;this.names.set(id,name);
   try{this.storage.setItem(key(id),JSON.stringify({version:1,name}));}catch{/* Display caching cannot fail a sign-in. */}
  }
+ /** Synchronous display name for an already pinned server; never an address. */
+ name(id:string):string|undefined{return this.read(id);}
  private read(id:string):string|undefined{
   const name=this.names.get(id);if(name)return name;
   try{const raw=this.storage.getItem(key(id));if(!raw||raw.length>1024)return;const value:unknown=JSON.parse(raw);if(value&&typeof value==='object'&&'version' in value&&value.version===1&&'name' in value&&validName(value.name)){this.names.set(id,value.name);return value.name;}}catch{/* Never substitute an origin for unavailable metadata. */}

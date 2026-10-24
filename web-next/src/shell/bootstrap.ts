@@ -19,6 +19,7 @@ import {parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
 import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
+import {displayableTransportCode, launchFailure, retryDelayMs} from './connection-retry';
 import {browserEventStream, browserFeedEnvironment} from '../platform/event-feed';
 import {freshnessFor, type FreshnessRuntime} from '../platform/freshness';
 import {authenticatedArtwork, type ShellArtwork} from './artwork';
@@ -40,7 +41,28 @@ export type ShellAssembly = Readonly<{
   dispose: () => void;
 }>;
 export type ShellAssembler = (context: ShellAssemblyContext) => Promise<ShellAssembly>;
-export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown}>;
+/** states.html#3 facts. Only values this launch already holds: the address the person
+ * saved, the cached server name, their role and the real failure code. */
+export type LaunchUnreachable = Readonly<{
+  serverName?: string;
+  address: string;
+  owner: boolean;
+  category: 'unreachable' | 'offline' | 'timeout';
+  code?: string;
+  /** Failed connections since the first one, starting at 1. */
+  attempt: number;
+  firstFailureAt: number;
+  /** When the countdown last (re)started; the ring's 100% mark. */
+  startedAt: number;
+  nextRetryAt: number;
+  retrying: boolean;
+}>;
+export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error' | 'unreachable'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown; unreachable?: LaunchUnreachable}>;
+
+/** The saved address without credentials or paths; display only. */
+function savedHost(value: unknown): string {
+  try { const url = new URL(String(value)); return url.host; } catch { return ''; }
+}
 
 function viewerId(session: LocalSession): string { const v = session.viewer; return JSON.stringify([v.authority, v.accountId, v.profileId]); }
 export function sameShellAuthority(a: LocalSession, b: LocalSession): boolean {
@@ -107,6 +129,11 @@ export class ShellBootstrap {
   private retire?: () => void;
   private running?: Promise<void>;
   private disposed = false;
+  private retryTimer?: ReturnType<typeof setTimeout>;
+  private failure?: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number};
+  private launch?: {address: string; owner: boolean; serverId: string};
+  /** Exactly the error the restore call raised; a later bug must never read as "server away". */
+  private transportError?: unknown;
   constructor(private readonly assemble: ShellAssembler, private readonly environment: {
     selected: Pick<typeof browserViewerStorage, 'read'>;
     restore: typeof restoreBrowserConnection;
@@ -121,7 +148,7 @@ export class ShellBootstrap {
   }
   /** Suspend only the mounted runtime. Durable sessions stay until an explicit
    * admission/sign-out decides their fate. */
-  suspendForAccountEntry = () => {if (this.disposed) return;this.fence();this.publish({phase: 'signed-out', entry: true});};
+  suspendForAccountEntry = () => {if (this.disposed) return;this.clearWait();this.fence();this.publish({phase: 'signed-out', entry: true});};
   resumeAfterAccountEntry = async () => {
     const expected = this.epoch;
     await this.running;
@@ -133,23 +160,70 @@ export class ShellBootstrap {
     const pending = this.running, expected = this.epoch;
     void Promise.resolve(pending).then(() => { if (this.epoch === expected && this.state.phase === 'restoring') return this.start(); });
   };
-  start = (): Promise<void> => {
+  start = (retry = false): Promise<void> => {
     if (this.disposed) return Promise.resolve();
     if (this.running) return this.running;
-    this.fence(); this.publish({phase: 'restoring'});
+    this.transportError = undefined;
+    this.fence();
+    // A retry keeps the drawn wait on screen; only a fresh launch shows the skeleton.
+    if (!retry) { this.clearWait(); this.publish({phase: 'restoring'}); }
+    else if (this.failure && this.state.phase === 'unreachable') this.publish({phase: 'unreachable', unreachable: {...this.state.unreachable!, retrying: true}});
     const epoch = this.epoch, controller = this.controller = new AbortController();
     const current = () => this.epoch === epoch && !controller.signal.aborted;
-    const task = this.restore(epoch, controller.signal, current).catch(error => {
+    const task = this.restore(epoch, controller.signal, current).then(() => { if (current()) this.clearWait(); }).catch(error => {
       if (!current()) return;
+      const category = this.transportError === error ? launchFailure(error, globalThis.navigator?.onLine) : 'other';
+      if (category !== 'other') { this.waitAfterFailure(error, category); return; }
       this.fence(); this.publish({phase: 'error', error});
     }).finally(() => { if (this.running === task) this.running = undefined; });
     this.running = task; return task;
   };
+
+  /** Failures and retries stay on the drawn page; the saved credential is untouched. */
+  private waitAfterFailure(error: unknown, category: 'unreachable' | 'offline' | 'timeout') {
+    const now = Date.now();
+    const attempt = (this.failure?.attempt ?? 0) + 1;
+    const firstFailureAt = this.failure?.firstFailureAt ?? now;
+    const nextRetryAt = now + retryDelayMs(attempt - 1);
+    const wait = {attempt, firstFailureAt, startedAt: now, nextRetryAt};
+    this.failure = wait;
+    this.publish({phase: 'unreachable', unreachable: this.unreachable(wait, category, error)});
+    clearTimeout(this.retryTimer);
+    this.retryTimer = setTimeout(() => { this.retryTimer = undefined; void this.start(true); }, Math.max(0, nextRetryAt - Date.now()));
+  }
+
+  private unreachable(wait: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number}, category: 'unreachable' | 'offline' | 'timeout', error?: unknown): LaunchUnreachable {
+    const saved = this.launch, code = displayableTransportCode((error as {code?: unknown} | null)?.code);
+    return Object.freeze({
+      ...(saved ? {serverName: saved.serverId ? browserServerDisplay().name(saved.serverId) : undefined, address: saved.address, owner: saved.owner} : {address: '', owner: false}),
+      category,
+      ...(code ? {code} : {}),
+      ...wait, retrying: false,
+    });
+  }
+
+  /** A retry from the drawn page asks now and restarts the countdown. */
+  retryNow = (): Promise<void> => {
+    if (this.disposed) return Promise.resolve();
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = undefined; }
+    return this.start(true);
+  };
+
+  private clearWait() {
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = undefined; }
+    this.failure = undefined;
+  }
+
   private async restore(epoch: number, signal: AbortSignal, isCurrent: () => boolean): Promise<void> {
     const selected = await this.environment.selected.read();
     if (!isCurrent()) return;
     if (!selected) { this.publish({phase: 'signed-out'}); return; }
-    const restored = await this.environment.restore(selected.session);
+    // Only what this saved launch already holds: the address used and the saved role.
+    const viewer = selected.session?.viewer;
+    this.launch = {address: savedHost(selected.serverUrl), owner: viewer?.role === 'owner', serverId: viewer?.serverId ?? ''};
+    let restored: Awaited<ReturnType<typeof restoreBrowserConnection>>;
+    try { restored = await this.environment.restore(selected.session); }
+    catch (error) { this.transportError = error; throw error; }
     if (!isCurrent()) { restored?.api.getRouteConnection()?.dispose(); return; }
     if (!restored) { this.publish({phase: 'signed-out'}); return; }
     const {api} = restored;
@@ -242,6 +316,6 @@ export class ShellBootstrap {
     void home.load();
     publishBinding();
   }
-  selectServer = async (serverId:string) => {if(this.disposed)return;this.fence();const epoch=this.epoch;this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);if(!this.disposed&&this.epoch===epoch)await this.start();}catch(error){if(!this.disposed&&this.epoch===epoch)this.publish({phase:'error',error});}};
-  dispose = () => { if (this.disposed) return; this.disposed = true; this.fence(); this.publish({phase: 'signed-out'}); this.listeners.clear(); };
+  selectServer = async (serverId:string) => {if(this.disposed)return;this.clearWait();this.fence();const epoch=this.epoch;this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);if(!this.disposed&&this.epoch===epoch)await this.start();}catch(error){if(!this.disposed&&this.epoch===epoch)this.publish({phase:'error',error});}};
+  dispose = () => { if (this.disposed) return; this.disposed = true; this.clearWait(); this.fence(); this.publish({phase: 'signed-out'}); this.listeners.clear(); };
 }
