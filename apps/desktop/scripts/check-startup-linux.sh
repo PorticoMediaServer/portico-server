@@ -25,6 +25,7 @@ set -eu
 export TMPDIR=/work/tmp CARGO_TARGET_DIR=/work/target CARGO_BUILD_JOBS=1
 mkdir -p "$TMPDIR"
 cd /source
+dpkg-query -W gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-gl libegl1 libgl1-mesa-dri libglx-mesa0 at-spi2-core
 cargo build --quiet --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --bin portico-desktop
 ulimit -c 0
 unset WEBKIT_DISABLE_DMABUF_RENDERER WEBKIT_DISABLE_COMPOSITING_MODE

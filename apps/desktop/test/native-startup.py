@@ -12,7 +12,6 @@ assert observed["ui"]["rootMounted"] is True
 assert observed["ui"]["width"] == 1440 and observed["ui"]["height"] == 900
 assert observed["ui"]["frames"] >= 60 and observed["ui"]["elapsedMs"] >= 4900
 assert "window-state-confirmed 0" in trace
-assert "linux-dmabuf-disabled 0" in trace or "linux-compositing-disabled 0" in trace
 assert trace.index("close-web-requested 0") < trace.index("close-started 0") < trace.index("close-finished 0")
 if sys.argv[1] == "unavailable":
     assert observed["player"] is None and observed["audio"] is None

@@ -4,16 +4,6 @@ use crate::shutdown::ShutdownState;
 use tauri::{Manager,WebviewWindow};
 use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::EqualizerStore};
 
-/// Called by the Linux executable before Tauri/GTK or any application threads.
-#[cfg(target_os="linux")]
-pub fn configure_linux_webview(){
-    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none(){
-        // SAFETY: main invokes this before initializing any runtime or threads.
-        unsafe{std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE","1");}
-    }
-    crate::spike::record("linux-compositing-disabled",if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref()==Ok("1"){0}else{-1});
-}
-
 #[cfg(target_os="linux")]
 #[path="surface_linux.rs"] mod surface;
 #[cfg(target_os="macos")]
