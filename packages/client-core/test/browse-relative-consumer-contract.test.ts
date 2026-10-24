@@ -13,16 +13,17 @@ import {savedViewSummary} from '../src/presentation/saved-view-summary.ts';
  * Relative recency (`within-last-days`) meets four layers that do not all say the same
  * thing:
  *
- *  1. the generated contract (`BrowseLibraryResponse.applied.query`) admits the operator
- *     only on the three published date fields, for 1–36500 whole days;
+ *  1. the generated contract's top-level relative branch restricts the operator to the
+ *     three published date fields, for 1–36500 whole days. Its group children remain
+ *     permissive; the nested cases below record that separate limitation;
  *  2. `parseBrowseNode` checks structure, not vocabulary: it refuses an unknown operator
  *     or a bad day count but knows no field list;
  *  3. `parseBrowseResult` echoes `applied.query` through that structural parser;
  *  4. `validateBrowseQuery`/`BrowseQueryBuilder` are capability checks: they refuse an
  *     operator the published field capability does not offer.
  *
- * These tests record what each layer does today. A window on a field the contract cannot
- * express is refused by (1) and (4) and admitted by (2) and (3).
+ * These tests record what each layer does today. A top-level window on a non-date field
+ * is refused by (1) and (4) and admitted by (2) and (3). Nesting it bypasses (1), not (4).
  *
  * (2) does not only read server responses. `PersonalSavedService.definition` uses it for
  * the definition a create or update intent sends, and `browseContextFacetsPath` uses it to
@@ -32,8 +33,8 @@ import {savedViewSummary} from '../src/presentation/saved-view-summary.ts';
  * The same window crosses the other readers verbatim — the published vocabulary and its
  * quick filters, a See all destination, a Home row's See all, a counts request, a facet
  * link and a saved view's stored definition — and none of them turns it into a date
- * computed from the clock. The executable browse path and the saved-view summary are the
- * capability checks; the transport paths above are not.
+ * computed from the clock. BrowseQueryBuilder and the saved-view summary perform
+ * capability checks; the transport paths above do not establish that a query is valid.
  */
 
 const OPERATOR = 'within-last-days';
@@ -242,8 +243,8 @@ test('a saved view is transport for the query it stores, and rendering withholds
     async () => '00000000-0000-4000-8000-000000000001',
   );
   await service.select({view: 'views'});
-  // The directory is transport: the server owns execution and validation, so the
-  // definition it stored is kept verbatim, including a window the contract cannot express.
+  // This fixture supplies an unexpressible definition. The client keeps and serializes it;
+  // the mocked mutation success below makes no claim that the real server would accept it.
   assert.deepEqual(service.getSnapshot().resources[0]?.definition, definition);
   assert.equal(await service.mutate({action: 'create', kind: 'view', name: 'Year', definition: definition as never}), true);
   assert.deepEqual(writes[0].definition, definition);
