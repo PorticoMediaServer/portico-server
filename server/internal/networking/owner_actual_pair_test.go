@@ -673,6 +673,11 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 		if snapshot.Status != 200 || snapshot.FinalizeRequests != 1 || snapshot.ExchangeRequests != 1 {
 			t.Fatal("ordinary recovery repeated claim or consumed owner exchange")
 		}
+		var terminal string
+		var spentAt, completedAt int64
+		if err = db.QueryRow(`SELECT phase,consumed_ms,completed_ms FROM identity_owner_completions WHERE operation_id=?`, operation).Scan(&terminal, &spentAt, &completedAt); err != nil || terminal != "superseded" || spentAt != consumed || completedAt != 0 {
+			t.Fatal("ordinary identity resurrected the terminal owner attempt")
+		}
 		return
 	}
 	read(answer, &admitted)
