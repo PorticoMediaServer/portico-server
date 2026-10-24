@@ -94,6 +94,10 @@ export class SettingsController {
     }
   }
   private current = () => !this.closed && this.options.isCurrent();
+  private readConfiguration = async () => {
+    const configuration = await (this.options.readConfiguration?.(this.lifetime.signal) ?? this.console.configuration());
+    if (this.current()) this.configuration = configuration;
+  };
   getSnapshot = (section: SettingsSection) => this.sectionReads.snapshot(`${section.scope}/${section.id}`);
   preferencesSnapshot = () => this.current() ? this.preferences : undefined;
   serverHealth = () => this.current() ? this.header.health : undefined;
@@ -168,10 +172,7 @@ export class SettingsController {
     const formIds = new Set([...settingsRowIndex.values()].filter(location => location.section === section && this.eligible(location.row))
       .map(location => settingsBinding(location.row.id)?.form).filter((id): id is SettingsBindingForm => !!id && !!this.forms[id]));
     const reads = [...formIds].map(id => ({id: `form/${id}`, load: async () => {const form = this.forms[id]!;await form.load();if (form.error()) throw form.error();}}));
-    if (section.scope === 'server' && this.forms.runtime && this.options.readConfiguration) reads.push({id: 'configuration', load: async () => {
-      const configuration = await this.options.readConfiguration!(this.lifetime.signal);
-      if (this.current()) this.configuration = configuration;
-    }});
+    if (section.scope === 'server' && this.forms.runtime) reads.push({id: 'configuration', load: this.readConfiguration});
     return this.sectionReads.load(`${section.scope}/${section.id}`, reads);
   };
   private preferenceScope(row: SettingsRow, key: string): PreferenceScope {
@@ -223,7 +224,7 @@ export class SettingsController {
         const form = this.forms[id]; if (!form) throw new Error('settings_document_unavailable');
         await form.patch(patch); if (!this.current()) return;
       }
-      if (this.options.readConfiguration && [...patches.keys()].some(id => id !== 'device')) this.configuration = await this.options.readConfiguration!(this.lifetime.signal);
+      if ([...patches.keys()].some(id => id !== 'device')) await this.readConfiguration();
       this.publish({saveState: 'saved'});
     } catch (error) {
       if (this.current()) {this.rowErrors.set(row.id, error); this.publish({saveState: undefined}); this.options.reportError(error);}
