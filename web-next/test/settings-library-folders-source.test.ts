@@ -296,3 +296,30 @@ test('a superseded selection or a disposed controller never publishes or reports
     } finally {f.folders.dispose();}
   }
 });
+
+test('the canonical inventory projection passes through without reordering, merging or re-versioning', async () => {
+  let serverRevision = 6;
+  const f = fixture(async <T>() => {
+    if (serverRevision === 6) return {
+      scope: {serverId: 'server', viewerFence: 'fence-7'}, libraryId: 'selected', revision: 6,
+      sources: [
+        source('third', '/media/z', '/mnt/z'),
+        {...source('third', '/media/duplicate', '/media/duplicate'), name: 'duplicate'},
+        {id: 'unreadable', libraryId: 'selected', kind: 'local', name: 'broken'},
+        source('first', '/media/a'),
+      ],
+      policy: {tier: 'basic', revision: 4, operations: ['probe']},
+    } as T;
+    return {scope: {serverId: 'server', viewerFence: 'fence-7'}, libraryId: 'selected', revision: 3, sources: [source('first', '/media/a')], policy: {tier: 'basic', revision: 4, operations: ['probe']}} as T;
+  });
+  try {
+    await f.folders.select('selected');
+    assert.equal(f.folders.config('selected')?.revision, 6);
+    assert.deepEqual(f.folders.config('selected')?.sources.map(item => [item.id, item.path, item.resolvedPath]), [['third', '/media/z', '/mnt/z'], ['first', '/media/a', '/media/a']]);
+    serverRevision = 3;
+    await f.folders.refresh();
+    assert.equal(f.folders.config('selected')?.revision, 3);
+    assert.deepEqual(f.folders.config('selected')?.sources.map(item => item.id), ['first']);
+    assert.deepEqual(f.errors, []);
+  } finally {f.folders.dispose();}
+});
