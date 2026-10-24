@@ -11,13 +11,13 @@ func OriginalContentType(container, video string) string {
 	switch container {
 	case "mp4", "m4v", "mov":
 		return "video/mp4"
-	case "mkv":
+	case "mkv", "matroska":
 		return "video/x-matroska"
 	case "webm":
 		return "video/webm"
 	case "avi":
 		return "video/x-msvideo"
-	case "ts", "m2ts", "mts":
+	case "ts", "m2ts", "mts", "mpegts":
 		return "video/mp2t"
 	case "mpg", "mpeg", "vob":
 		return "video/mpeg"

@@ -55,6 +55,7 @@ func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request, name string)
 	}
 	defer file.Close()
 	w.Header().Set("Content-Type", mediaType(container, video))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, no-store")
 	// Set directly, not through Set, so the names keep the casing older TV
 	// firmware matches on.
