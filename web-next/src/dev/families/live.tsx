@@ -78,7 +78,7 @@ function FrameChrome() {
       <button type="button" className={activityStyles.trigger} data-busy="true" data-streams="true" aria-label={t('next.shell.activityLabel', {count: 2})} aria-haspopup="dialog" aria-expanded="false">
         <Icon name="i-act" size={22}/><span className={activityStyles.streamCount}>{2}</span>
       </button>
-      <span className={shellStyles.avatar}><ProfileAvatarFace initial={f['next.dev.live.profileInitial']} art="blue" size={34}/></span>
+      <span className={shellStyles.avatar} aria-label={t('next.home.shell.profileMenu', {name: f['next.dev.live.profileName']})}><ProfileAvatarFace initial={f['next.dev.live.profileInitial']} art="blue" size={34}/></span>
     </div>
   </nav>;
 }
