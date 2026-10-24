@@ -34,6 +34,9 @@ func TestMusicJourneyStreamsOnlyCurrentProfilePermittedModelTracks(t *testing.T)
 			t.Fatal("hidden intermediate shaped journey", got)
 		}
 	}
+	if _, err := s.MusicJourney(viewer, items[0].Public, items[8].Public, 9); !errors.Is(err, sonic.ErrUnavailable) {
+		t.Fatal("sparse permitted coverage silently shortened the requested journey", err)
+	}
 	if _, err := s.MusicJourney(viewer, items[4].Public, items[8].Public, 5); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("hidden anchor disclosed", err)
 	}
