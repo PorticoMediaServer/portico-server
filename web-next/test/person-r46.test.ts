@@ -80,6 +80,11 @@ test('the DEV entry mounts the registered Person route on the public frame facts
   assert.match(entry, /\{id: 'movie', kind: 'movie', total: 2\}/);
   assert.match(entry, /\{id: 'show', kind: 'show', total: 1\}/);
   assert.match(entry, /role: 'Executive producer', department: 'Production'/);
+  assert.match(entry, /const tomHanksId = 'tom-hanks'/);
+  assert.match(entry, /name: 'Tom Hanks'/);
+  assert.match(entry, /requested === 'phone' \? 'phone' : 'desktop'/);
+  assert.match(entry, /\{id: 'movie', kind: 'movie', total: 6\}/);
+  assert.match(entry, /creditFor\(toyStory3, 'Woody'\)/);
   assert.match(html, /<script type="module" src="\.\/person\.tsx"><\/script>/);
   assert.doesNotMatch(entry, /Bearer |Authorization:|assets\/pool|--bd\.jpg/i);
   assert.doesNotMatch(entry, /\/v1\/(?!people\/|admin\/activity)/);

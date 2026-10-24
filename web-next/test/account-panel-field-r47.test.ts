@@ -45,6 +45,24 @@ test('the full-page auth and compact fields keep their existing geometry', () =>
   assert.doesNotMatch(stylesheet, /\.field\[data-variant="account-panel"\][^{]*\{[^}]*height: (48|54|44)px/);
 });
 
+test('the account-panel code field is the frame 46b box, and the full-page code box is unchanged', () => {
+  for (const declaration of ['height: 58px', 'border-radius: 12px', 'padding: 0 16px', 'var(--color-ink) 62%', 'blur(16px)']) {
+    assert.ok(declarations('.field[data-variant="account-panel-code"] .inputShell').includes(declaration), declaration);
+  }
+  const input = declarations('.field[data-variant="account-panel-code"] .input');
+  for (const declaration of ['font-size: 25px', 'font-weight: 800', 'letter-spacing: .08em', 'tabular-nums', 'caret-color: var(--color-accent-strong)']) assert.ok(input.includes(declaration), declaration);
+  const label = declarations('.field[data-variant="account-panel-code"] .fieldLabel');
+  assert.ok(label.includes('font-size: 13px')); assert.ok(label.includes('margin-bottom: 6px'));
+  assert.ok(declarations('.field[data-variant="code"] .inputShell').includes('height: 50px'));
+  assert.ok(declarations('.field[data-variant="code"] .input').includes('letter-spacing: .16em'));
+  // The panel's refusal is the ordinary danger rule, not the full-page code box's record colour.
+  assert.doesNotMatch(stylesheet, /\.field\[data-variant="account-panel-code"\][^{]*\{[^}]*color-record/);
+  const html = renderToStaticMarkup(createElement(TextField, {variant: 'account-panel-code', label: 'Code', value: 'H4WF-9RNK', error: 'That code isn’t right, or it has expired.'}));
+  assert.match(html, /data-variant="account-panel-code"/);
+  assert.match(html, /aria-invalid="true"/);
+  assert.match(html, /<label class="fieldLabel" for="([^"]+)">Code<\/label>/);
+});
+
 test('the account-panel field keeps the existing label, description, error, icon and disabled semantics', () => {
   const html = render({id: 'username', description: 'Your profiles and history are kept.', error: 'That code isn’t right, or it has expired.', errorIcon: 'i-warn', leadingIcon: 'i-user', 'aria-describedby': 'outer'});
   assert.match(html, /data-variant="account-panel"/);

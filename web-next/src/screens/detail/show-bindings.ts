@@ -6,6 +6,7 @@ import {getContainerState, setContainerFlag, setContainerState, type ContainerSt
 import {createRecommendations} from './recommendations';
 import {titleView} from './view-state';
 import {openGenre} from './genre-binding';
+import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseNode} from '@core/browse.ts';
 import {preferenceValue} from '@core/preferences.ts';
 
 export function createShowBindings(context: ScreenContext) {
@@ -37,6 +38,18 @@ export function createShowBindings(context: ScreenContext) {
   };
   return {
     context, service, episode, primary, current, recommendations, view,
+    async browseFacet(data: ShowWorkspaceData, field: 'network' | 'studio', value: string) {
+      current(data);
+      const actual = field === 'network' ? data.show.network : data.show.studio;
+      if (actual !== value) throw new DOMException('Show fact changed', 'AbortError');
+      if (!context.effects.openBrowse) throw new DOMException('Browse destination unavailable', 'AbortError');
+      const active = life.signal(), capabilities = parseBrowseCapabilities(await life.api.request(browseCapabilitiesPath(data.scope.libraryId, ''), 'GET', undefined, active));
+      current(data); active.throwIfAborted();
+      if (capabilities.library.id !== data.scope.libraryId) throw new DOMException('Browse vocabulary changed', 'AbortError');
+      const query: BrowseNode = {field, operator: 'equals', value};
+      validateBrowseQuery(capabilities, query);
+      context.effects.openBrowse({libraryId: data.scope.libraryId, query});
+    },
     browseGenre(data: ShowWorkspaceData, genre: string) {
       current(data);
       if (!data.show.genres?.includes(genre)) throw new DOMException('Show genre changed', 'AbortError');

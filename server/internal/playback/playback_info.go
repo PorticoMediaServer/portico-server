@@ -188,17 +188,20 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 			}
 			if target := p.ConversionTarget; target != nil {
 				dst.Profile, dst.BitDepth, dst.DynamicRange = encodedPictureProfile(*target), target.BitDepth, target.DynamicRange
+				dst.ChromaSubsampling = encodedPictureChroma(*target)
 				dst.MasterDisplay, dst.MaxCLL = target.MasterDisplay, target.MaxCLL
 			}
 			dst.DolbyVisionProfile, dst.DolbyVisionCompatibility = 0, 0
 			dst.DolbyVisionRPU, dst.DolbyVisionBaseLayer = nil, nil
 			dst.DolbyVisionEnhancementType, dst.DolbyVisionCMVersion = "", ""
 		} else if p.VideoAction == "copy" {
-			if v.OutputRange != "" {
+			if src.DynamicRange != "" && v.OutputRange != "" {
 				dst.DynamicRange = v.OutputRange
 			}
 			if target := p.ConversionTarget; target != nil {
-				dst.DynamicRange = target.DynamicRange
+				if src.DynamicRange != "" {
+					dst.DynamicRange = target.DynamicRange
+				}
 				if target.CopyDolbyVision {
 					dst.DolbyVisionProfile, dst.DolbyVisionCompatibility = target.DeliveredDolbyVision()
 				}

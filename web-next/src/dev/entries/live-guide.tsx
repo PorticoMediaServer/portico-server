@@ -124,7 +124,7 @@ function GuideNavigation() {
 function Specimen() {
   const width = useShellWidth(), column = width < 600 ? 60 : width < 1024 ? 180 : 284, rowHeight = width < 600 ? 72 : width < 1024 ? 62 : 76;
   const scale = pxPerMsFor(width < 1024 ? 90 : 240), [start, setStart] = useState(at(15, 30));
-  const [view, setView] = useState<'guide' | 'list'>('guide');
+  const [view, setView] = useState<'guide' | 'list'>(new URLSearchParams(location.search).get('view') === 'list' ? 'list' : 'guide');
   const [selected, setSelected] = useState<Readonly<{channelId: string; programmeId?: string}>>();
   const days = dayStarts(NOW, NOW + 2 * 86_400_000, timezone);
   const chips = useMemo(() => [{id: 'all', label: t('channels.filterAll'), count: channels.length, selected: true, onSelect: () => {}},

@@ -1,6 +1,11 @@
 name: Sonic music analysis toolchain
 on:
   workflow_dispatch:
+    inputs:
+      modelRunId:
+        description: Optional prior MAIN run retaining the exact parity-validated model after a pin update
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -15,11 +20,32 @@ env:
   TF_NUM_INTEROP_THREADS: '1'
 jobs:
   model:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0}
+      - name: Verify the retained model producer before download
+        if: inputs.modelRunId != ''
+        env: {GH_TOKEN: '${{ github.token }}', MODEL_RUN_ID: '${{ inputs.modelRunId }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$MODEL_RUN_ID" =~ ^[1-9][0-9]{0,19}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$MODEL_RUN_ID" > "$RUNNER_TEMP/model-run.json"
+          python3 scripts/check-sonic-model-producer.py "$RUNNER_TEMP/model-run.json" --repository "$GITHUB_REPOSITORY"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: inputs.modelRunId != ''
+        with:
+          name: sonic-original-model
+          path: .sonic-model
+          run-id: ${{ inputs.modelRunId }}
+          github-token: ${{ github.token }}
       - name: Export the verified original ISC model once
+        if: inputs.modelRunId == ''
         shell: bash
         run: |
           set -euo pipefail
@@ -37,12 +63,12 @@ jobs:
           pathlib.Path('.sonic-model/original.whl').write_bytes(data)
           PY
           python3 scripts/prepare-musicnn-model.py .sonic-model/checkpoint --wheel .sonic-model/original.whl
-          "$RUNNER_TEMP/converter/bin/python" scripts/export-musicnn-onnx.py .sonic-model/checkpoint .sonic-model/musicnn-mtt --conformance .sonic-model/conformance.json
+          "$RUNNER_TEMP/converter/bin/python" scripts/export-musicnn-onnx.py .sonic-model/checkpoint .sonic-model/musicnn-mtt --conformance .sonic-model/conformance.json --candidate
           python3 - <<'PY'
           import json, pathlib
           lock = json.load(open('third_party/musicnn/model.lock.json'))
           model = json.load(open('.sonic-model/musicnn-mtt/model.json'))
-          assert (model['sha256'], model['bytes']) == (lock['onnx']['sha256'], lock['onnx']['bytes'])
+          lock['onnx'].update(sha256=model['sha256'], bytes=model['bytes'])
           pathlib.Path('.sonic-model/model.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -54,6 +80,15 @@ jobs:
             .sonic-model/model.lock.json
           if-no-files-found: error
           retention-days: 14
+      - name: Require the retained bytes to match the reviewed source pin
+        shell: bash
+        run: |
+          python3 - <<'PYMODEL'
+          import pathlib, runpy
+          bundle = runpy.run_path('scripts/sonic-bundle.py')
+          bundle['model_identity'](pathlib.Path('.sonic-model/musicnn-mtt'), bundle['locks']()[1])
+          print('Original-model artifact matches the reviewed runtime pin.')
+          PYMODEL
   build:
     needs: model
     strategy:
@@ -75,7 +110,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .sonic-build .sonic-output
+          mkdir -p .sonic-build sonic-output
           python3 - <<'PY'
           import json, os, pathlib, urllib.request
           lock = json.load(open('third_party/portico-sonic/runtime.lock.json'))
@@ -91,14 +126,15 @@ jobs:
           scripts/build-sonic-runtime.sh "$PWD/.sonic-build/sdk" "$PWD/.sonic-build/cmake" "$PWD/.sonic-build/portico-sonic"
           tag="$(python3 -c "import json;print(json.load(open('third_party/portico-sonic/runtime.lock.json'))['releaseTag'])")"
           export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct HEAD)}"
-          archive=".sonic-output/portico-sonic-${tag}-${BUNDLE_TARGET}.tar.xz"
+          archive="sonic-output/portico-sonic-${tag}-${BUNDLE_TARGET}.tar.xz"
           python3 scripts/sonic-bundle.py package "$archive" --helper .sonic-build/portico-sonic --sdk .sonic-build/sdk --model .sonic-model/musicnn-mtt --target "$BUNDLE_TARGET" --source-revision "$GITHUB_SHA"
           python3 scripts/sonic-bundle.py extract .sonic-build/verified --archive "$archive" --target "$BUNDLE_TARGET"
           bash scripts/run-sonic-cpu-conformance.sh --bundle "$PWD/.sonic-build/verified" "$PWD/.sonic-model/conformance.json" "$BUNDLE_TARGET"
+          test -s "$archive"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sonic-${{ matrix.target }}
-          path: .sonic-output/*.tar.xz
+          path: sonic-output/*.tar.xz
           if-no-files-found: error
   publish:
     needs: build

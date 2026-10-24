@@ -25,20 +25,23 @@ import '../../bootstrap.css';
 // answers a public fixture would send. It is imported by the DEV entry alone, which fails
 // closed outside the development server.
 //
-// Facts and copy come from design/ui-v1/desktop-detail.html frame 7 and
-// design/ui-v1/notes/detail-desktop.md: Rebecca Ferguson, Acting, born Stockholm,
-// Dune: Part Two and Dune as Lady Jessica, Silo as Juliette Nichols and Executive producer.
+// Desktop facts come from the published desktop-detail frame 7 (Rebecca Ferguson).
+// Phone facts come from the published phone-detail row 3, first column, label 7 Person
+// (Tom Hanks): six titles, four Known for, the published biography and the drawn roles.
 export type SpecimenEvent = Readonly<{kind: string; at: number; value?: unknown}>;
 export type PersonSpecimen = ReturnType<typeof createPersonSpecimen>;
 
 const serverId = 'specimen-server';
 const personId = 'rebecca-ferguson';
+const tomHanksId = 'tom-hanks';
 const viewerFence = 'specimen-viewer-fence';
 const personalFence = JSON.stringify(['local', 'specimen-account', 'demo']);
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl+0AAAAASUVORK5CYII=';
 const artPath = (kind: string, id: string) => `specimen-art://${kind}/${encodeURIComponent(id)}`;
 
 type MediaFact = Readonly<{id: string; libraryId: string; kind: 'movie' | 'show'; title: string; year: number; duration: number; progressSeconds: number; watched: boolean; posterUrl: string; backdropUrl: string}>;
+type Role = Readonly<{role: string; department: string}>;
+type Fixture = Readonly<{personId: string; person: Readonly<Record<string, unknown>>; credits: readonly Readonly<Record<string, unknown>>[]; groups: readonly Readonly<Record<string, unknown>>[]}>;
 
 const movie = (id: string, title: string, year: number, duration: number, progressSeconds: number, watched: boolean): MediaFact => ({
   id, libraryId: 'movies', kind: 'movie', title, year, duration, progressSeconds, watched,
@@ -51,6 +54,12 @@ const show = (id: string, title: string, year: number, duration: number, progres
 const dunePartTwo = movie('dune-part-two', 'Dune: Part Two', 2024, 9_960, 0, false);
 const dune = movie('dune', 'Dune', 2021, 9_300, 0, true);
 const silo = show('silo', 'Silo', 2023, 2_700, 1_080);
+const forrestGump = movie('forrest-gump', 'Forrest Gump', 1994, 8_520, 0, false);
+const toyStory = movie('toy-story', 'Toy Story', 1995, 4_860, 0, false);
+const toyStory2 = movie('toy-story-2', 'Toy Story 2', 1999, 5_520, 0, false);
+const toyStory3 = movie('toy-story-3', 'Toy Story 3', 2010, 6_180, 0, false);
+const savingPrivateRyan = movie('saving-private-ryan', 'Saving Private Ryan', 1998, 10_140, 0, false);
+const theGreenMile = movie('the-green-mile', 'The Green Mile', 1999, 11_280, 0, false);
 
 function entry(media: MediaFact) {
   return {id: media.id, libraryId: media.libraryId, kind: media.kind, title: media.title, year: media.year,
@@ -60,26 +69,45 @@ function entry(media: MediaFact) {
     playback: {itemId: media.id, startSeconds: media.progressSeconds}} as const;
 }
 
-const acting = (character: string) => ({roles: Object.freeze([Object.freeze({role: character, department: 'Acting'})]),
-  media: entry(dunePartTwo), role: character, character, department: 'Acting', creditKind: 'cast' as const});
-const duneCredit = {...acting('Lady Jessica'), media: entry(dune)};
-const siloCredit = {roles: Object.freeze([Object.freeze({role: 'Juliette Nichols', department: 'Acting'}), Object.freeze({role: 'Executive producer', department: 'Production'})]),
-  media: entry(silo), role: 'Juliette Nichols', character: 'Juliette Nichols', department: 'Acting', creditKind: 'cast' as const};
+const creditFor = (media: MediaFact, character: string, roles: readonly Role[] = [{role: character, department: 'Acting'}]) => ({
+  roles: Object.freeze(roles.map(role => Object.freeze({role: role.role, department: role.department}))),
+  media: entry(media), role: character, character, department: roles[0]?.department ?? 'Acting', creditKind: 'cast' as const,
+});
 
-const biography = 'Rebecca Louisa Ferguson Sundström is a Swedish actress. After starting out in Swedish television, she came to wider attention as Elizabeth Woodville in The White Queen (2013), which earned her a Golden Globe nomination. She went on to play Ilsa Faust in three Mission: Impossible films, Lady Jessica in Dune and its sequel, and Juliette Nichols in Silo, which she also executive produces.';
-const knownFor = [entry(dunePartTwo), entry(silo), entry(dune)];
-const groups = Object.freeze([Object.freeze({id: 'movie', kind: 'movie', total: 2}), Object.freeze({id: 'show', kind: 'show', total: 1})]);
-const credits = Object.freeze([acting('Lady Jessica'), duneCredit, siloCredit]);
-const person = Object.freeze({id: personId, name: 'Rebecca Ferguson', sortName: 'Ferguson, Rebecca', biography,
+const rebeccaBiography = 'Rebecca Louisa Ferguson Sundström is a Swedish actress. After starting out in Swedish television, she came to wider attention as Elizabeth Woodville in The White Queen (2013), which earned her a Golden Globe nomination. She went on to play Ilsa Faust in three Mission: Impossible films, Lady Jessica in Dune and its sequel, and Juliette Nichols in Silo, which she also executive produces.';
+const rebeccaKnownFor = [entry(dunePartTwo), entry(silo), entry(dune)];
+const rebeccaCredits = Object.freeze([creditFor(dunePartTwo, 'Lady Jessica'), creditFor(dune, 'Lady Jessica'),
+  creditFor(silo, 'Juliette Nichols', [{role: 'Juliette Nichols', department: 'Acting'}, {role: 'Executive producer', department: 'Production'}])]);
+const rebeccaGroups = Object.freeze([Object.freeze({id: 'movie', kind: 'movie', total: 2}), Object.freeze({id: 'show', kind: 'show', total: 1})]);
+const rebecca = Object.freeze({id: personId, name: 'Rebecca Ferguson', sortName: 'Ferguson, Rebecca', biography: rebeccaBiography,
   biographySource: 'TMDB', birthDate: '1983-10-19', deathDate: '', birthPlace: 'Stockholm, Sweden',
-  portraitUrl: '', roles: Object.freeze(['Acting']), knownFor: Object.freeze(knownFor), providerIds: Object.freeze({}), revision: 1});
+  portraitUrl: '', roles: Object.freeze(['Acting']), knownFor: Object.freeze(rebeccaKnownFor), providerIds: Object.freeze({}), revision: 1});
+
+const tomBiography = 'Thomas Jeffrey Hanks is an American actor and filmmaker, known for both comedic and dramatic roles. He won the Academy Award for Best Actor two years running, for Philadelphia and Forrest Gump.';
+const tomKnownFor = [entry(forrestGump), entry(toyStory), entry(savingPrivateRyan), entry(theGreenMile)];
+const tomCredits = Object.freeze([
+  creditFor(toyStory3, 'Woody'), creditFor(theGreenMile, 'Paul Edgecomb'), creditFor(toyStory2, 'Woody'),
+  creditFor(savingPrivateRyan, 'Captain Miller'), creditFor(toyStory, 'Woody'), creditFor(forrestGump, 'Forrest Gump'),
+]);
+const tomGroups = Object.freeze([Object.freeze({id: 'movie', kind: 'movie', total: 6})]);
+const tom = Object.freeze({id: tomHanksId, name: 'Tom Hanks', sortName: 'Hanks, Tom', biography: tomBiography,
+  biographySource: 'TMDB', birthDate: '1956-07-09', deathDate: '', birthPlace: 'Concord, California, USA',
+  portraitUrl: '', roles: Object.freeze(['Acting']), knownFor: Object.freeze(tomKnownFor), providerIds: Object.freeze({}), revision: 1});
+
+const fixtures: Readonly<Record<'desktop' | 'phone', Fixture>> = Object.freeze({
+  desktop: Object.freeze({personId, person: rebecca, credits: rebeccaCredits, groups: rebeccaGroups}),
+  phone: Object.freeze({personId: tomHanksId, person: tom, credits: tomCredits, groups: tomGroups}),
+});
 const metric = Object.freeze({catalog: 1, viewer: 1});
 
-function pageFor(role: string | null, kind: string | null, limit: number) {
-  const byRole = credits.filter(credit => role === 'cast' ? credit.roles.some(item => /^(acting|cast)$/i.test(item.department))
-    : role === 'crew' ? credit.roles.some(item => !/^(acting|cast)$/i.test(item.department)) : true);
-  const selected = byRole.filter(credit => kind === null || credit.media.kind === kind);
-  return {serverId, viewerFence, revision: metric, person, groups, credits: selected.slice(0, limit),
+function pageFor(fixture: Fixture, role: string | null, kind: string | null, limit: number) {
+  const byRole = fixture.credits.filter(credit => {
+    const roles = credit.roles as readonly Role[];
+    return role === 'cast' ? roles.some(item => /^(acting|cast)$/i.test(item.department))
+      : role === 'crew' ? roles.some(item => !/^(acting|cast)$/i.test(item.department)) : true;
+  });
+  const selected = byRole.filter(credit => kind === null || (credit.media as {kind?: string}).kind === kind);
+  return {serverId, viewerFence, revision: metric, person: fixture.person, groups: fixture.groups, credits: selected.slice(0, limit),
     pageInfo: {total: selected.length, nextCursor: selected.length > limit ? 'specimen-next' : ''}};
 }
 
@@ -94,18 +122,18 @@ function activityDocument(now: string) {
     scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''}, health: {degraded: false}};
 }
 
-export function createPersonSpecimen() {
-  const records: SpecimenEvent[] = [];
-  const record = (kind: string, value?: unknown): void => {
-    records.push(Object.freeze({kind, at: Date.now(), ...(value === undefined ? {} : {value})}));
+export function createPersonSpecimen(kind: 'desktop' | 'phone' = 'desktop') {
+  const fixture = fixtures[kind], records: SpecimenEvent[] = [];
+  const record = (event: string, value?: unknown): void => {
+    records.push(Object.freeze({kind: event, at: Date.now(), ...(value === undefined ? {} : {value})}));
   };
   const request = async <T,>(path: string, method = 'GET'): Promise<T> => {
     const url = new URL(path, 'http://specimen.invalid'), route = url.pathname;
     record('request', {path: route, method});
-    if (method === 'GET' && route === `/v1/people/${personId}`) {
+    if (method === 'GET' && route === `/v1/people/${fixture.personId}`) {
       const limit = Number(url.searchParams.get('limit') ?? '40');
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw Object.assign(new Error('Person page bound refused.'), {code: 'invalid_person', status: 400});
-      return pageFor(url.searchParams.get('role'), url.searchParams.get('kind'), limit) as T;
+      return pageFor(fixture, url.searchParams.get('role'), url.searchParams.get('kind'), limit) as T;
     }
     throw Object.assign(new Error(`The person specimen has no answer for ${method} ${route}.`), {code: 'not_found', status: 404});
   };
@@ -114,7 +142,7 @@ export function createPersonSpecimen() {
     return {status: 404, headers: {}, body: {error: {code: 'not_found'}}};
   };
   const runtime = createArtworkRuntime({
-    scopeKey: 'person-specimen',
+    scopeKey: `person-specimen-${kind}`,
     classify: () => ({retryable: false}),
     load: async ({url}, signal) => {
       const response = await fetch(url, {signal});
@@ -136,21 +164,22 @@ export function createPersonSpecimen() {
   } as unknown as ShellArtwork;
   const events = {on: () => () => {}, onResync: () => () => {}, onAny: () => () => {},
     getStatus: () => ({connected: true}), subscribeStatus: () => () => {}} as unknown as EventsClient;
-  const preferences = {deviceClass: 'web', registry: {fields: [], revision: 'person-specimen'}, documents: [],
-    effective: {'appearance.showBackdrops': true}, effectiveSource: {}, clampedFields: [], registryRevision: 'person-specimen'} as unknown as PreferenceSnapshot;
+  const preferences = {deviceClass: 'web', registry: {fields: [], revision: `person-specimen-${kind}`}, documents: [],
+    effective: {'appearance.showBackdrops': true}, effectiveSource: {}, clampedFields: [], registryRevision: `person-specimen-${kind}`} as unknown as PreferenceSnapshot;
   const subscribePreferences = () => () => {};
   const api = {
     request, requestRaw, getRouteSnapshot: () => ({phase: 'ready'}), subscribeRoute: () => () => {},
     reading: () => { const life = new AbortController(); return {signal: life.signal, versions: async () => ({versions: []}), dispose: () => life.abort()}; },
     dispose: () => runtime.dispose(),
   } as unknown as HttpLocalApi;
-  return Object.freeze({serverId, personId, viewerFence, personalFence, records, record,
-    api, events, artwork, preferences, subscribePreferences, person, credits, groups});
+  return Object.freeze({serverId, personId: fixture.personId, viewerFence, personalFence, records, record,
+    api, events, artwork, preferences, subscribePreferences, person: fixture.person, credits: fixture.credits, groups: fixture.groups});
 }
 
 if (!import.meta.env.DEV) throw new Error('Person specimens require the development server.');
 
-const specimen = createPersonSpecimen();
+const requested = new URLSearchParams(location.search).get('person');
+const specimen = createPersonSpecimen(requested === 'phone' ? 'phone' : 'desktop');
 const time = {t: defaultI18n.t, locale: 'en-US', timeZone: 'UTC'};
 const viewer: Viewer = {serverId: specimen.serverId, authority: 'local', accountId: 'specimen-account', profileId: 'demo', role: 'owner'};
 const session: LocalSession = {accessToken: 'specimen-public', refreshToken: '', sessionFamilyId: 'specimen-family', tokenGeneration: '1',
@@ -182,7 +211,7 @@ const contextBase = {
 } as unknown as ShellAssemblyContext;
 const activity = createOwnerActivity(contextBase, time, () => { specimen.record('open-dashboard'); }, () => { specimen.record('open-update'); });
 const binding: ShellBindings = {
-  api: specimen.api, events: specimen.events, scopeKey: 'person-specimen',
+  api: specimen.api, events: specimen.events, scopeKey: `person-specimen-${specimen.personId}`,
   shell: {identity, OwnerActivity: activity.OwnerActivity, dockVisible: false, onSignOut: () => { specimen.record('sign-out'); }},
   home,
 };

@@ -82,3 +82,10 @@ changed. Both inventories and the exact installed union are then checked.
 Missing optional Sonic inputs in a development/server build leave the existing
 unavailable state. Linux release and Docker jobs explicitly require their pinned
 Sonic bundle. macOS and Windows packaging are later work.
+
+A byte-different export that passes original-checkpoint parity is retained as a
+build artifact before the source pin check. It cannot be packaged or loaded
+until its exact byte pin is reviewed and committed. A later manual workflow can
+set `modelRunId` to reuse those exact bytes: only an ancestor MAIN run of this
+same repository/workflow with byte-identical exporter/original-weight inputs
+is accepted. This avoids re-exporting a model while updating its source pin.

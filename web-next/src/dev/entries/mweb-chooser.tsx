@@ -23,6 +23,8 @@ function specimen() {
   const params = new URLSearchParams(location.search), frame = params.get('frame'), choice = params.get('state') ?? frame;
   if (choice === '6b' || choice === 'waiting') return {attempt: {kind: 'waiting', row: rows[1]!, seconds: 20, total: 32.74} as MobileChooserAttempt}; // the drawn ring is 61.1% at the 20-second caption
   if (choice === '6c' || choice === 'unreachable') return {attempt: {kind: 'unreachable', row: rows[2]!} as MobileChooserAttempt};
+  if (choice === 'refused') return {attempt: {kind: 'refused', row: rows[1]!} as MobileChooserAttempt};
+  if (choice === 'unconfirmed') return {attempt: {kind: 'unconfirmed', row: rows[1]!} as MobileChooserAttempt};
   if (choice === 'opening') return {attempt: {kind: 'opening', row: rows[1]!} as MobileChooserAttempt};
   if (choice === 'loading') return {attempt: {kind: 'loading'} as MobileChooserAttempt};
   if (choice === 'loadFailed') return {attempt: {kind: 'loadFailed'} as MobileChooserAttempt};
