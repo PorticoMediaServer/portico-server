@@ -160,6 +160,11 @@ export function subtitleReason(reason?:string,translate:(id:MessageId)=>string=i
 }
 
 export type SubtitleTarget=Readonly<{itemId:string;sessionId:string;generation:number;sourceId?:never}>|Readonly<{itemId:string;sourceId:string;sessionId?:never;generation?:never}>;
+/** Optional caller lifetime for a file upload or replacement, including time in the queue. */
+export type SubtitleSaveContext=Readonly<{signal?:AbortSignal;isCurrent?:()=>boolean}>;
+function saveCurrent(context?:SubtitleSaveContext):boolean{try{return !context?.signal?.aborted&&context?.isCurrent?.()!==false;}catch{return false;}}
+function saveRetired():DOMException{return new DOMException('Subtitle action retired.','AbortError');}
+function checkSave(context?:SubtitleSaveContext):void{if(!saveCurrent(context))throw saveRetired();}
 export type SubtitleSnapshot=Readonly<{catalog:SubtitleCatalog|null;plan:SubtitlePlan|null;busy:boolean;loading:boolean;suppressed:boolean;error:string|null;canRetry:boolean;candidates:readonly SubtitleCandidate[]}>;
 /** What a playing session's subtitle reads need from the player: a presentation the server moved
  * the session to (a subtitle burned in or taken out again) is handed over here. */
@@ -174,7 +179,7 @@ export type SubtitleTransport=Readonly<{install:(presentation:SubtitlePresentati
 export class SubtitleService {
  private state:SubtitleSnapshot={catalog:null,plan:null,busy:false,loading:true,suppressed:false,error:null,canRetry:false,candidates:[]};
  private listeners=new Set<()=>void>();private active=false;private life=0;private interval?:ReturnType<typeof setInterval>;
- private controllers=new Set<AbortController>();private queue:Promise<void>=Promise.resolve();private queued=0;private retryOperation?:()=>Promise<void>;
+ private controllers=new Set<AbortController>();private queue:Promise<void>=Promise.resolve();private queued=0;private retryOperation?:Readonly<{task:()=>Promise<void>;context?:SubtitleSaveContext}>;
  private api:LibraryContentApi; target:SubtitleTarget; private operationId:()=>string; private transport?:SubtitleTransport;
  constructor(api:LibraryContentApi,target:SubtitleTarget,operationId:()=>string,transport?:SubtitleTransport){this.api=api;this.target=target;this.operationId=operationId;this.transport=transport;if(!id(target.itemId)||(target.sourceId!==undefined?!id(target.sourceId):!id(target.sessionId)||!integer(target.generation)))throw new Error('Invalid subtitle target.');}
  getSnapshot=()=>this.state;subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
@@ -189,9 +194,11 @@ export class SubtitleService {
   * menu is open; a client turns it off otherwise (a later `setPolling(true)` reads at once). */
  setPolling(on:boolean){if(this.polling===on)return;this.polling=on;this.arm();if(on&&this.active)void this.refresh();}
  stop(){this.active=false;this.life++;if(this.interval)clearInterval(this.interval);for(const c of this.controllers)c.abort();this.controllers.clear();this.retryOperation=undefined;this.publish({catalog:null,plan:null,candidates:[],suppressed:true,loading:false});}
- private async request(path:string,method='GET',body?:unknown):Promise<unknown>{
+ private async request(path:string,method='GET',body?:unknown,context?:SubtitleSaveContext):Promise<unknown>{
+  checkSave(context);
   const c=new AbortController(),life=this.life;this.controllers.add(c);const timer=setTimeout(()=>c.abort(),method==='GET'?15000:110000);
-  try{const result=await this.api.request<unknown>(path,method,body,c.signal);if(!this.active||life!==this.life)throw new Error('Subtitle scope retired.');return result;}finally{clearTimeout(timer);this.controllers.delete(c);}
+  const cancel=()=>c.abort();context?.signal?.addEventListener('abort',cancel,{once:true});
+  try{checkSave(context);const result=await this.api.request<unknown>(path,method,body,c.signal);if(!this.active||life!==this.life)throw new Error('Subtitle scope retired.');checkSave(context);return result;}finally{context?.signal?.removeEventListener('abort',cancel);clearTimeout(timer);this.controllers.delete(c);}
  }
  private acceptPlan(raw:unknown){const p=validateSubtitlePlan(raw);if(this.target.generation===undefined||p.sessionId!==this.target.sessionId||p.generation<this.target.generation)invalid();
  if(p.presentation&&p.generation!==this.target.generation){if(!this.transport||!this.transport.install(p.presentation))throw new Error('Subtitle playback scope retired.');}
@@ -209,19 +216,26 @@ export class SubtitleService {
   if(!canRetry)this.retryOperation=undefined;
  }
  async refresh(){if(!this.active||this.queued)return;const life=this.life;this.publish({loading:true});try{const [raw]=await Promise.all([this.request(this.path()),this.target.sourceId===undefined?this.plan():Promise.resolve(null)]);if(!this.active||life!==this.life||this.queued)return;const catalog=validateSubtitleCatalog(raw);if(catalog.itemId!==this.target.itemId||this.target.sourceId!==undefined&&!catalog.sources.some(source=>source.id===this.target.sourceId))invalid();if(!this.state.catalog||catalog.revision>=this.state.catalog.revision)this.publish({catalog});this.publish({loading:false,error:null,suppressed:false});}catch(e){if(life===this.life){this.publish({loading:false});this.fail(e);}}}
- private enqueue(task:()=>Promise<void>){if(!this.active)return Promise.resolve();const life=this.life;this.queued++;this.publish({busy:true,error:null,canRetry:false});
-  const run=async()=>{if(!this.active||life!==this.life)return;try{await task();this.retryOperation=undefined;this.publish({error:null,canRetry:false});}catch(e){this.retryOperation=task;this.fail(e);}};
-  const result=this.queue.then(run,run);this.queue=result.finally(()=>{this.queued--;if(this.active&&life===this.life){this.publish({busy:this.queued>0});if(!this.queued&&!this.state.error)void this.refresh();}});return result;
+ private enqueue(task:()=>Promise<void>,context?:SubtitleSaveContext){
+  if(context&&(!this.active||!saveCurrent(context))){this.retryOperation=undefined;if(this.active)this.publish({error:null,canRetry:false});return Promise.reject(saveRetired());}
+  if(!this.active)return Promise.resolve();const life=this.life;this.queued++;this.publish({busy:true,error:null,canRetry:false});
+  const run=async()=>{try{if(!this.active||life!==this.life){if(context)throw saveRetired();return;}checkSave(context);await task();checkSave(context);this.retryOperation=undefined;this.publish({error:null,canRetry:false});}catch(e){
+   if(context&&(!this.active||life!==this.life||!saveCurrent(context))){if(life===this.life){this.retryOperation=undefined;if(this.active)this.publish({error:null,canRetry:false});}throw saveRetired();}
+   this.retryOperation={task,context};this.fail(e);
+  }};
+  const result=this.queue.then(run,run).finally(()=>{this.queued--;if(this.active&&life===this.life){this.publish({busy:this.queued>0});if(!this.queued&&!this.state.error)void this.refresh();}});
+  // A canceled caller receives its rejection; the serial queue itself stays usable.
+  this.queue=result.then(()=>{},()=>{});return result;
  }
  refreshSources(){return this.enqueue(async()=>{const sourceId=this.sourceId;if(!sourceId)throw new Error('No active source.');const catalog=validateSubtitleCatalog(await this.request(this.path('/refresh'),'POST',{sourceId}));if(catalog.itemId!==this.target.itemId||!catalog.sources.some(source=>source.id===sourceId))invalid();this.publish({catalog});if(this.target.sourceId===undefined)await this.plan();});}
  remote(name:string,format:SubtitleFormat,language:string,title:string,rights:string,scope:'personal'|'shared') {const payload={operationId:this.operationId(),sourceId:this.sourceId,name,format,language,title,rights,scope};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/remote'),'POST',payload));});}
- retry(){if(this.retryOperation)return this.enqueue(this.retryOperation);return this.refresh();}
+ retry(){if(this.retryOperation)return this.enqueue(this.retryOperation.task,this.retryOperation.context);return this.refresh();}
 
 
  private receipt(v:unknown):SubtitleReceipt{if(!record(v)||!id(v.operationId)||!id(v.resourceId)||!integer(v.revision)||!integer(v.catalogRevision)||v.deleted!==undefined&&typeof v.deleted!=='boolean')invalid();return Object.freeze({...v}) as SubtitleReceipt;}
- save(input:{content?:string;data?:string;companion?:string;default?:boolean;forced?:boolean;format:SubtitleFormat;language:string;title:string;rights:string;scope:'personal'|'shared';offsetUs:string},resource?:SubtitleResource){
+ save(input:{content?:string;data?:string;companion?:string;default?:boolean;forced?:boolean;format:SubtitleFormat;language:string;title:string;rights:string;scope:'personal'|'shared';offsetUs:string},resource?:SubtitleResource,context?:SubtitleSaveContext){
   const payload={...input,operationId:this.operationId(),sourceId:resource?.sourceId??this.sourceId,expectedRevision:resource?.revision??0,...(resource?{resourceId:resource.id}: {})};
-  return this.enqueue(async()=>{this.receipt(await this.request(this.path(resource?'/'+resource.id:''),resource?'PUT':'POST',payload));});
+  return this.enqueue(async()=>{this.receipt(await this.request(this.path(resource?'/'+resource.id:''),resource?'PUT':'POST',payload,context));},context);
  }
  remove(resource:SubtitleResource){const body={operationId:this.operationId(),expectedRevision:resource.revision};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/'+resource.id),'DELETE',body));});}
  search(language='',query='',page=1){return this.enqueue(async()=>{const raw=await this.request(this.path('/search'),'POST',{sourceId:this.sourceId,language,query,page});if(!record(raw)||raw.version!==1||!integer(raw.page))invalid();const candidates=array(raw.candidates,40).map(c=>{if(!record(c)||!id(c.id)||!text(c.language,64)||!text(c.title,160)||!text(c.attribution,512))invalid();return Object.freeze({...c}) as SubtitleCandidate;});this.publish({candidates:Object.freeze(candidates)});});}
