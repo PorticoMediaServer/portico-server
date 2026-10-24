@@ -21172,6 +21172,83 @@
               "operationId": {
                 "type": "string"
               },
+              "readSettings": {
+                "additionalProperties": false,
+                "properties": {
+                  "generation": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "saved": {
+                    "type": "boolean"
+                  },
+                  "sourceId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "values": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bytesPerSecond": {
+                        "anyOf": [
+                          {
+                            "const": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maximum": 1000000000,
+                            "minimum": 1000000,
+                            "multipleOf": 1000000,
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "connections": {
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "requestsPerSecond": {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "scanDepth": {
+                        "enum": [
+                          "file_list_only",
+                          "basic",
+                          "complete"
+                        ],
+                        "type": "string"
+                      },
+                      "wholeFileReads": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "scanDepth",
+                      "wholeFileReads",
+                      "connections",
+                      "requestsPerSecond",
+                      "bytesPerSecond"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "generation",
+                  "revision",
+                  "saved",
+                  "values"
+                ],
+                "type": "object"
+              },
               "removed": {
                 "type": "boolean"
               },
@@ -150757,6 +150834,83 @@
               "operationId": {
                 "type": "string"
               },
+              "readSettings": {
+                "additionalProperties": false,
+                "properties": {
+                  "generation": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "saved": {
+                    "type": "boolean"
+                  },
+                  "sourceId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "values": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bytesPerSecond": {
+                        "anyOf": [
+                          {
+                            "const": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maximum": 1000000000,
+                            "minimum": 1000000,
+                            "multipleOf": 1000000,
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "connections": {
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "requestsPerSecond": {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "scanDepth": {
+                        "enum": [
+                          "file_list_only",
+                          "basic",
+                          "complete"
+                        ],
+                        "type": "string"
+                      },
+                      "wholeFileReads": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "scanDepth",
+                      "wholeFileReads",
+                      "connections",
+                      "requestsPerSecond",
+                      "bytesPerSecond"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "generation",
+                  "revision",
+                  "saved",
+                  "values"
+                ],
+                "type": "object"
+              },
               "removed": {
                 "type": "boolean"
               },
@@ -150848,6 +151002,112 @@
         "required": [
           "scope",
           "receipt"
+        ],
+        "type": "object"
+      },
+      "GetStorageSourceReadProfileRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetStorageSourceReadProfileResponse": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          },
+          "settings": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "saved": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "values": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesPerSecond": {
+                    "anyOf": [
+                      {
+                        "const": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maximum": 1000000000,
+                        "minimum": 1000000,
+                        "multipleOf": 1000000,
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "connections": {
+                    "maximum": 32,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestsPerSecond": {
+                    "maximum": 50,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scanDepth": {
+                    "enum": [
+                      "file_list_only",
+                      "basic",
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  "wholeFileReads": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "scanDepth",
+                  "wholeFileReads",
+                  "connections",
+                  "requestsPerSecond",
+                  "bytesPerSecond"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "revision",
+              "saved",
+              "values"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "settings"
         ],
         "type": "object"
       },
@@ -199117,6 +199377,83 @@
               "operationId": {
                 "type": "string"
               },
+              "readSettings": {
+                "additionalProperties": false,
+                "properties": {
+                  "generation": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "saved": {
+                    "type": "boolean"
+                  },
+                  "sourceId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "values": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bytesPerSecond": {
+                        "anyOf": [
+                          {
+                            "const": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maximum": 1000000000,
+                            "minimum": 1000000,
+                            "multipleOf": 1000000,
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "connections": {
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "requestsPerSecond": {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "scanDepth": {
+                        "enum": [
+                          "file_list_only",
+                          "basic",
+                          "complete"
+                        ],
+                        "type": "string"
+                      },
+                      "wholeFileReads": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "scanDepth",
+                      "wholeFileReads",
+                      "connections",
+                      "requestsPerSecond",
+                      "bytesPerSecond"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "generation",
+                  "revision",
+                  "saved",
+                  "values"
+                ],
+                "type": "object"
+              },
               "removed": {
                 "type": "boolean"
               },
@@ -210573,6 +210910,260 @@
         ],
         "type": "object"
       },
+      "PutStorageSourceReadProfileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedGeneration": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "operationId": {
+            "pattern": "^([0-9]{13})-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": false,
+            "properties": {
+              "bytesPerSecond": {
+                "anyOf": [
+                  {
+                    "const": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maximum": 1000000000,
+                    "minimum": 1000000,
+                    "multipleOf": 1000000,
+                    "type": "integer"
+                  }
+                ]
+              },
+              "connections": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "requestsPerSecond": {
+                "maximum": 50,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "scanDepth": {
+                "enum": [
+                  "file_list_only",
+                  "basic",
+                  "complete"
+                ],
+                "type": "string"
+              },
+              "wholeFileReads": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "scanDepth",
+              "wholeFileReads",
+              "connections",
+              "requestsPerSecond",
+              "bytesPerSecond"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedGeneration",
+          "expectedRevision",
+          "values"
+        ],
+        "type": "object"
+      },
+      "PutStorageSourceReadProfileResponse": {
+        "properties": {
+          "receipt": {
+            "properties": {
+              "accepted": {
+                "type": "boolean"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "readSettings": {
+                "additionalProperties": false,
+                "properties": {
+                  "generation": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "saved": {
+                    "type": "boolean"
+                  },
+                  "sourceId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "values": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bytesPerSecond": {
+                        "anyOf": [
+                          {
+                            "const": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maximum": 1000000000,
+                            "minimum": 1000000,
+                            "multipleOf": 1000000,
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "connections": {
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "requestsPerSecond": {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "scanDepth": {
+                        "enum": [
+                          "file_list_only",
+                          "basic",
+                          "complete"
+                        ],
+                        "type": "string"
+                      },
+                      "wholeFileReads": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "scanDepth",
+                      "wholeFileReads",
+                      "connections",
+                      "requestsPerSecond",
+                      "bytesPerSecond"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "generation",
+                  "revision",
+                  "saved",
+                  "values"
+                ],
+                "type": "object"
+              },
+              "removed": {
+                "type": "boolean"
+              },
+              "source": {
+                "properties": {
+                  "credentialPresent": {
+                    "type": "boolean"
+                  },
+                  "errorCode": {
+                    "type": "string"
+                  },
+                  "generation": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "insecureLocal": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "enum": [
+                      "rclone",
+                      "webdav",
+                      "sftp",
+                      "smb"
+                    ],
+                    "type": "string"
+                  },
+                  "mountId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "rangeSupport": {
+                    "type": "string"
+                  },
+                  "rootPath": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "name",
+                  "rootPath",
+                  "generation",
+                  "state",
+                  "rangeSupport",
+                  "insecureLocal",
+                  "credentialPresent"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "operationId",
+              "accepted",
+              "removed",
+              "source"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "PutStorageSourcesWebdavIdRequest": {
         "properties": {
           "expectedGeneration": {
@@ -210624,6 +211215,83 @@
               },
               "operationId": {
                 "type": "string"
+              },
+              "readSettings": {
+                "additionalProperties": false,
+                "properties": {
+                  "generation": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "saved": {
+                    "type": "boolean"
+                  },
+                  "sourceId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "values": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bytesPerSecond": {
+                        "anyOf": [
+                          {
+                            "const": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maximum": 1000000000,
+                            "minimum": 1000000,
+                            "multipleOf": 1000000,
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "connections": {
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "requestsPerSecond": {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "scanDepth": {
+                        "enum": [
+                          "file_list_only",
+                          "basic",
+                          "complete"
+                        ],
+                        "type": "string"
+                      },
+                      "wholeFileReads": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "scanDepth",
+                      "wholeFileReads",
+                      "connections",
+                      "requestsPerSecond",
+                      "bytesPerSecond"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "generation",
+                  "revision",
+                  "saved",
+                  "values"
+                ],
+                "type": "object"
               },
               "removed": {
                 "type": "boolean"
@@ -489528,6 +490196,83 @@
                         "operationId": {
                           "type": "string"
                         },
+                        "readSettings": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "generation": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "saved": {
+                              "type": "boolean"
+                            },
+                            "sourceId": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "values": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bytesPerSecond": {
+                                  "anyOf": [
+                                    {
+                                      "const": 0,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "maximum": 1000000000,
+                                      "minimum": 1000000,
+                                      "multipleOf": 1000000,
+                                      "type": "integer"
+                                    }
+                                  ]
+                                },
+                                "connections": {
+                                  "maximum": 32,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "requestsPerSecond": {
+                                  "maximum": 50,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "scanDepth": {
+                                  "enum": [
+                                    "file_list_only",
+                                    "basic",
+                                    "complete"
+                                  ],
+                                  "type": "string"
+                                },
+                                "wholeFileReads": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "scanDepth",
+                                "wholeFileReads",
+                                "connections",
+                                "requestsPerSecond",
+                                "bytesPerSecond"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "generation",
+                            "revision",
+                            "saved",
+                            "values"
+                          ],
+                          "type": "object"
+                        },
                         "removed": {
                           "type": "boolean"
                         },
@@ -489886,6 +490631,83 @@
                         "operationId": {
                           "type": "string"
                         },
+                        "readSettings": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "generation": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "saved": {
+                              "type": "boolean"
+                            },
+                            "sourceId": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "values": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bytesPerSecond": {
+                                  "anyOf": [
+                                    {
+                                      "const": 0,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "maximum": 1000000000,
+                                      "minimum": 1000000,
+                                      "multipleOf": 1000000,
+                                      "type": "integer"
+                                    }
+                                  ]
+                                },
+                                "connections": {
+                                  "maximum": 32,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "requestsPerSecond": {
+                                  "maximum": 50,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "scanDepth": {
+                                  "enum": [
+                                    "file_list_only",
+                                    "basic",
+                                    "complete"
+                                  ],
+                                  "type": "string"
+                                },
+                                "wholeFileReads": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "scanDepth",
+                                "wholeFileReads",
+                                "connections",
+                                "requestsPerSecond",
+                                "bytesPerSecond"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "generation",
+                            "revision",
+                            "saved",
+                            "values"
+                          ],
+                          "type": "object"
+                        },
                         "removed": {
                           "type": "boolean"
                         },
@@ -490107,6 +490929,83 @@
                         "operationId": {
                           "type": "string"
                         },
+                        "readSettings": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "generation": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "saved": {
+                              "type": "boolean"
+                            },
+                            "sourceId": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "values": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bytesPerSecond": {
+                                  "anyOf": [
+                                    {
+                                      "const": 0,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "maximum": 1000000000,
+                                      "minimum": 1000000,
+                                      "multipleOf": 1000000,
+                                      "type": "integer"
+                                    }
+                                  ]
+                                },
+                                "connections": {
+                                  "maximum": 32,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "requestsPerSecond": {
+                                  "maximum": 50,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "scanDepth": {
+                                  "enum": [
+                                    "file_list_only",
+                                    "basic",
+                                    "complete"
+                                  ],
+                                  "type": "string"
+                                },
+                                "wholeFileReads": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "scanDepth",
+                                "wholeFileReads",
+                                "connections",
+                                "requestsPerSecond",
+                                "bytesPerSecond"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "generation",
+                            "revision",
+                            "saved",
+                            "values"
+                          ],
+                          "type": "object"
+                        },
                         "removed": {
                           "type": "boolean"
                         },
@@ -490326,6 +491225,83 @@
                         "operationId": {
                           "type": "string"
                         },
+                        "readSettings": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "generation": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "saved": {
+                              "type": "boolean"
+                            },
+                            "sourceId": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "values": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bytesPerSecond": {
+                                  "anyOf": [
+                                    {
+                                      "const": 0,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "maximum": 1000000000,
+                                      "minimum": 1000000,
+                                      "multipleOf": 1000000,
+                                      "type": "integer"
+                                    }
+                                  ]
+                                },
+                                "connections": {
+                                  "maximum": 32,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "requestsPerSecond": {
+                                  "maximum": 50,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "scanDepth": {
+                                  "enum": [
+                                    "file_list_only",
+                                    "basic",
+                                    "complete"
+                                  ],
+                                  "type": "string"
+                                },
+                                "wholeFileReads": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "scanDepth",
+                                "wholeFileReads",
+                                "connections",
+                                "requestsPerSecond",
+                                "bytesPerSecond"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "generation",
+                            "revision",
+                            "saved",
+                            "values"
+                          ],
+                          "type": "object"
+                        },
                         "removed": {
                           "type": "boolean"
                         },
@@ -490468,6 +491444,508 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/{id}/read-profile": {
+      "get": {
+        "operationId": "get_storage_source_read_profile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    },
+                    "settings": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "generation": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "saved": {
+                          "type": "boolean"
+                        },
+                        "sourceId": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "values": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bytesPerSecond": {
+                              "anyOf": [
+                                {
+                                  "const": 0,
+                                  "type": "integer"
+                                },
+                                {
+                                  "maximum": 1000000000,
+                                  "minimum": 1000000,
+                                  "multipleOf": 1000000,
+                                  "type": "integer"
+                                }
+                              ]
+                            },
+                            "connections": {
+                              "maximum": 32,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "requestsPerSecond": {
+                              "maximum": 50,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "scanDepth": {
+                              "enum": [
+                                "file_list_only",
+                                "basic",
+                                "complete"
+                              ],
+                              "type": "string"
+                            },
+                            "wholeFileReads": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "scanDepth",
+                            "wholeFileReads",
+                            "connections",
+                            "requestsPerSecond",
+                            "bytesPerSecond"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "generation",
+                        "revision",
+                        "saved",
+                        "values"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "settings"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one source's normalized reading profile and current revisions",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "revision_mismatch",
+          "idempotency_key_reused",
+          "request_in_progress",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
+      "put": {
+        "operationId": "put_storage_source_read_profile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedGeneration": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "operationId": {
+                    "pattern": "^([0-9]{13})-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "values": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bytesPerSecond": {
+                        "anyOf": [
+                          {
+                            "const": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maximum": 1000000000,
+                            "minimum": 1000000,
+                            "multipleOf": 1000000,
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "connections": {
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "requestsPerSecond": {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "scanDepth": {
+                        "enum": [
+                          "file_list_only",
+                          "basic",
+                          "complete"
+                        ],
+                        "type": "string"
+                      },
+                      "wholeFileReads": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "scanDepth",
+                      "wholeFileReads",
+                      "connections",
+                      "requestsPerSecond",
+                      "bytesPerSecond"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "expectedGeneration",
+                  "expectedRevision",
+                  "values"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "readSettings": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "generation": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "saved": {
+                              "type": "boolean"
+                            },
+                            "sourceId": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "values": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bytesPerSecond": {
+                                  "anyOf": [
+                                    {
+                                      "const": 0,
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "maximum": 1000000000,
+                                      "minimum": 1000000,
+                                      "multipleOf": 1000000,
+                                      "type": "integer"
+                                    }
+                                  ]
+                                },
+                                "connections": {
+                                  "maximum": 32,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "requestsPerSecond": {
+                                  "maximum": 50,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "scanDepth": {
+                                  "enum": [
+                                    "file_list_only",
+                                    "basic",
+                                    "complete"
+                                  ],
+                                  "type": "string"
+                                },
+                                "wholeFileReads": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "scanDepth",
+                                "wholeFileReads",
+                                "connections",
+                                "requestsPerSecond",
+                                "bytesPerSecond"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "generation",
+                            "revision",
+                            "saved",
+                            "values"
+                          ],
+                          "type": "object"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "enum": [
+                                "rclone",
+                                "webdav",
+                                "sftp",
+                                "smb"
+                              ],
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Save one source's reading limits with current revisions and a durable receipt",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "revision_mismatch",
+          "idempotency_key_reused",
+          "request_in_progress",
+          "internal",
+          "revision_required"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
         "x-scope": "admin"
       }
     },
