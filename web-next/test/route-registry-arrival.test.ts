@@ -59,6 +59,18 @@ test('invalid move fragments are scrubbed synchronously then rejected once witho
     assert.equal(arrival.takeAccountMove?.(), undefined);
   }
 });
+test('failed history scrub aborts capture synchronously before installation or protected storage can start', () => {
+  const failure = new Error('History unavailable'), events: string[] = [];
+  for (const fragment of [`#code=${code}&id=${id}`, '#code=invalid']) {
+    assert.throws(() => {
+      captureWebAccountArrival({href: 'https://server.example/sign-in' + fragment}, {
+        replaceState: () => {events.push('scrub-failed');throw failure;},
+      });
+      events.push('startup');
+    }, error => error === failure);
+  }
+  assert.deepEqual(events, ['scrub-failed', 'scrub-failed']);
+});
 test('teardown discards valid and invalid unused arrivals without delivering or throwing', () => {
   for (const suffix of [`#code=${code}&id=${id}`, '#code=invalid']) {
     const b = browser('https://server.example/sign-in' + suffix);

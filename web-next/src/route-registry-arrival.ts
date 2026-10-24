@@ -15,9 +15,15 @@ export function captureWebAccountArrival(location: Pick<Location, 'href'>, histo
   if (takeAccountReturn) return Object.freeze({takeAccountReturn, dispose: () => {takeAccountReturn();}});
   const page = new URL(location.href);
   if (page.pathname !== '/sign-in' || !page.hash) return Object.freeze({dispose: () => {}});
-  let captured: MoveCodeLink | undefined, failed = false, failure: unknown;
-  try {captured = consumeAccountMoveFragment(page, history);}
-  catch (error) {failed = true;failure = error;}
+  let captured: MoveCodeLink | undefined, failed = false, failure: unknown, scrubbed = false;
+  try {
+    captured = consumeAccountMoveFragment(page, {replaceState: (state, unused, url) => {
+      history.replaceState(state, unused, url);scrubbed = true;
+    }});
+  } catch (error) {
+    if (!scrubbed) throw error;
+    failed = true;failure = error;
+  }
   const dispose = () => {captured = undefined;failed = false;failure = undefined;};
   return Object.freeze({
     takeAccountMove: () => {
