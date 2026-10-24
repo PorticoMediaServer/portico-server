@@ -130,6 +130,12 @@ func (b *Bulk) QueueTx(ctx context.Context, tx *sql.Tx, operation, library strin
 	if !known {
 		return "", ErrInput
 	}
+	if allowed, err := libraryLyricsAllowed(ctx, tx, library); err != nil || !allowed {
+		if err != nil {
+			return "", err
+		}
+		return "", ErrUnavailable
+	}
 	if local, err := localonly.Library(ctx, tx, library); err != nil || local {
 		if err != nil {
 			return "", err
@@ -181,7 +187,7 @@ func (b *Bulk) Cancel(ctx context.Context, id string) error {
 func (b *Bulk) Run(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "lyric_fetch_runs", "lyric_provider_settings", "lyric_resources", "catalog_entities", "catalog_asset_links", "server_settings", "console_settings_revision", "maintenance_*")
+	unregister := dbwork.WakeOnTables(wake, "lyric_fetch_runs", "library_preferences", "lyric_provider_settings", "lyric_resources", "catalog_entities", "catalog_asset_links", "server_settings", "console_settings_revision", "maintenance_*")
 	defer unregister()
 	worker.Run(ctx, "lyrics.bulk", wake, func(ctx context.Context) time.Duration {
 		for dbwork.Yield(ctx) {
@@ -237,6 +243,12 @@ func (b *Bulk) Step(ctx context.Context) (bool, error) {
 	}
 	if !settings.LRCLIB || settings.Revision != providerRevision {
 		return true, b.finish(ctx, run.ID, "failed", "provider disabled or reconfigured", "lyrics_provider_unavailable")
+	}
+	if allowed, err := libraryLyricsAllowed(ctx, b.Service.DB, run.LibraryID); err != nil || !allowed {
+		if err != nil {
+			return false, err
+		}
+		return true, b.finish(ctx, run.ID, "cancelled", "library uses files only", "")
 	}
 	if b.pauseLeft() > 0 {
 		return false, errProviderPaused
@@ -345,6 +357,17 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 	if kind != 7 {
 		return "skipped", nil
 	}
+	var library string
+	if e = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=?`, entity).Scan(&library); e != nil {
+		return "", e
+	}
+	if allowed, err := libraryLyricsAllowed(ctx, tx, library); err != nil || !allowed {
+		if err != nil {
+			return "", err
+		}
+		return "skipped", nil
+	}
+
 	if local, err := localonly.Item(ctx, tx, item); err != nil || local {
 		if err != nil {
 			return "", err
@@ -366,6 +389,19 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 	}
 	query := title + " " + artist
 	gated.Rollback()
+	// Local sidecars/embedded lyrics win even when this song has never been
+	// played and therefore has no cached lyric resource yet.
+	if b.Service.Local != nil {
+		local, err := b.Service.Local.ReadLyrics(ctx, src.Root, src.Path, src.Size, src.ModifiedNS, "und", "")
+		if err == nil {
+			for _, candidate := range local.Candidates {
+				doc, err := Parse(candidate.Data, candidate.Format)
+				if err == nil && validateTiming(doc, doc.EmbeddedOffsetMS, src.SourceDuration) == nil {
+					return "skipped", nil
+				}
+			}
+		}
+	}
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return "skipped", nil
@@ -420,6 +456,16 @@ func (b *Bulk) publish(ctx context.Context, run, item string, src Source, v acqu
 	if e != nil {
 		return "skipped", nil
 	}
+	var library string
+	if e = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=?`, entity).Scan(&library); e != nil {
+		return "", e
+	}
+	if allowed, err := libraryLyricsAllowed(ctx, tx, library); err != nil || !allowed {
+		if err != nil {
+			return "", err
+		}
+		return "skipped", nil
+	}
 	all, e := sources(ctx, tx, Access{ItemID: item}, entity)
 	if e != nil || len(all) == 0 || all[0].ID != src.ID || all[0].Version != src.Version {
 		if e != nil && !errors.Is(e, ErrSource) && !errors.Is(e, ErrCapacity) {
@@ -463,4 +509,14 @@ func (b *Bulk) publish(ctx context.Context, run, item string, src Source, v acqu
 		return "", e
 	}
 	return "published", nil
+}
+
+// Files-only is the default, independent of global provider configuration.
+// Both admission and every acquisition/publication recheck this live choice.
+func libraryLyricsAllowed(ctx context.Context, db interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, library string) (bool, error) {
+	var allowed bool
+	err := db.QueryRowContext(ctx, `SELECT l.kind='music' AND COALESCE(p.lyrics_source,'files')='lrclib' FROM libraries l LEFT JOIN library_preferences p ON p.library_id=l.id WHERE l.id=?`, library).Scan(&allowed)
+	return allowed, err
 }
