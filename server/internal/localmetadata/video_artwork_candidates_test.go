@@ -1,6 +1,12 @@
 package localmetadata
 
-import "testing"
+import (
+	"context"
+	"os"
+	"testing"
+
+	"portico.local/server/internal/storage"
+)
 
 func TestVideoArtworkCandidateSlots(t *testing.T) {
 	for _, row := range []struct {
@@ -29,5 +35,24 @@ func TestVideoArtworkCandidateSlots(t *testing.T) {
 		if got := videoArtworkSlot(row.kind, "/root", row.media, row.path, row.season); got != row.slot {
 			t.Errorf("%s: %s want %s", row.path, got, row.slot)
 		}
+	}
+}
+
+func TestArtworkEnumerationCanceledEmptyListingStaysUnknown(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(t.TempDir(), "", storage.New(binary))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = WithArtworkListing(ctx, func(string) (ArtworkDirectoryListing, bool) {
+		return ArtworkDirectoryListing{SourceID: "source", RootIdentity: "root"}, true
+	})
+	if got, complete := service.ReadArtworkCandidates(ctx, "library", "movie", "/root", "/root/Film.mkv", -1); complete || len(got) != 0 {
+		t.Fatal("cancelled source invented complete empty image observation", got, complete)
 	}
 }

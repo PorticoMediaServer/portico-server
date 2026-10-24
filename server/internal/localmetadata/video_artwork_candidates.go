@@ -27,6 +27,9 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 	}
 	result := []assets.LocalArtworkCandidate{}
 	for _, dir := range dirs {
+		if ctx.Err() != nil {
+			return nil, false
+		}
 		listing, known := listed(dir)
 		if !known || listing.SourceID == "" || listing.RootIdentity == "" {
 			return nil, false
@@ -34,6 +37,9 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 		entries := append([]ArtworkListingEntry(nil), listing.Entries...)
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 		for _, entry := range entries {
+			if ctx.Err() != nil {
+				return nil, false
+			}
 			if filepath.Base(entry.Name) != entry.Name || entry.Name == "." || entry.Name == ".." || strings.ContainsAny(entry.Name, "/\\\x00") || entry.Revision == "" {
 				return nil, false
 			}
@@ -75,6 +81,9 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 			}
 			result = append(result, assets.LocalArtworkCandidate{Slot: slot, Key: key})
 		}
+	}
+	if ctx.Err() != nil {
+		return nil, false
 	}
 	return result, true
 }
