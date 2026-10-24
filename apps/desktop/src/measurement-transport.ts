@@ -8,8 +8,10 @@ export async function collectDesktopMeasurement(options:unknown,host:Transport,s
   const actual=await host.measure(options),repeated=await host.measure(options);
   signal.throwIfAborted();
   if(host.focus()!==focused||JSON.stringify(actual)!==JSON.stringify(repeated))throw new Error('desktop_measurement_unstable');
-  const facts=actual as {viewport?:{deviceScaleFactor?:number};fontStatus?:string;fontFaces?:readonly {status?:string}[]}|null;
-  if(host.validate(actual).length||facts?.viewport?.deviceScaleFactor!==1||facts.fontStatus!=='loaded'||
+  const facts=actual as {fontStatus?:string;fontFaces?:readonly {status?:string}[]}|null;
+  // The canonical DOM collector declares CSS units and truthful backing density.
+  // Preserve both exactly; logical-unit validation belongs to its shared contract.
+  if(host.validate(actual).length||facts?.fontStatus!=='loaded'||
     !facts.fontFaces?.some(face=>face.status==='loaded')||facts.fontFaces.some(face=>face.status==='error'))throw new Error('desktop_measurement_unavailable');
   await host.write(actual);
 }
