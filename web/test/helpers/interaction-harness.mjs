@@ -20,9 +20,11 @@ export function createRenderer() {
   };
   const react = {
     Fragment: 'Fragment',
+    Suspense: 'Suspense',
     createElement: (type, props, ...children) => ({type, props: {...props, children}}),
     createContext: value => ({value, Provider: 'provider'}),
     memo: component => component,
+    lazy: () => 'LazyPage',
     forwardRef: component => component,
     useRef: value => { const f = fiber(path); const index = f.cursor++; return (f.slots[index] ??= {current: value}); },
     useState: initial => {
