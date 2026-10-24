@@ -33,10 +33,11 @@ type DAVInput struct {
 	InsecureLocal      bool   `json:"insecureLocal"`
 }
 type Receipt struct {
-	OperationID string `json:"operationId"`
-	Accepted    bool   `json:"accepted"`
-	Removed     bool   `json:"removed"`
-	Source      Source `json:"source"`
+	OperationID  string              `json:"operationId"`
+	Accepted     bool                `json:"accepted"`
+	Removed      bool                `json:"removed"`
+	Source       Source              `json:"source"`
+	ReadSettings *SourceReadSettings `json:"readSettings,omitempty"`
 }
 
 var opPattern = regexp.MustCompile(`^([0-9]{13})-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -67,7 +68,11 @@ func (s *Service) receipt(ctx context.Context, actor, op, fingerprint string) (R
 	return out, err
 }
 func (s *Service) Receipt(ctx context.Context, actor, op string) (Receipt, error) {
-	return s.receipt(ctx, actor, op, "")
+	receipt, err := s.receipt(ctx, actor, op, "")
+	if err == nil && receipt.ReadSettings != nil {
+		err = s.finishReadSettings(ctx, receipt.Source.ID, receipt.ReadSettings.Revision)
+	}
+	return receipt, err
 }
 func (s *Service) authorize(ctx context.Context, authorize func(*sql.Tx) error) error {
 	if authorize == nil {
