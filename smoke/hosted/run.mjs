@@ -24,7 +24,11 @@ const origin = (process.env.SMOKE_HOSTED_ORIGIN || 'https://web.getportico.tv').
 const out = process.env.SMOKE_OUT || join(process.cwd(), 'smoke-out');
 const checkpoint = process.env.SMOKE_CHECKPOINT || '';
 // Required: Security's reader writes the issued code into this exact protected file.
+// It replaces the file with {code, expiresAt}, so the account record lives beside it and is
+// never written by anything but this runner.
 const registrationFile = process.env.SMOKE_REGISTRATION_FILE || '';
+const credentialsFile = process.env.SMOKE_CREDENTIALS_OUT ||
+  (registrationFile ? registrationFile.replace(/registration\.json$/, 'credentials.json') : '');
 const waitSeconds = Number(process.env.SMOKE_CODE_WAIT_SECONDS || 300);
 const runId = new Date().toISOString().replace(/[-:tTZ.]/g, '').slice(0, 14);
 const username = process.env.SMOKE_USERNAME || `smoke${runId}`.slice(0, 24);
@@ -37,10 +41,10 @@ mkdirSync(out, {recursive: true});
 const playwright = await loadPlaywright();
 const report = createReport({surface: 'hosted', origin, checkpoint, out});
 
-function writeProtected(value) {
-  mkdirSync(join(registrationFile, '..'), {recursive: true});
-  writeFileSync(registrationFile, JSON.stringify(value, null, 2) + '\n', {mode: 0o600});
-  try { chmodSync(registrationFile, 0o600); } catch {}
+function writeProtected(path, value) {
+  mkdirSync(join(path, '..'), {recursive: true});
+  writeFileSync(path, JSON.stringify(value, null, 2) + '\n', {mode: 0o600});
+  try { chmodSync(path, 0o600); } catch {}
 }
 
 /** Waits, silently, for Security to write the real mail code into the protected file. */
@@ -93,10 +97,12 @@ async function main() {
       try { json = JSON.parse(body); } catch { /* an empty body still means accepted */ }
       registrationId = json.registrationId || json.id || json.registration?.id || '';
       assert(registrationId, `the registration response carried no id: ${body.slice(0, 300)}`);
-      writeProtected({registrationId, username, password, contactAddress, origin, createdAt: new Date().toISOString(),
-        note: 'Security writes the real mail code here as {"code":"..."}; nothing else belongs in this file'});
-      return {detail: `registration ${registrationId.slice(0, 8)}… accepted (HTTP ${response.status()}); id written to the protected file`,
-        evidence: {registrationFile}};
+      const record = {registrationId, username, password, contactAddress, origin, createdAt: new Date().toISOString()};
+      // The code file may be replaced wholesale by Security's reader; the account record may not.
+      writeProtected(credentialsFile, {...record, note: 'account record, never overwritten by the code reader'});
+      writeProtected(registrationFile, {...record, note: 'Security writes the real mail code here as {"code":"..."}'});
+      return {detail: `registration ${registrationId.slice(0, 8)}… accepted (HTTP ${response.status()}); code file and credential record written`,
+        evidence: {registrationFile, credentialsFile}};
     });
 
     await report.check('hosted-verify', async () => {

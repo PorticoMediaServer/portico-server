@@ -214,7 +214,7 @@ async function main() {
         assert(response && response.status() < 400, `document answered ${response ? response.status() : 'no response'}`);
         assert(state.textLength > 40, `blank surface on launch: ${JSON.stringify(state)}`);
         assert(events.pageErrors.length === 0, `page error on launch: ${events.pageErrors[0]}`);
-        return {detail: `version ${report.build ? report.build.version : 'unknown'}; landed on ${new URL(state.url).pathname}`,
+        return {detail: `version ${report.buildStart && report.buildStart.version ? report.buildStart.version : 'unknown'}; landed on ${new URL(state.url).pathname}`,
           evidence: {screenshot: await evidence.shot(page, 'boot')}};
       });
     }
@@ -346,7 +346,13 @@ async function main() {
           const link = page.locator('nav a[href]').filter({hasText: new RegExp(`^${name}$`, 'i')}).first();
           if (!(await link.count())) { report[name] = 'no sidebar entry'; continue; }
           await link.click({timeout: 8000});
-          await settle(page, {quiet: 2500});
+          await settle(page, {quiet: 2000});
+          const seeAll = await findAny(page, [{role: 'link', name: /^See all/}, {role: 'button', name: /^See all/}, {text: /^See all$/}], {timeout: 4000});
+          if (seeAll) {
+            await seeAll.click({timeout: 8000}).catch(() => {});
+            await settle(page, {quiet: 1500});
+            await page.locator('article[data-card-kind]').first().waitFor({timeout: 15000}).catch(() => {});
+          }
           report[name] = await page.evaluate(() => {
             const labels = [...document.querySelectorAll('button')].map(b => (b.innerText || '').trim());
             return {filters: labels.some(text => /^Filters/.test(text)), sort: labels.some(text => /^Sort/.test(text) || /A–Z|—/.test(text)),
