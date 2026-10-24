@@ -77,6 +77,8 @@ test('Search summary is immutable and unavailable during replacement reads or au
     assert.deepEqual(binding.summary(), []);
     held.resolve(searchPage(heldPath));await read;
     assert.deepEqual(binding.summary(), []);
+    hold = false;await binding.select('harbor', {groups: ['movies', 'shows'], libraryIds: ['library']});
+    assert.deepEqual(binding.summary().map(group => group.totalCount), [5, 7]);
     owner.retire();assert.deepEqual(binding.summary(), []);
   } finally {binding.dispose();}
 });
