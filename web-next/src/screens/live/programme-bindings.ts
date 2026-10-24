@@ -40,7 +40,7 @@ export function previewRule(draft: Readonly<{channel: GuideChannel; programme: G
   const config = draftRule(draft);
   config.episodes = choice.episodes;
   config.allowedChannels = choice.anyChannel && config.matchKind !== 'title' ? [] : [draft.channel.id];
-  config.options = {...defaultRecordingOptions, beforeSeconds: choice.startEarly, afterSeconds: choice.endLate,
+  config.options = {...defaultRecordingOptions, beforeSeconds: choice.startEarly * 60, afterSeconds: choice.endLate * 60,
     episodeLimit: choice.keep === 'all' ? 0 : Number(choice.keep)};
   return config;
 }
@@ -68,7 +68,7 @@ export function createProgrammeBindings(context: ScreenContext, row: GuideChanne
     state = Object.freeze({...state, ...patch});
     for (const listener of [...listeners]) listener();
   };
-  const recordable = () => !!draft && !!rawChannel?.recordAvailable && draft.programme.end > now();
+  const recordable = () => !!draft && !!rawChannel?.recordAvailable && Date.parse(draft.programme.end) > now();
 
   const airing = (programme: GuideProgramme): PreviewAiring => {
     const start = Date.parse(programme.start), today = new Date(start).toDateString() === new Date(now()).toDateString();
@@ -138,7 +138,7 @@ export function createProgrammeBindings(context: ScreenContext, row: GuideChanne
       try {
         const {config, anchor} = seriesRuleConfig({...draft, series: true},
           {episodes: choice.episodes, keep: choice.keep === 'all' ? 0 : Number(choice.keep),
-            beforeSeconds: choice.startEarly, afterSeconds: choice.endLate, anyChannel: choice.anyChannel});
+            beforeSeconds: choice.startEarly * 60, afterSeconds: choice.endLate * 60, anyChannel: choice.anyChannel});
         await client.saveRule(await client.newRuleID(), 0, config, anchor);
         assert();publish({notice: 'series'});env.onChanged?.();
         return true;

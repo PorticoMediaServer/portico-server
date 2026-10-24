@@ -145,7 +145,7 @@ const panelRecording: Recording = {id: 'rec-pk3', revision: 1,
   occurrence: {sourceId: 'synthetic', channelId: 'pk', generation: 'synthetic', programmeId: panelProgrammeId},
   programme: panelRawProgramme, ruleId: '', options: {beforeSeconds: 0, afterSeconds: 0, priority: 0, retentionDays: 0, episodeLimit: 0},
   start: panelRawProgramme.start, end: panelRawProgramme.end, state: 'recording', reason: '', keep: false, itemId: '', libraryId: '',
-  coverageStart: panelRawProgramme.start, coverageEnd: panelRawProgramme.end, bytes: 0,
+  coverageStart: panelRawProgramme.start, coverageEnd: panelRawProgramme.end, bytes: 0, conflicts: [],
   channel: {id: 'pk', name: 'Pebble Kids', number: '401', mark: {text: 'PK', seed: 'synthetic:pk'}}, watched: null};
 const panelChoice: SeriesChoice = {episodes: 'all', keep: '5', startEarly: 0, endLate: 2, anyChannel: false};
 const panelSnapshot: ProgrammeSnapshot = {phase: 'ready', favorite: true, recording: panelRecording, previewLoading: false,
@@ -169,7 +169,7 @@ function Specimen() {
   const scale = pxPerMsFor(width < 1024 ? 90 : 240), [start, setStart] = useState(at(15, 30));
   const panel = new URLSearchParams(location.search).get('panel') === '1';
   const [view, setView] = useState<'guide' | 'list'>(new URLSearchParams(location.search).get('view') === 'list' ? 'list' : 'guide');
-  const [selected, setSelected] = useState<Readonly<{channelId: string; programmeId?: string}>>(panel ? {channelId: 'pk', programmeId: panelProgrammeId} : undefined);
+  const [selected, setSelected] = useState<Readonly<{channelId: string; programmeId?: string}> | undefined>(panel ? {channelId: 'pk', programmeId: panelProgrammeId} : undefined);
   const days = dayStarts(NOW, NOW + 2 * 86_400_000, timezone);
   const chips = useMemo(() => [{id: 'all', label: t('channels.filterAll'), count: channels.length, selected: true, onSelect: () => {}},
     {id: 'favorites', label: t('channels.favorites'), favorites: true, count: 3, selected: false, onSelect: () => {}},

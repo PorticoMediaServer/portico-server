@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
-import {channelTint, programmeFactParts} from '@portico/client-core/kit-model';
+import {channelTint, programmeFactParts, type ChannelMarkModel} from '@portico/client-core/kit-model';
 import type {GuideChannelRow, GuideProgram} from '@core/guide/index.ts';
 import {Button, Segmented, Select} from '../../kit/controls';
 import type {SelectOption} from '../../kit/controls';
@@ -21,10 +21,10 @@ const paddingLabel = (minutes: number) => minutes ? t('next.live.minutes', {coun
 const keepOptions: readonly SelectOption[] = KEEPS.map(value => ({value, label: keepLabel(value)}));
 const paddingOptions: readonly SelectOption[] = PADDINGS.map(value => ({value: String(value), label: paddingLabel(value)}));
 
-function channelMark(channel: GuideChannelRow) {
-  if (channel.mark) return channel.mark;
-  return {text: Array.from(channel.name.trim())[0]?.toLocaleUpperCase() ?? '', seed: channel.id};
-}
+const channelMark = (channel: GuideChannelRow): ChannelMarkModel => ({
+  sourceId: channel.sourceId ?? '', id: channel.id,
+  ...(channel.mark ?? {text: Array.from(channel.name.trim())[0]?.toLocaleUpperCase() ?? '', seed: channel.id}),
+});
 
 /** One upcoming airing's reminder; a local browser fact, never a server promise. */
 function reminderIds(): string {
@@ -57,6 +57,7 @@ export type ProgrammePanelViewProps = Readonly<{
 export function ProgrammePanelView({channel, programme, now, timezone, snapshot, choice, seriesOpen,
   reminders, onClose, onWatch, onRecord, onCancelRecording, onRecordSeries, onFavorite, onSeriesOpenChange, onChoice, onReminder, onViewRecordings}: ProgrammePanelViewProps) {
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [recordingOpen, setRecordingOpen] = useState(false);
   const mark = channelMark(channel), tint = channelTint(mark.seed);
   const airing = !!programme && programme.start <= now && programme.end > now;
   const ended = !!programme && programme.end <= now;
@@ -118,7 +119,7 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
     <div className={styles.programmeActions}>
       {onWatch && <Button className={styles.programmeAction} variant="primary" icon="i-play" onClick={onWatch} disabled={!channel.tuneAvailable}>{watchLabel}</Button>}
       {canRecord && (recordingFact
-        ? <Menu trigger={<Button className={styles.programmeAction} variant="glass" icon="i-rec" aria-label={t('next.live.recordingOptions')} aria-haspopup="menu" disabled={busy || !snapshot.recording}>{t('next.kit.recording')}</Button>}
+        ? <Menu open={recordingOpen} onOpenChange={open => setRecordingOpen(open)} trigger={<Button className={styles.programmeAction} variant="glass" icon="i-rec" aria-label={t('next.live.recordingOptions')} aria-haspopup="menu" disabled={busy || !snapshot.recording}>{t('next.kit.recording')}</Button>}
           title={t('next.live.recordingOptions')} items={recordingMenu}/>
         : <Button className={styles.programmeAction} variant="glass" icon="i-rec" onClick={onRecord} disabled={busy} loading={snapshot.busy === 'record'}>{t('guide.record')}</Button>)}
       {canRecord && <Button className={`${styles.programmeAction} ${seriesOpen ? styles.programmeActionOpen : ''}`} variant="glass"
@@ -162,7 +163,7 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
     <Dialog open={cancelOpen} onOpenChange={setCancelOpen} title={t('recordings.cancelTitle', {title: programme?.title ?? channel.name})}
       description={t('recordings.cancelNotRecorded')} width={440}
       footer={<><Button variant="glass" onClick={() => setCancelOpen(false)}>{t('action.cancel')}</Button>
-        <Button variant="ghost" loading={snapshot.busy === 'cancel'} onClick={() => {setCancelOpen(false);onCancelRecording?.();}}>{t('recordings.cancelAction')}</Button></>}/>
+        <Button variant="ghost" loading={snapshot.busy === 'cancel'} onClick={() => {setCancelOpen(false);onCancelRecording?.();}}>{t('recordings.cancelAction')}</Button></>}>{null}</Dialog>
   </div>;
 }
 
