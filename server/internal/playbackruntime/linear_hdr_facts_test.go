@@ -19,7 +19,7 @@ func TestLinearVideoProbeRetainsCanonicalHDRFacts(t *testing.T) {
 	if source.DynamicRange != assets.RangeDolbyVision || source.DolbyVisionProfile != 5 || source.DolbyVisionLevel != 6 || source.MaxCLL != "1000,400" {
 		t.Fatalf("actual HDR/Dolby configuration lost: %+v", source.StreamDetail)
 	}
-	if source.BitDepth != 10 || source.ChromaSubsampling != "420" || source.FrameRateNumerator != 24000 || source.FrameRateDenominator != 1001 || source.ObservedInterlaced() == nil || *source.ObservedInterlaced() {
+	if source.BitDepth != 10 || source.ChromaSubsampling != "4:2:0" || source.FrameRateNumerator != 24000 || source.FrameRateDenominator != 1001 || source.ObservedInterlaced() == nil || *source.ObservedInterlaced() {
 		t.Fatal("canonical measured source facts lost", source.StreamDetail)
 	}
 	// The configuration record does not prove decoded packet/frame presence,
