@@ -21,7 +21,7 @@ export type OwnerClaimStartPorts = Readonly<{
    * A failed/stale write must preserve the successor and must not navigate. */
   bindPending: (value: OwnerClaimHandoff) => Promise<void>;
 }>;
-type Api = Pick<HttpLocalApi, 'request' | 'getRouteConnection'>;
+type Api = Pick<HttpLocalApi, 'baseUrl' | 'request' | 'getRouteConnection'>;
 const invalid = () => new CodedError('invalid_return', 'This owner continuation no longer matches its captured operation.');
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const exactKeys = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).sort().join(',') === keys.sort().join(',');
@@ -45,7 +45,7 @@ export async function prepareOwnerClaimHandoff(api: Api, expected: ClaimExpected
   const now = options.now ?? Date.now;
   if (!identifier(expected.operationId) || !counter(expected.localGeneration) || !counter(expected.revision) || expected.revision === '0' ||
       expected.operationId !== binding.operationId || expected.localGeneration !== binding.localGeneration || !validInstallationId(binding.installationId) ||
-      routeOrigin(binding.origin) !== binding.origin || routeOrigin(binding.hostedOrigin) !== binding.hostedOrigin || !binding.hostedOrigin.startsWith('https://')) throw invalid();
+      routeOrigin(binding.origin) !== binding.origin || api.baseUrl !== binding.origin || routeOrigin(binding.hostedOrigin) !== binding.hostedOrigin || !binding.hostedOrigin.startsWith('https://')) throw invalid();
   const origin = new URL(binding.origin);
   if (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && origin.hostname === 'localhost')) throw invalid();
   routeBytes(binding.state, 32); routeBytes(binding.codeChallenge, 32);

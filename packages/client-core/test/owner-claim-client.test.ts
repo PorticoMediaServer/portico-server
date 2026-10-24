@@ -66,12 +66,13 @@ test('secure pending failure and network HTTP refuse before any request', async 
   assert.equal(f.sent.length, 0); assert.equal(f.bound.length, 0);
 });
 
-for (const kind of ['installation', 'route', 'counter', 'state'] as const) test('captured ' + kind + ' mismatch never starts a second operation', async t => {
+for (const kind of ['installation', 'route', 'counter', 'state', 'origin'] as const) test('captured ' + kind + ' mismatch never starts a second operation', async t => {
   const f = await fixture(t);
   if (kind === 'installation') setInstallationIdentity(undefined);
   if (kind === 'route') f.route.pin = {...f.binding.pin, fingerprint: 'A'.repeat(43)};
   if (kind === 'counter') f.expected.revision = '9223372036854775808';
   if (kind === 'state') f.binding.state = 'not-a-canonical-state';
+  if (kind === 'origin') f.binding.origin = 'https://another-route.example.test';
   await assert.rejects(f.start()); assert.equal(f.sent.length, 0); assert.equal(f.bound.length, 0);
 });
 
