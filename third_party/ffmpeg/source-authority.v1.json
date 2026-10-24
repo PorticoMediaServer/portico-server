@@ -100,7 +100,7 @@
     "fixtures/video/hdr-generated/manifest.json": "3a750950d94101e0b8460314da28f3b5babb372b55a3ecbe33ab02304aaeb6ee",
     "scripts/qualify-dovi-join.py": "a68fa981e15d16f5d64a8351a8d30445ac8a32131279077a3ad7e747a5309e8c",
     "scripts/qualify-hdr-video.py": "fd08e59206e27bec290a3abca3dafb964dc1b32ea815148b80fb3521a77dd088",
-    "scripts/reuse-ffmpeg-protocol-objects.py": "e93d12af4701a997ca97ad8ae7376c7282f17785f0a43ea67971bdbf45bc7839",
+    "scripts/reuse-ffmpeg-protocol-objects.py": "972843e5bb1c71141f306a315cdaa61585b4b146322a79950dc433b891132c63",
     "scripts/verify-ffmpeg-bluray.py": "c2237d836eaefbbaafd517adc6d2b1729decd60aef34351dc9ccc0f9f7f00289",
     "third_party/ffmpeg/portico-bluray-playlist-minimum.patch": "4d475459c9688dcc11229a680fa87cc34733422025a76a069aee1ec8ac29c52c",
     "third_party/ffmpeg/portico-dovi-join.patch": "b15d70a2872174a6c10373c1bff26131513e8995b4b946b20896aec49607c569",

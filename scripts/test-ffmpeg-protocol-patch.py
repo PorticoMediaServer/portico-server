@@ -39,6 +39,7 @@ class CacheBoundaryTests(unittest.TestCase):
             path.write_text(name)
             pair[name] = cache.digest(path)
         self.pair = pair
+        (self.old / 'source/builder/scripts.d').mkdir(parents=True)
         (self.old / 'prefix/compiler-linked-inputs.json').write_text(json.dumps({'compilerImage': 'compiler'}))
         for root, contents in ((self.old / 'source', 'original'), (self.fresh, 'patched')):
             (root / 'libavformat/bluray.c').write_text(contents)

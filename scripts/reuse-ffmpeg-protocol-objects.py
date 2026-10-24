@@ -27,7 +27,8 @@ def digest(path):
 
 
 def objects(cache):
-    return sorted(path for path in (cache / 'source').rglob('*') if path.suffix in ('.o', '.a', '.d'))
+    return sorted(path for path in (cache / 'source').rglob('*')
+                  if path.suffix in ('.o', '.a', '.d') and (path.is_file() or path.is_symlink()))
 
 
 def fingerprint(cache, lock, pair=PAIR):
