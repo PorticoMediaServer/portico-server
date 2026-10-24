@@ -22,6 +22,9 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	m = metadata("post_reading_sessions", "POST", "/v1/reading/sessions", "Open an authorized reading publication", apikit.ScopePlayback)
+	// Preparing an EPUB/comic inspects bounded source bytes. A valid paced
+	// remote read must not inherit the catalogue page's five-second budget.
+	m.Lane, m.Admission = apikit.Media, laneMediaBody
 	m.BodyLimit = 4096
 	if err := apikit.RegisterHTTP[ReadingSessionRequest, ReadingSessionResponse](registry, m); err != nil {
 		return err
@@ -33,6 +36,8 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	}
 	m = metadata("put_reading_sessions_sessionId_progress", "PUT", "/v1/reading/sessions/{sessionId}/progress", "Save the selected publication's location with compare and swap", apikit.ScopePlayback)
 	m.Headers = []string{"If-Match"}
+	// Location validation also reads actual format bytes under the session.
+	m.Lane, m.Admission = apikit.Media, laneMediaBody
 	m.BodyLimit = 8192
 	if err := apikit.RegisterHTTP[ReadingProgressRequest, ReadingProgressSavedResponse](registry, m); err != nil {
 		return err
@@ -51,6 +56,9 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 		m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
 		m.Headers, m.Status, m.ResponseContentType = []string{"If-Match", "Range"}, status, "application/pdf"
 		m.ResponseStatuses = []int{416}
+		if method == "GET" {
+			m.ResponseStatuses = []int{200, 416}
+		}
 		if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, m); err != nil {
 			return err
 		}

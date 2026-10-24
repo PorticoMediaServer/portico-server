@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
 )
 
@@ -22,6 +23,7 @@ type Session struct {
 	actor, owner string
 	family       string
 	observed     storage.ObservedFileObservation
+	remote       *remotesources.SourceReadLease
 	life         context.Context
 	cancel       context.CancelFunc
 	timer        *time.Timer
@@ -32,15 +34,22 @@ type Session struct {
 
 func (s *Session) close() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.closed {
-		s.closed = true
-		s.cancel()
-		if s.timer != nil {
-			s.timer.Stop()
-		}
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	s.cancel()
+	if s.timer != nil {
+		s.timer.Stop()
+	}
+	remote := s.remote
+	s.mu.Unlock()
+	if remote != nil {
+		_ = remote.Close()
 	}
 }
+
 func (s *Session) touch() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,10 +152,21 @@ func (s *Service) captureSessionState(p identity.Principal, f *Source) (*Session
 	}
 	// This is the actual authenticated token/horizon deadline, independent of
 	// idle expiry or provider throttling. It cannot extend captured authority.
-	life, cancel := context.WithDeadline(context.Background(), p.ExpiresAt)
-	out := &Session{ID: identity.Token(), selection: f.Selection, actor: p.Hash, owner: owner, family: family, observed: f.observed, life: life, cancel: cancel}
+	out := f.remoteSession
+	if out == nil {
+		life, cancel := context.WithDeadline(context.Background(), p.ExpiresAt)
+		out = &Session{ID: identity.Token(), selection: f.Selection, actor: p.Hash, owner: owner, observed: f.observed, life: life, cancel: cancel}
+	}
+	out.mu.Lock()
+	if out.closed || out.life.Err() != nil {
+		out.mu.Unlock()
+		return nil, ErrChanged
+	}
+	out.family = family
 	out.timer = time.AfterFunc(sessionIdle, out.close)
-	context.AfterFunc(life, out.close)
+	out.mu.Unlock()
+	f.remoteRetained = true
+	context.AfterFunc(out.life, out.close)
 	s.sessions[out.ID] = out
 	return out, nil
 }
@@ -181,7 +201,7 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	defer f.Close()
 	document, err := Inspect(f)
 	if err != nil {
-		return nil, Publication{}, err
+		return nil, Publication{}, f.StopAndRecheck(err)
 	}
 	session, err := s.captureSession(p, f)
 	return session, document, err
@@ -232,7 +252,19 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 	request, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(session.life, cancel)
 	owner := &sessionRequestContext{Context: request, owner: session.life}
-	f, err := s.Open(owner, p, session.selection.ItemID, session.selection.SourceID, session.selection.Revision)
+	var f *Source
+	if session.remote != nil {
+		var v Selection
+		v, err = s.Resolve(owner, p, session.selection.ItemID, session.selection.SourceID)
+		if err == nil && v.Revision != session.selection.Revision {
+			err = ErrChanged
+		}
+		if err == nil {
+			f, err = s.openRemote(owner, p, v, session)
+		}
+	} else {
+		f, err = s.Open(owner, p, session.selection.ItemID, session.selection.SourceID, session.selection.Revision)
+	}
 	if err != nil {
 		stop()
 		cancel()
@@ -255,11 +287,29 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 	return f, nil
 }
 
+// CloseSessionContext also covers client PDF decode failures, whose parser
+// runs outside the server. Every explicit remote close releases child bodies,
+// rechecks the captured epoch without reopening media, and retires the reader.
+// Cleanup remains allowed for one's own hidden title and publishes no facts.
+func (s *Service) CloseSessionContext(ctx context.Context, p identity.Principal, id string) error {
+	session, err := s.findSession(p, id)
+	if err != nil {
+		return err
+	}
+	if session.remote != nil {
+		_ = session.remote.StopAndRecheck(ctx)
+	}
+	return s.closeCapturedSession(id, session)
+}
+
 func (s *Service) CloseSession(p identity.Principal, id string) error {
 	session, err := s.findSession(p, id)
 	if err != nil {
 		return err
 	}
+	return s.closeCapturedSession(id, session)
+}
+func (s *Service) closeCapturedSession(id string, session *Session) error {
 	session.close()
 	s.sessionMu.Lock()
 	delete(s.sessions, id)

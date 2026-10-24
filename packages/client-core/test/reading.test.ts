@@ -135,3 +135,23 @@ test('transport failures and unknown server errors never retain an origin or res
   f.hook(() => json({error: {code: 'private_unrecognized_value', message: 'https://private-book-origin/'}}, 503));
   await assert.rejects(session.progress(), coded('request_failed')); f.client.dispose();
 });
+
+
+test('continue uses canonical bounded rows and saved locations without preparing sessions', async () => {
+  const f = setup();
+  const row = {item: {id: 'book', sourceId: 'alternate', libraryId: 'library', title: 'Stored title', format: 'epub', inventoryAvailable: true}, progress: {sourceId: 'alternate', sourceRevision: rev, revision: 3, observedAt: 100, stale: true, location: {format: 'epub', cfi: 'epubcfi(/6/4!/4/2:0)', section: 'EPUB/chapter.xhtml', progression: .4}}};
+  f.hook(call => call.url.pathname === routePath('get_reading_continue') ? json({items: [row], nextCursor: 'MTAwOjI6Mw'}) : undefined);
+  const out = await f.client.continue({libraryId: 'library', limit: 1});
+  assert.equal(out.items.length, 1); assert.equal(out.items[0].item.sourceId, 'alternate'); assert.equal(out.items[0].progress.stale, true); assert.equal(out.items[0].progress.revision, 3);
+  assert.equal(Object.isFrozen(out.items[0].progress.location), true); assert.equal(f.calls.length, 1); assert.equal(f.calls[0].headers.get('Authorization'), 'Bearer captured-token');
+  assert.equal(f.calls[0].url.searchParams.get('limit'), '1');
+  await f.client.continue({cursor: out.nextCursor, limit: 1});
+  assert.equal(f.calls[1].url.searchParams.get('cursor'), 'MTAwOjI6Mw');
+  const before = f.calls.length;
+  await assert.rejects(f.client.continue({limit: 101}), coded('invalid_request'));
+  await assert.rejects(f.client.continue({cursor: '../source'}), coded('invalid_request')); assert.equal(f.calls.length, before);
+  f.hook(() => json({items: [{...row, progress: {...row.progress, sourceId: 'different'}}]}));
+  await assert.rejects(f.client.continue(), coded('invalid_progress'));
+  f.hook(() => json({items: [row, row]})); await assert.rejects(f.client.continue(), coded('invalid_progress'));
+  f.retire(); const retired = f.calls.length; await assert.rejects(f.client.continue(), coded('cancelled')); assert.equal(f.calls.length, retired);
+});
