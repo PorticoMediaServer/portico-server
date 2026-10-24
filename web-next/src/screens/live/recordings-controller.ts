@@ -193,6 +193,14 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
       if (commandArmed === armed) commandArmed = undefined;
     }
     if (!current()) throw cancelled();
+    // A newer destination generation (replacement, refresh or A->B->A) owns its
+    // facts, loading and errors. A command that finishes after that generation
+    // began reports only what it knew — a server ACK — and never adopts, publishes
+    // or resets the newer state. Authority clearing already happened globally
+    // through the client's access listener.
+    if (armed.serial !== loadSerial || armed.lease !== epoch) {
+      return Object.freeze({committed: ack, refreshed: false, busy: false});
+    }
     if (!ack) {
       if (isAccessError(failure)) {
         clearFacts(true);

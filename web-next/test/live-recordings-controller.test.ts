@@ -1312,3 +1312,107 @@ test('an ACK followed by a failed reload is committed and erases every private f
     } finally { controller.dispose(); }
   }
 });
+
+// Reviewer round 2 — a stale command completion never touches newer destination state.
+test('a stale command completion never makes a pending refresh look ready', async () => {
+  const receipt = held<string>(), refreshReply = held<unknown>();
+  let served = 0;
+  const {api, calls} = fixtureServer(call => {
+    if (call.method !== 'GET') return commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'});
+    served++;
+    return served === 1 ? pageOf([commandRecording(hex(64, '1'))], '', 1) : refreshReply.promise;
+  });
+  const controller = controllerFor(api, {requestId: () => receipt.promise});
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const pending = controller.cancel(row);
+    pending.catch(() => {});
+    await tick();
+    const refreshing = controller.load({view: 'recorded'});
+    refreshing.catch(() => {});
+    await tick();
+    receipt.resolve(hex(48, 'b'));
+    assert.deepEqual(await pending, {committed: false, refreshed: false, busy: false});
+    assert.equal(listCalls(calls).length, 0, 'the stale command never sends HTTP');
+    let snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'loading', 'the pending refresh keeps the destination loading');
+    assert.equal(controller.contains(row), false, 'the retained old page is not ready membership');
+
+    refreshReply.resolve(pageOf([commandRecording(hex(64, '2'))], '', 2));
+    await refreshing;
+    snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'ready');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.equal(controller.contains(row), false);
+    assert.equal(controller.contains(snapshot.page!.recordings[0]), true);
+  } finally { controller.dispose(); }
+});
+
+test('an ACK that lands during a pending refresh keeps the newer loading state', async () => {
+  const postReply = held<unknown>(), refreshReply = held<unknown>();
+  let served = 0;
+  const {api} = fixtureServer(call => {
+    if (call.method !== 'GET') return postReply.promise;
+    served++;
+    return served === 1 ? pageOf([commandRecording(hex(64, '1'))], '', 1) : refreshReply.promise;
+  });
+  const controller = controllerFor(api, {requestId: async () => hex(48, 'c')});
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const pending = controller.cancel(row);
+    pending.catch(() => {});
+    await tick();
+    const refreshing = controller.load({view: 'recorded'});
+    refreshing.catch(() => {});
+    await tick();
+    postReply.resolve(commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'}));
+    assert.deepEqual(await pending, {committed: true, refreshed: false, busy: false});
+    let snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'loading', 'the ACK does not publish over the pending refresh');
+    assert.equal(controller.contains(row), false);
+
+    refreshReply.resolve(pageOf([commandRecording(hex(64, '2'))], '', 2));
+    await refreshing;
+    snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'ready');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.equal(controller.contains(snapshot.page!.recordings[0]), true);
+  } finally { controller.dispose(); }
+});
+
+test('a newer destination failure survives a stale command completion', async () => {
+  const receipt = held<string>(), historyReply = held<unknown>();
+  let served = 0;
+  const {api} = fixtureServer(call => {
+    if (call.method !== 'GET') return commandRecording(hex(64, '1'), {revision: 2, state: 'cancelled'});
+    served++;
+    if (params(call).get('state') === 'history') return historyReply.promise;
+    return pageOf([commandRecording(hex(64, '1'))], '', served);
+  });
+  const controller = controllerFor(api, {requestId: () => receipt.promise});
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    const pending = controller.cancel(row);
+    pending.catch(() => {});
+    await tick();
+    const history = controller.load({view: 'history'});
+    history.catch(() => {});
+    await tick();
+    historyReply.reject(new Error('history unavailable'));
+    await history;
+    const failed = controller.getSnapshot();
+    assert.equal(failed.phase, 'error');
+    assert.ok(failed.error.length > 0);
+
+    receipt.resolve(hex(48, 'd'));
+    assert.deepEqual(await pending, {committed: false, refreshed: false, busy: false});
+    const after = controller.getSnapshot();
+    assert.equal(after.phase, 'error', 'the newer destination failure survives the stale command');
+    assert.equal(after.error, failed.error);
+    assert.equal(after.page, null);
+    assert.equal(controller.contains(row), false);
+  } finally { controller.dispose(); }
+});
