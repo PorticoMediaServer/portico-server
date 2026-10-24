@@ -164,7 +164,8 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 		v := &SourceVideo{Codec: videoFamily(video)}
 		v.Height = height
 		v.Width = width
-		v.DynamicRange = assets.RangeSDR
+		// The summary carries a codec and geometry, not an observed transfer.
+		// effectiveRange owns the planner's fallback; it is not a source fact.
 		s.Video = v
 	}
 	if len(s.Audio) == 0 && audio != "" {
