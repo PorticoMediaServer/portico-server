@@ -4109,6 +4109,18 @@ CREATE TABLE inventory_artwork_sources (
 ) STRICT;
 CREATE INDEX inventory_artwork_sources_role ON inventory_artwork_sources(kind,entity_id,role,art_key);
 CREATE INDEX inventory_artwork_sources_entity ON inventory_artwork_sources(entity_id);
+CREATE TABLE inventory_artwork_candidates (
+ object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN('item','show','season')),
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ role TEXT NOT NULL CHECK(role IN('poster','backdrop','logo')),
+ art_key TEXT NOT NULL CHECK(length(art_key)>0),
+ PRIMARY KEY(object_id,kind,entity_id,role,art_key)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX inventory_artwork_candidates_entity ON inventory_artwork_candidates(entity_id,kind,role,object_id,art_key);
+CREATE INDEX inventory_artwork_candidates_asset ON inventory_artwork_candidates(asset_id);
 CREATE VIEW inventory_asset_availability AS
  SELECT asset_id,MAX(CASE WHEN o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed') AND o.root_incarnation=s.incarnation THEN 1 ELSE 0 END) AS available
  FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id GROUP BY asset_id;

@@ -1,0 +1,86 @@
+package catalog
+
+import (
+	"context"
+	"database/sql"
+	"encoding/hex"
+	"errors"
+
+	"portico.local/server/internal/assets"
+	"portico.local/server/internal/storage"
+)
+
+func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sql.Tx, source LibrarySource, object, revision, asset, kind string, candidates []assets.LocalArtworkCandidate) error {
+	if tx == nil || object == "" || revision == "" || asset == "" || (kind != "movie" && kind != "tv" && kind != "anime") {
+		return ErrAdminQuery
+	}
+	var current bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id JOIN libraries l ON l.id=s.library_id
+ WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.asset_id=? AND o.retired=0 AND o.state='available' AND o.unsupported_reason=''
+ AND s.library_id=? AND l.kind=? AND s.enabled=1 AND s.generation=? AND s.incarnation=? AND o.root_incarnation=s.incarnation
+ AND s.root_identity=? AND s.health NOT IN('offline','removing','root_changed'))`, object, source.ID, revision, asset, source.LibraryID, kind, source.Generation, source.Incarnation, source.RootIdentity).Scan(&current)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return storage.ErrInventoryChanged
+	}
+	carriers := []sidecarCarrier{}
+	for _, candidate := range candidates {
+		raw, err := hex.DecodeString(candidate.Key)
+		if err != nil || len(raw) != 32 {
+			return errors.New("invalid local artwork candidate key")
+		}
+		before := len(carriers)
+		err = s.visitAssetSidecars(ctx, tx, source.LibraryID, kind, asset, map[string]string{candidate.Slot: candidate.Key}, func(_ context.Context, _ *sql.Tx, _ string, found []sidecarCarrier) error {
+			carriers = append(carriers, found...)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		if len(carriers) == before {
+			return errors.New("local artwork candidate has no asset-bound slot")
+		}
+	}
+	// Only a complete image observation reaches this method. The transaction's
+	// current inventory/policy fence remains the authority for replacement.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_artwork_candidates WHERE object_id=?`, object); err != nil {
+		return err
+	}
+	for _, c := range carriers {
+		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES(?,?,?,?,?,?,?)`, object, revision, asset, c.kind, c.entity, c.role, c.key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ReadLocalArtworkCandidatesTx reads one bounded page of accepted image keys
+// in the caller's authorized transaction. It supplies no access or selection
+// authority. A changed/retired source object cannot contribute stale choices.
+func ReadLocalArtworkCandidatesTx(ctx context.Context, tx *sql.Tx, kind string, entity int64, role, after string, limit int) ([]string, error) {
+	if tx == nil || entity <= 0 || limit < 1 || limit > 128 || (kind != "item" && kind != "show" && kind != "season") || (role != "poster" && role != "backdrop" && role != "logo") {
+		return nil, ErrAdminQuery
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT c.art_key FROM inventory_artwork_candidates c
+ JOIN inventory_objects o ON o.id=c.object_id AND o.revision=c.source_revision AND o.asset_id=c.asset_id
+ JOIN library_sources s ON s.id=o.source_id
+ WHERE c.entity_id=? AND c.kind=? AND c.role=? AND c.art_key>?
+ AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
+ AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed')
+ ORDER BY c.art_key LIMIT ?`, entity, kind, role, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys := []string{}
+	for rows.Next() {
+		var key string
+		if err = rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}

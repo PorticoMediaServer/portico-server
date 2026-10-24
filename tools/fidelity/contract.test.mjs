@@ -83,3 +83,9 @@ test('physical bounds and incorrect coordinate-unit declarations cannot masquera
   actual.measurement = {renderer: 'react-native', platform: 'android', coordinateUnit: 'pt'};
   assert.ok(validateMeasurement(actual).includes('measurement.coordinateMapping'));
 });
+test('unavailable native paint is one measurement failure rather than an invented material difference', () => {
+  const reference = fixture(), actual = fixture(); reference.elements[0].style.backdropFilter = 'blur(20px)';
+  actual.unavailable = [{element: '0', property: 'backdropFilter', reason: 'Native material observation unavailable'}];
+  const report = compareMeasurements(reference, actual);
+  assert.equal(report.differenceCount, 1); assert.equal(report.differences[0].kind, 'unavailable-measurement');
+});

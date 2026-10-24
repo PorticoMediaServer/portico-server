@@ -108,3 +108,9 @@ when that area is reached. Missing catalogue bindings remain explicit; no copied
 test words, new fallback copy or parallel extractor. The Info domain owner binds
 the resulting published catalogue keys. This queue entry is not a mapping or a
 screen measurement. Relative Browse date and Live Series rules remain excluded.
+
+Matching icon slots establish bounds/style only. The comparator emits an explicit
+`icon.identity/contents` unscored diagnostic; no SVG paths, sprite references or
+artwork bytes are collected. Do not use a slot match to claim the panel close
+glyph is i-close or to justify a closeIcon renderer change. That identity remains
+unmeasurable under the current content-exclusion policy.
