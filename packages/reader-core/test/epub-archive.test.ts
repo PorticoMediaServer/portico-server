@@ -59,6 +59,25 @@ test('EPUB rejects traversal/aliases, encrypted entries, truncated ZIP and decla
   const bomb=await zip({'bomb.xhtml':'a'.repeat(1024*1024)});
   await assert.rejects(openEpubArchive(sourceFromBlob(new Blob([bomb]),'test','1'),new AbortController().signal),{code:'limit_exceeded'});
 });
+test('queued EPUB extraction cancellation rejects before provider IO without retiring the archive',async()=>{
+  const bytes=await zip({'chapter.xhtml':'<html xmlns="http://www.w3.org/1999/xhtml"><body>Actual queued content</body></html>'});
+  const base=sourceFromBlob(new Blob([bytes]),'local-test','revision-1');let gate:Promise<void>|undefined,releaseGate!:()=>void,started!:()=>void,reads=0;
+  const entered=new Promise<void>(done=>started=done);
+  const source={...base,async read(range:import('../src/ports.ts').ReaderRange,signal:AbortSignal){if(gate){reads++;started();await gate;signal.throwIfAborted();}return base.read!(range,signal);}};
+  const lifetime=new AbortController(),archive=await openEpubArchive(source,lifetime.signal);
+  const hold=new Promise<void>(done=>releaseGate=done);gate=hold;
+  const a=archive.read('chapter.xhtml',new AbortController().signal);await entered;
+  const bAbort=new AbortController(),signal=bAbort.signal,add=signal.addEventListener.bind(signal),remove=signal.removeEventListener.bind(signal);let added=0,removed=0;
+  signal.addEventListener=(...args)=>{added++;return add(...args);};signal.removeEventListener=(...args)=>{removed++;return remove(...args);};
+  const b=archive.read('chapter.xhtml',signal),readsBefore=reads;bAbort.abort();
+  try {
+    const outcome=await Promise.race([b.then(()=> 'resolved',error=>error),new Promise(resolve=>setTimeout(()=>resolve('timeout'),100))]);
+    assert.equal(outcome instanceof Error?(outcome as {code?:string}).code:outcome,'aborted');
+    assert.equal(reads,readsBefore);assert.equal(added,1);assert.equal(removed,1);
+    releaseGate();assert.match(new TextDecoder().decode(await a),/Actual queued content/);
+    assert.match(new TextDecoder().decode(await archive.read('chapter.xhtml',new AbortController().signal)),/Actual queued content/);
+  }finally{releaseGate();await a.catch(()=>{});await archive.dispose();}
+});
 test('cancelling one extraction aborts its actual range request without retiring the archive',async()=>{
   const bytes=await zip({'chapter.xhtml':'<html xmlns="http://www.w3.org/1999/xhtml"><body>Actual test content</body></html>'});
   const base=sourceFromBlob(new Blob([bytes]),'local-test','revision-1');let hold=false,entered!:()=>void;
