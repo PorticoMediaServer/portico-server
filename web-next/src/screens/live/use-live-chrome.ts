@@ -52,7 +52,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
       scope: {serverId: session.viewer.serverId, viewerId: JSON.stringify([session.viewer.authority, session.viewer.accountId, session.viewer.profileId])},
       isCurrent: context.isCurrent,
       preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences, subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {})},
-      effects: {reportError: error => {if (context.isCurrent()) context.home.effects.reportError(error);}, openEntry: () => {}, openSettings: () => {}, openHome: () => {}, play: async () => {}}};
+      effects: {reportError: () => {}, openEntry: () => {}, openSettings: () => {}, openHome: () => {}, play: async () => {}}};
   }, [context]);
   const life = useMemo(() => screen ? screenLifetime(screen) : undefined, [screen]);
   const client = useMemo(() => life && screen ? new DVRClient(life.api, screen.scope.serverId, randomHex) : undefined, [life, screen]);
@@ -67,7 +67,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
     if (!screen || !life || !expanded || !fence || !channelRef || !fenceKey) { setFacts(undefined); return; }
     const abort = new AbortController();
     const bindings = createLiveBindings(screen, {kind: channelRef.kind, sourceId: channelRef.sourceId, timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, search: '', sort: 'number'});
-    const source = legacyGuideSource(life.api, context.scope.serverId, {kind: channelRef.kind, sourceId: channelRef.sourceId,
+    const source = legacyGuideSource(life.api, screen.scope.serverId, {kind: channelRef.kind, sourceId: channelRef.sourceId,
       timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, search: '', sort: 'number'});
     const run = async () => {
       const current = await bindings.selectedChannel({sourceId: channelRef.sourceId, channelId: channelRef.channelId, provenance: channelRef.kind}, abort.signal);

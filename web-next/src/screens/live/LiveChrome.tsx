@@ -121,7 +121,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
     </aside>}
     <div className={styles.bottom}>
       <div className={styles.seek}>
-        <div ref={rail} className={styles.rail} role="slider" tabIndex={0} aria-label={t('player.position')}
+        <div ref={rail} className={styles.rail} role="slider" aria-label={t('player.position')}
           aria-valuemin={Math.round(window.seekStartMs / 1000)} aria-valuemax={Math.round(window.liveEdgeMs / 1000)} aria-valuenow={Math.round(displayWindow.positionMs / 1000)}
           aria-disabled={!canSeek || undefined} tabIndex={canSeek ? 0 : -1} aria-valuetext={`${time(displayWindow.positionMs)}${behind ? `, ${behind}` : ''}`} onKeyDown={railKeys}
           onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = true;event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
