@@ -25,6 +25,18 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "analysis_conflict",
+    "status": 409,
+    "message": "This information changed. Refresh and try again.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "analysis_unavailable",
+    "status": 503,
+    "message": "Media analysis is not available for this request.",
+    "retry": "same_request"
+  },
+  {
     "code": "artwork_gone",
     "status": 410,
     "message": "This artwork version is no longer available.",
@@ -343,6 +355,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "invalid_analysis",
+    "status": 400,
+    "message": "Check the request and try again.",
+    "retry": "never"
+  },
+  {
     "code": "invalid_channel_input",
     "status": 400,
     "message": "The playlist or guide could not be used. Check it and try again.",
@@ -407,6 +425,12 @@ export const errors = [
     "status": 403,
     "message": "That invitation was issued to someone else.",
     "retry": "never"
+  },
+  {
+    "code": "library_configuration_conflict",
+    "status": 409,
+    "message": "This information changed. Refresh and try again.",
+    "retry": "after_refresh"
   },
   {
     "code": "media_no_longer_accessible",
