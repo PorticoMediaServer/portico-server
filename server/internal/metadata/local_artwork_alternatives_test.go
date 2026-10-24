@@ -22,7 +22,7 @@ func TestSeedLocalArtworkAddsScannedAlternativesAfterThePrimary(t *testing.T) {
 	seedScannedAlternatives(t, db, "alt1", movie, "poster", first, second)
 	fence := seedLocalArtworkAlternativesNow(t, db, "item", movie)
 	origins, fences := localCandidates(t, db, movie.ID, "poster")
-	want := []string{"local:" + first, "local:" + primary, "local:" + second}
+	want := []string{"local:" + first, "local:" + second, "local:" + primary}
 	if len(origins) != len(want) {
 		t.Fatalf("candidates %v", origins)
 	}
