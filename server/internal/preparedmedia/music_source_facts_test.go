@@ -2,6 +2,7 @@ package preparedmedia
 
 import (
 	"bytes"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,17 +20,43 @@ import (
 func TestMusicSourceFactsDoesNotGuessWavPackModeFromCodecOrTags(t *testing.T) {
 	for _, mode := range []*bool{nil, booleanMusicMode(true), booleanMusicMode(false)} {
 		original := probed{Facts: Facts{AudioCodec: "wavpack"}}
-		got := musicSourceFacts(original, audiotags.Tags{Values: map[string][]string{"lossless": {"true"}}, Lossless: mode})
+		got := musicSourceFacts(original, audiotags.Tags{Values: map[string][]string{"lossless": {"true"}}, Lossless: mode}, 0)
 		if got.AudioLossless != mode {
 			t.Fatal("actual header mode lost", got)
 		}
 	}
-	got := musicSourceFacts(probed{Facts: Facts{AudioCodec: "mp3"}}, audiotags.Tags{Lossless: booleanMusicMode(true)})
+	got := musicSourceFacts(probed{Facts: Facts{AudioCodec: "mp3"}}, audiotags.Tags{Lossless: booleanMusicMode(true)}, 0)
 	if got.AudioLossless != nil {
 		t.Fatal("WavPack metadata claimed another codec lossless")
 	}
 }
 func booleanMusicMode(value bool) *bool { return &value }
+
+func TestMusicWavPackByteRateFallbackIsMeasuredSingleAudioOnly(t *testing.T) {
+	for _, row := range []struct {
+		name                        string
+		duration                    float64
+		size                        int64
+		tracks, video, stream, want int
+	}{
+		{"measured", 1, 8000, 1, 0, 0, 64000},
+		{"known stream rate", 1, 8000, 1, 0, 32000, 32000},
+		{"missing duration", 0, 8000, 1, 0, 0, 0},
+		{"nonfinite duration", math.NaN(), 8000, 1, 0, 0, 0},
+		{"infinite duration", math.Inf(1), 8000, 1, 0, 0, 0},
+		{"missing bytes", 1, 0, 1, 0, 0, 0},
+		{"multiple tracks", 1, 8000, 2, 0, 0, 0},
+		{"video present", 1, 8000, 1, 1, 0, 0},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			input := probed{Facts: Facts{AudioCodec: "wavpack", Duration: row.duration, AudioTracks: row.tracks}, VideoStreams: row.video, AudioBitrateBPS: row.stream}
+			got := musicSourceFacts(input, audiotags.Tags{}, row.size)
+			if got.AudioBitrateBPS != row.want {
+				t.Fatal(got.AudioBitrateBPS, row.want)
+			}
+		})
+	}
+}
 
 func TestMusicWavPackLosslessLowBitrateUsesRequestedActualEncode(t *testing.T) {
 	testtier.Media(t, "generates actual low-bitrate lossless WavPack and exercises prepared encoder")
@@ -65,9 +92,11 @@ func TestMusicWavPackLosslessLowBitrateUsesRequestedActualEncode(t *testing.T) {
 	if measuredByteRate <= 0 || measuredByteRate >= 96000 {
 		t.Fatal("fixture is not low-byte-rate lossless audio", measuredByteRate)
 	}
-	original = musicSourceFacts(original, tags)
+	original = musicSourceFacts(original, tags, int64(len(data)))
 	source := original.recipeSource()
-	source.AudioBitrateBPS = measuredByteRate
+	if source.AudioBitrateBPS != measuredByteRate {
+		t.Fatal("worker and download measured byte-rate disagree", source.AudioBitrateBPS, measuredByteRate)
+	}
 	bridge := httptest.NewServer(http.FileServer(http.Dir(filepath.Dir(path))))
 	defer bridge.Close()
 	for _, codec := range []string{"aac", "opus"} {

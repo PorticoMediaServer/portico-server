@@ -440,7 +440,7 @@ func (s *Service) encodeAndPublish(ctx context.Context, w work, custody *attempt
 		if err != nil {
 			return err
 		}
-		original = musicSourceFacts(original, tags)
+		original = musicSourceFacts(original, tags, input.Size())
 		recipe.Source = original.recipeSource()
 		retainedTags = tags
 		e = s.encodeMusic(ctx, w, custody, source, recipe, progress, tags)
