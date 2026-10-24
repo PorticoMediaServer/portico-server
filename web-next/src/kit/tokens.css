@@ -1137,8 +1137,8 @@
   --spec-hero-synopsis-max-width-tablet: 350px;
   --spec-hero-synopsis-max-width-tv: 800px;
   --spec-hero-actions-gap-web: 12px;
-  --spec-hero-actions-gap-phone: 10px;
-  --spec-hero-actions-gap-tablet: 10px;
+  --spec-hero-actions-gap-phone: 12px;
+  --spec-hero-actions-gap-tablet: 12px;
   --spec-hero-actions-gap-tv: 18px;
   --spec-hero-actions-phone-primary-full-width: 0;
   --spec-hero-actions-progress-height: 4px;
@@ -1242,6 +1242,10 @@
   --spec-card-wide-title: wideTitle;
   --spec-card-wide-scrim-start: 0.45px;
   --spec-card-wide-scrim-alpha: 0.85;
+  --spec-card-wide-facts-gap-web: 12px;
+  --spec-card-wide-facts-gap-phone: 12px;
+  --spec-card-wide-facts-gap-tablet: 12px;
+  --spec-card-wide-facts-gap-tv: 16px;
   --spec-card-progress-height-web: 4px;
   --spec-card-progress-height-phone: 4px;
   --spec-card-progress-height-tablet: 4px;

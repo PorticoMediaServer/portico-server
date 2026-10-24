@@ -19,7 +19,7 @@
 .facts > :first-child { font-weight: 700; color: var(--color-text); }
 .tag { padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(237,245,250,.28); font-size: 13px; font-weight: 600; color: var(--color-text); }
 .overview { color: var(--color-text-secondary); margin: 0 0 28px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; max-width: 540px; }
-.actions { display: flex; gap: 12px; align-items: center; }
+.actions { display: flex; gap: var(--spec-hero-actions-gap-web); align-items: center; }
 .thumbnails { position: absolute; z-index: var(--layer-hero-navigation); right: var(--layout-gutter); bottom: 64px; display: flex; gap: 12px; }
 .thumbnail { border: 0; padding: 0; background: none; color: var(--color-text-secondary); width: 132px; text-align: left; opacity: .62; cursor: pointer; transition: opacity 200ms var(--ease-out); }
 .thumbnail:hover { opacity: .9; }
@@ -40,7 +40,7 @@
 .hero[data-platform^='phone'] .reason { justify-content: center; }
 .hero[data-platform^='phone'] .lockup { margin-bottom: 10px; }
 .hero[data-platform^='phone'] .facts { justify-content: center; gap: 6px 12px; margin-bottom: 18px; }
-.hero[data-platform^='phone'] .actions { justify-content: center; gap: 10px; }
+.hero[data-platform^='phone'] .actions { justify-content: center; gap: var(--spec-hero-actions-gap-phone); }
 .hero[data-platform^='phone'] .overview { display: none; }
 .dots { position: absolute; bottom: 24px; left: 0; right: 0; display: flex; gap: 6px; justify-content: center; }
 .dot { border: 0; padding: 0; height: 6px; width: 6px; border-radius: 3px; background: rgba(237,245,250,.3); cursor: pointer; position: relative; }
@@ -56,7 +56,7 @@
 .hero[data-platform='tv'] .facts { gap: 10px 26px; margin-bottom: 18px; }
 .hero[data-platform='tv'] .tag { font-size: 20px; padding: 3px 12px; border-radius: 8px; border-width: 1.5px; }
 .hero[data-platform='tv'] .overview { -webkit-line-clamp: 2; max-width: 800px; margin-bottom: 30px; }
-.hero[data-platform='tv'] .actions { gap: 18px; }
+.hero[data-platform='tv'] .actions { gap: var(--spec-hero-actions-gap-tv); }
 .tvScrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,16,24,.86) 0%, rgba(7,16,24,.62) 30%, rgba(7,16,24,.12) 56%, rgba(7,16,24,0) 70%); }
 .preview { position: relative; }
 .preview .slide { transition-duration: var(--motion-slow); }
