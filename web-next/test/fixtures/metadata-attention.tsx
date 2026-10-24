@@ -28,7 +28,9 @@ const entries = [
 ];
 const total = entries.length;
 // A read-only attention page; every command is inert so the specimen cannot pretend to work.
-const api = {request: async <T,>() => ({libraryId: 'library', total, entries, nextCursor: ''}) as T};
+// ?empty draws frame 4's done state; the drawn pending row above already draws its working state.
+const empty = new URLSearchParams(location.search).has('empty');
+const api = {request: async <T,>() => ({libraryId: 'library', total: empty ? 0 : total, entries: empty ? [] : entries, nextCursor: ''}) as T};
 function Specimen() {
   return <div style={{padding: '32px', maxWidth: 1000}}><IconSprite /><NeedsAttention libraryId="library" api={api} /></div>;
 }
