@@ -7,6 +7,7 @@ import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {router} from '../../router';
 import {WebScreenProvider} from '../../route-registry-view';
 import {ShellBindingsProvider, type ShellBindings} from '../../shell/bindings';
+import {FreshnessProvider} from '../../platform/freshness';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {createOwnerActivity} from '../../shell/Activity';
 import type {ShellIdentity} from '../../shell/Shell';
@@ -93,11 +94,13 @@ const context = contextBase;
 
 router.update({history: createMemoryHistory({initialEntries: [`/item/${specimen.itemId}`]})});
 createRoot(document.getElementById('root')!).render(
-  <WebScreenProvider value={{binding, context}}>
-    <DetailReady />
-    <IconSprite />
-    <ShellBindingsProvider value={binding}>
-      <RouterProvider router={router} />
-    </ShellBindingsProvider>
-  </WebScreenProvider>,
+  <FreshnessProvider api={specimen.api} viewerId={specimen.personalFence} serverId={specimen.serverId} events={specimen.events}>
+    <WebScreenProvider value={{binding, context}}>
+      <DetailReady />
+      <IconSprite />
+      <ShellBindingsProvider value={binding}>
+        <RouterProvider router={router} />
+      </ShellBindingsProvider>
+    </WebScreenProvider>
+  </FreshnessProvider>,
 );

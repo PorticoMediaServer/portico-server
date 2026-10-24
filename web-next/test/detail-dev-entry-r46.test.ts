@@ -112,6 +112,7 @@ test('the entry loads the registered production route through genuine providers 
   const entry = read('../src/dev/entries/detail.tsx'), html = read('../src/dev/entries/detail.html');
   assert.match(entry, /if \(!import\.meta\.env\.DEV\) throw new Error/);
   assert.match(entry, /createMemoryHistory\(\{initialEntries: \[`\/item\/\$\{specimen\.itemId\}`\]\}\)/);
+  assert.match(entry, /<FreshnessProvider api=\{specimen\.api\} viewerId=\{specimen\.personalFence\} serverId=\{specimen\.serverId\} events=\{specimen\.events\}>/);
   assert.match(entry, /<WebScreenProvider value=\{\{binding, context\}\}>/);
   assert.match(entry, /<ShellBindingsProvider value=\{binding\}>/);
   assert.match(entry, /<RouterProvider router=\{router\} \/>/);
