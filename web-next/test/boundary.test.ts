@@ -160,3 +160,9 @@ test('a nested src/dev path outside the app DEV root is not a DEV importer', t =
   f.write('screens/src/dev/spoof.ts', `import privateArt from '${importSpec(file, privateAsset(f.repo))}';`);
   assert.match(f.lint().join('\n'), /screens\/src\/dev\/spoof\.ts: unresolved local import/);
 });
+test('a DEV importer cannot escape the fixed private asset root', t => {
+  const f = fixture(t), file = join(f.src, 'dev/families/artwork.tsx');
+  const escaped = importSpec(file, privateAsset(f.repo)).replace(/missing\.jpg\?url$/, '../../outside.ts?url');
+  f.write('dev/families/artwork.tsx', `import outside from '${escaped}';`);
+  assert.match(f.lint().join('\n'), /dev\/families\/artwork\.tsx: unresolved local import/);
+});

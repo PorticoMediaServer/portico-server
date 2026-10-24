@@ -74,7 +74,7 @@ function cssImports(text) {
 }
 export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, paths} = {}) {
   repo = resolve(repo); app = resolve(app);
-  const old = resolve(repo, 'web'), oldReal = canonical(old), devRoot = resolve(app, 'src/dev'), devRootReal = canonical(devRoot), failures = [], visited = new Set();
+  const old = resolve(repo, 'web'), oldReal = canonical(old), devRoot = resolve(app, 'src/dev'), devRootReal = canonical(devRoot), privateAssets = resolve(repo, '../../design-ui-v1/design/ui-v1/assets'), privateAssetsReal = canonical(privateAssets), failures = [], visited = new Set();
   const configPaths = paths ?? JSON.parse(readFileSync(resolve(app, 'tsconfig.json'), 'utf8')).compilerOptions.paths;
   const aliases = Object.entries(configPaths).map(([key, values]) => ({key: key.replace(/\/\*$/, ''), star: key.endsWith('/*'), target: resolve(app, values[0].replace(/\/\*$/, ''))})).sort((a, b) => b.key.length - a.key.length);
   function reject(path, from, specifier) {
@@ -112,7 +112,7 @@ export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, pa
       // importer inside the app's real src/dev tree gets that allowance.
       const fromReal = canonical(from);
       const devImporter = relative(app, from).startsWith(`src${sep}dev${sep}`) && (fromReal === devRootReal || fromReal.startsWith(devRootReal + sep));
-      const devAsset = /^(?:\.\.\/)+design-ui-v1\/design\/ui-v1\/assets\//.test(spec);
+      const devAsset = within(privateAssets, target) && within(privateAssetsReal, canonical(target));
       if (!existsSync(target) && devImporter && devAsset) return;
       failures.push(`${relative(repo, from)}: unresolved local import ${spec}`); return;
     }
