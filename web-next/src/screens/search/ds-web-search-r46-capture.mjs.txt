@@ -6,10 +6,13 @@ import {createServer} from 'vite';
 const output = process.env.PORTICO_RUNNER_OUTPUT;
 const design = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
 if (!output || !design) throw new Error('Run on the runner with --browser and the design secondary source.');
-const require = createRequire(join(process.env.PORTICO_BROWSER_TOOLS_DIR ?? '', 'loader.cjs'));
+await writeFile(join(output, 'capture.log'), '{"kind":"capture started"}\n', {mode: 0o600});
 let chromium;
-try { ({chromium} = require('playwright-core')); }
-catch { ({chromium} = await import(process.env.PORTICO_BROWSER_MODULE)); }
+if (process.env.PORTICO_BROWSER_TOOLS_DIR) {
+  try { ({chromium} = createRequire(join(process.env.PORTICO_BROWSER_TOOLS_DIR, 'loader.cjs'))('playwright-core')); } catch {}
+}
+if (!chromium && process.env.PORTICO_BROWSER_MODULE) ({chromium} = await import(process.env.PORTICO_BROWSER_MODULE));
+if (!chromium) throw new Error('No Playwright browser module was supplied.');
 const mime = {'.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2'};
 const server = await createServer({root: resolve('web-next'), configFile: resolve('web-next/vite.config.ts'), cacheDir: join(process.env.TMPDIR, 'search-vite'),
   server: {host: '127.0.0.1', port: 0, strictPort: false}});
