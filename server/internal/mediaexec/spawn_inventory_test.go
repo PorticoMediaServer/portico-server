@@ -50,7 +50,6 @@ var processSpawns = map[string]string{
 	"internal/mounts/native.go:NativeHelper":                     "rclone, inside the native helper, for a managed network mount",
 	"internal/mounts/native.go:runOwned":                         "rclone native helper (server binary)",
 	"internal/mounts/native.go:approveExecutable":                "rclone version, to approve the configured executable",
-	"internal/mounts/native.go:validateCandidate":                "rclone native helper (server binary)",
 	"internal/mounts/guardian.go:Guardian":                       "rclone under the guardian",
 	"internal/rcloneprogram/command_other.go:versionCommand":     "fixed rclone version probe; Check bounds runtime/output and applies childprocess cleanup; no media input",
 	"internal/rcloneprogram/command_windows.go:versionCommand":   "fixed rclone version probe, including a selected .cmd/.bat wrapper; same Check bounds and childprocess cleanup; no media input",

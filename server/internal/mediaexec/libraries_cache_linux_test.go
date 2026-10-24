@@ -210,6 +210,17 @@ func TestLibraryClosureCacheRejectsRestoredTimestamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = ResolveLibraries(tool, tool, nil); err == nil {
+		after, statErr := os.Stat(tool)
+		key := tool + "\x00" + tool
+		libraryClosures.Lock()
+		cached := libraryClosures.entries[key]
+		libraryClosures.Unlock()
+		if cached != nil {
+			t.Logf("cached generation: entry=%+v target=%+v watchUnchanged=%v", cached.watch[tool].entry.Sys(), cached.watch[tool].target.Sys(), cached.watch.unchanged())
+		}
+		if statErr == nil {
+			t.Logf("original generation=%+v current generation=%+v", before.Sys(), after.Sys())
+		}
 		t.Fatal("same-size restored-mtime replacement retained its cached ELF closure")
 	}
 }

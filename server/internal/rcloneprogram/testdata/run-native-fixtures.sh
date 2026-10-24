@@ -83,7 +83,7 @@ docker build --network=host --label portico=remote-sources-r40 --label "portico.
 export PORTICO_SAMBA_TEST_IMAGE="$(cat "$fixture_scratch/samba-image")"
 if test "${PORTICO_NATIVE_SAVE_ONLY_TEST:-}" = 1; then
     go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
-        ./internal/remotesources -run '^TestNativeSavedNASConnectionAndForbiddenEdits$'
+        ./internal/remotesources -run '^Test(NativeSavedNASConnectionAndForbiddenEdits|ImportedSavedPrivateEndpointsAndCryptOrigin)$'
     exit 0
 fi
 go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \

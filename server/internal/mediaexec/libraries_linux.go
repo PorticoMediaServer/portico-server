@@ -3,6 +3,7 @@
 package mediaexec
 
 import (
+	"crypto/sha256"
 	"debug/elf"
 	"errors"
 	"io"
@@ -20,6 +21,7 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 		return cached, nil
 	}
 	watch := libraryWatch{}
+	metadataBudget := &libraryMetadataBudget{}
 	allowed := map[string]bool{}
 	seen := map[string]bool{}
 	defaults := []string{"/lib/x86_64-linux-gnu", "/usr/lib/x86_64-linux-gnu", "/lib/aarch64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/lib64", "/usr/lib64", "/lib", "/usr/lib", "/usr/local/lib"}
@@ -61,7 +63,17 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 			return nil
 		}
 		seen[real] = true
-		f, e := elf.Open(real)
+		input, e := openLibraryMetadataFile(real)
+		if e != nil {
+			return e
+		}
+		defer input.Close()
+		info, e := input.Stat()
+		if e != nil || !info.Mode().IsRegular() {
+			return ErrInvalidJob
+		}
+		metadata := &libraryMetadataReader{file: input, budget: metadataBudget, sum: sha256.New()}
+		f, e := elf.NewFile(metadata)
 		if e != nil {
 			return e
 		}
@@ -122,6 +134,9 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 				return e
 			}
 		}
+		node := watch[real]
+		node.metadata = metadata.snapshot()
+		watch[real] = node
 		return nil
 	}
 	for _, p := range []string{ffmpeg, ffprobe} {
