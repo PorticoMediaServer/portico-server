@@ -13,12 +13,14 @@ test('control text and its run rectangles use the same descendant scope', () => 
   assert.ok(compareScreens(spec([control]), spec([{...wrapped, descendantTextRects: [{...runs[0], x: 13}]}])).differences.some(value => value.property === 'textRun.0.x'));
 });
 
-test('anchored child parts own their text; parent DOM ordering does not duplicate it', () => {
+test('only an explicit content recipe delegates aggregate text to measured child parts', () => {
   const root = node('screen', {ownText: '', normalizedText: 'One Two', anchoredDescendants: true});
   const children = [node('first', {parent: 'screen', ownText: 'One'}), node('second', {parent: 'screen', ownText: 'Two'})];
-  assert.equal(compareScreens(spec([root, ...children]), spec([{...root, normalizedText: 'Two One'}, ...children])).verdict, 'PASS');
+  const adapter = {textHandledBySlots: ['screen']};
+  assert.equal(compareScreens(spec([root, ...children]), spec([{...root, normalizedText: 'Two One'}, ...children]), adapter).verdict, 'PASS');
+  assert.ok(compareScreens(spec([root, ...children]), spec([{...root, normalizedText: 'Two One'}, ...children])).differences.some(value => value.property === 'text'));
   const changed = children.map(value => value.frame === 'second' ? {...value, ownText: 'Wrong'} : value);
-  assert.ok(compareScreens(spec([root, ...children]), spec([root, ...changed])).differences.some(value => value.property === 'text' && value.label === 'second'));
+  assert.ok(compareScreens(spec([root, ...children]), spec([root, ...changed]), adapter).differences.some(value => value.property === 'text' && value.label === 'second'));
 });
 
 test('unanchored parts stay within their matched semantic ancestor across wrapper depths', () => {

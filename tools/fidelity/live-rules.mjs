@@ -48,7 +48,9 @@ export const liveRules = {
     'keep-control': 'aside button[role="combobox"][aria-label="Keep"]', 'early-control': 'aside button[role="combobox"][aria-label="Start early"]', 'late-control': 'aside button[role="combobox"][aria-label="End late"]',
     'coming-up': 'aside h3', footer: 'aside > footer',
     ...Object.fromEntries(['save', 'cancel', 'delete'].flatMap((name, index) => [[name + '-action', `aside > footer > button:nth-child(${index + 1})`], [name + '-action-label', `aside > footer > button:nth-child(${index + 1}) > span[class*="_buttonLabel_"]`]]))},
-  textHandledBySlots: ['save-action', 'cancel-action', 'delete-action'],
+  // Independently anchored parts and the complete exact string inventory cover
+  // these two containers; the absolute decorative monogram has a different DOM order.
+  textHandledBySlots: ['screen', 'panel', 'save-action', 'cancel-action', 'delete-action'],
   actualContentOnly: ['save-action-label', 'cancel-action-label', 'delete-action-label'],
   contentSlots: ['save', 'cancel', 'delete'].map(name => ({reference: name + '-action', actual: name + '-action-label'})),
   repeats: {
