@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {ReaderController} from '../src/controller.ts';
+import {ReaderError} from '../src/errors.ts';
 import type {ReaderAdapter, ReaderDocument, ReaderMount, ReaderView} from '../src/ports.ts';
 
 type Prefs = {theme: string; textSize: number; twoPages: boolean};
@@ -86,6 +87,18 @@ test('search limits results and is fenced by session close; stale locations are 
   await assert.rejects(iter.next());
   const snapshot = f.controller.getSnapshot(); f.mount.onLocation({...location, progression: 1});
   assert.equal(snapshot, f.controller.getSnapshot());
+});
+test('external search cancellation rejects a late engine result without waiting for it',async()=>{
+  const f=fixture(),abort=new AbortController(),release=deferred<void>();let entered=false;
+  f.document.search=async function*(){entered=true;yield {id:'first',excerpt:'Actual quotation',location};await release.promise;yield {id:'late',excerpt:'Actual quotation',location};};
+  await f.controller.open({source,format:'epub',container});
+  const iter=f.controller.search('quote',{signal:abort.signal,limit:5})[Symbol.asyncIterator]();
+  try {
+    assert.equal((await iter.next()).value?.id,'first');assert.equal(entered,true);
+    const pending=iter.next();abort.abort();
+    const outcome=await Promise.race([pending.then(()=> 'resolved',error=>error),new Promise(resolve=>setTimeout(()=>resolve('timeout'),100))]);
+    assert.ok(outcome instanceof ReaderError);assert.equal(outcome.code,'aborted');
+  }finally{release.resolve();await new Promise(resolve=>setImmediate(resolve));await f.controller.close();}
 });
 test('opening errors expose codes and no arbitrary exception text; cleanup covers view failure', async () => {
   const f = fixture(); f.adapter.open = async () => {throw new Error('private URL/token must not be snapshot copy');};
