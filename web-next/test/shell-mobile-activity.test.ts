@@ -66,12 +66,14 @@ function find(node: ReactNode, predicate: (element: ReactElement<Record<string, 
   }
 }
 
-test('compact owner Home has one statically labelled Activity glyph beside the avatar without mounting private Activity reads', () => {
+test('compact owner Home keeps the drawn wordmark and avatar without an Activity glyph or private reads', () => {
   for (const width of [390, 599]) {
     const {html, mounts} = render('owner', width);
     assert.equal(mounts, 0);
-    assert.match(html, /<header[^>]*>.*class="phoneTools".*aria-label="Server activity".*i-activity.*aria-label="Actual profile, account menu"/s);
-    assert.equal((html.match(/aria-label="Server activity"/g) ?? []).length, 1);
+    const header = html.match(/<header class="phoneHeader"[^>]*>.*?<\/header>/s)?.[0];
+    assert.ok(header);
+    assert.match(header, /class="brand".*<img[^>]*src="\/wordmark.svg".*class="phoneTools".*aria-label="Actual profile, account menu"/s);
+    assert.doesNotMatch(html, /phoneActivity|i-activity|aria-label="Server activity"|data-nav-activity/);
     assert.doesNotMatch(html, /Owner-only reads|data-busy|streamCount|updateDot|Running normally|No streams/);
     assert.match(html, />Libraries<\/span>/);
   }
@@ -113,10 +115,14 @@ test('real AccountMenu places its optional server action immediately after profi
   const noSlot = {...menu, serverAction: undefined};
   assert.equal(find(AccountMenu(noSlot), element => element === menu.serverAction), undefined);
 });
-test('header Activity exposes a plain named Dashboard action with no popover or status state', () => {
-  const {html} = render('owner');
-  assert.match(html, /<button type="button" class="phoneActivity" aria-label="Server activity"/);
-  assert.doesNotMatch(html.match(/<button type="button" class="phoneActivity"[^>]*>/)?.[0] ?? '', /aria-haspopup|aria-expanded|aria-pressed/);
+test('compact Home keeps its account action and tab navigation without a private Activity control', () => {
+  const {html, mounts} = render('owner');
+  const header = html.match(/<header class="phoneHeader"[^>]*>.*?<\/header>/s)?.[0];
+  assert.ok(header);assert.equal(mounts, 0);
+  assert.equal((header.match(/<button\b/g) ?? []).length, 1);
+  assert.match(header, /aria-label="Actual profile, account menu"/);
+  assert.match(html, /<nav[^>]*class="tabbar"[^>]*>.*href="\/search".*href="\/libraries".*href="\/saved"/s);
+  assert.doesNotMatch(html, /phoneActivity|i-activity|aria-label="Server activity"|data-nav-activity|Owner-only reads/);
 });
 test('desktop retains only its existing real owner Activity component and non-Home mobile routes add no header glyph', () => {
   assert.equal(render('owner', 1024).mounts, 1);
