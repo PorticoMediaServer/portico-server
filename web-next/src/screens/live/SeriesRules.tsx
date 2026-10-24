@@ -58,7 +58,7 @@ export function SeriesRules({view, navigation, busy = false, error, tail, onGuid
     sourceName={view.sourceName} channels={view.channelCount === undefined ? undefined : t('player.info.channels', {count: view.channelCount})} through={view.guideThrough === undefined ? undefined : t('next.live.guideThrough', {day: view.guideThrough})} navigation={navigation}>
     <LiveRecordingTabs view="recordings" conflicts={view.conflictCount} onChange={value => {if (value === 'guide') onGuide?.();}}/>
     <div className={styles.recordingBar}><div className={styles.chips} aria-label={t('recordings.title')}>
-      {views.map(item => <Chip className={styles.chip} key={item.id} selected={item.id === 'rules'} count={item.count} onClick={() => onView?.(item.id)}>{item.label}</Chip>)}
+      {views.map(item => <Chip className={styles.chip} key={item.id} selected={item.id === 'rules'} count={item.count} onClick={onView ? () => onView(item.id) : undefined}>{item.label}</Chip>)}
     </div>{view.storage && <RecordingStorage used={t('next.live.storageUsed', {amount: view.storage.used})} free={t('next.live.storageFree', {amount: view.storage.free})}
       remaining={t('next.live.storageLeft', {hours: view.storage.hoursLeft})} label={t('next.live.storageLabel', view.storage)} fraction={view.storage.used / (view.storage.used + view.storage.free)}/>}</div>
     <div className={styles.body}><div className={styles.rules}>{state.rules.map(rule => <RuleCard key={rule.id} title={rule.title} glyph={rule.glyph} tone={rule.tone}
