@@ -26,12 +26,14 @@ type ReadingResource struct {
 	Size int64  `json:"size"`
 }
 type ReadingItem struct {
-	ID                 string        `json:"id"`
-	LibraryID          string        `json:"libraryId"`
-	Title              string        `json:"title"`
-	Format             ReadingFormat `json:"format"`
-	SourceID           string        `json:"sourceId"`
-	InventoryAvailable bool          `json:"inventoryAvailable"`
+	ID                 string         `json:"id"`
+	LibraryID          string         `json:"libraryId"`
+	Title              string         `json:"title"`
+	Format             ReadingFormat  `json:"format"`
+	SourceID           string         `json:"sourceId"`
+	InventoryAvailable bool           `json:"inventoryAvailable"`
+	Author             *ReadingAuthor `json:"author,omitempty"`
+	Series             *ReadingSeries `json:"series,omitempty"`
 }
 type ReadingItemsResponse struct {
 	Items      []ReadingItem `json:"items"`
