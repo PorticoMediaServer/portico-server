@@ -172,6 +172,13 @@ func goldenBrowseExtension(t *testing.T, f *goldenFixture, c goldenCase, want st
 		for _, v := range next {
 			field := v.(map[string]any)
 			id := field["id"]
+			// The approved relative-date vocabulary adds this operator to
+			// these three existing date fields. Preserve every recorded
+			// operator and all unrelated capability facts exactly.
+			switch id {
+			case "releaseDate", "dateAdded", "lastPlayedAt":
+				field["operators"] = append([]any{"within-last-days"}, field["operators"].([]any)...)
+			}
 			if id == "actor" || id == "director" || id == "writer" {
 				field["controlHint"] = "facet-multi-select"
 				field["facetSource"] = map[string]any{"endpoint": "/v1/libraries/{id}/facets", "field": id}
