@@ -22,7 +22,7 @@ export function AccountSignInView({entry, form, takeReturn, initialize = true, i
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), started = useRef(false), alive = useRef(true);
   const [recovery, setRecovery] = useState<Readonly<{username: string; file?: ResetFileLocation; writtenAt?: number}>>();
   const recoveryRun = useRef(0);
-  useEffect(() => entry.subscribeAuthorityRetired(() => setRecovery(undefined)), [entry]);
+  useEffect(() => entry.subscribeAuthorityRetired(() => {setRecovery(undefined);setError(undefined);}), [entry]);
   const pageOrigin = initialOrigin ?? import.meta.env.VITE_SERVER_URL ?? location.origin;
   useEffect(() => {
     alive.current = true;
@@ -60,7 +60,7 @@ export function AccountSignInView({entry, form, takeReturn, initialize = true, i
   if (state.phase === 'owner-reset-password' && state.ownerReset && state.server?.signIn === 'local') return <OwnerResetPassword key={JSON.stringify([state.server.id, state.ownerReset])}
     serverName={state.server.name} username={state.ownerReset.username} twoStepEnabled={state.ownerReset.twoStepEnabled} busy={busy} error={failure} onSubmit={(password, turnOff) => {
       const epoch = recoveryRun.current;
-      void finishOwnerResetAndSignIn(entry, form, password, turnOff, () => alive.current && recoveryRun.current === epoch).catch(failure => {if (alive.current) setError(failure);});
+      void finishOwnerResetAndSignIn(entry, form, password, turnOff, () => alive.current && recoveryRun.current === epoch).catch(failure => {if (alive.current && recoveryRun.current === epoch) setError(failure);});
     }} />;
   if (recovery && state.phase === 'password' && state.server?.signIn === 'local') {
     if (recovery.file && recovery.writtenAt !== undefined) return <OwnerResetFile key={recovery.writtenAt} serverName={state.server.name} location={recovery.file} writtenAt={recovery.writtenAt} busy={busy} error={failure}

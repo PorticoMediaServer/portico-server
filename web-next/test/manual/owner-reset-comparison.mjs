@@ -65,6 +65,7 @@ try {
     await waitFor(`document.querySelector(${JSON.stringify(ref)}).getBoundingClientRect().width===1440`);
     const bounds = await evaluate(`(() => {const r=document.querySelector(${JSON.stringify(ref)}).getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY};})()`);
     const referenceMetrics = await metrics(`${ref} .au h1`, ref);
+    const referenceStrength = frame === '20c' ? await metrics(`${ref} .str`, ref) : undefined;
     const left = await screenshot({...bounds, width: 720, height: 900});
     await navigate(`${origin}/src/dev/entries/accounts.html?frame=${frame}`, '[data-account-specimen] h1');
     if (frame === '20c') {
@@ -77,13 +78,14 @@ try {
     }
     await pause(100);
     const buildMetrics = await metrics('[data-auth-content] h1', '[data-account-specimen]');
+    const strengthMetrics = frame === '20c' ? await metrics('[data-auth-content] [data-level]', '[data-account-specimen]') : undefined;
     const strength = frame === '20c' ? await evaluate('({bars:document.querySelector("[data-level]")?.dataset.level,label:document.querySelector("[data-level]")?.textContent,inputCharacters:document.querySelector(\'input[name="new-password"]\').value.length})') : undefined;
     const right = await screenshot({x: 0, y: 0, width: 720, height: 900});
     const pair = `<!doctype html><html><head><style>*{box-sizing:border-box}html,body{margin:0;width:1440px;height:900px;overflow:hidden}body{display:flex}img{display:block;width:720px;height:900px;flex:none}</style></head><body><img src="data:image/jpeg;base64,${left}"><img src="data:image/jpeg;base64,${right}"></body></html>`;
     await evaluate(`document.open();document.write(${JSON.stringify(pair)});document.close()`);
     await waitFor('[...document.images].every(image=>image.complete && image.naturalWidth===720)');
     await writeFile(path.join(output, `owner-${frame}-pair.jpg`), Buffer.from(await screenshot({x: 0, y: 0, width: 1440, height: 900}), 'base64'));
-    console.log(JSON.stringify({frame, reference: referenceMetrics, build: buildMetrics, strength}));
+    console.log(JSON.stringify({frame, reference: referenceMetrics, build: buildMetrics, referenceStrength, strengthMetrics, strength}));
   }
   assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
 } finally {

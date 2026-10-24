@@ -278,3 +278,13 @@
   .ownerResetFactor .phoneRecoveryCopy { display: block; }
   .ownerResetQuiet { margin-top: 10px; font-size: 12.5px; }
 }
+/* Frame20b/20c corrections measured in native-size Chrome comparisons. */
+.resetFileContent > .eyebrow, .ownerResetContent > .eyebrow { margin-bottom: 14px; }
+.resetFileContent .localRecoveryBack { margin-top: 18px; }
+.resetFileActions { align-items: center; }
+.resetFileActions button:first-child:disabled { background: color-mix(in srgb, var(--color-text) 16%, transparent); color: var(--color-text-tertiary); opacity: .42; }
+.resetFileActions button:last-child { --control-height: var(--spec-button-hero-height-web); --control-inset: 14px; font-size: var(--type-button-size); }
+.ownerResetPasswordField [data-level] { min-height: var(--type-caption-line); }
+@media (max-width: 700px) {
+  .resetFileActions button:last-child { --control-height: auto; --control-inset: 0; font-size: 14px; }
+}
