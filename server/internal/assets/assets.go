@@ -52,19 +52,21 @@ type Facts struct {
 	// ArtworkExtra carries sidecar cache keys (localmetadata.ReadSidecars:
 	// "show/poster", "season/2/poster", "artist/portrait", "item/logo",
 	// "album/cover") for the catalog commit to write as local_artwork rows.
-	ArtworkExtra           map[string]string  `json:"-"`
-	LocalMetadataIssue     string             `json:"-"`
-	ObservedSize           int64              `json:"-"`
-	ObservedModifiedNS     int64              `json:"-"`
-	Container              string             `json:"container"`
-	VideoCodec             string             `json:"videoCodec"`
-	AudioCodec             string             `json:"audioCodec"`
-	Width                  int                `json:"width"`
-	Height                 int                `json:"height"`
-	Duration               float64            `json:"duration"`
-	BitRate                int64              `json:"-"`
-	AudioEvidence          []AudioTagEvidence `json:"-"`
-	AnalysisSourceEvidence string             `json:"-"`
+	ArtworkExtra              map[string]string       `json:"-"`
+	ArtworkCandidates         []LocalArtworkCandidate `json:"-"`
+	ArtworkCandidatesObserved bool                    `json:"-"`
+	LocalMetadataIssue        string                  `json:"-"`
+	ObservedSize              int64                   `json:"-"`
+	ObservedModifiedNS        int64                   `json:"-"`
+	Container                 string                  `json:"container"`
+	VideoCodec                string                  `json:"videoCodec"`
+	AudioCodec                string                  `json:"audioCodec"`
+	Width                     int                     `json:"width"`
+	Height                    int                     `json:"height"`
+	Duration                  float64                 `json:"duration"`
+	BitRate                   int64                   `json:"-"`
+	AudioEvidence             []AudioTagEvidence      `json:"-"`
+	AnalysisSourceEvidence    string                  `json:"-"`
 }
 type Source struct {
 	ID string `json:"id"`

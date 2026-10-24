@@ -115,7 +115,7 @@ func selectionSQL(q Query, at time.Time) (string, []any, error) {
 	if node, e := q.filterNode("query.filter"); e != nil {
 		return "", nil, ErrInvalid
 	} else if node != nil {
-		where, filterArgs, e := catalog.CompileCompactBrowseSelection(node)
+		where, filterArgs, e := catalog.CompileCompactBrowseSelection(node, at)
 		if e != nil {
 			return "", nil, ErrInvalid
 		}

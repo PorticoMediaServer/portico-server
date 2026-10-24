@@ -12,7 +12,7 @@ export type BrowseControlHint='toggle'|'select'|'number-range'|'date-range'|'fac
 export type BrowseComplexity='quick'|'standard'|'advanced';
 export type BrowseCost='indexed'|'indexed-join';
 export type BrowseDirection='asc'|'desc';
-export type BrowseOperator='equals'|'not-equals'|'contains'|'starts-with'|'in'|'not-in'|'less-than'|'at-most'|'greater-than'|'at-least'|'between'|'is-present'|'is-missing'|'contains-any'|'contains-all';
+export type BrowseOperator='equals'|'not-equals'|'contains'|'starts-with'|'in'|'not-in'|'less-than'|'at-most'|'greater-than'|'at-least'|'within-last-days'|'between'|'is-present'|'is-missing'|'contains-any'|'contains-all';
 export type BrowseScalar=string|number|boolean;
 export type BrowseNode=
  |Readonly<{all:readonly BrowseNode[]}>
@@ -53,7 +53,7 @@ export type BrowseFacetPage=Readonly<{field:string;total:number;values:readonly 
 export type BrowseRequestBody=Readonly<{pivot?:string;query?:BrowseNode;sort?:readonly BrowseSortSelection[];limit?:number;cursor?:string;range?:BrowseRange;seek?:BrowseSeek;homeRowDisplay?:string}>;
 
 const hints:readonly string[]=['toggle','select','number-range','date-range','facet-multi-select','text'];
-const operators:readonly string[]=['equals','not-equals','contains','starts-with','in','not-in','less-than','at-most','greater-than','at-least','between','is-present','is-missing','contains-any','contains-all'];
+const operators:readonly string[]=['equals','not-equals','contains','starts-with','in','not-in','less-than','at-most','greater-than','at-least','within-last-days','between','is-present','is-missing','contains-any','contains-all'];
 const types:readonly string[]=['string','enum','number','date','boolean','identity-set'];
 const listOperators:readonly string[]=['in','not-in','between','contains-any','contains-all'];
 const presenceOperators:readonly string[]=['is-present','is-missing'];
@@ -116,6 +116,10 @@ export function parseBrowseNode(v:unknown,depth=0,path='query'):BrowseNode{
   if(Object.keys(v).length!==3||!id(v.field)||!str(v.operator,64)||!operators.includes(v.operator))bad();
   const operator=v.operator as BrowseOperator;
   const value=v.value;
+  if(operator==='within-last-days'){
+   if(!Number.isInteger(value)||typeof value!=='number'||value<1||value>36500)bad();
+   return {field:v.field,operator,value};
+  }
   if(presenceOperators.includes(operator)){if(value!==null&&value!==undefined)bad();return {field:v.field,operator,value:null};}
   if(Array.isArray(value)){
    if(!listOperators.includes(operator)||value.length<1||value.length>100||(operator==='between'&&value.length!==2))bad();
@@ -311,6 +315,10 @@ export function validateBrowseQuery(capabilities:BrowseCapabilities,node:BrowseN
   if(!field)throw new BrowseQueryError(path+'.field',`This library cannot filter on ${node.field}.`);
   if(!field.operators.includes(node.operator))throw new BrowseQueryError(path+'.operator',`${node.operator} is not available for ${node.field}.`);
   const value=node.value;
+  if(node.operator==='within-last-days'){
+   if(field.type!=='date'||typeof value!=='number'||!Number.isInteger(value)||value<1||value>36500)throw new BrowseQueryError(path+'.value','Choose 1 to 36500 whole days.');
+   return;
+  }
   if(presenceOperators.includes(node.operator)){
    if(value!==null)throw new BrowseQueryError(path+'.value','Presence filters take no value.');
    return;

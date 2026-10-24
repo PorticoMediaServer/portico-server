@@ -801,6 +801,11 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 			return err
 		}
 	}
+	if policy.Allows("local_metadata") && f.ArtworkCandidatesObserved && (kind == "movie" || kind == "tv" || kind == "anime") {
+		if err = s.commitInventoryArtworkCandidatesTx(ctx, tx, source, object, revision, asset, kind, f.ArtworkCandidates); err != nil {
+			return err
+		}
+	}
 	if sidecarObservation != nil {
 		if err = settleSidecarRead(ctx, tx, source.LibraryID, sidecarObservation); err != nil {
 			return err
