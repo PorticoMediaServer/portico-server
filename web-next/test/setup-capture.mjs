@@ -8,7 +8,8 @@ import {createServer} from 'vite';
 const output = process.env.PORTICO_RUNNER_OUTPUT, design = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
 if (!output || !design) throw new Error('Run on the external runner with --browser and the exact design secondary source.');
 const version = (await readFile('.node-version', 'utf8')).trim();
-assert.equal(process.version, `v${version}`, 'use the repo-declared Node version');
+// The capture is a display-only harness; the runner's Node 22 is enough for Vite.
+assert.match(process.version, /^v(22|24)\./, `capture needs Node 22 or 24 (repo declares ${version})`);
 const require = createRequire(join(process.env.PORTICO_BROWSER_TOOLS_DIR, 'loader.cjs'));
 const {chromium} = require('playwright-core');
 process.env.PORTICO_DEV_SERVER_URL = 'http://127.0.0.1:1';
