@@ -6,9 +6,41 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"portico.local/server/internal/compactcatalog"
 )
+
+// The physical directory scope and the root path guard are one predicate on
+// every platform. inventory_objects.directory_path and .relative_path hold
+// native separators, and catalog_assets.path is filepath.Join(root, relative),
+// so these bindings use the platform separator instead of a hard-coded slash.
+// ReadingPathFolderEvidence keeps comparing the logical slash key; stored paths
+// are never normalized.
+const (
+	readingDirectoryScopeSQL = `(o.directory_path=?3 OR (?4<>'' AND o.directory_path>=?4 AND o.directory_path<?5))`
+	readingDirectoryPathSQL  = `a.path=?6||o.relative_path`
+)
+
+// readingDirectoryBindings returns the exact-directory match, the prefix range
+// covering descendants, and the exact root prefix for the path guard. logical
+// is the slash-normalized ReadingDirectoryKey and directory is the native
+// folder the walk reported for it.
+func readingDirectoryBindings(logical, directory, resolvedRoot, separator string) (base, lower, upper, rootPrefix string) {
+	base = directory
+	if logical != "" {
+		base = filepath.FromSlash(logical)
+		lower = base + separator
+		// The next byte after the separator bounds only descendants: a sibling
+		// whose name continues the same text sorts below the separator.
+		upper = base + string(rune(separator[0]+1))
+	}
+	rootPrefix = filepath.Clean(resolvedRoot)
+	if !strings.HasSuffix(rootPrefix, separator) {
+		rootPrefix += separator
+	}
+	return base, lower, upper, rootPrefix
+}
 
 // This is path-metadata publication inside the real inventory transaction. It
 // does no provider/archive I/O and grants no interactive or background reads.
@@ -33,11 +65,8 @@ func refreshReadingDirectoryTx(ctx context.Context, tx *sql.Tx, job string, sour
 	if err != nil {
 		return err
 	}
-	base, lower, upper := directory, "", ""
-	if key != "" {
-		base, lower, upper = key, key+"/", key+"0"
-	}
-	args := []any{source.ID, source.Incarnation, base, lower, upper, filepath.Clean(source.ResolvedPath)}
+	base, lower, upper, rootPrefix := readingDirectoryBindings(key, directory, source.ResolvedPath, string(filepath.Separator))
+	args := []any{source.ID, source.Incarnation, base, lower, upper, rootPrefix}
 	const from = ` FROM inventory_objects o INDEXED BY inventory_objects_directory
  JOIN catalog_assets a ON a.token=o.asset_id
  JOIN reading_publications p ON p.asset_id=a.id
@@ -47,10 +76,10 @@ func refreshReadingDirectoryTx(ctx context.Context, tx *sql.Tx, job string, sour
  JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
  JOIN libraries lib ON lib.id=cl.library_id
  WHERE o.source_id=?1 AND o.root_incarnation=?2 AND s.incarnation=o.root_incarnation
- AND (o.directory_path=?3 OR (?4<>'' AND o.directory_path>=?4 AND o.directory_path<?5))
+ AND ` + readingDirectoryScopeSQL + `
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason=''
  AND e.retired=0 AND cl.retired=0 AND link.available=1 AND a.available=1
- AND a.path=CASE WHEN ?6='/' THEN '/'||o.relative_path ELSE ?6||'/'||o.relative_path END
+ AND ` + readingDirectoryPathSQL + `
  AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf')) OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf')))
  AND o.id=(SELECT first.id FROM inventory_objects first INDEXED BY inventory_objects_asset WHERE first.asset_id=a.token AND first.source_id=o.source_id AND first.root_incarnation=o.root_incarnation AND first.relative_path=o.relative_path AND first.retired=0 ORDER BY first.id LIMIT 1)`
 	rows, err := tx.QueryContext(ctx, `SELECT e.id,o.relative_path,e.kind,a.path`+from+` ORDER BY e.id,a.id`, args...)
