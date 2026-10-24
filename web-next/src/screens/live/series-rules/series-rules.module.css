@@ -172,7 +172,7 @@
 
 .copy { display: block; min-width: 0; }
 .ruleTitle { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-wide-title-size); font-weight: var(--type-row-heading-weight); color: var(--color-text); }
-.opts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; min-height: 18px; margin: 3px 0 7px; font-size: calc(var(--type-body-size) - 1.5px); color: var(--color-text-secondary); }
+.opts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 18px; margin: 3px 0 7px; font-size: calc(var(--type-body-size) - 1.5px); color: var(--color-text-secondary); }
 .next { display: block; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .next[data-warn] { color: var(--rules-danger); }
 
@@ -223,7 +223,7 @@
 .sheet.sheet > header > button:hover { background: color-mix(in srgb, var(--color-text) 20%, transparent); color: var(--color-text); }
 
 .shKind { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; font-size: calc(var(--type-body-size) - 1px); font-weight: var(--type-button-weight); letter-spacing: normal; color: var(--color-accent-strong); }
-.shName { display: block; margin-top: 24px; font-size: var(--sheet-name-size); line-height: var(--sheet-name-line); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); color: var(--color-text); }
+.shName { display: block; margin-top: 24px; font-size: var(--sheet-name-size); line-height: var(--sheet-name-line); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); color: var(--color-text); text-shadow: 0 2px 30px color-mix(in srgb, var(--color-ink) 50%, transparent); }
 .shGlow {
   position: absolute;
   z-index: -1;
@@ -273,6 +273,6 @@
 .noAirings { margin: 10px 0 0; font-size: calc(var(--type-body-size) - 1.5px); color: var(--color-text-tertiary); }
 
 .sheet > footer { gap: 10px; padding: 26px 40px 30px; background: linear-gradient(180deg, transparent, var(--sheet-bg) 30%); box-shadow: none; }
-.footerButton.footerButton { height: 48px; padding: 0 16px; border-radius: 12px; gap: 9px; font-size: calc(var(--type-button-size) + .5px); }
+.footerButton.footerButton { height: 48px; padding: 0 16px; border-radius: 12px; gap: 9px; font-size: calc(var(--type-button-size) - 1.5px); }
 .danger.danger.danger { margin-left: auto; color: var(--rules-danger); }
 .danger.danger.danger:hover:not(:disabled) { color: var(--rules-danger); }
