@@ -2,6 +2,7 @@ package remotesources
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -109,6 +110,29 @@ func TestSourceReadSettingsRejectMissingAuthorityAndPartialValues(t *testing.T) 
 		if json.Unmarshal(bytes, &got) == nil {
 			t.Fatal("partial settings value accepted", field)
 		}
+	}
+}
+
+func TestSourceReadSettingsReceiptSurvivesActualSourceRemoval(t *testing.T) {
+	ctx := context.Background()
+	f, _, identities, owner, _, _ := nativeSaveFixture(t)
+	profile, _ := SourceReadPreset("once")
+	input := SourceReadSettingsChange{OperationID: nativeSaveOperation(630), ExpectedGeneration: "1", Values: sourceReadValues(profile)}
+	accepted, err := f.s.SaveSourceReadSettings(ctx, identities, owner, "remote", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, _ := json.Marshal([]string{owner.Authority, owner.AccountID, owner.ProfileID})
+	_, err = f.s.RemoveDAV(ctx, string(actor), "remote", nativeSaveOperation(631), 1, func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := f.s.Receipt(ctx, string(actor), input.OperationID)
+	if err != nil || recovered.ReadSettings == nil || *recovered.ReadSettings != *accepted.ReadSettings {
+		t.Fatal("source removal hid the accepted profile receipt", recovered, err)
+	}
+	if _, err = f.s.ReadSourceReadSettings(ctx, identities, owner, "remote"); err == nil {
+		t.Fatal("receipt cleanup revived the removed source")
 	}
 }
 
