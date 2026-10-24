@@ -17,7 +17,7 @@ const session = (family: string, role = 'account'): LocalSession => ({accessToke
   sessionFamilyId: family, tokenGeneration: '1', installationId: 'i'.repeat(43), expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z',
   viewer: {serverId, authority: 'local', accountId: 'owner-account', profileId: 'main', role}});
 
-async function fixture() {
+async function fixture(kind:'owner'|'setup'|'ambiguous'='owner') {
   let raw: AppSessionRecord | undefined, portico = false, pending = true, remembers = 0, ownerFinishes = 0, registeredFinishes = 0, cancels = 0;
   let gate: Promise<void> | undefined, release: (() => void) | undefined, pendingGate: Promise<void> | undefined, releasePending: (() => void) | undefined;
   let successor = false, mismatch = false, required = false, exchangeFailure = false, capturedAttempt = false;
@@ -66,7 +66,8 @@ async function fixture() {
     environment: () => ({storage: store.connectionStorage(serverId)}),
     restore: async captured => {events.push('restore');return {api, session: captured!};},
     inspect: async () => pin, connect: (async () => ({api, connection: api.getRouteConnection()})) as never,
-    remember: async () => {remembers++;}, ownerReturn: () => owner,
+    remember: async () => {remembers++;}, ownerReturn: kind==='setup'?undefined:()=>owner,
+    setupReturn: kind==='setup'?()=>({...owner,pendingReturn:async()=>{const p=await owner.pendingReturn();return p?{...p,kind:'setup' as const}:undefined;}}):kind==='ambiguous'?()=>({pendingReturn:async()=>({kind:'setup' as const,transactionId:'actual-setup-transaction'}),finish:async()=>{throw new Error('ambiguous setup must not finish');},cancel:async()=>{throw new Error('ambiguous setup must not cancel');}}):undefined,
     registered: () => ({controller: registered, installationId: () => 'i'.repeat(43)}),
     observeSelection: hint => {hints.add(hint);return () => {hints.delete(hint);};},
     retire: async (_api, value) => {retired.push(value.sessionFamilyId);},
@@ -142,4 +143,13 @@ test('a terminal owner exchange failure does not fall back to member admission',
   const f = await fixture();f.failExchange();await f.entry.finishPorticoReturn(callback);
   assert.equal(f.ownerFinishes, 1);assert.equal(f.registeredFinishes, 0);assert.equal(f.remembers, 0);assert.equal(f.entry.getSnapshot().phase, 'welcome');
   assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, 'original-owner');f.entry.dispose();
+});
+
+test('protected setup kind uses the setup controller without a Local owner continuation',async()=>{
+ const f=await fixture('setup');await f.entry.finishPorticoReturn(callback);
+ assert.equal(f.ownerFinishes,1);assert.equal(f.registeredFinishes,0);assert.equal(f.entry.getSnapshot().phase,'profiles');f.entry.dispose();
+});
+test('two protected continuation kinds refuse without URL selection or consuming either journal',async()=>{
+ const f=await fixture('ambiguous');await f.entry.finishPorticoReturn(callback);
+ assert.equal(f.ownerFinishes,0);assert.equal(f.registeredFinishes,0);assert.equal(f.cancels,0);assert.equal(f.pending,true);assert.equal(f.entry.getSnapshot().phase,'welcome');f.entry.dispose();
 });

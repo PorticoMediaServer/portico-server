@@ -189,27 +189,3 @@ test('source quota and throttle facts survive without a guessed provider wait ti
  }
  service.dispose();
 });
-
-
-test('an unsaved connection test sends credentials once and retains only its safe result',async()=>{
- const calls:{path:string;method:string;body:unknown}[]=[];let operations=0;
- const service=new RemoteSourceService(api(async(path,method,body)=>{calls.push({path,method,body});return {scope:wire,result:{origin:'https://private.example',rangeSupport:'conditional'}};}),scope,async()=>{operations++;return op;});
- const result=await service.testConnection(input);
- assert.deepEqual(result,{origin:'https://private.example',rangeSupport:'conditional'});
- assert.equal(calls.length,1);assert.equal(calls[0]!.path,'/v1/storage/sources/webdav/test');assert.equal(calls[0]!.method,'POST');
- assert.deepEqual(calls[0]!.body,{name:input.name,root:input.root,username:input.username,password:input.password,insecureLocal:false});
- assert.equal(operations,0);assert.equal(service.getSnapshot().operationId,null);assert.equal(service.getSnapshot().receipt,null);assert.deepEqual(service.getSnapshot().sources,[]);
- assert(!JSON.stringify(service.getSnapshot()).includes(input.password));assert(!JSON.stringify(service.getSnapshot()).includes(input.username));service.dispose();
-});
-
-test('a failed unsaved test is never retried or exposed as a credential-bearing error',async()=>{
- let calls=0;const service=new RemoteSourceService(api(async()=>{calls++;throw new Error(input.password);}),scope,async()=>op);
- await assert.rejects(service.testConnection(input),(error:unknown)=>error instanceof Error&&!error.message.includes(input.password));
- assert.equal(calls,1);assert.equal(service.getSnapshot().ambiguous,false);assert.equal(service.getSnapshot().operationId,null);assert(!JSON.stringify(service.getSnapshot()).includes(input.password));service.dispose();
-});
-
-test('late unsaved test results cannot cross a disposed owner scope',async()=>{
- const pending=deferred();const service=new RemoteSourceService(api(async()=>pending.promise),scope,async()=>op);
- const tested=service.testConnection(input);service.dispose();pending.resolve({scope:wire,result:{origin:'https://private.example',rangeSupport:'conditional'}});
- await assert.rejects(tested,/Scope changed/);assert.equal(service.getSnapshot().sources.length,0);
-});

@@ -663,7 +663,6 @@ var routeLanes = map[string]string{
 	"POST /v1/storage/mounts":                                                    "default",
 	"POST /v1/storage/mounts/{id}/actions":                                       "default",
 	"POST /v1/storage/sources/webdav":                                            "default",
-	"POST /v1/storage/sources/webdav/test":                                       "admin-long",
 	"POST /v1/topshelf/token":                                                    "browsing",
 	"PUT /v1/admin/access/invitations/{id}":                                      "security-fence",
 	"PUT /v1/admin/access/members/{id}/limits":                                   "admin",

@@ -169,28 +169,6 @@ func TestDedicatedDAVSetupRunsBoundedOriginChecksAfterPhysicalStop(t *testing.T)
 				}
 			}))
 			input := DAVInput{OperationID: nativeSaveOperation(200), Name: "Private DAV", Root: server.URL + "/media/", Username: "fixture", Password: "fixture-only", InsecureLocal: true}
-			if mode == "supported" || mode == "ignored" || mode == "wrong" {
-				var before, after, receipts int
-				if err := f.s.db.QueryRow(`SELECT count(*) FROM remote_sources`).Scan(&before); err != nil {
-					t.Fatal(err)
-				}
-				result, err := f.s.TestDAVConnection(ctx, DAVConnectionInput{Name: input.Name, Root: input.Root, Username: input.Username, Password: input.Password, InsecureLocal: input.InsecureLocal}, authorize)
-				expected := remotemedia.SetupRangeUnsupported
-				expectedGETs := int32(1)
-				if mode == "supported" {
-					expected, expectedGETs = remotemedia.SetupRangeSupported, 3
-				}
-				if err != nil || result.RangeSupport != expected || result.Origin != server.URL || gets.Load() != expectedGETs {
-					t.Fatal("unsaved test did not return the actual origin range fact", result, gets.Load(), err)
-				}
-				if err = f.s.db.QueryRow(`SELECT count(*) FROM remote_sources`).Scan(&after); err != nil || after != before {
-					t.Fatal("test published a source", before, after, err)
-				}
-				if err = f.s.db.QueryRow(`SELECT count(*) FROM remote_source_operations`).Scan(&receipts); err != nil || receipts != 0 {
-					t.Fatal("test persisted credentials or a source receipt", receipts, err)
-				}
-				gets.Store(0) // Save is a separate, fresh test; no dry-run fact grants it.
-			}
 			receipt, err := f.s.ConfigureDAV(ctx, "actual-owner-fixture", "", input, authorize)
 			if mode == "timeout" {
 				if !(errors.Is(err, context.DeadlineExceeded) || errors.Is(err, remotemedia.ErrStalled)) || gets.Load() != 1 {

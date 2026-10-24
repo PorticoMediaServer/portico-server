@@ -655,7 +655,6 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerMetadataSettings(registry, d)
 	registerMetadataRefresh(registry, d)
 	registerSourceReadSettings(registry, d)
-	registerDAVConnectionTest(registry, d)
 	registerScreenMetadataReads(registry, d)
 	registerFreshnessRoutes(registry, d)
 	registerCapabilityReport(registry)
