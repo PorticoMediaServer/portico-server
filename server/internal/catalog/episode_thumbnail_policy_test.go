@@ -24,3 +24,19 @@ func TestEpisodeThumbnailModeVocabularyAndDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestEpisodeThumbnailScanOperationUsesNamedPolicyAndProbe(t *testing.T) {
+	for _, tier := range []string{"file_list_only", "basic", "complete"} {
+		policy, err := ValidateScanPolicy(ScanPolicy{Tier: tier})
+		if err != nil || policy.Allows(EpisodeThumbnailOperation) != (tier == "complete") {
+			t.Fatal(tier, policy, err)
+		}
+	}
+	if _, err := ValidateScanPolicy(ScanPolicy{Tier: "custom", Operations: []string{EpisodeThumbnailOperation}}); err == nil {
+		t.Fatal("decode stage admitted without actual probe permission")
+	}
+	policy, err := ValidateScanPolicy(ScanPolicy{Tier: "custom", Operations: []string{"probe", EpisodeThumbnailOperation}})
+	if err != nil || !policy.Allows(EpisodeThumbnailOperation) {
+		t.Fatal(policy, err)
+	}
+}
