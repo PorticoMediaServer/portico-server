@@ -137,7 +137,7 @@ test('selected leaf capabilities intersect actual Detail actions with real execu
 test('disabled actions, unrelated playback, missing availability and music Watched grant nothing', async () => {
   for (const available of [true, false]) {
     const api: DetailApi = {request: async<T>(): Promise<T> => ({...detail(), item: {...detail().item, available}, actions: [
-      {id: 'play', labelKey: 'play', enabled: available, playback: {itemId: 'other-item', startSeconds: 0}},
+      {id: 'play', labelKey: 'play', enabled: true, playback: {itemId: available ? 'other-item' : entry.id, startSeconds: 0}},
       {id: 'start_over', labelKey: 'start', enabled: true, playback: {itemId: entry.id, startSeconds: 0}},
       {id: 'unknown', labelKey: 'unknown', enabled: true, playback: {itemId: entry.id, startSeconds: 0}},
       ...['watchlist', 'favorite', 'watched'].map(id => ({id, labelKey: id, enabled: false})),
