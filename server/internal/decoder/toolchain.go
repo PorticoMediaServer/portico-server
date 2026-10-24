@@ -18,6 +18,9 @@ import (
 type ToolchainFacts struct {
 	inventoryCacheable       bool
 	DolbyVisionDualLayerJoin bool `json:"-"`
+	// Only exact bundle-qualified libx265 opt-in carry may set this. It does
+	// not qualify rendering transforms or activate any conversion recipe.
+	HDR10PlusLibX265Encode bool `json:"-"`
 	// Only a bundle's qualified packet conversion may enable this fact. A BSF
 	// name, stock dovi_rpu options or a generic device probe is insufficient.
 	// It remains false until the libdovi-backed mode-2 fixture gate is wired.
