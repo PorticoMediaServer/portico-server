@@ -56,6 +56,7 @@ async function walk(page, viewportName) {
       steps.push({name, status: 'fail', ms: Date.now() - started, detail: excerpt(String(error?.message ?? error), 400),
         console: consoleTail.slice(-12)});
     }
+    if (process.env.PORTICO_FLOW_DUMP === '1') console.log('STEP ' + viewportName + ' ' + name + ' ' + steps.at(-1).status + ' ' + JSON.stringify(steps.at(-1).detail));
     steps.at(-1).newErrors = {
       page: pageErrors.slice(before.page), console: consoleErrors.slice(before.console), failed: failedRequests.slice(before.failed),
     };
