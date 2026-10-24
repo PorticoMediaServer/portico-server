@@ -8,6 +8,7 @@ test('original APE and Musepack versions are admitted independently by actual na
   for(const codec of ['ape','mpc7','mpc8'])assert.equal(native.audio?.some(value=>value.codec===codec),present.includes(codec));
   assert.equal(native.transports?.[0]?.containers?.includes('ape'),present.includes('ape'));
   assert.equal(native.transports?.[0]?.containers?.includes('mpc'),present.includes('mpc7')||present.includes('mpc8'));
+  assert.equal(native.transports?.[0]?.containers?.includes('mpc8'),present.includes('mpc8'));
   assert.equal(profile.audioOutput,undefined);
   assert.doesNotMatch(JSON.stringify(native.audio),/lossless|bitPerfect|sampleRate|bitDepth|objectAudio/);
  }
