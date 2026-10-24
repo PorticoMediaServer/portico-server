@@ -40,7 +40,7 @@ try {
   const page = await browser.newPage({viewport: {width: 1440, height: 860}, deviceScaleFactor: 1});
   const capture = async (name, viewport, id, prepare) => {
     await page.setViewportSize(viewport);
-    await page.goto(`${origin}/src/screens/setup/dev/setup.html${id === '3' ? '?frame=3' : ''}`, {waitUntil: 'networkidle'});
+    await page.goto(`${origin}/dev/setup/setup.html${id === '3' ? '?frame=3' : ''}`, {waitUntil: 'networkidle'});
     if (prepare) await prepare();
     await page.evaluate(async () => {await document.fonts.ready; await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));});
     await page.mouse.move(1, 1); await page.evaluate(() => document.activeElement?.blur());

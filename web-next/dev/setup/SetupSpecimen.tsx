@@ -1,10 +1,10 @@
 import {createRoot} from 'react-dom/client';
-import {IconSprite} from '../../../kit/Icon';
-import {SetupScreen} from '../SetupScreen';
-import type {SetupPorts, SetupServer} from '../setup-flow';
-import '../../../kit/tokens.css';
-import '../../../kit/fonts.css';
-import '../../../bootstrap.css';
+import {IconSprite} from '../../src/kit/Icon';
+import {SetupScreen} from '../../src/screens/setup/SetupScreen';
+import type {SetupPorts, SetupServer} from '../../src/screens/setup/setup-flow';
+import '../../src/kit/tokens.css';
+import '../../src/kit/fonts.css';
+import '../../src/bootstrap.css';
 
 /** auth1 / auth1c / auth3 lift-and-compare specimen. The drawn states use a
  * fake verified server and no production route; `?frame=3` resumes a completed
