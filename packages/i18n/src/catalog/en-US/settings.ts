@@ -306,6 +306,8 @@ export const settingsMessages = {
   'server.support': 'Support',
   'server.filesKept': 'Files',
   'server.logsByKind': 'Logs by kind',
+  'server.feedbackTab': 'Feedback',
+  'server.reportsTab': 'Reports',
   'settings.server.feedback': 'Viewer feedback',
   'settings.server.general': 'General',
   'settings.server.updates': 'Version and updates',
