@@ -95,7 +95,10 @@ assert any(result['encoded'] for result in results.values()), 'No physical encod
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--gpu-tools', type=Path, help='exact retained f3 pair directory for an optional physical Intel smoke')
+    parser.add_argument('--gpu-test-binary', type=Path, help='same-job decoder test executable for the actual production probe gate')
     args = parser.parse_args()
+    if args.gpu_test_binary and not args.gpu_tools:
+        raise ValueError('The production GPU probe gate requires the exact f3 tools')
     stage = re.search(r'(?ms)^FROM [^\n]+ AS runtime-drivers\n.*?(?=^FROM runtime-drivers\n)',
                       (ROOT / 'Dockerfile').read_text())
     if not stage:
@@ -132,11 +135,21 @@ def main():
                     with path.open('rb') as source:
                         if hashlib.file_digest(source, 'sha256').hexdigest() != expected:
                             raise ValueError('GPU smoke pair differs from qualified f3: ' + tool)
-                subprocess.run(['docker','run','--rm','--name',name,'--label',label,
-                                '--label','portico.lane=hardware-r29','--network','none',
-                                '--cpus','2','--memory','512m','--memory-swap','512m',
-                                '--device','/dev/dri:/dev/dri','-v',str(tools)+':/tools:ro',
-                                image,'python3','-c',GPU_PROBE],check=True,timeout=120)
+                command = ['docker','run','--rm','--name',name,'--label',label,
+                           '--label','portico.lane=hardware-r29','--network','none',
+                           '--cpus','2','--memory','1g','--memory-swap','1g',
+                           '--device','/dev/dri:/dev/dri','-v',str(tools)+':/tools:ro']
+                if args.gpu_test_binary:
+                    binary = args.gpu_test_binary.resolve(strict=True)
+                    if args.gpu_test_binary.is_symlink() or not binary.is_file():
+                        raise ValueError('Use the same-job regular decoder test binary')
+                    for backend in ['vaapi', 'qsv']:
+                        subprocess.run(command + ['-v',str(binary)+':/decoder.test:ro',
+                            '-e','PORTICO_TEST_HARDWARE_FFMPEG=/tools/ffmpeg',
+                            '-e','PORTICO_TEST_HARDWARE_BACKEND='+backend,
+                            image,'/decoder.test','-test.v','-test.run','^TestHardwareDecodeTargetRuntime$'],check=True,timeout=150)
+                else:
+                    subprocess.run(command + [image,'python3','-c',GPU_PROBE],check=True,timeout=120)
         finally:
             containers = subprocess.check_output(['docker', 'ps', '-aq', '--filter', 'label=' + label], text=True).split()
             if containers:

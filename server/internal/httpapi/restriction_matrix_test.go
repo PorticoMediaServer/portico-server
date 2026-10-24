@@ -414,6 +414,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/items/{itemId}/subtitles":                                   perItem("/subtitles"),
 		"GET /v1/items/{itemId}/playback/{session}/subtitles":                perItem("/playback/unknown/subtitles"),
 		"GET /v1/admin/console/settings":                                     exempt(reasonAdmin),
+		"GET /v1/admin/settings/configuration":                               static("/v1/admin/settings/configuration"),
 		"GET /v1/admin/metadata/settings":                                    exempt(reasonAdmin),
 		"GET /v1/admin/webhooks":                                             exempt(reasonAdmin),
 		"GET /v1/admin/webhooks/{id}":                                        exempt(reasonAdmin),
@@ -553,6 +554,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/admin/libraries/{id}/inventory":                exempt(reasonAdmin),
 		"GET /v1/admin/libraries/{id}/inventory-config":         exempt(reasonAdmin),
 		"GET /v1/admin/libraries/{id}/settings":                 exempt(reasonAdmin),
+		"GET /v1/admin/libraries/{id}/sonic-analysis":           exempt(reasonAdmin),
 		"GET /v1/admin/libraries/{id}/sources/{source}/changes": exempt(reasonAdmin),
 		"GET /v1/admin/library-channels":                        exempt(reasonAdmin),
 		"GET /v1/admin/library-channels/block-presets":          exempt(reasonAdmin),
@@ -631,6 +633,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 			var out []string
 			for _, kind := range []string{"album", "book", "artist"} {
 				out = append(out, perEntity("/v1/items/", kind, "/similar?limit=12").probe(m)...)
+				out = append(out, perEntity("/v1/items/", kind, "/similar?by=sound&limit=12").probe(m)...)
 			}
 			return out
 		}),
@@ -675,6 +678,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/libraries/{id}/facets":              probe(func(m *restrictionEnv) []string { return m.facetPaths() }),
 		// Catalogue: lists across the viewer's libraries.
 		"GET /v1/browse-capabilities": static("/v1/browse-capabilities?pivot=titles", "/v1/browse-capabilities?pivot=items"),
+		"GET /v1/search/genres":       static("/v1/search/genres?limit=50"),
 		"GET /v1/browse/facets": probe(func(m *restrictionEnv) []string {
 			out := []string{}
 			for _, field := range catalog.BrowseFacetFields() {

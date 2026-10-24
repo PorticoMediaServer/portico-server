@@ -115,7 +115,15 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 	// A failed decode can be the first sign of a replaced source. Check both
 	// retained metadata and authority before closing, even when decoding failed.
 	// Keep the original invocation context: cancellation cannot grant more work.
-	validationErr := input.Validate(ctx)
+	var validationErr error
+	if retained, ok := input.(interface{ StopAndRecheck(context.Context) error }); err != nil && ok {
+		// Retained remote readers must stop decoder children before observing
+		// fresh metadata on the same captured process. This is terminal for
+		// this reader; it cannot acquire replacement media or retry decoding.
+		validationErr = retained.StopAndRecheck(ctx)
+	} else {
+		validationErr = input.Validate(ctx)
+	}
 	authorizationErr := r.Authorize(ctx, catalog.EpisodeThumbnailOperation, EpisodeThumbnailCostClass, r.Manual)
 	if err = errors.Join(err, validationErr, authorizationErr, ctx.Err()); err != nil {
 		return out, err

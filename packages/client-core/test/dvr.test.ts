@@ -10,6 +10,17 @@ const recording=()=>({id:hex(),revision:1,occurrence:{sourceId:hex(48),channelId
 const page=()=>({recordings:[recording()],rules:[],nextCursor:'',revision:1,captureAvailable:true,captureUnavailableReason:'',deletionAvailable:true,usage:{bytes:0,pendingDeleteBytes:0,recordings:1}});
 const envelope=(result:unknown)=>({protocolVersion:'1.0',serverId:'server',result});
 const nonce=async()=>hex(48,'e');
+test('DVR channel marks retain only actual canonical text and seed',()=>{
+ const raw={...recording(),channel:{id:hex(64,'b'),name:'Channel One',number:'1',mark:{text:'C1',seed:`${hex(48)}:${hex(64,'b')}`,privateURL:'https://private.invalid'}}};
+ const parsed=parseRecording(raw);
+ assert.deepEqual(parsed.channel?.mark,{text:'C1',seed:raw.channel.mark.seed});
+ assert.ok(!JSON.stringify(parsed).includes('private'));
+ const absent={...raw,channel:{id:raw.channel.id,name:raw.channel.name,number:raw.channel.number}};
+ assert.equal('mark' in parseRecording(absent).channel!,false,'unknown stays absent without a seed fallback');
+ for(const mark of [null,{text:'C1'},{text:'',seed:raw.channel.mark.seed},{text:'C1',seed:'other:channel'}]){
+  assert.throws(()=>parseRecording({...raw,channel:{...raw.channel,mark}}));
+ }
+});
 test('DVR public DTOs project known fields and reject foreign identity or invalid intervals',()=>{
  const raw=recording();Object.assign(raw,{path:'/private/secret',providerURL:'secret'});Object.assign(raw.options,{secret:'secret'});Object.assign(raw.programme,{secret:'secret'});
  assert.ok(!JSON.stringify(parseRecording(raw)).includes('secret'));
