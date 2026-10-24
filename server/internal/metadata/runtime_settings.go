@@ -169,12 +169,24 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 			return MetadataSettings{}, e
 		}
 	}
+	before, e := ReadMetadataSettingsTx(ctx, tx)
+	if e != nil {
+		return before, e
+	}
 	out, e := ApplyMetadataSettingsTx(ctx, tx, in, s.publicationTime())
 	if e != nil {
 		return out, e
 	}
+	if e = (Configuration{}).queueChange(ctx, tx, before, out); e != nil {
+		return out, e
+	}
 	if e = write.Commit(); e != nil {
 		return out, e
+	}
+	if s.ConfigurationCommitted != nil {
+		if e = s.ConfigurationCommitted(context.WithoutCancel(ctx)); e != nil {
+			return out, e
+		}
 	}
 	if e = s.loadProviderSettings(ctx); e != nil {
 		return out, e

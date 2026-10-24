@@ -31,7 +31,8 @@ type Movie struct {
 	BackdropPath  string `json:"backdrop_path"`
 }
 type Service struct {
-	EpisodeThumbnails *EpisodeThumbnailRuntime
+	EpisodeThumbnails      *EpisodeThumbnailRuntime
+	ConfigurationCommitted func(context.Context) error
 
 	Admission func(context.Context, *sql.Tx, string) (bool, error)
 	// musicArtistCursor is where the artist enrichment walk resumes.

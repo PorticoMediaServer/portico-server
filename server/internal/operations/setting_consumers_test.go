@@ -90,6 +90,7 @@ var settingConsumers = map[string]settingConsumer{
 	"livechannels.LiveSourceSettings.streamBufferMs":                         {"internal/livechannels/configuration.go", "StreamBufferMs", "Filter or override the saved live source"},
 	"livechannels.LiveSourceSettings.userAgent":                              {"internal/livechannels/configuration.go", "UserAgent", "Filter or override the saved live source"},
 	"metadata.MetadataSettingsUpdate.includeAdult":                           {"internal/metadata/runtime_settings.go", "IncludeAdult", "Apply artwork storage, adult matching or provider credentials"},
+	"metadata.MetadataSettingsUpdate.artworkMaxEdge":                         {"internal/metadata/artwork_encoding_policy.go", "readArtworkEncodingPolicyTx", "Bound new pictures and durably reconcile retained artwork"},
 	"metadata.MetadataSettingsUpdate.localArtworkLimitBytes":                 {"cmd/server/main.go", "LocalArtworkLimit", "Apply the owner storage bound to local artwork ingestion"},
 	"metadata.MetadataSettingsUpdate.openSubtitlesApiKey":                    {"cmd/server/main.go", "SetCredentials", "Hand the saved OpenSubtitles key and account to the subtitle provider"},
 	"metadata.MetadataSettingsUpdate.openSubtitlesPassword":                  {"cmd/server/main.go", "SetCredentials", "Hand the saved OpenSubtitles key and account to the subtitle provider"},

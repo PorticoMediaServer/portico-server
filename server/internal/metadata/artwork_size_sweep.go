@@ -150,8 +150,20 @@ func (s *Service) GlobalArtworkSizeStep(ctx context.Context) error {
 			}
 			continue
 		}
+		// The ordinary worker's retry budget remains authoritative. A sweep
+		// never resets an exhausted acquisition merely because its intent is due.
+		var exhausted bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND preview=0 AND candidate_id=? AND selection_revision=? AND size_refresh=1 AND actor='' AND status='failed' AND error<>'storage_unavailable')`, r.kind, r.entity, r.role, r.subject, r.candidate, r.revision).Scan(&exhausted); err != nil {
+			return err
+		}
+		if exhausted {
+			if err = remove(); err != nil {
+				return err
+			}
+			continue
+		}
 		var busy bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND preview=0 AND status IN('pending','running','retry'))`, r.kind, r.entity, r.role, r.subject).Scan(&busy); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND preview=0 AND (status IN('pending','running','retry') OR status='failed' AND error='storage_unavailable'))`, r.kind, r.entity, r.role, r.subject).Scan(&busy); err != nil {
 			return err
 		}
 		if busy {

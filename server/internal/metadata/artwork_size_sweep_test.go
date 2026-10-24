@@ -130,7 +130,7 @@ func TestArtworkSizeRefreshReacquiresExactSelectionWithoutOwnerAuthority(t *test
 	if err := db.QueryRow(`SELECT candidate_id,digest,revision,actor,locked FROM artwork_selections WHERE entity_id=? AND role='poster'`, entity).Scan(&current, &digest, &after, &actor, &locked); err != nil || current != candidate || digest == oldDigest || after != revision+1 || actor != "local:owner:profile" || !locked || requests != 2 {
 		t.Fatal(current, digest, after, actor, locked, requests, err)
 	}
-	f, _, err := restarted.Artwork(ctx, target.ID, "poster")
+	f, _, err := restarted.EntityArtworkVariant(ctx, target, "poster", "", 2560, digest)
 	if err != nil {
 		t.Fatal(err)
 	}
