@@ -7,11 +7,11 @@ import {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, 
 import {queueItemInput} from '../src/queue-controller.ts';
 import {QueueClient} from '../src/playback-v1/queue.ts';
 import {playbackUserMessage, sessionEndMessage} from '../src/playback-messages.ts';
-import type {V1Http, V1Request, V1Response} from '../src/playback-v1/http.ts';
+import {PlaybackApiError, type V1Http, type V1Request, type V1Response} from '../src/playback-v1/http.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
-function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>; afterResponse?: (request: V1Request, response: V1Response) => Promise<void>} = {}) {
+function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>; afterResponse?: (request: V1Request, response: V1Response) => Promise<V1Response | void>} = {}) {
   const server = new FakePlaybackServer(options.server);
   const inner = fakeHttp(server);
   const log = options.log ?? [];
@@ -21,8 +21,8 @@ function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; pas
       if (body.queue) body.queue.postPlay = options.postPlay;
       else if (body.id) (body as Record<string, unknown>).postPlay = options.postPlay;
     }
-    await options.afterResponse?.(r, response);
-    return response as never; }};
+    const altered = await options.afterResponse?.(r, response);
+    return (altered ?? response) as never; }};
   const timers: {fn: () => void; ms: number}[] = [];
   let serial = 0;
   const api = new V1PlaybackApi(http, {timers: {setTimer: (fn, ms) => { timers.push({fn, ms}); return timers.length; }, clearTimer: () => {}}, key: () => `k${++serial}`});
@@ -845,4 +845,76 @@ test('the player view preserves batched identity and display facts plus whole qu
  const http:V1Http={async send(r){const response=await inner.send(r);const b=response.body as {window?: Record<string,unknown>[];queue?:Record<string,unknown>;items?:Record<string,unknown>[];id?:string;segments?:unknown}|undefined;if(b?.queue){Object.assign(b.queue,{totalDurationMs:900000,durationKnown:true,remainingCount:4});if(b.window)b.window=b.window.map(e=>({...e,...facts}));}if(b?.id&&b.segments)Object.assign(b,{totalDurationMs:900000,durationKnown:true,remainingCount:4});if(b?.items)b.items=b.items.map(e=>({...e,...facts}));return response;}};
  let key=0;const api=new V1PlaybackApi(http,{key:()=>`view-${++key}-00000000`});const playback=new PlaybackService(api,()=> 'device');const player=new V1QueuePlayer({http,api,playback,viewer,key:()=>`queue-view-${++key}-0000`});const stop=player.connect();
  try {await player.playEpisode('show','show-0');const view=player.getSnapshot().view;assert.equal(view?.totalDurationMs,900000);assert.equal(view?.remainingCount,4);assert.deepEqual(view?.items[0]?.episode,{seasonNumber:2,number:7});assert.equal(view?.items[0]?.artistId,'artist');assert.equal(view?.items[0]?.backdropUrl,facts.backdropUrl);assert.equal(view?.items[0]?.durationMs,180000);assert.equal(view?.items[0]?.segmentId,'segment');} finally{stop();}
+});
+
+
+test('strict queue changes return the actual same session and occurrence without rebuilding or remembering a substitute',async()=>{
+ const f=setup();try{
+  await f.player.playItem('movie');const before=f.player.currentSession()!,queue=f.player.getSnapshot().view!.queue;
+  const reports=f.log.filter(r=>r.method==='POST'&&r.path.endsWith('/timeline')).length;
+  const actual=await f.player.changePlayback({versionId:before.versionId,subtitleTrackId:'s1',subtitleDelivery:'burn',subtitleOffsetMs:-300.4},{recoverEnded:false,isCurrent:()=>true});
+  assert.equal(f.log.filter(r=>r.method==='POST'&&r.path.endsWith('/timeline')).length,reports,'strict replan must not start separate lease recovery through a forced timeline flush');
+  assert.equal(actual,f.player.currentSession());assert.equal(actual!.id,before.id);assert.deepEqual(actual!.queue,before.queue);
+  assert.ok(actual!.presentation.generation>before.presentation.generation);assert.equal(f.playback.getSnapshot().session!.generation,actual!.presentation.generation);
+  assert.equal(f.player.getSnapshot().view!.queue.id,queue.id);
+  const patch=f.log.filter(r=>r.method==='PATCH').at(-1)!.body as {subtitles:unknown;subtitleOffsetMs:number};
+  assert.deepEqual(patch.subtitles,{trackId:'s1',delivery:'burn'});assert.equal(patch.subtitleOffsetMs,-300);
+  assert.equal(f.log.filter(r=>r.method==='POST'&&r.path==='/v1/queues').length,1);
+ }finally{f.stop();}
+});
+
+test('strict queue changes refuse ended 404 and 410 instead of creating a replacement while ordinary changes still recover',async()=>{
+ for(const status of [404,410])for(const strict of [false,true]){
+  let reject=false;const f=setup({afterResponse:async(request,response)=>reject&&request.method==='GET'&&request.path.startsWith('/v1/playback/sessions/')?
+    {status,headers:{},body:{error:{code:status===404?'session_not_found':'session_ended',retry:'never'}}}:response});
+  try{await f.player.playItem('movie');const original=f.player.currentSession()!;const starts=f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length;
+   reject=true;
+   if(strict){await assert.rejects(f.player.changePlayback({subtitleTrackId:'s1',subtitleDelivery:'burn'},{recoverEnded:false}),error=>error instanceof PlaybackApiError&&error.status===status);assert.equal(f.player.currentSession()!.id,original.id);}
+   else{await f.player.changePlayback({subtitleTrackId:'s1',subtitleDelivery:'burn'});assert.notEqual(f.player.currentSession()!.id,original.id);}
+   assert.equal(f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length,starts+(strict?0:1));
+  }finally{f.stop();}
+ }
+});
+
+test('strict queue changes discard a late native-bridge replan before adoption after abort, host retirement or newer Play',async()=>{
+ for(const retire of ['abort','host','play'] as const){
+  let hold=false,entered!:()=>void,release!:()=>void,signal:AbortSignal|undefined;
+  const reached=new Promise<void>(resolve=>{entered=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+  const f=setup({afterResponse:async(request,response)=>{if(hold&&request.method==='PATCH'&&response.status===200){signal=request.signal;entered();await gate;}return response;}});
+  try{await f.player.playItem('movie');const original=f.player.currentSession()!,abort=new AbortController();let current=true;
+   hold=true;const pending=f.player.changePlayback({subtitleTrackId:'s1',subtitleDelivery:'burn'},{recoverEnded:false,signal:abort.signal,isCurrent:()=>current});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;
+   if(retire==='abort')abort.abort();else if(retire==='host')current=false;else await f.player.playItem('other');
+   if(retire==='abort')assert.equal(signal!.aborted,true);
+   const shown=f.playback.getSnapshot().session!,deletes=f.log.filter(r=>r.method==='DELETE').length;
+   release();await rejected;assert.equal(f.playback.getSnapshot().session,shown);assert.equal(f.log.filter(r=>r.method==='DELETE').length,deletes,'late same-session replies must never stop a replacement');
+   if(retire!=='play')assert.equal(f.player.currentSession(),original,'native bridge and queue cannot adopt the canceled generation');
+  }finally{f.stop();}
+ }
+});
+
+test('strict queue lifetime is checked before transport and is superseded by a newer ordinary change',async()=>{
+ let hold=false,entered!:()=>void,release!:()=>void;
+ const reached=new Promise<void>(resolve=>{entered=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+ const f=setup({afterResponse:async(request,response)=>{if(hold&&request.method==='PATCH'){hold=false;entered();await gate;}return response;}});
+ try{await f.player.playItem('movie');const abort=new AbortController();abort.abort();const count=f.log.length;
+  await assert.rejects(f.player.changePlayback({subtitleTrackId:'s1'},{recoverEnded:false,signal:abort.signal}),{name:'AbortError'});
+  await assert.rejects(f.player.changePlayback({subtitleTrackId:'s1'},{recoverEnded:false,isCurrent:()=>false}),{name:'AbortError'});assert.equal(f.log.length,count);
+  hold=true;const old=f.player.changePlayback({subtitleTrackId:'s1',subtitleDelivery:'burn'},{recoverEnded:false});const rejected=assert.rejects(old,{name:'AbortError'});await reached;
+  await f.player.changePlayback({audioTrackId:'a2'});const actual=f.player.currentSession();release();await rejected;assert.equal(f.player.currentSession(),actual);
+ }finally{f.stop();}
+});
+
+
+test('a lifetime-scoped ended recovery cannot return an unrelated newer Play as its result',async()=>{
+ let retiredSession='',hold=true,entered!:()=>void,release!:()=>void;
+ const reached=new Promise<void>(resolve=>{entered=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+ const f=setup({afterResponse:async(request,response)=>{
+  if(retiredSession&&request.method==='GET'&&request.path===`/v1/playback/sessions/${retiredSession}`)return {status:410,headers:{},body:{error:{code:'session_ended',retry:'never'}}};
+  if(retiredSession&&hold&&request.method==='POST'&&request.path==='/v1/playback/sessions'){hold=false;entered();await gate;}
+  return response;
+ }});
+ try{await f.player.playItem('movie');retiredSession=f.player.currentSession()!.id;
+  const pending=f.player.changePlayback({subtitleTrackId:'s1'},{isCurrent:()=>true});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;
+  await f.player.playItem('other');const current=f.player.currentSession();release();await rejected;assert.equal(f.player.currentSession(),current);
+ }finally{f.stop();}
 });

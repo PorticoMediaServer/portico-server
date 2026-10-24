@@ -2403,3 +2403,29 @@ test('foreign-family or already canceled local preparations cannot replace curre
     {signal: life.signal, isCurrent: () => true}), /stale_selection_context/);
   assert.deepEqual(f.runtime.getSnapshot().fence, current);assert.equal(port.loads.length, loads);assert.equal(released, 2);
 });
+
+test('a strict same-session queue replan reaches the mounted web controller and adopts its actual new generation',async t=>{
+ const f=setup(t);await f.runtime.play('movie');await f.arrive();
+ const queue=(f.runtime as unknown as {stack:{queue:import('@core/playback-v1/v1-queue-player.ts').V1QueuePlayer}}).stack.queue;
+ const before=f.runtime.getSnapshot(),session=queue.currentSession()!,starts=f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length;
+ const actual=await queue.changePlayback({subtitleTrackId:'s1',subtitleDelivery:'burn',subtitleOffsetMs:-1500},{recoverEnded:false,isCurrent:()=>f.source.isCurrent()});
+ assert.equal(actual,queue.currentSession());assert.equal(actual!.id,session.id);assert.deepEqual(actual!.queue,session.queue);assert.ok(actual!.presentation.generation>session.presentation.generation);
+ await f.arrive();assert.equal(f.runtime.getSnapshot().session!.id,session.id);assert.equal(f.runtime.getSnapshot().fence!.generation,actual!.presentation.generation);
+ assert.equal(f.runtime.getSnapshot().fence!.kind,'queue');assert.equal(f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length,starts);
+ assert.equal(before.fence!.sessionId,f.runtime.getSnapshot().fence!.sessionId);
+});
+
+test('a canceled strict web queue replan cannot load a late generation or trigger ended-session restart',async t=>{
+ for(const mode of ['late','ended'] as const){
+  const f=setup(t);await f.runtime.play('movie');await f.arrive();
+  const queue=(f.runtime as unknown as {stack:{queue:import('@core/playback-v1/v1-queue-player.ts').V1QueuePlayer}}).stack.queue;
+  const before=f.runtime.getSnapshot().fence!,instances=f.hls.instances.length,starts=f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length;
+  const gate=deferred(),abort=new AbortController();
+  f.intercept(async(request,response)=>{if(request.method==='PATCH'&&request.path===`/v1/playback/sessions/${before.sessionId}`){if(mode==='late')await gate.hold();else return {status:410,headers:{},body:{error:{code:'session_ended',retry:'never'}}};}return response;});
+  const pending=queue.changePlayback({subtitleTrackId:'s1',subtitleDelivery:'burn'},{recoverEnded:false,signal:abort.signal,isCurrent:()=>f.source.isCurrent()});
+  if(mode==='late'){const rejected=assert.rejects(pending,{name:'AbortError'});await gate.started;abort.abort();gate.resolve();await rejected;}
+  else await assert.rejects(pending,error=>error instanceof Error&&'status'in error&&error.status===410);
+  await settle();assert.equal(f.hls.instances.length,instances);assert.deepEqual(f.runtime.getSnapshot().fence,before);
+  assert.equal(f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length,starts);
+ }
+});
