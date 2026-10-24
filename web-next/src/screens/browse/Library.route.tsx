@@ -5,6 +5,7 @@ import type {Library} from '@core/index.ts';
 import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentView} from '@core/library-content.ts';
 import {libraryTabs, readingTabModel, type LibraryTab} from '@core/presentation/library-tabs.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, type BrowseCapabilities} from '@core/browse.ts';
+import {metadataAgentPath, parseMetadataAgent} from '@core/server-admin/metadata-agent.ts';
 import type {SavedDefinition} from '@core/personal-saved.ts';
 import {randomId} from '@core/random-id.ts';
 import {defineWebScreen} from '../../route-registry';
@@ -73,7 +74,8 @@ function LibraryShow({context, libraryId, search}: {context: ScreenContext; libr
 }
 function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly LibraryTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
+  // The offer needs the library's own online metadata agent, read from the server; unknown is false.
+  const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true, onlineAttention}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
@@ -88,6 +90,8 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   }, [context, sourceKey]);
   useEffect(() => () => {resources.life.dispose();resources.controller.dispose();resources.service.dispose();}, [resources]);
   const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
+  const [onlineAttention, setOnlineAttention] = useState(false);
+  useEffect(() => {let live = true; void resources.life.api.request(metadataAgentPath(library.id), 'GET').then(raw => {if (live) setOnlineAttention(parseMetadataAgent(raw).agent === 'online');}, () => {}); return () => {live = false;};}, [resources, library.id]);
   const href = useLocation({select: location => location.href}), runtime = captured.binding.playback?.runtime;
   const runtimeRef = useRef(runtime);runtimeRef.current = runtime;
   const playSelection = useMemo(() => {
