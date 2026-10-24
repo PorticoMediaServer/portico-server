@@ -1,3 +1,4 @@
+import {parseSettingsConfiguration} from './settings-configuration.ts';
 import {canonicalQualityLadder,canonicalMusicQualityLadder} from '../../contracts/src/types.ts';
 import {reportQuery,verifyReportInterval,type ReportContext} from './report-context.ts';
 import {routePath, routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
@@ -120,11 +121,12 @@ export class ConsoleClient {
  private disposed=false;private fence?:string;private requests=new Set<AbortController>();private intents=new Map<string,{body:string;key:string;method:string;parse:(v:unknown)=>unknown}>();private reconciled=new Set<()=>void>();private listeners=new Set<()=>void>();
  private drafts=new Map<string,unknown>();private denied=false;private recoveredExport?:SupportExport;
  private settingsRead = new Map<number,RuntimeSettings>();
+ private pendingSettings?:{expectedRevision:number;baseline:RuntimeSettings;patch:string};
  private api:ConsoleAPI;readonly scope:ConsoleScope;
  constructor(api:ConsoleAPI,scope:ConsoleScope){if(!scope.serverId||!scope.viewerId)throw new Error('A selected viewer is required.');this.api=api;this.scope={...scope};}
  onDenied=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
- private revoke(){this.denied=true;this.recoveredExport=undefined;this.drafts.clear();this.intents.clear();this.settingsRead.clear();for(const c of this.requests)c.abort();for(const fn of this.listeners)fn();}
- dispose(){this.disposed=true;this.recoveredExport=undefined;for(const c of this.requests)c.abort();this.requests.clear();this.drafts.clear();this.intents.clear();this.settingsRead.clear();this.listeners.clear();this.reconciled.clear();}
+ private revoke(){this.denied=true;this.recoveredExport=undefined;this.drafts.clear();this.intents.clear();this.settingsRead.clear();this.pendingSettings=undefined;for(const c of this.requests)c.abort();for(const fn of this.listeners)fn();}
+ dispose(){this.disposed=true;this.recoveredExport=undefined;for(const c of this.requests)c.abort();this.requests.clear();this.drafts.clear();this.intents.clear();this.settingsRead.clear();this.pendingSettings=undefined;this.listeners.clear();this.reconciled.clear();}
  setDraft(key:string,value:unknown){if(this.disposed||this.denied)return;if(value===undefined)this.drafts.delete(key);else this.drafts.set(key,value);}
  getDraft<T>(key:string):T|undefined{return this.drafts.get(key) as T|undefined;}
  hasDrafts(){return this.drafts.size>0||this.intents.size>0;}
@@ -134,11 +136,11 @@ export class ConsoleClient {
  async reconcilePending(){
   const entry=this.intents.entries().next().value;if(!entry)return;
   const [path,intent]=entry;const body=JSON.parse(intent.body) as Record<string,unknown>;
-  try{const value=await this.call(path,intent.method,{...body,idempotencyKey:intent.key},intent.parse);this.intents.delete(path);
+  try{const value=await this.call(path,intent.method,{...body,idempotencyKey:intent.key},intent.parse);if(this.intents.get(path)===intent)this.intents.delete(path);
    if(path===routePath("post_admin_console_exports"))this.recoveredExport=value as SupportExport;
    if(path===routePath("get_feedback"))this.drafts.delete('feedback');
    else if(path.startsWith(routePrefix("get_admin_feedback_id", 3)))this.drafts.delete('reply:'+decodeURIComponent(path.split('/').pop()!));
-   else if(path===routePath("get_console_settings"))this.drafts.delete('runtime-settings');
+   else if(path===routePath("get_console_settings")){this.drafts.delete('runtime-settings');this.pendingSettings=undefined;this.rememberSettings(value as SettingsDocument);}
    else if(path===routePath("get_preferences"))this.drafts.delete('preferences:'+body.scope);
    else if(path===routePath("get_admin_console_schedules"))this.drafts.delete('schedule');
    for(const fn of this.reconciled)fn();
@@ -156,7 +158,7 @@ export class ConsoleClient {
   * device, a job's own progress), a caller may reread and prove that its edited fields or command
   * still apply. A revision alone is never evidence that replaying an edit is safe.
   */
- private async mutate<T>(path:string,method:string,body:Record<string,unknown>,parse:(v:unknown)=>T,rebase?:()=>Promise<number|undefined>):Promise<T>{
+ private async mutate<T>(path:string,method:string,body:Record<string,unknown>,parse:(v:unknown)=>T,rebase?:()=>Promise<number|Readonly<{revision:number;body:Record<string,unknown>}>|undefined>):Promise<T>{
   const pending=this.intents.get(path);
   if(pending&&pending.method===method&&'expectedRevision' in body){
    const sent=JSON.parse(pending.body) as Record<string,unknown>;
@@ -168,8 +170,8 @@ export class ConsoleClient {
    catch(e){
     const current=obj(e)?e.currentRevision:undefined;
     if(retries>=2||!rebase||method==='PUT'||!obj(e)||!['console_conflict','revision_mismatch'].includes(String(e.code))||typeof current!=='number'||!('expectedRevision' in body)||current===body.expectedRevision)throw e;
-    const revision=await rebase();if(revision===undefined)throw e;
-    body={...body,expectedRevision:revision};
+    const rebased=await rebase();if(rebased===undefined)throw e;
+    body=typeof rebased==='number'?{...body,expectedRevision:rebased}:{...rebased.body,expectedRevision:rebased.revision};
    }
   }
  }
@@ -177,26 +179,44 @@ export class ConsoleClient {
   const serialized=JSON.stringify(body);let intent=this.intents.get(path);
   if(intent&&intent.body!==serialized)throw new Error('A previous action has an unconfirmed result. Confirm the pending action before submitting different values.');
   if(!intent){intent={body:serialized,key:consoleOperationId(),method,parse};this.intents.set(path,intent);}
-  try{const result=await this.call(path,method,{...body,idempotencyKey:intent.key},parse);this.intents.delete(path);return result;}
+  try{const result=await this.call(path,method,{...body,idempotencyKey:intent.key},parse);if(this.intents.get(path)===intent)this.intents.delete(path);return result;}
   catch(e){// A refusal is definite: the server did not act, so nothing is left unconfirmed (412 and 428 are a revision that moved or was missing).
-   if(obj(e)&&[400,404,409,410,412,428,429].includes(e.status))this.intents.delete(path);throw e;}
+   if(obj(e)&&[400,404,409,410,412,428,429].includes(e.status)&&this.intents.get(path)===intent)this.intents.delete(path);throw e;}
 
  }
  registry(){return this.call(routePath("get_console_registry"),'GET',undefined,base);}
+ /** Uses the same selected-server and viewer fence as every console read. */
+ configuration(){return this.call(routePath("get_settings_configuration"),'GET',undefined,parseSettingsConfiguration);}
  async settings(){const doc=await this.call(routePath("get_console_settings"),'GET',undefined,parseSettings);this.rememberSettings(doc);return doc;}
  private rememberSettings(doc:SettingsDocument){this.settingsRead.set(doc.revision,JSON.parse(JSON.stringify(doc.requested)) as RuntimeSettings);if(this.settingsRead.size>8)this.settingsRead.delete(this.settingsRead.keys().next().value!);}
  async applySettings(expectedRevision:number,values:Partial<RuntimeSettings>,saved?:RuntimeSettings){
-  const baseline=saved??this.settingsRead.get(expectedRevision), patch:Record<string,unknown>={};
-  for(const [key,value] of Object.entries(values))if(!baseline||JSON.stringify(value)!==JSON.stringify((baseline as unknown as Record<string,unknown>)[key]))patch[key]=value;
-  const doc=await this.mutate(routePath("change_console_settings"),'PATCH',{expectedRevision,values:patch},parseSettings,baseline?async()=>{
+  const path=routePath("change_console_settings");
+  let baseline=saved??this.settingsRead.get(expectedRevision)??(this.pendingSettings?.expectedRevision===expectedRevision?this.pendingSettings.baseline:undefined);
+  if(!baseline){
    const current=await this.settings();
-   for(const [key,value] of Object.entries(patch)){
-    const now=(current.requested as unknown as Record<string,unknown>)[key],before=(baseline as unknown as Record<string,unknown>)[key];
-    if(JSON.stringify(now)!==JSON.stringify(before)&&JSON.stringify(now)!==JSON.stringify(value))return undefined;
-   }
-   return current.revision;
-  }:undefined);
-  this.rememberSettings(doc);return doc;
+   if(current.revision!==expectedRevision)throw Object.assign(new Error('The settings changed. Reload them before saving.'),{status:409,code:'revision_mismatch',currentRevision:current.revision});
+   baseline=current.requested;
+  }
+  const original=JSON.parse(JSON.stringify(baseline)) as RuntimeSettings,patch:Record<string,unknown>={};
+  for(const [key,value] of Object.entries(values))if(JSON.stringify(value)!==JSON.stringify((original as unknown as Record<string,unknown>)[key]))patch[key]=value;
+  const patchText=JSON.stringify(Object.fromEntries(Object.entries(patch).sort(([a],[b])=>a<b?-1:a>b?1:0)));
+  const pending=this.intents.get(path);
+  if(pending&&this.pendingSettings?.patch!==patchText)throw new Error('A previous action has an unconfirmed result. Confirm the pending action before submitting different values.');
+  // Complete wire documents come only from a captured server read. The sparse
+  // patch is retained solely to prove safe rebases and identify a lost response.
+  const body:Record<string,unknown>=pending?JSON.parse(pending.body):{expectedRevision,values:{...original,...patch}};
+  if(!pending)this.pendingSettings={expectedRevision,baseline:original,patch:patchText};
+  try{
+   const doc=await this.mutate(path,'PATCH',body,parseSettings,async()=>{
+    const current=await this.settings();
+    for(const [key,value] of Object.entries(patch)){
+     const now=(current.requested as unknown as Record<string,unknown>)[key],before=(original as unknown as Record<string,unknown>)[key];
+     if(JSON.stringify(now)!==JSON.stringify(before)&&JSON.stringify(now)!==JSON.stringify(value))return undefined;
+    }
+    return {revision:current.revision,body:{expectedRevision:current.revision,values:{...current.requested,...patch}}};
+   });
+   this.rememberSettings(doc);return doc;
+  }finally{if(!this.intents.has(path))this.pendingSettings=undefined;}
  }
  preferences(deviceClass:DeviceClass){return this.call(routePath("get_preferences") + "?deviceClass=" + (deviceClass),'GET',undefined,parsePreferenceSnapshot);}
  /** `values` carries only the keys that change; `null` clears that override. */

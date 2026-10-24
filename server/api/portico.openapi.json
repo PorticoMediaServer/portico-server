@@ -190482,6 +190482,9 @@
           "revision": {
             "type": "string"
           },
+          "sequential": {
+            "type": "boolean"
+          },
           "sessionId": {
             "type": "string"
           },
@@ -442163,6 +442166,9 @@
                     "revision": {
                       "type": "string"
                     },
+                    "sequential": {
+                      "type": "boolean"
+                    },
                     "sessionId": {
                       "type": "string"
                     },
@@ -442229,7 +442235,7 @@
         },
         "summary": "Open an authorized reading publication",
         "x-access": "device",
-        "x-admission": "browsing",
+        "x-admission": "media-body",
         "x-cost": "page_sized",
         "x-error-codes": [
           "invalid_request",
@@ -442242,7 +442248,7 @@
           "body_too_large",
           "internal"
         ],
-        "x-lane": "browsing",
+        "x-lane": "media",
         "x-max-body-bytes": 4096,
         "x-scope": "playback"
       }
@@ -442893,7 +442899,7 @@
         },
         "summary": "Save the selected publication's location with compare and swap",
         "x-access": "device",
-        "x-admission": "browsing",
+        "x-admission": "media-body",
         "x-cost": "page_sized",
         "x-error-codes": [
           "invalid_request",
@@ -442906,7 +442912,7 @@
           "body_too_large",
           "internal"
         ],
-        "x-lane": "browsing",
+        "x-lane": "media",
         "x-max-body-bytes": 8192,
         "x-scope": "playback"
       }
@@ -442941,6 +442947,17 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
           "206": {
             "content": {
               "application/pdf": {
