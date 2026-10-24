@@ -92,13 +92,13 @@ class ProtocolGateTests(unittest.TestCase):
                 protocol.qualify(Path('ffmpeg'), {})
 
     def test_default_must_reject_actual_short_title(self):
-        help_text = '-min_playlist_length <int> (from 0 to INT_MAX) (default 180)'
+        help_text = '  -min_playlist_length <int> (from 0 to INT_MAX) (default 180)'
         with patch.object(protocol, 'run_tool', side_effect=[(0, help_text, ''), (0, '', '')]):
             with self.assertRaisesRegex(ValueError, 'Default180 changed'):
                 protocol.qualify(Path('ffmpeg'), {protocol.IDS[0]: Path('disc')})
 
     def test_option_help_without_decoded_frame_cannot_qualify(self):
-        help_text = '-min_playlist_length <int> (from 0 to INT_MAX) (default 180)'
+        help_text = '  -min_playlist_length <int> (from 0 to INT_MAX) (default 180)'
         with patch.object(protocol, 'run_tool', side_effect=[(0, help_text, ''),
                 (1, '', '0 usable playlists'), (0, '# no frames', '')]):
             with self.assertRaisesRegex(ValueError, 'did not decode'):
