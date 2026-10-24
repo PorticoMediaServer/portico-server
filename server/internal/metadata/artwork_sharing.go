@@ -17,6 +17,12 @@ import (
 // no new cache lifetime: its objects live only as long as the usual references.
 func (s *Service) sharedArtwork(ctx context.Context, j artworkWork) (artworkInstalled, artworkInstalled, bool, error) {
 	var a, b artworkInstalled
+	// Existing retained objects do not record their encoding policy. Re-fetch
+	// non-standard sizes rather than treating an old 1920 image as a 2560
+	// original, or publishing an oversized object under the smaller policy.
+	if policy, ok := ctx.Value(artworkEncodingPolicyKey{}).(artworkEncodingPolicy); ok && policy.edge != artworkLargeEdge {
+		return a, b, false, nil
+	}
 	if j.provider == "local" || j.provider == "upload" || j.actor != "" {
 		return a, b, false, nil
 	}
