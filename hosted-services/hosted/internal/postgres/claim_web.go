@@ -151,18 +151,18 @@ func registerWebClaimTx(ctx context.Context, tx *sql.Tx, q claimweb.Request, key
 	}
 	return claimweb.Pending{Purpose: q.Purpose, PreviousOwnerRole: q.PreviousOwnerRole, Code: code, ServerID: q.ServerID, Name: q.Name, Address: q.Address, RequestedAt: at, ExpiresAt: q.ExpiresAt, Status: status}, nil
 }
-func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code string) (claimweb.Pending, error) {
+func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code string) (claimweb.LookupPending, error) {
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
-		return claimweb.Pending{}, e
+		return claimweb.LookupPending{}, e
 	}
 	defer tx.Rollback()
 	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, a)
 	if e != nil {
-		return claimweb.Pending{}, e
+		return claimweb.LookupPending{}, e
 	}
 	var raw []byte
-	var p claimweb.Pending
+	var p claimweb.LookupPending
 	e = tx.QueryRowContext(ctx, `SELECT request,requested_at,expires_at,status FROM claim_web_pending WHERE code_hash=$1 AND (account_id IS NULL OR account_id=$2) AND expires_at>clock_timestamp()`, security.Hash(code), a.AccountID).Scan(&raw, &p.RequestedAt, &p.ExpiresAt, &p.Status)
 	if e != nil {
 		return p, claims.ErrStale
@@ -200,10 +200,22 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 		if !live {
 			return p, claims.ErrStale
 		}
+		count, e := readOwnerSwitchCount(ctx, tx, owner, q.Audience)
+		if e != nil {
+			return p, e
+		}
 		if e = returnFresh(ctx, tx, facts); e != nil {
 			return p, e
 		}
-		return p, tx.Commit()
+		if e = tx.Commit(); e != nil {
+			return p, e
+		}
+		// Family freshness and commit may wait. Optional display facts do not
+		// outlive their signed deadline while those authority checks finish.
+		if count != nil && count.expires.After(time.Now()) {
+			p.OtherPeopleCount = &count.people
+		}
+		return p, nil
 	}
 	if q.CurrentOwnerAccountID != "" {
 		var owner string

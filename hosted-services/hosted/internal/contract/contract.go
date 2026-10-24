@@ -230,7 +230,7 @@ func Definitions() []apikit.Definition {
 		route[claimweb.PendingRequest, claimweb.Pending]("POST", "/v1/server-claims/pending", "server_claim_pending", "Register a web server claim and any bound owner-start proof for approval.", SignedRequest, apikit.ScopeSession, 200).lane(security),
 		// contract: a long poll that writes whitespace heartbeats before this object.
 		route[claimweb.Signed, httpapi.ClaimEventResult]("POST", "/v1/server-claims/events", "server_claim_events", "Wait for a web server claim's decision.", SignedRequest, apikit.ScopeSession, 200).lane(apikit.Realtime),
-		route[httpapi.ClaimCodeRequest, claimweb.Pending]("POST", "/v1/server-claims/lookup", "server_claim_lookup", "Look up a web server claim by its code.", AccountSession, apikit.ScopeSession, 200).lane(security),
+		route[httpapi.ClaimCodeRequest, claimweb.LookupPending]("POST", "/v1/server-claims/lookup", "server_claim_lookup", "Look up a web server claim by its code.", AccountSession, apikit.ScopeSession, 200).lane(security),
 		route[httpapi.ClaimCodeRequest, httpapi.StatusCodeResponse]("POST", "/v1/server-claims/deny", "server_claim_deny", "Deny a web server claim.", AccountSession, apikit.ScopeSession, 200).lane(security),
 		route[httpapi.ClaimCodeRequest, httpapi.StatusCodeResponse]("POST", "/v1/server-claims/approve-code", "server_claim_approve_code", "Approve a web server claim by its code.", AccountSession, apikit.ScopeSession, 200).lane(security),
 	}

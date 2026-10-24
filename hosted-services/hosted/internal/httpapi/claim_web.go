@@ -102,7 +102,7 @@ func (h *ClaimHandler) web(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		if body.OwnerStart != nil {
-			p, e := h.Web.Store.RegisterOwnerStart(r.Context(), body.Original(), *body.OwnerStart, h.Web.Audience, h.Web.Keys.SealKey)
+			p, e := h.Web.Store.RegisterOwnerStartWithCount(r.Context(), body.Original(), *body.OwnerStart, body.OwnerSwitchCount, h.Web.Audience, h.Web.Keys.SealKey)
 			claimRespond(w, p, e)
 			return true
 		}

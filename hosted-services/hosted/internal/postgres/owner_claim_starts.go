@@ -56,6 +56,13 @@ func readOwnerStart(ctx context.Context, tx *sql.Tx, id string, operation, lock 
 // RegisterOwnerStart verifies both complete signatures and freezes the original
 // canonical claim hash in the same transaction that creates its approval code.
 func (s *Store) RegisterOwnerStart(ctx context.Context, original, signed claimweb.Signed, audience string, seal []byte) (claimweb.Pending, error) {
+	return s.RegisterOwnerStartWithCount(ctx, original, signed, nil, audience, seal)
+}
+
+// RegisterOwnerStartWithCount freezes an optional preview proof only with the
+// first original/start insert. Count failures never replace parent authority.
+// The nullable proof columns are supplied by the canonical baseline cohort.
+func (s *Store) RegisterOwnerStartWithCount(ctx context.Context, original, signed claimweb.Signed, count *claimweb.Signed, audience string, seal []byte) (claimweb.Pending, error) {
 	var empty claimweb.Pending
 	q, start, e := claimweb.VerifyOwnerStart(original, signed, audience, time.Now())
 	if e != nil || q.ReturnRegistrationID != "" {
@@ -65,6 +72,16 @@ func (s *Store) RegisterOwnerStart(ctx context.Context, original, signed claimwe
 	startRaw, _ := base64.RawURLEncoding.DecodeString(signed.Payload)
 	claimSig, _ := base64.RawURLEncoding.DecodeString(original.Signature)
 	startSig, _ := base64.RawURLEncoding.DecodeString(signed.Signature)
+	var countPayload, countSignature []byte
+	if count != nil {
+		// Copy the optional strings before transaction waits; an invalid count
+		// is absent, including signed overflow. Zero remains a verified fact.
+		captured := *count
+		if _, err := claimweb.VerifyOwnerSwitchCount(original, signed, captured, audience, time.Now()); err == nil {
+			countPayload, _ = base64.RawURLEncoding.DecodeString(captured.Payload)
+			countSignature, _ = base64.RawURLEncoding.DecodeString(captured.Signature)
+		}
+	}
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return empty, e
@@ -85,7 +102,13 @@ func (s *Store) RegisterOwnerStart(ctx context.Context, original, signed claimwe
 	// never past either original signed deadline.
 	expiry := start.ExpiresAt.Truncate(time.Microsecond)
 	issued := start.IssuedAt.Truncate(time.Microsecond)
-	_, e = tx.ExecContext(ctx, `INSERT INTO owner_claim_starts(transaction_id,operation_id,server_id,public_key,local_generation,claim_hash,start_hash,original_address,purpose,current_owner_account_id,previous_owner_role,state_hash,code_challenge,installation_id,server_challenge_hash,issued_at,expires_at,original_claim_payload,original_claim_signature,start_payload,start_signature) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'switch',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) ON CONFLICT(operation_id) DO NOTHING`, security.RandomID("ocs_"), q.OperationID, q.ServerID, mustWebPublicKey(q.PublicKey), q.LocalGeneration, security.Hash(string(claimRaw)), security.Hash(string(startRaw)), q.Address, q.CurrentOwnerAccountID, q.PreviousOwnerRole, security.Hash(start.State), start.CodeChallenge, start.InstallationID, security.Hash(start.ServerChallenge), issued, expiry, claimRaw, claimSig, startRaw, startSig)
+	query := `INSERT INTO owner_claim_starts(transaction_id,operation_id,server_id,public_key,local_generation,claim_hash,start_hash,original_address,purpose,current_owner_account_id,previous_owner_role,state_hash,code_challenge,installation_id,server_challenge_hash,issued_at,expires_at,original_claim_payload,original_claim_signature,start_payload,start_signature) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'switch',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) ON CONFLICT(operation_id) DO NOTHING`
+	args := []any{security.RandomID("ocs_"), q.OperationID, q.ServerID, mustWebPublicKey(q.PublicKey), q.LocalGeneration, security.Hash(string(claimRaw)), security.Hash(string(startRaw)), q.Address, q.CurrentOwnerAccountID, q.PreviousOwnerRole, security.Hash(start.State), start.CodeChallenge, start.InstallationID, security.Hash(start.ServerChallenge), issued, expiry, claimRaw, claimSig, startRaw, startSig}
+	if count != nil {
+		query = `INSERT INTO owner_claim_starts(transaction_id,operation_id,server_id,public_key,local_generation,claim_hash,start_hash,original_address,purpose,current_owner_account_id,previous_owner_role,state_hash,code_challenge,installation_id,server_challenge_hash,issued_at,expires_at,original_claim_payload,original_claim_signature,start_payload,start_signature,switch_count_payload,switch_count_signature) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'switch',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) ON CONFLICT(operation_id) DO NOTHING`
+		args = append(args, countPayload, countSignature)
+	}
+	_, e = tx.ExecContext(ctx, query, args...)
 	if e != nil {
 		return empty, e
 	}
