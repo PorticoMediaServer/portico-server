@@ -1,3 +1,4 @@
+import {detailFixtureText as fixtureText} from '../../../../packages/i18n/src/catalog/en-US/next/dev/detail-fixtures.ts';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
@@ -35,24 +36,24 @@ const posterRow = (items: readonly (readonly [string, number])[]) => items.map((
 });
 
 const moreLike = posterRow([
-  ['Dune', 2021], ['Blade Runner', 1982], ['Interstellar', 2014], ['Star Wars', 1977],
-  ['Avatar', 2009], ['The Empire Strikes Back', 1980], ['The Matrix', 1999], ['Gladiator', 2000],
+  [fixtureText('next.detail.fixture.dune'), 2021], [fixtureText('next.detail.fixture.bladeRunner'), 1982], [fixtureText('next.detail.fixture.interstellar'), 2014], [fixtureText('next.detail.fixture.starWars'), 1977],
+  [fixtureText('next.detail.fixture.avatar'), 2009], [fixtureText('next.detail.fixture.empire'), 1980], [fixtureText('next.detail.fixture.matrix'), 1999], [fixtureText('next.detail.fixture.gladiator'), 2000],
 ]);
 const viewersAlso = posterRow([
-  ['Oppenheimer', 2023], ['Inception', 2010], ['The Dark Knight', 2008], ['Barbie', 2023],
-  ['Spider-Man: Across the Spider-Verse', 2023], ['Fight Club', 1999], ['Alien', 1979], ['Project Hail Mary', 2026],
+  [fixtureText('next.detail.fixture.oppenheimer'), 2023], [fixtureText('next.detail.fixture.inception'), 2010], [fixtureText('next.detail.fixture.darkKnight'), 2008], [fixtureText('next.detail.fixture.barbie'), 2023],
+  [fixtureText('next.detail.fixture.spiderVerse'), 2023], [fixtureText('next.detail.fixture.fightClub'), 1999], [fixtureText('next.detail.fixture.alien'), 1979], [fixtureText('next.detail.fixture.hailMary'), 2026],
 ]);
 
 const credits = [
-  {id: 'denis-villeneuve', name: 'Denis Villeneuve', role: 'Director', department: 'Directing', provider: 'specimen'},
-  {id: 'timothee-chalamet', name: 'Timothée Chalamet', role: 'Paul Atreides', department: 'Acting', provider: 'specimen'},
-  {id: 'zendaya', name: 'Zendaya', role: 'Chani', department: 'Acting', provider: 'specimen'},
-  {id: 'rebecca-ferguson', name: 'Rebecca Ferguson', role: 'Lady Jessica', department: 'Acting', provider: 'specimen'},
-  {id: 'javier-bardem', name: 'Javier Bardem', role: 'Stilgar', department: 'Acting', provider: 'specimen'},
-  {id: 'jon-spaihts', name: 'Jon Spaihts', role: 'Screenplay', department: 'Writing', provider: 'specimen'},
+  {id: 'denis-villeneuve', name: fixtureText('next.detail.fixture.director'), role: fixtureText('next.detail.fixture.directorRole'), department: fixtureText('next.detail.fixture.directingDepartment'), provider: 'specimen'},
+  {id: 'timothee-chalamet', name: fixtureText('next.detail.fixture.timothee'), role: fixtureText('next.detail.fixture.paulRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
+  {id: 'zendaya', name: fixtureText('next.detail.fixture.zendaya'), role: fixtureText('next.detail.fixture.chaniRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
+  {id: 'rebecca-ferguson', name: fixtureText('next.detail.fixture.rebecca'), role: fixtureText('next.detail.fixture.jessicaRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
+  {id: 'javier-bardem', name: fixtureText('next.detail.fixture.javier'), role: fixtureText('next.detail.fixture.stilgarRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
+  {id: 'jon-spaihts', name: fixtureText('next.detail.fixture.jon'), role: fixtureText('next.detail.fixture.screenplayRole'), department: fixtureText('next.detail.fixture.writingDepartment'), provider: 'specimen'},
 ] as const;
 
-const overview = 'Follow the mythic journey of Paul Atreides as he unites with Chani and the Fremen while on a path of revenge against the conspirators who destroyed his family. Facing a choice between the love of his life and the fate of the known universe, Paul endeavors to prevent a terrible future only he can foresee.';
+const overview = fixtureText('next.detail.fixture.overview');
 
 function basePersonal() {
   return {watchlisted: false, favorite: false, rating: null, revision: 1, watched: false, progressMs: 0, lastPlayedAt: '', status: 'current', conflicts: [] as unknown[]};
@@ -65,7 +66,7 @@ function detailDocument(personal: ReturnType<typeof basePersonal>) {
     scope: {serverId, libraryId, itemId, viewerFence},
     revision: {...metric},
     item: {
-      id: itemId, libraryId, kind: 'movie', title: 'Dune: Part Two', year: 2024, durationMs: 9_960_000,
+      id: itemId, libraryId, kind: 'movie', title: fixtureText('next.detail.fixture.title'), year: 2024, durationMs: 9_960_000,
       progressMs: 0, available: true, addedAt: '2026-10-17T00:00:00Z', overview,
       posterUrl: artPath('poster', itemId), backdropUrl: artPath('backdrop', itemId),
     },
@@ -77,19 +78,19 @@ function detailDocument(personal: ReturnType<typeof basePersonal>) {
       {id: 'favorite', labelKey: 'entry.addToFavorites', enabled: true},
     ],
     facts: {
-      contentRating: 'PG-13', tagline: 'Long live the fighters.', releaseDate: '2024-02-27',
-      studio: 'Legendary Pictures', country: 'United States', originalLanguage: 'en',
+      contentRating: fixtureText('next.detail.fixture.rating'), tagline: fixtureText('next.detail.fixture.tagline'), releaseDate: '2024-02-27',
+      studio: fixtureText('next.detail.fixture.studio'), country: fixtureText('next.detail.fixture.country'), originalLanguage: 'en',
     },
     metadata: {
       status: 'available', ratings: [], attributions: [],
       genres: [
-        {id: 'science-fiction', name: 'Science Fiction', provider: 'specimen'},
-        {id: 'adventure', name: 'Adventure', provider: 'specimen'},
+        {id: 'science-fiction', name: fixtureText('next.detail.fixture.scienceFiction'), provider: 'specimen'},
+        {id: 'adventure', name: fixtureText('next.detail.fixture.adventure'), provider: 'specimen'},
       ],
       credits: [...credits], creditTotals: {cast: 4, crew: 2},
     },
     languages: {audio: ['en'], subtitles: ['en']},
-    collections: [{id: 'dune-collection', name: 'Dune collection', memberCount: 2, position: 0, posterUrls: []}],
+    collections: [{id: 'dune-collection', name: fixtureText('next.detail.fixture.collection'), memberCount: 2, position: 0, posterUrls: []}],
     markers: [],
   };
 }
@@ -108,21 +109,21 @@ function recommendationsDocument() {
   return {
     itemId, revision: {...metric},
     rows: [
-      recommendationRow('more-like', 'More like Dune: Part Two', moreLike),
-      recommendationRow('viewers-also-watched', 'Viewers also watched', viewersAlso,
-        {code: 'specimen.viewersAlsoWatchedNote', fallback: 'What people on this server played after it'}),
+      recommendationRow('more-like', fixtureText('next.detail.fixture.moreLike'), moreLike),
+      recommendationRow('viewers-also-watched', fixtureText('next.detail.fixture.viewersAlso'), viewersAlso,
+        {code: 'specimen.viewersAlsoWatchedNote', fallback: fixtureText('next.detail.fixture.viewersNote')}),
     ],
   };
 }
 
 function activityDocument(now: string) {
   const session = (id: string) => ({
-    id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: 'Demo'},
-    device: {id: 'specimen-device', name: 'Portico web'}, kind: 'vod', state: 'playing', startedAt: now,
+    id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: fixtureText('next.detail.fixture.profile')},
+    device: {id: 'specimen-device', name: fixtureText('next.detail.fixture.device')}, kind: 'vod', state: 'playing', startedAt: now,
     problem: false, converting: false, positionMs: 60_000, decision: {},
   });
   return {
-    scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: 'Portico demo',
+    scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: fixtureText('next.detail.fixture.server'),
     streams: {count: 2, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: [session('stream-1'), session('stream-2')]},
     scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''},
     health: {degraded: false},
@@ -136,7 +137,7 @@ export function createDetailSpecimen() {
   };
   let personal = basePersonal();
   const detail = () => detailDocument(personal);
-  const item = () => ({id: itemId, libraryId, kind: 'movie', title: 'Dune: Part Two', available: true, durationMs: 9_960_000, progressMs: 0});
+  const item = () => ({id: itemId, libraryId, kind: 'movie', title: fixtureText('next.detail.fixture.title'), available: true, durationMs: 9_960_000, progressMs: 0});
   const recommendations = () => recommendationsDocument();
 
   const request = async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
