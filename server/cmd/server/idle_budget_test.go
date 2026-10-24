@@ -19,9 +19,12 @@ import (
 )
 
 type idleBudgetReport struct {
-	WindowSeconds float64                        `json:"windowSeconds"`
-	Statements    []uint64                       `json:"statements"`
-	Top           []dbwork.StatementProfileEntry `json:"top,omitempty"`
+	WindowSeconds   float64                        `json:"windowSeconds"`
+	Statements      []uint64                       `json:"statements"`
+	Top             []dbwork.StatementProfileEntry `json:"top,omitempty"`
+	Writes          []dbwork.StatementProfileEntry `json:"writes,omitempty"`
+	ChangingCommits []uint64                       `json:"changingCommits"`
+	Publications    []uint64                       `json:"publications"`
 }
 
 // The default mode catches accidentally restored subsecond polling in a real
@@ -111,12 +114,27 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 		for i := 0; i < windows; i++ {
 			dbwork.ProfileStatements(true)
 			before := dbwork.Reads().Statements
+			changing, published := dbwork.ChangingCommits(), dbwork.Publications()
 			timer := time.NewTimer(window)
 			<-timer.C
 			report.Statements = append(report.Statements, dbwork.Reads().Statements-before)
+			report.ChangingCommits = append(report.ChangingCommits, dbwork.ChangingCommits()-changing)
+			report.Publications = append(report.Publications, dbwork.Publications()-published)
 			profile := dbwork.StatementProfile()
 			dbwork.ProfileStatements(false)
 			sort.Slice(profile, func(i, j int) bool { return profile[i].Count > profile[j].Count })
+			// Keep the bounded write-shape view even when repeated read probes
+			// occupy the top list. Bound arguments and private values stay absent.
+			report.Writes = nil
+			for _, entry := range profile {
+				word := strings.ToUpper(strings.Fields(entry.Shape)[0])
+				if word == "INSERT" || word == "UPDATE" || word == "DELETE" || word == "REPLACE" {
+					report.Writes = append(report.Writes, entry)
+					if len(report.Writes) == 32 {
+						break
+					}
+				}
+			}
 			if len(profile) > 12 {
 				profile = profile[:12]
 			}
