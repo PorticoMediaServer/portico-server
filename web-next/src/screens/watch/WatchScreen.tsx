@@ -113,7 +113,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
   useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
-  const focusEdge = useRef(false);
+  const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => {
     const wasOpen = focusEdge.current; focusEdge.current = open;
     // Only on the closed-to-open edge: a later autoplay entry change must not take
@@ -127,9 +127,17 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
   useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
-  // A source change while the player stays expanded may blink `open` (rebuffering);
-  // only a collapsed player clears an open options panel.
-  useEffect(() => { if (!expanded) { pictureInput.cancel(); setTapFeedback(null); clearTimer(); setPanel(null); setMore(false); setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); } }, [expanded, clearTimer, pictureInput]);
+  // A source change may blink expanded/open for a frame while the new stack starts.
+  // Only a settled collapse clears the open options panel.
+  useEffect(() => {
+    if (expanded) return;
+    const timer = setTimeout(() => {
+      if (expandedNow.current) return;
+      pictureInput.cancel(); setTapFeedback(null); clearTimer(); setPanel(null); setMore(false);
+      setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [expanded, clearTimer, pictureInput]);
   useEffect(() => { if (panel || more || shortcuts) pictureInput.cancel(); }, [panel, more, shortcuts, pictureInput]);
   const showPanel = (next: WatchPanel, anchor?: HTMLButtonElement) => {
     if (!surfaces?.available.includes(next)) return;
