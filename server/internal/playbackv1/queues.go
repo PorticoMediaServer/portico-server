@@ -484,14 +484,25 @@ func (l *layout) key(snap string, ordinal int64) (string, error) {
 // need and the request hasn't read yet: a shuffled window touches up to n
 // different chunks, which were n statements (P14).
 func (l *layout) prefetch(from, n int64) error {
+	if n <= 0 {
+		return nil
+	}
+	sources := make([]int64, 0, min(n, WindowMax))
+	for p := from; p < from+n; p++ {
+		sources = append(sources, l.orderToSource(p))
+	}
+	return l.prefetchSources(sources)
+}
+
+func (l *layout) prefetchSources(sources []int64) error {
 	type ref struct {
 		Snapshot string `json:"s"`
 		Chunk    int64  `json:"c"`
 	}
 	want := []ref{}
 	seen := map[string]bool{}
-	for p := from; p < from+n; p++ {
-		i, ordinal, ok := l.sourceAt(l.orderToSource(p))
+	for _, source := range sources {
+		i, ordinal, ok := l.sourceAt(source)
 		if !ok {
 			continue
 		}

@@ -52,11 +52,21 @@ func (l *layout) sonicWindowSource(window int64, readKeys bool) (sonicWindowKey,
 		if removed || !l.sonicBasePositionActive(position) {
 			continue // keep tombstones and explicit moved/source spans fixed
 		}
-		id, err := l.key(snapshot, ordinal)
-		if err != nil {
+		positions = append(positions, index)
+	}
+	if readKeys {
+		// One keyed bulk read, even when a seeded window spans 256 distant chunks.
+		if err := l.prefetchSources(ordinary); err != nil {
 			return key, nil, nil, nil, err
 		}
-		positions, ids = append(positions, index), append(ids, id)
+		for _, position := range positions {
+			segment, ordinal, _ := l.sourceAt(ordinary[position])
+			id, err := l.key(l.segments[segment].snapshot, ordinal)
+			if err != nil {
+				return key, nil, nil, nil, err
+			}
+			ids = append(ids, id)
+		}
 	}
 	copy(key.contents[:], digest.Sum(nil))
 	return key, ordinary, positions, ids, nil
@@ -73,13 +83,19 @@ func (s *Service) captureMusicWindowTx(ctx context.Context, tx *sql.Tx, caller C
 	// Before a background snapshot completes, even its future keys may be
 	// unknown. Freeze the ordinary source ordinals without opening them or
 	// inferring that the completed queue will be music-only.
-	key, ordinary, positions, ids, err := l.sonicWindowSource(window, readyMusic)
+	key, ordinary, positions, ids, err := l.sonicWindowSource(window, false)
 	if err != nil {
 		return err
 	}
 	captured, err := readSonicWindowTx(ctx, tx, key, ordinary)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
+		if readyMusic {
+			_, _, positions, ids, err = l.sonicWindowSource(window, true)
+			if err != nil {
+				return err
+			}
+		}
 		proposed := append([]int64(nil), ordinary...)
 		var model *sonic.Identity
 		if len(ids) > 1 && s.SmoothOrder != nil {
