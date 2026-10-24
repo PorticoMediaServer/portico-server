@@ -38,13 +38,13 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
 		marks = append(marks, "?")
 	}
 	// Attribution belongs to a title, independently of which version a reader
-	// opens. Use the stable first linked publication, never an arbitrary format
-	// or a convenient positive from another source. Offline is not an identity
-	// change: metadata is descriptive, not an eligibility or bytes grant.
+	// opens. Use the same deterministic primary-version rule as Reading List:
+	// available inventory first, then asset id. Alternate versions are retained;
+	// this baseline fact is descriptive, never an eligibility or bytes grant.
 	query := `SELECT e.id,v.field,v.text_value,v.number_value,v.source
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id
  JOIN libraries lib ON lib.id=cl.library_id
- JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT MIN(primary_version.asset_id) FROM reading_publications primary_version WHERE primary_version.item_id=e.id)
+ JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT primary_version.asset_id FROM reading_publications primary_version WHERE primary_version.item_id=e.id ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=primary_version.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=primary_version.asset_id) AND eligible.available=1) DESC,primary_version.asset_id LIMIT 1)
  JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
  JOIN reading_source_values v ON v.item_id=p.item_id AND v.asset_id=p.asset_id
