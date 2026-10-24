@@ -303,6 +303,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
     const off = observeBrowserSessionChanges(() => {void refresh();});
     return () => {alive.current = false; lockRef.current?.cancel(); loading.current?.abort(); record.current = undefined; off();};
   }, [refresh]);
+  const other = useCallback(() => {lockRef.current?.cancel(); setWorking(false); entry.cancel(); setAttempt(undefined); setError(undefined);}, [entry]);
   const openServer = useCallback(async (row: MobileChooserRow) => {
     const lock = lockRef.current!;
     const saved = record.current?.servers.find(value => value.connection.pin.serverId === row.id);
@@ -340,7 +341,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
       if (error) fail(error); else other();
     } catch (failure) {fail(failure);}
     finally {if (lock.settle(token) && alive.current) setWorking(false);}
-  }, [entry, form]);
+  }, [entry, form, other]);
   useEffect(() => {
     if (attempt?.kind !== 'waiting') return;
     const step = waitingStep(attempt, 'timer', document.visibilityState === 'visible');
@@ -365,7 +366,6 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
     return () => document.removeEventListener('visibilitychange', wake);
   }, [openServer]);
   const close = () => {form.clear(); entry.cancel(); void router.navigate({to: '/'});};
-  const other = () => {lockRef.current?.cancel(); setWorking(false); entry.cancel(); setAttempt(undefined); setError(undefined);};
   const checkNow = () => {
     if (attempt?.kind === 'waiting' || attempt?.kind === 'unreachable') {retryDelay.current = 20; void openServer(attempt.row);}
   };
