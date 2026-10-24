@@ -19,6 +19,8 @@ import {RegisteredSignInPage} from './SignInPage';
 import {captureHostedSignIn, type SignInCapture} from './sign-in';
 import {captureHostedOwnerClaim, type HostedOwnerClaimCapture} from './owner-claim';
 import {OwnerApprovalPage} from './OwnerApprovalPage';
+import {SetupApprovalPage} from './SetupApprovalPage';
+import {HostedSetupApproval} from '../screens/setup/HostedSetupApproval';
 
 type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
@@ -114,8 +116,27 @@ function ClaimStart() {
   if (bootstrap.getSnapshot().ownerPending) {
     if (!session || authenticating) return <ServicesAuthForm account={account} heading={t('auth.welcomeHome')} lead={t('web.claim.signInFirst')}
       onSignedIn={() => setAuthenticating(false)} />;
-    return <OwnerApprovalPage account={account} bootstrap={bootstrap} />;
+    return <ClaimApprovalRoute account={account} bootstrap={bootstrap} />;
   }
   return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading><ServicesNotice tone="info">{t('web.claim.openFromServer')}</ServicesNotice>
     <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
+}
+
+/** The scrubbed code is an intake locator only. An authenticated server lookup
+ * chooses the drawn setup/switch view; its purpose-closed controller then
+ * independently rechecks every decision and return against the current family. */
+function ClaimApprovalRoute({account,bootstrap}:{account:ServicesAccount;bootstrap:ServicesBootstrap}) {
+ const session=useSyncExternalStore(account.service.subscribe,account.service.getSnapshot).session;
+ const scope=session?.familyId?JSON.stringify([session.account.id,session.familyId]):'';
+ const [resolved,setResolved]=useState<{scope:string;purpose?:'setup'|'switch';error?:unknown}>();
+ useEffect(()=>{
+  if(!scope)return;
+  const abort=new AbortController();
+  void bootstrap.approvalPurpose(account,abort.signal).then(purpose=>{if(!abort.signal.aborted)setResolved({scope,purpose});},error=>{if(!abort.signal.aborted)setResolved({scope,error});});
+  return()=>abort.abort();
+ },[account,bootstrap,scope]);
+ const active=resolved?.scope===scope?resolved:undefined;
+ if(active?.error)return <InvalidLink/>;
+ if(!active?.purpose)return <ServicesAuthStage><></></ServicesAuthStage>;
+ return active.purpose==='setup'?<SetupApprovalPage account={account} bootstrap={bootstrap} Review={HostedSetupApproval}/>:<OwnerApprovalPage account={account} bootstrap={bootstrap}/>;
 }
