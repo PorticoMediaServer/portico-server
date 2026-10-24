@@ -458,11 +458,9 @@ func (s *Service) Run(ctx context.Context) {
 		if pending {
 			return time.Minute
 		}
-		due := s.nextScheduledScan(ctx)
-		if due == 0 || due > time.Minute {
-			due = time.Minute
-		}
-		return due
+		// A real scheduled scan supplies its deadline; with none, wait for
+		// source/policy commits or the worker safety backstop.
+		return s.nextScheduledScan(ctx)
 	})
 }
 
