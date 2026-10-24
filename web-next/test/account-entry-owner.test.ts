@@ -21,8 +21,9 @@ async function fixture() {
   let raw: AppSessionRecord | undefined, portico = false, pending = true, remembers = 0, ownerFinishes = 0, registeredFinishes = 0, cancels = 0;
   let gate: Promise<void> | undefined, release: (() => void) | undefined, pendingGate: Promise<void> | undefined, releasePending: (() => void) | undefined;
   let successor = false, mismatch = false, required = false, exchangeFailure = false, capturedAttempt = false;
+  let notifications = 0, returnedRevision = -1, returnedNotifications = -1;
   const events: string[] = [], retired: string[] = [], hints = new Set<() => void>();
-  const store = new AppSessionStore({read: async () => raw, change: async update => {raw = update(raw);for (const hint of hints) hint();}});
+  const store = new AppSessionStore({read: async () => raw, change: async update => {const next = update(raw);if (next === raw) return;raw = next;notifications++;for (const hint of hints) hint();}});
   const record = (value: LocalSession, signedIn: boolean): RememberedServer => ({version: '1', logicalOrigin: origin, pin, session: value,
     ...(signedIn ? {hosted} : {}), routes: {paired: [origin]}});
   const save = async (value: LocalSession, signedIn = true) => store.connectionStorage(serverId, {signIn: signedIn ? 'portico' : 'local',
@@ -46,6 +47,7 @@ async function fixture() {
     const result = {kind: 'signed-in' as const, snapshot: snapshot(), session: session('returned-owner'), accountScoped: true, passwordChangeRequired: false};
     if (mismatch) result.session = {...result.session, viewer: {...result.session.viewer, profileId: 'different-profile'}};
     if (successor) await save(session('successor'));
+    returnedRevision = (await store.read()).revision;returnedNotifications = notifications;
     return {api, result};
   };
   const owner = {
@@ -70,7 +72,7 @@ async function fixture() {
     retire: async (_api, value) => {retired.push(value.sessionFamilyId);},
   });
   return {entry, store, events, retired, hints, get remembers() {return remembers;}, get ownerFinishes() {return ownerFinishes;},
-    get registeredFinishes() {return registeredFinishes;}, get cancels() {return cancels;}, get pending() {return pending;},
+    get registeredFinishes() {return registeredFinishes;}, get notifications() {return notifications;}, get returnedRevision() {return returnedRevision;}, get returnedNotifications() {return returnedNotifications;}, get cancels() {return cancels;}, get pending() {return pending;},
     noOwner: () => {pending = false;}, requireFactor: () => {required = true;}, supersede: () => {successor = true;}, mismatch: () => {mismatch = true;},
     failExchange: () => {exchangeFailure = true;},
     hold: () => {gate = new Promise(resolve => {release = resolve;});}, release: () => release?.(),
@@ -113,6 +115,8 @@ test('a mixed callback cannot exchange or cancel the legitimate selected owner j
 test('a selected successor is preserved and only the unused returned owner family is retired', async () => {
   const f = await fixture();f.supersede();await f.entry.finishPorticoReturn(callback);
   assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, 'successor');assert.deepEqual(f.retired, ['returned-owner']);
+  assert.equal((await f.store.read()).revision, f.returnedRevision, 'unused-return cleanup must not invalidate the successor pending revision');
+  assert.equal(f.notifications, f.returnedNotifications, 'a nonmatching cleanup is not a committed selection change');
   assert.equal(f.entry.getSnapshot().phase, 'welcome');assert.equal(f.remembers, 0);f.entry.dispose();
 });
 test('a mismatched returned viewer cannot be selected or repaired from the stored profile', async () => {
@@ -124,6 +128,8 @@ test('cancelling an owner exchange quarantines only its late returned family and
     const f = await fixture();if (successor) f.supersede();f.hold();
     const work = f.entry.finishPorticoReturn(callback);await settle();f.entry.cancel();f.release();await work;
     assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, successor ? 'successor' : undefined);
+    assert.equal((await f.store.read()).revision, f.returnedRevision + (successor ? 0 : 1));
+    assert.equal(f.notifications, f.returnedNotifications + (successor ? 0 : 1));
     assert.deepEqual(f.retired, ['returned-owner']);assert.equal(f.ownerFinishes, 1);
     assert.equal(f.registeredFinishes, 0);assert.equal(f.entry.getSnapshot().phase, 'welcome');f.entry.dispose();
   }

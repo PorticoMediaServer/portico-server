@@ -16,6 +16,10 @@ export type ReadingPage = Readonly<{index: number; name: string; bytes: Uint8Arr
 export type ReadingLocation = PutReadingSessionsSessionIdProgressRequest['location'];
 export type ReadingProgress = GetReadingSessionsSessionIdProgressResponse;
 export type ReadingSavedProgress = PutReadingSessionsSessionIdProgressResponse;
+export type ReadingByteReader = Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel' | 'releaseLock'>;
+/** Pull/cancel only; native hosts need no global Web Streams constructor.
+ * Callers keep one read pending and release the reader after EOF/cancellation. */
+export type ReadingByteStream = Readonly<{getReader(): ReadingByteReader; cancel(reason?: unknown): Promise<void>}>;
 
 /** Errors contain a machine code/status, never an origin URL or response body. */
 export class ReadingError extends Error {
@@ -94,6 +98,68 @@ async function bytes(response: Response, max: number, signal: AbortSignal, check
     for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.byteLength; }
     check(); return out;
   } finally { signal.removeEventListener('abort', abort); void reader.cancel().catch(() => {}); try { reader.releaseLock(); } catch { /* stream already ended */ } }
+}
+
+type ByteController = Pick<ReadableStreamDefaultController<Uint8Array>, 'enqueue' | 'close' | 'error'>;
+type ByteSource = {start(controller: ByteController): void; pull(): Promise<void>; cancel(): void};
+
+// Keep the fallback scoped to this body. It is a small pull protocol, not a
+// global polyfill or an object cast to the complete DOM ReadableStream API.
+function scopedByteStream(source: ByteSource): ReadingByteStream {
+  if (typeof globalThis.ReadableStream === 'function') return new globalThis.ReadableStream<Uint8Array>(source, {highWaterMark: 0});
+  type Result = ReadableStreamReadResult<Uint8Array>;
+  type Pending = {resolve(value: Result): void; reject(error: unknown): void};
+  let state: 'open' | 'closed' | 'errored' = 'open', failure: unknown, locked = false, pulling = false, pending: Pending | undefined;
+  const finish = (error?: unknown, errored = false) => {
+    if (state !== 'open') return;
+    state = errored ? 'errored' : 'closed'; failure = error;
+    const read = pending; pending = undefined;
+    if (errored) read?.reject(error); else read?.resolve({done: true, value: undefined});
+  };
+  const controller: ByteController = {
+    enqueue(value) {
+      if (state !== 'open' || !pending || value === undefined) throw new TypeError('No pending reading pull');
+      const read = pending; pending = undefined; read.resolve({done: false, value});
+    },
+    close() { finish(); },
+    error(error) { finish(error, true); },
+  };
+  const pump = () => {
+    if (pulling || !pending || state !== 'open') return;
+    pulling = true;
+    void Promise.resolve().then(() => source.pull()).catch(error => controller.error(error)).finally(() => { pulling = false; pump(); });
+  };
+  const cancel = (): Promise<void> => {
+    if (state === 'errored') return Promise.reject(failure);
+    if (state === 'closed') return Promise.resolve();
+    finish();
+    try { source.cancel(); return Promise.resolve(); } catch (error) { return Promise.reject(error); }
+  };
+  try { source.start(controller); } catch (error) { controller.error(error); }
+  return Object.freeze({
+    getReader(): ReadingByteReader {
+      if (locked) throw new TypeError('Reading stream already locked');
+      locked = true;
+      let released = false;
+      return Object.freeze({
+        read(): Promise<Result> {
+          if (released) return Promise.reject(new TypeError('Reading reader lock released'));
+          if (state === 'errored') return Promise.reject(failure);
+          if (state === 'closed') return Promise.resolve({done: true, value: undefined});
+          if (pending) return Promise.reject(new ReadingError('stream_busy'));
+          const result = new Promise<Result>((resolve, reject) => { pending = {resolve, reject}; });
+          pump(); return result;
+        },
+        cancel() { return released ? Promise.reject(new TypeError('Reading reader lock released')) : cancel(); },
+        releaseLock() {
+          if (released) return;
+          if (pending) throw new TypeError('Reading reader has a pending pull');
+          released = true; locked = false;
+        },
+      });
+    },
+    cancel() { return locked ? Promise.reject(new TypeError('Reading stream already locked')) : cancel(); },
+  });
 }
 
 function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSessionsRequest) {
@@ -287,7 +353,7 @@ export class ReadingSession {
     } finally { this.#activeRanges--; }
   };
   /** One genuine from-start200 stream; it is never a ranged or buffered source. */
-  openSequential = async (signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> => {
+  openSequential = async (signal?: AbortSignal): Promise<ReadingByteStream> => {
     if (this.manifest.format !== 'pdf' || !this.manifest.sequential) fail('invalid_format');
     this.#check();
     if (this.#activeSequential) fail('sequential_busy');
@@ -302,7 +368,7 @@ export class ReadingSession {
         if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.has('Content-Range') || r.headers.get('Accept-Ranges') !== 'none' || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
         if (!r.body) return fail('stream_unsupported');
         const reader = r.body.getReader();
-        let controller: ReadableStreamDefaultController<Uint8Array>, ended = false, total = 0;
+        let controller: ByteController, ended = false, total = 0;
         const unlock = () => { try { reader.releaseLock(); } catch { /* pending read releases after cancellation */ } };
         const end = (error?: ReadingError, consumerCancel = false) => {
           if (ended) return;
@@ -313,7 +379,7 @@ export class ReadingSession {
           unlock();
         };
         const abort = () => end(cancellation(op.signal));
-        const stream = new ReadableStream<Uint8Array>({
+        const stream = scopedByteStream({
           start(c) { controller = c; op.signal.addEventListener('abort', abort, {once: true}); if (op.signal.aborted) abort(); },
           pull: async () => {
             if (ended) return;
@@ -330,7 +396,7 @@ export class ReadingSession {
             finally { if (ended) unlock(); }
           },
           cancel() { end(undefined, true); },
-        }, {highWaterMark: 0});
+        });
         handedOff = true;
         return stream;
       });
