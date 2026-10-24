@@ -19,7 +19,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 const notification = (patch: any = {}) => ({id: 'n1', kind: 'new_device', read: false, occurredAt: new Date().toISOString(), detail: {name: 'Living room TV'}, ...patch});
 const page = (patch: any = {}) => ({items: [], nextCursor: '', unread: 0, ...patch});
 
-async function mount(options: {pages?: any[]; prefs?: any; savePrefs?: (next: any) => Promise<any>; exportFails?: boolean} = {}) {
+async function mount(options: {pages?: any[]; prefs?: any; savePrefs?: (next: any) => Promise<any>; exportFails?: boolean; component?: 'notifications' | 'export'; exportRun?: () => Promise<any>} = {}) {
   const h = createRenderer();
   const navigated: any[] = [];
   const saved: any[] = [];
@@ -55,13 +55,18 @@ async function mount(options: {pages?: any[]; prefs?: any; savePrefs?: (next: an
     '../../app/account-notifications': {saveJSON: (data: any) => saved.push(data)},
     '../../app/errors': {ErrorNotice: 'ErrorNotice', errorText: (_e: any, _c: string, _o: string) => 'That did not work.'},
     '../../app/i18n': {useI18n: () => defaultI18n},
-    '@core/account-notifications.ts': {...notificationsCore, AccountNotificationsClient: class { constructor() { Object.assign(this, client); } }},
+    '@core/account-notifications.ts': {
+      ...notificationsCore,
+      AccountNotificationsClient: class { constructor() { Object.assign(this, client); } },
+      runAccountExport: () => (options.exportRun ? options.exportRun() : Promise.resolve({state: 'ready', data: {account: 'json'}})),
+    },
     './Notifications.module.css': {default: new Proxy({}, {get: (_target, key) => String(key)})},
     '../../ui': {Button: 'Button', Icon: 'Icon', Loading: 'Loading', Notice: 'Notice', SettingsGroup: 'SettingsGroup', SettingsRow: 'SettingsRow', StateView: 'StateView'},
   });
-  h.render(() => app.Notifications({scope: {}, onUnread}));
+  const draw = () => (options.component === 'export' ? app.DataExport({scope: {}}) : app.Notifications({scope: {}, onUnread}));
+  h.render(draw);
   await tick();
-  const flat = () => tree(h.render(() => app.Notifications({scope: {}, onUnread})));
+  const flat = () => tree(h.render(draw));
   return {h, flat, navigated, saved, calls, unread, client};
 }
 
@@ -159,4 +164,28 @@ test('the server-reachability switch saves its new value and rolls back if savin
   await tick();
   assert.equal(all(screen.flat(), 'button').find(button => button.props.role === 'switch').props['aria-checked'], true);
   assert.ok(textOf(screen.flat()).includes('That did not work.'));
+});
+
+test('Download your data saves the ready export, waits while it prepares, and says when it fails', async () => {
+  const download = (rendered: any[]) => all(rendered, 'Button').find(button => button.props.label === t('web.account.export.download'))!;
+  // Ready: the file is saved and the row says so.
+  let screen = await mount({component: 'export'});
+  download(screen.flat()).props.onClick();
+  await tick();
+  assert.deepEqual(screen.saved, [{account: 'json'}]);
+  assert.ok(all(screen.flat(), 'Notice').some(notice => textOf(notice).includes(t('web.account.export.downloaded'))));
+  // Still preparing: the row says so and can be asked again.
+  screen = await mount({component: 'export', exportRun: () => Promise.resolve({state: 'pending'})});
+  download(screen.flat()).props.onClick();
+  await tick();
+  assert.equal(screen.saved.length, 0);
+  assert.ok(all(screen.flat(), 'Notice').some(notice => textOf(notice).includes(t('web.account.export.preparing'))));
+  assert.equal(download(screen.flat()).props.disabled, false);
+  // Failed: the row says so and stays usable.
+  screen = await mount({component: 'export', exportRun: () => Promise.reject({message: 'nope'})});
+  download(screen.flat()).props.onClick();
+  await tick();
+  assert.equal(screen.saved.length, 0);
+  assert.ok(all(screen.flat(), 'Notice').some(notice => textOf(notice).includes('That did not work.')));
+  assert.equal(download(screen.flat()).props.disabled, false);
 });
