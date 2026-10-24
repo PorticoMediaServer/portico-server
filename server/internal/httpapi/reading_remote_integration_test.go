@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -28,6 +29,7 @@ import (
 	"portico.local/server/internal/reading"
 	"portico.local/server/internal/readingtest"
 	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/storage"
 )
 
 // This uses actual rclone DAV backends with real scanned publications. It
@@ -371,6 +373,48 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 					t.Fatal(err)
 				}
 				defer captured.Close()
+				other, err := d.Reading.OpenSession(context.Background(), ownerPrincipal, session.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer other.Close()
+				for _, child := range []*reading.Source{captured, other} {
+					if n, err := child.ReadAt(extent[:], 0); n != len(extent) || err != nil {
+						t.Fatal("open actual range children", n, err)
+					}
+				}
+				type extentResult struct {
+					n   int
+					err error
+				}
+				start := make(chan struct{})
+				extents := make(chan extentResult, 2)
+				for offset, child := range []*reading.Source{captured, other} {
+					go func(offset int, child *reading.Source) {
+						<-start
+						var b [1]byte
+						n, err := child.ReadAt(b[:], int64(offset))
+						extents <- extentResult{n, err}
+					}(offset, child)
+				}
+				close(start)
+				busy, delivered := 0, 0
+				for range 2 {
+					got := <-extents
+					if errors.Is(got.err, storage.ErrBusy) && got.n == 0 {
+						busy++
+					} else if got.err == nil && got.n == 1 {
+						delivered++
+					} else {
+						t.Fatal("distinct real extents", got)
+					}
+				}
+				if busy != 1 || delivered != 1 {
+					t.Fatal("actual cap1 distinct-extent refusal not exercised", busy, delivered)
+				}
+				if n, err := captured.ReadAt(extent[:], 0); n != len(extent) || err != nil {
+					t.Fatal("temporary source Busy retired the Reading session", n, err)
+				}
 				before := readingRestrictionProgress(t, &readingFixture{f: f})
 				hold, err := dbwork.Begin(context.Background(), f.db, dbwork.ClassInteractive)
 				if err != nil {

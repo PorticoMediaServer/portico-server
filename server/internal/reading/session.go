@@ -269,7 +269,7 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 		stop()
 		cancel()
 		release()
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		if !errors.Is(err, storage.ErrBusy) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			session.close()
 		}
 		return nil, err

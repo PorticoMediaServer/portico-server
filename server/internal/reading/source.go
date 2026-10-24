@@ -229,7 +229,7 @@ func (f *Source) checkObservation(o storage.ObservedFileObservation) error {
 }
 func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	defer func() {
-		if failure != nil && failure != io.EOF && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
+		if failure != nil && failure != io.EOF && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
 			f.Close()
 		}
@@ -324,7 +324,7 @@ func (f *Source) Close() error {
 // before publication; CPU work must not turn a revoked read into a response.
 func (f *Source) Validate() (failure error) {
 	defer func() {
-		if failure != nil && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
+		if failure != nil && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
 			f.Close()
 		}
@@ -361,7 +361,7 @@ func (f *Source) StopAndRecheck(cause error) error {
 	if err := f.ctx.Err(); err != nil {
 		return err
 	}
-	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+	if errors.Is(cause, storage.ErrBusy) || errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
 	var err error
