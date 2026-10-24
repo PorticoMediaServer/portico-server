@@ -258,13 +258,6 @@ func run() (runErr error) {
 	if _, e = configuration.Reload(); e != nil {
 		return e
 	}
-	configCtx, stopConfig := context.WithCancel(ctx)
-	configDone := make(chan struct{})
-	supervise.Go("cmd.config-file", func() {
-		defer close(configDone)
-		configuration.Watch(configCtx, time.Second, nil, func(err error) { log.Printf("Config file could not be re-read: %v", err) })
-	})
-	defer func() { stopConfig(); <-configDone }()
 	startupLog := servicelog.New(servicelog.Options{Directory: storagepaths.Path(state, "logs")})
 	installMessageLogOutput(startupLog)
 	defer startupLog.Close()
@@ -397,6 +390,11 @@ func run() (runErr error) {
 		return e
 	}
 	defer db.Close()
+	configurationStore := operations.New(db)
+	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}}
+	if e = configurationStore.InitializeConfiguration(ctx, layout.Config); e != nil {
+		return e
+	}
 	// Resolve one verified pair. Qualification overlaps independent startup work,
 	// but is joined below before constructing the first playback service.
 	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
@@ -434,6 +432,13 @@ func run() (runErr error) {
 	}
 	workAdmission := workpolicy.Service{DB: db}
 	adminOperations := adminops.NewAt(db, state)
+	adminOperations.ConfigurationCommitted = func(ctx context.Context) error {
+		err := configurationStore.FlushConfiguration(ctx)
+		if configurationStore.ConfigChanged != nil {
+			configurationStore.ConfigChanged(ctx)
+		}
+		return err
+	}
 	adminOperations.ApplyBackgroundPolicy(ctx)
 	adminOperations.LogoFetch = func(ctx context.Context, locator string) ([]byte, error) {
 		return livechannels.ReadSource(ctx, locator, remotemedia.Policy{ReadTimeout: 10 * time.Second}, adminops.LogoUploadBytes)
@@ -861,6 +866,7 @@ func run() (runErr error) {
 	if e = meta.SetArtworkDirectory(storagepaths.Path(state, "artwork")); e != nil {
 		return e
 	}
+	meta.EpisodeThumbnails = episodeThumbnailRuntime(meta, sources, ident, storeIO, subtitleRenderer)
 	// Bind the same configured metadata service before the scanner can call it.
 	// Generation remains closed until its retained source runtime is composed.
 	scanner.EpisodeThumbnails = meta.ScanEpisodeThumbnails
@@ -1015,7 +1021,7 @@ func run() (runErr error) {
 		})
 	})
 	doneConsole := reporter.step("console", "Open the operations console")
-	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
+	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state, configurationStore)
 	if console != nil {
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
@@ -1110,6 +1116,9 @@ func run() (runErr error) {
 			customRead = time.Now()
 			if err == nil {
 				lastPath, lastKey, lastDomain = document.Effective.CustomCertificatePath, document.Effective.CustomCertificateKeyPath, document.Effective.CustomCertificateDomain
+				if !document.Effective.OwnAddressEnabled {
+					lastPath, lastKey, lastDomain = "", "", ""
+				}
 			}
 			return lastPath, lastKey, lastDomain
 		})
@@ -1203,6 +1212,18 @@ func run() (runErr error) {
 		return readingService.OnFamilyRevokedTx(ctx, tx, family)
 	}
 	handler := httpapi.New(apiDependencies)
+	configCtx, stopConfig := context.WithCancel(ctx)
+	configDone := make(chan struct{})
+	supervise.Go("cmd.config-file", func() {
+		defer close(configDone)
+		console.ConfigFile.Watch(configCtx, time.Second, func() {
+			if err := console.ImportConfiguration(configCtx); err != nil {
+				log.Printf("Config file could not be applied: %v", err)
+			}
+		}, func(err error) { log.Printf("Config file could not be re-read: %v", err) })
+	})
+	defer func() { stopConfig(); <-configDone }()
+
 	// The timeout and 5xx log lines name the registered route pattern, which
 	// only the router can resolve for a request seen outside the mux.
 	measurements.Pattern = httpapi.RoutePattern

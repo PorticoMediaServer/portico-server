@@ -67,6 +67,7 @@ func commaList(raw string, max int) ([]string, error) {
 }
 
 func (d Dependencies) searchRoutes(mux *http.ServeMux) {
+	d.httpHandle(mux, "GET /v1/search/genres", d.searchGenresHandler)
 	if d.registry == nil {
 		mux.HandleFunc("GET /v1/search", d.searchHandler)
 	}

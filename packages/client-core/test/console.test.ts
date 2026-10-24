@@ -1,3 +1,4 @@
+import {decode} from '../../contracts/src/runtime.ts';
 import {wireFixture} from './wire-fixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -8,18 +9,18 @@ const parseEvidenceRecord=(value:unknown,...args:any[]) => (read_parseEvidenceRe
 
 const fence='a'.repeat(64);
 const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{serverId,viewerFence},data});
-const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
+const values:RuntimeSettings={name:'My server',conversionMode:'all',outputFormat:'auto',downloadMaxQuality:'original',musicAwayQuality:'original',ownAddressEnabled:false,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
  hardwareBackend:'auto',hardwareDevice:'',hdrToneMapping:false,hdrToneMappingAlgorithm:'hable',x264Preset:'veryfast',directStreamRemux:true,
  analysisStorageGiB:32,analysisStageStorageMiB:256,subtitleTrackLimit:128,subtitleFileLimitMiB:128,planningPolicy:'maximum_fidelity',throttleBufferMs:60000,playedRetentionMs:180000,temporaryDirectory:'',ffmpegPath:'',sessionStorageMiB:4096,
  maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0,
- playHistoryDays:0,'home.communityActivityEnabled':false,'updates.releaseChannel':'stable','updates.feedUrl':'','library.missingTitles':'after_days','library.missingTitlesDays':30,
+ playHistoryDays:0,'home.communityActivityEnabled':false,'updates.releaseChannel':'stable','updates.feedUrl':'','library.missingTitles':'after_days','library.missingTitlesDays':30,'library.segmentDetection':'standard',
  remoteSignInPolicy:'allow',remoteBitrateLimitKbps:0,lanNetworks:[],accessUrls:[],lanDiscoveryEnabled:true,dlnaEnabled:false,
- trustedProxies:[],uploadCapacityKbps:0,pausedSessionTimeoutMinutes:0,advertisedInterface:'',customCertificatePath:'',customCertificateKeyPath:'',customCertificateDomain:'',deviceApprovalRequired:false,connectionLimit:0,advertiseUrl:'',apiRequestsPerMinute:0,blockMemberAccessTokens:false,logLevel:'info',logRetention:[]};
+ trustedProxies:[],uploadCapacityKbps:0,pausedSessionTimeoutMinutes:0,advertisedInterface:'',customCertificatePath:'',customCertificateKeyPath:'',customCertificateDomain:'',connectionLimit:0,advertiseUrl:'',apiRequestsPerMinute:0,logLevel:'info',logRetention:[]};
 const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,effective:values,activeRevision:revision,restartFields:[],registryRevision:'p08.0'});
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
 const submission={category:'playback' as const,message:report.message,itemId:''};
 function client(handler:(path:string,method:string,body:any,signal:AbortSignal)=>Promise<unknown>){
- const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){return wireFixture(await handler(path,method,body,signal),{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']) as T;}};
+ const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){if(path==='/v1/admin/console/settings'&&method==='PATCH')decode('ChangeConsoleSettingsRequest',body);return wireFixture(await handler(path,method,body,signal),{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']) as T;}};
  return new ConsoleClient(api,{serverId:'server-one',viewerId:'local:one:profile'});
 }
 test('settings preserve explicit unlimited caps and reject invalid limits',()=>{
@@ -57,7 +58,8 @@ test('unknown mutations cannot silently become a changed intent; explicit recove
  fail=false;await c.reconcilePending();assert.deepEqual(bodies[0],bodies[1]);assert.equal(recovered,1);assert.equal(c.getDraft('feedback'),undefined);assert.deepEqual(c.getDraft('unrelated'),{keep:true});c.dispose();
 });
 test('known revision conflicts keep drafts but permit a deliberate revised submission',async()=>{
- let conflict=true;const c=client(async()=>{if(conflict)throw new ConsoleTransportError(409,'console_conflict',4,['values.serverCap']);return envelope(settings(5));});
+ let conflict=true,current=1;const c=client(async(_path,method)=>{if(method==='GET')return envelope(settings(current));if(conflict)throw new ConsoleTransportError(409,'console_conflict',4,['values.serverCap']);return envelope(settings(5));});
+ await c.settings();current=4;
  c.setDraft('runtime-settings',{revision:1,values});await assert.rejects(c.applySettings(1,values),/revision: 4/);assert.equal(c.hasUnconfirmed(),false);assert.ok(c.getDraft('runtime-settings'));
  conflict=false;assert.equal((await c.applySettings(4,values)).revision,5);c.dispose();
 });
@@ -188,11 +190,13 @@ test('typed owner settings errors retain revision and bounded field paths',async
 test('complete owner settings retain missing-title and API policies after the merge',()=>{
  const read=parseSettings(settings()).requested;
  assert.equal(read['library.missingTitles'],'after_days');assert.equal(read['library.missingTitlesDays'],30);
- assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);assert.equal(read.blockMemberAccessTokens,false);
+ assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);assert.equal(read.conversionMode,'all');
  assert.equal(read.dlnaEnabled,false);
+ const legacy=parseSettings({...settings(),requested:{...values,blockMemberAccessTokens:true,deviceApprovalRequired:true,transcodingEnabled:false}}).requested;
+ assert.equal(legacy.conversionMode,'all');for(const field of ['blockMemberAccessTokens','deviceApprovalRequired','transcodingEnabled'])assert.equal(field in legacy,false);
  const {dlnaEnabled:_,...older}=values;assert.equal(parseSettings({...settings(),requested:older,effective:older}).requested.dlnaEnabled,false);
- for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan'])assert.equal(retired in read,false);
- for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{blockMemberAccessTokens:'yes'},{dlnaEnabled:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
+ for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan','blockMemberAccessTokens','deviceApprovalRequired','transcodingEnabled'])assert.equal(retired in read,false);
+ for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{conversionMode:'automatic'},{outputFormat:'vp9'},{downloadMaxQuality:'automatic'},{musicAwayQuality:'256'},{dlnaEnabled:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
 });
 
 test('a runtime save rebases only edited fields and preserves concurrent owner changes',async()=>{
@@ -205,7 +209,8 @@ test('a runtime save rebases only edited fields and preserves concurrent owner c
  const initial=await c.settings();stored={...stored,connectionLimit:123};rev=2;
  try {await c.applySettings(initial.revision,{...initial.requested,name:'Renamed'});
   assert.equal(stored.name,'Renamed');assert.equal(stored.connectionLimit,123);
-  assert.deepEqual(Object.keys(bodies.at(-1).values),['name']);
+  assert.deepEqual(Object.keys(bodies.at(-1).values).sort(),Object.keys(values).sort(),'the strict server receives a complete document');
+  assert.equal(bodies[0].values.connectionLimit,values.connectionLimit);assert.equal(bodies.at(-1).values.connectionLimit,123);
  }finally{c.dispose();}
 });
 
@@ -285,4 +290,32 @@ test('retrying a save after a rebase and a lost response reuses the exact commit
  });
  await c.settings();stored={...stored,connectionLimit:123};rev=2;
  try {await assert.rejects(c.applySettings(1,{...values,name:'Renamed'}));assert.equal(c.hasUnconfirmed(),true);await c.applySettings(1,{...values,name:'Renamed'});assert.deepEqual(sent[2],sent[1]);assert.equal(stored.connectionLimit,123);}finally{c.dispose();}
+});
+
+test('a first partial edit reads a genuine complete document and refuses an unknown stale baseline',async()=>{
+ const calls:any[]=[];
+ const c=client(async(_path,method,body)=>{calls.push({method,body});return envelope(method==='GET'?settings(4):{...settings(5),requested:{...values,name:'First edit'},effective:{...values,name:'First edit'}});});
+ try{
+  await assert.rejects(c.applySettings(1,{name:'First edit'}),/Reload/);
+  assert.deepEqual(calls.map(call=>call.method),['GET']);
+  await c.applySettings(4,{name:'First edit'});
+  assert.equal(calls.at(-1).body.expectedRevision,4);
+  assert.deepEqual(calls.at(-1).body.values,{...values,name:'First edit'});
+ }finally{c.dispose();}
+});
+
+test('a late duplicate receipt cannot clear a newer unconfirmed action on the same route',async()=>{
+ const sent:{body:any;resolve:(value:unknown)=>void}[]=[];
+ const c=client(async(_path,_method,body)=>new Promise(resolve=>sent.push({body,resolve})));
+ try{
+  const first=c.submit(submission),duplicate=c.submit(submission);
+  assert.equal(sent.length,2);assert.equal(sent[0].body.idempotencyKey,sent[1].body.idempotencyKey);
+  sent[0].resolve(envelope(report));await first;
+  const newer=c.submit({...submission,message:'Next message'});
+  assert.equal(sent.length,3);assert.notEqual(sent[2].body.idempotencyKey,sent[0].body.idempotencyKey);
+  sent[1].resolve(envelope(report));await duplicate;
+  assert.equal(c.hasUnconfirmed(),true,'the newer action has no receipt yet');
+  sent[2].resolve(envelope({...report,message:'Next message'}));await newer;
+  assert.equal(c.hasUnconfirmed(),false);
+ }finally{c.dispose();}
 });

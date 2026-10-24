@@ -6638,6 +6638,9 @@ export const schemas = {
       "operationId": {
         "type": "string"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -6709,6 +6712,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -6740,6 +6746,7 @@ export const schemas = {
       }
     },
     "required": [
+      "ownAddressEnabled",
       "connectionLimit",
       "advertiseUrl",
       "revision",
@@ -6803,6 +6810,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "conversionMode": {
+            "type": "string"
+          },
           "customCertificateDomain": {
             "type": "string"
           },
@@ -6822,6 +6832,9 @@ export const schemas = {
           },
           "dlnaEnabled": {
             "type": "boolean"
+          },
+          "downloadMaxQuality": {
+            "type": "string"
           },
           "ffmpegPath": {
             "type": "string"
@@ -6909,6 +6922,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "musicAwayQuality": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -6916,6 +6932,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "outputFormat": {
+            "type": "string"
+          },
+          "ownAddressEnabled": {
+            "type": "boolean"
           },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
@@ -6978,9 +7000,6 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "transcodingEnabled": {
-            "type": "boolean"
-          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -7008,7 +7027,10 @@ export const schemas = {
           "subtitleTrackLimit",
           "subtitleFileLimitMiB",
           "name",
-          "transcodingEnabled",
+          "conversionMode",
+          "outputFormat",
+          "downloadMaxQuality",
+          "musicAwayQuality",
           "perAccountCap",
           "serverCap",
           "hardwareBackend",
@@ -7050,6 +7072,7 @@ export const schemas = {
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
           "advertisedInterface",
+          "ownAddressEnabled",
           "customCertificatePath",
           "customCertificateKeyPath",
           "customCertificateDomain",
@@ -7112,6 +7135,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -7131,6 +7157,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -7218,6 +7247,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -7225,6 +7257,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -7287,9 +7325,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -7317,7 +7352,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -7359,6 +7397,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -7437,6 +7476,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -7456,6 +7498,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -7543,6 +7588,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -7550,6 +7598,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -7612,9 +7666,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -7642,7 +7693,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -7684,6 +7738,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -12821,6 +12876,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -12958,6 +13028,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -22739,6 +22824,109 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminLibrariesIdSonicAnalysisRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdSonicAnalysisResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
+    ],
+    "type": "object"
+  },
   "GetAdminLibrariesRequest": {
     "properties": {},
     "required": [],
@@ -31242,6 +31430,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -31273,6 +31464,7 @@ export const schemas = {
       }
     },
     "required": [
+      "ownAddressEnabled",
       "connectionLimit",
       "advertiseUrl",
       "revision",
@@ -31456,6 +31648,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -31487,6 +31682,7 @@ export const schemas = {
           }
         },
         "required": [
+          "ownAddressEnabled",
           "connectionLimit",
           "advertiseUrl",
           "revision",
@@ -31785,6 +31981,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -31804,6 +32003,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -31891,6 +32093,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -31898,6 +32103,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -31960,9 +32171,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -31990,7 +32198,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -32032,6 +32243,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -32110,6 +32322,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -32129,6 +32344,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -32216,6 +32434,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -32223,6 +32444,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -32285,9 +32512,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -32315,7 +32539,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -32357,6 +32584,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -35583,6 +35811,21 @@ export const schemas = {
                         "id": {
                           "type": "string"
                         },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
+                        },
                         "name": {
                           "type": "string"
                         },
@@ -35720,6 +35963,21 @@ export const schemas = {
                             "properties": {
                               "id": {
                                 "type": "string"
+                              },
+                              "mark": {
+                                "properties": {
+                                  "seed": {
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "seed"
+                                ],
+                                "type": "object"
                               },
                               "name": {
                                 "type": "string"
@@ -36149,6 +36407,21 @@ export const schemas = {
                     "id": {
                       "type": "string"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -36231,6 +36504,21 @@ export const schemas = {
                 "properties": {
                   "id": {
                     "type": "string"
+                  },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
                   },
                   "name": {
                     "type": "string"
@@ -36369,6 +36657,21 @@ export const schemas = {
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -36685,6 +36988,21 @@ export const schemas = {
                     "id": {
                       "type": "string"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -36822,6 +37140,21 @@ export const schemas = {
                         "properties": {
                           "id": {
                             "type": "string"
+                          },
+                          "mark": {
+                            "properties": {
+                              "seed": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "text",
+                              "seed"
+                            ],
+                            "type": "object"
                           },
                           "name": {
                             "type": "string"
@@ -37216,6 +37549,21 @@ export const schemas = {
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -91497,6 +91845,9 @@ export const schemas = {
     "properties": {
       "data": {
         "properties": {
+          "bySound": {
+            "type": "boolean"
+          },
           "entries": {
             "items": {
               "additionalProperties": false,
@@ -92800,7 +93151,8 @@ export const schemas = {
           "itemId",
           "libraryId",
           "revision",
-          "entries"
+          "entries",
+          "bySound"
         ],
         "type": "object"
       },
@@ -126780,6 +127132,101 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSearchGenresRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSearchGenresResponse": {
+    "properties": {
+      "genres": {
+        "items": {
+          "properties": {
+            "backdrop": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "item",
+                    "show"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "path"
+              ],
+              "type": "object"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "covers": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "item",
+                      "show"
+                    ],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "path"
+                ],
+                "type": "object"
+              },
+              "maxItems": 2,
+              "type": "array"
+            },
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "value",
+            "label",
+            "count",
+            "covers"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "revision",
+      "genres"
+    ],
+    "type": "object"
+  },
   "GetSearchHistoryRequest": {
     "properties": {},
     "required": [],
@@ -127434,6 +127881,102 @@ export const schemas = {
       "name",
       "api",
       "setupRequired"
+    ],
+    "type": "object"
+  },
+  "GetSettingsConfigurationRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSettingsConfigurationResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "fields": {
+            "items": {
+              "properties": {
+                "applicationMode": {
+                  "type": "string"
+                },
+                "configOnly": {
+                  "type": "boolean"
+                },
+                "current": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "default": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "effective": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "key",
+                "current",
+                "effective",
+                "default",
+                "source",
+                "configOnly",
+                "applicationMode"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "registryRevision": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "registryRevision",
+          "path",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
     ],
     "type": "object"
   },
@@ -146688,6 +147231,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -146825,6 +147383,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -150851,6 +151424,109 @@ export const schemas = {
     },
     "required": [
       "itemId"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSonicAnalysisRetryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSonicAnalysisRetryResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
     ],
     "type": "object"
   },
@@ -159665,6 +160341,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -159802,6 +160493,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -160167,6 +160873,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -160304,6 +161025,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -171166,6 +171902,9 @@ export const schemas = {
       "revision": {
         "type": "string"
       },
+      "sequential": {
+        "type": "boolean"
+      },
       "sessionId": {
         "type": "string"
       },
@@ -177201,6 +177940,121 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutAdminLibrariesIdSonicAnalysisRequest": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "enabled",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesIdSonicAnalysisResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
+    ],
+    "type": "object"
+  },
   "PutAdminLibrariesOrderRequest": {
     "properties": {
       "libraryIds": {
@@ -179152,6 +180006,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -179289,6 +180158,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -179846,6 +180730,21 @@ export const schemas = {
                 "properties": {
                   "id": {
                     "type": "string"
+                  },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
                   },
                   "name": {
                     "type": "string"

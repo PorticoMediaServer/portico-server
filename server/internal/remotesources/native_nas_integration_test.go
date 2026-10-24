@@ -30,6 +30,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
 
@@ -94,6 +95,10 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	}
 	payload := bytes.Repeat([]byte("controlled-nas"), 16)
 	if err := os.WriteFile(filepath.Join(root, "one.mkv"), payload, 0644); err != nil {
+		t.Fatal(err)
+	}
+	modified := time.Unix(1700000000, 0).UTC()
+	if err := os.Chtimes(filepath.Join(root, "one.mkv"), modified, modified); err != nil {
 		t.Fatal(err)
 	}
 	configuration, err := os.ReadFile("../rcloneprogram/testdata/smb/smb.conf")
@@ -229,6 +234,64 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	if counts := process.OperationCounts(); counts.Active != 0 || counts.Peak > counts.Capacity || counts.Capacity != profile.Limits.Connections {
 		t.Fatal("storage metadata escaped the source budget", counts)
 	}
+	// This checks actual native transport metadata and terminal range behavior,
+	// not a catalogue/playback/Reading grant. The owner family and saved source
+	// are real; a content consumer must additionally bind its own exact target.
+	check := func(ctx context.Context) error {
+		view, err := dbwork.BeginSnapshot(ctx, f.s.db)
+		if err != nil {
+			return err
+		}
+		err = currentLocalOwnerTx(ctx, view.Tx(), identities, owner)
+		view.Rollback()
+		if err != nil {
+			return err
+		}
+		return process.Check(ctx)
+	}
+	observe := func(ctx context.Context) (remotemedia.FileObservation, error) {
+		return observeProcessFile(ctx, process, "one.mkv", check)
+	}
+	scan, err := observe(ctx)
+	if err != nil || !scan.ModifiedKnown || scan.ModifiedNS != modified.UnixNano() || scan.Size != int64(len(payload)) {
+		t.Fatal("native upstream observation", scan, err)
+	}
+	endpoint, err := process.Endpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := 0
+	session, err := OpenRangeSession(ctx, endpoint, RangeAdmission{Scan: scan, Check: check, Observe: observe, OnChanged: func() { notices++ }})
+	if err != nil {
+		t.Fatal("native range capture", err)
+	}
+	t.Cleanup(func() { session.Close() })
+	read := make([]byte, 16)
+	if n, err := session.ReadAt(ctx, read, 7); n != len(read) || err != nil || !bytes.Equal(read, payload[7:7+len(read)]) {
+		t.Fatal("actual native range", n, err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "one.mkv"), bytes.Repeat([]byte("B"), len(payload)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(root, "one.mkv"), modified.Add(2*time.Second), modified.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	clear(read)
+	if n, err := session.ReadAt(ctx, read, 7); n != 0 || !errors.Is(err, storage.ErrRemoteChanged) || !bytes.Equal(read, make([]byte, len(read))) || notices != 1 {
+		t.Fatal("native replacement exposed bytes or missed terminal change", n, err, notices)
+	}
+	// Returning the original cheap metadata cannot revive the failed reader.
+	// It also cannot establish an immutable version for a newly captured reader.
+	if err := os.WriteFile(filepath.Join(root, "one.mkv"), payload, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(root, "one.mkv"), modified, modified); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := session.ReadAt(ctx, read, 7); n != 0 || !errors.Is(err, storage.ErrRemoteChanged) || notices != 1 {
+		t.Fatal("native observation ABA revived the failed reader", n, err, notices)
+	}
+	t.Logf("native_backend=%s observed_replacement_terminal=true change_notices=%d", backend, notices)
 	// The actual library creation inspects its source before publishing the
 	// library-policy contributor. Its first scan/root check must be pending
 	// during old-process retirement, not permanently source_unavailable.

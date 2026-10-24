@@ -1,0 +1,59 @@
+package catalog
+
+import (
+	"database/sql"
+	"testing"
+	"time"
+
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/identity"
+)
+
+func TestMusicRadioRankingUsesCurrentProfileHistoryVisibilityAndArtists(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("music", "Music", "music", "/music")
+	artist := c.Artist(lib, "Seed artist")
+	seedAlbum := c.Album(artist, "Seed", 2026)
+	seed := c.Song(seedAlbum, 1, "/music/seed.flac", "Seed")
+	same := c.Song(seedAlbum, 2, "/music/same.flac", "Same artist")
+	nearAlbum := c.Album(c.Artist(lib, "Near artist"), "Near", 2026)
+	near := c.Song(nearAlbum, 1, "/music/near.flac", "Near")
+	farAlbum := c.Album(c.Artist(lib, "Far artist"), "Far", 2026)
+	far := c.Song(farAlbum, 1, "/music/far.flac", "Far")
+	sonicStoredFixture(t, c, seed, 1, 0)
+	sonicStoredFixture(t, c, same, 1, 0)
+	sonicStoredFixture(t, c, near, .9, .1)
+	sonicStoredFixture(t, c, far, .1, .9)
+	c.Genres(seed.ID, "local", "Rock")
+	c.Genres(near.ID, "local", "Rock")
+	c.Genres(far.ID, "local", "Jazz")
+	c.Drain()
+	s := New(c.DB)
+	viewer := Viewer{Profile: identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}), Libraries: []string{"music"}}
+	now := time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
+	request := RadioBatchRequest{Seed: seed.Public, LastItem: seed.Public, Limit: 1, Now: now}
+	read := func(want string, sound bool) {
+		t.Helper()
+		got, err := s.MusicRadioBatch(viewer, request)
+		if err != nil || len(got.IDs) != 1 || got.IDs[0] != want || got.BySound != sound {
+			t.Fatal("radio selection", got, err, "want", want, sound)
+		}
+	}
+	read(near.Public, true) // identical same-artist track must not win.
+	c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms) VALUES('other','local','account','other','Fixture',?,'music',7,'Near',?,?,1000)`, near.ID, now.Add(-time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli())
+	read(near.Public, true) // another profile's history is never borrowed.
+	c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms) VALUES('mine','local','account','profile','Fixture',?,'music',7,'Near',?,?,1000)`, near.ID, now.Add(-time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli())
+	read(far.Public, true)
+	c.Exec(`DELETE FROM play_history WHERE playback_id='mine'`)
+	c.Attributes(near.ID, "label", "private")
+	c.Drain()
+	viewer.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"private"}}
+	read(far.Public, true)
+	viewer.Restrictions = identity.ContentRestrictions{}
+	c.Exec(`INSERT INTO library_sonic_settings(library_id,enabled,revision) VALUES('music',0,1)`)
+	read(near.Public, false) // actual existing genre rule, no sound claim.
+	viewer.Libraries = []string{"other"}
+	if _, err := s.MusicRadioBatch(viewer, request); err != sql.ErrNoRows {
+		t.Fatal("seed scope widened", err)
+	}
+}

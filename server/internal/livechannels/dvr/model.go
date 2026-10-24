@@ -216,9 +216,10 @@ type Recording struct {
 
 // RecordingChannel names a recording's channel for a list row.
 type RecordingChannel struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Number string `json:"number"`
+	ID     string                    `json:"id"`
+	Name   string                    `json:"name"`
+	Number string                    `json:"number"`
+	Mark   *livechannels.ChannelMark `json:"mark,omitempty"`
 }
 
 // setSeriesGrouping derives the show-grouping key from the programme the
