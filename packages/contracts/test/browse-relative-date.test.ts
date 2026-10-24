@@ -5,8 +5,8 @@ import {schemas} from '../src/schemas.ts';
 
 /** The browse node is published inline wherever a query is accepted; the saved
  * resource definition is the stable one to inspect. */
-const node = () => {
-  const definition = (schemas.PostSavedResourcesRequest as {properties: {definition: {properties: {query: {properties: Record<string, {description?: string}>}}}}}}).properties.definition;
+const node = (): {properties: Record<string, {description?: string}>} => {
+  const definition = (schemas.PostSavedResourcesRequest as any).properties.definition;
   return definition.properties.query;
 };
 
