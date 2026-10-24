@@ -28,7 +28,10 @@ role, normalized descendant text and order. A list cardinality fault is reported
 once; descendant missing/extra/string cascades are suppressed. Own text is used
 as fallback only on leaves. Missing, extra and ambiguous elements are failures; order
 selection during ambiguity is diagnostic, not a waiver. The complete declared
-screen must match viewport and DPR1; an element crop cannot pass.
+screen must match the authored logical viewport; an element crop cannot pass.
+Reference extraction uses DPR1. Actual DOM CSS-pixel and RN dp/pt measurements
+retain their real density (including 2/3) without rescaling coordinates or fonts;
+see the shared measurement interface.
 
 Geometry tolerance is **2 CSS px per x/y/width/height**, opacity **0.02**.
 Font family/size/weight and normalized text are exact. Rendered Range text-run

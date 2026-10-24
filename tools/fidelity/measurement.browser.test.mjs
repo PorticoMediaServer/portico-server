@@ -35,6 +35,7 @@ test('real browser measures the whole viewport and protects source, secret and n
       const screen = await browser.measure('main');
       assert.deepEqual(screen, await browser.measure('main'), 'same source/state extraction is deterministic');
       assert.equal(screen.scope, 'screen'); assert.equal(screen.fullViewport, true);
+      assert.deepEqual(screen.measurement, {renderer: 'dom', coordinateUnit: 'css-px'});
       assert.deepEqual(screen.root, {x: 0, y: 0, width: 800, height: 600});
       assert.deepEqual(screen.viewport, {width: 800, height: 600, deviceScaleFactor: 1});
       assert.equal(screen.fontStatus, 'loaded');
