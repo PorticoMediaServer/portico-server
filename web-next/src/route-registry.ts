@@ -7,7 +7,7 @@ export const webScreenPaths = Object.freeze({
   home: '/', search: '/search', libraries: '/libraries', library: '/library/$libraryId',
   live: '/live', saved: '/saved', item: '/item/$itemId', homeRow: '/home/rows/$rowId',
   player: '/player', settings: '/settings', dashboard: '/dashboard', notifications: '/notifications',
-  profiles: '/profiles', servers: '/servers', account: '/account', signIn: '/sign-in',
+  setup: '/setup', profiles: '/profiles', servers: '/servers', account: '/account', signIn: '/sign-in',
   together: '/watch-together', help: '/help',
   person: '/person/$personId', read: '/read/$itemId',
 } as const);
@@ -86,7 +86,7 @@ export function createWebScreenRegistry(modules: Readonly<Record<string, WebScre
     },
     missing: () => (Object.keys(webScreenPaths) as WebScreenId[]).filter(id => !definitions.has(id)),
     chrome: (id: WebScreenId): WebScreenChrome => definitions.get(id)?.chrome
-      ?? (['signIn', 'profiles', 'servers', 'account', 'read'].includes(id) ? 'standalone' : id === 'player' ? 'player' : 'shell'),
+      ?? (['setup', 'signIn', 'profiles', 'servers', 'account', 'read'].includes(id) ? 'standalone' : id === 'player' ? 'player' : 'shell'),
   });
 }
 export function webScreenIdForRoute(routeId: string): WebScreenId | undefined {
