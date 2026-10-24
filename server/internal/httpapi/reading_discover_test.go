@@ -123,7 +123,6 @@ func TestReadingDiscoverHonorsCurrentProfileRestrictions(t *testing.T) {
 // carries rows of the existing public item shape only.
 func TestReadingDiscoverOperationStrictAndBounded(t *testing.T) {
 	r := newReadingFixture(t, "book", "pdf")
-	ctx := context.Background()
 	onePath := readingTreeFile(t, r, "Author/Series/One.epub")
 	readingTreeFile(t, r, "Author/Series/Two.epub")
 	readingScan(t, r.f, r.library)
