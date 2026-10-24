@@ -20,7 +20,7 @@ function inventory(libraryId: string, revision = 41) {
     sources: [{id: 'folder', libraryId, kind: 'local', name: 'Folder', path: '/media', resolvedPath: '/media', classification: 'local', generation: 1, health: 'healthy', enabled: true, followSymlinks: false, identityConfirmed: true, intervalMs: 3600000, nextScanAt: '', lastCompleteAt: '', lastProgressAt: ''}],
     policy: {tier: 'basic', revision: 1, operations: []}};
 }
-function fixture(request: LibraryContentApi['request']) {
+function fixture(request: LibraryContentApi['request'], observe = true) {
   let current = true;
   const calls: string[] = [];
   const api: LibraryContentApi = {request: async <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => {calls.push(path);return request<T>(path, method, body, signal);}};
@@ -31,7 +31,7 @@ function fixture(request: LibraryContentApi['request']) {
     environment: {platform: 'web', os: 'browser'}, eligibility: {hasEngine: () => false, library: () => undefined},
     reading: {read: () => {throw new Error('Unexpected Reading read');}, patch: () => {throw new Error('Unexpected Reading write');}},
   });
-  const unsubscribe = controller.subscribe(() => {});
+  const unsubscribe = observe ? controller.subscribe(() => {}) : () => {};
   return {controller, reader, calls, unsubscribe, retire: () => {current = false;}};
 }
 const selected = {section, panelId: 'library', recordId: 'selected'};
@@ -82,4 +82,20 @@ test('disposing or retiring the controller suppresses a held folder read', async
     assert.equal(f.controller.folders.getSnapshot().libraryId, undefined);
     f.unsubscribe();f.controller.dispose();f.reader.dispose();
   }
+});
+
+test('an unobserved headless controller does no folder IO until the screen observes it', async () => {
+  const f = fixture(async <T>(path: string) => (path.endsWith('/inventory-config') ? inventory('selected') : document('selected')) as T, false);
+  try {
+    await f.controller.loadContext(selected);
+    assert.deepEqual(f.calls.filter(path => path.endsWith('/inventory-config')), []);
+    assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
+    const off = f.controller.subscribe(() => {});
+    try {
+      await f.controller.loadContext(selected);
+      assert.equal(f.controller.folders.getSnapshot().libraryId, 'selected');
+      assert.equal(f.controller.folders.getSnapshot().config?.revision, 41);
+      assert.equal(f.calls.filter(path => path.endsWith('/inventory-config')).length, 1);
+    } finally {off();}
+  } finally {f.unsubscribe();f.controller.dispose();f.reader.dispose();}
 });
