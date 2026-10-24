@@ -35,7 +35,7 @@ func TestReadingPrivateLocalPDFRangesProgressAndRevocation(t *testing.T) {
 		if tc.want == 206 && (w.Body.String() != "%PDF-" || !strings.HasPrefix(w.Header().Get("Content-Range"), "bytes 0-4/")) {
 			t.Fatal("wrong exact range", w.Header(), w.Body.String())
 		}
-		if w.Header().Get("Cache-Control") != "private, no-store" {
+		if w.Header().Get("Cache-Control") != "private, no-store, no-transform" {
 			t.Fatal(w.Header())
 		}
 	}

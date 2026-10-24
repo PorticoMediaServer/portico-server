@@ -100,7 +100,7 @@ func readingOpened(t *testing.T, r *readingFixture, h http.Handler) ReadingSessi
 			t.Fatal("private source escaped manifest")
 		}
 	}
-	if w.Header().Get("Cache-Control") != "private, no-store" || w.Header().Get("ETag") != `"`+manifest.Revision+`"` {
+	if w.Header().Get("Cache-Control") != "private, no-store, no-transform" || w.Header().Get("ETag") != `"`+manifest.Revision+`"` {
 		t.Fatal(w.Header())
 	}
 	return manifest
