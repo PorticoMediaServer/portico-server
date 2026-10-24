@@ -1,3 +1,4 @@
+import {parseInventorySource,type InventorySource} from './library-inventory.ts';
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {Alert} from './console.ts';
@@ -17,9 +18,9 @@ export type GeneratedNavigation=Readonly<{trickplayIntervalMs:number;trickplayTi
 /** A library's intro and credits detection: follow the server's mode, or choose for this library. */
 export type SegmentDetectionChoice='server'|'off'|'standard'|'thorough';
 export const segmentDetectionChoices:readonly SegmentDetectionChoice[]=['server','off','standard','thorough'];
-export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;monitorChanges:boolean;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation;segmentDetection:SegmentDetectionChoice}>;
-export type LibrarySource=Readonly<{id:string;name:string;root:string;classification:'local'|'network';enabled:boolean}>;
-export type LibraryAdminDocument=Readonly<{libraryId:string;libraryName:string;libraryKind:string;revision:number;digest:string;settings:LibrarySettings;analysisMatrix:AnalysisMatrix;availableProviders:readonly MetadataProvider[];enumerations:Readonly<Record<string,readonly string[]>>;sources:readonly LibrarySource[]}>;
+export type LibrarySettings=Readonly<{scanDepth:'file_list_only'|'basic'|'complete'|'custom';groupCollections:boolean;localTags:'prefer'|'supplement'|'off';lyricsSource:'files'|'lrclib';titleSource:'tags'|'names';episodeNumbering:'season'|'absolute';findExtras:boolean;sortIgnoreArticles:boolean;refreshMode:'replace_unlocked'|'fill_missing';acoustidEnabled:boolean;continueWatching:Readonly<{weeks:number;maximumItems:number;includeSeasonPremieres:boolean;videoPlayedThreshold:number;videoCompletion:'earliest'|'threshold'|'credits'}>;allowMediaDeletion:boolean;monitorChanges:boolean;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation;segmentDetection:SegmentDetectionChoice}>;
+export type LibrarySource=InventorySource;
+export type LibraryAdminDocument=Readonly<{libraryId:string;libraryName:string;libraryKind:string;revision:number;digest:string;eligibleControls:readonly string[];audience:Readonly<{everyone:boolean;accounts:number}>;actions:readonly ('rename'|'scan'|'remove')[];settings:LibrarySettings;defaults:LibrarySettings;analysisMatrix:AnalysisMatrix;availableProviders:readonly MetadataProvider[];enumerations:Readonly<Record<string,readonly string[]>>;sources:readonly LibrarySource[]}>;
 export type DeleteFile=Readonly<{assetId:string;path:string;bytes:number;present:boolean;shared:boolean}>;
 export type DeleteDependent=Readonly<{kind:string;count:number;description:string;networkTarget?:string;driveType?:string}>;
 export type DeleteTarget=Readonly<{itemId:string;title:string;kind:string;libraryId:string;libraryName:string;allowMediaDeletion:boolean;/** How many playable titles go with this item: 1 for a film, a show's episodes. */titles:number;bytes:number;files:readonly DeleteFile[];dependents:readonly DeleteDependent[]}>;
@@ -59,11 +60,12 @@ export type UpdateReport=Readonly<{current:UpdateBuild;channel:string;feedConfig
 export type BackupKind='scheduled'|'manual'|'pre-restore';
 // TODO(be backups): switch to generated types once apigen publishes the spec §4 routes.
 // The shapes below are hand-written from `Spec — Backups (Plex model).md` §4 and §6.2.
-export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string}>;
+export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string;encrypted?:boolean}>;
 export type BackupRunning=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number}>;
 export type RestoreOutcome='restored'|'rolled_back';
 export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string;jobId?:string;schemaVersion?:number}>;
-export type BackupsDocument=Readonly<{backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
+export type BackupResult=Readonly<{jobId:string;backupId?:string;outcome:'completed'|'failed';errorCode?:string}>;
+export type BackupsDocument=Readonly<{lastBackup?:BackupResult;backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
 export type RestoreSource=Readonly<{backupId:string}|{path:string}>;
 export type RestoreProgress=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number;result?:RestoreStaged;errorCode?:string}>;
 export type RestoreStaged=Readonly<{staged:true;restartRequired:true;validation:Readonly<{schemaVersion:number;integrity:'ok'}>}>;
@@ -158,20 +160,19 @@ function parseNavigation(v:unknown):GeneratedNavigation{
  return Object.freeze({trickplayIntervalMs:v.trickplayIntervalMs,trickplayTileWidth:v.trickplayTileWidth,trickplayMaxTiles:v.trickplayMaxTiles,chapterThumbnailMode:choice(v.chapterThumbnailMode,['none','embedded','generated'] as const,'chapter thumbnail mode'),videoPreviewEnabled:v.videoPreviewEnabled,videoPreviewMs:v.videoPreviewMs});
 }
 function parseLibrarySettings(v:unknown):LibrarySettings{
- if(!object(v)||!flag(v.allowMediaDeletion)||!flag(v.monitorChanges))invalid('library settings');
- return Object.freeze({allowMediaDeletion:v.allowMediaDeletion,monitorChanges:v.monitorChanges,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation),
+ if(!object(v)||!flag(v.allowMediaDeletion)||!flag(v.monitorChanges)||!flag(v.groupCollections)||!flag(v.findExtras)||!flag(v.sortIgnoreArticles)||!flag(v.acoustidEnabled))invalid('library settings');
+ const c=v.continueWatching;
+ if(!object(c)||!count(c.weeks)||c.weeks<1||c.weeks>104||!count(c.maximumItems)||c.maximumItems<1||c.maximumItems>200||!flag(c.includeSeasonPremieres)||!count(c.videoPlayedThreshold)||c.videoPlayedThreshold<50||c.videoPlayedThreshold>100)invalid('continue watching');
+ return Object.freeze({scanDepth:choice(v.scanDepth,['file_list_only','basic','complete','custom'] as const,'scan depth'),groupCollections:v.groupCollections,localTags:choice(v.localTags,['prefer','supplement','off'] as const,'local tags'),lyricsSource:choice(v.lyricsSource,['files','lrclib'] as const,'lyrics source'),titleSource:choice(v.titleSource,['tags','names'] as const,'title source'),episodeNumbering:choice(v.episodeNumbering,['season','absolute'] as const,'episode numbering'),findExtras:v.findExtras,sortIgnoreArticles:v.sortIgnoreArticles,refreshMode:choice(v.refreshMode,['replace_unlocked','fill_missing'] as const,'refresh mode'),acoustidEnabled:v.acoustidEnabled,continueWatching:Object.freeze({weeks:c.weeks,maximumItems:c.maximumItems,includeSeasonPremieres:c.includeSeasonPremieres,videoPlayedThreshold:c.videoPlayedThreshold,videoCompletion:choice(c.videoCompletion,['earliest','threshold','credits'] as const,'video completion')}),allowMediaDeletion:v.allowMediaDeletion,monitorChanges:v.monitorChanges,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation),
   // A server from before the choice existed follows its own mode.
   segmentDetection:v.segmentDetection===undefined?'server':choice(v.segmentDetection,segmentDetectionChoices,'library segment detection')});
 }
 /** parseLibraryDocument reads one library's administration document. */
 export function parseLibraryDocument(v:unknown):LibraryAdminDocument{
- if(!object(v)||!filled(v.libraryId,256)||!text(v.libraryName,512)||!filled(v.libraryKind,64)||!count(v.revision)||v.revision<1||!filled(v.digest,128))invalid('library document');
+ if(!object(v)||!object(v.audience)||!flag(v.audience.everyone)||!count(v.audience.accounts)||!Array.isArray(v.actions)||!v.actions.every(a=>['rename','scan','remove'].includes(a))||!filled(v.libraryId,256)||!text(v.libraryName,512)||!filled(v.libraryKind,64)||!count(v.revision)||v.revision<1||!filled(v.digest,128))invalid('library document');
  // The settings a save sends back stay exact. A folder or an offered provider this app cannot read is left out alone.
- const sources=firstOfEach('administration','library sources',readable(v.sources,256,'library sources',entry=>{
-  if(!object(entry)||!filled(entry.id,256)||!text(entry.name,512)||!text(entry.root,8192)||!flag(entry.enabled))invalid('library source');
-  return Object.freeze({id:entry.id,name:entry.name,root:entry.root,classification:choice(entry.classification,['local','network'] as const,'library source classification'),enabled:entry.enabled});
- }),entry=>entry.id);
- return Object.freeze({libraryId:v.libraryId,libraryName:v.libraryName,libraryKind:v.libraryKind,revision:v.revision,digest:v.digest,settings:parseLibrarySettings(v.settings),analysisMatrix:parseAnalysisMatrix(v.analysisMatrix),availableProviders:Object.freeze(firstOfEach('administration','available providers',readable(v.availableProviders,32,'available providers',parseProvider,[['mediaKinds',32]]),provider=>provider.id)),enumerations:vocabulary(v.enumerations,'library enumerations'),sources:Object.freeze(sources)});
+ const sources=firstOfEach('administration','library sources',readable(v.sources,256,'library sources',entry=>parseInventorySource(entry,v.libraryId as string)),entry=>entry.id);
+ return Object.freeze({libraryId:v.libraryId,libraryName:v.libraryName,libraryKind:v.libraryKind,audience:Object.freeze({everyone:v.audience.everyone,accounts:v.audience.accounts}),actions:Object.freeze(v.actions as ('rename'|'scan'|'remove')[]),revision:v.revision,digest:v.digest,eligibleControls:strings(v.eligibleControls,128,'eligible controls'),settings:parseLibrarySettings(v.settings),defaults:parseLibrarySettings(v.defaults),analysisMatrix:parseAnalysisMatrix(v.analysisMatrix),availableProviders:Object.freeze(firstOfEach('administration','available providers',readable(v.availableProviders,32,'available providers',parseProvider,[['mediaKinds',32]]),provider=>provider.id)),enumerations:vocabulary(v.enumerations,'library enumerations'),sources:Object.freeze(sources)});
 }
 
 /** analysisSelectionComplete answers whether every enabled operation's dependencies are also enabled, which is what the server requires of a write. */
@@ -362,10 +363,15 @@ export function parseBackupsDocument(v:unknown):BackupsDocument{
  const backups=firstOfEach('administration','backups',keepReadable('administration','backups',list(v.backups,1000,'backups'),(entry):BackupSummary|undefined=>{
   if(!object(entry)||!filled(entry.id,128)||!text(entry.createdAt,64))invalid('backup');
   if(!backupKinds.includes(entry.kind as BackupKind))return undefined;
+  if(entry.encrypted!==undefined&&typeof entry.encrypted!=='boolean')invalid('backup encryption');
   if(!count(entry.schemaVersion)||!text(entry.serverVersion,64)||!count(entry.bytes)||!text(entry.path,8192))invalid('backup');
-  return Object.freeze({id:entry.id,createdAt:entry.createdAt,kind:entry.kind as BackupKind,schemaVersion:entry.schemaVersion,serverVersion:entry.serverVersion,bytes:entry.bytes,path:entry.path});
+  return Object.freeze({id:entry.id,createdAt:entry.createdAt,kind:entry.kind as BackupKind,schemaVersion:entry.schemaVersion,serverVersion:entry.serverVersion,bytes:entry.bytes,path:entry.path,...(entry.encrypted!==undefined?{encrypted:entry.encrypted as boolean}:{})});
  }),entry=>entry.id);
- const doc:{backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}={backups:Object.freeze(backups)};
+ const doc:{lastBackup?:BackupResult;backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}={backups:Object.freeze(backups)};
+ if(v.lastBackup!==undefined&&v.lastBackup!==null){
+  const r=v.lastBackup;
+  if(object(r)&&filled(r.jobId,128)&&(r.outcome==='completed'||r.outcome==='failed'))doc.lastBackup=Object.freeze({jobId:r.jobId,outcome:r.outcome,...(filled(r.backupId,128)?{backupId:r.backupId as string}:{}),...(filled(r.errorCode,128)?{errorCode:r.errorCode as string}:{})});
+ }
  if(v.running!==undefined&&v.running!==null){
   const r=v.running;
   if(object(r)&&filled(r.jobId,128)&&text(r.phase,128)&&count(r.bytesDone)&&count(r.bytesTotal))doc.running=Object.freeze({jobId:r.jobId,phase:r.phase,bytesDone:r.bytesDone,bytesTotal:r.bytesTotal});

@@ -32,6 +32,31 @@ func (s *Service) settings(ctx context.Context, tx *sql.Tx) (ProviderSettings, e
 	out.LRCLIB = enabled == "true" && out.Configured
 	return out, e
 }
+
+// librarySettings narrows the existing global provider authority for one song.
+// Its revision fences staged candidates across per-library policy changes.
+func (s *Service) librarySettings(ctx context.Context, tx *sql.Tx, library string) (ProviderSettings, error) {
+	out, err := s.settings(ctx, tx)
+	if err != nil {
+		return out, err
+	}
+	allowed, err := libraryLyricsAllowed(ctx, tx, library)
+	if err != nil {
+		return out, err
+	}
+	local, err := localonly.Library(ctx, tx, library)
+	if err != nil {
+		return out, err
+	}
+	var revision int64
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT revision FROM library_preferences WHERE library_id=?),1)`, library).Scan(&revision); err != nil {
+		return out, err
+	}
+	out.LRCLIB = out.LRCLIB && allowed && !local
+	out.Revision += revision - 1
+	return out, nil
+}
+
 func (s *Service) Settings(ctx context.Context) (ProviderSettings, error) {
 	gated, e := dbwork.BeginSnapshot(ctx, s.DB)
 	if e != nil {
@@ -131,12 +156,16 @@ func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe st
 		}
 		return out, ErrSource
 	}
-	settings, e := s.settings(ctx, tx)
+	settings, e := s.librarySettings(ctx, tx, a.LibraryID)
 	if e != nil {
 		gated.Rollback()
 		return out, e
 	}
 	if in.Provider == "lrclib" {
+		if !settings.LRCLIB {
+			gated.Rollback()
+			return out, ErrUnavailable
+		}
 		if local, err := localonly.Item(ctx, tx, a.ItemID); err != nil || local {
 			gated.Rollback()
 			if err != nil {
@@ -207,7 +236,7 @@ func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe st
 	if current == nil || current.Version != src.Version {
 		return out, ErrSource
 	}
-	nowSettings, e := s.settings(ctx, tx)
+	nowSettings, e := s.librarySettings(ctx, tx, a.LibraryID)
 	if e != nil {
 		return out, e
 	}

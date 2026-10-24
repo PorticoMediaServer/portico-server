@@ -14,12 +14,12 @@ test('the typed clients hit the spec routes with the operation id',async()=>{
  const calls:{path:string;method:string;body:unknown}[]=[];
  const api=transport((path,method)=>{
   if(path==='/v1/admin/backups'&&method==='GET')return envelope({backups:[backup],restore:{jobId:'job-1',phase:'staged',bytesDone:10,bytesTotal:10,result:{staged:true,restartRequired:true,validation:{schemaVersion:41,integrity:'ok'}}}});
-  if(path==='/v1/admin/backups/restore')return envelope({jobId:'job-1'});
+  if(path==='/v1/admin/backups/restore'||path==='/v1/admin/backups'&&method==='POST')return envelope({jobId:'job-1'});
   return envelope({});
  },calls);
  const doc=await getBackups(api,SERVER);
  assert.equal(doc.backups[0].id,backup.id);
- await startBackup(api,SERVER,'op-1');
+ assert.equal(await startBackup(api,SERVER,'op-1'),'job-1');
  assert.deepEqual(calls[1],{path:'/v1/admin/backups',method:'POST',body:{operationId:'op-1'}});
  await deleteBackup(api,SERVER,'2026-09-24T013000Z');
  assert.deepEqual(calls[2],{path:'/v1/admin/backups/2026-09-24T013000Z',method:'DELETE',body:undefined});
@@ -38,11 +38,11 @@ test('a response from another server is refused',async()=>{
  await assert.rejects(()=>getBackups(api,SERVER),(e:unknown)=>(e as {code?:string}).code==='wrong_server');
 });
 
-test('backup completion resolves when running clears and reports each read',async()=>{
+test('backup completion requires the matching actual job result and reports each read',async()=>{
  const docs:BackupsDocument[]=[
   {backups:[],running:{jobId:'j',phase:'copying',bytesDone:1,bytesTotal:4}},
   {backups:[],running:{jobId:'j',phase:'copying',bytesDone:3,bytesTotal:4}},
-  {backups:[backup]},
+  {backups:[backup],lastBackup:{jobId:'j',outcome:'completed',backupId:backup.id}},
  ];
  const seen:BackupsDocument[]=[];
  let n=0;
@@ -87,4 +87,40 @@ test('restore receipt survives missing the staged response during restart',async
  const api=transport((path,method)=>method==='POST'?envelope({jobId:'job-1'}):envelope({backups:[],lastRestore:{jobId:'job-1',schemaVersion:41,at:'2026-10-13T12:00:00Z',outcome:'restored',reason:''}}));
  const result=await restoreBackup(api,SERVER,'operation-1',{backupId:backup.id});
  assert.equal(result.validation.integrity,'ok');
+});
+
+test('backup settings transport publishes only presence and encrypted restore keeps the secret out of its source',async()=>{
+ const {getBackupSettings,updateBackupSettings}=await import('../src/backups.ts');
+ const calls:{path:string;method:string;body:unknown}[]=[];
+ const settings={backupFolder:'/mnt/backup',includeArtwork:true,passphraseProtected:true,passphraseSet:true};
+ const api=transport(path=>{
+  if(path==='/v1/admin/backups/settings')return envelope({...settings,passphrase:'must never escape parser'});
+  if(path==='/v1/admin/backups/restore')return envelope({jobId:'private-restore'});
+  return envelope({backups:[{...backup,encrypted:true}],restore:{jobId:'private-restore',phase:'staged',bytesDone:1,bytesTotal:1,result:{staged:true,restartRequired:true,validation:{schemaVersion:1,integrity:'ok'}}}});
+ },calls);
+ assert.deepEqual(await getBackupSettings(api,SERVER),settings);
+ assert.deepEqual(await updateBackupSettings(api,SERVER,{passphraseProtected:true,passphrase:'private fixture phrase'}),settings);
+ await restoreBackup(api,SERVER,'restore-private',{backupId:backup.id},undefined,'private fixture phrase');
+ assert.deepEqual(calls[2].body,{operationId:'restore-private',source:{backupId:backup.id},passphrase:'private fixture phrase'});
+ const listed=await getBackups(api,SERVER);assert.equal(listed.backups[0].encrypted,true);
+});
+
+
+test('a failed backup is never reported as completed when its running job clears',async()=>{
+ const api=transport(()=>envelope({backups:[],lastBackup:{jobId:'failed-job',outcome:'failed',errorCode:'insufficient_disk'}}));
+ await assert.rejects(()=>waitForBackupCompletion(()=>getBackups(api,SERVER),{intervalMs:1,expectedJobId:'failed-job'}),(e:unknown)=>(e as {code?:string}).code==='insufficient_disk');
+});
+
+test('idle state or another job result never proves this backup completed',async()=>{
+ for(const doc of [{backups:[]},{backups:[backup],lastBackup:{jobId:'older-job',outcome:'completed' as const}}])await assert.rejects(()=>waitForBackupCompletion(async()=>doc,{expectedJobId:'current-job',intervalMs:1,timeoutMs:3}),(e:unknown)=>(e as {code?:string}).code==='backup_progress_timeout');
+ const done={backups:[backup],lastBackup:{jobId:'current-job',outcome:'completed' as const}};
+ assert.equal(await waitForBackupCompletion(async()=>done,{expectedJobId:'current-job'}),done);
+});
+test('source inspection uses the owner producer flag and never guesses from pba',async()=>{
+ const {inspectBackupSource}=await import('../src/backups.ts');
+ const calls:{path:string;method:string;body:unknown}[]=[];
+ const api=transport(()=>envelope({encrypted:false,passphrase:'must not escape',path:'/private'}),calls);
+ assert.deepEqual(await inspectBackupSource(api,SERVER,{path:'/plain.pba'}),{encrypted:false});
+ assert.deepEqual(calls[0],{path:'/v1/admin/backups/inspect',method:'POST',body:{source:{path:'/plain.pba'}}});
+ await assert.rejects(()=>inspectBackupSource(transport(()=>envelope({encrypted:'true'})),SERVER,{backupId:backup.id}));
 });

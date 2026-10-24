@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
@@ -197,6 +198,20 @@ func TestOwnerPairRefusalProbesUseRegisteredAccountRoutes(t *testing.T) {
 	}
 }
 
+func TestOwnerPairLateACKUsesCanonicalTransportOrder(t *testing.T) {
+	// Exercise the same nested body encoding used by the private pipe command.
+	// The bytes come from the real public transport DTO, not a second verifier.
+	commit := networking.Commit{OperationID: "operation", ServerID: "server", ClaimGeneration: "1", CredentialGeneration: "2"}
+	raw, err := json.Marshal(map[string]any{"Action": "http", "Body": networking.OwnerPairCommitRequestForTest(commit)})
+	if err != nil {
+		t.Fatal("canonical ACK command encoding failed")
+	}
+	var command struct{ Body json.RawMessage }
+	if json.Unmarshal(raw, &command) != nil || string(command.Body) != `{"operationId":"operation","serverId":"server","claimGeneration":"1","credentialGeneration":"2"}` {
+		t.Fatal("nested ACK lost canonical producer field order")
+	}
+}
+
 func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testing.T) {
 	runActualOwnerContinuation(t, "success")
 }
@@ -205,6 +220,10 @@ func TestActualOwnerContinuationPreinstallDenialReconcilesGenuineHostedCommit(t 
 	for _, mode := range []string{"expiry-after-finalize", "signout-after-finalize", "lost-finalize-after-signout", "lost-result-after-signout"} {
 		t.Run(mode, func(t *testing.T) { runActualOwnerContinuation(t, mode) })
 	}
+}
+
+func TestActualOwnerContinuationLostExchangeUsesFreshOrdinaryAdmission(t *testing.T) {
+	runActualOwnerContinuation(t, "lost-owner-exchange")
 }
 
 func runActualOwnerContinuation(t *testing.T, mode string) {
@@ -306,8 +325,8 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	if err = claims.ConfigureRemote(ctx, "0.0.0.0:32500", control.NetworkChanged); err != nil {
 		t.Fatal(err)
 	}
-	api := httpapi.New(httpapi.Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Hosted: control, Networking: claims, Console: operations.New(db), Access: httpapi.AccessArea{Access: access.New(db)}, Origins: []string{"https://server.example"}})
-	request := func(method, path string, body any) *httptest.ResponseRecorder {
+	api := httpapi.New(httpapi.Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Hosted: control, Networking: claims, RouteIdentity: networking.NewRouteIdentityHandler(keys, runner, claims.Certificates(), nil), Console: operations.New(db), Access: httpapi.AccessArea{Access: access.New(db)}, Origins: []string{"https://server.example"}})
+	requestAt := func(origin, token, method, path string, body any) *httptest.ResponseRecorder {
 		t.Helper()
 		var raw []byte
 		if body != nil {
@@ -318,14 +337,19 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 			}
 		}
 		defer clear(raw)
-		r := httptest.NewRequest(method, "https://server.example"+path, bytes.NewReader(raw))
+		r := httptest.NewRequest(method, origin+path, bytes.NewReader(raw))
 		r.Header.Set("Content-Type", "application/json")
-		r.Header.Set("Origin", "https://server.example")
-		r.Header.Set("Authorization", "Bearer "+setup.AccessToken)
+		r.Header.Set("Origin", origin)
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
 		r.Header.Set("X-Portico-Installation-Id", installation)
 		w := httptest.NewRecorder()
 		api.ServeHTTP(w, r)
 		return w
+	}
+	request := func(method, path string, body any) *httptest.ResponseRecorder {
+		return requestAt("https://server.example", setup.AccessToken, method, path, body)
 	}
 	read := func(w *httptest.ResponseRecorder, out any) {
 		t.Helper()
@@ -344,6 +368,16 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	if status.Operation == nil {
 		t.Fatal("actual claim operation absent")
 	}
+	assertInitiatingRetired := func() {
+		t.Helper()
+		var revoked bool
+		if e := db.QueryRow(`SELECT revoked FROM authorization_session_families WHERE id=?`, setup.SessionFamilyID).Scan(&revoked); e != nil || !revoked {
+			t.Fatal("initiating family was not durably retired")
+		}
+		if _, e := id.AuthenticateContext(ctx, setup.AccessToken); e == nil {
+			t.Fatal("retired initiating family retained generic authority")
+		}
+	}
 	operation := status.Operation.OperationID
 	var faulted atomic.Bool
 	faultDone := make(chan struct{})
@@ -359,11 +393,19 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 		clear(armedSignature)
 		clear(cancelReceipt)
 	})
+	preinstallDenial := mode != "success" && mode != "lost-owner-exchange"
 	if mode != "success" {
 		// Install the hook before web approval starts a background watch. It
 		// observes an actual handler reply; it never fabricates approval,
 		// commit, result, credential or cancellation response bytes.
 		b.afterHTTP = func(r *http.Request, out ownerPairReply) error {
+			if mode == "lost-owner-exchange" {
+				if r.URL.Path == "/v1/server-returns/exchange" && out.Status == 200 && faulted.CompareAndSwap(false, true) {
+					defer close(faultDone)
+					return io.ErrUnexpectedEOF // Actual grant issued, response lost; never retained/replayed.
+				}
+				return nil
+			}
 			if r.URL.Path == "/v1/server-claims/cancel" && out.Status == 200 {
 				faultMu.Lock()
 				cancelReceipt = append([]byte(nil), out.Body...)
@@ -439,7 +481,7 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	}
 	close(b.approved)
 	awaited := request("POST", "/v1/networking/claim/await-approval", map[string]any{"expected": status.Operation})
-	if mode != "success" {
+	if preinstallDenial {
 		if !faulted.Load() {
 			t.Fatal("denial did not cross actual Hosted commit/result boundary")
 		}
@@ -483,16 +525,14 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 		if e = db.QueryRow(`SELECT i.stage,c.phase,s.sign_in_kind,x.state,x.payload,x.signature,(SELECT count(*) FROM networking_claim_credentials) FROM networking_claim_intents i JOIN identity_owner_completions c ON c.operation_id=i.operation_id JOIN identity_state s JOIN networking_claim_cancellations x ON x.operation_id=i.operation_id WHERE i.operation_id=?`, operation).Scan(&stage, &phase, &kind, &cancellationState, &payload, &signature, &installedCount); e != nil || stage != "cancelled" || phase != "cancelled" || kind != "local" || cancellationState != "acknowledged" || installedCount != 0 || !bytes.Equal(payload, armedPayload) || !bytes.Equal(signature, armedSignature) {
 			t.Fatal("reconciliation lost original proof, local authority or cancellation CAS")
 		}
-		if _, e = id.AuthenticateContext(ctx, setup.AccessToken); e == nil {
-			t.Fatal("cancelled initiating family retained authority")
-		}
+		assertInitiatingRetired()
 		if lateResult.Credential != nil {
 			if e = runner.Do(ctx, func(ctx context.Context) error { _, e := restarted.Install(ctx, lateIntent, lateResult); return e }); e == nil {
 				t.Fatal("actual late result installed after cancellation")
 			}
 			var lateAck ownerPairReply
 			if e = lateResult.Credential.Use(func(token []byte) error {
-				lateAck = b.http("POST", "/v1/server-claims/ack", string(token), map[string]string{"operationId": lateResult.OperationID, "serverId": lateResult.ServerID, "claimGeneration": lateResult.ClaimGeneration, "credentialGeneration": lateResult.CredentialGeneration})
+				lateAck = b.http("POST", "/v1/server-claims/ack", string(token), networking.OwnerPairCommitRequestForTest(lateResult.Commit))
 				return nil
 			}); e != nil {
 				t.Fatal("late ACK proof unavailable")
@@ -531,6 +571,11 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	read(awaited, &status)
 	if status.State != "installed" || !status.InstallationAcknowledged || status.Operation == nil {
 		t.Fatal("actual approval did not install and ACK")
+	}
+	var stillLive bool
+	var grantKind string
+	if err = db.QueryRow(`SELECT NOT f.revoked,g.grant_kind FROM authorization_session_families f JOIN authorization_family_grants g ON g.family_id=f.id WHERE f.id=?`, setup.SessionFamilyID).Scan(&stillLive, &grantKind); err != nil || !stillLive || grantKind != identity.GrantOwnerClaimCompletion {
+		t.Fatal("installed owner continuation was not a live narrowed family")
 	}
 	for _, probe := range ownerPairDeniedReads {
 		if w := request("GET", probe.path, nil); w.Code != 401 && w.Code != 403 {
@@ -578,13 +623,79 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	}
 	q := serverreturn.OwnerExchange{TransactionID: transaction, State: stateValue, Verifier: pkce, RegistrationID: registration.ID, InstallationID: installation, ServerChallenge: start.ServerChallenge, Purpose: "switch"}
 	var admitted identity.DirectSignIn
-	read(request("POST", "/v1/auth/portico-return/exchange", q), &admitted)
+	answer := request("POST", "/v1/auth/portico-return/exchange", q)
+	if mode == "lost-owner-exchange" {
+		if !faulted.Load() {
+			t.Fatal("lost response did not cross actual owner grant issuance")
+		}
+		<-faultDone
+		// Both existing route error classes describe an unavailable transport;
+		// neither may carry an admitted session or reopen the spent attempt.
+		var failed struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+			Session json.RawMessage `json:"session"`
+		}
+		if (answer.Code != http.StatusInternalServerError && answer.Code != http.StatusServiceUnavailable) || json.Unmarshal(answer.Body.Bytes(), &failed) != nil || (failed.Error.Code != "internal" && failed.Error.Code != "portico_services_unavailable") || failed.Session != nil {
+			t.Fatalf("lost owner response status=%d", answer.Code)
+		}
+		var phase, kind, claim, linked string
+		var consumed int64
+		if err = db.QueryRow(`SELECT c.phase,c.consumed_ms,s.sign_in_kind,i.stage,l.hosted_account_id FROM identity_owner_completions c JOIN identity_state s JOIN networking_claim_intents i ON i.operation_id=c.operation_id JOIN account_portico_links l ON l.account_id=c.owner_id WHERE c.operation_id=?`, operation).Scan(&phase, &consumed, &kind, &claim, &linked); err != nil || phase != "superseded" || consumed <= 0 || kind != "portico" || claim != "installed" || linked != b.AccountID {
+			t.Fatal("lost exchange did not leave a terminal attempt and installed bound owner")
+		}
+		assertInitiatingRetired()
+		if replay := request("POST", "/v1/auth/portico-return/exchange", q); replay.Code != 401 && replay.Code != 403 {
+			t.Fatalf("terminal owner replay status=%d", replay.Code)
+		}
+		// Fresh ordinary identity admission on the actual controlled HTTPS
+		// origin. No old bearer, owner assertion, second claim or replay cache.
+		nonceBytes := sha256.Sum256([]byte(identity.Token()))
+		nonce := base64.RawURLEncoding.EncodeToString(nonceBytes[:])
+		var challenge struct {
+			Challenge string `json:"challenge"`
+			ExpiresAt string `json:"expiresAt"`
+			Proof     struct {
+				Payload   string `json:"payload"`
+				Signature string `json:"signature"`
+			} `json:"proof"`
+		}
+		read(requestAt(origin, "", "POST", "/v1/direct/portico-challenge", map[string]string{"nonce": nonce}), &challenge)
+		payload, pe := base64.RawURLEncoding.Strict().DecodeString(challenge.Proof.Payload)
+		signature, se := base64.RawURLEncoding.Strict().DecodeString(challenge.Proof.Signature)
+		var proof networking.ChallengeProof
+		if pe != nil || se != nil || !ed25519.Verify(installed.PublicKey, payload, signature) || json.Unmarshal(payload, &proof) != nil || proof.ServerID != id.ID() || proof.Challenge != challenge.Challenge || proof.Nonce != nonce || proof.InstallationID != installation || !proof.ExpiresAt.After(time.Now()) {
+			t.Fatal("fresh ordinary challenge did not prove the installed server")
+		}
+		assertion := b.http("POST", "/v1/servers/"+url.PathEscape(id.ID())+"/identity", b.OwnerToken, map[string]string{"challenge": challenge.Challenge})
+		var signed hosted.Signed
+		if assertion.Status != 200 || json.Unmarshal(assertion.Body, &signed) != nil {
+			t.Fatalf("fresh ordinary identity status=%d", assertion.Status)
+		}
+		read(requestAt(origin, "", "POST", "/v1/direct/sign-in", map[string]any{"porticoIdentity": signed}), &admitted)
+		if admitted.Session == nil || admitted.Account.ID != setup.Viewer.AccountID || admitted.Account.HostedAccountID != b.AccountID || admitted.ServerID != id.ID() || admitted.Session.Viewer.Role != "owner" || len(admitted.Profiles) != 1 || admitted.Profiles[0].ID != setup.Viewer.ProfileID {
+			t.Fatal("fresh identity did not admit the same already-bound owner and profile")
+		}
+		if w := requestAt(origin, admitted.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 200 {
+			t.Fatalf("fresh ordinary owner session status=%d", w.Code)
+		}
+		snapshot := b.call(map[string]string{"Action": "snapshot", "ServerID": id.ID()})
+		if snapshot.Status != 200 || snapshot.FinalizeRequests != 1 || snapshot.ExchangeRequests != 1 {
+			t.Fatal("ordinary recovery repeated claim or consumed owner exchange")
+		}
+		var terminal string
+		var spentAt, completedAt int64
+		if err = db.QueryRow(`SELECT phase,consumed_ms,completed_ms FROM identity_owner_completions WHERE operation_id=?`, operation).Scan(&terminal, &spentAt, &completedAt); err != nil || terminal != "superseded" || spentAt != consumed || completedAt != 0 {
+			t.Fatal("ordinary identity resurrected the terminal owner attempt")
+		}
+		return
+	}
+	read(answer, &admitted)
 	if admitted.Session == nil || admitted.Account.ID != setup.Viewer.AccountID || admitted.ServerID != id.ID() || admitted.Account.HostedAccountID != b.AccountID {
 		t.Fatal("actual owner grant changed the captured account/server")
 	}
-	if _, err = id.AuthenticateContext(ctx, setup.AccessToken); err == nil {
-		t.Fatal("initiating family survived final admission")
-	}
+	assertInitiatingRetired()
 	if _, err = id.AuthenticateContext(ctx, admitted.Session.AccessToken); err != nil {
 		t.Fatal("actual completed owner grant unusable", err)
 	}
