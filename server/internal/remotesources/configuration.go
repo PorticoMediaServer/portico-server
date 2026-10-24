@@ -33,10 +33,11 @@ type DAVInput struct {
 	InsecureLocal      bool   `json:"insecureLocal"`
 }
 type Receipt struct {
-	OperationID string `json:"operationId"`
-	Accepted    bool   `json:"accepted"`
-	Removed     bool   `json:"removed"`
-	Source      Source `json:"source"`
+	OperationID  string              `json:"operationId"`
+	Accepted     bool                `json:"accepted"`
+	Removed      bool                `json:"removed"`
+	Source       Source              `json:"source"`
+	ReadSettings *SourceReadSettings `json:"readSettings,omitempty"`
 }
 
 var opPattern = regexp.MustCompile(`^([0-9]{13})-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
