@@ -214,6 +214,10 @@ type Service struct {
 	QueueScanBudget  int64
 	QueueCountBudget time.Duration
 	PauseQueueBuilds bool
+	// SaveReadCheck runs after a large queue save closed its read snapshot and
+	// before the write that appends it, so a test can change the queue in that
+	// gap and prove the copy refuses the new order (tests). Nil: no hook.
+	SaveReadCheck func()
 	// LibraryCheck and Visibility authorize queue sources and windows (library
 	// access, restrictions and member limits); HTTP composition installs them.
 	// CastQueueAuthority rechecks the paired screen's actual adopted session

@@ -344,3 +344,45 @@ func TestPlaybackV1SaveAsPlaylistSurvivesARevisionThatKeepsTheOrder(t *testing.T
 		t.Fatalf("a revision without a new order: %+v", saved)
 	}
 }
+
+// A change that lands after the copy read its windows but before the first
+// append write is still a different play order: the write transaction must
+// refuse it, leaving what was already copied and never marking the save saved.
+func TestPlaybackV1SaveAsPlaylistStopsWhenTheQueueChangesAfterTheRead(t *testing.T) {
+	f, _, _ := queueAccessFixture(t)
+	svc := f.v1
+	reached, proceed := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	svc.SaveReadCheck = func() { once.Do(func() { close(reached); <-proceed }) }
+	bigCollection(t, f, 1001)
+	var big playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "save-after-read-01"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public)}}}, 201, &big)
+	svc.HoldQueueBuilds()
+	path := "/v1/queues/" + big.Queue.ID + ":save-as-playlist"
+	headers := map[string]string{"Idempotency-Key": "save-after-read-save"}
+	var saved playbackv1.SavedPlaylist
+	f.call("POST", path, headers, map[string]any{"name": "After the read"}, 201, &saved)
+	if saved.State != playbackv1.SaveStateSaving || saved.Entries != 0 {
+		t.Fatalf("paused save %+v", saved)
+	}
+	svc.ResumeQueueBuilds()
+	select {
+	case <-reached:
+	case <-time.After(20 * time.Second):
+		t.Fatalf("the copy never read its windows: %+v", saved)
+	}
+	var changed playbackv1.QueueReply
+	f.call("POST", "/v1/queues/"+big.Queue.ID+"/segments", map[string]string{"If-Match": big.Queue.Revision}, map[string]any{"placement": "end", "source": queueItems(f.names["big0000000"].Public)}, 200, &changed)
+	close(proceed)
+	deadline := time.Now().Add(20 * time.Second)
+	for saved.State == playbackv1.SaveStateSaving {
+		if time.Now().After(deadline) {
+			t.Fatalf("the copy never stopped: %+v", saved)
+		}
+		time.Sleep(50 * time.Millisecond)
+		f.call("POST", path, headers, map[string]any{"name": "After the read"}, 201, &saved)
+	}
+	if saved.State != playbackv1.SaveStateFailed || saved.ErrorCode != "queue_changed" || saved.Entries != 0 {
+		t.Fatalf("a queue changed after the read: %+v", saved)
+	}
+}
