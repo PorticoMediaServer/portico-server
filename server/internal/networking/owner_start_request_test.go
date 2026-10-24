@@ -32,3 +32,17 @@ func TestOwnerStartActionStrictProofBindings(t *testing.T) {
 		}
 	}
 }
+
+func TestSetupStartActionIsPurposeDisjoint(t *testing.T) {
+	state := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	valid := `{"expected":{"operationId":"setup_op","localGeneration":"0","revision":"1"},"setupStart":{"state":"` + state + `","codeChallenge":"` + state + `","installationId":"d297a1dc-3adc-4b1c-a7f2-fbd4640f69e8"}}`
+	var q ClaimActionRequest
+	if json.Unmarshal([]byte(valid), &q) != nil || q.SetupStart == nil || q.OwnerStart != nil {
+		t.Fatal("setup transport not distinct")
+	}
+	for _, extra := range []string{`,"ownerStart":{"state":"` + state + `","codeChallenge":"` + state + `","installationId":"d297a1dc-3adc-4b1c-a7f2-fbd4640f69e8"}`, `,"approvalEnvelope":"mixed"`, `,"setupStart":null`} {
+		if json.Unmarshal([]byte(valid[:len(valid)-1]+extra+"}"), &q) == nil || q.SetupStart != nil || q.OwnerStart != nil {
+			t.Fatal("mixed setup transport retained or accepted")
+		}
+	}
+}

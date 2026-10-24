@@ -26,12 +26,13 @@ func (ClaimActionRequest) JSONSchema() map[string]any {
 		panic(err)
 	}
 	expected["additionalProperties"] = false
-	return map[string]any{
+	ordinary := map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"expected"},
 		"properties": map[string]any{
 			"expected": expected, "approvalEnvelope": map[string]any{"type": "string"},
 			"ownerStart": (ClaimOwnerStartRequest{}).JSONSchema(),
-			"setupStart": (ClaimSetupStartRequest{}).JSONSchema(),
 		},
 	}
+	setup := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"expected", "setupStart"}, "properties": map[string]any{"expected": expected, "setupStart": (ClaimSetupStartRequest{}).JSONSchema()}}
+	return map[string]any{"oneOf": []any{ordinary, setup}}
 }
