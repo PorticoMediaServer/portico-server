@@ -4,7 +4,7 @@ import type {ContentEntry} from '@core/library-content.ts';
 import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-saved.ts';
 import type {HistoryPeriod, SavedIntent} from '@core/saved.ts';
 import {historyPeriods} from '@core/saved.ts';
-import {durationText} from '@portico/client-core/kit-model';
+import {episodeLabel} from '@portico/client-core/kit-model';
 import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
 import {AmbientArt, Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
 import {Button, Chip, Select, Switch} from '../../kit/controls';
@@ -13,7 +13,7 @@ import {Dialog, Menu} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {CircleCard, PosterCard, SquareCard} from '../../kit/cards';
 import {WindowedGrid} from '../../kit/layout';
-import {homeCardModel} from '../home/model';
+import {homeCardModel, homeCardSubject} from '../home/model';
 import {BrowseEntryCard} from '../browse';
 import type {SavedViewBindings} from './Saved';
 import {SavedSection} from './Saved';
@@ -190,7 +190,10 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
 /** The drawn row names what was played: an episode leads with its code and title,
  * a song with its artist and album, a film with its kind and year, a book with its author. */
 function historySubtitle(media: ContentEntry): readonly string[] {
-  if (media.kind === 'episode' && media.episodeNumber !== undefined) return [t('next.kit.episodeCode', {season: media.seasonNumber ?? 1, episode: media.episodeNumber}), media.displayTitle ?? media.title];
+  if (media.kind === 'episode' && media.episodeNumber !== undefined) {
+    const code = episodeLabel(homeCardSubject(media).episode, 'ordinary', {t, locale: defaultI18n.region.formatLocale})?.text;
+    return [...(code ? [code] : []), media.displayTitle ?? media.title];
+  }
   if (media.kind === 'song' || media.kind === 'album') return [media.artist?.name, media.album?.name].filter((part): part is string => !!part);
   if (media.kind === 'book' || media.kind === 'audiobook_file') return media.author ? [media.author] : [];
   if (media.kind === 'movie') return [t('next.browse.kind.movie'), ...(media.year === undefined ? [] : [String(media.year)])];
@@ -201,7 +204,8 @@ function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entr
   const title = media.kind === 'episode' ? media.show?.name ?? media.displayTitle ?? media.title : media.displayTitle ?? media.title;
   const subtitles = historySubtitle(media), position = entry.positionSeconds ?? 0, duration = media.duration;
   const progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
-  const remaining = !entry.completed && duration !== undefined && duration > position ? durationText(duration - position, t) : undefined;
+  const left = !entry.completed && duration !== undefined && duration > position ? Math.round((duration - position) / 60) : undefined;
+  const remaining = left === undefined ? undefined : left >= 60 ? t(left % 60 ? 'next.kit.duration.hoursMinutes' : 'next.kit.duration.hours', {hours: Math.floor(left / 60), minutes: left % 60}) : t('next.kit.duration.minutes', {minutes: left});
   const square = shapeFor(media.kind) === 'square', source = bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9);
   return <div className={styles.historyRow} data-shape={square ? 'square' : 'wide'}>
     <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} onClick={() => bindings.effects.openEntry(media)} aria-label={title}>
