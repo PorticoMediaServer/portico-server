@@ -76,6 +76,9 @@ def prepare(archive, output, lock):
             'libavfilter/vf_tonemap_cuda.c': ['dovi'],
             'libavfilter/vf_tonemap_opencl.c': ['dovi'],
             'libavfilter/vf_tonemap_videotoolbox.m': ['DOVI'],
+            'libavformat/bluray.c': ['OFFSET(min_playlist_length)',
+                                    'TITLES_RELEVANT, bd->min_playlist_length',
+                                    '.i64=MIN_PLAYLIST_LENGTH'],
         }
         for name, needles in assertions.items():
             data = (tree / name).read_text()
