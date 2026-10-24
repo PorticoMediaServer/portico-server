@@ -101,7 +101,9 @@ export class V1PlaybackApi implements PlaybackApi {
     // told first as well, so its record of the old presentation ends at the same place.
     const positionMs = change.positionMs ?? change.seek?.positionMs ?? t?.positionMs;
     const body: SessionChange = positionMs !== undefined && change.positionMs === undefined && change.seek === undefined ? {...change, positionMs: Math.max(0, Math.round(positionMs))} : change;
-    if (t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
+    // A strict command carries the same measured position in PATCH; an extra timeline
+    // flush could independently invoke ended-session recovery before its guarded replan.
+    if (context?.recoverEnded !== false && t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
     requireSessionChangeCurrent(context);
     const checkSession = (session: Session) => {
       requireSessionChangeCurrent(context);

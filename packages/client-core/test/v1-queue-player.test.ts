@@ -851,7 +851,9 @@ test('the player view preserves batched identity and display facts plus whole qu
 test('strict queue changes return the actual same session and occurrence without rebuilding or remembering a substitute',async()=>{
  const f=setup();try{
   await f.player.playItem('movie');const before=f.player.currentSession()!,queue=f.player.getSnapshot().view!.queue;
+  const reports=f.log.filter(r=>r.method==='POST'&&r.path.endsWith('/timeline')).length;
   const actual=await f.player.changePlayback({versionId:before.versionId,subtitleTrackId:'s1',subtitleDelivery:'burn',subtitleOffsetMs:-300.4},{recoverEnded:false,isCurrent:()=>true});
+  assert.equal(f.log.filter(r=>r.method==='POST'&&r.path.endsWith('/timeline')).length,reports,'strict replan must not start separate lease recovery through a forced timeline flush');
   assert.equal(actual,f.player.currentSession());assert.equal(actual!.id,before.id);assert.deepEqual(actual!.queue,before.queue);
   assert.ok(actual!.presentation.generation>before.presentation.generation);assert.equal(f.playback.getSnapshot().session!.generation,actual!.presentation.generation);
   assert.equal(f.player.getSnapshot().view!.queue.id,queue.id);

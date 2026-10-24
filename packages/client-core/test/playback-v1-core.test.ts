@@ -555,7 +555,7 @@ test('controller scoped changes reject abort-ignoring replies before the media g
    const pending=ctl.change({subtitles:{trackId:'s1',delivery:'burn'}},{recoverEnded:false,signal:abort.signal,isCurrent:()=>current});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;
    if(retire==='abort')abort.abort();else if(retire==='host')current=false;else await ctl.start({itemId:'other'});
    if(retire==='abort')assert.equal(signal!.aborted,true);const loads=player.loads.length,shown=ctl.getSnapshot().session;
-   release();await rejected;assert.equal(player.loads.length,loads);assert.equal(ctl.getSnapshot().session,shown);assert.equal(ctl.getSnapshot().changing,false);
+   release();await rejected;assert.equal(player.loads.length,loads);assert.equal(ctl.getSnapshot().session,shown);assert.equal(ctl.getSnapshot().changing,false,retire);
   }finally{ctl.dispose();}
  }
 });

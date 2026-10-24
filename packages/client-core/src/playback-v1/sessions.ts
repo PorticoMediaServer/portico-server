@@ -233,7 +233,7 @@ export class PlaybackSessionController {
     const body: StartOptions = {...options, ...(previous && this.state.phase === 'active' && !options.replacesSessionId ? {replacesSessionId: previous.id} : {})};
     this.lastStart = {target, options};
     this.retireReporter();
-    this.publish({phase: 'starting', error: undefined, ended: undefined});
+    this.publish({phase: 'starting', error: undefined, ended: undefined, changing: false});
     try {
       const session = await this.client.start(target, body, this.key(), {signal, onPreparing: () => { if (token === this.startToken) this.publish({phase: 'preparing'}); }});
       if (token !== this.startToken || this.disposed || signal?.aborted) {
@@ -409,12 +409,12 @@ export class PlaybackSessionController {
     const serial = ++this.changeSerial;
     const run = async (): Promise<Session | undefined> => {
       const session = this.state.session;
-      if (!session || !owns()) {if (context) check();return undefined;}
-      this.publish({changing: true});
       try {
+        if (!session || !owns()) {if (context) check();return undefined;}
+        this.publish({changing: true});
         // A change that makes new bytes resumes where the server last heard this device was:
         // tell it now, so the new stream starts at the picture's position, not ten seconds back.
-        if (change.quality || change.audio || change.versionId || change.partIndex !== undefined) await this.reporter?.flush().catch(() => {});
+        if (context?.recoverEnded !== false && (change.quality || change.audio || change.versionId || change.partIndex !== undefined)) await this.reporter?.flush().catch(() => {});
         if (!owns()) {if (context) check();return undefined;}
         let updated: Session;
         try {
