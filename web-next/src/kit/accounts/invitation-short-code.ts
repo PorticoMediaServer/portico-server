@@ -1,4 +1,5 @@
 import type {ServerShortInvitation} from '@core/direct-account.ts';
+import {randomId} from '@core/random-id.ts';
 import {formatShortInvitationCode} from '@core/short-invitation-code.ts';
 
 export type ShortCodeState =
@@ -10,13 +11,9 @@ export type ShortCodeState =
 
 export type ShortCodeRun = (operationId: string, signal: AbortSignal) => Promise<ServerShortInvitation>;
 
-export const freshShortCodeOperationId = (): string => {
-  const id = globalThis.crypto?.randomUUID?.();
-  if (id) return id;
-  const bytes = new Uint8Array(16);
-  globalThis.crypto?.getRandomValues?.(bytes);
-  return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
-};
+/** The same cryptographic generator the other settings operation IDs use.
+ * If the browser has no cryptographic source, this throws and no code is issued. */
+export const freshShortCodeOperationId = randomId;
 
 /**
  * One explicit issuance lifetime. A new code gets a fresh operation ID; a

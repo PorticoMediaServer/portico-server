@@ -971,7 +971,7 @@ export const webMessages = {
   'web.directJoin.body': 'You’ve been invited to {server}. Choose a username and password to create your account.',
   'web.directJoin.bodyUnnamed': 'Enter the server’s address and your invitation code, then choose a username and password.',
   'web.directJoin.entryBody': 'Enter the server’s address and the invitation code they shared with you.',
-  'web.directJoin.codePlaceholder': 'XXXX XXXX XXXX XXXX',
+  'web.directJoin.codePlaceholder': 'XXXX-XXXX-XXXX-XXXX',
   'web.directJoin.entryInvalid': 'Check the invitation code.',
   'web.directJoin.entryUnavailable': 'This invitation isn’t available. Ask the owner for a new code.',
   'web.directJoin.checking': 'Checking the server',
