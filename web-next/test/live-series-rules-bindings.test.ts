@@ -10,7 +10,8 @@ const sourceId = id(1, 48), channelId = id(2), generation = id(3, 48), serverId 
 const start = '2026-10-24T14:00:00Z', end = '2026-10-24T15:00:00Z';
 const programme = (number = 1) => ({id: id(100 + number), channelId: number === 2 ? id(9) : channelId,
   title: 'Stored series', subtitle: 'Stored episode ' + number, start, end, lineage: 'provider-id', seriesId: 'series', episodeId: 'episode-' + number,
-  newEvidence: number === 2 ? 'unknown' : 'new', episode: {season: 4, number}, description: ''});
+  newEvidence: number === 2 ? 'unknown' : 'new', episode: {season: 4, number}, description: '',
+  ...(number === 1 ? {recordingId: id(701), recordingState: 'scheduled'} : {})});
 const wireRule = (number = 1) => ({id: id(number), revision: 7, config: {name: 'Stored rule ' + number, sourceId, seriesId: 'series', enabled: true,
   episodes: 'all', allowedChannels: [], blockedChannels: [id(8)], keywords: ['stored keyword'], blockedKeywords: ['stored exclusion'],
   options: {beforeMs: 120000, afterMs: 7000, priority: 3, retentionDays: 42, episodeLimit: 6}}, reconcileState: 'ready', diagnostic: '', updatedAt: start,
@@ -63,6 +64,7 @@ test('real DVR facade is lazy, uses global aggregates and advances only an expli
     assert.equal(state.view?.upcomingCount, 8);assert.equal(state.view?.recordedCount, 20);assert.equal(state.view?.channelCount, 14);
     assert.equal(state.view?.sourceName, 'Stored server');assert.equal(row.title, 'Stored rule 1');assert.equal(row.upcomingCount, 8);
     assert.equal(row.recorded, 20);assert.equal(row.tone, undefined, 'illustrative fixture colours are not fabricated producer facts');
+    assert.equal(row.conflict, false, 'an aggregate conflict elsewhere does not mark this scheduled next programme');
     assert.equal(row.settings.keep, '6');assert.equal(row.settings.endLate, 7 / 60);
     assert.equal(f.calls.filter(call => new URL(call.path, 'http://unit.invalid').pathname === routePath('get_dvr')).length, 1);
     await f.binding.more();assert.equal(f.binding.getSnapshot().view?.rules.length, 60);assert.equal(f.binding.getSnapshot().nextCursor, undefined);
@@ -76,9 +78,21 @@ test('preview uses server membership/count instead of locally filtering its boun
     await f.binding.load();const row = f.binding.getSnapshot().view!.rules[0];await f.binding.preview(row, {...row.settings, episodes: 'new'});
     const preview = f.binding.getSnapshot().preview!;
     assert.equal(preview.count, 40);assert.equal(preview.airings.length, 2);assert.equal(preview.airings[0].isNew, true);assert.equal(preview.airings[1].isNew, false);
+    assert.equal(preview.airings[0].scheduled, true);assert.equal(preview.airings[1].scheduled, undefined, 'a preview match does not invent a recording state');
     assert.equal(preview.airings[1].channel, undefined);assert.equal(preview.airings[0].channel, 'Stored channel');
     assert.equal(f.nonces(), 0, 'readonly preview is not a mutation receipt');
   } finally {f.binding.dispose();}
+});
+
+test('next-conflict presentation requires the actual next programme recording state', async () => {
+  const f = setup({intercept: async path => {
+    if (new URL(path, 'http://unit.invalid').pathname !== routePath('get_dvr')) return;
+    const rule = wireRule();rule.summary.next = {...programme(), recordingId: id(702), recordingState: 'conflicted'};
+    return envelope({recordings: [], rules: [rule], nextCursor: '', revision: 5, captureAvailable: true, captureUnavailableReason: '',
+      deletionAvailable: true, usage: {bytes: 0, pendingDeleteBytes: 0, recordings: 20}});
+  }});
+  try {await f.binding.load();assert.equal(f.binding.getSnapshot().view?.rules[0].conflict, true);}
+  finally {f.binding.dispose();}
 });
 
 test('a changed DVR cursor revision cannot mix rows or masquerade as a complete list', async () => {

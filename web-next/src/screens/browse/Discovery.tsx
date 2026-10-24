@@ -10,10 +10,12 @@ import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
 import {PagedShelf} from './PagedShelf';
 import type {BrowsePresentation} from './Library';
 import {browsePresentation, type ScreenAppearance} from './appearance';
+import type {MusicMixesBinding} from './music-mixes-binding';
 
 export type DiscoveryBindings = Readonly<{
   service: LibraryContentService; route: ContentRoute; artwork: ShellArtwork; env: TextEnvironment; appearance: BrowsePresentation; reducedMotion: boolean;
   preferences?: ScreenAppearance;
+  musicMixes?: MusicMixesBinding;
   header: ReactNode; empty: ReactNode; selectionToolbar?: ReactNode;
   actions: (section: ContentSection, entry: ContentEntry, index: number) => BrowseItemActions;
   registerWindow?: (section: ContentSection, first: number, last: number) => void;
