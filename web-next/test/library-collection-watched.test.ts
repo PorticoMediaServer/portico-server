@@ -8,6 +8,9 @@ import type {ContentEntry} from '@core/library-content.ts';
 import {collectionWatchedCount, collectionWatchedProgress} from '../src/screens/browse/collection-card.ts';
 import {transformTsx} from './transform-tsx.mjs';
 
+// The card asks for its artwork at the device density; node has no window.
+(globalThis as {devicePixelRatio?: number}).devicePixelRatio = 1;
+
 registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
   if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
