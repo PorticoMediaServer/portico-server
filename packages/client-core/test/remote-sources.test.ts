@@ -111,3 +111,58 @@ test('an edit is carried onto the share as it is now, field by field',async()=>{
  // Both made the same change: no conflict.
  assert.equal(rebaseDavEdit(base,source({generation:4,name:'Same'}) as any,{...keep,name:'Same'})?.name,'Same');
 });
+
+
+test('saved native and imported endpoint facts remain visible without a scheme alias',async()=>{
+ const rows=[
+  source({id:'sftp',kind:'sftp',origin:'sftp://nas.example:22/'}),
+  source({id:'smb',kind:'smb',origin:'smb://192.168.1.9:445/'}),
+  source({id:'ipv6',kind:'sftp',origin:'sftp://[fd00::9]:2222/'}),
+  source({id:'imported',kind:'rclone',origin:'https://storage.example:443/'}),
+  source({id:'wrapped',kind:'rclone',origin:'sftp://nas.example:22/'}),
+ ];
+ const service=new RemoteSourceService(api(async()=>list(rows)),scope,async()=>op);
+ await service.load();
+ assert.equal(service.getSnapshot().error,'');
+ assert.deepEqual(service.getSnapshot().sources.map(row=>[row.id,row.kind,row.origin]),rows.map(row=>[row.id,row.kind,row.origin]));
+ service.dispose();
+ for(const row of [
+  source({kind:'sftp',origin:'https://nas.example:22/'}),
+  source({kind:'smb',origin:'sftp://nas.example:445/'}),
+  source({origin:'sftp://nas.example:22/'}),
+  source({kind:'sftp',origin:'sftp://nas.example/'}),
+  source({kind:'smb',origin:'smb://nas.example:0/'}),
+  source({kind:'sftp',origin:'sftp://nas.example:65536/'}),
+  source({kind:'sftp',origin:'sftp://owner:secret@nas.example:22/'}),
+  source({kind:'smb',origin:'smb://nas.example:445/share'}),
+  source({kind:'rclone',origin:'https://storage.example:443/?token=secret'}),
+  source({kind:'rclone',origin:'https://storage.example:443/#secret'}),
+  source({kind:'rclone',origin:'https://storage.example:443/secret'}),
+  source({kind:'sftp',origin:'sftp://nas%2eexample:22/'}),
+  source({kind:'smb',origin:'file://nas.example:445/'}),
+ ]){
+  const invalid=new RemoteSourceService(api(async()=>list([row,source({id:'safe'})])),scope,async()=>op);
+  await invalid.load();assert.deepEqual(invalid.getSnapshot().sources.map(row=>row.id),['safe']);
+  assert(!JSON.stringify(invalid.getSnapshot()).includes('secret'));invalid.dispose();
+ }
+});
+
+test('setup receipts retain actual range facts across source generations and recovery',async()=>{
+ for(const support of ['conditional','unsupported','unknown','sequential']){
+  const saved=source({rangeSupport:support,generation:2});
+  let lost=true,writes=0;
+  const service=new RemoteSourceService(api(async(path,method)=>{
+   if(method==='PUT'){writes++;if(lost)throw new Error(input.password);}
+   if(path.includes('/source-operations/')||method==='PUT')return {...receipt(),receipt:{operationId:op,accepted:true,removed:false,source:saved}};
+   return list([saved]);
+  }),scope,async()=>op);
+  await service.configure('dav',{...input,expectedGeneration:1});
+  assert.equal(service.getSnapshot().ambiguous,true);
+  lost=false;await service.recover();
+  assert.equal(writes,1,'recovery never repeats a credential-bearing command');
+  assert.equal(service.getSnapshot().receipt?.source.rangeSupport,support);
+  assert.equal(service.getSnapshot().receipt?.source.generation,2);
+  assert.equal(service.getSnapshot().sources[0]?.rangeSupport,support);
+  assert(!JSON.stringify(service.getSnapshot()).includes(input.password));service.dispose();
+ }
+});
