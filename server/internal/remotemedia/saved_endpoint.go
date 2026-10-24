@@ -8,6 +8,17 @@ import (
 	"strings"
 )
 
+// EndpointOrigin normalizes an endpoint without granting access or retaining
+// path/query credentials in approval facts. The private raw config stays with
+// its existing owner; Save separately resolves and tests this real origin.
+func EndpointOrigin(raw string) (string, error) {
+	u, err := parseURL(raw)
+	if err != nil {
+		return "", err
+	}
+	return origin(u) + "/", nil
+}
+
 // PrepareEndpointApproval captures only the exact HTTP origin's permitted
 // non-public addresses for an owner Save. It is not a reusable owner grant;
 // connection testing, actor/CAS rechecks and atomic source publication follow.
