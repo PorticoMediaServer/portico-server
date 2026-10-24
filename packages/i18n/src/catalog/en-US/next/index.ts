@@ -34,6 +34,7 @@ import {settingsSpecMessages} from './settings-spec.ts';
 import {readerMessages} from './reader.ts';
 import {searchMessages} from './search.ts';
 import {showMessages} from './show.ts';
+import {remoteSourcesMessages} from './remote-sources.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -71,6 +72,7 @@ export const nextMessages = {
   ...readerMessages,
   ...searchMessages,
   ...showMessages,
+  ...remoteSourcesMessages,
   ...ownerLibrariesMessages,
 } as const satisfies Record<`next.${string}`, string>;
 

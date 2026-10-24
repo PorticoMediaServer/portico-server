@@ -125,6 +125,7 @@ export class SettingsController {
     if (!this.options.mainProfile) return false;
     if (section.id === 'people') return this.options.capabilities.managePeople;
     if (section.id === 'signin') return this.options.capabilities.manageSignIn;
+    if (section.id === 'remote-sources') return this.options.capabilities.manageServer && this.options.role === 'owner' && this.options.environment.signIn === 'local';
     return this.options.capabilities.manageServer && (this.options.role === 'owner' || section.id === 'dashboard' || section.id === 'libraries');
   };
   eligible = (row: SettingsRow, context?: SettingsContext): boolean => {

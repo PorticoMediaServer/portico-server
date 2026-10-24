@@ -12,6 +12,35 @@ export type DAVConnectionInput=Pick<DAVConfiguration,'name'|'root'|'username'|'p
 export type DAVConnectionResult=Readonly<{origin:string;rangeSupport:'unknown'|'conditional'|'unsupported'}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 export type AnalysisPolicy=Readonly<{libraryId:string;enabled:boolean;revision:number;effective?:boolean;scanTier?:string}>;
+/** The read-authority part of one source's Reading settings. A missing saved profile is
+ * reported as `saved:false` with the server's list/once defaults; it is never invented. */
+export type SourceReadValues=Readonly<{scanDepth:'file_list_only'|'basic'|'complete';wholeFileReads:boolean;connections:number;requestsPerSecond:number;bytesPerSecond:number}>;
+export type SourceReadSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;values:SourceReadValues}>;
+export type SourceReadPreset='list'|'once'|'everything'|'ask';
+const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
+ list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
+ once:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0},
+ everything:{scanDepth:'complete',wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0},
+ ask:{scanDepth:'basic',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
+});
+/** The four drawn choices, exactly the server's own SourceReadPreset values. */
+export function sourceReadPreset(name:SourceReadPreset):SourceReadValues{return Object.freeze({...sourceReadPresets[name]});}
+export function sourceReadPresetName(values:SourceReadValues):SourceReadPreset|undefined{
+ return (Object.keys(sourceReadPresets) as SourceReadPreset[]).find(name=>sameSourceRead(values,sourceReadPresets[name]));
+}
+function sameSourceRead(a:SourceReadValues,b:SourceReadValues):boolean{
+ return a.scanDepth===b.scanDepth&&a.wholeFileReads===b.wholeFileReads&&a.connections===b.connections&&a.requestsPerSecond===b.requestsPerSecond&&a.bytesPerSecond===b.bytesPerSecond;
+}
+function sourceReadValues(raw:unknown):SourceReadValues{
+ if(!record(raw))invalid();
+ const scanDepth=raw.scanDepth, wholeFileReads=raw.wholeFileReads, connections=raw.connections, requestsPerSecond=raw.requestsPerSecond, bytesPerSecond=raw.bytesPerSecond;
+ if((scanDepth!=='file_list_only'&&scanDepth!=='basic'&&scanDepth!=='complete')||typeof wholeFileReads!=='boolean'||!integer(connections)||connections<1||connections>32||!integer(requestsPerSecond)||requestsPerSecond<1||requestsPerSecond>50||!integer(bytesPerSecond)||!(bytesPerSecond===0||bytesPerSecond>=1_000_000&&bytesPerSecond<=1_000_000_000&&bytesPerSecond%1_000_000===0))invalid();
+ return Object.freeze({scanDepth,wholeFileReads,connections,requestsPerSecond,bytesPerSecond});
+}
+function sourceReadSettings(raw:unknown):SourceReadSettings{
+ if(!record(raw)||!text(raw.sourceId,256)||!raw.sourceId||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean')invalid();
+ return Object.freeze({sourceId:raw.sourceId,generation:raw.generation,revision:raw.revision,saved:raw.saved,values:sourceReadValues(raw.values)});
+}
 /** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere). */
 export type RemoteState=Readonly<{sources:readonly RemoteSource[];loading:boolean;busy:boolean;error:string;errorCode:string;operationId:string|null;ambiguous:boolean;receipt:RemoteReceipt|null;alreadyDone:boolean;mountSupported:boolean}>;
 const record=(x:unknown):x is Record<string,unknown>=>!!x&&typeof x==='object'&&!Array.isArray(x);
@@ -43,7 +72,7 @@ function source(x:unknown):RemoteSource{
  if(x.mountId!==undefined&&!text(x.mountId,256))invalid();
  return Object.freeze({id:x.id,kind:x.kind as RemoteSource['kind'],name:x.name,rootPath:x.rootPath,generation:x.generation,state:x.state,rangeSupport:oneOfOr('remote-sources','source.rangeSupport',x.rangeSupport,['unknown','conditional','unsupported','sequential'] as const,'unknown'),insecureLocal:x.insecureLocal,credentialPresent:x.credentialPresent,...(x.origin===undefined?{}:{origin:x.origin as string}),...(errorCode===undefined?{}:{errorCode}),...(x.mountId===undefined?{}:{mountId:x.mountId as string})});
 }
-const messages:Record<string,string>={remote_source_changed:'This source changed. Refresh before submitting a new configuration.',storage_command_conflict:'The source changed or this operation conflicts with a previous receipt.',storage_operation_expired:'The operation expired. Check the device clock and refresh.',remote_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',remote_invalid_configuration:'Check the endpoint, approved network access and configuration.',remote_range_unsupported:'The server cannot safely range-read this provider representation.',remote_binary_changed:'The approved rclone executable changed. Reapprove it in source configuration.',remote_budget_exceeded:'This operation exceeded the configured safety budget.',remote_rate_limited:'The provider or server is busy. Check the original receipt before retrying.',unauthorized:'Owner sign-in is required.',forbidden:'This viewer cannot manage sources.'};
+const messages:Record<string,string>={remote_source_changed:'This source changed. Refresh before submitting a new configuration.',storage_command_conflict:'The source changed or this operation conflicts with a previous receipt.',storage_operation_expired:'The operation expired. Check the device clock and refresh.',remote_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',remote_invalid_configuration:'Check the endpoint, approved network access and configuration.',remote_range_unsupported:'The server cannot safely range-read this provider representation.',remote_binary_changed:'The approved rclone executable changed. Reapprove it in source configuration.',remote_budget_exceeded:'This operation exceeded the configured safety budget.',remote_rate_limited:'The provider or server is busy. Check the original receipt before retrying.',revision_mismatch:'This source changed. Refresh before saving.',idempotency_key_reused:'This operation was already used. Refresh and try again.',request_in_progress:'Another source change is in progress. Try again in a moment.',unauthorized:'Owner sign-in is required.',forbidden:'This viewer cannot manage sources.'};
 const CONFLICT='storage_command_conflict';
 /**
  * An edit carried onto the share as it is now, after someone else changed it. What the owner left
@@ -128,7 +157,38 @@ export class RemoteSourceService{
  async policy(libraryId:string):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(libraryId)}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');return this.parsePolicy(raw,libraryId);}
  private parsePolicy(raw:unknown,id:string):AnalysisPolicy{this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==id||typeof raw.policy.enabled!=='boolean'||!integer(raw.policy.revision))invalid();if(raw.policy.effective!==undefined&&typeof raw.policy.effective!=='boolean')invalid();const scanTier=['file_list_only','basic','complete','custom'].includes(String(raw.policy.scanTier))?raw.policy.scanTier as string:undefined;if(raw.policy.scanTier!==undefined&&scanTier===undefined)noteSkipped('remote-sources','policy.scanTier');return Object.freeze({libraryId:id,enabled:raw.policy.enabled,revision:raw.policy.revision,...(raw.policy.effective===undefined?{}:{effective:raw.policy.effective as boolean}),...(scanTier===undefined?{}:{scanTier})});}
  async setPolicy(policy:AnalysisPolicy,enabled:boolean):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("put_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(policy.libraryId)}),'PUT',routeBody("put_libraries_id_strm_analysis_policy", {enabled,expectedRevision:policy.revision}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');return this.parsePolicy(raw,policy.libraryId);}
- async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_network_roots", {"id": encodeURIComponent(libraryId)}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==libraryId||!integer(raw.policy.revision)||!Array.isArray(raw.policy.origins)||raw.policy.origins.length>8||!raw.policy.origins.every(origin=>text(origin,8192)))invalid();return Object.freeze({libraryId,revision:raw.policy.revision,origins:Object.freeze(raw.policy.origins as string[])});}
+ async readProfile(id:string):Promise<SourceReadSettings>{
+ const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_storage_source_read_profile",{"id":encodeURIComponent(id)}));
+ if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+ this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
+ return sourceReadSettings(raw.settings);
+}
+async saveProfile(profile:SourceReadSettings,values:SourceReadValues):Promise<SourceReadSettings>{
+ if(this.disposed||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+ const parsed=sourceReadValues(values);
+ if(!profile.sourceId||!profile.generation||!Number.isSafeInteger(profile.revision)||profile.revision<0)throw new Error('Invalid source profile.');
+ const epoch=this.epoch;
+ this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});
+ let submitted=false;
+ try{
+  const op=await this.operationId();if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+  if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();
+  this.publish({operationId:op});submitted=true;
+  const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(profile.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",{operationId:op,expectedGeneration:profile.generation,expectedRevision:profile.revision,values:parsed}));
+  if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+  const receipt=this.parseReceipt(raw,op);
+  const next=record(raw)&&record(raw.receipt)&&raw.receipt.readSettings!==undefined?sourceReadSettings(raw.receipt.readSettings):undefined;
+  this.publish({receipt,ambiguous:false});
+  return next??await this.readProfile(profile.sourceId);
+ }catch(error){
+  if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+  const code=record(error)&&typeof error.code==='string'?error.code:'';
+  const rejected=['storage_command_conflict','storage_operation_expired','revision_mismatch','idempotency_key_reused','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden','not_permitted','invalid_request'].includes(code);
+  this.publish({ambiguous:submitted&&!rejected,error:safeError(error),errorCode:code});
+  throw error;
+ }finally{if(epoch===this.epoch)this.publish({busy:false});}
+}
+async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_network_roots", {"id": encodeURIComponent(libraryId)}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==libraryId||!integer(raw.policy.revision)||!Array.isArray(raw.policy.origins)||raw.policy.origins.length>8||!raw.policy.origins.every(origin=>text(origin,8192)))invalid();return Object.freeze({libraryId,revision:raw.policy.revision,origins:Object.freeze(raw.policy.origins as string[])});}
  async setNetworkPolicy(policy:NetworkPolicy,roots:readonly string[]):Promise<NetworkPolicy>{if(roots.length>8||roots.some(root=>!text(root,8192)))throw new Error('Invalid network roots.');const epoch=this.epoch;await this.request(encodedRoutePath("post_libraries_id_network_roots", {"id": encodeURIComponent(policy.libraryId)}),'POST',routeBody("post_libraries_id_network_roots", {roots,expectedRevision:policy.revision}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');return this.networkPolicy(policy.libraryId);}
 
 }

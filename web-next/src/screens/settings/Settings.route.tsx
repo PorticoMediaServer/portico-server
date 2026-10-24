@@ -39,6 +39,7 @@ import {deviceRowState, isDeviceSyntheticRow} from './device-rows-model';
 import {AudioSubtitleLanguageList, SubtitlePreview, isSubtitlePreview, preferredLanguageKind} from './audio-subtitles-rows';
 import {subtitlePreviewPaint} from './audio-subtitles-model';
 import {MusicEqualizerRow, musicEqualizerAvailable} from './account-music/MusicEqualizerRow';
+import {RemoteSourcesPage} from './remote-sources/RemoteSourcesPage';
 import {browserAccountOrigin} from '../../platform/account-origin';
 import {SettingsInvitations} from './invitations';
 
@@ -160,7 +161,7 @@ export function SettingsEntry() {
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
-      section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
+      section: selected => selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} /> : selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
