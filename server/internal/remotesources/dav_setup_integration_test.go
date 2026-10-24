@@ -138,6 +138,11 @@ func TestDedicatedDAVSetupRunsBoundedOriginChecksAfterPhysicalStop(t *testing.T)
 						return
 					case "wrong":
 						start++
+					case "revoked":
+						if _, err := f.s.db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=?`, family); err != nil {
+							t.Error(err)
+						}
+
 					}
 					w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/64", start, end))
 					w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
