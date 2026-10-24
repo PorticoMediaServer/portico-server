@@ -23456,6 +23456,9 @@ export const schemas = {
       "available": {
         "type": "boolean"
       },
+      "defaultEnabled": {
+        "type": "boolean"
+      },
       "done": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -23542,6 +23545,7 @@ export const schemas = {
     "required": [
       "libraryId",
       "available",
+      "defaultEnabled",
       "enabled",
       "revision",
       "policyAllows",
@@ -152686,6 +152690,9 @@ export const schemas = {
       "available": {
         "type": "boolean"
       },
+      "defaultEnabled": {
+        "type": "boolean"
+      },
       "done": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -152772,6 +152779,7 @@ export const schemas = {
     "required": [
       "libraryId",
       "available",
+      "defaultEnabled",
       "enabled",
       "revision",
       "policyAllows",
@@ -179256,6 +179264,9 @@ export const schemas = {
       "available": {
         "type": "boolean"
       },
+      "defaultEnabled": {
+        "type": "boolean"
+      },
       "done": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -179342,6 +179353,7 @@ export const schemas = {
     "required": [
       "libraryId",
       "available",
+      "defaultEnabled",
       "enabled",
       "revision",
       "policyAllows",

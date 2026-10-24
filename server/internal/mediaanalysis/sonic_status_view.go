@@ -1,6 +1,9 @@
 package mediaanalysis
 
-import "portico.local/server/internal/sonic"
+import (
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/sonic"
+)
 
 // SonicStatusView is the narrow owner projection. It exposes neither raw work
 // policy rows nor paths/errors, and never treats installed bytes as a song.
@@ -9,6 +12,7 @@ type SonicStatusView struct {
 	LibraryID string `json:"libraryId"`
 	// Available reports verified runtime readiness independently of the library choice.
 	Available                 bool            `json:"available"`
+	DefaultEnabled            bool            `json:"defaultEnabled"`
 	Enabled                   bool            `json:"enabled"`
 	Revision                  int64           `json:"revision"`
 	PolicyAllows              bool            `json:"policyAllows"`
@@ -24,7 +28,7 @@ type SonicStatusView struct {
 }
 
 func (status SonicStatus) OwnerView(library string) SonicStatusView {
-	out := SonicStatusView{LibraryID: library, Available: status.Runtime.State == "ready", Enabled: status.Settings.Enabled, Revision: status.Settings.Revision,
+	out := SonicStatusView{LibraryID: library, Available: status.Runtime.State == "ready", DefaultEnabled: catalog.SonicDefaultEnabled(), Enabled: status.Settings.Enabled, Revision: status.Settings.Revision,
 		PolicyAllows: status.PolicyAllows, Done: status.Analyzed, Total: status.Total, Model: status.Runtime.Model,
 		PolicyRevision: status.Work.Revision, ObservedAtMS: status.Work.ObservedAt.UnixMilli()}
 	switch {

@@ -65,7 +65,7 @@ func TestSonicMountedOwnerCASStrictBodiesAndMemberRefusal(t *testing.T) {
 			}
 			w := call("PUT", path, `{"enabled":false,"expectedRevision":1}`)
 			var status mediaanalysis.SonicStatusView
-			if err = json.Unmarshal(w.Body.Bytes(), &status); err != nil || w.Code != 200 || status.Enabled || status.Revision != 2 || status.State != "disabled" || status.Available {
+			if err = json.Unmarshal(w.Body.Bytes(), &status); err != nil || w.Code != 200 || status.Enabled || status.Revision != 2 || status.State != "disabled" || status.Available || !status.DefaultEnabled {
 				t.Fatal("explicit Off not retained", w.Code, w.Body.String(), err)
 			}
 			if w = call("PUT", path, `{"enabled":true,"expectedRevision":1}`); w.Code != http.StatusConflict {
