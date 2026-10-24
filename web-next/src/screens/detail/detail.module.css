@@ -1,4 +1,4 @@
-.page { min-width: 0; }
+.page { min-width: 0; --detail-fact-line: 1.45; --detail-stuck-tab-size: 16px; }
 
 .hero { position: relative; height: 660px; }
 
@@ -48,44 +48,57 @@
 .sticky { position: sticky; top: 76px; z-index: var(--layer-hero-navigation); padding: 0 64px; display: flex; align-items: center; gap: 26px; background: transparent; border-bottom: 1px solid var(--color-line); }
 .tabStrip { margin-bottom: -1px; }
 
-.pinnedDesktopTitle { display: none; font-size: var(--type-detail-heading-size); font-weight: var(--type-button-weight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pinnedDesktopTitle { display: none; font-size: var(--type-row-heading-size); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-title-tracking); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pinnedRule { display: none; width: 1px; height: 24px; flex: none; background: var(--color-line-strong); }
 .pinnedPhone { position: absolute; top: -44px; left: 0; right: 0; height: 44px; display: flex; align-items: center; padding: 0 10px; background: color-mix(in srgb,var(--color-ink) 86%,transparent); backdrop-filter: blur(24px) saturate(1.3); }
 .pinnedPhone > span { position: absolute; left: 64px; right: 64px; text-align: center; font-size: var(--type-detail-heading-size); font-weight: var(--type-button-weight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 
 .sticky .actions { display: none; margin: 0 0 0 auto; }
 .tabAnchor { height: 1px; margin-bottom: -1px; }
-.sticky[data-stuck] { min-height: 64px; background: color-mix(in srgb,var(--color-ink) 86%,transparent); backdrop-filter: blur(22px) saturate(1.2); }
+.sticky[data-stuck] { min-height: 64px; border-bottom: 0; box-shadow: 0 1px 0 color-mix(in srgb,var(--color-text) 7%,transparent); background: color-mix(in srgb,var(--color-ink) 86%,transparent); backdrop-filter: blur(22px) saturate(1.2); }
+.sticky[data-stuck]::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 28px; background: linear-gradient(180deg,color-mix(in srgb,var(--color-ink) 60%,transparent),transparent); pointer-events: none; }
 .sticky[data-stuck] > .pinnedDesktopTitle,.sticky[data-stuck] .actions { display: flex; }
+.sticky[data-stuck] > .pinnedRule { display: block; }
+.sticky[data-stuck] .tabStrip > div { border-bottom: 0; }
+.sticky[data-stuck] [role="tablist"] { gap: 28px; align-self: stretch; }
+.sticky[data-stuck] [role="tab"] { display: flex; align-items: center; padding: 0; font-size: var(--detail-stuck-tab-size); }
+.sticky[data-stuck] [role="tab"][data-state="active"]::after { inset: auto 0 0; }
 
-.details { display: grid; grid-template-columns: 360px 1fr; gap: 64px; padding: 36px 64px 80px; }
+.details { display: grid; grid-template-columns: 360px 1fr; gap: 64px; padding: 32px 64px 80px; }
 
-.details h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); margin: 0 0 20px; }
+.details h2, .sectionHeading { font-size: var(--type-detail-heading-size); font-weight: var(--type-row-heading-weight); margin: 0 0 16px; }
 
 .about { color: var(--color-text-secondary); margin-top: 0; }
 
-.details dl { margin: 20px 0 0; }
+.details dl { margin: 0; }
 
-.details dl > div { display: grid; grid-template-columns: 124px 1fr; gap: 16px; margin-top: 12px; font-size: var(--type-person-title-size); }
+.details dl > div { display: grid; grid-template-columns: 124px 1fr; gap: 16px; margin-top: 12px; font-size: var(--type-body-size); line-height: var(--detail-fact-line); }
 
 .details dt { color: var(--color-text-tertiary); }
 
-.details dd { margin: 0; color: var(--color-text-secondary); }
+.details dd { margin: 0; color: var(--color-text); }
 
-.people { display: flex; gap: 24px; flex-wrap: wrap; }
-.creditGroups > section + section { margin-top: 32px; }
+.detailBanner { grid-column: 1 / -1; margin-top: 48px; }
+
+.people { display: flex; gap: 22px; flex-wrap: wrap; }
+.creditGroups > section + section { margin-top: 26px; padding-top: 24px; border-top: 1px solid color-mix(in srgb, var(--color-line) 60%, transparent); }
 .peopleHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.peopleAll { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; padding: 0; border: 0; background: none; font: inherit; font-size: var(--type-see-all-size); font-weight: var(--type-row-heading-weight); color: var(--color-text-secondary); cursor: pointer; }
+.peopleAll:hover { color: var(--color-text); }
+.peopleAll:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: 3px; border-radius: 4px; }
 .allCredits + .allCredits { margin-top: 24px; }
 .creditPlaceholder { display: block; width: 104px; height: 104px; margin: 0 auto; border-radius: 50%; background: var(--color-raised); }
 
 .people button { border: 0; padding: 0; background: transparent; color: inherit; text-align: center; width: 120px; cursor: pointer; }
 
-.people button > :first-child { height: 104px; width: 104px; margin: 0 auto; }
+.people button > :first-child { height: 96px; width: 96px; margin: 0 auto 10px; }
 
 .people b,.people small { display: block; }
 
-.people b { font-size: var(--type-person-title-size); margin-top: 12px; }
+.people b { font-size: var(--type-person-title-size); margin-top: 0; }
 
-.people small { font-size: var(--type-label-size); color: var(--color-text-tertiary); margin-top: 4px; }
+.people small { font-size: var(--type-caption-size); color: var(--color-text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .loading { display: grid; gap: 20px; padding: 100px 64px 50px; }
 .panelLoading { display: grid; gap: 20px; min-height: 180px; }
@@ -142,3 +155,5 @@
 :global([data-reduce-motion="true"]) .tabPanel { animation-duration: var(--motion-reduced); animation-timing-function: linear; }
 @media(prefers-reduced-motion:reduce) { .tabPanel { animation-duration: var(--motion-reduced); animation-timing-function: linear; } }
 @media(max-width:1023px) { .episodeLoading { display: block; } .episodeLoading > div + div { margin-top: 24px; } }
+
+.moreOpen { background: color-mix(in srgb, var(--color-text) 24%, transparent); }

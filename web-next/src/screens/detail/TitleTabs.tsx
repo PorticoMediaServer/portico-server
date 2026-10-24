@@ -23,6 +23,6 @@ export function TitleTabs({title, compact, children, actions, onBack}: {title: s
     scroller ??= document.scrollingElement as HTMLElement;
     scroll.current?.(); scroll.current = scrollLayout(scroller, scroller.scrollLeft, 0, motion.reduced);
   }}>
-    <span className={styles.pinnedDesktopTitle}>{title}</span>{phone && stuck && !compact && <div className={styles.pinnedPhone}>{onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={onBack} />}<span>{title}</span></div>}{children}{actions}
+    <span className={styles.pinnedDesktopTitle}>{title}</span><span className={styles.pinnedRule} aria-hidden="true" />{phone && stuck && !compact && <div className={styles.pinnedPhone}>{onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={onBack} />}<span>{title}</span></div>}{children}{actions}
   </div></>;
 }

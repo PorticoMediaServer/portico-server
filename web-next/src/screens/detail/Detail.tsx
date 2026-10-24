@@ -1,19 +1,20 @@
 import {t, locale, environment as env} from './text';
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject} from 'react';
 import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PlaybackOptions} from '@core/playback-v1/types.ts';
 import {detailActions} from '@core/presentation/detail-actions.ts';
+import {refreshMetadataPath} from '@core/presentation/entry-actions.ts';
 import {titleRecommendationRows, type ItemRecommendations} from '@core/recommendations.ts';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
-import {serviceI18n} from '@core/presentation/service-text.ts';
+import {serviceI18n, serviceText} from '@core/presentation/service-text.ts';
 import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
 import {preferenceValue} from '@core/preferences.ts';
 import {AmbientArt, PersonCircle} from '../../kit/artwork';
-import {Button, ResumeButton, Tabs} from '../../kit/controls';
+import {Button, ResumeButton, Select, Tabs} from '../../kit/controls';
 import {Lockup, Shelf} from '../../kit/layout';
-import {PosterCard, SquareCard} from '../../kit/cards';
-import {Menu, MenuItem, FileInfo, Dialog, type FileInfoAction} from '../../kit/overlays';
+import {CollectionBanner, PosterCard, SquareCard} from '../../kit/cards';
+import {Menu, MenuGroup, MenuItem, MenuSeparator, FileInfo, Dialog, type FileInfoAction} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import {Icon} from '../../kit/Icon';
 import {useShellWidth} from '../../shell/viewport';
@@ -52,7 +53,7 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   return <article className={styles.page} data-compact={compact || undefined} data-title-id={data.scope.itemId}>
     {!compact && <TitleHero binding={binding} data={data} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
     {compact && <div className={styles.compactHeader}><h1>{data.item.title}</h1><TitleActions binding={binding} data={data} /></div>}
-    <TitleTabs title={data.item.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact && <TitleActions binding={binding} data={data} small />}><Tabs className={styles.tabStrip} aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
+    <TitleTabs title={data.item.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact && <TitlePinnedActions binding={binding} data={data} />}><Tabs className={styles.tabStrip} aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
     {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
     {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
     <div key={tab} className={tab === 'details' ? styles.tabPanel : `${styles.tabPanel} ${styles.rowsPanel}`}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
@@ -106,8 +107,11 @@ export function TitleActions({binding, data, small = false, topResult = false}: 
   const restart = data.actions.find(action => action.id === 'start_over' && action.enabled && action.playback);
   const run = (task: Promise<unknown>) => { void task.catch(binding.context.effects.reportError); };
   const size = small ? 'compact' as const : 'hero' as const;
+  // The drawn caption is the title's own long duration ("1 h 26 min left"), not the compact one.
+  const left = titleFactParts({durationSeconds: Math.max(0, data.item.duration - data.personal.progressSeconds)}, env).find(part => part.id === 'duration')?.text;
+  const remaining = primary?.id === 'resume' && left ? serviceText('duration.remaining', {duration: left}) : primary?.caption;
   return <><div className={styles.actions} data-phone-title={phone && !small || undefined}>
-    {primary && primaryAction && (primary.id === 'resume' && !phone ? <ResumeButton size={size} progress={data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0} remaining={primary.caption} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
+    {primary && primaryAction && (primary.id === 'resume' && !phone ? <ResumeButton size={size} progress={data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0} remaining={remaining} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
       : <Button variant="primary" icon="i-play" size={size} onClick={() => run(binding.play(data, primaryAction.id))}>{t(primary.id === 'resume' ? 'next.controls.resume' : 'next.controls.play')}</Button>)}
     {!small && <>
       {!phone && !topResult && restart && primary?.id === 'resume' && <Button icon="i-retry" size={size} onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}
@@ -117,14 +121,41 @@ export function TitleActions({binding, data, small = false, topResult = false}: 
     </>}
   </div>{phone && !small && primary?.id === 'resume' && <div className={styles.phoneResume}>
     <div className={styles.phoneProgress} role="progressbar" aria-label={t('next.layout.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0)) * 100)}><span style={{transform: `scaleX(${Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0))})`}} /></div>
-    <div className={styles.phoneRemaining}>{primary.caption}{restart && <Button variant="text" icon="i-retry" size="small" onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}</div>
+    <div className={styles.phoneRemaining}>{remaining}{restart && <Button variant="text" icon="i-retry" size="small" onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}</div>
   </div>}</>;
+}
+
+/** The drawn More menu's Rate… row. The value is the viewer's own star rating, saved to the title. */
+function TitleRating({binding, data, onClose, returnFocusRef}: {binding: DetailBindings; data: DetailProjection; onClose: () => void; returnFocusRef: RefObject<HTMLButtonElement | null>}) {
+  const [value, setValue] = useState<number | null>(data.personal.rating ?? null), [busy, setBusy] = useState(false);
+  const save = () => {
+    setBusy(true);
+    void binding.mutate(data, {action: 'rating', value}).then(onClose, error => { setBusy(false); binding.context.effects.reportError(error); });
+  };
+  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={t('title.rate', {title: data.item.title})} returnFocusRef={returnFocusRef} dismissOnOutsidePress={!busy} dismissOnBack={!busy}
+    footer={<><Button onClick={onClose} disabled={busy}>{t('action.close')}</Button><Button variant="primary" onClick={save} disabled={busy}>{t('action.save')}</Button></>}>
+    <Select label={t('next.home.yourRating')} aria-label={t('next.home.yourRating')} value={value === null ? 'none' : String(value)} disabled={busy}
+      options={[{value: 'none', label: t('next.home.noRating')}, ...Array.from({length: 11}, (_, stars) => ({value: String(stars), label: t('next.home.ratingValue', {value: stars})}))]}
+      onValueChange={next => setValue(next === 'none' ? null : Number(next))} />
+  </Dialog>;
+}
+
+/** The pinned bar's own pair, as drawn once the title scrolls away: Play/Resume and My List. */
+function TitlePinnedActions({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
+  const primary = detailActions(data, {platform: 'web'}).primary;
+  const action = data.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
+  const watchlist = data.actions.find(value => value.id === 'watchlist' && value.enabled);
+  const run = (task: Promise<unknown>) => { void task.catch(binding.context.effects.reportError); };
+  return <div className={styles.actions}>
+    {primary && action && <Button variant="primary" icon="i-play" size="small" onClick={() => run(binding.play(data, action.id))}>{t(primary.id === 'resume' ? 'next.controls.resume' : 'next.controls.play')}</Button>}
+    {watchlist && <Button variant="glass" icon={data.personal.watchlisted ? 'i-check' : 'i-plus'} iconOnly size="small" aria-label={t('next.controls.myList')} title={t('next.controls.myList')} aria-pressed={data.personal.watchlisted} onClick={() => run(binding.mutate(data, {action: 'watchlist', value: !data.personal.watchlisted}))} />}
+  </div>;
 }
 
 function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const [open, setOpen] = useState(false), [fileOpen, setFileOpen] = useState(false);
   const [files, setFiles] = useState<FileInfoProjection>(), [failed, setFailed] = useState(false);
-  const [manage, setManage] = useState<FileInfoAction>();
+  const [manage, setManage] = useState<FileInfoAction>(), [rating, setRating] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
   const versionRead = useRef<AbortController | undefined>(undefined), versionChoice = useRef<AbortController | undefined>(undefined);
   const [versions, setVersions] = useState<Readonly<{data: DetailProjection; options: PlaybackOptions; request: AbortController}>>();
@@ -152,13 +183,26 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   };
   const closeFiles = (value: boolean) => { setFileOpen(value); if (!value) fileRead.current?.abort(); };
   const model = useMemo(() => files && fileInfoModel(files.files.map(fileFacts), files.manage ? {audience: 'owner', manageSurface: phone ? 'phone' : 'desktop', ownerFacts: {locations: files.files.map(file => ({id: file.id, path: file.path, canDelete: files.manage?.delete})), canSplit: files.manage.split && files.files.length >= 2, canMerge: phone && files.manage.merge}} : {audience: 'viewer'}, env, phone ? 'phone' : 'desktop'), [files, phone]);
+  const viewer = binding.context.identity?.viewer, owner = viewer?.role === 'owner' && viewer.authority === 'local';
+  const offered = (id: string) => data.actions.some(action => action.id === id && action.enabled);
+  const refreshPath = owner ? refreshMetadataPath(data.item.kind, data.item.id) : undefined;
+  const refresh = () => {
+    if (!refreshPath) return;
+    void binding.context.api.request(refreshPath, 'POST', {}).then(() => binding.service.revalidate()).catch(binding.context.effects.reportError);
+  };
+  const differentVersion = versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1;
+  const personal = (phone && offered('watched')) || offered('favorite') || offered('rating');
   return <>
-    <Menu open={open} onOpenChange={setOpen} title={data.item.title} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} />}>
-      {phone && data.actions.some(action => action.id === 'watched' && action.enabled) && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
-      {data.actions.some(action => action.id === 'favorite' && action.enabled) && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
-      {versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1 && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
+    <Menu open={open} onOpenChange={setOpen} title={data.item.title} width={280} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} className={open ? styles.moreOpen : undefined} />}>
+      {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
+      {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
+      {offered('rating') && <MenuItem icon="i-star" onSelect={() => setRating(true)}>{t('entry.rate')}</MenuItem>}
+      {personal && <MenuSeparator />}
+      {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
+      {refreshPath && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly><MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem></MenuGroup></>}
     </Menu>
+    {rating && <TitleRating binding={binding} data={data} returnFocusRef={trigger} onClose={() => setRating(false)} />}
     {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}
     {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading shape="panel" />}</Dialog>}
     {manage && files && <FileManagement binding={binding} data={data} files={files} action={manage} onClose={() => setManage(undefined)} returnFocusRef={trigger} />}
@@ -166,13 +210,14 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
 }
 
 export function TitleDetails({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
-  const {item, facts, metadata} = data;
+  const {item, facts, metadata} = data, collection = data.collections?.[0], {artwork} = binding.context;
   const language = (code: string) => { try { return new Intl.DisplayNames(locale(), {type: 'language'}).of(code) ?? code; } catch { return code; } };
   const directors = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director'), writers = metadata.credits.filter(credit => /writer|writing|screenplay|teleplay|novel/i.test(credit.role));
   const rows: (readonly [string, ReactNode])[] = [
     [t('title.releaseDate'), calendarDate(facts?.releaseDate, locale())],
     [t('library.column.runtime'), titleFactParts({durationSeconds: item.duration}, env).find(part => part.id === 'duration')?.text],
     [t('title.genres'), metadata.genres.length ? <GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /> : undefined],
+    [t('next.show.rated'), facts?.contentRating],
     [t('title.directedByLabel'), directors.length ? <CreditNames binding={binding} data={data} credits={directors} /> : undefined],
     [t('title.writtenByLabel'), writers.length ? <CreditNames binding={binding} data={data} credits={writers} /> : undefined],
     [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country], [t('title.edition'), facts?.edition],
@@ -180,9 +225,27 @@ export function TitleDetails({binding, data}: {binding: DetailBindings; data: De
     [t('title.audio'), data.languages.audio.map(language).join(', ')], [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')],
     [t('title.added'), instantDate(item.addedAt, locale())],
   ];
-  return <div className={styles.details}><section><dl>{rows.filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
+  return <div className={styles.details}><section><h2 className={styles.sectionHeading}>{t('next.show.about')}</h2><dl>{rows.filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
     {metadata.credits.length > 0 && <TitlePeople binding={binding} data={data} />}
+    {collection && <section className={styles.detailBanner} aria-label={t('next.detail.partOfCollection')}>
+      <CollectionBanner context="detail" model={{title: collection.name, caption: []}} kindLabel={t('next.detail.partOfCollection')}
+        description={collection.yearFrom && collection.yearTo
+          ? t('next.detail.collectionSummary', {count: collection.memberCount, from: collection.yearFrom, to: collection.yearTo})
+          : t('lib.count', {count: collection.memberCount, pivot: 'other'})}
+        actionLabel={t('next.home.openCollection')} actionVariant="glass" position="50% 38%"
+        artwork={artwork.foreground(collection.posterUrls[0], 1312 * devicePixelRatio, 16 / 9)}
+        covers={collection.posterUrls.slice(0, 4).flatMap(poster => { const art = artwork.foreground(poster, 64 * devicePixelRatio, 2 / 3); return art ? [art] : []; })}
+        onAction={() => openCollection(binding, data, collection)} onNavigate={() => openCollection(binding, data, collection)} />
+    </section>}
   </div>;
+}
+
+/** Opens the collection the title belongs to: the drawn hero link and the Details banner share it. */
+function openCollection(binding: DetailBindings, data: DetailProjection, collection: NonNullable<DetailProjection['collections']>[number]) {
+  return runScreenCommand(binding.context, () => {
+    binding.current(data);
+    binding.context.effects.openEntry({id: collection.id, libraryId: data.scope.libraryId, kind: 'collection', title: collection.name, navigation: {view: 'collection', entityId: collection.id}});
+  });
 }
 
 export function TitleRecommendationRow({row, binding, guard, subtitleVisible = true}: {row: ItemRecommendations['rows'][number]; binding: Pick<DetailBindings, 'context'>; guard?: () => void; subtitleVisible?: boolean}) {
