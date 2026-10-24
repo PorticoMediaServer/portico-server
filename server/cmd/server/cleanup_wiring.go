@@ -12,7 +12,9 @@ func minuteCleanupWake() (*worker.Signal, func()) {
 	wake := worker.NewSignal()
 	stop := dbwork.WakeOnTables(wake,
 		"playback_sessions", "personal_*", "playlist_receipts", "saved_resource_receipts",
-		"lyric_candidates", "artwork_*", "metadata_owner_fields",
+		"lyric_candidates", "lyric_resources", "subtitle_resources",
+		"item_extras", "dvr_catalog_provenance",
+		"artwork_*", "metadata_owner_fields", "metadata_owner_history",
 		"catalog_*", "books", "book_files", "inventory_*",
 		"libraries", "library_*", "server_settings",
 	)

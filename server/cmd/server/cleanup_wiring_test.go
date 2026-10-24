@@ -19,6 +19,9 @@ func TestMinuteCleanupWakesForItsInputsAndUnknownWrites(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO server_settings(singleton) VALUES(1) ON CONFLICT(singleton) DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`INSERT INTO metadata_owner_history(kind,entity_id,base_revision,revision,trigger,actor,observed_at,before_json,after_json) VALUES('item',1,'before','after','upload','owner','2020-01-01T00:00:00Z','{}','{}')`); err != nil {
+		t.Fatal(err)
+	}
 	wake, stop := minuteCleanupWake()
 	defer stop()
 	write := func(query string) {
@@ -37,6 +40,10 @@ func TestMinuteCleanupWakesForItsInputsAndUnknownWrites(t *testing.T) {
 	write(`UPDATE server_settings SET updated_ms=updated_ms+1 WHERE singleton=1`)
 	if !wake.Take() {
 		t.Fatal("changed missing-title settings did not wake retention")
+	}
+	write(`DELETE FROM metadata_owner_history WHERE kind='item' AND entity_id=1`)
+	if !wake.Take() {
+		t.Fatal("history-only removal did not wake artwork collection")
 	}
 	write(`WITH changed(value) AS (SELECT 1) UPDATE telemetry_rollups SET total=total+(SELECT value FROM changed) WHERE bucket_ms=0`)
 	if !wake.Take() {
