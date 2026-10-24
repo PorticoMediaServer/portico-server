@@ -2314,8 +2314,12 @@ test('a complete opaque local queue uses the same media owner and real local rec
 
 test('local audio bookmarks keep their own verified preparation and restore paused through a fresh native acknowledgement', async t => {
   const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
-  let audioReleases = 0, videoReleases = 0;
-  await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {audioReleases++;}}, {signal: new AbortController().signal, isCurrent: () => true});
+  let audioReleases = 0, videoReleases = 0, actionCurrent = true;
+  const action = new AbortController();
+  await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {audioReleases++;}}, {signal: action.signal, isCurrent: () => actionCurrent});
+  actionCurrent = false;action.abort();
+  assert.equal(port.contexts.at(-1)!.signal.aborted, false, 'the retired initiating action no longer owns the acknowledged native load');
+  assert.equal(port.contexts.at(-1)!.isCurrent(), true, 'the actual captured runtime owns playback after successful handoff');
   const audio = f.runtime.getSnapshot().fence!;await f.runtime.seek(audio, 22);
   const movie = localPreparation(), row = movie.items[0]!;
   await f.runtime.playLocalQueue({preparation: {...movie, preparationId: 'movie_preparation', items: [{...row, title: {...row.title, kind: 'movie'}, itemId: 'stored_movie'}]},

@@ -5,6 +5,7 @@ import type {WebLocalQueuePreparation} from '../src/platform/playback/local-queu
 
 /** Controlled media-port boundary, not a native receipt/file/physical playback qualification. */
 export class ControlledLocalMedia implements PlaybackMediaPort {
+  contexts: LocalPlayerLoadContext[] = [];
   loaded = 0;settling = false;unloads = 0;urls: PlayerSource[] = [];loads: LocalPlayerSource[] = [];
   private serial = 0;
   private observation: PlayerObservation = {generation: 0, state: 'idle', positionMs: 0, rate: 1};
@@ -12,7 +13,7 @@ export class ControlledLocalMedia implements PlaybackMediaPort {
   gate?: (source: LocalPlayerSource) => Promise<void>;
   load(source: PlayerSource) {this.urls.push(source);this.loaded = source.generation;}
   async loadLocal(source: LocalPlayerSource, context: LocalPlayerLoadContext) {
-    const sequence = ++this.serial;this.loads.push(source);
+    const sequence = ++this.serial;this.loads.push(source);this.contexts.push(context);
     await this.gate?.(source);
     const receipt = localPlayerLoadReceipt({kind: 'local', scope: source.scope, preparationId: source.preparationId, localSourceId: source.localSourceId,
       entryId: source.entryId, itemId: source.itemId, generation: source.generation,

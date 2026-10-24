@@ -80,21 +80,28 @@ export class WebLocalQueue {
     if (!this.current() || !this.options.port.canLoadLocal || !Number.isInteger(index) || index < 0 || index >= this.snapshot.preparation.items.length) unavailable();
     if (context?.signal.aborted || context?.isCurrent() === false) throw new DOMException('Local selection retired', 'AbortError');
     const serial = ++this.serial, member = this.snapshot.preparation.items[index]!, generation = ++this.generation;
-    const signal = context ? AbortSignal.any([context.signal, this.life.signal]) : this.life.signal;
-    const current = () => this.current() && serial === this.serial && !signal.aborted && context?.isCurrent() !== false;
+    const admission = new AbortController();
+    const abort = () => admission.abort();
+    context?.signal.addEventListener('abort', abort, {once: true});
+    const signal = AbortSignal.any([admission.signal, this.life.signal]);
+    let adopted = false;
+    // The initiating action owns admission only. After the real receipt is adopted,
+    // the queue/runtime lifetime owns playback and retained bookmark restoration.
+    const current = () => this.current() && serial === this.serial && !signal.aborted && (adopted || context?.isCurrent() !== false);
     this.moving = true;this.publish({phase: 'loading', index, fence: undefined, observation: undefined, problem: undefined});
     try {
       const source = localPlayerSource({kind: 'local', scope: this.snapshot.preparation.scope, preparationId: this.snapshot.preparation.preparationId,
         localSourceId: member.localSourceId, entryId: member.id, itemId: member.itemId, generation, startPositionMs, autoplay});
       const receipt = localPlayerLoadReceipt(await this.options.port.loadLocal(source, {signal, isCurrent: current}), source);
       if (!current()) throw new DOMException('Local selection retired', 'AbortError');
+      adopted = true;context?.signal.removeEventListener('abort', abort);
       const fence = localPlaybackFence({kind: 'local', playback: {kind: 'local', scope: receipt.scope, run: this.options.run}, sessionId: receipt.sessionId,
         generation: receipt.generation, itemId: receipt.itemId, entryId: receipt.entryId, playId: receipt.playId, artifact: receipt.artifact});
       this.moving = false;this.publish({phase: 'ready', fence});this.read(this.options.port.observe());
     } catch (error) {
       if (serial === this.serial && !this.disposed) {this.moving = false;this.publish({phase: 'error', fence: undefined, observation: undefined, problem: 'local_playback_failed'});}
       throw error;
-    }
+    } finally {context?.signal.removeEventListener('abort', abort);}
   }
   private read(observation: PlayerObservation) {
     const fence = this.snapshot.fence;
