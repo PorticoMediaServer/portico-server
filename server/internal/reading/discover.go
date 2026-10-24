@@ -87,10 +87,10 @@ func (s *Service) Discover(ctx context.Context, p identity.Principal, library st
 		return out, err
 	}
 	if err = readingAttributionProjectionTx(ctx, tx, out.Recent); err != nil {
-        return out, err
-    }
-    if limits.Series > 0 {
-        out.Series, err = s.discoverSeriesTx(ctx, tx, p, library, limits.Series, filter, args)
-    }
-    return out, err
+		return out, err
+	}
+	if limits.Series > 0 {
+		out.Series, err = s.discoverSeriesTx(ctx, tx, p, library, limits.Series, filter, args)
+	}
+	return out, err
 }
