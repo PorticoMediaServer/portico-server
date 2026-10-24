@@ -142,7 +142,7 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
 	for i := range items {
 		items[i] = out.Items[i].Item
 	}
-	if err = readingOwnerProjectionTx(ctx, g.Tx(), items); err != nil {
+	if err = readingAttributionProjectionTx(ctx, g.Tx(), items); err != nil {
 		return out, err
 	}
 	for i := range items {

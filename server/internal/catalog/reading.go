@@ -50,12 +50,21 @@ func attachReadingTx(ctx context.Context, tx *sql.Tx, library, libraryKind, asse
 	if err != nil {
 		return 0, err
 	}
-	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	name := compactcatalog.ReadingFilenameTitle(filepath.Base(path))
 	var item int64
 	err = tx.QueryRowContext(ctx, `SELECT p.item_id FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id WHERE p.asset_id=? AND e.library_id=? AND e.kind=?`, assetID, handle, int(kind)).Scan(&item)
 	newPublication := err == sql.ErrNoRows
 	if err == sql.ErrNoRows {
-		item, _, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: kind, Key: "reading:" + kindName + ":" + compactcatalog.ItemKey(root, path, 0), Title: name, Added: catalogedNow()})
+		// Same stem/directory in different admitted formats is one title with
+		// real alternative publications. Preserve an existing title's identity,
+		// owner edits and resume when a later format arrives.
+		stem := strings.TrimSuffix(path, filepath.Ext(path))
+		err = tx.QueryRowContext(ctx, `SELECT e.id FROM catalog_assets a JOIN reading_publications p ON p.asset_id=a.id JOIN catalog_entities e ON e.id=p.item_id
+ WHERE e.library_id=? AND e.kind=? AND e.retired=0 AND a.path>=? AND a.path<?
+ AND substr(a.path,1,length(a.path)-length(p.format)-1)=? ORDER BY e.id LIMIT 1`, handle, int(kind), stem+".", stem+"/", stem).Scan(&item)
+		if err == sql.ErrNoRows {
+			item, _, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: kind, Key: "reading:" + kindName + ":" + compactcatalog.ItemKey(root, stem, 0), Title: name, Added: catalogedNow()})
+		}
 	}
 	if err != nil {
 		return 0, err
