@@ -64,6 +64,8 @@ type Authorize func(context.Context, *sql.Tx) error
 // checks and tuner discovery are testable and so neither touches the network
 // unless the owner configured it.
 type Service struct {
+	// SonicRuntimeAvailable is a cached readiness read; never a probe or SQL call.
+	SonicRuntimeAvailable func() bool
 	// ConfigurationCommitted drains the shared DB-to-file outbox after a committed domain edit.
 	ConfigurationCommitted func(context.Context) error
 	db                     *sql.DB
