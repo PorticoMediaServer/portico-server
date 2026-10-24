@@ -64,3 +64,13 @@ test('closing or disposing aborts the held request and ignores its late code', a
     assert.deepEqual(issuer.getSnapshot(), {phase: 'idle'});
   } finally {issuer.dispose();}
 });
+
+test('a missing cryptographic id source fails closed without a request or a fabricated id', async () => {
+  const issuer = new ShortCodeIssuer(() => {throw new Error('crypto unavailable');});
+  let calls = 0;
+  try {
+    await issuer.issue(true, async () => {calls++;return {serverId, expiresAt, shortCode: '008J4CT4ANK7F24S'};});
+    assert.equal(calls, 0);
+    assert.equal(issuer.getSnapshot().phase, 'failed');
+  } finally {issuer.dispose();}
+});
