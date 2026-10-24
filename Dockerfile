@@ -70,7 +70,7 @@ RUN ROOT_KEY=$(go run /identity/inspect-hosted-root.go /identity/root-public-key
 # bundle directly in third_party/ffmpeg/bundle. Either way the final stage
 # verifies what it was given before the image is finished.
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS ffmpeg
-RUN apt-get update && apt-get install --yes --no-install-recommends python3 bash && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install --yes --no-install-recommends python3 bash binutils && rm -rf /var/lib/apt/lists/*
 ARG TARGETOS
 ARG TARGETARCH
 COPY third_party/ffmpeg/bundle/ /bundle/

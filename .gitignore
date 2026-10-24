@@ -20,3 +20,10 @@ server/server.exe
 *.p12
 *.key
 /server/scalebench
+
+# Sonic build artifacts and installed runtime inputs.
+.sonic-model/
+.sonic-build/
+.sonic-release/
+sonic-output/
+third_party/portico-sonic/bundle/
