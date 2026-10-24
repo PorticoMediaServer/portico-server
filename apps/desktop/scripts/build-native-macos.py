@@ -11,7 +11,7 @@ job=args.job.resolve();root=pathlib.Path.home()/"PorticoBuild/desktop-r29"
 assert job.parent==root and job.name.startswith("native-shared-f3-")
 lock=(root.parent/".xcode-build.lock").open("r+");acquired=False;peak=0
 sha=lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
-env={"HOME":str(job/"home"),"TMPDIR":str(job/"tmp"),"PATH":os.environ['PATH'],"CI":"1","PYTHONNOUSERSITE":"1","GIT_CONFIG_NOSYSTEM":"1","GIT_CONFIG_GLOBAL":"/dev/null","GIT_TERMINAL_PROMPT":"0"}
+env={"HOME":str(job/"home"),"TMPDIR":str(job/"tmp"),"PATH":os.environ['PATH'],"CI":"1","PYTHONNOUSERSITE":"1","PYTHONDONTWRITEBYTECODE":"1","GIT_CONFIG_NOSYSTEM":"1","GIT_CONFIG_GLOBAL":"/dev/null","GIT_TERMINAL_PROMPT":"0"}
 def run(args,cwd=None,timeout=1800,output=False,extra=None):
  global peak
  merged={**env,**(extra or {})}
