@@ -998,7 +998,14 @@ func run() (runErr error) {
 	// rather than later.
 	supervise.Supervise(ctx, "cmd.minute-cleanup", func(ctx context.Context) {
 		wake := worker.NewSignal()
-		unregister := dbwork.WakeOnCommit(wake)
+		unregister := dbwork.WakeOnTables(wake,
+			"catalog_*", "inventory_*", "library_sources", "libraries", "library_configuration",
+			"playback_*", "personal_*", "saved_*", "playlist_*", "lyric_*", "subtitle_*",
+			"media_artifact_*", "prepared_media_*", "download_*", "delivery_*", "live_*", "dvr_*",
+			"authorization_*", "direct_*", "accounts", "profiles",
+			"metadata_*", "artwork_*", "bulk_*", "jobs", "job_*",
+			"server_settings", "console_settings_revision", "admin_documents", "maintenance_*",
+		)
 		defer unregister()
 		lastArtwork := time.Time{}
 		lastMissing := time.Time{}
