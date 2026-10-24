@@ -49,6 +49,7 @@ type Pending struct {
 	RequestedAt          time.Time                  `json:"requestedAt"`
 	ExpiresAt            time.Time                  `json:"expiresAt"`
 	Status               string                     `json:"status"`
+	SetupTransactionID   string                     `json:"setupTransactionId,omitempty"`
 	OwnerTransactionID   string                     `json:"ownerTransactionId,omitempty"`
 }
 

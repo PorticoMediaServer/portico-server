@@ -113,3 +113,19 @@ func TestPendingCountIsOwnerOnlyAndRetainsCompleteEnvelope(t *testing.T) {
 		t.Fatal("optional count is not a complete nonnullable envelope")
 	}
 }
+
+func TestPendingSetupIsDistinctAndRejectsMixedStarts(t *testing.T) {
+	signed := Signed{Payload: "payload", Signature: "signature"}
+	in := PendingRequest{Payload: "original", Signature: "signature", SetupStart: &signed}
+	raw, err := json.Marshal(in)
+	var got PendingRequest
+	if err != nil || json.Unmarshal(raw, &got) != nil || got.SetupStart == nil || *got.SetupStart != signed || got.OwnerStart != nil {
+		t.Fatal("setup start lost its envelope")
+	}
+	for _, extra := range []string{`,"ownerStart":{"payload":"p","signature":"s"}`, `,"ownerSwitchCount":{"payload":"p","signature":"s"}`, `,"setupStart":null`} {
+		text := string(raw[:len(raw)-1]) + extra + "}"
+		if json.Unmarshal([]byte(text), &got) == nil || got.SetupStart != nil || got.OwnerStart != nil || got.OwnerSwitchCount != nil {
+			t.Fatal("mixed/null/duplicate setup start accepted")
+		}
+	}
+}
