@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,12 +74,33 @@ func TestSearchGenresHandlerUsesCurrentLibraryAuthority(t *testing.T) {
 	if page := read(); len(page.Genres) != 1 || page.Genres[0].Value != "Drama" || page.Genres[0].Count != 1 {
 		t.Fatal("genre authority diverged from browse", page)
 	}
+	openGenre := func(value string) catalog.BrowseResult {
+		body, _ := json.Marshal(map[string]any{"pivot": "video-titles", "query": map[string]any{"field": "genre", "operator": "equals", "value": value}, "limit": 1})
+		r := httptest.NewRequest("POST", "/v1/browse", strings.NewReader(string(body)))
+		r.Header.Set("Authorization", "Bearer "+session.AccessToken)
+		w := httptest.NewRecorder()
+		d.browseAcrossHandler(w, r)
+		var result catalog.BrowseResult
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		return result
+	}
+	if opened := openGenre("Drama"); len(opened.Entries) != 1 || opened.Entries[0].ID != one.Public {
+		t.Fatal("tile did not open its authorized title", opened)
+	}
 	apply(2, []string{"private"})
 	if _, err = db.Exec(`UPDATE direct_memberships SET allowed_libraries='["private"]',revision=revision+1 WHERE account_id='member'`); err != nil {
 		t.Fatal(err)
 	}
 	if page := read(); len(page.Genres) != 1 || page.Genres[0].Value != "Secret genre" {
 		t.Fatal("cached genres survived a library revocation", page)
+	}
+	if opened := openGenre("Drama"); len(opened.Entries) != 0 {
+		t.Fatal("tile destination retained revoked library", opened)
+	}
+	if opened := openGenre("Secret genre"); len(opened.Entries) != 1 || opened.Entries[0].ID != secret.Public {
+		t.Fatal("tile destination missed current library", opened)
 	}
 	for _, query := range []string{"?limit=0", "?limit=51", "?limit=8&limit=4", "?source=/private", "?cursor=forged"} {
 		if w := request("/v1/search/genres"+query, session.AccessToken); w.Code != 400 {

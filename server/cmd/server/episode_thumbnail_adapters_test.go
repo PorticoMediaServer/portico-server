@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/subtitlevideo"
 	"portico.local/server/internal/workpolicy"
 )
 
@@ -113,16 +116,53 @@ func TestEpisodeRuntimeDoesNotInventMissingArtworkPolicy(t *testing.T) {
 	c := catalogtest.Open(t)
 	meta := metadata.New(c.DB, "")
 	meta.EpisodeThumbnails = episodeThumbnailRuntime(meta, nil, nil, nil, nil)
-	if meta.EpisodeThumbnails.ArtworkContext != nil || meta.EpisodeThumbnails.Sources == nil || meta.EpisodeThumbnails.Decoder == nil {
-		t.Fatal("source composition fabricated a size policy or lost its real adapters")
+	if meta.EpisodeThumbnails != nil {
+		t.Fatal("partial composition advertised a source/decoder runtime")
 	}
 	// The command's actual availability producer remains closed before it
-	// consults any catalogue or source facts, until the size policy is supplied.
+	// consults any catalogue or source facts, until the real dependencies exist.
 	available, err := meta.CanMakeEpisodeThumbnailTx(context.Background(), nil, metadata.RepairTarget{Kind: "item", ID: "episode"})
 	if err != nil || available {
 		t.Fatalf("partial runtime advertised generation: %v %v", available, err)
 	}
 	if _, err := (episodeSourceAdapter{}).ResolveEpisodeThumbnailTx(context.Background(), nil, metadata.EpisodeThumbnailInvocation{Purpose: "made-up"}); err == nil {
 		t.Fatal("unknown invocation purpose admitted")
+	}
+}
+
+func TestEpisodeRuntimeCapturesActualArtworkPolicyAndPublicationGuard(t *testing.T) {
+	c := catalogtest.Open(t)
+	meta := metadata.New(c.DB, "")
+	// This exercises the factory's policy binding only. Source/decoder inputs
+	// are not opened, and these placeholders make no source-availability claim.
+	runtime := episodeThumbnailRuntime(meta, &remotesources.Service{}, &identity.Service{}, nil, &subtitlevideo.Runtime{})
+	if runtime == nil || runtime.ArtworkContext == nil {
+		t.Fatal("complete composition lost the canonical artwork policy producer")
+	}
+	ctx := context.Background()
+	if _, err := c.DB.Exec(`UPDATE metadata_runtime_settings SET artwork_max_edge=1280,revision=revision+1 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	encoded, check, err := runtime.ArtworkContext(ctx)
+	if err != nil || encoded == nil || check == nil {
+		t.Fatal("actual stored policy was not captured", err)
+	}
+	if _, err = c.DB.Exec(`UPDATE metadata_runtime_settings SET artwork_max_edge=1920,revision=revision+1 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := c.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = check(ctx, tx)
+	tx.Rollback()
+	if !errors.Is(err, metadata.ErrEpisodeThumbnailEncodingStale) {
+		t.Fatal("factory lost the same-publication revision/edge guard", err)
+	}
+	if _, err = c.DB.Exec(`DELETE FROM metadata_runtime_settings WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	if encoded, check, err = runtime.ArtworkContext(ctx); !errors.Is(err, sql.ErrNoRows) || encoded != nil || check != nil {
+		t.Fatalf("missing policy became a placeholder edge: encoded=%t guard=%t err=%v", encoded != nil, check != nil, err)
 	}
 }
