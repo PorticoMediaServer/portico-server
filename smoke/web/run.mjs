@@ -176,7 +176,6 @@ async function main() {
       const endBuild = await readBuild();
   const moved = JSON.stringify(endBuild.build) !== JSON.stringify(report.buildStart.build) ||
     endBuild.version !== report.buildStart.version;
-  report.buildEnd = endBuild;
   if (moved) {
     report.note('build-drift', `the deployment changed during the run: start ${JSON.stringify(report.buildStart)} end ${JSON.stringify(endBuild)}`);
   }
@@ -717,14 +716,20 @@ async function main() {
       });
     }
   } finally {
+    // Read the build before the context closes, or the drift check sees only nulls.
+    try { report.buildEnd = await readBuild(); } catch (error) { report.buildEnd = {error: String(error).slice(0, 120)}; }
     await context.close();
     await browser.close();
   }
 
-  const endBuild = await readBuild();
-  const moved = JSON.stringify(endBuild.build) !== JSON.stringify(report.buildStart.build) ||
-    endBuild.version !== report.buildStart.version;
-  report.buildEnd = endBuild;
+  const endBuild = report.buildEnd || {};
+  report.buildInfo = {start: report.buildStart, end: endBuild, expected: expectedSha || null};
+  const comparable = !!endBuild.build && !!report.buildStart.build;
+  const moved = comparable && (JSON.stringify(endBuild.build) !== JSON.stringify(report.buildStart.build) ||
+    endBuild.version !== report.buildStart.version);
+  if (!comparable) {
+    report.note('build-drift', `could not re-read the build at the end of the run (${JSON.stringify(endBuild).slice(0, 160)}); stability is unproven`);
+  }
   if (moved) {
     report.note('build-drift', `the deployment changed during the run: start ${JSON.stringify(report.buildStart)} end ${JSON.stringify(endBuild)}`);
   }
