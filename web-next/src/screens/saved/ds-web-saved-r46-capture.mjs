@@ -6,11 +6,13 @@
 import {createRequire} from 'node:module';
 import {execFileSync} from 'node:child_process';
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {createServer} from 'vite';
 import path from 'node:path';
 
 const output = process.env.PORTICO_RUNNER_OUTPUT, design = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
-const executablePath = process.env.PORTICO_CHROMIUM ?? '/usr/bin/chromium';
+const executablePath = process.env.PORTICO_CHROMIUM ?? ['/usr/bin/chromium', '/snap/bin/chromium', '/usr/bin/google-chrome'].find(existsSync);
+if (!executablePath) throw new Error('No Chromium executable on this host.');
 if (!output || !design) throw new Error('Run with PORTICO_RUNNER_OUTPUT and the exact design PORTICO_RUNNER_SECONDARY_SOURCE.');
 const root = process.env.PORTICO_RUNNER_SITE ?? path.resolve('.');
 const designRoot = path.join(design, 'design/ui-v1');
