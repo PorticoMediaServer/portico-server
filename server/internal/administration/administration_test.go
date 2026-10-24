@@ -187,7 +187,7 @@ func TestLibraryContinueWatchingSettingsRoundTrip(t *testing.T) {
 	library, _, _ := seedLibrary(t, db, root)
 	ctx := context.Background()
 	doc, err := s.LibrarySettingsFor(ctx, allow, library)
-	if err != nil || doc.Settings.ContinueWatching.Weeks != 16 || doc.Settings.ContinueWatching.MaximumItems != 40 || doc.Settings.ContinueWatching.IncludeSeasonPremieres == nil || !*doc.Settings.ContinueWatching.IncludeSeasonPremieres || doc.Settings.ContinueWatching.VideoPlayedThreshold != 90 || doc.Settings.ContinueWatching.VideoCompletion != "earliest" {
+	if err != nil || doc.Settings.ContinueWatching.Weeks != 16 || doc.Settings.ContinueWatching.MaximumItems != 40 || doc.Settings.ContinueWatching.IncludeSeasonPremieres == nil || !*doc.Settings.ContinueWatching.IncludeSeasonPremieres || doc.Settings.ContinueWatching.VideoPlayedThreshold != 95 || doc.Settings.ContinueWatching.VideoCompletion != "earliest" {
 		t.Fatalf("Continue Watching defaults: %+v %v", doc.Settings.ContinueWatching, err)
 	}
 	settings := doc.Settings

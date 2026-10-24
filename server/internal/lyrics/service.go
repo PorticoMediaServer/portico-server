@@ -272,7 +272,7 @@ func (s *Service) View(ctx context.Context, a Access, t Target) (View, error) {
 	if e != nil {
 		return out, e
 	}
-	out.Providers, e = s.settings(ctx, tx)
+	out.Providers, e = s.librarySettings(ctx, tx, a.LibraryID)
 	if e != nil {
 		return out, e
 	}
@@ -542,7 +542,7 @@ func (s *Service) Publish(ctx context.Context, a Access, in Mutation, operation 
 			return Revision{}, ErrUnavailable
 		}
 		if provenance.Origin == "lrclib" {
-			settings, e := s.settings(ctx, tx)
+			settings, e := s.librarySettings(ctx, tx, a.LibraryID)
 			if e != nil {
 				return Revision{}, e
 			}
