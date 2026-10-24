@@ -399584,7 +399584,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -400523,7 +400524,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -405952,6 +405954,14 @@
           },
           {
             "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "query",
             "required": false,
             "schema": {
@@ -406068,7 +406078,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-scope": "read"

@@ -159,7 +159,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "internal"
+      "internal",
+      "revision_mismatch"
     ],
     "status": 200,
     "admission": "browsing"
@@ -181,7 +182,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "stale_continuation",
-      "internal"
+      "internal",
+      "revision_mismatch"
     ],
     "status": 200,
     "admission": "browsing"
@@ -6026,6 +6028,7 @@ export const routes = [
       "field",
       "q",
       "limit",
+      "offset",
       "query",
       "pivot"
     ],
@@ -6034,7 +6037,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "internal"
+      "internal",
+      "revision_mismatch"
     ],
     "status": 200,
     "admission": "browsing"
