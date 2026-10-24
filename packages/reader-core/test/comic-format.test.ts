@@ -108,9 +108,11 @@ test('image sniffing and XML metadata reject active markup, bad signatures and h
   const huge=Buffer.from(png);huge.writeUInt32BE(100000,16);assert.throws(()=>rasterInfo(huge),{code:'image_limit'});
   assert.throws(()=>comicInfo(Buffer.from('<!DOCTYPE ComicInfo [<!ENTITY x SYSTEM "file:///secret">]><ComicInfo/>')),{code:'archive_invalid'});
 });
-test('source revision changes during archive open cannot publish stale metadata',async()=>{
+test('source retirement between directory and metadata cannot publish stale archive identity',async()=>{
   const input=source(zip([{name:'page.png',bytes:png},{name:'ComicInfo.xml',bytes:Buffer.from('<ComicInfo><Title>Old</Title></ComicInfo>')}])),read=input.read;let calls=0;
-  input.read=async(range,sig)=>{if(++calls===3)input.revision='changed';return read(range,sig);};
+  input.read=(range,sig)=>{if(++calls!==1)return read(range,sig);
+    return new Promise((resolve,reject)=>read(range,sig).then(bytes=>{resolve(bytes);queueMicrotask(()=>{input.revision='changed';});},reject));
+  };
   await assert.rejects(openComicArchive(input,signal()),{code:'archive_invalid'});
 });
 test('changed source revision and an absent binary reader cannot splice CBZ pages',async()=>{
