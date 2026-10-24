@@ -8345,7 +8345,7 @@ CREATE TRIGGER reading_attribution_library_insert AFTER INSERT ON catalog_librar
 CREATE TRIGGER reading_attribution_entity_delete BEFORE DELETE ON catalog_entities BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(OLD.library_id);
 END;
-CREATE TRIGGER reading_attribution_entity_update BEFORE UPDATE OF library_id,kind,title,sort_title,sort_key,retired,public_id,id ON catalog_entities BEGIN
+CREATE TRIGGER reading_attribution_entity_update BEFORE UPDATE OF library_id,kind,parent_id,title,sort_title,sort_key,retired,public_id,id ON catalog_entities BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(OLD.library_id,NEW.library_id);
 END;
 CREATE TRIGGER reading_attribution_entity_insert BEFORE INSERT ON catalog_entities BEGIN

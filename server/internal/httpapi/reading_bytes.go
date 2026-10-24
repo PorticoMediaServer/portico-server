@@ -35,7 +35,7 @@ func (d Dependencies) readingService() *reading.Service {
 			// govern scanning; the reader receives no background decode grant.
 			_, _ = d.Ingestion.QueueContext(context.Background(), library, source, nil)
 		}
-	}, Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, library, item string) error {
+	}, SeriesScope: d.readingSeriesScopeTx, Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, library, item string) error {
 		if d.Identity == nil {
 			return identity.ErrUnauthorized
 		}
