@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"portico.local/server/internal/requestinput"
 	"sort"
@@ -95,6 +96,30 @@ func attributeFacetJoin(field string) string {
 // Facets returns the counted values of one field under the viewer's visibility.
 func (s *Service) Facets(viewer Viewer, request FacetRequest) (FacetPage, error) {
 	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
+	if request.Library != "" {
+		lib, err := s.library(request.Library)
+		if err != nil {
+			return out, err
+		}
+		if isReadingLibrary(lib.Kind) {
+			if !viewer.AllowsLibrary(request.Library) {
+				return out, sql.ErrNoRows
+			}
+			if dbwork.Snapshot(s.Context()) == nil {
+				err = dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
+					var e error
+					out, e = s.WithContext(ctx).Facets(viewer, request)
+					return e
+				})
+				return out, err
+			}
+			r, err := s.readingBrowseScope(request.Library)
+			if err != nil {
+				return out, err
+			}
+			return s.readingFacetPage(viewer, request, r)
+		}
+	}
 	if request.Query != nil || request.Pivot != "" || request.Field == "library" || request.Field == "actor" || request.Field == "director" || request.Field == "writer" {
 		return s.contextualFacets(viewer, request)
 	}
@@ -486,7 +511,15 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 		if err != nil {
 			return "", nil, "", err
 		}
+		if isReadingLibrary(lib.Kind) {
+			if _, err := s.readingBrowseScope(request.Library); err != nil {
+				return "", nil, "", err
+			}
+		}
 		if err := s.browseReady(request.Library); err != nil {
+			if isReadingLibrary(lib.Kind) && (errors.Is(err, ErrVisibilityBuilding) || errors.Is(err, ErrStaleContinuation)) {
+				return "", nil, "", ErrReadingProjectionChanged
+			}
 			return "", nil, "", err
 		}
 		id := request.Pivot
@@ -495,7 +528,7 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 		}
 		var ok bool
 		pivot, ok = pivotForKind(lib.Kind, id)
-		if !ok {
+		if !ok || isReadingLibrary(lib.Kind) && !pivot.Browsable {
 			return "", nil, "", ErrBrowsePivot
 		}
 		if pivot.Aggregate != "" {
@@ -533,6 +566,11 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 			compiler.kinds = append(compiler.kinds, int(kind))
 		}
 	}
+	readingEligible, err := s.bindReadingBrowse(request.Library, compiler)
+	if err != nil {
+		return "", nil, "", err
+	}
+	where += " AND " + readingEligible
 	clause, err := compiler.compile(withoutSelectedGenreAnchor(query, anchor))
 	if err != nil {
 		return "", nil, "", err
@@ -550,6 +588,9 @@ func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (strin
 	// The revision also binds the library and query vocabulary when used inside
 	// one library, so a cached aggregate cannot cross its pivot or source.
 	revision += ":" + request.Library + ":" + queryFingerprint(query)
+	if compiler.reading != nil {
+		revision += ":" + compiler.reading.fence()
+	}
 	return `SELECT e.entity_id,e.library_id,e.year FROM catalog_browse_rows e WHERE ` + where, args, revision, nil
 }
 

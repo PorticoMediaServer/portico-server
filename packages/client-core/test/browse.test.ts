@@ -368,3 +368,12 @@ test('public music Unmatched navigation follows actual capabilities for member, 
  assert.equal(canBrowseMusicUnmatched({...caps,pivots:caps.pivots.map(p=>({...p,filters:undefined}))}),false);
  assert.equal(canBrowseMusicUnmatched({...caps,pivots:caps.pivots.map(p=>({...p,filters:[]}))}),false);
 });
+
+test('Reading facet windows use the admitted single-library offset',async()=>{
+ const {browseContextFacetsPath,acrossLibraries}=await import('../src/browse.ts');
+ const url=new URL(browseContextFacetsPath('reading','author','authors',undefined,'',1,1),'https://private.invalid');
+ assert.equal(url.searchParams.get('offset'),'1');
+ assert.equal(url.searchParams.get('limit'),'1');
+ assert.throws(()=>browseContextFacetsPath('reading','author','authors',undefined,'',1,-1));
+ assert.throws(()=>browseContextFacetsPath(acrossLibraries,'author','authors',undefined,'',1,1));
+});

@@ -37250,6 +37250,21 @@
                   },
                   "type": "array"
                 },
+                "facetSource": {
+                  "properties": {
+                    "endpoint": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "endpoint",
+                    "field"
+                  ],
+                  "type": "object"
+                },
                 "filters": {
                   "items": {
                     "type": "string"
@@ -37502,6 +37517,21 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "facetSource": {
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "field"
+                ],
+                "type": "object"
               },
               "filters": {
                 "items": {
@@ -103546,6 +103576,21 @@
                   },
                   "type": "array"
                 },
+                "facetSource": {
+                  "properties": {
+                    "endpoint": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "endpoint",
+                    "field"
+                  ],
+                  "type": "object"
+                },
                 "filters": {
                   "items": {
                     "type": "string"
@@ -103798,6 +103843,21 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "facetSource": {
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "field"
+                ],
+                "type": "object"
               },
               "filters": {
                 "items": {
@@ -287888,6 +287948,21 @@
                             },
                             "type": "array"
                           },
+                          "facetSource": {
+                            "properties": {
+                              "endpoint": {
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "endpoint",
+                              "field"
+                            ],
+                            "type": "object"
+                          },
                           "filters": {
                             "items": {
                               "type": "string"
@@ -288140,6 +288215,21 @@
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "facetSource": {
+                          "properties": {
+                            "endpoint": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "endpoint",
+                            "field"
+                          ],
+                          "type": "object"
                         },
                         "filters": {
                           "items": {
@@ -400399,7 +400489,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -400621,6 +400712,21 @@
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "facetSource": {
+                            "properties": {
+                              "endpoint": {
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "endpoint",
+                              "field"
+                            ],
+                            "type": "object"
                           },
                           "filters": {
                             "items": {
@@ -400875,6 +400981,21 @@
                           },
                           "type": "array"
                         },
+                        "facetSource": {
+                          "properties": {
+                            "endpoint": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "endpoint",
+                            "field"
+                          ],
+                          "type": "object"
+                        },
                         "filters": {
                           "items": {
                             "type": "string"
@@ -401066,6 +401187,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "browsing",
@@ -401307,7 +401429,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -406736,6 +406859,14 @@
           },
           {
             "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "query",
             "required": false,
             "schema": {
@@ -406852,7 +406983,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-scope": "read"

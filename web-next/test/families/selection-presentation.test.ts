@@ -13,6 +13,7 @@ test('every canonical selection kind has an exact singular and plural count labe
     artist: ['1 artist', '2 artists'], album: ['1 album', '2 albums'], song: ['1 song', '2 songs'], book: ['1 book', '2 books'],
     audiobook_file: ['1 audiobook part', '2 audiobook parts'], chapter: ['1 chapter', '2 chapters'], collection: ['1 collection', '2 collections'],
     playlist: ['1 playlist', '2 playlists'],
+    ebook: ['1 book', '2 books'], comic: ['1 title', '2 titles'],
     category: ['1 category', '2 categories'], author: ['1 author', '2 authors'], book_series: ['1 series', '2 series'], disc: ['1 disc', '2 discs'], extra: ['1 extra', '2 extras'],
     channel: ['1 channel', '2 channels'], person: ['1 person', '2 people'],
   };

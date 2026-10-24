@@ -1,7 +1,7 @@
 import {clockText, compact, durationText, integer, nonnegative, part, positive, supplied, timelineFacts, type FactPart, type TextEnvironment} from './text.ts';
 
-/** Local semantic inputs, not generated wire responses. `book` means an audiobook. */
-export type TitleKind = 'movie' | 'show' | 'season' | 'episode' | 'extra' | 'artist' | 'album' | 'song' | 'disc' | 'book' | 'audiobook_file' | 'chapter' | 'author' | 'book_series' | 'collection' | 'category' | 'playlist';
+/** Local semantic inputs, not generated wire responses. `book` means an audiobook; ebook/comic are non-playable Reading leaves. */
+export type TitleKind = 'movie' | 'show' | 'season' | 'episode' | 'extra' | 'artist' | 'album' | 'song' | 'disc' | 'book' | 'audiobook_file' | 'chapter' | 'author' | 'book_series' | 'collection' | 'category' | 'playlist' | 'ebook' | 'comic';
 export type EpisodeNumbering =
   | Readonly<{mode: 'seasonal'; season?: number; episode?: number}>
   | Readonly<{mode: 'absolute'; number?: number}>
@@ -107,6 +107,11 @@ function chapterPart(facts: TitleFacts, env: TextEnvironment, includeTotal = fal
 
 /** Separate name, caption, facts and measured progress for every card family. */
 export function cardText(subject: CardSubject, context: CardContext, env: TextEnvironment): CardTextModel {
+  if (subject.kind === 'ebook' || subject.kind === 'comic') {
+    return Object.freeze({id: subject.id, title: subject.title,
+      caption: Object.freeze(compact([supplied(subject.author) ? part('author', subject.author, 'identity') : undefined])),
+      detail: Object.freeze(compact([integer(subject.year) ? part('year', String(subject.year)) : undefined]))});
+  }
   const {t} = env, timeline = timelineFacts(subject.durationSeconds, subject.positionSeconds);
   if (context === 'dock') {
     const kind = ['album', 'song', 'disc'].includes(subject.kind) ? 'music' : ['book', 'audiobook_file', 'chapter'].includes(subject.kind) ? 'audiobook' : 'video';
