@@ -71,19 +71,20 @@ function PersonCredits({binding, page, kind, total, heading, phone}: {binding: P
   const captions = (credit: PersonCredit) => credit.roles.length > 0
     ? credit.roles.map((role, index) => creditRole(role, `role-${index}`))
     : [];
+  const grid = <WindowedGrid className={grouped ? styles.grid : styles.wideGrid} collection={collection} label={heading} cardWidth={cardWidth} rowHeight={rowHeight} gap={gap} height={grouped ? rowHeight : 'calc(100vh - 240px)'} style={grouped && !phone ? {width: columns * cardWidth + (columns - 1) * gap} : undefined}
+    renderPlaceholder={index => <span className={styles.placeholder} key={index} />}
+    renderItem={(credit: PersonCredit) => {
+      const model = entryCard(credit.media, {t, locale: locale()}), roles = captions(credit);
+      const extraCaption = roles.map(role => [role.part]);
+      const extraPresentation = roles.map(role => role.presentation);
+      const textPresentation: CardTextPresentation | undefined = extraPresentation.some(Boolean) ? {extraCaption: extraPresentation} : undefined;
+      return <PosterCard model={{title: model.title, caption: [], progress: model.progress}} context="detail" textPresentation={textPresentation}
+        artwork={binding.context.artwork.foreground(credit.media.posterUrl, 380, 2 / 3)} watched={credit.media.watched} extraCaption={extraCaption}
+        onNavigate={() => runScreenCommand(binding.context, () => binding.open(page, credit))} />;
+    }} />;
   return <section className={styles.group} data-person-group={kind ?? 'all'}>
     <h2>{heading}{total !== undefined && <span className={styles.groupCount}>{total}</span>}</h2>
     {state.status === 'error' && <ScreenFailure retry={() => collection.retry()} />}
-    <WindowedGrid className={grouped ? styles.grid : styles.wideGrid} collection={collection} label={heading} cardWidth={cardWidth} rowHeight={rowHeight} gap={gap} height={grouped ? rowHeight : 'calc(100vh - 240px)'} style={grouped && !phone ? {width: columns * cardWidth + (columns - 1) * gap} : undefined}
-      renderPlaceholder={index => <span className={styles.placeholder} key={index} />}
-      renderItem={(credit: PersonCredit) => {
-        const model = entryCard(credit.media, {t, locale: locale()}), roles = captions(credit);
-        const extraCaption = roles.map(role => [role.part]);
-        const extraPresentation = roles.map(role => role.presentation);
-        const textPresentation: CardTextPresentation | undefined = extraPresentation.some(Boolean) ? {extraCaption: extraPresentation} : undefined;
-        return <PosterCard model={{title: model.title, caption: [], progress: model.progress}} context="detail" textPresentation={textPresentation}
-          artwork={binding.context.artwork.foreground(credit.media.posterUrl, 380, 2 / 3)} watched={credit.media.watched} extraCaption={extraCaption}
-          onNavigate={() => runScreenCommand(binding.context, () => binding.open(page, credit))} />;
-      }} />
+    {grouped ? <div className={styles.track}>{grid}</div> : grid}
   </section>;
 }

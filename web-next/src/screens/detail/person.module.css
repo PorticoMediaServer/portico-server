@@ -45,7 +45,7 @@
 
 .source { display: inline; font-size: var(--person-source-size); line-height: normal; color: var(--color-text-tertiary); }
 
-.toolbar { position: relative; z-index: var(--layer-row-arrow); display: flex; align-items: center; gap: 14px; padding: 0 64px; }
+.toolbar { position: relative; z-index: var(--layer-row-arrow); display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 64px; }
 
 .count { font-size: var(--person-count-size); font-weight: var(--person-count-weight); line-height: normal; color: var(--color-text-tertiary); }
 
@@ -61,7 +61,9 @@
 
 .groupCount { font-size: var(--person-group-count-size); font-weight: var(--person-group-count-weight); color: var(--color-text-tertiary); }
 
-.grid, .wideGrid { margin-top: 12px; }
+.track { padding-top: 12px; }
+
+.wideGrid { margin-top: 12px; }
 
 .placeholder { display: block; aspect-ratio: 2/3; border-radius: 12px; background: var(--color-raised); }
 
@@ -101,5 +103,7 @@
 
 .group h2 { font-size: var(--person-phone-group-size); }
 
-.grid, .wideGrid { margin-top: 12px; }
+.track { padding-top: 12px; }
+
+.wideGrid { margin-top: 12px; }
  }
