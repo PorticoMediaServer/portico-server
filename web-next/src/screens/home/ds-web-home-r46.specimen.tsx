@@ -20,7 +20,7 @@ import '../../bootstrap.css';
  */
 if (!import.meta.env.DEV) throw new Error('Home specimens require development.');
 
-const now = '2026-10-24T20:00:00Z', minute = 60_000;
+const minute = 60_000, nowMs = Date.now(), now = new Date(Math.floor(nowMs / minute) * minute).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const instant = (value: number) => new Date(value).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const photo = (name: string) => `assets/${name}`;
 
@@ -171,7 +171,10 @@ const spotlight: readonly HomeSpotlight[] = [
   {entry: entry('sp-severance', 'show', 'Severance', {year: 2022, genres: ['Drama', 'Mystery', 'Sci-Fi'], seasonCount: 1, posterUrl: photo('p-sev.jpg'), backdropUrl: photo('bd-sev.jpg'),
     overview: 'Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives. When a mysterious colleague appears outside of work, it begins a journey to discover the truth about their jobs.',
     playback: {itemId: 'play-severance', startSeconds: 0}}),
-    reason: {kind: 'new', text: {code: 'next.home.reason.newIn', params: {library: 'TV Shows'}, fallback: 'New in TV Shows'}}},
+    reason: {kind: 'new', text: {code: 'next.home.reason.newIn', params: {library: 'TV Shows'}, fallback: 'New in TV Shows'}},
+    resumeTarget: entry('ep-severance-1', 'episode', 'Good News About Hell', {seasonNumber: 1, episodeNumber: 1, duration: 3420, progressSeconds: 0,
+      show: {id: 'sp-severance', name: 'Severance'}, backdropUrl: photo('bd-sev.jpg'), playback: {itemId: 'play-severance-1', startSeconds: 0}})},
+
   {entry: entry('sp-spirited', 'movie', 'Spirited Away', {year: 2001, genres: ['Animation', 'Family'], duration: 7500, posterUrl: photo('p-spirited.jpg'), backdropUrl: photo('bd-spirited.jpg'),
     overview: 'A young girl, Chihiro, becomes trapped in a strange new world of spirits. When her parents undergo a mysterious transformation, she must call upon the courage she never knew she had to free her family.'}),
     reason: {kind: 'because_you_watched', text: {code: 'next.home.becauseYouWatched', params: {title: 'Inside Out'}, fallback: 'Because you watched Inside Out'}}},
@@ -237,7 +240,7 @@ const service = {getSnapshot: () => ({phase: 'ready'}), subscribe: () => () => {
 
 function Specimen() {
   const artwork = useArtwork();
-  return <HomeView service={service} document={homeDocument} nowMs={Date.parse(now)} onMore={() => {}} refreshLive={() => {}}
+  return <HomeView service={service} document={homeDocument} nowMs={nowMs} onMore={() => {}} refreshLive={() => {}}
     artwork={artwork} effects={effects} selection={selection} time={{t: defaultI18n.t, locale: 'en-US', timeZone: 'America/Halifax', hourCycle: 'h12'}} reducedMotion />;
 }
 

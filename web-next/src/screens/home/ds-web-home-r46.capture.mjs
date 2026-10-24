@@ -148,12 +148,27 @@ async function open(url, ready) {
   }
   throw new Error('Specimen did not settle');
 }
-async function shot(name, selector) {
+async function settle() {
+  let previous = -1, stable = 0;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const state = await evaluate(`(()=>{const images=[...document.images];return [images.length, images.filter(image=>image.complete&&image.naturalWidth>0).length, performance.getEntriesByType('resource').length]})()`);
+    const key = state.join(':');
+    stable = key === previous ? stable + 1 : 0;
+    previous = key;
+    if (stable >= 5 && state[0] === state[1]) return state;
+    await wait(300);
+  }
+  return 'unsettled';
+}
+async function shot(name, selector, pageWidth) {
   const rect = await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;const r=el.getBoundingClientRect();
     return {x:Math.floor(r.x+scrollX),y:Math.floor(r.y+scrollY),width:Math.ceil(r.width),height:Math.ceil(r.height)}})()`);
   if (!rect) throw new Error(`Element not found: ${selector}`);
-  await setViewport(viewportWidth, rect.y + rect.height);
-  await wait(400);
+  await setViewport(pageWidth, rect.y + rect.height);
+  await wait(300);
+  await settle();
+  await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 4, y: 4, button: 'none'}, sessionId);
+  await wait(300);
   const {data} = await call('Page.captureScreenshot', {format: 'png', fromSurface: true, captureBeyondViewport: true,
     clip: {x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: 1}}, sessionId);
   await writeFile(join(output, `${name}.png`), Buffer.from(data, 'base64'));
@@ -166,17 +181,37 @@ if (only !== 'actual') {
   await setViewport(2048, 1400);
   await open(`${frameOrigin}/mock.html`, '#home');
   report.reference.zoom = await evaluate(`getComputedStyle(document.querySelector('#home')).zoom`);
-  report.reference.rect = await shot('web-home-r46-reference', '#home');
+  report.reference.rect = await shot('web-home-r46-reference', '#home', 2048);
+  report.reference.pointer = await evaluate(`({hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches})`);
   report.reference.rows = await evaluate(`[...document.querySelectorAll('#home .rows > .row')].map(row=>{const r=row.getBoundingClientRect(),track=row.querySelector('.track'),head=row.querySelector('.row-head');
     return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), trackPadding:track?getComputedStyle(track).paddingLeft:null,
       firstCard:track?.firstElementChild?Math.round(track.firstElementChild.getBoundingClientRect().width):null, cards:track?.children.length??0, link:head?.querySelector('.all')?.textContent??null, linkOpacity:head?.querySelector('.all')?getComputedStyle(head.querySelector('.all')).opacity:null}})`.replace(/\n/g, ' '));
+  report.reference.collection = await evaluate(`(()=>{const el=document.querySelector('#home .banner');if(!el)return null;const r=el.getBoundingClientRect();
+    const copy=el.querySelector('.in'),minis=el.querySelector('.minis');
+    return {rect:r.toJSON(),copy:copy?.getBoundingClientRect().toJSON()??null,minis:minis?.getBoundingClientRect().toJSON()??null}})()`);
+  report.reference.poster = await evaluate(`(()=>{const card=document.querySelector('#home .rows > .row:nth-child(2) .track .card');if(!card)return null;
+    const art=card.querySelector('.art'),title=card.querySelector('.t'),sub=card.querySelector('.s');
+    return {card:card.getBoundingClientRect().toJSON(),art:art?.getBoundingClientRect().toJSON()??null,title:title?.getBoundingClientRect().toJSON()??null,subtitle:sub?.getBoundingClientRect().toJSON()??null}})()`);
+  report.reference.ranked = await evaluate(`(()=>{const first=document.querySelector('#home .rows > .row:nth-child(6) .ranked');if(!first)return null;
+    const number=first.querySelector('.n'),card=first.querySelector('.card');
+    return {wrapper:first.getBoundingClientRect().toJSON(),number:number?.getBoundingClientRect().toJSON()??null,card:card?.getBoundingClientRect().toJSON()??null}})()`);
   report.reference.hero = await evaluate(`(()=>{const h=document.querySelector('#home .hero'),c=h.querySelector('.copy'),th=h.querySelector('.upnext');const r=n=>n?n.getBoundingClientRect().toJSON():null;
     return {hero:r(h),copy:r(c),thumbs:r(th),firstArt:r(h.querySelector('.slide.on .bd'))}})()`);
 }
 if (only !== 'reference') {
   await setViewport(viewportWidth, 900);
   await open(`${buildOrigin}/src/screens/home/ds-web-home-r46.html?assets=${encodeURIComponent(frameOrigin + '/')}`, '[data-home-document]');
-  report.actual.rect = await shot('web-home-r46-actual', '[data-home-document]');
+  report.actual.rect = await shot('web-home-r46-actual', '[data-home-document]', viewportWidth);
+  report.actual.pointer = await evaluate(`({hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches})`);
+  report.actual.collection = await evaluate(`(()=>{const el=document.querySelector('[data-home-document] [data-card-kind="collectionBanner"]');if(!el)return null;const r=el.getBoundingClientRect();
+    const copy=el.querySelector('[class*="collectionCopy"]'),minis=el.querySelector('[class*="collectionMinis"]');
+    return {rect:r.toJSON(),copy:copy?.getBoundingClientRect().toJSON()??null,minis:minis?.getBoundingClientRect().toJSON()??null}})()`);
+  report.actual.poster = await evaluate(`(()=>{const card=[...document.querySelectorAll('[data-home-document] [data-card-kind="poster"]')].find(el=>el.closest('section'));
+    if(!card)return null;const art=card.querySelector('[class*="art"]'),title=card.querySelector('[class*="title"]'),cap=card.querySelector('[class*="caption"]'),sub=card.querySelector('[class*="subtitle"]');
+    return {card:card.getBoundingClientRect().toJSON(),art:art?.getBoundingClientRect().toJSON()??null,title:title?.getBoundingClientRect().toJSON()??null,caption:cap?.getBoundingClientRect().toJSON()??null,subtitle:sub?.getBoundingClientRect().toJSON()??null}})()`);
+  report.actual.ranked = await evaluate(`(()=>{const first=[...document.querySelectorAll('[data-home-document] [data-home-card-scale]')][0];if(!first)return null;
+    const number=first.children[0]?.children[0],card=first.querySelector('[data-card-kind="poster"]');
+    return {wrapper:first.getBoundingClientRect().toJSON(),number:number?.getBoundingClientRect().toJSON()??null,card:card?.getBoundingClientRect().toJSON()??null}})()`);
   report.actual.rows = await evaluate(`[...document.querySelectorAll('[data-home-document] section[data-platform]')].map(row=>{const r=row.getBoundingClientRect(),track=row.querySelector('div[class*="track"]'),head=row.querySelector('header');
     return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), trackPadding:track?getComputedStyle(track).paddingLeft:null,
       firstCard:track?.firstElementChild?Math.round(track.firstElementChild.getBoundingClientRect().width):null, cards:track?.children.length??0, link:head?.querySelector('a,button')?.textContent??null, linkOpacity:head?.querySelector('a,button')?getComputedStyle(head.querySelector('a,button')).opacity:null}})`.replace(/\n/g, ' '));
