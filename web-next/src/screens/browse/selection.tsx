@@ -1,6 +1,6 @@
 import {useSyncExternalStore, type ReactNode} from 'react';
 import type {BrowseWholeSelection} from '@core/browse.ts';
-import type {SelectionQuery} from '@core/selection-model/index.ts';
+import type {BrowseSelectionContext, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
 import {SelectionBar} from '../../kit/selection';
 import type {CardSelection} from '../../kit/cards';
 import type {BrowseMember} from './controller';
@@ -53,19 +53,29 @@ export type LibrarySelection = Readonly<{
 }>;
 
 /** Leaf explicit picks are the only target every add path can act on correctly:
- * a container's add would either become a container entry or a different command. */
-function explicitLeafItems(selection: {target: {mode: string; displayItems?: readonly {item: {id: string}}[]} | null} | undefined): readonly string[] | undefined {
+ * a container's add would either become a container entry or a different command.
+ * Channel and person picks are not catalogue titles and never join a queue or a
+ * saved list, so they are not offered either. */
+function explicitLeafItems(selection: BrowseSelection | undefined): readonly string[] | undefined {
   const target = selection?.target;
-  if (!target || target.mode !== 'explicit' || !target.displayItems?.length) return undefined;
-  if (!personalTargetIsLeaf(target as never)) return undefined;
-  return target.displayItems.map(pick => pick.item.id);
+  if (!target || target.mode !== 'explicit' || !target.displayItems.length) return undefined;
+  if (!personalTargetIsLeaf(target)) return undefined;
+  const ids: string[] = [];
+  for (const pick of target.displayItems) {
+    const item = pick.item;
+    if (item.kind === 'channel' || item.kind === 'person') return undefined;
+    ids.push(item.id);
+  }
+  return ids;
 }
+
+type BrowseSelection = SelectionSnapshot<BrowseSelectionContext>;
 
 /** A personal action is offered only when the model says every selected title has
  * it and the target can carry a personal job at all (leaf picks or a leaf view). */
-function personalOffers(selection: {summary: {every: {watched: boolean; myList: boolean; favorite: boolean}}; target: {mode: string; items?: readonly {item: {kind: string}}[]} | null} | undefined, actions: SelectionActionsOptions | undefined) {
+function personalOffers(selection: BrowseSelection | undefined, actions: SelectionActionsOptions | undefined) {
   if (!actions || !selection?.target) return {watched: false, myList: false, favorite: false};
-  const usable = personalTargetIsLeaf(selection.target as never);
+  const usable = personalTargetIsLeaf(selection.target);
   return {watched: usable && selection.summary.every.watched, myList: usable && selection.summary.every.myList, favorite: usable && selection.summary.every.favorite};
 }
 
