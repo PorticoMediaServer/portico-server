@@ -91,3 +91,135 @@ func TestRetiringOwnFlushWakePreservesPeerPublications(t *testing.T) {
 		t.Fatal("peer publication after retirement was lost")
 	}
 }
+
+// TestRetiringOwnFlushWakeWithoutAPublicationDoesNotRearm covers the pass that
+// publishes nothing at all: an empty outbox whose commit was not a publication.
+// No peer commit happened either, so the wake that was pending was already read
+// through by an earlier pass. Re-arming it is what turns the feed's two-second
+// floor into an endless empty loop.
+func TestRetiringOwnFlushWakeWithoutAPublicationDoesNotRearm(t *testing.T) {
+	signal := worker.NewSignal()
+	signal.Wake()
+	before := dbwork.Publications()
+	retireOwnFlushWake(signal, before)
+	if signal.Take() {
+		t.Fatal("a pass that published nothing re-armed a covered wake")
+	}
+}
+
+// An unknown write scope wakes every subscriber. When it lands during a pass it
+// must keep its own pass, exactly like a named peer commit.
+func TestRetiringOwnFlushWakeRetainsAnUnknownPeerPublication(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "unknown.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	signal := worker.NewSignal()
+	stop := dbwork.WakeOnTables(signal, "api_events")
+	defer stop()
+	before := dbwork.Publications()
+	// The pass's own flush commit, then an unknown-scope peer commit.
+	if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO api_events(audience,type,at_ms) VALUES('server','settings.changed',0)`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `WITH row(audience) AS (SELECT 'server') INSERT INTO api_events(audience,type,at_ms) SELECT audience,'settings.changed',0 FROM row`); err != nil {
+		t.Fatal(err)
+	}
+	retireOwnFlushWake(signal, before)
+	if !signal.Take() {
+		t.Fatal("an unknown-scope peer publication was retired with the flush")
+	}
+}
+
+// outboxReadShape identifies the feed's own pending-outbox read in the profile.
+const outboxReadShape = "SELECT audience,type,resource_kind"
+
+func outboxPasses() int64 {
+	var passes int64
+	for _, p := range dbwork.StatementProfile() {
+		if strings.HasPrefix(p.Shape, outboxReadShape) {
+			passes += p.Count
+		}
+	}
+	return passes
+}
+
+func waitForOutboxPasses(t *testing.T, want int64) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for outboxPasses() < want {
+		if time.Now().After(deadline) {
+			t.Fatalf("outbox saw %d passes, want at least %d", outboxPasses(), want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// startFeed runs the hub on db with statement profiling on. The returned stop
+// cancels the loop, waits for it to finish and turns profiling off, in that
+// order, so a later test starts from a quiet profile.
+func startFeed(t *testing.T, db *sql.DB) (stop func()) {
+	t.Helper()
+	hub := New(db)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	dbwork.ProfileStatements(true)
+	go func() { defer close(done); hub.Run(ctx) }()
+	return func() {
+		cancel()
+		<-done
+		dbwork.ProfileStatements(false)
+	}
+}
+
+// An idle server's feed must settle. Its startup pass reads an empty outbox and
+// publishes nothing that wakes it, so it must not schedule itself again.
+func TestHubStaysQuietWhenTheOutboxStartsEmpty(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "empty.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	stop := startFeed(t, db)
+	defer stop()
+	waitForOutboxPasses(t, 1)
+	// A wrongly re-armed wake runs again at the feed's two-second floor.
+	time.Sleep(2300 * time.Millisecond)
+	if passes := outboxPasses(); passes != 1 {
+		t.Fatalf("an empty pass scheduled %d outbox passes", passes)
+	}
+}
+
+// A wake that queues no outbox hint is read through by the one pass it causes.
+// That pass publishes its own empty commit, and retiring the wake must not leave
+// the wake that triggered the pass armed behind it.
+func TestHubDoesNotRearmAWakeThatQueuedNoHints(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "peerwake.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	stop := startFeed(t, db)
+	defer stop()
+	waitForOutboxPasses(t, 1)
+	// Let the startup pass finish reading and retire before the peer commit, so
+	// the commit is a wake of its own rather than work already in flight.
+	time.Sleep(300 * time.Millisecond)
+	// A committed event wakes the feed without queueing a coalesced hint.
+	if err := dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO api_events(audience,type,at_ms) VALUES('server','settings.changed',0)`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitForOutboxPasses(t, 2)
+	time.Sleep(2300 * time.Millisecond)
+	if passes := outboxPasses(); passes != 2 {
+		t.Fatalf("one peer wake scheduled %d outbox passes", passes)
+	}
+}
