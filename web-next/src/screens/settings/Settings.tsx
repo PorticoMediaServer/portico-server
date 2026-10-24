@@ -41,9 +41,11 @@ export type SettingsBindings = Readonly<{
   openHome: () => void;
 }>;
 
-export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsBindings; route: SettingsRoute; navigate: (route: SettingsRoute) => void}) {
+export function SettingsScreen({bindings, route, navigate, openDetail = false}: {bindings: SettingsBindings; route: SettingsRoute; navigate: (route: SettingsRoute) => void;
+  /** A link that names a scope or section asks for that page, not the compact list. */
+  openDetail?: boolean}) {
   const width = useShellWidth(), compact = width < 900, feedback = useWebAction('feedback');
-  const [query, setQuery] = useState(''), [compactPage, setCompactPage] = useState(false), [advanced, setAdvanced] = useState(false);
+  const [query, setQuery] = useState(''), [compactPage, setCompactPage] = useState(() => compact && openDetail), [advanced, setAdvanced] = useState(false);
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
   const [configurationKey, setConfigurationKey] = useState<string>();
   const opener = useRef<HTMLElement | null>(null);
