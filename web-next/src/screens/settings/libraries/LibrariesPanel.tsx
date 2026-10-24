@@ -9,6 +9,8 @@ import {Icon} from '../../../kit/Icon';
 import {StateView} from '../../../kit/states';
 import styles from './libraries.module.css';
 import {libraryRows, movedIds} from './model';
+import {AddLibrary} from './AddLibrary';
+import {RemoveLibrary} from './RemoveLibrary';
 
 const t = defaultI18n.t;
 
@@ -23,7 +25,7 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
   api: LibraryContentApi; service: LibraryManagementService; onEdit: (libraryId: string) => void; onError: (error: unknown) => void;
 }) {
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
-  const [busy, setBusy] = useState<string>(), [menu, setMenu] = useState<string>();
+  const [busy, setBusy] = useState<string>(), [menu, setMenu] = useState<string>(), [adding, setAdding] = useState(false), [removing, setRemoving] = useState<string>();
   const directory = snapshot.directory;
   const libraries = directory.data?.items ?? [];
   useEffect(() => { void service.loadLibraries().catch(onError); }, [service, onError]);
@@ -48,7 +50,11 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
   if (!directory.data) return <p role="status" className={styles.loading}>{t('next.settings.loading')}</p>;
   if (!libraries.length) return <p className={styles.empty}>{t('next.settings.libraries.empty')}</p>;
   const rows = libraryRows(libraries);
-  return <ol className={styles.list} aria-label={t('next.settingsSpec.server.libraries.title')}>
+  return <>
+    <div className={styles.listHeader}>
+      <Button variant="primary" size="small" icon="i-plus" onClick={() => setAdding(true)}>{t('next.settingsSpec.server.libraries.groups.0.rows.0.control.addLabel')}</Button>
+    </div>
+    <ol className={styles.list} aria-label={t('next.settingsSpec.server.libraries.title')}>
     {rows.map(row => <li key={row.id} className={styles.row} data-library-row={row.id}>
       <span className={styles.identity}>
         <b className={styles.name}>{row.name}</b>
@@ -71,7 +77,13 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
         {id: 'down', label: t('next.settings.moveDown', {name: row.name}), disabled: !row.canMoveDown, onSelect: () => {
           const library = libraries.find(value => value.id === row.id); if (library) void move(library, 1);
         }},
+        {id: 'remove', label: t('next.settingsSpec.server.libraries.panels.library.tabs.0.groups.2.rows.0.control.label'), destructive: true,
+          onSelect: () => setRemoving(row.id)},
       ]} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('next.settings.actions')} disabled={busy === row.id} />} />
     </li>)}
-  </ol>;
+    </ol>
+    <AddLibrary open={adding} onOpenChange={setAdding} api={api} service={service} onError={onError} />
+    <RemoveLibrary open={!!removing} onOpenChange={open => { if (!open) setRemoving(undefined); }} libraryId={removing ?? ''} service={service} api={api}
+      onRemoved={() => { setRemoving(undefined); void service.loadLibraries().catch(onError); }} onError={onError} />
+  </>;
 }

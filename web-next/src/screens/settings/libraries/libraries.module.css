@@ -53,3 +53,89 @@
   font-size: 14px;
   color: var(--color-text-tertiary);
 }
+
+.listHeader {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 12px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.formFolder {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.formFolder > :first-child {
+  flex: 1;
+}
+
+.formNote,
+.pickerNote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pickerPath {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.pickerPath > :first-child {
+  flex: 1;
+}
+
+.pickerList {
+  margin: 0;
+  padding: 0;
+  max-height: 340px;
+  overflow: auto;
+  list-style: none;
+  border-top: 1px solid var(--color-line-soft);
+}
+
+.pickerRow {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--color-line-soft);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pickerRow small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+}
+
+.pickerRow:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
+.danger {
+  color: var(--color-record);
+}

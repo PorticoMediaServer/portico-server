@@ -22,6 +22,8 @@ import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {LibrariesPanel} from './libraries/LibrariesPanel';
+import {LibraryScanAction} from './libraries/LibraryActions';
+import {isLibraryPanelContext, libraryScanAction} from './libraries/model';
 import {readingSettingsAdapter} from './reading-adapter';
 import {hasWebPreferenceEffect} from './effects';
 import {createPrivacySettingsSurfaces} from './privacy-controls';
@@ -132,16 +134,19 @@ export function SettingsEntry() {
         if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
         if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries}
           onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
+        if (row.control.type === 'action' && libraryScanAction(row.id) && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)
+          return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
       section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
-      eligible: (row, selected) => isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
+      eligible: (row, selected) => libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
       rowState: (row, selected) => {
         const privacyState = privacy.rowState(row);
         if (privacyState !== undefined) return privacyState;
+        if (libraryScanAction(row.id)) return {present: current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section)};
         if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
         return device ?? (row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
