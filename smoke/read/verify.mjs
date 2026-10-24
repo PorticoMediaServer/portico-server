@@ -64,12 +64,31 @@ page.on('response', async response => {
     mime: response.headers()['content-type'] || null,
     length: response.headers()['content-length'] || null,
   };
+  if (response.status() >= 400) {
+    try {
+      const body = await response.json();
+      const code = body && body.error && typeof body.error.code === 'string' ? body.error.code.slice(0, 60) : undefined;
+      if (code) entry.errorCode = code;
+    } catch { /* a refusal with no JSON body keeps its status only */ }
+  }
   if (response.status() < 300 && response.request().method() !== 'HEAD') {
     try {
       const buffer = Buffer.from(await response.body());
       entry.bytes = buffer.length;
       entry.magic8 = buffer.subarray(0, 8).toString('hex');
       entry.sha256 = createHash('sha256').update(buffer).digest('hex');
+      // The session manifest's safe shape, when this is the session create.
+      if (/\/v1\/reading\/sessions$/.test(path)) {
+        try {
+          const manifest = JSON.parse(buffer.toString('utf8'));
+          entry.manifest = {
+            format: manifest.format, size: manifest.size, revisionLength: typeof manifest.revision === 'string' ? manifest.revision.length : null,
+            sequentialPresent: Object.prototype.hasOwnProperty.call(manifest, 'sequential'),
+            sequential: manifest.sequential ?? null,
+            hasPageNames: Array.isArray(manifest.pageNames), pageCount: Array.isArray(manifest.pageNames) ? manifest.pageNames.length : null,
+          };
+        } catch { entry.manifestUnparsable = true; }
+      }
     } catch { entry.bodyUnreadable = true; }
   }
   resources.push(entry);
