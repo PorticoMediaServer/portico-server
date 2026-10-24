@@ -48,7 +48,7 @@ func TestOwnerSwitchPreviewFreezesCountWithoutUnsignedProjection(t *testing.T) {
 	if restored == nil || restored.otherPeopleCount == nil || *restored.otherPeopleCount != 1 {
 		t.Fatal("restoring a preview recounted live accounts")
 	}
-	if _, err = s.ConfirmPorticoMove(ctx, owner.AccountToken, MoveConfirmRequest{MoveID: preview.ID, ExpectedRevision: preview.Revision, Confirmation: preview.ServerName}); !errors.Is(err, ErrConflict) {
+	if _, err = s.ConfirmPorticoMove(ctx, owner.AccountToken, MoveConfirmRequest{MoveID: preview.ID, ExpectedRevision: preview.Revision, Confirmation: preview.ServerName}); !errors.Is(err, ErrProfileChanged) {
 		t.Fatalf("existing authority CAS did not refuse changed counts: %v", err)
 	}
 }
