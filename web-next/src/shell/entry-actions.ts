@@ -27,5 +27,3 @@ export function deleteTitleEffect(ports: EntryActionPorts) {
     entryActions.openDelete(target, anchor, ports);
   };
 }
-
-export 
