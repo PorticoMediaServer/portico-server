@@ -160,7 +160,9 @@ function RecordedGroupPanel({context, group, title, sort, onClose}: {context: Sc
   useEffect(() => { void reader.load().catch(() => {}); }, [reader]);
   const state = useSyncExternalStore(reader.subscribe, reader.getSnapshot, reader.getSnapshot);
   const [remove, setRemove] = useState<Recording>();
-  const play = (recording: Recording) => {if (!playableRecording(recording) || !context.isCurrent()) return;void context.effects.play({libraryId: recording.libraryId, itemId: recording.itemId, startSeconds: Math.max(0, (recording.positionMs ?? 0) / 1000)}).catch(context.effects.reportError);};
+  const life = useMemo(() => screenLifetime(context), [context]);
+  useEffect(() => () => life.dispose(), [life]);
+  const play = (recording: Recording) => {if (!playableRecording(recording) || !life.current()) return;void context.effects.play({libraryId: recording.libraryId, itemId: recording.itemId, startSeconds: Math.max(0, (recording.positionMs ?? 0) / 1000)}, life.signal(), life.current).catch(context.effects.reportError);};
   return <SidePanel open onOpenChange={open => {if (!open) onClose();}} width={640} topInset={76} title={title}
     description={t('recordings.showCount', {count: state.recordings.length})} className={styles.groupPanel}
     footer={<Button variant="glass" onClick={onClose}>{t('next.overlays.close')}</Button>}>
