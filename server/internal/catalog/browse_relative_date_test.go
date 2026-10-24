@@ -36,8 +36,8 @@ func TestBrowseWithinLastDaysWindowBoundaries(t *testing.T) {
 	}
 	// The same titles at a wider window: the 1 October title is within 30 days.
 	got = browseIDs(t, s, names, `{"field":"dateAdded","operator":"within-last-days","value":30}`)
-	if strings.Join(got, ",") != "m1,m3,m5" {
-		t.Fatalf("thirty-day window: want m1,m3,m5 got %v", got)
+	if strings.Join(got, ",") != "m1,m2,m3,m5" {
+		t.Fatalf("thirty-day window: want m1,m2,m3,m5 got %v", got)
 	}
 }
 
@@ -245,9 +245,9 @@ func TestRelativeCursorPagesKeepTheFirstInstant(t *testing.T) {
 	for _, entry := range first.Entries {
 		seen = append(seen, names.Of(entry.ID))
 	}
-	// Three days later every title is outside the seven-day window. The
+	// Ten days later every title is outside the seven-day window. The
 	// cursor's later pages still read the first page's snapshot.
-	now = now.AddDate(0, 0, 3)
+	now = now.AddDate(0, 0, 10)
 	for pages := 0; pages < 2; pages++ {
 		request.Cursor = first.PageInfo.NextCursor
 		page, err := s.BrowseEntities(viewer, request)
@@ -344,7 +344,7 @@ func TestHomeSavedViewRelativeCursorIsOneSnapshot(t *testing.T) {
 	if len(first.Entries) != 2 || first.NextCursor == "" || first.Total != 5 {
 		t.Fatalf("first Home row page: %d entries cursor=%v total=%d", len(first.Entries), first.NextCursor != "", first.Total)
 	}
-	now = now.AddDate(0, 0, 3)
+	now = now.AddDate(0, 0, 10)
 	second, err := s.HomeSingleRow(request, rowID, HomeRowPage{Limit: 2, Cursor: first.NextCursor})
 	if err != nil {
 		t.Fatal(err)
