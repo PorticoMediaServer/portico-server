@@ -1997,11 +1997,13 @@ test('device processing alone selects the renderer and preserves the actual queu
   await f.runtime.play('song_device');await f.arrive();
   const first=f.runtime.getSnapshot(), id=first.playback.session!.id, queue=first.session!.queue;
   assert.equal(first.playback.audioEffects.rendering,false);assert.equal(applied.length,0);
+  assert.equal(f.runtime.browserMediaReady(first.fence!),true);
   const web=(f.runtime as unknown as {stack:{web: import('../src/platform/playback/web-playback.ts').WebPlayback}}).stack.web;
   const enabled={enabled:true,preampDb:-3,bandsDb:Array(10).fill(2)};
   web.applyEqualizer(enabled);await settle();
   assert.deepEqual(equalizers.at(-1),enabled,'the committed device setting reaches the actual renderer seam');
   assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,true);assert.ok(applied.includes(id));
+  assert.equal(f.runtime.browserMediaReady(f.runtime.getSnapshot().fence!),false,'the separate renderer holds the HTML media slot');
   assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
   assert.equal(f.runtime.audioEngineFacts(f.runtime.getSnapshot().fence!),undefined,'an unconfirmed renderer has no invented processing facts');
   web.applyEqualizer({...enabled,enabled:false});await f.arrive();
@@ -2428,4 +2430,25 @@ test('a canceled strict web queue replan cannot load a late generation or trigge
   await settle();assert.equal(f.hls.instances.length,instances);assert.deepEqual(f.runtime.getSnapshot().fence,before);
   assert.equal(f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length,starts);
  }
+});
+
+
+test('browser media readiness follows the actual loaded HTML source and rejects seeking, retirement and native factories',async t=>{
+ const f=setup(t);await f.runtime.play('movie');
+ const loading=f.runtime.getSnapshot().fence;if(loading)assert.equal(f.runtime.browserMediaReady(loading),false);
+ await f.arrive();const first=f.runtime.getSnapshot().fence!;assert.equal(f.runtime.browserMediaReady(first),true);
+ await f.runtime.seek(first,17);assert.equal(f.runtime.browserMediaReady(first),false);f.video.land(17);await settle();assert.equal(f.runtime.browserMediaReady(first),true);
+ await f.runtime.play('other');assert.equal(f.runtime.browserMediaReady(first),false);await f.arrive();assert.equal(f.runtime.browserMediaReady(f.runtime.getSnapshot().fence!),true);
+ f.runtime.dispose();assert.equal(f.runtime.browserMediaReady(first),false);
+ const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+ const native=setup(t,{}, {createPlayer:(video,options)=>new WebMediaPlayer(video,options),createRender:null});await native.runtime.play('movie');await native.arrive();
+ assert.equal(native.runtime.getSnapshot().playback.phase,'ready');assert.equal(native.runtime.browserMediaReady(native.runtime.getSnapshot().fence!),false,'an app-installed media factory never borrows browser transport capabilities');
+});
+
+test('AirPlay rechecks its actual source at activation instead of trusting cached availability',async t=>{
+ const f=setup(t),sender=new ControlledCastSender();let eligible=true,picks=0;
+ const controller=new PlayOnController({sender,runtime:f.runtime,isCurrent:f.source.isCurrent,reportError:error=>{throw error;},airPlay:{available:()=>eligible,subscribe:()=>()=>{},showPicker:()=>{picks++;}}});
+ t.after(()=>controller.dispose());assert.equal(controller.getSnapshot().airPlayAvailable,true);
+ eligible=false;controller.startAirPlay();assert.equal(picks,0);assert.equal(controller.getSnapshot().airPlayAvailable,false);
+ eligible=true;controller.startAirPlay();assert.equal(picks,1,'a fresh actual source may be used even before a cached availability event');
 });
