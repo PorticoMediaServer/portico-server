@@ -1,4 +1,6 @@
 import {ApiError} from '@core/index.ts';
+import {decodeServerClaimLookupResponse} from '../../../packages/contracts/src/hosted/decoders.ts';
+import {routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {routeBase64, routeBytes} from '@core/route-identity.ts';
 import {BrowserProtectedStore} from '../platform/server-connections';
 import {SecurePendingStorage} from '../platform/secure-pending';
@@ -7,7 +9,7 @@ import {currentAccountWork, sameAccount, accountIdentity, type ServicesAccount} 
 import {checkedHostedOwnerClaimLink, reviewHostedOwnerClaim, decideHostedOwnerClaim, completeHostedOwnerClaim,
   type HostedOwnerClaimCapture, type HostedOwnerClaimLink, type HostedOwnerClaimReview} from './owner-claim';
 
-/** Hosted's approval-code journal, distinct from the initiating Server's owner
+/** Hosted's approval-code intake journal, distinct from the initiating Server's owner
  * journal. It contains no verifier, Server family, credential or signed proof.
  * Keep this handle private; presentation uses authenticated review facts. */
 export type HostedOwnerPending = Readonly<{version: 1; kind: 'owner-approval'; attemptId: string; capturedAt: number; deadline: number; request: HostedOwnerClaimLink}>;
@@ -66,7 +68,13 @@ export async function forgetHostedOwnerPending(store: HostedOwnerPendingStore, p
 
 /** Headless operation scope, using the browserAccount singleton supplied by the
  * caller. No automatic approval, completion, redirect or second session store. */
+type ApprovalOperations = Readonly<{review: typeof reviewHostedOwnerClaim; decide: typeof decideHostedOwnerClaim; complete: typeof completeHostedOwnerClaim}>;
 export function scopedHostedOwnerClaim(account: ServicesAccount, store: HostedOwnerPendingStore, value: HostedOwnerPending) {
+  return scopedHostedApproval(account, store, value, {review: reviewHostedOwnerClaim, decide: decideHostedOwnerClaim, complete: completeHostedOwnerClaim});
+}
+/** Code/currentness mechanics only. Purpose-closed validators are fixed by the
+ * caller module, never by the URL or an untrusted pending scalar. */
+export function scopedHostedApproval(account: ServicesAccount, store: HostedOwnerPendingStore, value: HostedOwnerPending, operations: ApprovalOperations) {
   const pending = checked(value, account.api.origin, Date.now());
   let epoch = 0, active: AbortController | undefined, reviewed: HostedOwnerClaimReview | undefined, disposed = false;
   const operation = () => {
@@ -80,7 +88,7 @@ export function scopedHostedOwnerClaim(account: ServicesAccount, store: HostedOw
   return {
     async review() {
       const op = operation(); await op.assert();
-      const result = await reviewHostedOwnerClaim(account, pending.request, op.signal); await op.assert();
+      const result = await operations.review(account, pending.request, op.signal); await op.assert();
       await store.change(saved => {
         op.check();
         if (!same(saved, pending) || !saved) throw changed();
@@ -97,7 +105,7 @@ export function scopedHostedOwnerClaim(account: ServicesAccount, store: HostedOw
       const result = reviewed;
       if (!result) throw invalid();
       const op = operation(); await op.assert();
-      await decideHostedOwnerClaim(account, result, decision, op.signal); await op.assert();
+      await operations.decide(account, result, decision, op.signal); await op.assert();
       if (decision === 'deny') {if (!await forgetHostedOwnerPending(store, pending)) throw changed(); reviewed = undefined;}
       op.check();
     },
@@ -105,7 +113,7 @@ export function scopedHostedOwnerClaim(account: ServicesAccount, store: HostedOw
       const result = reviewed;
       if (!result) throw invalid();
       const op = operation(); await op.assert();
-      const location = await completeHostedOwnerClaim(account, result, op.signal); await op.assert();
+      const location = await operations.complete(account, result, op.signal); await op.assert();
       if (!location) return;
       if (!await forgetHostedOwnerPending(store, pending)) throw changed();
       op.check();
@@ -121,4 +129,18 @@ export function scopedHostedOwnerClaim(account: ServicesAccount, store: HostedOw
     // pending code. Restoration rechecks the same fixed deadline and all facts.
     dispose() {disposed = true; ++epoch; active?.abort(); reviewed = undefined;},
   };
+}
+
+/** Select only a view from an authenticated lookup. This grants no approval or
+ * completion: each selected controller independently validates its fixed purpose. */
+export async function hostedApprovalPurpose(account: ServicesAccount, store: HostedOwnerPendingStore, pending: HostedOwnerPending, signal: AbortSignal): Promise<'setup'|'switch'> {
+  if(account.api.origin!==pending.request.hostedOrigin)throw invalid();
+  await current(store,pending); signal.throwIfAborted();
+  const raw=await currentAccountWork(account,session=>account.api.send(routePath('server_claim_lookup'),'POST',{code:pending.request.code},signal,session.accessToken));
+  signal.throwIfAborted();await current(store,pending);signal.throwIfAborted();
+  const claim=decodeServerClaimLookupResponse(raw);
+  if(claim.code!==pending.request.code)throw invalid();
+  if(claim.purpose==='setup'&&claim.setupTransactionId&&claim.ownerTransactionId===undefined)return 'setup';
+  if(claim.purpose==='switch'&&claim.ownerTransactionId&&claim.setupTransactionId===undefined)return 'switch';
+  throw invalid();
 }

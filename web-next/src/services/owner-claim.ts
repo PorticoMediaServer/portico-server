@@ -78,7 +78,7 @@ async function lookup(account: ServicesAccount, request: HostedOwnerClaimLink, s
     const raw = await account.api.send(routePath('server_claim_lookup'), 'POST', {code: request.code}, signal, session.accessToken);
     signal.throwIfAborted();
     const claim = decodeServerClaimLookupResponse(raw), now = Date.now();
-    if (claim.code !== request.code || claim.purpose !== 'switch' || !claim.ownerTransactionId || !identifier(claim.ownerTransactionId) ||
+    if (claim.code !== request.code || claim.purpose !== 'switch' || claim.setupTransactionId !== undefined || !claim.ownerTransactionId || !identifier(claim.ownerTransactionId) ||
         claim.status !== 'pending' && claim.status !== 'approved' || claim.name !== request.nameHint || !claim.name ||
         new TextEncoder().encode(claim.name).length > 120 || !claim.serverId.startsWith('srv_') ||
         !currentUTCTimestamp(claim.requestedAt) || Date.parse(claim.requestedAt) > now + 60000 ||

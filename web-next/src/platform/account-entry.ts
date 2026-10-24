@@ -39,7 +39,7 @@ export type AccountEntryState = Readonly<{
  phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup'|'owner-reset-password';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
- movePreview?:MoveCodePreview; ownerReset?:OwnerResetDetails;
+ movePreview?:MoveCodePreview; ownerReset?:OwnerResetDetails; setupCompleted?:true;
  busy?:boolean; error?:unknown;
 }>;
 type EntryPorts = Readonly<{
@@ -518,7 +518,7 @@ export class BrowserAccountEntry {
    current.session.viewer.serverId===session.viewer.serverId&&current.session.viewer.authority===session.viewer.authority&&current.session.viewer.accountId===session.viewer.accountId?undefined:current);}
   finally{try{await this.retire(api,session);}finally{api.getRouteConnection()?.dispose();}}
  }
- private async admittedCompletion({api,result}:AdmittedCompletion,op:ReturnType<BrowserAccountEntry['operation']>){
+ private async admittedCompletion({api,result}:AdmittedCompletion,op:ReturnType<BrowserAccountEntry['operation']>,initialSetup=false){
   if(!op.current()){await this.discardReturn(api,result.session);return;}
   const pin=api.getRouteConnection()?.pin;this.api=api;
   if(!pin)throw new CodedError('invalid_return',unreadableServerResponse);
@@ -528,6 +528,14 @@ export class BrowserAccountEntry {
     result.snapshot.serverId!==pin.serverId||result.snapshot.account.id!==saved.viewer.accountId||(['serverId','authority','accountId','profileId','role'] as const).some(key=>saved.viewer[key]!==result.session.viewer[key])){await this.discardReturn(api,result.session);throw new CodedError('cancelled','The server selection changed.');}
   this.api=api;this.session=result.session;
   await this.restoreProfiles({pin,session:result.session});
+  // The fresh setup writer may issue its single, unprotected main-profile
+  // owner directly. Do not choose a profile or promote an account-only grant.
+  const state=this.state;
+  if(initialSetup&&!this.disposed&&state.phase==='profiles'&&!state.busy&&!state.error&&this.session?.sessionFamilyId===result.session.sessionFamilyId&&
+    this.session.viewer.role==='owner'&&!result.accountScoped&&state.snapshot?.profiles.length===1&&!state.snapshot.profiles[0]!.pinRequired&&
+    state.snapshot.profiles[0]!.id===this.session.viewer.profileId&&!state.snapshot.twoStepSetupRequired){
+   this.publish({...state,phase:'ready',setupCompleted:true});
+  }
  }
  private async registeredCompletion(completion:RegisteredCompletion,controller:RegisteredController,op:ReturnType<BrowserAccountEntry['operation']>){
   const {api,result}=completion;
@@ -591,7 +599,7 @@ export class BrowserAccountEntry {
     const choice=choices[0]!;owner=choice.controller;this.ownerReturn=owner;
     dispatchPorticoReturn(captured,choice.pending);
     this.stopAuthorityWatch();
-    await this.admittedCompletion(await owner.finish(captured),op);return;
+    await this.admittedCompletion(await owner.finish(captured),op,choice.pending.kind==='setup');return;
    }
    if(!this.ports.registered)throw new CodedError('invalid_return',unreadableServerResponse);
    const {controller}=this.ports.registered();this.registered=controller;
@@ -667,4 +675,4 @@ export class BrowserAccountEntry {
 
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();this.retiredListeners.clear();}
 }
-export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,registered:()=>createBrowserRegisteredSignIn(buildHostedSignInStartURL),ownerReturn:createBrowserOwnerClaim,setupReturn:createBrowserSetupClaim,rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
+export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,registered:()=>createBrowserRegisteredSignIn(buildHostedSignInStartURL),ownerReturn:createBrowserOwnerClaim,setupReturn:createBrowserSetupClaim,setupRequired:(origin)=>location.assign(new URL('/setup',origin).href),rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}

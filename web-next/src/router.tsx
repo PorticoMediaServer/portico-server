@@ -31,6 +31,7 @@ export const notificationsRoute = createRoute({getParentRoute: () => rootRoute, 
 export const profilesRoute = createRoute({getParentRoute: () => rootRoute, component: screen('profiles'), path: '/profiles', validateSearch: screenSearch('profiles', (raw: Record<string, unknown>): {profileId?: string; add?: boolean} => ({...(typeof raw.profileId === 'string' && raw.profileId.length <= 128 ? {profileId: raw.profileId} : {}), ...(raw.add === true ? {add: true} : {})}))});
 export const serversRoute = createRoute({getParentRoute: () => rootRoute, component: screen('servers'), path: '/servers', validateSearch: screenSearch('servers')});
 export const accountRoute = createRoute({getParentRoute: () => rootRoute, component: screen('account'), path: '/account', validateSearch: screenSearch('account')});
+export const setupRoute = createRoute({getParentRoute: () => rootRoute, component: screen('setup'), path: '/setup', validateSearch: screenSearch('setup')});
 export const signInRoute = createRoute({getParentRoute: () => rootRoute, component: screen('signIn'), path: '/sign-in', validateSearch: screenSearch('signIn')});
 export const accountReturnRoute = createRoute({getParentRoute: () => rootRoute, component: screen('signIn'), path: accountReturnPath, validateSearch: screenSearch('signIn')});
 export const togetherRoute = createRoute({getParentRoute: () => rootRoute, component: screen('together'), path: '/watch-together', validateSearch: screenSearch('together')});
@@ -42,7 +43,7 @@ export const profileSettingsAliasRoute = createRoute({getParentRoute: () => root
   browserEntryDestination.rememberProfileSettings();
   throw redirect({...profileSettingsDestination, replace: true});
 }});
-const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, personRoute, readRoute, profileSettingsAliasRoute];
+const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, personRoute, readRoute, profileSettingsAliasRoute];
 const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),
