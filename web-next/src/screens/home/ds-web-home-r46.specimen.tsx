@@ -1,4 +1,5 @@
 import {useEffect, useMemo} from 'react';
+import {defaultI18n} from '@i18n';
 import {createRoot} from 'react-dom/client';
 import type {ContentEntryKind} from '@core/library-content.ts';
 import type {HomeActions, HomeChannel, HomeDocument, HomeEntry, HomeRow, HomeSpotlight} from '@core/home.ts';
@@ -237,7 +238,7 @@ const service = {getSnapshot: () => ({phase: 'ready'}), subscribe: () => () => {
 function Specimen() {
   const artwork = useArtwork();
   return <HomeView service={service} document={homeDocument} nowMs={Date.parse(now)} onMore={() => {}} refreshLive={() => {}}
-    artwork={artwork} effects={effects} selection={selection} time={{locale: 'en-US', timeZone: 'America/Halifax', hourCycle: 'h12'}} reducedMotion />;
+    artwork={artwork} effects={effects} selection={selection} time={{t: defaultI18n.t, locale: 'en-US', timeZone: 'America/Halifax', hourCycle: 'h12'}} reducedMotion />;
 }
 
 createRoot(document.getElementById('root')!).render(<><IconSprite /><main data-home-specimen><Specimen /></main></>);
