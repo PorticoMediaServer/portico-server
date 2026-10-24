@@ -195,8 +195,8 @@ func publishActualWebDAVSetup(t *testing.T, ctx context.Context, program, config
 	}
 	rows.Close()
 	var count int
-	var support string
-	if err = f.s.db.QueryRowContext(ctx, `SELECT webdav_leaf_count,range_support FROM remote_sources WHERE id=? AND generation=1 AND removed=0`, receipt.MountID).Scan(&count, &support); err != nil || count != len(observations) || support != string(aggregateWebDAVSetup(observations)) {
+	var support, root string
+	if err = f.s.db.QueryRowContext(ctx, `SELECT webdav_leaf_count,range_support,root FROM remote_sources WHERE id=? AND generation=1 AND removed=0`, receipt.MountID).Scan(&count, &support, &root); err != nil || count != len(observations) || support != string(aggregateWebDAVSetup(observations)) {
 		t.Fatal("source and leaf publication diverged", err)
 	}
 	before := gets.Load()
@@ -204,7 +204,7 @@ func publishActualWebDAVSetup(t *testing.T, ctx context.Context, program, config
 	if err != nil {
 		t.Fatal(err)
 	}
-	sequential, err := sourceSequentialTx(ctx, view.Tx(), receipt.MountID)
+	sequential, err := sourceSequentialTx(ctx, view.Tx(), receipt.MountID, root)
 	view.Rollback()
 	wantSequential := strings.HasSuffix(mode, "/ignored") || strings.HasSuffix(mode, "/unknown")
 	if err != nil || sequential != wantSequential || gets.Load() != before {
