@@ -198,8 +198,8 @@ test('invalid or refused installation storage leaves the real credential unchang
 test('entry keeps the polyfills first and binds installation before constructing protected restoration', () => {
   const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
   assert.match(main, /^import '\.\/platform\/polyfills';/);
-  const initialization = main.indexOf("await initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '')");
-  assert.ok(initialization > main.indexOf('async function start()'));
+  const initialization = main.indexOf("initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '', signal)");
+  assert.ok(initialization > main.indexOf('function start()'));
   assert.ok(initialization < main.indexOf('new ShellBootstrap('));
   assert.ok(main.indexOf('new ShellBootstrap(') < main.indexOf('createRoot('));
   assert.match(main, /if \(!\(window as Window & \{__porticoUnsupportedBrowser\?: boolean\}\)\.__porticoUnsupportedBrowser\) void start\(\);/);
