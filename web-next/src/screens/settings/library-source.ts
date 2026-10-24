@@ -40,23 +40,24 @@ export class SettingsLibrarySource {
     const document = this.document(libraryId);
     return document && readLibrarySettingsBinding(rowId, document);
   };
-  async change(libraryId: string, rowId: string, value: unknown): Promise<void> {
+  async change(libraryId: string, rowId: string, value: unknown): Promise<boolean> {
     const before = this.document(libraryId);
-    if (!before || this.state.loading || this.state.saving) return;
+    if (!before || this.state.loading || this.state.saving) return false;
     const settings = patchLibrarySettingsBinding(rowId, value, before);
     const request = new AbortController();this.request = request;
     this.publish({libraryId, document: before, loading: false, saving: true});
     try {
       const document = await saveLibrarySettings(this.api, before, settings, randomId(), request.signal);
-      if (this.owns(request, libraryId)) this.publish({libraryId, document, loading: false, saving: false});
+      if (this.owns(request, libraryId)) {this.publish({libraryId, document, loading: false, saving: false});return true;}
     } catch (error) {
       // A lost/conflicting response needs a genuine reread before another edit.
       if (this.owns(request, libraryId)) {this.publish({libraryId, loading: false, saving: false, error});throw error;}
     } finally {if (this.request === request) this.request = undefined;}
+    return false;
   }
-  async reset(libraryId: string, rowId: string): Promise<void> {
+  async reset(libraryId: string, rowId: string): Promise<boolean> {
     const value = this.read(libraryId, rowId)?.default;
-    if (value !== undefined) await this.change(libraryId, rowId, value);
+    return value !== undefined ? this.change(libraryId, rowId, value) : false;
   }
   dispose() {this.closed = true;this.request?.abort();this.request = undefined;this.pending = undefined;this.state = empty;}
 }

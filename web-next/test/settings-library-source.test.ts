@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import type {LibraryAdminDocument, LibrarySettings} from '@core/administration.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {SettingsLibrarySource} from '../src/screens/settings/library-source.ts';
+import {SettingsController} from '../src/screens/settings/controller.ts';
+import {PreferencesReader} from '@core/preferences-reader.ts';
+import type {PreferenceSnapshot} from '@core/preferences.ts';
+import {settingsRowIndex, settingsSpec} from '@core/presentation/settings-spec.ts';
 
 const settings: LibrarySettings = {scanDepth: 'basic', groupCollections: true, localTags: 'prefer', lyricsSource: 'files', titleSource: 'tags', episodeNumbering: 'absolute', findExtras: true, sortIgnoreArticles: true, refreshMode: 'replace_unlocked', acoustidEnabled: false,
   continueWatching: {weeks: 16, maximumItems: 40, includeSeasonPremieres: true, videoPlayedThreshold: 95, videoCompletion: 'earliest'}, allowMediaDeletion: false, monitorChanges: true, providers: [], analysis: ['probe', 'local_metadata', 'subtitle_discovery'],
@@ -111,8 +115,37 @@ test('closing or disposing during a save aborts it without exposing a late new r
     try {
       await f.source.select('selected');const pending = f.source.change('selected', 'libraries.cwWeeks', 20);
       if (close === 'select') await f.source.select();else f.source.dispose();
-      assert.equal(signal?.aborted, true);release();await pending;
+      assert.equal(signal?.aborted, true);release();assert.equal(await pending, false);
       assert.equal(f.source.document('selected'), undefined);assert.deepEqual(f.errors, []);
     } finally {f.source.dispose();}
   }
+});
+
+test('the existing Settings panel loads only its actual record and dispatches changes through the Library facade', async () => {
+  const calls: string[] = [], section = settingsSpec.find(section => section.scope === 'server' && section.id === 'libraries')!;
+  let server = document('selected');
+  const api: LibraryContentApi = {request: async <T>(path: string, method?: string, body?: unknown) => {
+    calls.push(path);assert.equal(path, '/v1/admin/libraries/selected/settings');
+    if (method === 'PUT') server = {...server, revision: server.revision + 1, settings: (body as {settings: LibrarySettings}).settings};
+    return server as T;
+  }};
+  const preferences: PreferenceSnapshot = {deviceClass: 'web', registry: {revision: 'test', fields: []}, documents: [], effective: {}, effectiveSource: {}, clampedFields: [], registryRevision: 'test'};
+  const reader = new PreferencesReader(api, {serverId: 'server', viewerId: 'viewer'});
+  const controller = new SettingsController({api, serverId: 'server', viewerId: 'viewer', role: 'admin', mainProfile: true,
+    capabilities: {manageServer: true, managePeople: false, manageSignIn: false}, preferences, reader, isCurrent: () => true, reportError: error => {throw error;},
+    environment: {platform: 'web', os: 'browser'}, eligibility: {hasEngine: () => false, library: () => undefined},
+    reading: {read: () => {throw new Error('Unexpected Reading read');}, patch: () => {throw new Error('Unexpected Reading write');}},
+  });
+  const selected = {section, panelId: 'library', recordId: 'selected'}, row = settingsRowIndex.get('libraries.cwWeeks')!.row;
+  try {
+    assert.deepEqual(calls, []);
+    assert.equal(controller.rowState(row, selected).present, false);
+    await controller.loadContext({section, panelId: 'library'});assert.deepEqual(calls, []);
+    await controller.loadContext(selected);
+    assert.equal(controller.rowState(row, selected).value, 16);assert.equal(controller.rowState(row, selected).defaultValue, 8);
+    controller.change(row, 24, selected);await new Promise(resolve => setImmediate(resolve));
+    assert.equal(controller.rowState(row, selected).value, 24);
+    await controller.loadContext({section});assert.equal(controller.rowState(row, selected).present, false);
+    controller.change(row, 32, selected);assert.equal(calls.length, 2);
+  } finally {controller.dispose();reader.dispose();}
 });

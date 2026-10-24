@@ -200,9 +200,8 @@ export class SettingsController {
     this.writing = true; this.rowErrors.delete(row.id); this.publish({saveState: 'saving'});
     try {
       if (this.libraryRow(context) && context?.recordId) {
-        if (reset) await this.library.reset(context.recordId, row.id);
-        else await this.library.change(context.recordId, row.id, value);
-        if (this.current()) this.publish({saveState: 'saved'});
+        const saved = reset ? await this.library.reset(context.recordId, row.id) : await this.library.change(context.recordId, row.id, value);
+        if (this.current()) this.publish({saveState: saved ? 'saved' : undefined});
         return;
       }
       const sets = row.control.options?.some(option => option.sets) ? presetPatch(settingsPresetOptions(row.control.options, {...this.options.environment, role: this.options.role}), value, id => {const row = settingsRowIndex.get(id)?.row; return row && this.read(row, context)?.current;}) : {[row.id]: value};
