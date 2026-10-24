@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {completeDirectSignInChallenge, directSignIn, directSignInContinuation, parseDirectSignIn} from '../src/profile-management.ts';
+import {completeDirectSignInChallenge, directSignIn, directSignInContinuation, parseDirectSignIn, parseDirectSnapshot} from '../src/profile-management.ts';
 
 // The exact documented direct sign-in shapes (`DirectSignIn` and `Envelope`). No accountToken/accountExpiresAt; one device-bound
 // session that names its device and installation.
@@ -39,7 +39,7 @@ test('the old account-token shape is no longer accepted (a session is required)'
 
 test('CD-34: direct admin profile management keeps owner/admin/member', () => {
   for (const role of ['owner', 'admin', 'member']) {
-    const r = parseDirectSignIn({...snapshot([profile('p1')]), account: {...(snapshot([profile('p1')] as any) as any).account, role}, capabilities: {manageAccount:true,managePeople:role!=='member',manageServer:role!=='member',manageSignIn:role==='owner'}, session: session('owner')});
+    const r = parseDirectSignIn({...snapshot([profile('p1')]), account: {...(snapshot([profile('p1')] as any) as any).account, role}, capabilities: {manageAccount:true,managePeople:role!=='member',manageServer:role!=='member',manageSignIn:role==='owner'}, session: session(role)});
     assert.equal(r.kind, 'signed-in');
     if (r.kind !== 'signed-in') continue;
     assert.equal(r.snapshot.account.role, role);
@@ -78,4 +78,22 @@ test('required factor setup stays a restricted account continuation with no enve
  const ordinary=parseDirectSignIn({...raw,twoStepSetupRequired:false});
  assert.equal(directSignInContinuation(ordinary),'profile-selection');
  assert.equal(directSignInContinuation(parseDirectSignIn({challenge:{token:'c'.repeat(43),expiresAt:'2099-01-01T00:00:00Z'}})),'challenge');
+});
+
+test('primary-profile admission refuses a viewer role contradicting its actual account membership', () => {
+ for(const accountRole of ['owner','admin','member']){
+  const base=snapshot([profile('p1')]);
+  const actual={...base,account:{...base.account,role:accountRole},capabilities:{manageAccount:true,managePeople:accountRole!=='member',manageServer:accountRole!=='member',manageSignIn:accountRole==='owner'}};
+  for(const viewerRole of ['owner','admin','member']){
+   if(viewerRole===accountRole)assert.doesNotThrow(()=>parseDirectSignIn({...actual,session:session(viewerRole)}));
+   else assert.throws(()=>parseDirectSignIn({...actual,session:session(viewerRole)}));
+  }
+  const restricted=parseDirectSignIn({...actual,session:session('account')});
+  assert.equal(restricted.kind==='signed-in'&&restricted.session.viewer.role,'account');
+ }
+});
+test('disabled account facts remain readable for management but can never become a sign-in', () => {
+ const base=snapshot([profile('p1')]),disabled={...base,account:{...base.account,disabled:true}};
+ assert.equal(parseDirectSnapshot(disabled).account.disabled,true);
+ for(const role of ['owner','account'])assert.throws(()=>parseDirectSignIn({...disabled,session:session(role)}));
 });
