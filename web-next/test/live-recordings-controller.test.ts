@@ -665,3 +665,87 @@ test('profile-wide summary, groups and receipt are refused when the borrowed lea
     assert.equal(snapshot.query.view, 'recorded');
   } finally { controller.dispose(); }
 });
+
+// Queue item 3 — 401/403 retirement/recovery and resident-detail membership.
+test('a 401 does not retire: page, aggregates and detail recover on genuine reads', async () => {
+  let deny = false;
+  const id = hex(64, '3');
+  const {api} = fixtureServer(call => {
+    if (deny) throw {status: 401};
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    if (pathname(call).startsWith('/v1/dvr/recordings/')) return detailFact(id);
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups();
+    deny = true;
+    await assert.rejects(controller.readSummary(), failure => (failure as {status?: number}).status === 401);
+    let snapshot = controller.getSnapshot();
+    assert.notEqual(snapshot.phase, 'retired', 'an authority failure is not a retirement');
+    assert.equal(snapshot.accessDenied, true);
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.groups, null);
+    assert.equal(controller.contains(recording(hex(64, '1'))), false);
+
+    deny = false;
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups();
+    await controller.load({view: 'recorded', recordingId: id});
+    snapshot = controller.getSnapshot();
+    assert.equal(snapshot.accessDenied, false);
+    assert.equal(snapshot.phase, 'ready');
+    assert.equal(snapshot.page, null, 'the detail destination replaced the page');
+    assert.equal(snapshot.detail?.recording.id, id);
+    assert.equal(snapshot.summary?.recorded, summaryFact.recorded);
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+    assert.equal(controller.contains(snapshot.detail!.recording), true);
+  } finally { controller.dispose(); }
+});
+
+test('a resident detail dies with its generation and a 403 retires it without retiring the view', async () => {
+  let deny = false;
+  const id = hex(64, '4');
+  const {api} = fixtureServer(call => {
+    if (deny && pathname(call).startsWith('/v1/dvr/recordings/')) throw {status: 403};
+    if (pathname(call).startsWith('/v1/dvr/recordings/')) return detailFact(id);
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded', recordingId: id});
+    const resident = controller.getSnapshot().detail!.recording;
+    assert.equal(controller.contains(resident), true);
+    assert.equal(controller.contains({...resident}), false, 'the same id is not the resident object');
+
+    await controller.load({view: 'recorded'});
+    assert.equal(controller.contains(resident), false, 'a page destination retires the detail');
+
+    await controller.load({view: 'recorded', recordingId: id});
+    const fresh = controller.getSnapshot().detail!.recording;
+    assert.notEqual(fresh, resident, 'a re-read is a new resident object');
+    assert.equal(controller.contains(fresh), true);
+    assert.equal(controller.contains(resident), false);
+
+    deny = true;
+    await controller.load({view: 'recorded', recordingId: id});
+    const denied = controller.getSnapshot();
+    assert.equal(denied.accessDenied, true);
+    assert.equal(denied.detail, null);
+    assert.equal(controller.contains(fresh), false);
+    assert.notEqual(denied.phase, 'retired', 'the view stays usable after a detail 403');
+    assert.equal(denied.query.recordingId, id, 'the destination is retained for a retry');
+
+    deny = false;
+    await controller.load({view: 'recorded', recordingId: id});
+    assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
+    assert.equal(controller.contains(fresh), false, 'the recovered object is a new generation');
+  } finally { controller.dispose(); }
+});
