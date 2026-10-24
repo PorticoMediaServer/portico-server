@@ -13,7 +13,8 @@ import type {GuideChannel} from '@core/channel-guide.ts';
 import type {GroupSessionService} from '@core/group-session.ts';
 import type {GroupTransportCommand} from '@core/social-playback.ts';
 import {bindRuntimeGroup, type RuntimeGroupBinding} from './group-binding.ts';
-import {localPlaybackScope, type SkipMode} from '../../../../packages/player-core/src/index.ts';
+import {localPlaybackScope, sameLocalScope, type LocalPlaybackFence, type SkipMode} from '../../../../packages/player-core/src/index.ts';
+import {WebLocalQueue, captureLocalQueue, type WebLocalQueuePreparation, type WebLocalQueueResource} from './local-queue.ts';
 import {listeningRates, audiobookRates} from '@core/listening.ts';
 import {idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/options.ts';
@@ -43,7 +44,9 @@ import type {VideoLike} from './web-media-player.ts';
 import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
 
 type ChannelTarget = Readonly<{channel: GuideChannel}>;
-type Bookmark = Readonly<{playback: DockPlayback; subject: PlaybackSubject; queueId?: string; libraryId?: string; channel?: ChannelTarget; posterUrl?: string; backdropUrl?: string; durationSeconds: number; rate: number}>;
+type LocalQueueLease = {preparation: WebLocalQueuePreparation; release(): Promise<void>; retired: boolean; released: boolean};
+type Bookmark = Readonly<{playback: DockPlayback; subject: PlaybackSubject; queueId?: string; libraryId?: string; channel?: ChannelTarget; posterUrl?: string; backdropUrl?: string; durationSeconds: number; rate: number;
+  local?: Readonly<{lease: LocalQueueLease; index: number; positionMs: number}>}>;
 type OfferBinding = {
   readonly api: WebPlaybackSource['api']; readonly authority: WebPlaybackAuthority;
   readonly sessionKey: string; readonly libraryId: string; readonly itemId: string;
@@ -51,6 +54,7 @@ type OfferBinding = {
   detailFence?: string;
 };
 type Stack = {
+  mode: 'server' | 'local'; local?: Readonly<{controller: WebLocalQueue; lease: LocalQueueLease}>;
   web: WebPlayback; service: PlaybackService; queue: V1QueuePlayer; http: V1Http;
   life: AbortController; offers: PlayerOffersService; optionsClient: PlaybackOptionsClient;
   offs: (() => void)[]; unmount?: () => void; subtitles?: SubtitleService; offSubtitles?: () => void;
@@ -95,6 +99,8 @@ export class WebShellPlaybackRuntime {
   private group?: RuntimeGroupBinding;
   private detachGroup?: () => void;
   private groupRate = 1;
+  private localRun = 0;
+  private readonly localLeases = new Set<LocalQueueLease>();
   private runtimeProblem?: string;
   private policyView: PolicyView | null = null;
   private policyAdvanceFence?: QueuePlaybackFence;
@@ -117,7 +123,7 @@ export class WebShellPlaybackRuntime {
     this.channelControl = new V1ChannelControl({http: {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, this.life.signal]) : this.life.signal})}, key: environment.key, now: environment.timers?.now});
     // This is the exact device-queue scope V1QueuePlayer exposes; these are its existing v1
     // controller values, never a Cast/receiver identity or a newly invented server resource.
-    this.dock = new PlaybackDock(queueScope({...source.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}));
+    this.dock = new PlaybackDock(queueScope({...source.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}), localScope);
     this.stack = this.makeStack();
     this.activate(this.stack);
     this.sync();
@@ -133,6 +139,20 @@ export class WebShellPlaybackRuntime {
       browser.addEventListener('pagehide', leaving);
       this.lifecycle.push(() => browser.removeEventListener('pagehide', leaving));
     }
+    if (localScope && environment.attachLocalQueue) {
+      let attached = true;
+      try {
+        const detach = environment.attachLocalQueue(localScope, Object.freeze({
+          canPlayLocalQueue: () => attached && this.canPlayLocalQueue(),
+          playLocalQueue: async (resource: WebLocalQueueResource, lifetime: WebPlaybackScreenLifetime) => {
+            if (!attached) {await resource.release();problem('playback_authority_retired');}
+            await this.playLocalQueue(resource, lifetime);
+          },
+          subscribe: (listener: () => void) => attached ? this.subscribe(listener) : () => {},
+        }));
+        this.lifecycle.push(() => {attached = false;detach();});
+      } catch (error) {attached = false;this.dispose();throw error;}
+    }
   }
 
   getSnapshot = (): WebPlaybackRuntimeSnapshot => this.snapshot;
@@ -143,7 +163,7 @@ export class WebShellPlaybackRuntime {
   private setTimer(fn: () => void, ms: number): unknown { return this.env.timers?.setTimer?.(fn, ms) ?? setTimeout(fn, ms); }
   private clearTimer(timer: unknown): void { if (timer === undefined) return; if (this.env.timers?.clearTimer) this.env.timers.clearTimer(timer); else clearTimeout(timer as ReturnType<typeof setTimeout>); }
 
-  private makeStack(): Stack {
+  private makeStack(mode: Stack['mode'] = 'server'): Stack {
     const life = new AbortController(), inner = localV1Http(this.source.api);
     // A stale successful start is returned to the retired core owner so it can abandon the
     // actual server session. DELETE cleanup still uses its original viewer-bound API.
@@ -189,11 +209,12 @@ export class WebShellPlaybackRuntime {
     service.useChannelPlayback(this.channelControl);
     queue.setCompletionPolicy(() => 'hold');
     const api = {request: <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) => this.source.api.request<T>(path, method, body, signal ? AbortSignal.any([signal, life.signal]) : life.signal)};
-    const stackReference: Stack = {web, service, queue, http, life, offers: new PlayerOffersService({api, scope: this.source.contentScope}), optionsClient: new PlaybackOptionsClient(http), options: null, offs: [], expanded: false, retired: false};
+    const stackReference: Stack = {mode, web, service, queue, http, life, offers: new PlayerOffersService({api, scope: this.source.contentScope}), optionsClient: new PlaybackOptionsClient(http), options: null, offs: [], expanded: false, retired: false};
     return stackReference;
   }
 
   private activate(stack: Stack): void {
+    if (stack.mode === 'local') {stack.web.beginLocal();if (this.video) this.bindElement(stack);return;}
     stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects());
     stack.offs.push(stack.web.bind(stack.service, stack.queue), stack.queue.connect());
     stack.offs.push(stack.service.subscribe(() => this.sync()), stack.queue.subscribe(() => this.sync()), stack.offers.subscribe(() => this.sync()));
@@ -219,6 +240,9 @@ export class WebShellPlaybackRuntime {
     const volume = () => this.sync();
     video.addEventListener('volumechange', volume);
     this.lifecycle.push(() => video.removeEventListener('volumechange', volume));
+    // The optional native local port is only known after this same persistent host
+    // mounts. Publish that actual capability change to the app attachment.
+    this.sync();
     return () => this.dispose();
   }
   private bindElement(stack: Stack): void { if (this.video && !stack.unmount) stack.unmount = stack.web.mount(this.video, this.surface); }
@@ -228,13 +252,24 @@ export class WebShellPlaybackRuntime {
     if (!p || p.fence.kind === 'queue' && !stack.libraryId) return;
     const local = this.dock.getSnapshot().local;
     if (!local || !sameFence(local.fence, p.fence)) return;
-    this.bookmarks.set(this.key(p.fence), {playback: {...local, playing: false}, subject: p.subject, queueId: p.fence.kind === 'queue' ? stack.queue.currentSession()?.queue?.queueId : undefined, libraryId: stack.libraryId, channel: stack.channel, posterUrl: p.posterUrl, backdropUrl: p.backdropUrl, durationSeconds: p.durationSeconds, rate: p.rate});
+    const localState = stack.local?.controller.getSnapshot();
+    this.bookmarks.set(this.key(p.fence), {playback: {...local, playing: false}, subject: p.subject, queueId: p.fence.kind === 'queue' ? stack.queue.currentSession()?.queue?.queueId : undefined, libraryId: stack.libraryId, channel: stack.channel, posterUrl: p.posterUrl, backdropUrl: p.backdropUrl, durationSeconds: p.durationSeconds, rate: p.rate,
+      ...(p.fence.kind === 'local' && localState?.observation && stack.local ? {local: {lease: stack.local.lease, index: localState.index, positionMs: localState.observation.positionMs}} : {})});
     // Offered bookmarks stay restorable while newer sources fill the private history cache.
     const dock = this.dock.getSnapshot(), retained = new Set([dock.local, dock.parkedAudio, dock.resumeVideo].flatMap(value => value ? [this.key(value.fence)] : []));
     for (const key of this.bookmarks.keys()) {
       if (this.bookmarks.size <= 8) break;
       if (!retained.has(key)) this.bookmarks.delete(key);
     }
+    this.trimLocalLeases();
+  }
+  private releaseLocalLease(lease: LocalQueueLease): void {
+    if (lease.released) return;lease.released = true;this.localLeases.delete(lease);
+    void Promise.resolve().then(lease.release).catch(() => {if (!this.disposed) {this.runtimeProblem = 'local_playback_release_failed';this.sync();}});
+  }
+  private trimLocalLeases(): void {
+    const dock = this.dock.getSnapshot(), retained = [dock.local, dock.parkedAudio, dock.resumeVideo].flatMap(value => value ? [this.bookmarks.get(this.key(value.fence))?.local?.lease] : []);
+    for (const lease of this.localLeases) if (lease.retired && !retained.includes(lease)) this.releaseLocalLease(lease);
   }
   /** The canonical create samples these actual authority-owned queues, including the current
    * source until the next subject is known. It owns retention and retirement on the server. */
@@ -254,12 +289,13 @@ export class WebShellPlaybackRuntime {
     if (stack.retired) return;
     // Pause before releasing the actual media and checkpoint its real position. The accepted
     // dock retains only the bookmark, never a second live or hidden media session.
-    stack.service.pause();
+    if (stack.mode === 'local') stack.web.slot.pause();else stack.service.pause();
     const local = this.dock.getSnapshot().local, playback = stack.service.getSnapshot();
-    if (local && this.snapshot?.fence && sameFence(local.fence, this.snapshot.fence)) this.dock.update({...local, positionSeconds: playback.pendingSeek?.positionSeconds ?? playback.positionSeconds, playing: false});
+    if (local && this.snapshot?.fence && sameFence(local.fence, this.snapshot.fence)) this.dock.update({...local, positionSeconds: stack.local?.controller.getSnapshot().observation?.positionMs !== undefined ? stack.local.controller.getSnapshot().observation!.positionMs / 1000 : playback.pendingSeek?.positionSeconds ?? playback.positionSeconds, playing: false});
     if (this.snapshot?.fence) this.retiredFences.add(this.key(this.snapshot.fence));
     this.trimRetiredFences();
     for (const off of stack.offs.splice(0)) off();
+    stack.local?.controller.dispose();
     stack.retired = true;
     stack.confirmedEnd = undefined;
     this.clearSourceResources(stack);
@@ -274,12 +310,12 @@ export class WebShellPlaybackRuntime {
       this.retiredFences.delete(oldest.value);
     }
   }
-  private replace(): Stack {
+  private replace(mode: Stack['mode'] = 'server'): Stack {
     this.replacing = true;
     this.stack.service.pause(); this.rememberCurrent();
     if (this.snapshot?.fence) { this.choices.stop(this.snapshot.fence.playback); if (this.snapshot.fence.kind === 'queue') this.policy.stop(this.snapshot.fence); }
     this.retire(this.stack);
-    this.stack = this.makeStack();
+    this.stack = this.makeStack(mode);
     this.activate(this.stack);
     this.replacing = false;
     this.runtimeProblem = undefined; this.policyView = null;
@@ -422,6 +458,43 @@ export class WebShellPlaybackRuntime {
     return this.matches(fence) && !!this.group?.matches(fence) && active?.id === groupId && active.timeline.currentEntryId === entryId;
   }
   private readonly groupServices = new WeakMap<RuntimeGroupBinding, GroupSessionService>();
+  /** Actual installed optional port and captured scope, not a platform/UA inference. */
+  canPlayLocalQueue(): boolean {
+    return this.current() && !!this.source.localScope && this.stack.web.slot.canLoadLocal && !this.group?.active();
+  }
+
+  /** Complete receipt-verified native preparation, not a server queue or a first-item alias.
+   * The app transfers ownership of its exact preparation through this call, including failure. */
+  async playLocalQueue(resource: WebLocalQueueResource, context: WebPlaybackScreenLifetime): Promise<void> {
+    let lease: LocalQueueLease | undefined, stack: Stack | undefined, serial = 0;
+    try {
+      this.assertCurrent();
+      if (context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
+      const scope = this.source.localScope;
+      if (!scope || !this.canPlayLocalQueue()) problem('local_playback_unavailable');
+      const preparation = captureLocalQueue(resource.preparation, scope);
+      lease = {preparation, release: () => resource.release(), retired: false, released: false};this.localLeases.add(lease);
+      serial = ++this.operation;stack = this.replace('local');
+      const controller = this.bindLocalQueue(stack, lease);
+      await controller.start({signal: context.signal, isCurrent: () => this.current(stack!) && serial === this.operation && context.isCurrent()});
+      if (!this.current(stack) || serial !== this.operation || context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
+      this.sync();
+    } catch (error) {
+      if (stack && this.current(stack) && serial === this.operation) {this.replacing = true;this.retire(stack);this.stack = this.makeStack();this.activate(this.stack);this.replacing = false;this.sync();}
+      if (lease) {lease.retired = true;this.trimLocalLeases();}
+      else await resource.release();
+      throw error;
+    }
+  }
+  private bindLocalQueue(stack: Stack, lease: LocalQueueLease): WebLocalQueue {
+    if (!this.current(stack) || stack.mode !== 'local' || lease.released || !this.source.localScope || !sameLocalScope(lease.preparation.scope, this.source.localScope)) problem('local_playback_unavailable');
+    lease.retired = false;
+    const controller = new WebLocalQueue({scope: this.source.localScope, run: ++this.localRun, port: stack.web.slot, preparation: lease.preparation,
+      isCurrent: () => this.current(stack), release: async () => {lease.retired = true;this.trimLocalLeases();},
+      reportError: () => {if (this.current(stack)) {this.runtimeProblem = 'local_playback_failed';this.sync();}}});
+    stack.local = {controller, lease};stack.offs.push(controller.subscribe(this.sync));
+    return controller;
+  }
 
   /** A chooser reads real current options without stopping the playing source. Its owner keeps
    * this read alive until the chosen start settles, then closes/disposes the chooser. */
@@ -646,6 +719,41 @@ export class WebShellPlaybackRuntime {
     return playbackFence({kind: 'queue', playback: {scope: queueScope({...this.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}), run: playback.playbackRun}, sessionId: session.id, itemId: session.itemId, sourceId: offers.current.sourceId, entryId: session.queue.entryId, generation: playback.session.generation, ...(stack.showId ? {showId: stack.showId} : {}), ...(stack.seasonId ? {seasonId: stack.seasonId} : {})});
   }
 
+  private syncLocal(stack: Stack): void {
+    this.clearTimer(this.timer);this.timer = undefined;
+    const state = stack.local?.controller.getSnapshot(), member = state?.preparation.items[state.index], title = member?.title, fence = state?.fence, observed = state?.observation;
+    let presentation: WebPlaybackPresentation | undefined;
+    if (title && member) {
+      const kind = title.kind as 'movie' | 'episode' | 'extra' | 'song' | 'audiobook_file';
+      const item = {id: member.itemId, kind, title: title.title, durationSeconds: member.durationMs / 1000,
+        ...(title.year > 0 ? {year: title.year} : {}), ...(title.artist ? {artist: title.artist} : {}),
+        ...(kind === 'song' && title.parentTitle ? {album: title.parentTitle} : {}),
+        ...(kind === 'episode' ? {show: {id: title.parentId, title: title.parentTitle}, episode: {mode: 'seasonal' as const,
+          ...(title.groupNumber === null ? {} : {season: title.groupNumber}), ...(title.number === null ? {} : {episode: title.number})}} : {})};
+      const subject: Exclude<PlaybackSubject, {kind: 'channel'}> = {kind: kind === 'song' ? 'music' : kind === 'audiobook_file' ? 'audiobook' : 'video', item};
+      stack.subject = subject;
+      if (subject.kind === 'music') stack.expanded = false;
+      if (fence && observed && !['idle', 'loading'].includes(observed.state)) {
+        this.choices.begin(fence.playback);this.choices.bindSource(fence);
+        const positionSeconds = Math.min(member.durationMs, observed.positionMs) / 1000, finished = state.phase === 'ended', active = !finished && state.phase !== 'error';
+        const controls: WebPlaybackPresentation['controls'][number][] = finished ? ['replay'] : active ? [observed.state === 'paused' ? 'play' : 'pause'] : [];
+        if (active && member.durationMs > 0) controls.push('seek');
+        if (active && state.index + 1 < state.preparation.items.length) controls.push('next');
+        if (active && (state.index > 0 || positionSeconds > 3)) controls.push('previous');
+        // The optional opaque native port has no volume command. Do not offer a
+        // slider backed by the idle browser video's unrelated volume property.
+        const local: DockPlayback = {kind: subject.kind, fence, queue: null, positionSeconds, playing: observed.state === 'playing', expanded: stack.expanded};
+        if (sameFence(this.dock.getSnapshot().local?.fence, fence)) this.dock.update(local);else this.dock.start(local);
+        presentation = {fence, subject, kind: subject.kind, durationSeconds: member.durationMs / 1000, positionSeconds,
+          playing: local.playing, expanded: stack.expanded, finished, controls, volume: observed.volume ?? 1, muted: observed.muted ?? false, rate: observed.rate, policy: null};
+      }
+    }
+    this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!presentation && presentation.kind === 'video' && stack.web.slot.nativeSurfaceActive,
+      authority: this.authority, sequence: ++this.sequence, playback: stack.service.getSnapshot(), dock: this.dock.getSnapshot(), fence, subject: stack.subject,
+      presentation, presentations: this.presentations(presentation), local: state, queueView: null, offers: null, options: null, problem: state?.problem ?? this.runtimeProblem, disposed: false});
+    this.rememberCurrent();this.trimLocalLeases();for (const listener of [...this.listeners]) listener();
+  }
+
   private sync = (): void => {
     if (this.replacing) return;
     if (this.syncing) { this.again = true; return; }
@@ -655,6 +763,7 @@ export class WebShellPlaybackRuntime {
     try { do {
       this.again = false;
       const stack = this.stack, playback = stack.service.getSnapshot();
+      if (stack.mode === 'local') {this.syncLocal(stack);continue;}
       if (['unauthorized', 'forbidden', 'permission_changed'].includes(stack.offers.getSnapshot().error?.code ?? '')) { this.dispose(); return; }
       if (playback.channel && playback.linear) stack.subject = {kind: 'channel', id: playback.channel.channelId, sourceId: playback.channel.sourceId, channelName: playback.linear.name, programmeTitle: playback.linear.programme?.title};
       const heldSession = stack.web.session(playback.session?.id) ?? stack.queue.currentSession();
@@ -911,6 +1020,24 @@ export class WebShellPlaybackRuntime {
   private matches(fence: PlaybackFence): boolean { return this.current() && sameFence(this.snapshot?.fence, fence) && sameFence(this.dock.getSnapshot().local?.fence, fence); }
   private require(fence: PlaybackFence): Stack { if (!this.matches(fence)) problem('stale_playback_command'); return this.stack; }
   private offered(fence: PlaybackFence, command: WebPlaybackPresentation['controls'][number]): Stack { const stack = this.require(fence); if (!this.snapshot.presentation?.controls.includes(command)) problem('playback_command_unavailable'); return stack; }
+  private awaitLocalPaused(stack: Stack, serial: number): Promise<LocalPlaybackFence> {
+    return new Promise((resolve, reject) => {
+      const controller = stack.local?.controller;if (!controller) {reject(new Error('playback_restore_failed'));return;}
+      let off = () => {};
+      const timer = this.setTimer(() => {off();reject(new Error('playback_source_timeout'));}, this.env.service?.operationTimeoutMs ?? 5000);
+      const check = () => {
+        const state = controller.getSnapshot();
+        if (!this.current(stack) || serial !== this.operation || state.phase === 'error' || state.phase === 'disposed') {
+          off();this.clearTimer(timer);reject(new Error('playback_restore_failed'));return;
+        }
+        // A native command ACK is not FILE_LOADED/paused observation. Keep the exact
+        // preparation alive until its current media port reports the real paused load.
+        if (!state.fence || state.observation?.state !== 'paused') return;
+        off();this.clearTimer(timer);resolve(state.fence);
+      };
+      off = controller.subscribe(check);check();
+    });
+  }
   private awaitFence(stack: Stack, serial: number): Promise<PlaybackFence> {
     return new Promise((resolve, reject) => {
       let off = () => {};
@@ -928,14 +1055,44 @@ export class WebShellPlaybackRuntime {
     });
   }
 
-  async pause(fence: PlaybackFence): Promise<void> {const stack = this.offered(fence, 'pause');if (!await this.groupTransport('pause', fence)) stack.service.pause();}
-  async resume(fence: PlaybackFence): Promise<void> {const stack = this.offered(fence, 'play');if (!await this.groupTransport('play', fence)) stack.service.resume();}
-  async toggle(fence: PlaybackFence): Promise<void> { const stack = this.require(fence); if (stack.service.getSnapshot().intent === 'playing') await this.pause(fence); else await this.resume(fence); }
-  async seek(fence: PlaybackFence, seconds: number): Promise<void> {if (!validSeconds(seconds)) problem('invalid_playback_position');const stack = this.offered(fence, 'seek');if (!await this.groupTransport('seek', fence, seconds)) stack.service.seek(Math.min(stack.service.getSnapshot().duration || Infinity, seconds));}
-  async skip(fence: PlaybackFence, seconds: number): Promise<void> { if (!Number.isFinite(seconds)) problem('invalid_playback_position'); const stack = this.require(fence); await this.seek(fence, Math.max(0, (stack.service.getSnapshot().pendingSeek?.positionSeconds ?? stack.service.getSnapshot().positionSeconds) + seconds)); }
-  async replay(fence: PlaybackFence): Promise<void> { if (fence.kind !== 'queue') problem('playback_command_unavailable'); const stack = this.offered(fence, 'replay'); await stack.service.play(fence.itemId, 0); if (this.current(stack)) this.sync(); }
-  async previous(fence: PlaybackFence): Promise<void> {if (fence.kind !== 'queue') problem('playback_command_unavailable');const stack = this.offered(fence, 'previous');if (!await this.groupTransport('previous', fence)) await stack.queue.previous();if (this.current(stack)) this.sync();}
-  async next(fence: PlaybackFence): Promise<void> {if (fence.kind !== 'queue') problem('playback_command_unavailable');const stack = this.offered(fence, 'next');if (!await this.groupTransport('next', fence)) {const view = stack.queue.getSnapshot().view;if (!view) problem('playback_command_unavailable');await stack.queue.next(view.queue.id, view.queue.revision);}if (this.current(stack)) this.sync();}
+  async pause(fence: PlaybackFence): Promise<void> {
+    const stack = this.offered(fence, 'pause');
+    if (fence.kind === 'local') stack.local!.controller.pause(fence);
+    else if (!await this.groupTransport('pause', fence)) stack.service.pause();
+  }
+  async resume(fence: PlaybackFence): Promise<void> {
+    const stack = this.offered(fence, 'play');
+    if (fence.kind === 'local') stack.local!.controller.resume(fence);
+    else if (!await this.groupTransport('play', fence)) stack.service.resume();
+  }
+  async toggle(fence: PlaybackFence): Promise<void> {this.require(fence);if (this.snapshot.presentation?.playing) await this.pause(fence);else await this.resume(fence);}
+  async seek(fence: PlaybackFence, seconds: number): Promise<void> {
+    if (!validSeconds(seconds)) problem('invalid_playback_position');const stack = this.offered(fence, 'seek');
+    if (fence.kind === 'local') stack.local!.controller.seek(fence, seconds);
+    else if (!await this.groupTransport('seek', fence, seconds)) stack.service.seek(Math.min(stack.service.getSnapshot().duration || Infinity, seconds));
+  }
+  async skip(fence: PlaybackFence, seconds: number): Promise<void> {
+    if (!Number.isFinite(seconds)) problem('invalid_playback_position');const stack = this.require(fence);
+    const position = fence.kind === 'local' ? stack.local!.controller.getSnapshot().observation!.positionMs / 1000 : stack.service.getSnapshot().pendingSeek?.positionSeconds ?? stack.service.getSnapshot().positionSeconds;
+    await this.seek(fence, Math.max(0, position + seconds));
+  }
+  async replay(fence: PlaybackFence): Promise<void> {
+    if (fence.kind === 'channel') problem('playback_command_unavailable');const stack = this.offered(fence, 'replay');
+    if (fence.kind === 'local') await stack.local!.controller.replay(fence);else await stack.service.play(fence.itemId, 0);
+    if (this.current(stack)) this.sync();
+  }
+  async previous(fence: PlaybackFence): Promise<void> {
+    if (fence.kind === 'channel') problem('playback_command_unavailable');const stack = this.offered(fence, 'previous');
+    if (fence.kind === 'local') await stack.local!.controller.previous(fence);else if (!await this.groupTransport('previous', fence)) await stack.queue.previous();
+    if (this.current(stack)) this.sync();
+  }
+  async next(fence: PlaybackFence): Promise<void> {
+    if (fence.kind === 'channel') problem('playback_command_unavailable');const stack = this.offered(fence, 'next');
+    if (fence.kind === 'local') await stack.local!.controller.next(fence);else if (!await this.groupTransport('next', fence)) {
+      const view = stack.queue.getSnapshot().view;if (!view) problem('playback_command_unavailable');await stack.queue.next(view.queue.id, view.queue.revision);
+    }
+    if (this.current(stack)) this.sync();
+  }
   open(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = true; this.dock.expand(fence); this.sync(); }
   collapse(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = false; this.dock.collapse(fence); this.surface?.guard(false); this.surface?.clear(); this.sync(); }
   async stop(fence: PlaybackFence): Promise<void> { this.require(fence); this.rememberCurrent(); await this.onTransition(this.dock.close(fence)); }
@@ -950,6 +1107,17 @@ export class WebShellPlaybackRuntime {
         const bookmark = this.bookmarks.get(key);
         const fence = effect.playback.fence;
         if (!bookmark) problem('playback_bookmark_unavailable');
+        if (fence.kind === 'local') {
+          const saved = bookmark.local;
+          if (!saved || saved.lease.released || saved.lease.preparation.items[saved.index]?.id !== fence.entryId) problem('playback_bookmark_unavailable');
+          const serial = ++this.operation, stack = this.replace('local'), controller = this.bindLocalQueue(stack, saved.lease);
+          stack.expanded = false;
+          await controller.start({signal: stack.life.signal, isCurrent: () => this.current(stack) && serial === this.operation}, {index: saved.index, startPositionMs: saved.positionMs, autoplay: false});
+          if (!this.current(stack) || serial !== this.operation) return;
+          const accepted = await this.awaitLocalPaused(stack, serial);
+          if (accepted.sessionId === fence.sessionId) problem('playback_restore_failed');
+          continue;
+        }
         const queueId = bookmark.queueId, channel = bookmark.channel?.channel;
         if (fence.kind === 'queue' && !queueId || fence.kind === 'channel' && !channel) problem('playback_bookmark_unavailable');
         if (fence.kind === 'channel' && channel && (channel.id !== fence.channelId || channel.provenance !== fence.channelKind || channel.sourceId !== fence.sourceId || channel.generation !== fence.channelGeneration)) problem('stale_channel_bookmark');
@@ -976,7 +1144,7 @@ export class WebShellPlaybackRuntime {
           stack.service.seek(target);
         }
       } else if (this.snapshot.fence && sameFence(this.snapshot.fence, effect.playback.fence)) {
-        this.stack.service.pause(); this.rememberCurrent();
+        if (this.stack.mode === 'local') this.stack.web.slot.pause();else this.stack.service.pause();this.rememberCurrent();
         if (effect.kind === 'stop') this.retire(this.stack);
       } else if (!this.retiredFences.has(key)) problem('stale_dock_effect');
     } } finally { this.replacing = false; }
@@ -992,7 +1160,8 @@ export class WebShellPlaybackRuntime {
     const serial = this.operation + 1;
     await this.onTransition(transition);
     if (serial !== this.operation) problem('stale_playback_command');
-    const stack = this.stack, fence = await this.awaitFence(stack, serial);
+    const stack = this.stack, fence = expected.kind === 'local' ? stack.local?.controller.getSnapshot().fence : await this.awaitFence(stack, serial);
+    if (!fence) problem('playback_restore_failed');
     if (fence.kind !== expected.kind || fence.sessionId === expected.sessionId) problem('playback_restore_failed');
     if (playExplicitly) await this.resume(fence);
     return fence;
@@ -1120,6 +1289,7 @@ export class WebShellPlaybackRuntime {
     for (const off of this.lifecycle.splice(0)) off();
     this.surface?.dispose(); this.surface = undefined; this.video = undefined;
     this.life.abort(); this.audioCache.clear(); this.bookmarks.clear(); this.retiredFences.clear();
+    for (const lease of [...this.localLeases]) this.releaseLocalLease(lease);
     this.dock.reset(queueScope({...this.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}));
     this.snapshot = Object.freeze({nativeVideoSurfaceActive: false, authority: this.authority, sequence: ++this.sequence, playback: this.stack.service.getSnapshot(), dock: this.dock.getSnapshot(), presentations: [], queueView: null, offers: null, options: null, disposed: true});
     for (const listener of [...this.listeners]) listener(); this.listeners.clear();

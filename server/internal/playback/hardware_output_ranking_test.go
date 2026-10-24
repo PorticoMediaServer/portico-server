@@ -10,6 +10,7 @@ import (
 func TestPlannerRanksOnlyMeasuredHardwareOutputsAheadOfSoftware(t *testing.T) {
 	facts := plannerToolchain()
 	probe := decoder.HardwareProbe{Available: true, Identity: "unit-selected-device", Device: "unit-device", OutputEncoders: map[string]bool{"h264:8": true}, OutputQuality: map[string]bool{"h264:8": true}}
+	facts.Identity = probe.Identity
 	found := false
 	for _, backend := range decoder.HardwareBackends {
 		probe.Backend = backend
@@ -43,6 +44,11 @@ func TestPlannerRanksOnlyMeasuredHardwareOutputsAheadOfSoftware(t *testing.T) {
 		if p := plan(unqualified, "auto"); p.OutputVideoCodec != "av1" {
 			t.Fatalf("unmeasured hardware changed codec ranking: %+v", p)
 		}
+	}
+	mismatched := probe
+	mismatched.Identity = "different-selected-toolchain"
+	if p := plan(mismatched, "auto"); p.OutputVideoCodec != "av1" {
+		t.Fatalf("another toolchain's measured output changed codec ranking: %+v", p)
 	}
 	if p := plan(decoder.HardwareProbe{}, "h264"); p.OutputVideoCodec != "h264" {
 		t.Fatal("owner H264-only conversion format lost", p)

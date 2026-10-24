@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -63,9 +64,19 @@ const (
 // summary and, through the injected restart func, asks the server to restart
 // so the next start applies the staged copy.
 func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error) {
+	return s.StageWithPassphrase(ctx, source, "")
+}
+
+func (s *Service) StageWithPassphrase(ctx context.Context, source Source, passphrase string) (StageResult, error) {
 	var out StageResult
 	if (source.BackupID == "") == (source.Path == "") {
 		return out, ErrSourceInvalid
+	}
+	if source.Path != "" && (!filepath.IsAbs(source.Path) || filepath.Clean(source.Path) != source.Path) {
+		return out, ErrSourceInvalid
+	}
+	if len(passphrase) > 1024 {
+		return out, ErrInvalid
 	}
 	if s.restoreUnavailable {
 		return out, ErrRestoreLockUnavailable
@@ -77,6 +88,12 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if RestoreUnresolved(s.state) {
 		return out, ErrRestorePending
 	}
+	originalSource := source
+	source, cleanup, err := s.decryptSource(ctx, source, passphrase)
+	if err != nil {
+		return out, err
+	}
+	defer cleanup()
 	s.restoreProgress("verify-files", 0, 0)
 	srcDB, srcDir, files, manifest, err := s.resolveSource(source)
 	if err != nil {
@@ -119,6 +136,9 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 		}
 	}()
 	if _, err = copyOneFileContext(ctx, srcDB, filepath.Join(incoming, DatabaseName), DatabaseName, func(done, total int64) { s.restoreProgress("copy", done, total) }); err != nil {
+		if errors.Is(err, ErrIntegrity) {
+			return out, err
+		}
 		return out, ErrSourceInvalid
 	}
 	if wal, statErr := os.Lstat(srcDB + "-wal"); statErr == nil {
@@ -152,7 +172,7 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if err = syncRestoreDirectories(incoming, incoming, files); err != nil {
 		return out, err
 	}
-	marker := restoreMarker{State: markerStaged, Source: source, SchemaVersion: schemaVersion, Files: files}
+	marker := restoreMarker{State: markerStaged, Source: originalSource, SchemaVersion: schemaVersion, Files: files}
 	if progress := s.RestoreProgress(); progress != nil {
 		marker.JobID = progress.JobID
 		s.mu.Lock()
@@ -246,24 +266,7 @@ func safeWindowsBackupName(name string) bool {
 }
 
 func restorableFile(name string) bool {
-	if name == DatabaseName || name == DatabaseName+"-wal" {
-		return true
-	}
-	for _, root := range stateFiles() {
-		if name == root {
-			return true
-		}
-		if root == "supervisor/authority-incarnation.v1" || root == "networking-tls.pem" {
-			continue
-		}
-		if strings.HasPrefix(name, root+"/") {
-			if root == "managed-storage" {
-				return !strings.Contains(strings.TrimPrefix(name, root+"/"), "/") && strings.HasSuffix(name, ".conf")
-			}
-			return true
-		}
-	}
-	return false
+	return name == DatabaseName || name == DatabaseName+"-wal" || name == "portico.toml" || strings.HasPrefix(name, "Metadata/") || strings.HasPrefix(name, "Keys/")
 }
 
 // resolveSource maps a restore source to its database file, the directory its

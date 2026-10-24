@@ -390,8 +390,9 @@ func run() (runErr error) {
 		return e
 	}
 	defer db.Close()
+	backupPolicy := backup.NewPolicyStore(db, state)
 	configurationStore := operations.New(db)
-	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}}
+	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, backup.Configuration{Store: backupPolicy}}
 	if e = configurationStore.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
@@ -1127,6 +1128,11 @@ func run() (runErr error) {
 	adminOperations.DVR = recordingStore
 	events := eventfeed.New(db)
 	backupService := backup.New(state, db, ident.ID(), buildinfo.Info()["version"], persistence.SchemaVersion())
+	if e = backup.CleanupScratch(state); e != nil {
+		return e
+	}
+	backupPolicy.ConfigurationCommitted = configurationStore.FlushConfiguration
+	backupService.SetPolicyStore(backupPolicy)
 	// A backup holds no sessions: each database copy is scrubbed as it is written.
 	backupService.SetCopyScrubber(identity.ScrubBackupCopy)
 	requestRestart := func() {
@@ -1137,9 +1143,13 @@ func run() (runErr error) {
 			cancel()
 		})
 	}
-	if e = backupService.SetDirectory(os.Getenv("PORTICO_BACKUP_DIR")); e != nil {
+	if policy, e := backupPolicy.Settings(ctx); e != nil {
 		return e
+	} else if e = backup.CleanupDestinationPartials(state, policy.BackupFolder); e != nil {
+		log.Printf("warn: Backup destination is unavailable; choose an available backup folder in Settings")
+		_ = console.Alert(ctx, "backup-failed", "warning", true)
 	}
+
 	backupService.SetRestartFunc(requestRestart)
 	backupService.SetRestoreAvailable(lockErr == nil)
 	outboundWebhooks := startWebhooks(ctx, db, ident, backupService, adminOperations, console)
