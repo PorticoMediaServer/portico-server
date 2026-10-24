@@ -3,15 +3,15 @@
  * so the HTTP/browser cache hits across screens.
  *
  * The server encodes display artwork by its LONG edge (server/
- * internal/metadata/artwork_encoding.go: 400 and 1920 today; lane B adds 800).
+ * internal/metadata/artwork_encoding.go: 400, 800, 1920 and 2560).
  * A 2:3 poster 180 px wide at 2× needs a 540 px long edge, so the 800 variant.
  *
- * URL contract (lane B, metadata.md): `?w=400|800|1920` is the maximum long
+ * URL contract: `?w=400|800|1920|2560` is the maximum long
  * edge (never enlarged; default 1920), plus `v=<digest>` on versioned URLs,
  * which are immutable and cacheable forever. While a variant is being made the
  * server answers 404 with `Retry-After: 5`, which the scheduler retries.
  */
-export const artworkSizeBuckets: readonly number[] = [400, 800, 1920];
+export const artworkSizeBuckets: readonly number[] = [400, 800, 1920, 2560];
 
 export type ArtworkBucketOptions = Readonly<{
   /** Rendered width ÷ height (poster 2/3, landscape 16/9, square 1). Default 1. */

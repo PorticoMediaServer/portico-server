@@ -469,12 +469,15 @@ func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (L
 }
 
 // LibrarySettingsFor reads one library's configuration page.
-func (s *Service) LibrarySettingsFor(ctx context.Context, auth Authorize, id string) (LibraryDocument, error) {
+func (s *Service) LibrarySettingsFor(ctx context.Context, auth Authorize, id string, sonic ...LibrarySonicAuthority) (LibraryDocument, error) {
 	var out LibraryDocument
 	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
 		var err error
 		out, err = s.libraryDocument(ctx, tx, id)
-		return err
+		if err != nil {
+			return err
+		}
+		return s.librarySonicEligibility(ctx, tx, &out, sonic, false)
 	})
 	return out, err
 }
@@ -482,7 +485,7 @@ func (s *Service) LibrarySettingsFor(ctx context.Context, auth Authorize, id str
 // SaveLibrarySettings applies one library configuration write. An empty apiKey
 // keeps whatever key is already stored, so a client that never receives a key
 // can still save the rest of the form.
-func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id string, change Change[LibrarySettings]) (LibraryDocument, error) {
+func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id string, change Change[LibrarySettings], sonic ...LibrarySonicAuthority) (LibraryDocument, error) {
 	var out LibraryDocument
 	if !validOperationID(change.OperationID) {
 		return out, ErrInput
@@ -504,7 +507,7 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		}
 		if replayed {
 			out = stored
-			return nil
+			return s.librarySonicEligibility(ctx, tx, &out, sonic, true)
 		}
 		_, kind, _, err := librarySettingsIdentity(ctx, tx, id)
 		if err != nil {
@@ -544,6 +547,9 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 			return err
 		}
 		if out, err = s.libraryDocument(ctx, tx, id); err != nil {
+			return err
+		}
+		if err = s.librarySonicEligibility(ctx, tx, &out, sonic, false); err != nil {
 			return err
 		}
 		return saveReceipt(ctx, tx, scope, change.OperationID, digest, out, at)

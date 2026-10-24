@@ -21,8 +21,10 @@ func artworkWidth(r *http.Request) int {
 			return 400
 		case width <= 800:
 			return 800
-		default:
+		case width <= 1920:
 			return 1920
+		default:
+			return 2560
 		}
 	}
 	switch r.URL.Query().Get("size") {
