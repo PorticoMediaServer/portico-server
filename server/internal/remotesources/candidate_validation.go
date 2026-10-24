@@ -188,6 +188,9 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 	}}
 	process, err := rcloneprogram.StartServe(life, program, spec, &candidateServeLease{life: life, check: check})
 	if err != nil {
+		if life.Err() != nil {
+			return life.Err()
+		}
 		return mapError(err)
 	}
 	defer func() { process.Stop(); _ = process.Wait(context.Background()) }()

@@ -98,6 +98,9 @@ func TestMain(m *testing.M) {
 // The controlled native test child implements only the production loopback
 // serve/metadata contract. It supplies no provider or actor authority proof.
 func runInventoryServeFixture() int {
+	if strings.Contains(os.Args[3], "__delay20__") {
+		time.Sleep(20 * time.Second)
+	}
 	_, control, ok := strings.Cut(os.Args[3], ":")
 	if !ok {
 		return 2
@@ -123,6 +126,14 @@ func runInventoryServeFixture() int {
 		user, password, auth := r.BasicAuth()
 		if !auth || user != os.Getenv("RCLONE_USER") || password != os.Getenv("RCLONE_PASS") {
 			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.Method == "GET" && r.URL.Path == "/held-stream" {
+			w.Header().Set("Content-Length", "1")
+			w.Header().Set("ETag", `"fixture"`)
+			w.WriteHeader(200)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
 			return
 		}
 		if r.Method != "PROPFIND" {
