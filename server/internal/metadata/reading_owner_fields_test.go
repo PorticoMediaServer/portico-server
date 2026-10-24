@@ -186,7 +186,7 @@ func seedReadingSourceValues(t *testing.T, c *catalogtest.Catalog, target Repair
 		t.Fatal(err)
 	}
 	var source, incarnation string
-	if err := c.DB.QueryRow(`SELECT s.id,s.incarnation FROM library_sources s JOIN catalog_entities e ON e.library_id=s.library_id WHERE e.id=?`, entity).Scan(&source, &incarnation); err != nil {
+	if err := c.DB.QueryRow(`SELECT s.id,s.incarnation FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN catalog_entities e ON e.library_id=cl.id WHERE e.id=?`, entity).Scan(&source, &incarnation); err != nil {
 		t.Fatal(err)
 	}
 	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES('reading-object',?,?,?,'Original.pdf','r1','{}',1,1)`, source, token, incarnation)
