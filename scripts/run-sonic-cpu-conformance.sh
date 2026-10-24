@@ -83,7 +83,7 @@ PYARM
   for package in "$work"/cross-download/*.deb; do dpkg-deb -x "$package" "$work/cross"; done
   "$work/cross/usr/bin/aarch64-linux-gnu-g++-$major" --sysroot="$work/cross" \
     -B"$work/cross/usr/lib/gcc-cross/aarch64-linux-gnu/$major/" -B"$work/cross/usr/bin/" \
-    -isystem "$work/cross/usr/aarch64-linux-gnu/include" \
+    -idirafter "$work/cross/usr/aarch64-linux-gnu/include" \
     -std=c++17 -O2 -Wall -Wextra -Werror -fno-fast-math -ffp-contract=off \
     -I"$work/arm-sdk/include" third_party/portico-sonic/main.cpp \
     -L"$work/cross/usr/aarch64-linux-gnu/lib" -L"$work/arm-sdk/lib" \
