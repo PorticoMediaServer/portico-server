@@ -55,6 +55,19 @@ class SelectionTests(unittest.TestCase):
         b = self.file("test/helper.ts", "const file=new URL('../src/controller.ts', import.meta.url)")
         self.assertEqual(ci.dependencies(b, {a, b}, {}), {a})
 
+    def test_workspace_subpath_uses_actual_declared_export(self):
+        directory = self.root / 'packages/client-core'
+        self.file('packages/client-core/package.json', '{"exports":{"./selection-model":"./src/selection-model/index.ts"}}')
+        source = self.file('packages/client-core/src/selection-model/index.ts', 'export const value=1')
+        caller = self.file('web-next/test/selection.test.ts', "import {value} from '@portico/client-core/selection-model'")
+        self.assertEqual(ci.dependencies(caller, {source, caller}, {'@portico/client-core': directory}), {source})
+
+    def test_declared_web_aliases_and_js_extension_reach_source(self):
+        source = self.file('packages/client-core/src/index.ts', 'export const value=1')
+        item = self.file('web-next/src/item.ts', 'export const item=1')
+        caller = self.file('web-next/test/entry.test.ts', "import '@core'; import '@/item.js'")
+        self.assertEqual(ci.dependencies(caller, {source, item, caller}, {}), {source, item})
+
     def test_transitive_imports_select_affected_test_not_unrelated(self):
         mandatory = ["next-accounts-entry", "next-local-session-renewal", "next-account-proof-entry", "next-shell-tv-profile-menu"]
         for name in mandatory:
