@@ -191,10 +191,12 @@ func TestReaderLifetimeScopeIsolatesForeignFixture(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	tx, err := fixture.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tx.Rollback()
 	var count int
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM sample`).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -229,6 +231,7 @@ func TestReaderLifetimeDirectTransactionCancellationLateRelease(t *testing.T) {
 	// A context that is already canceled must be refused before any connection
 	// admits a reader lease.
 	cancelled, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	cancel()
 	if tx, err := db.BeginTx(cancelled, &sql.TxOptions{ReadOnly: true}); !errors.Is(err, context.Canceled) {
 		if tx != nil {
@@ -242,10 +245,12 @@ func TestReaderLifetimeDirectTransactionCancellationLateRelease(t *testing.T) {
 	// its context goroutine; an explicit late Rollback/Commit must not touch the
 	// already-released lease or resurrect the count.
 	ctx, cancelTx := context.WithCancel(context.Background())
+	defer cancelTx()
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tx.Rollback()
 	var count int
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM sample`).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -269,10 +274,12 @@ func TestReaderLifetimeDirectTransactionCancellationLateRelease(t *testing.T) {
 	// watchdog would. Either owner may win; the lease must still be released
 	// exactly once and the scope must neither leak nor go below its baseline.
 	ctx, cancelTx = context.WithCancel(context.Background())
+	defer cancelTx()
 	tx, err = db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tx.Rollback()
 	check(1)
 	cancelTx()
 	if err = tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
