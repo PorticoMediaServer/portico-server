@@ -86,3 +86,5 @@
 @media (max-width: 599px) { .page { padding: 0 0 40px; }.mobileNav { display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 16px; }.page .mobileNav button { padding: 0; background: transparent; color: var(--color-accent-strong); }.mobileNav b { font-size: var(--tt-small-heading); }.content > h1, .content > .lead, .content > .kind, .you { display: none; }.groups { margin: 24px 16px 0; }.groups h2 { font-size: var(--tt-small); color: var(--color-text-tertiary); }.room { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 16px; }.box { box-shadow: none; padding: 0; background: transparent; }.box h2 { display: none; } }
 
 .fieldHint { display: block; margin-top: 6px; font-size: var(--tt-small); color: var(--color-text-tertiary); font-weight: var(--tt-medium); }
+
+.hostControls { font-size: var(--tt-caption); color: var(--color-text-tertiary); }

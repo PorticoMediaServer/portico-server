@@ -10,12 +10,9 @@ import {Dialog, Menu, type MenuEntry} from '../../kit/overlays';
 import type {TogetherBindings} from './bindings';
 import type {Group} from '@core/social-playback.ts';
 import {watchClock} from '../watch/model';
+import {togetherCanMakeHost, togetherHostNotice, togetherInviteVisible, togetherPlayLabel, togetherStateKey} from './together-model';
 import styles from './together.module.css';
 
-function stateKey(group: Group) {
-  return group.state.startsWith('host-reconnecting') ? 'web.together.state.hostReconnecting' : group.timeline.state === 'playing' ? 'web.together.state.playing'
-    : group.timeline.state === 'paused' ? 'next.dock.paused' : group.state === 'preparing' ? 'web.together.state.preparing' : 'web.together.state.lobby';
-}
 /** tv-more desktop19–21 and states27. Room, membership, item facts and actions are real. */
 export function TogetherScreen({binding}: {binding: TogetherBindings}) {
   useEffect(() => {if (binding.isCurrent()) void binding.service.refreshDirectory();}, [binding]);
@@ -28,7 +25,7 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
   const [authority, setAuthority] = useState<'host-only' | 'anyone'>('host-only'), [confirm, setConfirm] = useState<'leave' | 'end' | null>(null);
   const [menu, setMenu] = useState<string | null>(null), menuAnchor = useRef<HTMLButtonElement | null>(null), cancel = useRef<HTMLButtonElement | null>(null), trigger = useRef<HTMLButtonElement | null>(null);
   const inRoom = !!group && roomView && (room.phase === 'live' || room.phase === 'reconnecting'), queue = room.queue ?? group?.queue;
-  const hostEndsIn = group && group.host.presence !== 'connected' && group.host.endAt ? Math.max(0, (Date.parse(group.host.endAt) - binding.service.serverNow()) / 1000) : undefined;
+  const hostNotice = group ? togetherHostNotice(group, binding.service.serverNow()) : undefined;
   const currentEntry = queue?.entries.find(entry => entry.entryId === group?.timeline.currentEntryId);
   const current = inRoom && group?.timeline.itemId && !currentEntry?.unavailable ? snapshot.items.get(group.timeline.itemId) : undefined;
   const identity = current ? playbackIdentity(itemSubject(current), 'full', binding.environment) : undefined;
@@ -45,6 +42,7 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
   const joinForm = (<form className={styles.box} onSubmit={event => {event.preventDefault();act(async () => {if (await binding.service.join(code, displayName)) {setSheet(null);setRoomView(true);}});}}>{!phone && <><h2>{t('web.together.joinTitle')}</h2><p>{t('web.together.joinHelp')}</p></>}
               <label>{t('web.together.hostCode')}<input autoComplete="off" placeholder={t('web.together.codeExample')} value={code} onChange={event => setCode(event.target.value)} maxLength={32} required /></label>
               {phone && <label>{t('web.together.yourName')}<input value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={80} required /></label>}<button type="submit" className={styles.primary} disabled={room.busy || !code.trim() || !displayName.trim()}>{t('web.together.join')}</button></form>);
+  const shareButton = <button type="button" disabled={typeof navigator.share !== 'function' && !navigator.clipboard} onClick={() => act(() => typeof navigator.share === 'function' ? navigator.share({text: t('web.together.shareMessage', {code: room.invite!.code})}) : navigator.clipboard.writeText(room.invite!.code))}><Icon name="i-share" size={15} />{t('web.together.shareCode')}</button>;
   const startForm = (<form className={styles.box} onSubmit={event => {event.preventDefault();act(async () => {if (await binding.service.create({name, displayName, hostAuthority: authority})) {setSheet(null);setRoomView(true);}});}}>{!phone && <h2>{t('web.together.startTitle')}</h2>}<p>{t(phone ? 'web.together.startHelpPhone' : 'web.together.startHelp')}</p>
               <label>{t('builder.name')}<input value={name} onChange={event => setName(event.target.value)} maxLength={128} required /></label>
               {phone && <label>{t('web.together.yourName')}<input value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={80} required /><small className={styles.fieldHint}>{t('web.together.shownToOthers')}</small></label>}<fieldset><legend>{t(phone ? 'web.together.whoControlsPhone' : 'web.together.whoControls')}</legend><div className={styles.segment}>{(['host-only', 'anyone'] as const).map(value => <button type="button" key={value} aria-pressed={authority === value} onClick={() => setAuthority(value)}>{t(value === 'host-only' ? 'web.together.onlyMe' : 'web.together.everyone')}</button>)}</div></fieldset>
@@ -55,10 +53,10 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
     {phone && <div className={styles.mobileNav}><button type="button" onClick={() => {if (inRoom) {setRoomView(false);act(() => binding.service.refreshDirectory());} else binding.openSettings();}} aria-label={t(inRoom ? 'web.together.backToLobby' : 'web.shell.settings')}><Icon name="i-left" size={24} />{!inRoom && t('web.shell.settings')}</button><b>{inRoom ? group.name : t('web.settings.together')}</b></div>}
     <div className={styles.content}>
       {inRoom && <div className={styles.kind}>{t('web.settings.together')}</div>}
-      <h1>{inRoom ? group.name : t('web.settings.together')}{inRoom && <span className={styles.badge}>{t(stateKey(group))}</span>}</h1>
+      <h1>{inRoom ? group.name : t('web.settings.together')}{inRoom && <span className={styles.badge}>{t(togetherStateKey(group))}</span>}</h1>
       {!inRoom && room.phase !== 'ended' && <p className={styles.lead}>{t('web.together.subtitle')}</p>}
       {inRoom && group.permissions.isHost && <p className={styles.lead}>{t('web.together.hostIntro')}</p>}
-      {inRoom && group.host.presence !== 'connected' && hostEndsIn !== undefined && Number.isFinite(hostEndsIn) && <div className={styles.notice} role="status"><Icon name="i-warn" size={20} /><span>{t('web.together.hostDropped')} {t('web.together.endsIn', {time: watchClock(hostEndsIn)})}{!group.permissions.isHost && <> {t('web.together.takeOver')}</>}</span>{!group.permissions.isHost && group.members.some(member => member.id === group.viewerMemberId && member.state === 'joined') && <button type="button" disabled={room.busy} onClick={() => act(() => binding.service.makeHost(group.viewerMemberId))}>{t('web.together.becomeHost')}</button>}</div>}
+      {inRoom && hostNotice && <div className={styles.notice} role="status"><Icon name="i-warn" size={20} /><span>{t('web.together.hostDropped')} {t(hostNotice.key, {time: watchClock(hostNotice.seconds)})}{hostNotice.takeOver && <> {t('web.together.takeOver')}</>}</span>{hostNotice.canClaim && <button type="button" disabled={room.busy} onClick={() => act(() => binding.service.makeHost(group.viewerMemberId))}>{t('web.together.becomeHost')}</button>}</div>}
       {(room.error || room.directoryError) && <div className={styles.notice} role="status"><Icon name="i-warn" size={20} />{room.refused ? t('web.together.refused') : room.error ?? room.directoryError}
         {room.refused && group?.permissions.isHost && <button type="button" onClick={() => act(() => binding.service.transport(room.refused!.command, {...room.refused!.input, allowUnavailable: true}))}>{t('web.together.goAhead')}</button>}
       </div>}
@@ -69,12 +67,13 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
         : inRoom ? <div className={styles.room}>
           <section>
             <div className={styles.now}><Artwork source={source} alt="" saturation={.85} brightness={.7} /><div className={styles.nowText}>
-              <span className={styles.status}>{t(stateKey(group))}</span><b>{identity?.title}</b><small>{identity?.subtitle.map(part => part.text).join(' ')}
+              <span className={styles.status}>{t(togetherStateKey(group))}</span><b>{identity?.title}</b><small>{identity?.subtitle.map(part => part.text).join(' ')}
                 {currentPlayback && playback.presentation && <>{identity?.subtitle.length ? <i /> : null}{t('web.together.positionOf', {position: watchClock(playback.presentation.positionSeconds), duration: watchClock(playback.presentation.durationSeconds)})}</>}
               </small>{playback.presentation && currentPlayback && playback.presentation.durationSeconds > 0 && <div className={styles.progress}><i style={{width: `${Math.min(1, playback.presentation.positionSeconds / playback.presentation.durationSeconds) * 100}%`}} /></div>}
             </div></div>
-            <div className={styles.actions}>{group.permissions.canControl && <button type="button" className={styles.primary} disabled={room.busy || !group.timeline.itemId}
-              onClick={() => act(() => binding.service.transport(group.timeline.state === 'playing' ? 'pause' : 'play'))}><Icon name={group.timeline.state === 'playing' ? 'i-pause' : 'i-play'} size={18} />{t(group.timeline.state === 'playing' ? 'web.together.pauseAll' : 'web.together.playAll')}</button>}
+            <div className={styles.actions}>{group.permissions.canControl ? <button type="button" className={styles.primary} disabled={room.busy || !group.timeline.itemId}
+              onClick={() => act(() => binding.service.transport(group.timeline.state === 'playing' ? 'pause' : 'play'))}><Icon name={group.timeline.state === 'playing' ? 'i-pause' : 'i-play'} size={18} />{t(togetherPlayLabel(group))}</button>
+              : <span className={styles.hostControls}>{t('web.together.pill.hostControls')}</span>}
               {!phone && <button type="button" onClick={openPlayer} disabled={!currentPlayback}>{t('web.together.openPlayer')}</button>}</div>
             {!phone && <p className={styles.readiness}>{t('web.together.waiting', {ready: group.readiness.ready, total: group.readiness.memberCount, count: Math.max(0, group.readiness.memberCount - group.readiness.ready)})}</p>}
             {!phone && <><h3>{t('web.together.queue')}<small>{queue ? t('web.person.titles', {count: queue.entries.length}) : ''}</small></h3>
@@ -91,16 +90,17 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
             {group.members.filter(member => member.state === 'joined').map(member => <div className={styles.person} key={member.id}>
               {member.private && member.id !== group.viewerMemberId ? <span className={styles.privateFace}><Icon name="i-person" size={18} /></span> : <ProfileFace initial={member.displayName.trim().slice(0, 1).toUpperCase()} art={member.id === group.viewerMemberId ? binding.profileArt : undefined} size={36} />}
               <span className={styles.rowText}>{member.id === group.viewerMemberId ? t('web.together.you', {name: member.displayName}) : member.displayName}{member.role === 'host' && <small>{t('web.together.pill.host')}</small>}</span>
-              {!phone && group.permissions.isHost && member.id !== group.viewerMemberId && <button type="button" onClick={() => act(() => binding.service.makeHost(member.id))}>{t('web.together.makeHost')}</button>}
+              {!phone && togetherCanMakeHost(group, member) && <button type="button" onClick={() => act(() => binding.service.makeHost(member.id))}>{t('web.together.makeHost')}</button>}
               <span className={styles.status} data-waiting={member.readiness !== 'ready'}>{t(member.presence !== 'connected' ? 'web.together.away' : member.readiness === 'ready' ? 'web.together.inStep' : member.readiness === 'buffering' ? 'web.together.loading' : 'web.together.catchingUp')}</span>
             </div>)}
-          </div><h3 className={styles.inviteHeading}>{t('web.together.invite')}</h3><div className={styles.code}>
+          </div>{togetherInviteVisible(group) && <><h3 className={styles.inviteHeading}>{t('web.together.invite')}</h3><div className={styles.code}>
             {room.invite ? <><b>{room.invite.code.replace(/(.{4})(?=.)/g, '$1 ')}</b><p>{t('web.together.inviteHelpJoin', {uses: Math.max(0, room.invite.maxUses - room.invite.uses), time: new Intl.DateTimeFormat(binding.environment.locale ?? 'en-US', {hour: 'numeric', minute: '2-digit'}).format(new Date(room.invite.expiresAt))})}</p>
               <div className={styles.actions}>{!phone && <button type="button" disabled={!navigator.clipboard} onClick={() => act(() => navigator.clipboard.writeText(room.invite!.code))}><Icon name="i-copy" size={15} />{t('web.together.copyCode')}</button>}
-                {phone && <button type="button" disabled={typeof navigator.share !== 'function' && !navigator.clipboard} onClick={() => act(() => typeof navigator.share === 'function' ? navigator.share({text: t('web.together.shareMessage', {code: room.invite!.code})}) : navigator.clipboard.writeText(room.invite!.code))}><Icon name="i-share" size={15} />{t('web.together.shareCode')}</button>}
-                <button type="button" disabled={room.busy} onClick={() => act(() => binding.service.invite())}>{t('web.together.newCode')}</button></div></>
+                {phone && shareButton}
+                <button type="button" disabled={room.busy} onClick={() => act(() => binding.service.invite())}>{t('web.together.newCode')}</button>
+                {!phone && shareButton}</div></>
               : <button type="button" onClick={() => act(() => binding.service.invite())}>{t('web.together.getCode')}</button>}
-          </div>{!phone && <div className={styles.actions}><button type="button" className={styles.ghost} onClick={event => group.permissions.isHost ? ask('leave', event.currentTarget) : act(() => binding.service.leave())}>{t('web.together.leave')}</button>
+          </div></>}{!phone && <div className={styles.actions}><button type="button" className={styles.ghost} onClick={event => group.permissions.isHost ? ask('leave', event.currentTarget) : act(() => binding.service.leave())}>{t('web.together.leave')}</button>
             {group.permissions.isHost && <button type="button" className={styles.ghost} onClick={event => ask('end', event.currentTarget)}>{t('web.together.endAll')}</button>}</div>}</section>
         </div> : <>
           <div className={styles.you}><ProfileFace initial={displayName.trim().slice(0, 1).toUpperCase()} art={binding.profileArt} size={44} /><span><b>{t('web.together.yourName')}</b><small>{t('web.together.shownToOthers')}</small></span>
@@ -109,7 +109,7 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
             {joinForm}
             {startForm}
           </div>}<section className={styles.groups}><h2>{t(phone ? 'web.together.yourGroupsPhone' : 'web.together.yourGroups')}</h2>{room.directory.map(value => <button type="button" className={styles.groupRow} key={value.id} onClick={() => {setRoomView(true);act(() => binding.service.open(value.id));}}>
-            <span className={styles.groupIcon}><Icon name="i-together" size={20} /></span><span className={styles.rowText}><b>{value.name}</b><small>{t('web.together.here', {count: value.readiness.memberCount})}<i />{t(stateKey(value))}</small></span>
+            <span className={styles.groupIcon}><Icon name="i-together" size={20} /></span><span className={styles.rowText}><b>{value.name}</b><small>{t('web.together.here', {count: value.readiness.memberCount})}<i />{t(togetherStateKey(value))}</small></span>
             {value.permissions.isHost && <span>{t('web.together.youHost')}</span>}<Icon name="i-right" size={18} /></button>)}</section>
         </>}
     </div>
