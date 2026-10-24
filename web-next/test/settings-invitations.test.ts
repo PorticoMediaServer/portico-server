@@ -83,3 +83,17 @@ test('creation returns its real one-time code without a list cache, and owner re
     await assert.rejects(denied.source.link(row, live()), {name: 'AbortError'});assert.equal(denied.calls.length, 1);
   } finally {denied.source.dispose();}
 });
+test('explicit foreign server identities fail closed without dropping rows or issuing a foreign row command', async () => {
+  const foreign = {...row, serverId: 'srv_' + 'x'.repeat(43)};
+  const page = fixture(() => ({items: [foreign], limit: 40, totalCount: 137, matchedCount: 37, nextCursor: 'next'}));
+  try {await assert.rejects(page.source.read(query, '', live()), /invitation_server_changed/);assert.equal(page.calls.length, 1);} finally {page.source.dispose();}
+  const action = fixture(() => ({code: 'c'.repeat(43), expiresAt: row.expiresAt, serverId}));
+  try {
+    await assert.rejects(action.source.link(foreign, live()), /invitation_server_changed/);
+    await assert.rejects(action.source.revoke(foreign, 'actual-operation', live()), /invitation_server_changed/);
+    assert.deepEqual(action.calls, []);
+  } finally {action.source.dispose();}
+  const created = fixture(() => ({...foreign, code: 'c'.repeat(43)}));
+  try {await assert.rejects(created.source.create({role: 'member', allowedLibraries: [], expiresInHours: 24, operationId: 'create-key'}, live()), /invitation_server_changed/);}
+  finally {created.source.dispose();}
+});

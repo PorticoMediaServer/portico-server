@@ -40,6 +40,10 @@ export class SettingsInvitations {
     }});
   }
   private assertCurrent() {if (this.lifetime.signal.aborted || !this.isCurrent()) throw new DOMException('Invitation authority retired', 'AbortError');}
+  private checkInvitation(invitation: ServerInvitation) {
+    if (invitation.serverId !== undefined && invitation.serverId !== this.serverId) throw new Error('invitation_server_changed');
+    return invitation;
+  }
   private async perform<T>(capture: InvitationLifetime, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const request = new AbortController(), abort = () => request.abort();
     const signals = [capture.signal, this.lifetime.signal];
@@ -50,10 +54,13 @@ export class SettingsInvitations {
   }
   read(query: TableQuery, cursor: string, capture: InvitationLifetime) {
     const selected = {...invitationQuery(query), ...(cursor ? {cursor} : {})};
-    return this.perform(capture, signal => this.client.list(selected, signal));
+    return this.perform(capture, async signal => {
+      const page = await this.client.list(selected, signal);page.items.forEach(invitation => this.checkInvitation(invitation));return page;
+    });
   }
   link(invitation: ServerInvitation, capture: InvitationLifetime): Promise<string> {
     return this.perform(capture, async signal => {
+      this.checkInvitation(invitation);
       const link = await this.client.link(invitation, signal);
       if (link.serverId !== undefined && link.serverId !== this.serverId) throw new Error('invitation_server_changed');
       if (Date.parse(link.expiresAt) <= Date.now()) throw new CodedError('invitation_expired', 'This invitation is no longer usable.');
@@ -61,19 +68,21 @@ export class SettingsInvitations {
     });
   }
   create(input: RouteRequest<'post_admin_access_invitations'>, capture: InvitationLifetime) {
-    return this.perform(capture, signal => this.client.create(input, signal));
+    return this.perform(capture, async signal => this.checkInvitation(await this.client.create(input, signal)));
   }
   edit(invitation: ServerInvitation, input: RouteRequest<'put_admin_access_invitation'>, capture: InvitationLifetime) {
     if (input.expectedRevision !== invitation.revision) return Promise.reject(new Error('invitation_revision_changed'));
     return this.perform(capture, async signal => {
-      const result = await this.client.edit(invitation.id, input, signal);
+      this.checkInvitation(invitation);
+      const result = this.checkInvitation(await this.client.edit(invitation.id, input, signal));
       if (result.id !== invitation.id || result.revision <= invitation.revision) throw new Error('invitation_changed');
       return result;
     });
   }
   revoke(invitation: ServerInvitation, operationId: string, capture: InvitationLifetime) {
     return this.perform(capture, async signal => {
-      const result = await this.client.revoke(invitation, operationId, signal);
+      this.checkInvitation(invitation);
+      const result = this.checkInvitation(await this.client.revoke(invitation, operationId, signal));
       if (result.id !== invitation.id || result.revision <= invitation.revision || result.state !== 'revoked') throw new Error('invitation_changed');
       return result;
     });
