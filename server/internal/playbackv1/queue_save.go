@@ -207,6 +207,13 @@ func (s *Service) readSaveWindows(ctx context.Context, r saveRow, p identity.Pri
 		}
 		return l.sonicWindowsForRange(r.next, min(int64(saveStepEntries), max(0, r.total-r.next)))
 	}, func(l *layout) error {
+		// The fence must also run when the layout has no Sonic window to select
+		// (every queue that is not shuffled): an append, removal or reorder that
+		// lands while the copy waits is still a different play order.
+		if l.orderDigest() != r.order || l.total() != r.total {
+			changed = true
+			return ErrRevision
+		}
 		windows = []saveWindow{}
 		for from := r.next; from < r.total && from < r.next+saveStepEntries; from += WindowMax {
 			n := min(int64(WindowMax), r.total-from)
