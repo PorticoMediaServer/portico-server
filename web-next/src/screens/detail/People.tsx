@@ -38,7 +38,9 @@ export function CreditLine({message, ...props}: {message: 'title.directedBy' | '
 export function TitlePeople({binding, data, episode = false}: {binding: DetailBindings; data: DetailProjection; episode?: boolean}) {
   const [open, setOpen] = useState(false), trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => setOpen(false), [data]);
-  const cast = data.metadata.credits.filter(castCredit), crew = data.metadata.credits.filter(credit => !castCredit(credit));
+  // One face per person in the drawn row; a second role (writer and director) stays in the credit lines.
+  const uniquePeople = (credits: readonly DetailCredit[]) => { const seen = new Set<string>(); return credits.filter(credit => { const key = credit.personId ?? credit.name; if (seen.has(key)) return false; seen.add(key); return true; }); };
+  const cast = uniquePeople(data.metadata.credits.filter(castCredit)), crew = uniquePeople(data.metadata.credits.filter(credit => !castCredit(credit)));
   const totals = data.metadata.creditTotals, total = totals ? totals.cast + totals.crew : undefined;
   const rendered = Math.min(6, cast.length) + Math.min(6, crew.length);
   return <div className={styles.creditGroups} data-episode={episode || undefined}>
