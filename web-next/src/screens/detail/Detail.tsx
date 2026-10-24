@@ -7,7 +7,7 @@ import {detailActions} from '@core/presentation/detail-actions.ts';
 import {refreshMetadataPath} from '@core/presentation/entry-actions.ts';
 import {titleRecommendationRows, type ItemRecommendations} from '@core/recommendations.ts';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
-import {serviceI18n} from '@core/presentation/service-text.ts';
+import {serviceI18n, serviceText} from '@core/presentation/service-text.ts';
 import {collectionCaptionParts, fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
 import {preferenceValue} from '@core/preferences.ts';
 import {AmbientArt, PersonCircle} from '../../kit/artwork';
