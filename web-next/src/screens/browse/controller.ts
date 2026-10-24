@@ -6,25 +6,50 @@ import {isStaleAnswer} from '@core/freshness-actions.ts';
 
 export type BrowseMember = Readonly<{membershipId: string; entry: ContentEntry}>;
 export type BrowseSource = Readonly<{libraryId: string; pivot: string; base?: readonly BrowseNode[]; predicates?: readonly BrowseNode[]; homeRowId?: string; sort?: BrowseSortSelection; sorts?: readonly BrowseSortSelection[]}>;
-export type BrowseState = Readonly<{phase: 'loading' | 'ready' | 'error'; capabilities?: BrowseCapabilities; predicates: readonly BrowseNode[]; sort?: BrowseSortSelection; error?: unknown}>;
+export type BrowseState = Readonly<{phase: 'loading' | 'ready' | 'error'; capabilities?: BrowseCapabilities; predicates: readonly BrowseNode[]; sort?: BrowseSortSelection; error?: unknown;
+  /** Actual opaque page token, absent until this applied query has replied. */
+  revision?: string; queryRevision: number}>;
 const closed = () => Object.assign(new Error('browse-scope-closed'), {name: 'AbortError'});
+const changed = () => Object.assign(new Error('browse-page-revision-changed'), {retry: 'after_refresh'});
+function captureNode(input: BrowseNode): BrowseNode {
+  const freeze = (node: BrowseNode): BrowseNode => {
+    if ('field' in node) return Object.freeze({...node, value: Array.isArray(node.value) ? Object.freeze([...node.value]) : node.value});
+    if ('all' in node) return Object.freeze({all: Object.freeze(node.all.map(freeze))});
+    if ('any' in node) return Object.freeze({any: Object.freeze(node.any.map(freeze))});
+    return Object.freeze({not: freeze(node.not)});
+  };
+  return freeze(parseBrowseNode(input));
+}
 
 /** Private screen controller. The parent owns the authenticated API and exact viewer lifetime. */
 export class BrowseController {
   readonly collection: WindowedCollection<BrowseMember>;
-  private state: BrowseState = Object.freeze({phase: 'loading', predicates: []});
+  readonly source: BrowseSource;
+  private state: BrowseState = Object.freeze({phase: 'loading', predicates: [], queryRevision: 0});
   private listeners = new Set<() => void>();
   private life = new AbortController();
   private epoch = 0;
   private sorts: readonly BrowseSortSelection[] = [];
-  constructor(private api: LibraryContentApi, readonly source: BrowseSource, private isCurrent: () => boolean) {
-    this.state = Object.freeze({phase: 'loading', predicates: Object.freeze([...(source.predicates ?? [])])});
+  private members = new WeakMap<ContentEntry, number>();
+  constructor(private api: LibraryContentApi, source: BrowseSource, private isCurrent: () => boolean) {
+    this.source = Object.freeze({...source,
+      ...(source.base ? {base: Object.freeze(source.base.map(captureNode))} : {}),
+      ...(source.predicates ? {predicates: Object.freeze(source.predicates.map(captureNode))} : {}),
+      ...(source.sort ? {sort: Object.freeze({...source.sort})} : {}),
+      ...(source.sorts ? {sorts: Object.freeze(source.sorts.map(sort => Object.freeze({...sort})))} : {})});
+    this.state = Object.freeze({phase: 'loading', predicates: this.source.predicates ?? Object.freeze([]), queryRevision: 0});
     this.collection = createWindowedCollection({pageSize: 60, maxResidentPages: 6, maxConcurrent: 1, prefetchPages: 1,
       keyOf: (item: BrowseMember) => item.membershipId, fetchPage: async () => { throw closed(); }});
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private current() { return !this.life.signal.aborted && this.isCurrent(); }
+  /** Borrowed row/menu actions require the same current resident object.
+   * Explicit selection has its own retained picks and operation lifetime. */
+  contains(entry: ContentEntry): boolean {
+    return this.current() && this.state.phase === 'ready' && !!this.state.revision && this.members.get(entry) === this.epoch
+      && this.collection.residentItems().some(member => member.entry === entry);
+  }
   private publish(patch: Partial<BrowseState>) {
     if (!this.current()) return;
     this.state = Object.freeze({...this.state, ...patch});
@@ -33,7 +58,7 @@ export class BrowseController {
   async load() {
     if (!this.current()) return;
     const epoch = ++this.epoch;
-    this.publish({phase: 'loading', error: undefined});
+    this.publish({phase: 'loading', error: undefined, revision: undefined});
     try {
       const caps = parseBrowseCapabilities(await this.api.request(browseCapabilitiesPath(this.source.libraryId, this.source.pivot), 'GET', undefined, this.life.signal));
       if (!this.current() || epoch !== this.epoch) return;
@@ -47,10 +72,10 @@ export class BrowseController {
   }
   setQuery(predicates: readonly BrowseNode[], sort: BrowseSortSelection = this.state.sort!) {
     if (!this.current() || !this.state.capabilities || !sort) return;
-    this.builder(this.state.capabilities, predicates, sort).build();
-    if (sort !== this.state.sort) this.sorts = [sort];
-    this.publish({predicates: Object.freeze([...predicates]), sort});
-    this.reset();
+    const captured = Object.freeze(predicates.map(captureNode)), selected = sort === this.state.sort ? sort : Object.freeze({...sort});
+    this.builder(this.state.capabilities, captured, selected).build();
+    if (selected !== this.state.sort) this.sorts = [selected];
+    this.reset({predicates: captured, sort: selected});
   }
   private builder(caps: BrowseCapabilities, predicates: readonly BrowseNode[], sort: BrowseSortSelection) {
     const builder = new BrowseQueryBuilder(caps, this.source.pivot);
@@ -59,19 +84,33 @@ export class BrowseController {
     if (this.source.homeRowId) builder.displayHomeRow(this.source.homeRowId);
     return builder.limit(60);
   }
-  private reset() {
-    const {capabilities: caps, predicates, sort} = this.state;
+  private reset(next: Partial<Pick<BrowseState, 'predicates' | 'sort'>> = {}) {
+    const {capabilities: caps, predicates, sort} = {...this.state, ...next};
     if (!caps || !sort) return;
     const epoch = ++this.epoch;
-    let revision: string | undefined;
+    this.members = new WeakMap();
+    this.publish({...next, revision: undefined, queryRevision: this.state.queryRevision + 1});
+    let revision: string | undefined, stale = false;
     this.collection.invalidate(async (start, count, signal) => {
       if (!this.current() || epoch !== this.epoch) throw closed();
+      if (stale) throw changed();
       const body = this.builder(caps, predicates, sort).limit(count).range({start, ...(revision ? {revision} : {})}).build();
-      const page = parseBrowseResult(await this.api.request(browsePath(this.source.libraryId), 'POST', body, signal));
+      const raw = await this.api.request(browsePath(this.source.libraryId), 'POST', body, signal).catch(error => {
+        if (this.current() && epoch === this.epoch && !signal.aborted && (isStaleAnswer(error)
+          || typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' && [401, 403, 404].includes(error.status))) {
+          stale = true;this.members = new WeakMap();this.publish({revision: undefined});
+        }
+        throw error;
+      });
+      const page = parseBrowseResult(raw);
       if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
-      if (page.pivot !== this.source.pivot || page.pageInfo.start !== start || revision && revision !== page.pageInfo.revision) throw Object.assign(new Error('browse-page-revision-changed'), {retry: 'after_refresh'});
+      if (page.pivot !== this.source.pivot || page.pageInfo.start !== start || revision && revision !== page.pageInfo.revision) {
+        stale = true;this.members = new WeakMap();this.publish({revision: undefined});
+        throw changed();
+      }
       revision = page.pageInfo.revision;
-      return {items: page.entries.map((entry, index) => ({membershipId: browseMembershipId(page, index)!, entry})),
+      this.publish({revision});
+      return {items: page.entries.map((entry, index) => {this.members.set(entry, epoch);return Object.freeze({membershipId: browseMembershipId(page, index)!, entry});}),
         total: page.pageInfo.total, totalIsLowerBound: page.pageInfo.totalIsLowerBound,
         positionIndex: Object.fromEntries(page.positionIndex.map(anchor => [anchor.key, anchor.index]))};
     });

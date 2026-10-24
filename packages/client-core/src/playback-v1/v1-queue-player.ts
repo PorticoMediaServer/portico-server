@@ -46,6 +46,8 @@ import {toPlaybackSession} from './session-shape.ts';
 import {audioTrackId, type PlaybackChoices} from './choices.ts';
 import {requestInForce, type QualityRequest} from './quality.ts';
 import type {SessionChange, StartOptions, StartTarget} from './sessions.ts';
+import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
+export type {SessionChangeContext} from './change-context.ts';
 import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
 import {audioTransitionsEnabled} from '../audio-effects.ts';
 import type {NativeListeningV1Control, NativeListeningV1Event} from '../playback/native-listening.ts';
@@ -76,7 +78,7 @@ export interface QueueSessionTransport {
   forget(id: string): void;
   reportedSeq(id: string): number;
   /** Re-plans a live session (quality, version, audio track): same session, next generation. */
-  change?(id: string, change: SessionChange, durationSeconds: number): Promise<{session: Session; playback: PlaybackSession}>;
+  change?(id: string, change: SessionChange, durationSeconds: number, context?: SessionChangeContext): Promise<{session: Session; playback: PlaybackSession}>;
   /** Tells the queue player that a session it holds was re-planned behind it (a recovered player failure). */
   onSessionChanged?(listener: (session: Session) => void): () => void;
 }
@@ -169,6 +171,7 @@ export class V1QueuePlayer implements QueueController {
   private completionPolicy: CompletionPolicy = () => 'advance';
   private endedId?: string;
   private generation = 0;
+  private changeSequence = 0;
   private disposed = false;
   private detach?: () => void;
   private unsubscribe?: () => void;
@@ -425,33 +428,52 @@ export class V1QueuePlayer implements QueueController {
    * re-planned at its position and stays the same session on the same entry. A session the
    * server no longer has (its lease lapsed) starts again in place with the choice instead.
    */
-  async changePlayback(choices: PlaybackChoices): Promise<void> {
+  changePlayback(choices: PlaybackChoices): Promise<void>;
+  changePlayback(choices: PlaybackChoices, context: SessionChangeContext): Promise<Session | undefined>;
+  async changePlayback(choices: PlaybackChoices, context?: SessionChangeContext): Promise<Session | void> {
+    requireSessionChangeCurrent(context);
     const session = this.session;
-    if (this.disposed || !session || this.nativeOwns()) return;
-    if (choices.quality && !('step' in choices.quality && choices.quality.step)) this.qualityOverride = choices.quality;
+    if (this.disposed || !session || this.nativeOwns()) {
+      if (context) throw new PlaybackApiError(410, 'session_ended', 'never');
+      return;
+    }
+    const sequence = ++this.changeSequence;
+    if (!context && choices.quality && !('step' in choices.quality && choices.quality.step)) this.qualityOverride = choices.quality;
     const change: SessionChange = {...(choices.replan ? {replan: true} : {}), ...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {}),
       ...(choices.subtitleTrackId !== undefined ? {subtitles: {trackId: choices.subtitleTrackId, ...(choices.subtitleTrackId !== null && choices.subtitleDelivery ? {delivery: choices.subtitleDelivery} : {})}} : {}),
       ...(choices.subtitleTrackId && choices.subtitleOffsetMs !== undefined && Number.isFinite(choices.subtitleOffsetMs) ? {subtitleOffsetMs: Math.round(choices.subtitleOffsetMs)} : {}), ...(choices.throughputKbps !== undefined ? {throughputKbps: choices.throughputKbps} : {})};
-    if (!Object.keys(change).length) return;
+    if (!Object.keys(change).length) return context ? session : undefined;
     const generation = this.generation;
-    const live = () => !this.disposed && generation === this.generation && this.session?.id === session.id;
+    const live = () => !this.disposed && generation === this.generation && this.session?.id === session.id
+      && (!context || sequence === this.changeSequence && sessionChangeCurrent(context)
+        && this.session.presentation.generation === session.presentation.generation
+        && !!session.queue && this.header?.id === session.queue.queueId && this.header.current?.entryId === session.queue.entryId);
+    const check = () => {if (!live()) throw new DOMException('Playback change retired', 'AbortError');};
+    if (context) check();
+    const captured = context ? {...context, isCurrent: live} : undefined;
     // The server cancels a prepared next track when the session changes; so does this device.
     this.invalidateAudioPreparation();
     try {
       if (!this.api.change) throw new PlaybackApiError(410, 'session_ended', 'never');
-      const r = await this.api.change(session.id, change, this.playback.getSnapshot().duration);
-      if (!live()) return;
+      const r = await this.api.change(session.id, change, this.playback.getSnapshot().duration, captured);
+      if (!live()) {if (context) check();return;}
+      if (context && (r.session.id !== session.id || r.session.queue?.queueId !== session.queue?.queueId || r.session.queue?.entryId !== session.queue?.entryId)) throw new Error('Playback session changed during replan');
+      if (context?.recoverEnded === false && r.session.state === 'ended') throw new PlaybackApiError(410, 'session_ended', 'never');
       this.session = r.session;
       // The quality the server put in force (the step Automatic is on) is what the next entry starts with.
       if (choices.quality && r.session.presentation.quality) this.qualityOverride = requestInForce(r.session.presentation.quality);
       if (this.header) this.accept(this.header);
       this.playback.installPresentation(r.playback);
+      return context ? this.session : undefined;
     } catch (e) {
-      if (!live()) return;
-      if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended') && this.header?.current) {
+      if (!live()) {if (context) check();return;}
+      if (context?.recoverEnded !== false && e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended') && this.header?.current) {
         const p = this.playback.getSnapshot();
-        await this.restartCurrent(p.pendingSeek?.positionSeconds ?? (p.phase === 'idle' ? undefined : p.positionSeconds), {...this.playback.playbackChoices(), ...choices}, p.intent === 'paused' ? 'paused' : 'playing', true);
-        return;
+        await this.restartCurrent(p.pendingSeek?.positionSeconds ?? (p.phase === 'idle' ? undefined : p.positionSeconds), {...this.playback.playbackChoices(), ...choices}, p.intent === 'paused' ? 'paused' : 'playing', true, context);
+        requireSessionChangeCurrent(context);
+        if (context && (this.disposed || sequence !== this.changeSequence || this.generation !== generation + 1
+          || this.header?.id !== session.queue?.queueId || this.header?.current?.entryId !== session.queue?.entryId)) throw new DOMException('Playback change retired', 'AbortError');
+        return context && this.session?.id !== session.id ? this.session : undefined;
       }
       throw e;
     }
