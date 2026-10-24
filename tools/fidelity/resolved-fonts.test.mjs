@@ -46,6 +46,12 @@ test('legacy-only metadata needs a unique observed active font registration, not
   const duplicate = await observeRenderedFonts(active, fixture(), '#screen', async () => ({...metadata,
     registrations: [...metadata.registrations, {platformFamily: 'Example ExtraLight', family: 'Other alias'}]}));
   assert.equal(duplicate.elements[0].style.resolvedFontFamily, undefined);
+  const quoted = await observeRenderedFonts(active, fixture(), '#screen', async () => ({...metadata,
+    registrations: [{platformFamily: 'Example ExtraLight', family: '"Registered face"'}]}));
+  assert.equal(quoted.elements[0].style.resolvedFontFamily, 'Registered face');
+  const unsafe = await observeRenderedFonts(active, fixture(), '#screen', async () => ({...metadata,
+    registrations: [...metadata.registrations, {platformFamily: 'Example ExtraLight', family: null}]}));
+  assert.equal(unsafe.elements[0].style.resolvedFontFamily, undefined);
 });
 test('mixed, empty, unsafe or failed observations never become the requested family', async () => {
   for (const fonts of [[], [{familyName: 'A', glyphCount: 1}, {familyName: 'B', glyphCount: 1}], [{familyName: '/private/font', glyphCount: 1}], [{familyName: 'A', glyphCount: 0}]]) {

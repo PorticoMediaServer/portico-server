@@ -47,9 +47,10 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
       const message = JSON.parse(event.data);
       if (message.sessionId === session && message.method === 'CSS.fontsUpdated' && message.params.font) {
         const {fontFamily, platformFontFamily} = message.params.font;
-        if (typeof fontFamily === 'string' && typeof platformFontFamily === 'string' && fontFamily.length <= 200 && platformFontFamily.length <= 200 && !/[\r\n/\\]|(?:https?|file):|url\s*\(/i.test(fontFamily + platformFontFamily)) {
+        if (typeof platformFontFamily === 'string' && platformFontFamily.length <= 200 && !/[\r\n/\\]|(?:https?|file):|url\s*\(/i.test(platformFontFamily)) {
           const families = fontRegistrations.get(platformFontFamily) ?? new Set();
-          families.add(fontFamily); fontRegistrations.set(platformFontFamily, families);
+          families.add(typeof fontFamily === 'string' && fontFamily.length <= 200 && !/[\r\n/\\]|(?:https?|file):|url\s*\(/i.test(fontFamily) ? fontFamily : null);
+          fontRegistrations.set(platformFontFamily, families);
         }
       }
       if (message.sessionId === session && message.method === 'Network.responseReceived' && message.params.type === 'Font') {

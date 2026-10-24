@@ -1,5 +1,11 @@
 /** Read active rendered families from Chrome, never from a requested CSS chain.
  * The application/DOM is untouched. Inputs and mixed/unknown faces stay unavailable. */
+const registrationName = value => {
+  if (typeof value !== 'string' || !value.trim() || value.length > 200 || /[\r\n/\\]|(?:https?|file):|url\s*\(/i.test(value)) return undefined;
+  const name = value.trim(), quote = name[0];
+  if (quote === '"' || quote === "'") return name.at(-1) === quote && !name.slice(1, -1).includes(quote) ? name.slice(1, -1) : undefined;
+  return /[,"']/.test(name) ? undefined : name;
+};
 export async function observeRenderedFonts(call, measured, selector, getMetadata = async () => ({complete: false, families: []})) {
   if (measured?.measurement?.renderer !== 'dom') throw new Error('A genuine DOM measurement is required');
   const result = structuredClone(measured);
@@ -36,17 +42,20 @@ export async function observeRenderedFonts(call, measured, selector, getMetadata
         unavailable(node, 'A single safe active rendered family is not observable'); continue;
       }
       node.style.platformFontFamily = name;
-      const identities = new Set();
+      const identities = new Set(); let invalidRegistration = false;
       for (const font of active) {
         if (font.isCustomFont === false) identities.add(font.familyName);
         else if (font.isCustomFont === true && metadata.complete) {
           for (const entry of metadata.families) if (entry.platformFamilies.includes(font.familyName)) {
             if (entry.nameId === 16) identities.add(entry.family);
-            else if (entry.nameId === 1) for (const registration of metadata.registrations ?? []) if (registration.platformFamily === font.familyName) identities.add(registration.family);
+            else if (entry.nameId === 1) for (const registration of metadata.registrations ?? []) if (registration.platformFamily === font.familyName) {
+              const registered = registrationName(registration.family);
+              if (registered) identities.add(registered); else invalidRegistration = true;
+            }
           }
         }
       }
-      if (identities.size !== 1 || active.some(font => font.isCustomFont !== false && (font.isCustomFont !== true || !metadata.complete || !metadata.families.some(entry => entry.platformFamilies.includes(font.familyName))))) {
+      if (invalidRegistration || identities.size !== 1 || active.some(font => font.isCustomFont !== false && (font.isCustomFont !== true || !metadata.complete || !metadata.families.some(entry => entry.platformFamilies.includes(font.familyName))))) {
         unavailable(node, 'Active font cannot be associated with verified typographic family metadata'); continue;
       }
       node.style.resolvedFontFamily = [...identities][0];
