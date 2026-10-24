@@ -104,13 +104,8 @@ func TestArtworkSizeRefreshReacquiresExactSelectionWithoutOwnerAuthority(t *test
 	}
 	integrationExec(t, db, `UPDATE artwork_selections SET locked=1,actor='local:owner:profile' WHERE entity_id=? AND role='poster'`, entity)
 	saveArtworkEdge(t, s, 2560)
-	// Consent withdrawal suspends automatic work, even for an owner-chosen image.
-	integrationExec(t, db, `UPDATE screen_metadata_consent SET confirmed=0,revision=revision+1`)
 	if err := s.GlobalArtworkSizeStep(ctx); err != nil {
 		t.Fatal(err)
-	}
-	if got := integrationValue(t, db, `SELECT count(*) FROM artwork_jobs WHERE size_refresh=1`); got != "0" {
-		t.Fatal("consent bypass", got)
 	}
 	if got := integrationValue(t, db, `SELECT count(*) FROM metadata_artwork_size_requests`); got != "1" {
 		t.Fatal("lost durable intent", got)
@@ -118,7 +113,6 @@ func TestArtworkSizeRefreshReacquiresExactSelectionWithoutOwnerAuthority(t *test
 	// A new service instance resumes the same durable intent, not an in-memory queue.
 	restarted := New(db, "test-token")
 	restarted.cacheRoot, restarted.artClient, restarted.now = s.cacheRoot, s.artClient, s.now
-	integrationExec(t, db, `UPDATE screen_metadata_consent SET confirmed=1,revision=revision+1`)
 	now = now.Add(6 * time.Minute)
 	if err := restarted.GlobalArtworkSizeStep(ctx); err != nil {
 		t.Fatal(err)
@@ -155,7 +149,7 @@ func TestArtworkSizeRefreshReacquiresExactSelectionWithoutOwnerAuthority(t *test
 }
 
 func TestArtworkSizeRefreshNeverRebindsSourceOrRegeneratesPictures(t *testing.T) {
-	for _, provider := range []string{"generated", "upload", "stale-source"} {
+	for _, provider := range []string{"generated", "upload", "stale-source", "consent-withdrawn"} {
 		t.Run(provider, func(t *testing.T) {
 			s, db, target, _ := integrationScreen(t)
 			ctx := context.Background()
@@ -169,7 +163,9 @@ func TestArtworkSizeRefreshNeverRebindsSourceOrRegeneratesPictures(t *testing.T)
 				t.Fatal(err)
 			}
 			entity := resolveArtworkTestEntity(t, db, target)
-			if provider == "stale-source" {
+			if provider == "consent-withdrawn" {
+				integrationExec(t, db, `UPDATE screen_metadata_consent SET confirmed=0,revision=revision+1`)
+			} else if provider == "stale-source" {
 				integrationExec(t, db, `UPDATE artwork_candidates SET source_fence='previous-source' WHERE id IN(SELECT candidate_id FROM artwork_selections WHERE entity_id=?)`, entity)
 			} else {
 				integrationExec(t, db, `UPDATE artwork_candidates SET provider=? WHERE id IN(SELECT candidate_id FROM artwork_selections WHERE entity_id=?)`, provider, entity)
