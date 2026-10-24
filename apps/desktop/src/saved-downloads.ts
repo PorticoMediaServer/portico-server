@@ -41,7 +41,8 @@ export function createDesktopSavedDownloadsPort({store,folder,playback,signal,wa
     if(more&&!after)return;
     const revision=++readRevision;
     try{
-      const [page,groups,storage,rules,path]=await Promise.all([store.list(after,combined),store.groups(combined),store.capacity(combined),store.rules(combined),folder.read(combined)]);
+      const storage=store.capacity(combined).catch(()=>{active(combined);return undefined;});
+      const [page,groups,measuredStorage,rules,path]=await Promise.all([store.list(after,combined),store.groups(combined),storage,store.rules(combined),folder.read(combined)]);
       active(combined);if(revision!==readRevision)return;
       if(typeof path.displayPath!=='string'||!path.displayPath||path.displayPath.length>32768||/[\x00-\x1f\x7f]/.test(path.displayPath))throw new Error('downloads_unavailable');
       const items=new Map((more?snapshot.items:[]).map(item=>[item.id,item]));
@@ -52,7 +53,7 @@ export function createDesktopSavedDownloadsPort({store,folder,playback,signal,wa
         for(const item of following.items)items.set(item.id,row(item));next=following.nextCursor;++pages;
       }
       cursor=next;loadedPages=more?loadedPages+1:pages;
-      publish({available:true,phase:'ready',items:Object.freeze([...items.values()]),groups,storage,
+      publish({available:true,phase:'ready',items:Object.freeze([...items.values()]),groups,...(measuredStorage?{storage:measuredStorage}:{}),
         rules:Object.freeze({revision:rules.revision,value:rules.rules}),folder:Object.freeze({displayPath:path.displayPath}),
         ...(cursor?{nextCursor:JSON.stringify(cursor)}:{})});
     }catch(error){

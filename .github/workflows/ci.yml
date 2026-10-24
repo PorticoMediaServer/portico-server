@@ -3,10 +3,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # The release workflow runs this whole suite against the tag it publishes. A
-  # called workflow otherwise checks out the caller's own ref, which for a
-  # manually dispatched release is the branch it was dispatched from, so the
-  # caller names the ref. Empty (a push or a pull request) means the event's own.
   workflow_call:
     inputs:
       ref:
@@ -17,105 +13,88 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  # Finish the running MAIN checkpoint and retain only the newest pending one.
-  # Source merges continue independently; pull-request supersessions can stop.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: merge-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  GOTOOLCHAIN: go1.26.10
 jobs:
   repository:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: {ref: '${{ inputs.ref }}'}
-      - name: No built binaries or large files in Git (A77)
-        run: scripts/check-repo-binaries.sh
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
+      - run: scripts/check-repo-binaries.sh
+      - run: python3 scripts/test-ci-affected.py
   go:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     strategy:
-      matrix:
-        module: [apikit, server]
+      fail-fast: false
+      matrix: {module: [apikit, server]}
     services:
       postgres:
         image: postgres:17
-        env:
-          POSTGRES_USER: portico
-          POSTGRES_PASSWORD: disposable-ci-password
-          POSTGRES_DB: portico_test
+        env: {POSTGRES_USER: portico, POSTGRES_PASSWORD: disposable-ci-password, POSTGRES_DB: portico_test}
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: {ref: '${{ inputs.ref }}'}
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version-file: ${{ matrix.module }}/go.mod
-          cache: ${{ matrix.module != 'apikit' }}
-          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: '${{ matrix.module }}/go.mod', cache-dependency-path: '${{ matrix.module }}/go.sum'}
       - name: Disposable database
         run: |
           mkdir -p .scratch
           printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
           echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
-      - name: Build server playback helper
-        if: matrix.module == 'server'
-        run: |
-          cd server
-          go build -o ../.scratch/portico-server ./cmd/server
-          echo "PORTICO_PLAYBACK_TEST_HELPER=$GITHUB_WORKSPACE/.scratch/portico-server" >> "$GITHUB_ENV"
-      - name: Go test capacity
-        run: |
-          go version
-          printf 'Available processors: '; getconf _NPROCESSORS_ONLN
-          printf 'GOMAXPROCS: %s\n' "${GOMAXPROCS:-runtime default}"
-          for path in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /proc/loadavg; do
-            if [ -r "$path" ]; then printf '%s\n' "$path"; cat "$path"; fi
-          done
-      - name: Test module
-        run: ../scripts/test-go-module.sh '${{ matrix.module }}'
-        working-directory: ${{ matrix.module }}
-      - name: Go test capacity after tests
-        if: ${{ !cancelled() }}
-        run: |
-          for path in /sys/fs/cgroup/cpu.stat /proc/loadavg; do
-            if [ -r "$path" ]; then printf '%s\n' "$path"; cat "$path"; fi
-          done
-      - name: Check generated contracts
-        if: matrix.module == 'server'
-        run: |
-          cd server
-          go run ./cmd/apigen
-          git diff --exit-code -- api/portico.openapi.json ../packages/contracts/src
-      - name: Vet application and maintained SQLite driver
-        working-directory: ${{ matrix.module }}
-        run: |
-          ../scripts/vet-go.sh
-
-  clients:
-    runs-on: ubuntu-latest
+      - name: Changed Go tests and vet (catalogue full suite is nightly)
+        run: python3 scripts/ci-affected.py go --module '${{ matrix.module }}'
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: {area: [auth, media]}
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: portico, POSTGRES_PASSWORD: disposable-ci-password, POSTGRES_DB: portico_test}
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with: {ref: '${{ inputs.ref }}'}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        # One Node for CI, the release build and the container image: `.node-version` (the Dockerfile's
-        # web stage names the same release; scripts/check-node-version.mjs keeps them together).
-        with:
-          node-version-file: .node-version
-          cache: npm
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
-      - name: Download Go dependencies for the offline licence inventory
-        working-directory: server
-        run: go mod download
-      - name: Audio fixture tools
+      - name: Disposable database and genuine subprocess helper
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
-      - run: node scripts/check-node-version.mjs
-      - run: npm ci
-      - run: node --experimental-strip-types --test packages/contracts/test/*.test.ts
-      - run: npm run build --prefix packages/contracts
-      - name: Core client tests
-        timeout-minutes: 30
-        run: npm run test:core
-      - run: npm run check:web
-      - run: npm run build --workspace portico-web
+          mkdir -p .scratch
+          printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
+          echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
+          (cd server && go build -o ../.scratch/portico-server ./cmd/server)
+          echo "PORTICO_PLAYBACK_TEST_HELPER=$PWD/.scratch/portico-server" >> "$GITHUB_ENV"
+      - name: Sign-in, sessions, account/profile privacy, restrictions, egress, sandbox and spawn allowlist
+        run: python3 scripts/ci-affected.py go --group '${{ matrix.area }}'
+  clients:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version-file: .node-version, cache: npm}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - run: npm ci --no-audit --no-fund
+      - name: Core and web types
+        run: |
+          npx --no-install tsc -p packages/client-core/tsconfig.json
+          npx --no-install tsc -p packages/player-core/tsconfig.json
+          npx --no-install tsc -p packages/reader-core/tsconfig.json
+          npx --no-install tsc -p web-next/tsconfig.json --noEmit
+          npx --no-install tsc -p web/tsconfig.json --noEmit
+      - if: ${{ !cancelled() }}
+        name: Affected tests plus mandatory account/session/privacy checks
+        run: python3 scripts/ci-affected.py js

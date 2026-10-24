@@ -14,6 +14,9 @@ impl Default for AudioOutput {
 }
 impl AudioOutput {
     pub fn options(&self, platform: &str) -> Result<Vec<(&'static str, String)>> {
+        // Off needs the actual OS/device's current rate. No provider exists on
+        // this boundary yet; a guessed 48 kHz must never masquerade as that rate.
+        if !self.match_sample_rate{return Err(Error::Unsupported)}
         let formats: &[&str] = match platform {
             "macos" => &["ac3", "dts"],
             "windows" => &["ac3", "eac3", "dts", "dts-hd", "truehd"],
@@ -24,7 +27,7 @@ impl AudioOutput {
             || self.passthrough.iter().any(|x| !formats.contains(&x.as_str())) { return Err(Error::InvalidCommand); }
         if platform == "linux" && self.exclusive && !self.device.starts_with("alsa/hw:") { return Err(Error::InvalidCommand); }
         Ok(vec![("audio-device", self.device.clone()), ("audio-exclusive", if self.exclusive { "yes" } else { "no" }.into()),
-            ("audio-samplerate", if self.match_sample_rate { "0" } else { "48000" }.into()),
+            ("audio-samplerate", "0".into()),
             ("audio-spdif", self.passthrough.join(",")), ("gapless-audio", "yes".into()),
             ("replaygain", "no".into()), ("volume", "100".into()), ("speed", "1".into())])
     }
@@ -76,5 +79,11 @@ mod tests {
         assert!(compare_pcm(&source,&[1,2,3,4,5,7],3,2).is_err());
         assert!(compare_pcm(&source,&source[..3],3,2).is_err());
         assert!(compare_pcm(&source,&source,4,2).is_err());
+    }
+    #[test]
+    fn disabling_rate_matching_requires_real_device_rate_instead_of_a_48khz_guess(){
+        let output=AudioOutput{match_sample_rate:false,..Default::default()};
+        for platform in ["linux","macos","windows"]{assert_eq!(output.options(platform),Err(Error::Unsupported));}
+        assert!(AudioOutput::default().options("linux").unwrap().iter().any(|(key,value)|*key=="audio-samplerate"&&value=="0"));
     }
 }
