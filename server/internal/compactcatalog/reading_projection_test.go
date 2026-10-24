@@ -182,3 +182,27 @@ func TestReadingProjectionInvalidatesOldNewScopesAndSurvivesDeletion(t *testing.
 		t.Fatal("retired state namespace was reused", before, after)
 	}
 }
+
+func TestReadingProjectionProductionWorkerSeparatesScanAndCleanupCommits(t *testing.T) {
+	c, library, _ := readingProjectionFixture(t, 2)
+	w := compactcatalog.NewWorker(c.DB)
+	for i := 0; i < 1000; i++ {
+		if _, err := w.Step(context.Background(), 500); err != nil {
+			t.Fatal(err)
+		}
+		var phase string
+		var ready int64
+		if err := c.DB.QueryRow(`SELECT phase,ready_generation FROM reading_attribution_state WHERE library_id=?`, library).Scan(&phase, &ready); err != nil {
+			t.Fatal(err)
+		}
+		if phase == "ready" || ready != 0 {
+			t.Fatal("production worker scanned and published without a separate cleanup commit")
+		}
+		if phase == "cleanup" {
+			readingProjectionDrain(t, c)
+			readingProjectionGeneration(t, c, library, true)
+			return
+		}
+	}
+	t.Fatal("production worker never committed the scan EOF transition")
+}
