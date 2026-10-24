@@ -1079,6 +1079,12 @@ impl DownloadStore {
         self.connection.query_row("SELECT coalesce(sum(CASE WHEN scope_id=?1 THEN bytes_done ELSE 0 END),0),coalesce(sum(CASE WHEN scope_id!=?1 THEN bytes_done ELSE 0 END),0) FROM download_entries",[scope(viewer)?],|r|Ok((count(r,0)?,count(r,1)?))).map_err(unavailable)
     }
     pub fn capacity(&self, viewer: &DownloadViewer) -> Result<DownloadCapacity> {
+        #[cfg(unix)]{
+            use std::os::unix::fs::MetadataExt;
+            // The scalar UI has one volume denominator. Do not classify metadata
+            // on another volume as space used on the chosen download volume.
+            if std::fs::metadata(&self.files).map_err(unavailable)?.dev()!=std::fs::metadata(&self.metadata_root).map_err(unavailable)?.dev(){return Err(Error::Unsupported)}
+        }
         let (total_bytes, free_bytes) = disk_space(&self.files)?;
         viewer.validate()?;
         let other_downloads_bytes = self
