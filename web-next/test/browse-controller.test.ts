@@ -83,12 +83,13 @@ test('an authority change discards an in-flight result and disposal cancels requ
  assert.equal(controller.collection.itemAt(0), undefined);
 });
 test('a different revision cannot enter the displayed collection', async () => {
+ let changed = false;
  const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
   if (path.includes('capabilities')) return caps as T;const start = (body as {range: {start: number}}).range.start;
-  return payload(start, 500, start === 0 ? 'revision-one' : 'revision-two') as T;
+  return payload(start, 500, changed ? 'revision-two' : 'revision-one') as T;
  }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
  try {await controller.load();await settle();const old = controller.collection.itemAt(0)!.entry;assert.equal(old.id, 'movie-0');assert(controller.contains(old));
-  controller.collection.ensureRange(60, 65);await settle();assert.equal(controller.collection.itemAt(60), undefined);assert.equal(controller.collection.getSnapshot().status, 'error');
+  changed = true;controller.collection.ensureRange(120, 125);await settle();assert.equal(controller.collection.itemAt(120), undefined);assert.equal(controller.collection.getSnapshot().status, 'error');
   assert.equal(controller.getSnapshot().revision, undefined);assert.equal(controller.contains(old), false);
  } finally {controller.dispose();}
 });
