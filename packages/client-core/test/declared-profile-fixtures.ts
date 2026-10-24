@@ -1,4 +1,5 @@
 import {withMpvEngine,webDeclaredProfile,appleDeclaredProfile,androidDeclaredProfile,fireTvDeclaredProfile,vegaDeclaredProfile,webosDeclaredProfile,tizenDeclaredProfile,castDeclaredProfile,appleProfile,androidProfile,probeWebProfile} from '../src/client-profile.ts';
+import type {AppleNativeFacts} from '../src/client-profile.ts';
 
 // Synthetic probe responses exercise the production merge functions. These are
 // acceptance fixtures, not a claim that physical devices were verified here.
@@ -17,13 +18,22 @@ const safariHDR = await probeWebProfile({
  matchMedia: () => true, audioOutputChannels:6, embeddedAudioTracks:true,
  identity: {family:'web',engine:'safari'},
 });
+// These positive parser/route responses are explicit synthetic observations.
+// Hardware decoding or a Dolby Vision display alone supplies neither grant.
+export const appleTVRuntimeFacts: AppleNativeFacts = {
+ hardwareDecode:{hevc:true,dolbyVision:true,av1:false},
+ videoEligibility:{dolbyVision5:true,dolbyVision81:true},
+ hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,
+ screen:{width:3840,height:2160,maxFrameRate:60},
+ audio:{maxOutputChannels:8,route:'hdmi',spatial:true,eac3JocEligible:true},
+};
 export const declaredProfiles={
  web:webDeclaredProfile(),ios:appleDeclaredProfile({television:false}),tvos:appleDeclaredProfile({television:true}),
  android:androidDeclaredProfile(),androidtv:androidDeclaredProfile({television:true}),firetv:fireTvDeclaredProfile(),
  vega:vegaDeclaredProfile(),webos:webosDeclaredProfile(),tizen:tizenDeclaredProfile(),
  chromecast:castDeclaredProfile('chromecast'),ultra:castDeclaredProfile('chromecast_ultra'),google_tv:castDeclaredProfile('google_tv_4k'),
  chromium, safari_hdr:safariHDR,
- appletv_dv:appleProfile({television:true},{hardwareDecode:{hevc:true,dolbyVision:true,av1:false},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,screen:{width:3840,height:2160,maxFrameRate:60},audio:{maxOutputChannels:8,route:'hdmi',spatial:true}}),
+ appletv_dv:appleProfile({television:true},appleTVRuntimeFacts),
  shield_avr:androidProfile({television:true},{
   decoders:[
    {codec:'h264',maxWidth:3840,maxHeight:2160,maxFrameRate:60,maxLevel:52},
@@ -36,6 +46,6 @@ export const declaredProfiles={
   audio:{maxOutputChannels:8,route:'hdmi'},
  }),
  // The same Apple TV and Shield with the mpv engine beside the native one.
- appletv_mpv:withMpvEngine(appleProfile({television:true},{hardwareDecode:{hevc:true,dolbyVision:true,av1:false},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,screen:{width:3840,height:2160,maxFrameRate:60},audio:{maxOutputChannels:8,route:'hdmi',spatial:true}})),
+ appletv_mpv:withMpvEngine(appleProfile({television:true},appleTVRuntimeFacts)),
  android_mpv:withMpvEngine(androidProfile({},{decoders:[{codec:'h264',maxWidth:1920,maxHeight:1080,maxFrameRate:60},{codec:'hevc',maxWidth:3840,maxHeight:2160,maxFrameRate:60,tenBit:true,hdr:['hdr10']}],audioDecoders:[{codec:'aac',maxChannels:8},{codec:'mp3'},{codec:'opus'},{codec:'flac'}],displayHdr:[],audio:{maxOutputChannels:2,route:'speaker'}})),
 };

@@ -2151,3 +2151,4 @@ export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts
 
 export {createReadingHost, connectReadingHost} from './reading-host.ts';
 export type {ReadingHostSession, ReadingHostTransport, ReadingGuest} from './reading-host.ts';
+export {savedViewSummary, type SavedViewSummary, type SavedViewSummaryText} from './presentation/saved-view-summary.ts';
