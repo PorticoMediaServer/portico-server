@@ -91,7 +91,7 @@ func TestDifferentFilesystemsDoNotShareAsset(t *testing.T) {
 		source.RootIdentity = fmt.Sprintf("dev:%d:ino:2", i+10)
 		source.ResolvedPath = "/" + lib
 		c.Write(func(ctx context.Context, tx *sql.Tx) error {
-			_, e := s.observeInventoryTx(ctx, tx, "job-"+lib, source, "Movie.mkv", storage.Snapshot{Path: "/" + lib + "/Movie.mkv", Size: 100, ModifiedNS: 1, ObjectIdentity: fmt.Sprintf("dev:%d:ino:123", i+10)}, "", ScanPolicy{Tier: "file_list_only"})
+			_, e := s.observeInventoryTx(ctx, tx, "job-"+lib, source, "Movie.mkv", storage.Snapshot{Path: "/" + lib + "/Movie.mkv", Size: 100, ModifiedNS: 1, ObjectIdentity: fmt.Sprintf("dev:%d:ino:123", i+10)}, "", ScanPolicy{Tier: "file_list_only"}, nil)
 			return e
 		})
 	}
