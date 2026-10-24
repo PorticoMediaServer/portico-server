@@ -255,7 +255,14 @@ func TestDedicatedDAVOwnerCanSaveNineSources(t *testing.T) {
 		w.WriteHeader(http.StatusMultiStatus)
 		fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/media/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`)
 	}))
+	initial, err := f.s.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ids := map[string]bool{}
+	for _, row := range initial {
+		ids[row.ID] = true
+	}
 	for index := 0; index < 9; index++ {
 		input := DAVInput{OperationID: nativeSaveOperation(400 + index), Name: fmt.Sprintf("DAV %d", index), Root: server.URL + "/media/", Username: "fixture", Password: "fixture-only", InsecureLocal: true}
 		receipt, err := f.s.ConfigureDAV(ctx, "actual-owner-fixture", "", input, authorize)
@@ -268,7 +275,7 @@ func TestDedicatedDAVOwnerCanSaveNineSources(t *testing.T) {
 		ids[receipt.Source.ID] = true
 	}
 	rows, err := f.s.List(ctx)
-	if err != nil || len(rows) != 9 || listings.Load() < 9 {
+	if err != nil || len(rows) != len(initial)+9 || listings.Load() < 9 {
 		t.Fatal("sources were capped or saved without actual connection checks", len(rows), listings.Load(), err)
 	}
 	for _, row := range rows {
