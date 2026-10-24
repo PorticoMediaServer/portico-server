@@ -7,6 +7,7 @@ import {HostedError, ServicesQuiet} from '../kit/accounts/ServicesAuth';
 import {servicesI18n} from './i18n';
 import type {WorkspaceApi, WorkspaceServers} from './workspace-api';
 import {servicesServerDirectoryCopy} from './server-directory';
+import styles from './server-directory.module.css';
 
 export function ServersPanel({api}: {api: WorkspaceApi}) {
   const i18n = useMemo(servicesI18n, []), {t} = i18n;
@@ -32,7 +33,7 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
     {servers && <ServicesGroup>{servers.items.length ? servers.items.map(server => {
       const copy = servicesServerDirectoryCopy(server, i18n);
       return <ServicesWorkspaceRow key={server.id} icon="i-server" title={server.name}
-      help={copy.presence}
+      help={copy.presence && <span className={copy.online ? styles.online : undefined}>{copy.presence}</span>}
       badge={copy.badge ? <ServicesBadge tone={copy.badge.tone}>{copy.badge.label}</ServicesBadge> : undefined}>
       {server.ownedByMe ? <ServicesQuiet>{t('web.hostedAccount.leaveOwner')}</ServicesQuiet> : <Button size="small" disabled={busy} onClick={() => setLeaving(server)}>{t('web.hostedAccount.leaveServer')}</Button>}
     </ServicesWorkspaceRow>;}) : <ServicesEmpty title={t('services.workspace.emptyServers')} description={t('services.workspace.emptyServersBody')}

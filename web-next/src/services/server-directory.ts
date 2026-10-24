@@ -9,5 +9,5 @@ export function servicesServerDirectoryCopy(server: WorkspaceServers['items'][nu
     : server.role === 'admin' ? {label: t('web.access.roleAdmin'), tone: 'default' as const} : undefined;
   const presence = server.status === 'active' ? t('web.hostedAccount.serverOnline')
     : server.presence.lastSeenAt ? t('web.hostedAccount.serverLastSeen', {when: i18n.date(server.presence.lastSeenAt)}) : undefined;
-  return {badge, presence};
+  return {badge, presence, online: server.status === 'active'};
 }
