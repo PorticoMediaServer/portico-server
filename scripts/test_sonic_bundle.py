@@ -143,6 +143,51 @@ class SonicBundleTests(unittest.TestCase):
                     bundle.fetch(root / 'new', 'linux-x64')
             self.assertFalse((root / 'new').exists())
 
+    def test_installed_union_preserves_original_ffmpeg_guard_and_rejects_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, output = self.package(root)
+            ffmpeg = root / 'ffmpeg'
+            (ffmpeg / 'bin').mkdir(parents=True)
+            (ffmpeg / 'bin/ffmpeg').write_bytes(b'original FFmpeg fixture')
+            original = {'files': {'bin/ffmpeg': bundle.digest(ffmpeg / 'bin/ffmpeg')}}
+            (ffmpeg / 'toolchain-manifest.json').write_text(json.dumps(original))
+            calls = []
+            def original_verifier(command, **kwargs):
+                self.assertEqual(command[:2], ['python3', str(bundle.ROOT / 'scripts/verify-ffmpeg-manifest.py')])
+                verified = Path(command[2])
+                paths = {p.relative_to(verified).as_posix() for p in verified.rglob('*') if p.is_file()}
+                self.assertEqual(paths, {'bin/ffmpeg', 'toolchain-manifest.json'})
+                self.assertEqual(json.loads((verified / 'toolchain-manifest.json').read_text()), original)
+                if bundle.digest(verified / 'bin/ffmpeg') != original['files']['bin/ffmpeg']:
+                    raise ValueError('original FFmpeg verifier refused changed bytes')
+                calls.append(verified)
+            with patch.object(bundle.subprocess, 'run', side_effect=original_verifier):
+                bundle.install(output, ffmpeg, 'linux-x64')
+                self.assertEqual(len(calls), 2)
+                bundle.verify_installed(ffmpeg, 'linux-x64')
+                (ffmpeg / 'bin/extra').write_bytes(b'undeclared')
+                with self.assertRaises(ValueError):
+                    bundle.verify_installed(ffmpeg, 'linux-x64')
+                (ffmpeg / 'bin/extra').unlink()
+                (ffmpeg / 'bin/ffmpeg').write_bytes(b'changed')
+                with self.assertRaises(ValueError):
+                    bundle.verify_installed(ffmpeg, 'linux-x64')
+
+    def test_install_collision_is_refused_before_any_sonic_file_is_copied(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, output = self.package(root)
+            ffmpeg = root / 'ffmpeg'
+            (ffmpeg / 'bin').mkdir(parents=True)
+            original = ffmpeg / 'bin/portico-sonic'
+            original.write_bytes(b'keep existing')
+            with patch.object(bundle.subprocess, 'run'):
+                with self.assertRaises(ValueError):
+                    bundle.install(output, ffmpeg, 'linux-x64')
+            self.assertEqual(original.read_bytes(), b'keep existing')
+            self.assertEqual([p.name for p in (ffmpeg / 'bin').iterdir()], ['portico-sonic'])
+
 
 if __name__ == '__main__':
     unittest.main()
