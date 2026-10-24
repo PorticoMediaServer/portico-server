@@ -102,6 +102,11 @@ func TestLocalArtworkCandidatesKeepMultiplicityFencesAndOwnerPick(t *testing.T) 
 	if err = write(source, "r2", "movie", candidates[:1]); err != nil {
 		t.Fatal(err)
 	}
+	c.Exec(`DELETE FROM catalog_asset_links WHERE entity_id=?`, item.ID)
+	if got := read("", 128); len(got) != 0 {
+		t.Fatal("candidate outlived its actual asset-to-title link", got)
+	}
+	c.Exec(`INSERT INTO catalog_asset_links(entity_id,asset_id,part_index,edition) SELECT ?,id,0,'' FROM catalog_assets WHERE token=?`, item.ID, item.Token)
 	c.Exec(`UPDATE library_sources SET health='offline' WHERE id=?`, source.ID)
 	if got := read("", 128); len(got) != 0 {
 		t.Fatal("offline source remained a choice", got)
@@ -143,5 +148,29 @@ func TestLocalArtworkCandidateReaderNeedsCallerTransactionAndBound(t *testing.T)
 		if _, err := ReadLocalArtworkCandidatesTx(context.Background(), tx, "item", 1, "poster", "", limit); err == nil {
 			t.Fatal("unbounded request accepted", limit)
 		}
+	}
+}
+
+func TestUnmatchedEpisodeArtworkCandidatesDoNotPoisonMediaImport(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("tv", "TV", "tv", "/tv")
+	_, token := identityFile(t, c, "tv", "/tv/Unknown.Title.2020.1080p.mkv", 1080)
+	s := New(c.DB)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return s.commitEpisodes(tx, "tv", token, "Unknown.Title.2020.1080p.mkv", EpisodeNaming{Issue: "unrecognized_episode_name"}, false)
+	})
+	source, err := s.LibrarySource(context.Background(), "tv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES('unmatched-art',?,?,?,'Unknown.Title.2020.1080p.mkv','r1','{}',1,1)`, source.ID, token, source.Incarnation)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return s.commitInventoryArtworkCandidatesTx(ctx, tx, source, "unmatched-art", "r1", token, "tv", []assets.LocalArtworkCandidate{{Slot: "show/poster", Key: strings.Repeat("a", 64)}, {Slot: "season/1/poster", Key: strings.Repeat("b", 64)}})
+	})
+	if n := rows(t, c, `SELECT count(*) FROM inventory_artwork_candidates WHERE object_id='unmatched-art'`); n != 0 {
+		t.Fatal("unmatched file invented a parent image slot", n)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=?`, token); n != 1 {
+		t.Fatal("unmatched media was dropped by artwork publication", n)
 	}
 }
