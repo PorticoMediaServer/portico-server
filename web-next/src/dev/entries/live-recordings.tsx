@@ -33,7 +33,7 @@ const recording = (id: string, state: Recording['state'], title: string, from: n
   conflicts: [], channel: channelFact, watched: null, ...extra});
 const pebble = channel('Pebble Kids', '401', 'PK'), atlas = channel('Atlas Documentaries', '501', 'AD'), summit = channel('Summit Sports Extra', '202', 'SSE');
 const conflict = recording('r-conflict', 'conflicted', 'Summit Football: Harbor City vs. Ridgeview', at(20, 0), at(21, 0), summit,
-  {conflicts: [{start: iso(at(20, 0)), end: iso(at(20, 15)), demand: 3, capacity: 2}]}, {subtitle: t('next.live.example.football'), flags: {live: true}, episode: {season: 5, number: 9}});
+  {conflicts: [{start: iso(at(20, 0)), end: iso(at(20, 15)), demand: 3, capacity: 2}], ruleId: 'rule-2'}, {subtitle: t('next.live.example.football'), flags: {live: true}, episode: {season: 5, number: 9}});
 const active = recording('r-active', 'recording', 'Story Time Island', at(16, 0), at(16, 30), pebble, {watched: false},
   {episode: {season: 3, number: 1}, subtitle: 'Homecoming', flags: {new: true}, description: 'Story Time Island on Pebble Kids.'});
 const later = recording('r-later', 'scheduled', 'The Clockmakers', at(16, 15), at(17, 0), atlas, {ruleId: 'rule-1'}, {episode: {season: 5, number: 9}, subtitle: t('next.live.example.crossed')});

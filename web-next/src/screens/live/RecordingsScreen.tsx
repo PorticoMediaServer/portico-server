@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {activeRecording, bytesLabel, dvrMessage, mutableRecording, playableRecording, recordingReason, recordingStateLabel,
+import {bytesLabel, dvrMessage, playableRecording, recordingReason, recordingStateLabel,
   type Recording, type RecordingDetail, type RecordingState} from '@core/dvr.ts';
 import {channelTint} from '@portico/client-core/kit-model';
 import {Button, Chip, Select} from '../../kit/controls';
@@ -20,7 +20,6 @@ import styles from './live.module.css';
 
 const t = defaultI18n.t;
 const randomHex = async () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
-const recordable = (recording: Recording) => mutableRecording(recording);
 const statePill = (state: RecordingState) => t(({scheduled: 'dvr.state.scheduled', conflicted: 'dvr.state.conflicted', 'waiting-source': 'dvr.state.waitingSource',
   'waiting-guide': 'dvr.state.waitingGuide', preparing: 'dvr.state.preparing', recording: 'dvr.state.recording', finalizing: 'dvr.state.finalizing',
   completed: 'dvr.state.completed', 'incomplete-playable': 'dvr.state.incompletePlayable', failed: 'dvr.state.failed', cancelled: 'dvr.state.cancelled',
@@ -43,24 +42,27 @@ function channelMark(recording: Recording) {
   const channel = recording.channel;
   return channel ? {sourceId: '', id: channel.id, text: channel.mark?.text ?? channel.name.slice(0, 2).toLocaleUpperCase(), seed: channel.mark?.seed ?? channel.id} : undefined;
 }
-function RecordingArt({recording, large, badges}: {recording: Recording; large?: boolean; badges?: ReactNode}) {
+function RecordingArt({recording, large, badges, now}: {recording: Recording; large?: boolean; badges?: ReactNode; now?: number}) {
   const mark = channelMark(recording);
   const title = recording.programme.title.replace(/^The\s+/i, '');
+  const start = Date.parse(recording.start), end = Date.parse(recording.end);
+  const progress = !large && recording.state === 'recording' && now !== undefined && end > start ? Math.min(1, Math.max(0, (now - start) / (end - start))) : undefined;
   return <span className={large ? styles.recArtLarge : styles.recArt} style={{'--tint': channelTint(mark?.seed ?? recording.id)} as CSSProperties} aria-hidden="true">
     <span className={styles.recArtGlyph}>{(Array.from(title)[0] ?? '?').toLocaleUpperCase()}</span>
     {mark && <span className={styles.recArtChannel}><ChannelMark mark={mark} size={large ? 22 : 18}/>{large && <b>{recording.channel?.name}</b>}</span>}
     {badges && <span className={styles.recArtBadges}>{badges}</span>}
+    {progress !== undefined && <span className={styles.recArtProgress}><i style={{width: `${(progress * 100).toFixed(2)}%`}}/></span>}
   </span>;
 }
 function StatePill({recording}: {recording: Recording}) {
   return <span className={styles.recState} data-state={recording.state}>{statePill(recording.state)}</span>;
 }
 function RecordingCopy({recording}: {recording: Recording}) {
-  const episode = episodeOf(recording);
+  const episode = episodeOf(recording), mark = channelMark(recording);
   return <div className={styles.recCopy}>
     <b>{recording.programme.title}</b>
     {(episode || recording.programme.subtitle) && <small className={styles.recEpisode}>{episode}{episode && recording.programme.subtitle && <RuleGap/>}{recording.programme.subtitle}</small>}
-    <small className={styles.recMeta}>{recording.channel && <span>{recording.channel.number}<RuleGap/>{recording.channel.name}</span>}{recording.ruleId && <span><Icon name="i-series" size={15}/>{t('next.live.seriesRule')}</span>}</small>
+    <small className={styles.recMeta}>{recording.programme.flags?.live && <span className={styles.recFlag} data-kind="live">{t('guide.live')}</span>}{recording.programme.flags?.new && <span className={styles.recFlag} data-kind="new">{t('guide.new')}</span>}{recording.channel && <span>{mark && <ChannelMark mark={mark} size={18}/>}{recording.channel.name}</span>}{recording.ruleId ? <span><Icon name="i-series" size={15}/>{t('next.live.seriesRule')}</span> : <span>{t('next.live.oneTime')}</span>}</small>
   </div>;
 }
 function RecordingRow({recording, onCancel, onDetails}: {recording: Recording; now?: number; onCancel?: () => void; onDetails?: () => void}) {
@@ -70,7 +72,7 @@ function RecordingRow({recording, onCancel, onDetails}: {recording: Recording; n
     ...(onDetails ? [{id: 'details', label: t('next.live.details'), icon: 'i-info' as const, onSelect: onDetails}] : [])];
   return <div className={styles.recRow} data-state={recording.state}>
     <div className={styles.recWhen}><b>{recording.state === 'recording' ? t('guide.now') : timeOf(recording.start)}</b><small>{rangeOf(recording)}</small></div>
-    <RecordingArt recording={recording}/>
+    <RecordingArt recording={recording} now={now}/>
     <RecordingCopy recording={recording}/>
     <div className={styles.recRight}><StatePill recording={recording}/>
       {items.length > 0 && <Menu open={menuOpen} onOpenChange={open => setMenuOpen(open)} title={t('web.dvr.actionsFor', {title: recording.programme.title})}
@@ -79,7 +81,7 @@ function RecordingRow({recording, onCancel, onDetails}: {recording: Recording; n
   </div>;
 }
 
-function ConflictBox({context, recording, detail: supplied, onResolve}: {context: ScreenContext; recording: Recording; detail?: RecordingDetail; onResolve: (detail?: RecordingDetail) => void}) {
+function ConflictBox({context, recording, detail: supplied, onResolve, onCancel, onDetails}: {context: ScreenContext; recording: Recording; detail?: RecordingDetail; onResolve: (detail?: RecordingDetail) => void; onCancel?: () => void; onDetails?: () => void}) {
   const [detail, setDetail] = useState<RecordingDetail | undefined>(supplied);
   useEffect(() => {
     if (supplied || !context.isCurrent()) return;
@@ -88,16 +90,23 @@ function ConflictBox({context, recording, detail: supplied, onResolve}: {context
     return () => abort.abort();
   }, [context, recording.id, supplied]);
   const tuners = detail?.capacity.known ? detail.capacity.effective : recording.conflicts[0]?.capacity;
+  const window = recording.conflicts[0];
+  const [menuOpen, setMenuOpen] = useState(false);
+  const items: readonly MenuEntry[] = [
+    ...(onCancel ? [{id: 'cancel', label: t('recordings.cancelAction'), icon: 'i-close' as const, destructive: true, onSelect: onCancel}] : []),
+    ...(onDetails ? [{id: 'details', label: t('next.live.details'), icon: 'i-info' as const, onSelect: onDetails}] : [])];
   return <div className={styles.conflictBox}>
     <div className={styles.conflictHead}><Icon name="i-warn" size={22}/><div>
       <h3>{t('recordings.conflictTitle', {title: recording.programme.title})}</h3>
-      {tuners !== undefined && <p>{t('recordings.conflictBodyTuners', {count: tuners})}</p>}
+      {tuners !== undefined && <p>{t('next.live.conflictBody', {count: tuners, start: window ? timeOf(window.start) : timeOf(recording.start), end: window ? timeOf(window.end) : timeOf(recording.end)})}</p>}
     </div></div>
     <div className={styles.conflictRow}>
       <div className={styles.recWhen}><b>{timeOf(recording.start)}</b><small>{rangeOf(recording)}</small></div>
       <RecordingArt recording={recording}/>
       <RecordingCopy recording={recording}/>
-      <div className={styles.recRight}><StatePill recording={recording}/><Button className={styles.conflictAction} variant="primary" onClick={() => onResolve(detail)}>{t('web.dvr.seeConflict')}</Button></div>
+      <div className={styles.recRight}><StatePill recording={recording}/><Button className={styles.conflictAction} variant="primary" onClick={() => onResolve(detail)}>{t('web.dvr.seeConflict')}</Button>
+        {items.length > 0 && <Menu open={menuOpen} onOpenChange={open => setMenuOpen(open)} title={t('web.dvr.actionsFor', {title: recording.programme.title})}
+          trigger={<Button className={styles.recMore} variant="ghost" size="small" iconOnly icon="i-more" aria-label={t('web.dvr.actionsFor', {title: recording.programme.title})}/>} items={items}/>}</div>
     </div>
     {detail && detail.overlaps.length > 0 && <div className={styles.conflictOthers}>
       <span>{t('next.live.usingTuners')}</span>
@@ -140,17 +149,17 @@ function ConflictDialog({context, recording, controller, onClose}: {context: Scr
 export function UpcomingView({context, controller, snapshot, now, onResolve, conflictDetails}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number; onResolve: (recording: Recording, detail?: RecordingDetail) => void; conflictDetails?: Readonly<Record<string, RecordingDetail>>}) {
   const recordings = snapshot.page?.recordings ?? [];
   const conflicted = recordings.filter(recording => recording.state === 'conflicted');
-  const active = recordings.filter(recording => activeRecording(recording) && recording.state !== 'conflicted');
-  const later = recordings.filter(recording => !activeRecording(recording) && recording.state !== 'conflicted');
+  const current = recordings.filter(recording => ['recording', 'preparing', 'finalizing'].includes(recording.state) && recording.state !== 'conflicted');
+  const later = recordings.filter(recording => ['scheduled', 'waiting-source', 'waiting-guide'].includes(recording.state));
   const [shown, setShown] = useState<Recording>();
   return <div className={styles.recBody}>
     {conflicted.length > 0 && <section className={styles.recSection}><h2>{t('recordings.conflicts')}<span>{snapshot.summary?.conflicts ?? conflicted.length}</span></h2>
-      {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} detail={conflictDetails?.[recording.id]} onResolve={detail => onResolve(recording, detail)}/>)}</section>}
-    {active.length > 0 && <section className={styles.recSection}><h2>{t('next.live.recordingNow')}</h2>
-      {active.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}}/>)}</section>}
+      {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} detail={conflictDetails?.[recording.id]} onResolve={detail => onResolve(recording, detail)} onCancel={() => {void controller.cancel(recording);}} onDetails={() => setShown(recording)}/>)}</section>}
+    {current.length > 0 && <section className={styles.recSection}><h2>{t('next.live.recordingNow')}</h2>
+      {current.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}}/>)}</section>}
     {later.length > 0 && <section className={styles.recSection}><h2>{t('next.live.laterToday')}<span>{dateOf(later[0]!.start)}</span></h2>
       {later.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}} onDetails={() => setShown(recording)}/>)}</section>}
-    {!conflicted.length && !active.length && !later.length && <StateView title={t('recordings.noneScheduled')} body={t('recordings.noneScheduledBody')}/>}
+    {!conflicted.length && !current.length && !later.length && <StateView title={t('recordings.noneScheduled')} body={t('recordings.noneScheduledBody')}/>}
     <Dialog open={!!shown} onOpenChange={open => {if (!open) setShown(undefined);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
       footer={<Button variant="glass" onClick={() => setShown(undefined)}>{t('next.overlays.close')}</Button>}>{shown && <p className={styles.dialogText}>{recordingStateLabel(shown.state)}{shown.reason && <> · {recordingReason(shown.reason)}</>}</p>}</Dialog>
   </div>;

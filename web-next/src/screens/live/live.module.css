@@ -323,3 +323,9 @@
   .conflictRow { grid-template-columns: 84px minmax(0, 1fr); }
   .groupActions { grid-column: 1 / -1; justify-content: flex-start; }
 }
+.recFlag { flex: none; padding: 2px 7px; border-radius: 5px; font-size: 11px; font-weight: 800; line-height: 1.35; }
+.recFlag[data-kind='live'] { background: rgba(241, 121, 121, .18); color: #f9b1b1; }
+.recFlag[data-kind='new'] { background: var(--color-accent); color: var(--color-action-ink); }
+.recMeta > span { display: inline-flex; align-items: center; gap: 6px; }
+.recArtProgress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(7, 16, 24, .5); }
+.recArtProgress > i { display: block; height: 100%; background: var(--color-record); }

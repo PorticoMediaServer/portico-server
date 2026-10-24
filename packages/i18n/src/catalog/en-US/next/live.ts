@@ -41,6 +41,8 @@ export const liveMessages = {
   'next.live.unwatched': 'Unwatched',
   'next.live.more': 'Load more',
   'next.live.play': 'Play',
+  'next.live.oneTime': 'One time',
+  'next.live.conflictBody': 'You have {count, plural, one {# tuner} other {# tuners}}, and these recordings need {count, plural, one {it} other {them}} at the same time, from {start} to {end}.',
   'next.live.recordedHead': '{shows, plural, one {# show or film} other {# shows and films}} · {recordings, plural, one {# recording} other {# recordings}} · {unwatched, plural, one {# unwatched} other {# unwatched}}',
   'next.live.example.source': 'Synthetic Live TV',
   'next.live.example.saturday': 'Saturday',
