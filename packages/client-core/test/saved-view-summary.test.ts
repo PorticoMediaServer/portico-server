@@ -105,3 +105,19 @@ test('relative date summaries retain their meaning on later days and use the §3
     assert.equal(savedViewSummary(definition(node(field, 'within-last-days', 30)), caps, defaultI18n)?.conditions, `${label} in the last 30 days`);
   }
 });
+
+
+test('a Hermes build without Intl.ListFormat still renders the summary and suggested name', () => {
+  const intl = Intl as unknown as {ListFormat?: unknown}, saved = intl.ListFormat;
+  try {
+    intl.ListFormat = undefined;
+    const value = definition(node('genre', 'in', ['Comedy', 'Drama']));
+    const result = savedViewSummary(value, caps, defaultI18n);
+    assert.deepEqual(result, {line: 'Genre Comedy, Drama. Title A to Z.', conditions: 'Genre Comedy, Drama', suggestedName: 'Genre Comedy, Drama'});
+    const narrowed = {t: defaultI18n.t, has: defaultI18n.has, locale: defaultI18n.locale};
+    assert.equal(savedViewSummary(value, caps, narrowed)?.conditions, 'Genre Comedy, Drama', 'a caller without the optional list hook keeps the same fallback');
+    assert.equal(savedViewSummary(definition(null), caps, defaultI18n)?.line, 'Title A to Z.', 'the no-ListFormat path never swallows the whole summary');
+  } finally {
+    intl.ListFormat = saved;
+  }
+});

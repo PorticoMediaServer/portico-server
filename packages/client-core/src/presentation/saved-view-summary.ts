@@ -3,7 +3,9 @@ import type {SavedDefinition} from '../personal-saved.ts';
 import type {I18n} from '../../../i18n/src/index.ts';
 import {activeRangePreset, appliedFilterLabel, browseNameId, browseValueLabel, orderToolbarPredicates, rangePresets, sortDirectionKind} from './browse-toolbar.ts';
 
-export type SavedViewSummaryText = Pick<I18n, 't' | 'has' | 'locale'>;
+/** `list` is optional so an older narrowed caller stays source-compatible; the
+ * catalogue's guarded formatter is used whenever it is present. */
+export type SavedViewSummaryText = Pick<I18n, 't' | 'has' | 'locale'> & Partial<Pick<I18n, 'list'>>;
 export type SavedViewSummary = Readonly<{line: string; conditions: string; suggestedName: string}>;
 type Condition = Extract<BrowseNode, {field: string}>;
 const same = (a: Condition, b: Condition) => a.field === b.field && a.operator === b.operator && JSON.stringify(a.value) === JSON.stringify(b.value);
@@ -35,7 +37,9 @@ export function savedViewSummary(definition: SavedDefinition, capabilities: Brow
       const key = browseNameId(id === 'decade' ? 'year' : id, capability?.labelKey, text.has);
       return key && text.has(key) ? text.t(key) : undefined;
     };
-    const list = new Intl.ListFormat(text.locale, {type: 'disjunction', style: 'long'});
+    // Hermes builds without Intl.ListFormat must not lose the whole saved-view
+    // summary; the catalogue's own guarded list formatter supplies the fallback.
+    const list = (items: readonly string[]) => text.list ? text.list(items, 'or') : items.join(', ');
     const words: string[] = [], consumed = new Set<Condition>();
     const ordered = orderToolbarPredicates(conditions);
     for (const node of ordered) {
@@ -65,10 +69,10 @@ export function savedViewSummary(definition: SavedDefinition, capabilities: Brow
         if (count) {words.push(text.t('savedView.summary.addedLastDays', {count: Number(count)}));own.forEach(value => consumed.add(value));continue;}
       }
       const decade = decadeValues(node);
-      if (decade) {words.push(text.t('savedView.summary.decade', {values: list.format(decade.map(value => text.t('savedView.summary.decadeValue', {decade: String(value)})))}));continue;}
+      if (decade) {words.push(text.t('savedView.summary.decade', {values: list(decade.map(value => text.t('savedView.summary.decadeValue', {decade: String(value)})))}));continue;}
       if (node.operator === 'in' || node.operator === 'contains-any') {
         if (!Array.isArray(node.value) || !node.value.length) return;
-        words.push(text.t('savedView.summary.fieldValues', {field: label, values: list.format(node.value.map(value => valueWords(field, value, text)))}));continue;
+        words.push(text.t('savedView.summary.fieldValues', {field: label, values: list(node.value.map(value => valueWords(field, value, text)))}));continue;
       }
       if (field.type === 'number' && node.operator === 'at-least' && typeof node.value === 'number') {
         words.push(field.id === 'communityRating' ? text.t('savedView.summary.rating', {value: node.value}) : text.t('savedView.summary.atLeast', {field: label, value: field.id === 'year' ? String(node.value) : node.value}));continue;
