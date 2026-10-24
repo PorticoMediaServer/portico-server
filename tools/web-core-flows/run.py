@@ -14,6 +14,7 @@ Usage:
 The scratch tree holds a throwaway owner password and must not be published.
 """
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -130,6 +131,16 @@ def write_pdf(target):
     target.write_bytes(bytes(out))
 
 
+def write_cbz(target):
+    """A lawful one-page CBZ: a real 1x1 PNG plus ComicInfo, nothing else."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAarVyFEAAAAASUVORK5CYII=')
+    info = b'<ComicInfo><Title>Example Comic</Title><Writer>Example Author</Writer></ComicInfo>'
+    with zipfile.ZipFile(target, 'w') as comic:
+        comic.writestr('page-01.png', png, compress_type=zipfile.ZIP_DEFLATED)
+        comic.writestr('ComicInfo.xml', info, compress_type=zipfile.ZIP_DEFLATED)
+
+
 def write_hostile_epub(target):
     """A book whose markup would run a script and reach the network if the
     reader's sanitisation or the book CSP were missing. Only the plain
@@ -225,6 +236,7 @@ def main():
     write_epub(media / LIBRARY_NAME / BOOK_AUTHOR / (BOOK_TITLE + '.epub'))
     write_pdf(media / LIBRARY_NAME / BOOK_AUTHOR / 'Reference Sheet.pdf')
     write_hostile_epub(media / LIBRARY_NAME / BOOK_AUTHOR / 'Hostile Notes.epub')
+    write_cbz(media / 'Comics' / BOOK_AUTHOR / 'Example Comic.cbz')
     (media / 'Extra').mkdir(parents=True, exist_ok=True)
     ffmpeg = shutil.which('ffmpeg') or '/opt/portico-ffmpeg/bin/ffmpeg'
     movie = media / 'Movies' / 'Example Movie (2019)' / 'Example Movie (2019).mp4'
@@ -289,6 +301,20 @@ def main():
                 raise AssertionError('movie scan ' + current['status'])
             return current if current['status'] in ('complete', 'complete_with_warnings') else False
         summary['movieScan'] = wait(movieScanned, 240)['status']
+        comics = api.post('/v1/libraries', {'name': 'Comics', 'kind': 'comic', 'path': str(media / 'Comics'),
+                                            'metadataAgent': 'local'}, (201,))
+        comicJob = api.post('/v1/libraries/' + comics['id'] + '/scans', expected=(202,))
+
+        def comicScanned():
+            current = api.get('/v1/admin/ingestion/jobs/' + comicJob['id'])
+            if current['status'] in ('failed', 'cancelled'):
+                raise AssertionError('comic scan ' + current['status'])
+            return current if current['status'] in ('complete', 'complete_with_warnings') else False
+        summary['comicScan'] = wait(comicScanned, 240)['status']
+        comicItems = api.get('/v1/reading/items?libraryId=' + urllib.parse.quote(comics['id']) + '&limit=20')
+        summary['comicTitles'] = [item.get('title') for item in comicItems.get('items', [])]
+        if not summary['comicTitles']:
+            raise AssertionError('scanned comic library did not publish the comic')
         browse = api.post('/v1/libraries/' + movies['id'] + '/browse', {'pivot': 'movies', 'limit': 10})
         movieTitles = [entry.get('title') for entry in browse.get('entries', [])]
         summary['movieTitles'] = movieTitles
@@ -302,7 +328,7 @@ def main():
                 raise AssertionError('scanned library did not publish ' + expected + ': ' + repr(titles))
         credentials = run / 'credentials.json'
         credentials.write_text(json.dumps({'username': 'owner', 'password': password, 'libraryName': LIBRARY_NAME,
-                                           'libraryId': library['id'], 'bookTitle': BOOK_TITLE, 'bookText': 'Chapter One', 'pdfTitle': 'Reference Sheet', 'hostileTitle': 'Hostile Notes', 'addPath': str(media / 'Extra'),
+                                           'libraryId': library['id'], 'bookTitle': BOOK_TITLE, 'bookText': 'Chapter One', 'pdfTitle': 'Reference Sheet', 'hostileTitle': 'Hostile Notes', 'addPath': str(media / 'Extra'), 'bookPath': str(media / LIBRARY_NAME), 'comicsLibraryId': comics['id'], 'comicTitle': 'Example Comic',
                                            'searchTerm': 'Example'}), encoding='utf-8')
         walk = subprocess.run(['node', str(ROOT / 'tools/web-core-flows/flows.mjs')], cwd=ROOT,
                               env={**os.environ, 'PORTICO_FLOW_BASE': base, 'PORTICO_FLOW_CREDS': str(credentials),

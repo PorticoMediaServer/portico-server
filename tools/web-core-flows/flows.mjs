@@ -90,13 +90,15 @@ async function walk(page, viewportName) {
     const field = page.locator('input[type=search]');
     await field.waitFor({timeout: 20000});
     await field.fill(creds.searchTerm);
-    await page.locator('[data-group] button, [data-group] a').first().waitFor({timeout: 12000}).catch(() => {});
-    await settle(500);
+    await page.locator('[data-group] button, [data-group] a, [data-search-hero] button, button:has-text("Play")').first().waitFor({timeout: 12000}).catch(() => {});
+    await settle(700);
     const body = await text();
     if (body.trim().length < 40) throw new Error('search rendered almost no text');
     const matches = await page.locator('[data-group] button, a[href^="/item/"]').count();
-    if (matches === 0) throw new Error('no result controls after typing "' + creds.searchTerm + '": ' + excerpt(body, 300));
-    return {text: excerpt(body, 400), controls: matches};
+    const groups = await page.locator('[data-group]').count();
+    const hero = /Top result/i.test(body);
+    if (matches === 0 && !hero) throw new Error('no result controls after typing "' + creds.searchTerm + '": ' + excerpt(body, 300));
+    return {text: excerpt(body, 400), controls: matches, groups, hero};
   });
   await step('search-open', async () => {
     const before = page.url();
@@ -104,11 +106,17 @@ async function walk(page, viewportName) {
     if (await details.count()) await details.click();
     else {
       const row = page.locator('[data-group] button, [data-group] a, a[href^="/item/"]').first();
-      if (!(await row.count())) throw new Error('no clickable result on ' + new URL(page.url()).pathname + ': ' + excerpt(await text(), 300)
-        + ' | buttons=' + await page.locator('button').count() + ' links=' + await page.locator('a[href]').count());
-      await row.click();
+      if (await row.count()) await row.click();
+      else {
+        // A narrow search can draw only the drawn top result; opening its own
+        // first action is still opening a result.
+        const play = page.getByRole('button', {name: /^Play/i}).first();
+        if (!(await play.count())) throw new Error('no clickable result on ' + new URL(page.url()).pathname + ': ' + excerpt(await text(), 300)
+          + ' | buttons=' + await page.locator('button').count() + ' links=' + await page.locator('a[href]').count());
+        await play.click();
+      }
     }
-    await settle(1500);
+    await settle(1800);
     if (page.url() === before) throw new Error('opening a result did not navigate');
     return {from: new URL(before).pathname, to: new URL(page.url()).pathname};
   });
@@ -150,6 +158,10 @@ async function walk(page, viewportName) {
   await step('settings-add-library', async () => {
     await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
     await settle(1500);
+    if (!(await page.getByRole('button', {name: /^Add library$/i}).count())) {
+      const entry = page.getByText('Libraries', {exact: true}).first();
+      if (await entry.count()) { await entry.click(); await settle(1500); }
+    }
     await page.getByRole('button', {name: /^Add library$/i}).first().click();
     const dialog = page.getByRole('dialog').first();
     await dialog.waitFor({timeout: 10000});
@@ -161,6 +173,24 @@ async function walk(page, viewportName) {
     const body = await text();
     if (!body.includes('Added Library')) throw new Error('the added library did not appear: ' + excerpt(body, 300));
     return {added: 'Added Library'};
+  });
+
+  await step('settings-library-folders', async () => {
+    await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
+    await settle(1800);
+    if (!(await page.getByRole('button', {name: /^Actions$/i}).count())) {
+      const entry = page.getByText('Libraries', {exact: true}).first();
+      if (await entry.count()) { await entry.click(); await settle(1500); }
+    }
+    await page.getByRole('button', {name: /^Actions$/i}).first().click();
+    await page.getByText('Edit', {exact: true}).first().click();
+    const foldersTab = page.getByRole('tab', {name: /^Folders$/i}).first();
+    await foldersTab.waitFor({timeout: 15000});
+    await foldersTab.click();
+    await settle(3500);
+    const body = await text();
+    if (!body.includes(creds.bookPath)) throw new Error('the folders tab did not show the library folder: ' + excerpt(body, 300));
+    return {folder: creds.bookPath};
   });
   await step('settings-account', async () => {
     await page.goto(base + '/settings?scope=account&section=playback', {waitUntil: 'domcontentloaded'});
@@ -193,6 +223,25 @@ async function walk(page, viewportName) {
     const body = await bookText();
     if (!body.includes(creds.bookText)) throw new Error('reader did not render the chapter text: ' + excerpt(body, 200));
     return {path, text: excerpt(body, 400)};
+  });
+
+
+  await step('read-cbz', async () => {
+    await page.goto(base + '/library/' + encodeURIComponent(creds.comicsLibraryId), {waitUntil: 'domcontentloaded'});
+    await settle(2500);
+    await page.getByText(creds.comicTitle, {exact: false}).first().click();
+    await settle(1500);
+    if (!new URL(page.url()).pathname.startsWith('/read/')) {
+      const read = page.getByRole('button', {name: /^read$/i}).first();
+      if (await read.count()) await read.click();
+    }
+    await settle(8000);
+    const path = new URL(page.url()).pathname;
+    if (!path.startsWith('/read/')) throw new Error('comic reading did not open; at ' + path);
+    const painted = await page.evaluate(() => !!document.querySelector('[data-reader-page] canvas, [data-reader-page], main canvas'));
+    const body = await bookText();
+    if (!painted) throw new Error('the comic reader painted no page: ' + excerpt(body, 300));
+    return {path};
   });
 
   await step('read-pdf', async () => {
