@@ -56,7 +56,7 @@ func TestPlaybackComparisonProfile7RewriteIsConvertedWithoutRelabelingRawRoute(t
 			plan := decide(t, observedProfile7Source(layer), appleTVProfile(), func(in *DeliveryInput) { in.Server = packetQualifiedUnitFacts(); in.FMP4Output = true })
 			before, _ := json.Marshal(plan.Trace)
 			info := PlaybackInfoForPlan(plan, nil)
-			if plan.Strategy != DeliveryCopyRemux || plan.VideoAction != "copy" || info.Route != "converted" || info.Routes.Picture != "converted" || info.Source.Video.DolbyVisionProfile != 7 || info.Source.Video.DolbyVisionEnhancementType != layer || info.Delivered.Video.DolbyVisionProfile != 8 || info.Delivered.Video.DolbyVisionCompatibility != 1 || info.Delivered.Video.DolbyVisionEnhancementType != "" {
+			if plan.Strategy != DeliveryCopyRemux || plan.VideoAction != "copy" || info.Route != "converted" || info.Routes.Picture != "converted" || info.Source.Video.DolbyVisionProfile != 7 || info.Source.Video.DolbyVisionEnhancementType != layer || info.Source.Video.DolbyVisionRPU == nil || !*info.Source.Video.DolbyVisionRPU || info.Delivered.Video.DolbyVisionProfile != 8 || info.Delivered.Video.DolbyVisionCompatibility != 1 || info.Delivered.Video.DolbyVisionEnhancementType != "" {
 				t.Fatalf("source/delivery/route mixed: %+v", info)
 			}
 			conversion := info.Delivered.Video.Conversion
