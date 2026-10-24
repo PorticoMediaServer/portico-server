@@ -238,9 +238,18 @@ async function walk(page, viewportName) {
     await settle(8000);
     const path = new URL(page.url()).pathname;
     if (!path.startsWith('/read/')) throw new Error('comic reading did not open; at ' + path);
-    const painted = await page.evaluate(() => !!document.querySelector('[data-reader-page] canvas, [data-reader-page], main canvas'));
+    // The painted node must belong to this comic's own reader, never to a canvas
+    // the previous book left behind in the retained host.
+    const painted = await page.evaluate(title => {
+      const roots = Array.from(document.querySelectorAll('[data-reader-root]'));
+      return roots.some(root => (root.textContent ?? '').includes(title) && !!root.querySelector('[data-reader-page] canvas, [data-reader-page]'));
+    }, creds.comicTitle);
     const body = await bookText();
-    if (!painted) throw new Error('the comic reader painted no page: ' + excerpt(body, 300));
+    const paintedRoots = await page.evaluate(() => Array.from(document.querySelectorAll('[data-reader-root]')).map(root => ({
+      title: (root.textContent ?? '').trim().slice(0, 80),
+      pages: root.querySelectorAll('[data-reader-page]').length,
+      canvases: root.querySelectorAll('canvas').length })));
+    if (!painted) throw new Error('the comic reader painted no page of its own: ' + excerpt(body, 300) + ' | roots=' + JSON.stringify(paintedRoots));
     return {path};
   });
 
