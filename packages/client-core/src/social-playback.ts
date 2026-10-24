@@ -23,7 +23,7 @@ export type SocialRate=Readonly<{numerator:SocialCounter;denominator:SocialCount
 export type GroupTimeline=Readonly<{itemId:string;currentEntryId:string;state:GroupTimelineState;anchorPositionUs:SocialCounter;anchorAt:string;rate:SocialRate;queuePosition:number;waitUntil:string|null}>;
 export type GroupSync=Readonly<{noCorrectionUnderMs:number;rateCorrectionMinimum:string;rateCorrectionMaximum:string;rateCorrectionMaxMs:number;seekAtOrOverMs:number}>;
 export type GroupSettings=Readonly<{shuffleEnabled:boolean;repeatMode:GroupRepeatMode}>;
-export type GroupPermissions=Readonly<{isHost:boolean;canControl:boolean;canManageQueue:boolean}>;
+export type GroupPermissions=Readonly<{isHost:boolean;canControl:boolean;canManageQueue:boolean;/** Optional on the wire; absent means the server does not allow a self-claim. */canClaimHost?:boolean}>;
 /** The host's device and the v1 session it plays (B8a): `bound` while that device plays
  * `playbackId`, `fresh` when it plays nothing or no host device is bound yet (`deviceId` ''),
  * `retired` once the device is signed out. */
@@ -156,6 +156,7 @@ export function parseGroup(raw:unknown):Group{
  if(!obj(permissions)||typeof permissions.isHost!=='boolean'||typeof permissions.canControl!=='boolean'||typeof permissions.canManageQueue!=='boolean')fail('group permissions');
  // A host always has control; a server claiming otherwise is inconsistent.
  if(permissions.isHost&&!permissions.canControl)fail('group permissions');
+ if(permissions.canClaimHost!==undefined&&typeof permissions.canClaimHost!=='boolean')fail('group permissions');
  const authority=raw.authority;
  if(!obj(authority)||!text(authority.deviceId,128)||!nullableId(authority.playbackId)||!oneOf(authority.state,['fresh','bound','retired'] as const))fail('group authority');
  const host=raw.host;
@@ -173,7 +174,7 @@ export function parseGroup(raw:unknown):Group{
   revision:raw.revision as string,playbackRevision:raw.playbackRevision as string,settingsRevision:raw.settingsRevision as string,governanceRevision:raw.governanceRevision as string,queueRevision:raw.queueRevision as string,
   reconnectGeneration:raw.reconnectGeneration as string,lastCommand:raw.lastCommand,lastCommandId:raw.lastCommandId,
   endedReason:raw.endedReason,eventOrdinal:raw.eventOrdinal as string,createdAt:raw.createdAt,updatedAt:raw.updatedAt,
-  permissions:Object.freeze({isHost:permissions.isHost,canControl:permissions.canControl,canManageQueue:permissions.canManageQueue}),
+  permissions:Object.freeze({isHost:permissions.isHost,canControl:permissions.canControl,canManageQueue:permissions.canManageQueue,canClaimHost:permissions.canClaimHost===true}),
   authority:Object.freeze({deviceId:authority.deviceId,playbackId:authority.playbackId,state:authority.state}),
   host:Object.freeze({presence:host.presence,lastSeenAt:host.lastSeenAt,pauseAt:host.pauseAt,endAt:host.endAt}),
   timeline,settings:parseSettings(raw.settings),sync:parseSync(raw.sync),
