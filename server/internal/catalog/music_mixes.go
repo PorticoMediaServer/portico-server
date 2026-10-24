@@ -30,10 +30,12 @@ type MusicMixes struct {
 }
 
 func musicMixID(viewer Viewer, model sonic.Identity, tracks []string, history string) string {
-	// IDs never authorize a read. Including the exact personal key and viewer
-	// fence also prevents another profile's identical listening from naming
-	// this selection. No global history or artist mean participates.
-	data, _ := json.Marshal([]any{viewer.Profile, viewer.Fence, model, tracks, history})
+	// IDs never authorize a read. Including the exact personal key prevents another profile's
+	// identical listening from naming this selection. Visibility is re-read
+	// for every resolution. Opaque read/queue transport fences intentionally
+	// differ and are not content identity; the permitted sample is already
+	// bound by its history digest. No global history or artist mean participates.
+	data, _ := json.Marshal([]any{viewer.Profile, model, tracks, history})
 	digest := sha256.Sum256(data)
 	return "mix-" + base64.RawURLEncoding.EncodeToString(digest[:])
 }

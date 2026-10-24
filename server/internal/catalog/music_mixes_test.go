@@ -87,9 +87,13 @@ func TestMusicMixesSeparateHistoryCoverageAndExpirePrivateSelections(t *testing.
 		t.Fatal("another profile resolved private mix", err)
 	}
 	other = viewer
-	other.Fence = "new-permission-fence"
+	other.Fence = "queue-transport-fence"
+	if got, err := s.MusicMixKeys(other, at, id); err != nil || !reflect.DeepEqual(got, keys) {
+		t.Fatal("equivalent permitted content changed with transport fence", got, err)
+	}
+	other.Libraries = []string{}
 	if _, err := s.MusicMixKeys(other, at, id); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatal("old permission fence resolved mix", err)
+		t.Fatal("current library revocation admitted mix", err)
 	}
 	c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms,completed) VALUES('new-play','local','account','profile','Fixture',?,'music',7,?,?,?,100000,1)`, items[0].ID, items[0].Public, at.Add(-time.Minute).UnixMilli(), at.Add(-time.Minute).UnixMilli())
 	if _, err := s.MusicMixKeys(viewer, at, id); !errors.Is(err, sql.ErrNoRows) {

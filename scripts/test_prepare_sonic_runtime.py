@@ -17,13 +17,13 @@ class RuntimeStagingTests(unittest.TestCase):
         prefix = "onnxruntime-" + target + "-1.20.1/"
         path = path or prefix + "include/header.h"
         archive = root / "sdk.tgz"
-        with tarfile.open(archive, "w:gz") as target:
+        with tarfile.open(archive, "w:gz") as stream:
             for name, data in [(path, b"synthetic SDK boundary fixture"),
                                (prefix + "LICENSE", b"Permission is hereby granted, free of charge"),
                                (prefix + "ThirdPartyNotices.txt", b"fixture notices")]:
                 member = tarfile.TarInfo(name)
                 member.size = len(data)
-                target.addfile(member, io.BytesIO(data))
+                stream.addfile(member, io.BytesIO(data))
         lock = {"version": "1.20.1", "license": "MIT", "packages": {
             target: {"sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}}}
         return archive, lock
