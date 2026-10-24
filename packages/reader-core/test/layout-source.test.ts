@@ -36,6 +36,19 @@ test('range source enforces exact length, bounds, per-read budget and cancellati
   const interrupted = new AbortController(); const reading = readRange(delayed, {start: 0, endExclusive: 1}, interrupted.signal);
   interrupted.abort(); release(); await assert.rejects(reading);
 });
+test('range source rejects identity changes while a read is pending',async()=>{
+  for(const field of ['id','revision','size'] as const){
+    let resolve!: (bytes: Uint8Array) => void, started!: () => void;
+    const entered=new Promise<void>(done=>started=done);
+    const source={id:'a',revision:'r1',size:4,async read(){started();return new Promise<Uint8Array>(done=>resolve=done);}};
+    const pending=readRange(source,{start:0,endExclusive:4},new AbortController().signal);
+    await entered;(source as unknown as Record<string,unknown>)[field]=field==='size'?5:'changed';
+    resolve(new Uint8Array([1,2,3,4]));
+    await assert.rejects(pending,{code:'invalid_source'});
+  }
+  const stable={id:'a',revision:'r1',size:4,async read(){return new Uint8Array([1,2,3,4]);}};
+  assert.deepEqual([...await readRange(stable,{start:0,endExclusive:4},new AbortController().signal)],[1,2,3,4]);
+});
 test('drawn compact sideways PDF/manga spreads differ from LTR comic width single', () => {
   const viewport = {width:844,height:390};
   assert.deepEqual(planFixedLayout({...base,viewport,page:2,direction:'rtl'}).pages,[1,2]);
