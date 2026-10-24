@@ -47,6 +47,9 @@ type Permissions struct {
 	IsHost         bool `json:"isHost"`
 	CanControl     bool `json:"canControl"`
 	CanManageQueue bool `json:"canManageQueue"`
+	// CanClaimHost is the caller's current permission to become host of a group
+	// whose host has passed the pause boundary. Absent means false.
+	CanClaimHost bool `json:"canClaimHost,omitempty"`
 }
 
 // Authority is the group's playback authority: its host's device, and the v1
@@ -251,11 +254,12 @@ func loadGroup(ctx context.Context, tx *sql.Tx, id string) (record, error) {
 type membership struct {
 	id, displayName, role, state, readiness string
 	positionUS, readinessMS, joinedMS       int64
+	seenMS, readinessRevision               int64
 }
 
 func loadMember(ctx context.Context, tx *sql.Tx, group string, v identity.Viewer) (membership, error) {
 	var m membership
-	e := tx.QueryRowContext(ctx, `SELECT id,display_name,role,state,readiness,readiness_position_us,readiness_at_ms,joined_at_ms FROM social_group_members WHERE group_id=? AND authority=? AND account_id=? AND profile_id=?`, group, v.Authority, v.AccountID, v.ProfileID).Scan(&m.id, &m.displayName, &m.role, &m.state, &m.readiness, &m.positionUS, &m.readinessMS, &m.joinedMS)
+	e := tx.QueryRowContext(ctx, `SELECT id,display_name,role,state,readiness,readiness_position_us,readiness_at_ms,joined_at_ms,seen_at_ms,readiness_revision FROM social_group_members WHERE group_id=? AND authority=? AND account_id=? AND profile_id=?`, group, v.Authority, v.AccountID, v.ProfileID).Scan(&m.id, &m.displayName, &m.role, &m.state, &m.readiness, &m.positionUS, &m.readinessMS, &m.joinedMS, &m.seenMS, &m.readinessRevision)
 	if errors.Is(e, sql.ErrNoRows) {
 		return m, errNotMember
 	}
@@ -472,6 +476,37 @@ func (s *Store) Leave(ctx context.Context, p identity.Principal, id string) (Gro
 // TransferHost moves host authority to another joined member. The group binds to
 // the new host's device: at once when the new host is the caller, else on the new
 // host's first heartbeat (until then the group has no authoritative session).
+// hostClaimFacts are the member facts TransferHost checks for a self-claim.
+// They are also what a read uses to publish canClaimHost, so the permission and
+// the mutation cannot drift.
+type hostClaimFacts struct {
+	role, state, readiness    string
+	seenMS, joinedMS, readyMS int64
+	readyRevision             int64
+}
+
+// hostClaimAllowed is the one self-claim admission rule: a joined, connected,
+// fresh-ready, current-playback member may claim an absent host only after the
+// group's pause boundary, in a reconnecting or anyone-controls group that has
+// not ended. A sitting host never claims (it already is).
+func hostClaimAllowed(g record, f hostClaimFacts, now int64) bool {
+	if f.role == "host" || f.state != "joined" || g.state == "ended" {
+		return false
+	}
+	if !isReconnecting(g.state) && g.hostAuthority != "anyone" {
+		return false
+	}
+	if now-g.hostSeenMS < g.pauseAfter*1000 {
+		return false
+	}
+	seen := f.seenMS
+	if f.joinedMS > seen {
+		seen = f.joinedMS
+	}
+	return f.readiness == "ready" && now-seen <= HostGraceSeconds*1000 &&
+		now-f.readyMS <= ReadinessStaleSeconds*1000 && (g.itemID == "" || f.readyRevision == g.playbackRevision)
+}
+
 func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, id string, req TransferRequest) (GroupResponse, error) {
 	if req.ProtocolVersion != Protocol || !ValidID(req.MemberID) {
 		return GroupResponse{}, errInvalid
@@ -486,10 +521,6 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		}
 		// Either the sitting host hands authority over, or the named member is
 		// the caller claiming a host that has passed the pause boundary.
-		selfClaim := req.MemberID == m.id && (isReconnecting(g.state) || g.hostAuthority == "anyone") && s.ms()-g.hostSeenMS >= g.pauseAfter*1000
-		if m.role != "host" && !selfClaim {
-			return errHost
-		}
 		var state, role string
 		var targetAuthority, targetAccount, targetProfile string
 		e := tx.QueryRowContext(ctx, `SELECT state,role,authority,account_id,profile_id FROM social_group_members WHERE id=? AND group_id=?`, req.MemberID, g.id).Scan(&state, &role, &targetAuthority, &targetAccount, &targetProfile)
@@ -509,6 +540,10 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		}
 		if state != "joined" {
 			return &Fault{Code: "participant_incompatible", Status: 409, Message: "That member is not in the group."}
+		}
+		selfClaim := req.MemberID == m.id && hostClaimAllowed(g, hostClaimFacts{role: role, state: state, readiness: ready, seenMS: seenAt, readyMS: readyAt, readyRevision: readyRevision}, s.ms())
+		if m.role != "host" && !selfClaim {
+			return errHost
 		}
 		if targetAuthority == p.Authority && targetAccount == p.AccountID && targetProfile == p.ProfileID && device != "" {
 			g.hostDevice = device
@@ -967,6 +1002,7 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 	}
 
 	canControl := m.role == "host" || g.hostAuthority == "anyone"
+	canClaimHost := hostClaimAllowed(g, hostClaimFacts{role: m.role, state: m.state, readiness: m.readiness, seenMS: m.seenMS, joinedMS: m.joinedMS, readyMS: m.readinessMS, readyRevision: m.readinessRevision}, s.ms())
 	// The bound device and the session it plays are the host's own equipment.
 	// Everybody else is told only what state the authority is in.
 	authority := Authority{State: "fresh"}
@@ -978,7 +1014,7 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		Revision: counter(g.revision), PlaybackRevision: counter(g.playbackRevision), SettingsRevision: counter(g.settingsRevision), GovernanceRevision: counter(g.governanceRevision), QueueRevision: counter(g.queueRevision),
 		ReconnectGeneration: counter(g.reconnect), LastCommand: g.lastCommand, LastCommandID: g.lastCommandID,
 		EndedReason: g.endedReason, EventOrdinal: counter(g.eventOrdinal), CreatedAt: stamp(g.createdMS), UpdatedAt: stamp(g.updatedMS),
-		Permissions: Permissions{IsHost: m.role == "host", CanControl: canControl, CanManageQueue: canControl},
+		Permissions: Permissions{IsHost: m.role == "host", CanControl: canControl, CanManageQueue: canControl, CanClaimHost: canClaimHost},
 		Authority:   authority,
 		Host:        host,
 		Timeline: Timeline{

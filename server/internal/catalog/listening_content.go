@@ -444,13 +444,23 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 	return out, nil
 }
 
+// albumRoleSQL is the artist-relative release role for an album entity and its
+// album artist, for a listed artist's public id bound at the placeholder. The
+// artist page's releases section and the albums endpoint share it so their
+// roles agree: an album whose primary artist differs is an appearance; a
+// Compilation secondary wins over the MusicBrainz primary type; EP and Single
+// become ep and single; an unlinked release stays album.
+func albumRoleSQL(album, artist string) string {
+	return `CASE WHEN ` + artist + `.public_id<>pid_blob(?) THEN 'appearance'
+ WHEN EXISTS(SELECT 1 FROM mb_album_links l JOIN mb_release_group_types t ON t.release_revision=l.release_revision WHERE l.album_id=` + album + `.id AND t.value='Compilation' COLLATE NOCASE) THEN 'compilation'
+ WHEN COALESCE((SELECT e.primary_type FROM mb_album_links l JOIN mb_release_evidence e ON e.revision_id=l.release_revision WHERE l.album_id=` + album + `.id),'Album')='EP' THEN 'ep'
+ WHEN COALESCE((SELECT e.primary_type FROM mb_album_links l JOIN mb_release_evidence e ON e.revision_id=l.release_revision WHERE l.album_id=` + album + `.id),'Album')='Single' THEN 'single'
+ ELSE 'album' END`
+}
+
 // markAlbumRoles tags each release in an artist's releases section with its
-// release-group type: "album", "ep", "single" or "compilation" for the
-// artist's own releases (by the linked MusicBrainz primary type, with a
-// Compilation secondary winning), "appearance" when the artist only appears
-// on someone else's release. Unlinked releases stay "album", as before. The
-// section keeps one query, one visibility rule and one cursor; the role is a
-// bounded probe over the page's own entries.
+// release-group type. The section keeps one query, one visibility rule and one
+// cursor; the role is a bounded probe over the page's own entries.
 func (s *Service) markAlbumRoles(section *ContentSection, artist string) error {
 	if len(section.Entries) == 0 {
 		return nil
@@ -461,11 +471,7 @@ func (s *Service) markAlbumRoles(section *ContentSection, artist string) error {
 	}
 	// Album facts come from the compact tables; the release-group type comes
 	// from MusicBrainz evidence linked to each integer album entity.
-	rows, e := s.read().Query(`SELECT pid(album.public_id),CASE WHEN ar.public_id<>pid_blob(?) THEN 'appearance'
-	 WHEN EXISTS(SELECT 1 FROM mb_album_links l JOIN mb_release_group_types t ON t.release_revision=l.release_revision WHERE l.album_id=album.id AND t.value='Compilation' COLLATE NOCASE) THEN 'compilation'
-	 WHEN COALESCE((SELECT e.primary_type FROM mb_album_links l JOIN mb_release_evidence e ON e.revision_id=l.release_revision WHERE l.album_id=album.id),'Album')='EP' THEN 'ep'
-	 WHEN COALESCE((SELECT e.primary_type FROM mb_album_links l JOIN mb_release_evidence e ON e.revision_id=l.release_revision WHERE l.album_id=album.id),'Album')='Single' THEN 'single'
-	 ELSE 'album' END FROM catalog_albums a JOIN catalog_entities album ON album.id=a.entity_id JOIN catalog_entities ar ON ar.id=a.artist_id WHERE album.public_id IN(SELECT pid_blob(value) FROM json_each(?))`, artist, idsJSON(ids))
+	rows, e := s.read().Query(`SELECT pid(album.public_id),`+albumRoleSQL("album", "ar")+` FROM catalog_albums a JOIN catalog_entities album ON album.id=a.entity_id JOIN catalog_entities ar ON ar.id=a.artist_id WHERE album.public_id IN(SELECT pid_blob(value) FROM json_each(?))`, artist, idsJSON(ids))
 	if e != nil {
 		return e
 	}
