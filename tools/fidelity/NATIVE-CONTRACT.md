@@ -122,3 +122,9 @@ semantic anchors/repeats. It changes no DOM/styles and emits no asset URLs/paths
 Only our machines may run it. Pass its JSON to the same offline comparator.
 This is needed when an authored phone is one complete column of a contact sheet;
 never select just its actions/content and call that a whole screen.
+
+Actual platform font scaling, when available, belongs in the optional top-level
+`diagnostics:{fontScale:<PixelRatio.getFontScale()>}`. It is finite and positive,
+explicitly unscored, absent when unavailable, and never copied into viewport or
+used to multiply/divide geometry, font sizes, runs or tolerances. Observed fonts
+and text runs retain their actual rendered facts independently of this metadata.

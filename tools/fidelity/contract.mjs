@@ -44,6 +44,7 @@ export function validateMeasurement(screen, {reference = false} = {}) {
   need(Array.isArray(screen?.strings), 'strings');
   need(Array.isArray(screen?.anchorIssues), 'anchorIssues');
   need(Array.isArray(screen?.repeatedLists), 'repeatedLists');
+  if (screen?.diagnostics !== undefined) need(screen.diagnostics && typeof screen.diagnostics === 'object' && !Array.isArray(screen.diagnostics) && Object.keys(screen.diagnostics).every(key => key === 'fontScale') && (screen.diagnostics.fontScale === undefined || finite(screen.diagnostics.fontScale) && screen.diagnostics.fontScale > 0), 'diagnostics.fontScale');
   if (screen?.unavailable !== undefined) need(Array.isArray(screen.unavailable) && screen.unavailable.every(fact => typeof fact?.property === 'string' && typeof fact.reason === 'string' && fact.reason.length > 0 && (fact.element === undefined || typeof fact.element === 'string')), 'unavailable');
   const ids = new Set();
   for (const [index, node] of (Array.isArray(screen?.elements) ? screen.elements : []).entries()) {
