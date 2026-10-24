@@ -257,7 +257,8 @@ export type Selector =
   | Readonly<{container: Readonly<{kind: string; id: string}>}>
   | Readonly<{query: QueueBrowseSelector}>
   | Readonly<{saved: Readonly<{id: string}>}>
-  | Readonly<{items: Readonly<{ids: readonly string[]}>}>;
+  | Readonly<{items: Readonly<{ids: readonly string[]}>}>
+  | Readonly<{journey: Readonly<{from: string; to: string; length: number}>}>;
 export type QueueSegment = Readonly<{id: string; kind: 'items' | 'selector' | 'radio' | 'other'; sourceRevision?: string; label: string; count: number; state: 'building' | 'ready' | 'failed' | 'other'}>;
 export type QueueHeader = Readonly<{
   id: string; revision: string; total: number; remainingCount?: number; totalDurationMs?: number; durationKnown?: boolean; current?: Readonly<{entryId: string; position: number}>;
