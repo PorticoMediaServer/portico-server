@@ -12,7 +12,7 @@ const identityTransform = value => value === undefined || value === 'none' || va
 const opaque = value => value && value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)';
 function significant(node) {
   const s = node.style ?? {};
-  return Boolean(node.frame || node.leaf !== false && node.ownText || node.input || node.image ||
+  return Boolean(node.frame || node.leaf !== false && node.ownText || ['button', 'a', 'label'].includes(node.tag) && node.normalizedText || node.input || node.image ||
     opaque(s.backgroundColor) || s.backgroundImage && s.backgroundImage !== 'none' || s.boxShadow && s.boxShadow !== 'none' ||
     ['Top', 'Right', 'Bottom', 'Left'].some(side => parseFloat(s[`border${side}Width`]) > 0 && s[`border${side}Style`] !== 'none'));
 }
