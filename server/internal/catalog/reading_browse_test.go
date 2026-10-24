@@ -96,6 +96,9 @@ func TestReadingBrowseLeavesFacetsAndCompilerShareTheReadyScope(t *testing.T) {
 			if page.PageInfo.Total != 2 || len(page.Entries) != 1 || page.Entries[0].Kind != want || page.Entries[0].Playback != nil || page.Entries[0].Duration != nil || page.Entries[0].Navigation == nil || page.Entries[0].Navigation.View != "item" {
 				t.Fatalf("Reading leaf projection: %+v", page)
 			}
+			if page.Entries[0].Author != "Café Author" || page.Entries[0].Subtitle != page.Entries[0].Author {
+				t.Fatalf("accepted Reading author was not a semantic card fact: %+v", page.Entries[0])
+			}
 			if page.Entries[0].Available == nil || *page.Entries[0].Available {
 				t.Fatal("unavailable title was hidden or given read availability")
 			}
