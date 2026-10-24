@@ -9,10 +9,13 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"portico.local/server/internal/testtier"
 	"time"
 )
 
 func TestMusicUntouchedPCMBitExactR29(t *testing.T) {
+	testtier.Media(t, "encodes and decodes actual bounded music fixtures through FFmpeg")
 	ff, e := exec.LookPath("ffmpeg")
 	if e != nil {
 		t.Skip("ffmpeg unavailable")
@@ -69,6 +72,7 @@ func TestMusicUntouchedPCMBitExactR29(t *testing.T) {
 }
 
 func TestMusicTruePeakLimiterAndAudibleLengthR29(t *testing.T) {
+	testtier.Media(t, "encodes and decodes actual bounded music fixtures through FFmpeg")
 	ff, e := exec.LookPath("ffmpeg")
 	if e != nil {
 		t.Skip("ffmpeg unavailable")
@@ -155,6 +159,7 @@ func TestMusicTruePeakLimiterAndAudibleLengthR29(t *testing.T) {
 }
 
 func TestMusic24BitDitherActuallyQuantizesR29(t *testing.T) {
+	testtier.Media(t, "encodes and decodes actual bounded music fixtures through FFmpeg")
 	ff, e := exec.LookPath("ffmpeg")
 	if e != nil {
 		t.Skip("ffmpeg unavailable")

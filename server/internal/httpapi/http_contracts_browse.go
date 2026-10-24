@@ -7,6 +7,10 @@ import (
 )
 
 func registerBrowseHTTPContracts(registry *apikit.Registry) error {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SearchGenrePage](registry, apikit.Metadata{ID: "get_search_genres", Method: "GET", Path: "/v1/search/genres", Summary: "Read permitted video genres with selected representative artwork", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneExpensive, Cost: apikit.PageSized, Status: 200, Query: []string{"limit", "cursor"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/audio.go:11
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Artists    []catalog.Artist `json:"artists"`
@@ -172,7 +176,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 	}](registry, apikit.Metadata{ID: "get_items_id_recommendations", Method: "GET", Path: "/v1/items/{id}/recommendations", Summary: "Read title recommendations", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneExpensive, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
-	if err := apikit.RegisterHTTP[struct{}, projectedViewerEnvelope[catalog.ListeningSimilar]](registry, apikit.Metadata{ID: "get_items_id_similar", Method: "GET", Path: "/v1/items/{id}/similar", Summary: "Read locally ranked permitted listening titles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, projectedViewerEnvelope[SonicSimilarView]](registry, apikit.Metadata{ID: "get_items_id_similar", Method: "GET", Path: "/v1/items/{id}/similar", Summary: "Read locally ranked permitted listening titles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"limit", "by"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}); err != nil {
 		return err
 	}
 

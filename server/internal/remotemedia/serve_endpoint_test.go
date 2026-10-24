@@ -89,6 +89,38 @@ func TestServeEndpointRejectsMembersBeforeDispatch(t *testing.T) {
 	}
 }
 
+type servedChangingBody struct {
+	io.Reader
+	closed *bool
+}
+
+func (b servedChangingBody) Close() error { *b.closed = true; return nil }
+
+func TestServeRangeDiscardsChangeAfterBodyCloseWithCapacityReleased(t *testing.T) {
+	endpoint, err := NewServeEndpoint(12345, "fixture", "private", NewOperationBudget(context.Background(), 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer endpoint.Close()
+	closed, postChecked := false, false
+	endpoint.client.Transport = serveRoundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 206, Header: http.Header{"Etag": {`"old"`}, "Content-Range": {"bytes 0-3/16"}}, ContentLength: 4, Body: servedChangingBody{strings.NewReader("old!"), &closed}}, nil
+	})
+	data, err := endpoint.ReadRange(context.Background(), "file", `"old"`, 16, 0, 4, func(context.Context) error {
+		if closed {
+			postChecked = true
+			if counts := endpoint.budget.Counts(); counts.Active != 0 {
+				t.Fatal("post-read observer retained the completed body slot", counts)
+			}
+			return ErrObservationChanged
+		}
+		return nil
+	})
+	if !closed || !postChecked || !errors.Is(err, ErrObservationChanged) || len(data) != 0 {
+		t.Fatal("closed-body change exposed bytes", data, err, closed, postChecked)
+	}
+}
+
 func TestResponseFailureKeepsOnlySuppliedDeadline(t *testing.T) {
 	now := time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)
 	for _, raw := range []string{"50400", now.Add(14 * time.Hour).Format(http.TimeFormat)} {

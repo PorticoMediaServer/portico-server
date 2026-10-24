@@ -1,4 +1,4 @@
-import type {BrowseCapabilities, BrowseFieldCapability, BrowseQuickFilter, BrowseSortCapability, BrowseSortSelection} from '../browse.ts';
+import type {BrowseCapabilities, BrowseFieldCapability, BrowseNode, BrowseQuickFilter, BrowseSortCapability, BrowseSortSelection} from '../browse.ts';
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
 
 /**
@@ -51,6 +51,12 @@ const RANK: readonly string[] = ['genre', 'year', 'decade', 'contentRating', 'st
   'resolution', 'dynamicRange', 'audioLanguage', 'durationMs', 'dateAdded', 'availability'];
 const rankOf = (id: string) => { const i = RANK.indexOf(id); return i < 0 ? RANK.length : i; };
 
+/** The existing toolbar field order, also used by saved-view condition prose. */
+export function orderToolbarPredicates<T extends ToolbarPredicate | BrowseNode>(predicates: readonly T[]): readonly T[] {
+  const rank = (node: T) => 'field' in node ? rankOf(node.field) : RANK.length;
+  return [...predicates].sort((a, b) => rank(a) - rank(b));
+}
+
 export type ToolbarGroup = Readonly<{id: ToolbarGroupId; fields: readonly BrowseFieldCapability[]}>;
 
 export type ToolbarModel = Readonly<{
@@ -78,7 +84,7 @@ export function toolbarModel(capabilities: BrowseCapabilities, libraryKind: stri
   const quick = capabilities.quickFilters.filter(q => QUICK_ON_BAR.includes(q.id) && !(audio && q.id !== 'favorites'));
   const quickNodes = quick.map(q => q.query as ToolbarPredicate).filter(n => n && 'field' in n);
   const same = (a: ToolbarPredicate, b: ToolbarPredicate) => a.field === b.field && a.operator === b.operator && JSON.stringify(a.value) === JSON.stringify(b.value);
-  const applied = predicates.filter(p => !quickNodes.some(n => same(n, p)));
+  const applied = orderToolbarPredicates(predicates.filter(p => !quickNodes.some(n => same(n, p))));
   const groups: ToolbarGroup[] = (['title', 'activity', 'file'] as const)
     .map(id => ({id, fields: fields.filter(f => toolbarGroupOf(f.id) === id).sort((a, b) => rankOf(a.id) - rankOf(b.id))}))
     .filter(g => g.fields.length > 0);

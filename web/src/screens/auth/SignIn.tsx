@@ -25,7 +25,7 @@ export function SignInScreen() {
   const session = useSession();
   const {t} = useI18n();
   // A direct sign-in that ended reopens on the direct form for the same server.
-  const [mode, setMode] = useState<'account' | 'direct' | 'recovery'>(() => (session.signInHint?.authority === 'local' ? 'direct' : 'account'));
+  const [mode, setMode] = useState<'account' | 'direct'>(() => (session.signInHint?.authority === 'local' ? 'direct' : 'account'));
   const [probed, setProbed] = useState(!bundled);
   const [setup, setSetup] = useState<SystemInfo>();
   useEffect(() => {
@@ -41,9 +41,7 @@ export function SignInScreen() {
         // ONB-01: a fresh server is set up here, never shown a sign-in form for an account that doesn't exist.
         if (info.setupRequired) setSetup(info);
         // A server that signs people in directly never shows the Portico Account hand-off.
-        // (hostedConfigured only says the build could reach the account service; an older
-        // server without hostedAttached falls back to it.)
-        else if (!(info.hostedAttached ?? info.hostedConfigured)) setMode('direct');
+        else if (info.signIn === 'local') setMode('direct');
       })
       // Unreachable: the local form is the one that can still explain what is wrong.
       .catch(() => { if (active) setMode('direct'); })
@@ -57,10 +55,10 @@ export function SignInScreen() {
   // Gate sends it to the shell; it reaches this screen only for a direct sign-in that ended, and
   // "use a Portico Account" from there returns it to the shell.
   const toAccount = () => { if (session.hosted) session.dismissSignInHint(); else setMode('account'); };
-  if (mode === 'direct' || mode === 'recovery' || session.hosted) return <DirectSignIn recovery={mode === 'recovery'} onAccount={toAccount} />;
+  if (mode === 'direct' || session.hosted) return <DirectSignIn onAccount={toAccount} />;
   // Served by a server, the server has already decided: it either uses Portico Accounts or it
   // keeps its own, and the other way in is not offered.
-  if (bundled) return <HostedHandOff onRecovery={() => setMode('recovery')} />;
+  if (bundled) return <HostedHandOff />;
   return <AccountSignIn onDirect={() => setMode('direct')} />;
 }
 
@@ -84,7 +82,7 @@ function AccountSignIn({onDirect}: {onDirect: () => void}) {
 /** A server that uses Portico Accounts, opened at its own address. The account service only signs
  * people in from its own site, so every option here continues there; the site then connects
  * back to this server. */
-function HostedHandOff({onRecovery}: {onRecovery: () => void}) {
+function HostedHandOff() {
   const {t} = useI18n();
   const go = () => location.assign('https://web.getportico.tv/');
   return (
@@ -96,8 +94,6 @@ function HostedHandOff({onRecovery}: {onRecovery: () => void}) {
         <div className={s.divider}>{t('web.signin.or')}</div>
         <Button variant="primary" size="lg" label={t('web.signin.emailButton')} iconAfter="external" onClick={go} block />
         <div className={s.links}><Button variant="link" label={t('auth.createAccount')} onClick={go} /></div>
-        {/* The owner's recovery account lives on the server, for the day the account service cannot be reached. */}
-        <div className={s.links}><Button variant="link" size="sm" label={t('web.direct.recoveryTitle')} onClick={onRecovery} /></div>
       </div>
     </AuthFrame>
   );
@@ -105,7 +101,7 @@ function HostedHandOff({onRecovery}: {onRecovery: () => void}) {
 
 /** Direct sign-in to one server, on one page. The server's identity is pinned on first contact
  * and checked silently afterwards; a fingerprint is not something to ask a person to compare. */
-function DirectSignIn({onAccount, recovery}: {onAccount: () => void; /** WEB-AUTH-04: reached from a Portico Account server's hand-off, as the owner's way in. */ recovery?: boolean}) {
+function DirectSignIn({onAccount}: {onAccount: () => void}) {
   const {t} = useI18n();
   const session = useSession();
   const {direct} = session;
@@ -143,7 +139,7 @@ function DirectSignIn({onAccount, recovery}: {onAccount: () => void; /** WEB-AUT
   const ready = !!direct.origin.trim() && !!username && !!password;
   if (direct.step) return <DirectStep />;
   return (
-    <AuthFrame title={recovery ? t('web.direct.recoveryTitle') : t('web.direct.title')} lede={recovery ? t('web.direct.recoveryLede') : bundled ? t('web.direct.ledeBundled', {host}) : t('web.direct.lede')}>
+    <AuthFrame title={t('web.direct.title')} lede={bundled ? t('web.direct.ledeBundled', {host}) : t('web.direct.lede')}>
       <form className={s.stack} onSubmit={e => { e.preventDefault(); if (ready) void direct.signIn(username, password); }}>
         <SignInEnded />
         {!bundled ? <Input label={t('web.direct.serverAddress')} value={direct.origin} onChange={e => { if (direct.pin) direct.resetPin(); direct.setOrigin(e.target.value); }} placeholder="192.168.1.20:32500" autoCapitalize="off" autoCorrect="off" spellCheck={false} required /> : null}
@@ -151,14 +147,13 @@ function DirectSignIn({onAccount, recovery}: {onAccount: () => void; /** WEB-AUT
           <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>{remembered.map(a => <Button key={a.accountId} size="sm" variant={username === a.username ? 'secondary' : 'outline'} icon="profile" label={a.displayName || a.username} onClick={() => setUsername(a.username)} />)}</div>
         ) : null}
         <Input label={t('web.direct.username')} value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" autoCapitalize="off" spellCheck={false} required minLength={3} maxLength={64} />
-        <PasswordInput label={t('web.direct.password')} help={recovery ? t('web.direct.recoveryHelp') : undefined} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+        <PasswordInput label={t('web.direct.password')} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
         {session.error ? <Notice tone="error">{session.error}</Notice> : null}
         <Button variant="primary" type="submit" label={t('web.direct.signIn')} size="lg" loading={session.busy} disabled={!ready} block />
         {import.meta.env.DEV && devOwner ? <Button variant="outline" label={t('web.direct.devSignIn', {username: devOwner})} onClick={() => void direct.signIn(devOwner, '', undefined, true)} disabled={session.busy} block /> : null}
       </form>
       {!bundled ? <div className={s.links}><Button variant="link" label={t('web.direct.useAccount')} onClick={() => { direct.resetPin(); session.clearError(); onAccount(); }} /></div> : null}
-      {!recovery ? <div className={s.links}><Button variant="link" label={t('web.directJoin.have')} to="/join" /></div> : null}
-      {recovery ? <div className={s.links}><Button variant="link" icon="back" label={t('web.direct.back')} onClick={() => { session.clearError(); onAccount(); }} /></div> : null}
+      <div className={s.links}><Button variant="link" label={t('web.directJoin.have')} to="/join" /></div>
     </AuthFrame>
   );
 }
@@ -177,7 +172,7 @@ function StepFrame({inShell, title, lede, children}: {inShell?: boolean; title: 
   );
 }
 
-/** C45: the extra step a direct sign-in may need: a two-step code, a required new password, or the owner's approval. */
+/** C45: the extra step a direct sign-in may need: a two-step code or a required new password. */
 export function DirectStep({inShell}: {inShell?: boolean}) {
   const {t} = useI18n();
   const session = useSession();
@@ -187,17 +182,6 @@ export function DirectStep({inShell}: {inShell?: boolean}) {
   const [again, setAgain] = useState('');
   const strong = (v: string) => passwordStrength(v).acceptable;
   const back = <div className={s.links}><Button variant="link" icon="back" label={t('action.back')} onClick={() => { session.clearError(); direct.cancelStep(); }} /></div>;
-  if (step.kind === 'device-pending') {
-    return (
-      <StepFrame inShell={inShell} title={t('device.approval.title')} lede={t('device.approval.body')}>
-        <div className={s.stack}>
-          {session.error ? <Notice tone="error">{session.error}</Notice> : null}
-          <Button variant="primary" size="lg" label={t('device.approval.checkAgain')} loading={session.busy} block onClick={() => void direct.continueSignIn('')} />
-          {back}
-        </div>
-      </StepFrame>
-    );
-  }
   if (step.kind === 'new-password') {
     const ok = strong(value) && value === again;
     return (

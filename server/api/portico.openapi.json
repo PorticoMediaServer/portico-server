@@ -14512,6 +14512,21 @@
                   "id": {
                     "type": "string"
                   },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -14649,6 +14664,21 @@
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -24829,6 +24859,113 @@
         "required": [
           "scope",
           "library"
+        ],
+        "type": "object"
+      },
+      "GetAdminLibrariesIdSonicAnalysisRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminLibrariesIdSonicAnalysisResponse": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "done": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "estimatedRemainingSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "model": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "observedAtMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "pausedUntilMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "policyAllows": {
+            "type": "boolean"
+          },
+          "policyRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "reasonCode": {
+            "enum": [
+              "inference_failed",
+              "inference_not_verified",
+              "runtime_or_model_missing",
+              "scan_policy_disallows"
+            ],
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "disabled",
+              "unavailable",
+              "complete",
+              "paused",
+              "analyzing"
+            ],
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "libraryId",
+          "available",
+          "enabled",
+          "revision",
+          "policyAllows",
+          "state",
+          "done",
+          "total",
+          "policyRevision",
+          "observedAtMs"
         ],
         "type": "object"
       },
@@ -38032,6 +38169,21 @@
                             "id": {
                               "type": "string"
                             },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -38169,6 +38321,21 @@
                                 "properties": {
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
                                   },
                                   "name": {
                                     "type": "string"
@@ -38604,6 +38771,21 @@
                         "id": {
                           "type": "string"
                         },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
+                        },
                         "name": {
                           "type": "string"
                         },
@@ -38686,6 +38868,21 @@
                     "properties": {
                       "id": {
                         "type": "string"
+                      },
+                      "mark": {
+                        "properties": {
+                          "seed": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "text",
+                          "seed"
+                        ],
+                        "type": "object"
                       },
                       "name": {
                         "type": "string"
@@ -38824,6 +39021,21 @@
                           "properties": {
                             "id": {
                               "type": "string"
+                            },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
                             },
                             "name": {
                               "type": "string"
@@ -39146,6 +39358,21 @@
                         "id": {
                           "type": "string"
                         },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
+                        },
                         "name": {
                           "type": "string"
                         },
@@ -39283,6 +39510,21 @@
                             "properties": {
                               "id": {
                                 "type": "string"
+                              },
+                              "mark": {
+                                "properties": {
+                                  "seed": {
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "seed"
+                                ],
+                                "type": "object"
                               },
                               "name": {
                                 "type": "string"
@@ -39683,6 +39925,21 @@
                           "properties": {
                             "id": {
                               "type": "string"
+                            },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
                             },
                             "name": {
                               "type": "string"
@@ -95292,6 +95549,9 @@
         "properties": {
           "data": {
             "properties": {
+              "bySound": {
+                "type": "boolean"
+              },
               "entries": {
                 "items": {
                   "additionalProperties": false,
@@ -96637,7 +96897,8 @@
               "itemId",
               "libraryId",
               "revision",
-              "entries"
+              "entries",
+              "bySound"
             ],
             "type": "object"
           },
@@ -131433,6 +131694,101 @@
         ],
         "type": "object"
       },
+      "GetSearchGenresRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSearchGenresResponse": {
+        "properties": {
+          "genres": {
+            "items": {
+              "properties": {
+                "backdrop": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "item",
+                        "show"
+                      ],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "item",
+                          "show"
+                        ],
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "path"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "covers"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "genres"
+        ],
+        "type": "object"
+      },
       "GetSearchHistoryRequest": {
         "properties": {},
         "required": [],
@@ -165161,6 +165517,21 @@
                   "id": {
                     "type": "string"
                   },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -165298,6 +165669,21 @@
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -169466,6 +169852,113 @@
         },
         "required": [
           "itemId"
+        ],
+        "type": "object"
+      },
+      "PostAdminLibrariesIdSonicAnalysisRetryRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "PostAdminLibrariesIdSonicAnalysisRetryResponse": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "done": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "estimatedRemainingSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "model": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "observedAtMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "pausedUntilMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "policyAllows": {
+            "type": "boolean"
+          },
+          "policyRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "reasonCode": {
+            "enum": [
+              "inference_failed",
+              "inference_not_verified",
+              "runtime_or_model_missing",
+              "scan_policy_disallows"
+            ],
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "disabled",
+              "unavailable",
+              "complete",
+              "paused",
+              "analyzing"
+            ],
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "libraryId",
+          "available",
+          "enabled",
+          "revision",
+          "policyAllows",
+          "state",
+          "done",
+          "total",
+          "policyRevision",
+          "observedAtMs"
         ],
         "type": "object"
       },
@@ -178298,6 +178791,21 @@
                   "id": {
                     "type": "string"
                   },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -178435,6 +178943,21 @@
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -178812,6 +179335,21 @@
                   "id": {
                     "type": "string"
                   },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -178949,6 +179487,21 @@
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -189937,6 +190490,9 @@
           "revision": {
             "type": "string"
           },
+          "sequential": {
+            "type": "boolean"
+          },
           "sessionId": {
             "type": "string"
           },
@@ -196056,6 +196612,125 @@
         ],
         "type": "object"
       },
+      "PutAdminLibrariesIdSonicAnalysisRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "PutAdminLibrariesIdSonicAnalysisResponse": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "done": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "estimatedRemainingSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "model": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "observedAtMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "pausedUntilMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "policyAllows": {
+            "type": "boolean"
+          },
+          "policyRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "reasonCode": {
+            "enum": [
+              "inference_failed",
+              "inference_not_verified",
+              "runtime_or_model_missing",
+              "scan_policy_disallows"
+            ],
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "disabled",
+              "unavailable",
+              "complete",
+              "paused",
+              "analyzing"
+            ],
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "libraryId",
+          "available",
+          "enabled",
+          "revision",
+          "policyAllows",
+          "state",
+          "done",
+          "total",
+          "policyRevision",
+          "observedAtMs"
+        ],
+        "type": "object"
+      },
       "PutAdminLibrariesOrderRequest": {
         "properties": {
           "libraryIds": {
@@ -198013,6 +198688,21 @@
                   "id": {
                     "type": "string"
                   },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -198150,6 +198840,21 @@
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -198713,6 +199418,21 @@
                     "properties": {
                       "id": {
                         "type": "string"
+                      },
+                      "mark": {
+                        "properties": {
+                          "seed": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "text",
+                          "seed"
+                        ],
+                        "type": "object"
                       },
                       "name": {
                         "type": "string"
@@ -241609,6 +242329,564 @@
         "x-lane": "default",
         "x-max-body-bytes": 65536,
         "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/sonic-analysis": {
+      "get": {
+        "operationId": "get_admin_libraries_id_sonic_analysis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "done": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "estimatedRemainingSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "version",
+                        "sha256"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAtMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "pausedUntilMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "policyAllows": {
+                      "type": "boolean"
+                    },
+                    "policyRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "reasonCode": {
+                      "enum": [
+                        "inference_failed",
+                        "inference_not_verified",
+                        "runtime_or_model_missing",
+                        "scan_policy_disallows"
+                      ],
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "disabled",
+                        "unavailable",
+                        "complete",
+                        "paused",
+                        "analyzing"
+                      ],
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "libraryId",
+                    "available",
+                    "enabled",
+                    "revision",
+                    "policyAllows",
+                    "state",
+                    "done",
+                    "total",
+                    "policyRevision",
+                    "observedAtMs"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read current library sound analysis status",
+        "x-access": "owner",
+        "x-admission": "admin-heavy",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_analysis",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "library_configuration_conflict",
+          "analysis_conflict",
+          "analysis_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
+      "put": {
+        "operationId": "put_admin_libraries_id_sonic_analysis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "done": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "estimatedRemainingSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "version",
+                        "sha256"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAtMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "pausedUntilMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "policyAllows": {
+                      "type": "boolean"
+                    },
+                    "policyRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "reasonCode": {
+                      "enum": [
+                        "inference_failed",
+                        "inference_not_verified",
+                        "runtime_or_model_missing",
+                        "scan_policy_disallows"
+                      ],
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "disabled",
+                        "unavailable",
+                        "complete",
+                        "paused",
+                        "analyzing"
+                      ],
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "libraryId",
+                    "available",
+                    "enabled",
+                    "revision",
+                    "policyAllows",
+                    "state",
+                    "done",
+                    "total",
+                    "policyRevision",
+                    "observedAtMs"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Save library sound analysis with its current revision",
+        "x-access": "owner",
+        "x-admission": "admin-heavy",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_analysis",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "library_configuration_conflict",
+          "analysis_conflict",
+          "analysis_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/libraries/{id}/sonic-analysis/retry": {
+      "post": {
+        "operationId": "post_admin_libraries_id_sonic_analysis_retry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "done": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "estimatedRemainingSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "version",
+                        "sha256"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAtMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "pausedUntilMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "policyAllows": {
+                      "type": "boolean"
+                    },
+                    "policyRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "reasonCode": {
+                      "enum": [
+                        "inference_failed",
+                        "inference_not_verified",
+                        "runtime_or_model_missing",
+                        "scan_policy_disallows"
+                      ],
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "disabled",
+                        "unavailable",
+                        "complete",
+                        "paused",
+                        "analyzing"
+                      ],
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "libraryId",
+                    "available",
+                    "enabled",
+                    "revision",
+                    "policyAllows",
+                    "state",
+                    "done",
+                    "total",
+                    "policyRevision",
+                    "observedAtMs"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Retry the installed sound analysis engine",
+        "x-access": "owner",
+        "x-admission": "admin-heavy",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_analysis",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "library_configuration_conflict",
+          "analysis_conflict",
+          "analysis_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 1024,
+        "x-scope": "admin"
       }
     },
     "/v1/admin/libraries/{id}/sources": {
@@ -292808,6 +294086,21 @@
                                   "id": {
                                     "type": "string"
                                   },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
+                                  },
                                   "name": {
                                     "type": "string"
                                   },
@@ -292945,6 +294238,21 @@
                                       "properties": {
                                         "id": {
                                           "type": "string"
+                                        },
+                                        "mark": {
+                                          "properties": {
+                                            "seed": {
+                                              "type": "string"
+                                            },
+                                            "text": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "text",
+                                            "seed"
+                                          ],
+                                          "type": "object"
                                         },
                                         "name": {
                                           "type": "string"
@@ -293345,6 +294653,21 @@
                                     "properties": {
                                       "id": {
                                         "type": "string"
+                                      },
+                                      "mark": {
+                                        "properties": {
+                                          "seed": {
+                                            "type": "string"
+                                          },
+                                          "text": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "text",
+                                          "seed"
+                                        ],
+                                        "type": "object"
                                       },
                                       "name": {
                                         "type": "string"
@@ -293842,6 +295165,21 @@
                                       "id": {
                                         "type": "string"
                                       },
+                                      "mark": {
+                                        "properties": {
+                                          "seed": {
+                                            "type": "string"
+                                          },
+                                          "text": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "text",
+                                          "seed"
+                                        ],
+                                        "type": "object"
+                                      },
                                       "name": {
                                         "type": "string"
                                       },
@@ -293979,6 +295317,21 @@
                                           "properties": {
                                             "id": {
                                               "type": "string"
+                                            },
+                                            "mark": {
+                                              "properties": {
+                                                "seed": {
+                                                  "type": "string"
+                                                },
+                                                "text": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "text",
+                                                "seed"
+                                              ],
+                                              "type": "object"
                                             },
                                             "name": {
                                               "type": "string"
@@ -294463,6 +295816,21 @@
                             "id": {
                               "type": "string"
                             },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -294600,6 +295968,21 @@
                                 "properties": {
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
                                   },
                                   "name": {
                                     "type": "string"
@@ -294985,6 +296368,21 @@
                             "id": {
                               "type": "string"
                             },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -295122,6 +296520,21 @@
                                 "properties": {
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
                                   },
                                   "name": {
                                     "type": "string"
@@ -295517,6 +296930,21 @@
                                   "id": {
                                     "type": "string"
                                   },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
+                                  },
                                   "name": {
                                     "type": "string"
                                   },
@@ -295599,6 +297027,21 @@
                               "properties": {
                                 "id": {
                                   "type": "string"
+                                },
+                                "mark": {
+                                  "properties": {
+                                    "seed": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "text",
+                                    "seed"
+                                  ],
+                                  "type": "object"
                                 },
                                 "name": {
                                   "type": "string"
@@ -295737,6 +297180,21 @@
                                     "properties": {
                                       "id": {
                                         "type": "string"
+                                      },
+                                      "mark": {
+                                        "properties": {
+                                          "seed": {
+                                            "type": "string"
+                                          },
+                                          "text": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "text",
+                                          "seed"
+                                        ],
+                                        "type": "object"
                                       },
                                       "name": {
                                         "type": "string"
@@ -296166,6 +297624,21 @@
                             "id": {
                               "type": "string"
                             },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -296303,6 +297776,21 @@
                                 "properties": {
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
                                   },
                                   "name": {
                                     "type": "string"
@@ -296688,6 +298176,21 @@
                             "id": {
                               "type": "string"
                             },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -296825,6 +298328,21 @@
                                 "properties": {
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
                                   },
                                   "name": {
                                     "type": "string"
@@ -297402,6 +298920,21 @@
                             "id": {
                               "type": "string"
                             },
+                            "mark": {
+                              "properties": {
+                                "seed": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "seed"
+                              ],
+                              "type": "object"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -297539,6 +299072,21 @@
                                 "properties": {
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "mark": {
+                                    "properties": {
+                                      "seed": {
+                                        "type": "string"
+                                      },
+                                      "text": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "text",
+                                      "seed"
+                                    ],
+                                    "type": "object"
                                   },
                                   "name": {
                                     "type": "string"
@@ -298662,6 +300210,21 @@
                               "properties": {
                                 "id": {
                                   "type": "string"
+                                },
+                                "mark": {
+                                  "properties": {
+                                    "seed": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "text",
+                                    "seed"
+                                  ],
+                                  "type": "object"
                                 },
                                 "name": {
                                   "type": "string"
@@ -376165,6 +377728,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -376175,6 +377746,9 @@
                   "properties": {
                     "data": {
                       "properties": {
+                        "bySound": {
+                          "type": "boolean"
+                        },
                         "entries": {
                           "items": {
                             "additionalProperties": false,
@@ -377520,7 +379094,8 @@
                         "itemId",
                         "libraryId",
                         "revision",
-                        "entries"
+                        "entries",
+                        "bySound"
                       ],
                       "type": "object"
                     },
@@ -377598,6 +379173,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "stale_continuation",
           "internal"
         ],
         "x-lane": "browsing",
@@ -440614,6 +442190,9 @@
                     "revision": {
                       "type": "string"
                     },
+                    "sequential": {
+                      "type": "boolean"
+                    },
                     "sessionId": {
                       "type": "string"
                     },
@@ -440680,7 +442259,7 @@
         },
         "summary": "Open an authorized reading publication",
         "x-access": "device",
-        "x-admission": "browsing",
+        "x-admission": "media-body",
         "x-cost": "page_sized",
         "x-error-codes": [
           "invalid_request",
@@ -440693,7 +442272,7 @@
           "body_too_large",
           "internal"
         ],
-        "x-lane": "browsing",
+        "x-lane": "media",
         "x-max-body-bytes": 4096,
         "x-scope": "playback"
       }
@@ -441344,7 +442923,7 @@
         },
         "summary": "Save the selected publication's location with compare and swap",
         "x-access": "device",
-        "x-admission": "browsing",
+        "x-admission": "media-body",
         "x-cost": "page_sized",
         "x-error-codes": [
           "invalid_request",
@@ -441357,7 +442936,7 @@
           "body_too_large",
           "internal"
         ],
-        "x-lane": "browsing",
+        "x-lane": "media",
         "x-max-body-bytes": 8192,
         "x-scope": "playback"
       }
@@ -441392,6 +442971,17 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
           "206": {
             "content": {
               "application/pdf": {
@@ -453281,6 +454871,172 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/search/genres": {
+      "get": {
+        "operationId": "get_search_genres",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "properties": {
+                          "backdrop": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "item",
+                                  "show"
+                                ],
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id",
+                              "path"
+                            ],
+                            "type": "object"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "covers": {
+                            "items": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "item",
+                                    "show"
+                                  ],
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id",
+                                "path"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "value",
+                          "label",
+                          "count",
+                          "covers"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "genres"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read permitted video genres with selected representative artwork",
+        "x-access": "device",
+        "x-admission": "expensive",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "stale_continuation",
           "internal"
         ],
         "x-lane": "browsing",

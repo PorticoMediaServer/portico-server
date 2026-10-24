@@ -181,9 +181,9 @@ test('exact positive quick predicates alone leave the applied line; Any/All/Not 
   const predicates = [unplayed, all, any, none, either, both, inverse];
   const model = browseToolbarModel(capabilities, 'movie', predicates, titleSort, env);
   assert.equal(model.quick[0]!.active, true);
-  assert.deepEqual(model.applied, predicates.slice(1));
+  assert.deepEqual(model.applied, [all, any, inverse, none, either, both]);
   assert.equal(model.applied[0], all);
-  assert.equal(model.applied[2], none);
+  assert.equal(model.applied[3], none);
   const allChip = appliedFilterParts(all, String, env);
   const anyChip = appliedFilterParts(any, String, env);
   assert.equal(allChip.rawValue, all.value);

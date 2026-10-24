@@ -30,6 +30,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
 
@@ -51,7 +52,13 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	f, managed, identities, owner, _, _ := nativeSaveFixture(t)
-	f.s.private = t.TempDir()
+	// The listing path needs the actual service constructor's local worker
+	// capacity and lifecycle hooks, not the smaller DB-only save fixture.
+	sources, err := New(f.s.db, t.TempDir(), managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.s = sources
 	if err := f.s.startReadRuntime(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +100,15 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 		t.Fatal(err)
 	}
 	payload := bytes.Repeat([]byte("controlled-nas"), 16)
+	ignore := []byte("ignored-file.mkv\n")
 	if err := os.WriteFile(filepath.Join(root, "one.mkv"), payload, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".ignore"), ignore, 0644); err != nil {
+		t.Fatal(err)
+	}
+	modified := time.Unix(1700000000, 0).UTC()
+	if err := os.Chtimes(filepath.Join(root, "one.mkv"), modified, modified); err != nil {
 		t.Fatal(err)
 	}
 	configuration, err := os.ReadFile("../rcloneprogram/testdata/smb/smb.conf")
@@ -229,6 +244,64 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	if counts := process.OperationCounts(); counts.Active != 0 || counts.Peak > counts.Capacity || counts.Capacity != profile.Limits.Connections {
 		t.Fatal("storage metadata escaped the source budget", counts)
 	}
+	// This checks actual native transport metadata and terminal range behavior,
+	// not a catalogue/playback/Reading grant. The owner family and saved source
+	// are real; a content consumer must additionally bind its own exact target.
+	check := func(ctx context.Context) error {
+		view, err := dbwork.BeginSnapshot(ctx, f.s.db)
+		if err != nil {
+			return err
+		}
+		err = currentLocalOwnerTx(ctx, view.Tx(), identities, owner)
+		view.Rollback()
+		if err != nil {
+			return err
+		}
+		return process.Check(ctx)
+	}
+	observe := func(ctx context.Context) (remotemedia.FileObservation, error) {
+		return observeProcessFile(ctx, process, "one.mkv", check)
+	}
+	scan, err := observe(ctx)
+	if err != nil || !scan.ModifiedKnown || scan.ModifiedNS != modified.UnixNano() || scan.Size != int64(len(payload)) {
+		t.Fatal("native upstream observation", scan, err)
+	}
+	endpoint, err := process.Endpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := 0
+	session, err := OpenRangeSession(ctx, endpoint, RangeAdmission{Scan: scan, Check: check, Observe: observe, OnChanged: func() { notices++ }})
+	if err != nil {
+		t.Fatal("native range capture", err)
+	}
+	t.Cleanup(func() { session.Close() })
+	read := make([]byte, 16)
+	if n, err := session.ReadAt(ctx, read, 7); n != len(read) || err != nil || !bytes.Equal(read, payload[7:7+len(read)]) {
+		t.Fatal("actual native range", n, err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "one.mkv"), bytes.Repeat([]byte("B"), len(payload)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(root, "one.mkv"), modified.Add(2*time.Second), modified.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	clear(read)
+	if n, err := session.ReadAt(ctx, read, 7); n != 0 || !errors.Is(err, storage.ErrRemoteChanged) || !bytes.Equal(read, make([]byte, len(read))) || notices != 1 {
+		t.Fatal("native replacement exposed bytes or missed terminal change", n, err, notices)
+	}
+	// Returning the original cheap metadata cannot revive the failed reader.
+	// It also cannot establish an immutable version for a newly captured reader.
+	if err := os.WriteFile(filepath.Join(root, "one.mkv"), payload, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(root, "one.mkv"), modified, modified); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := session.ReadAt(ctx, read, 7); n != 0 || !errors.Is(err, storage.ErrRemoteChanged) || notices != 1 {
+		t.Fatal("native observation ABA revived the failed reader", n, err, notices)
+	}
+	t.Logf("native_backend=%s observed_replacement_terminal=true change_notices=%d", backend, notices)
 	// The actual library creation inspects its source before publishing the
 	// library-policy contributor. Its first scan/root check must be pending
 	// during old-process retirement, not permanently source_unavailable.
@@ -236,7 +309,8 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	client.Remote = f.s
 	libraries := catalog.New(f.s.db)
 	libraries.SetStorage(client)
-	if _, err = libraries.CreateAuthorized(ctx, "NAS books", "book", receipt.Mount.MountPath, authorize); err != nil {
+	library, err := libraries.CreateAuthorized(ctx, "NAS books", "book", receipt.Mount.MountPath, authorize)
+	if err != nil {
 		t.Fatal("actual remote library creation", err)
 	}
 	if value, err := f.s.InspectRoot(ctx, receipt.Mount.MountPath); !errors.Is(err, storage.ErrBusy) || value != (storage.Snapshot{}) {
@@ -261,10 +335,85 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 			t.Error("replacement source did not physically retire", err)
 		}
 	})
+	exerciseNativeListedIgnore(t, ctx, f.s, libraries, library.ID, receipt.MountID, ignore)
 	for i, host := range []string{"127.0.0.1", "169.254.169.254", "169.254.1.2"} {
 		bad := mounts.Command{OperationID: nativeSaveOperation(110 + i), Action: "configure", ExpectedRevision: receipt.ControlRevision, Config: config(host)}
 		if _, err := managed.Command(ctx, "actual-owner-nas", receipt.MountID, bad, authorize); err == nil {
 			t.Fatal("forbidden NAS edit was accepted", host)
 		}
+	}
+}
+
+// This controlled running inventory uses the real saved source and closed
+// rclone listing. No scan observation is preseeded for the configuration file.
+func exerciseNativeListedIgnore(t *testing.T, ctx context.Context, sources *Service, libraries *catalog.Service, library, remote string, want []byte) {
+	t.Helper()
+	folders, err := libraries.LibrarySources(ctx, library)
+	if err != nil || len(folders) != 1 {
+		t.Fatal("actual NAS library source", folders, err)
+	}
+	folder := folders[0]
+	policy, err := libraries.ScanPolicy(ctx, library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := "nas-ignore-" + remote
+	for _, command := range []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO jobs(id,library_id,status,created_at) VALUES(?,?,'running','2026-10-23T00:00:00Z')`, []any{job, library}},
+		{`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision) VALUES(?,?,?,?,?,?)`, []any{job, folder.ID, folder.Generation, folder.Incarnation, folder.RootIdentity, policy.Revision}},
+		{`INSERT INTO remote_scan_generations(job_id,source_id,generation) SELECT ?,id,CAST(generation AS TEXT) FROM remote_sources WHERE id=?`, []any{job, remote}},
+	} {
+		if _, err = sources.db.ExecContext(ctx, command.query, command.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var page storage.RemotePage
+	for {
+		page, err = sources.ListPage(ctx, job, folder.ResolvedPath, "")
+		if err != nil {
+			t.Fatal("actual native inventory listing", err)
+		}
+		if !page.Pending {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	var member storage.Snapshot
+	for _, entry := range page.Entries {
+		if entry.Name == ".ignore" {
+			member = entry
+		}
+	}
+	if member.Path == "" || !page.Complete {
+		t.Fatal("closed native listing omitted configuration", page)
+	}
+	var normalized int
+	if err = sources.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM remote_scan_observations WHERE source_id=? AND relative_path='.ignore'`, remote).Scan(&normalized); err != nil || normalized != 0 {
+		t.Fatal("fixture fabricated a published ignore observation", normalized, err)
+	}
+	admission := storage.InventoryBlobAdmission{Purpose: storage.InventoryBlobIgnore, JobID: job, LibraryID: library, LibrarySourceID: folder.ID, RootIncarnation: folder.Incarnation, RootIdentity: folder.RootIdentity, SourceGeneration: folder.Generation, PolicyRevision: policy.Revision, ListingID: page.ID, Member: member}
+	request := storage.InventoryRequest{Root: folder.ResolvedPath, RootIdentity: folder.RootIdentity, RelativePath: ".ignore", FollowSymlinks: folder.FollowSymlinks}
+	client := storage.New("")
+	client.Remote = sources
+	readContext := storage.WithScanInput(ctx, client, folder.ID, request, admission)
+	got, err := client.ReadSmall(readContext, folder.ID, member.Path, 65536)
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatal("admitted native listing configuration", len(got), err)
+	}
+	if err = sources.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM remote_scan_observations WHERE source_id=? AND relative_path='.ignore'`, remote).Scan(&normalized); err != nil || normalized != 0 {
+		t.Fatal("configuration read published an uncommitted scan observation", normalized, err)
+	}
+	forged := admission
+	forged.Member.ChangeToken += "-replacement"
+	forgedContext := storage.WithScanInput(ctx, client, folder.ID, request, forged)
+	if got, err := client.ReadSmall(forgedContext, folder.ID, member.Path, 65536); err == nil || len(got) != 0 {
+		t.Fatal("caller replacement of exact listed member admitted", err)
 	}
 }

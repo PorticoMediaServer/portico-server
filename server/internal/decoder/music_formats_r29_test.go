@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/audiofacts"
 	"testing"
+
+	"portico.local/server/internal/testtier"
 )
 
 // A synthetic, freely generated DSD sigma-delta tone. Files are temporary;
@@ -57,6 +59,7 @@ func musicDSF(mult int) []byte {
 	return b.Bytes()
 }
 func TestMusicDSD64Through256R29(t *testing.T) {
+	testtier.Media(t, "encodes and decodes actual bounded music fixtures through FFmpeg")
 	ff, e := exec.LookPath("ffmpeg")
 	if e != nil {
 		t.Skip("ffmpeg unavailable")
