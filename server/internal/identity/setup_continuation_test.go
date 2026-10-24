@@ -209,7 +209,7 @@ func TestCapturedSetupReturnOriginRetainsFrozenAuthority(t *testing.T) {
 			case "expired":
 				statement = `UPDATE identity_setup_completions SET created_ms=1,expires_ms=2`
 			case "retired":
-				statement = `UPDATE networking_claim_identity SET active_operation_id=NULL`
+				statement = `UPDATE networking_claim_identity SET reset_generation=reset_generation+1`
 			case "consumed":
 				statement = `UPDATE identity_setup_completions SET phase='consumed',attempt_id='another-attempt'`
 			case "signature changed":
