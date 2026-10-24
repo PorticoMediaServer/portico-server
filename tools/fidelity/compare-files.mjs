@@ -5,11 +5,13 @@ import {compareScreens} from './compare.mjs';
 import {calibrateFrame} from './calibration.mjs';
 import {validateMeasurement} from './contract.mjs';
 import {assessDifferences} from './assessment.mjs';
+import {prepareNativeDeclarations} from './native-declarations.mjs';
 
 /** Native and desktop callers use this same comparator; never duplicate its math. */
 export function compareMeasurements(reference, actual, adapter = {}) {
   const invalid = [['reference', reference], ['actual', actual]].flatMap(([side, screen]) => validateMeasurement(screen, {reference: side === 'reference'}).map(path => ({kind: 'invalid-measurement', label: `${side}.${path}`})));
   if (invalid.length) return {scope: reference.scope, verdict: 'FAIL', differenceCount: invalid.length, differences: invalid, assessment: assessDifferences(invalid, {reference, actual})};
+  actual = prepareNativeDeclarations(actual);
   const comparison = compareScreens(reference, actual, adapter), calibration = calibrateFrame(reference);
   const differences = [...comparison.differences];
   if (!calibration.passed) differences.push({kind: 'calibration-failure', label: 'Frame self/font/opacity', calibration});
