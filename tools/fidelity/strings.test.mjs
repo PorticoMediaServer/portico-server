@@ -54,3 +54,21 @@ test('list cardinality root excludes only that list from derivative copy cascade
   const outside = screen([{text: 'First', owner: '0.1.0'}, {text: 'Unrelated extra', owner: '0.2'}]);
   assert.ok(compareCatalogueStrings(reference, outside, {one: 'First', two: 'Second'}, {}, roots).differences.some(value => value.kind === 'built-string-unmapped'));
 });
+
+test('declared formatted catalogue slots use the real caller formatter and retain occurrence checks', () => {
+  const catalogue = {count: '{count} public rows'}, adapter = {messageSlots: [{name: 'rows.count', key: 'count', values: {count: 3}}]};
+  let calls = 0;
+  const format = (key, values) => {calls++; assert.equal(key, 'count'); assert.deepEqual(values, {count: 3}); return '3 public rows';};
+  const reference = screen([{text: '3 public rows'}]), actual = screen([{text: '3 public rows'}]);
+  assert.equal(compareCatalogueStrings(reference, actual, catalogue, adapter, undefined, format).differences.length, 0); assert.ok(calls > 0);
+  actual.strings.push({id: 'extra', kind: 'text', text: '3 public rows'});
+  assert.ok(compareCatalogueStrings(reference, actual, catalogue, adapter, undefined, format).differences.some(value => value.kind === 'extra-string'));
+  assert.ok(compareCatalogueStrings(reference, actual, catalogue, adapter).differences.some(value => value.kind === 'message-slot-invalid'));
+});
+test('explicit public fixture literals and preferred existing keys never approve arbitrary copy', () => {
+  const catalogue = {one: 'Public action', duplicate: 'Public action'};
+  const values = screen([{text: 'Public action'}, {text: 'Q'}, {text: 'Undeclared value'}]);
+  const mapped = mapScreenStrings(values, catalogue, {preferredKeys: ['one'], dataValues: [{name: 'fixture.monogram', value: 'Q'}]});
+  assert.equal(mapped[0].status, 'mapped'); assert.deepEqual(mapped[0].catalogueKeys, ['one']);
+  assert.equal(mapped[1].dataSlot, 'fixture.monogram'); assert.equal(mapped[2].status, 'unmapped');
+});

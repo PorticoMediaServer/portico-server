@@ -9,9 +9,10 @@ export function KitGallery() {
   const search = useSearch({strict: false}) as GallerySearch;
   const [families, setFamilies] = useState<readonly GalleryFamily[]>([]);
   const [ready, setReady] = useState(false);
-  useEffect(() => { let current = true; void loadGalleryFamilies().then(value => { if (current) { setFamilies(value); setReady(true); } }); return () => { current = false; }; }, []);
-  const family = families.find(item => item.id === search.family) ?? families[0];
-  const specimen = family?.cases.find(item => item.id === search.case) ?? family?.cases[0];
+  const captureFamily = search.capture ? search.family ?? '' : undefined;
+  useEffect(() => { let current = true; setReady(false); void loadGalleryFamilies(captureFamily).then(value => { if (current) { setFamilies(value); setReady(true); } }); return () => { current = false; }; }, [captureFamily]);
+  const family = families.find(item => item.id === search.family) ?? (search.capture ? undefined : families[0]);
+  const specimen = family?.cases.find(item => item.id === search.case) ?? (search.capture ? undefined : family?.cases[0]);
   const width = search.width ?? specimen?.width ?? 1440;
   const height = search.height ?? specimen?.height ?? 900;
   const Render = specimen?.render;

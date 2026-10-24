@@ -65,6 +65,13 @@ export async function openEpubArchive(source: ReaderSource, parent: AbortSignal)
       async read(path, callerSignal) {
         throwIfAborted(signal); throwIfAborted(callerSignal);
         const entry = entries.get(safeArchivePath(path)); if (!entry) return new Uint8Array();
+        let cleanup = () => {};
+        const cancelled = new Promise<never>((_, reject) => {
+          const stop = () => {cleanup(); reject(new ReaderError('aborted'));};
+          cleanup = () => callerSignal.removeEventListener('abort', stop);
+          if (callerSignal.aborted) return stop();
+          callerSignal.addEventListener('abort', stop, {once: true});
+        });
         const reading = tail.then(async () => {
           const task=abortScope([signal, callerSignal]),readSignal=task.signal;
           try {throwIfAborted(readSignal);
@@ -83,7 +90,9 @@ export async function openEpubArchive(source: ReaderSource, parent: AbortSignal)
           return bytes;
           }finally{task.dispose();}
         });
-        tail = reading.catch(() => {}); return reading;
+        tail = reading.catch(() => {});
+        reading.then(cleanup, cleanup);
+        return Promise.race([reading, cancelled]);
       },
       async dispose() {abort.abort();scope.dispose(); await tail.catch(() => {}); entries.clear(); await zip.close();}
     };

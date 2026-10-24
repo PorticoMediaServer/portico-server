@@ -5,6 +5,39 @@ import {compareScreens} from './compare.mjs';
 const node = (frame, patch = {}) => ({id: frame, frame, tag: 'h1', ownText: 'Public heading', box: {x: 10, y: 20, width: 100, height: 40}, style: {fontFamily: 'Example', fontSize: '32px', fontWeight: '800', opacity: '.7', color: 'rgb(46, 63, 73)'}, ...patch});
 const spec = elements => ({scope: 'screen', fullViewport: true, root: {width: 200, height: 100}, viewport: {deviceScaleFactor: 1}, anchorIssues: [], elements});
 
+test('control text and its run rectangles use the same descendant scope', () => {
+  const runs = [{x: 10, y: 20, width: 100, height: 20}];
+  const control = node(null, {id: 'action', tag: 'button', ownText: 'Save', normalizedText: 'Save', textRects: runs, descendantTextRects: runs});
+  const wrapped = {...control, ownText: '', textRects: []};
+  assert.equal(compareScreens(spec([control]), spec([wrapped])).verdict, 'PASS');
+  assert.ok(compareScreens(spec([control]), spec([{...wrapped, descendantTextRects: [{...runs[0], x: 13}]}])).differences.some(value => value.property === 'textRun.0.x'));
+});
+
+test('only an explicit content recipe delegates aggregate text to measured child parts', () => {
+  const root = node('screen', {ownText: '', normalizedText: 'One Two', anchoredDescendants: true});
+  const children = [node('first', {parent: 'screen', ownText: 'One'}), node('second', {parent: 'screen', ownText: 'Two'})];
+  const adapter = {textHandledBySlots: ['screen']};
+  assert.equal(compareScreens(spec([root, ...children]), spec([{...root, normalizedText: 'Two One'}, ...children]), adapter).verdict, 'PASS');
+  assert.ok(compareScreens(spec([root, ...children]), spec([{...root, normalizedText: 'Two One'}, ...children])).differences.some(value => value.property === 'text'));
+  const changed = children.map(value => value.frame === 'second' ? {...value, ownText: 'Wrong'} : value);
+  assert.ok(compareScreens(spec([root, ...children]), spec([root, ...changed]), adapter).differences.some(value => value.property === 'text' && value.label === 'second'));
+});
+
+test('unanchored parts stay within their matched semantic ancestor across wrapper depths', () => {
+  const heading = (id, parent) => node(null, {id, parent, tag: 'button', ownText: 'Edit'});
+  const reference = spec([node('first'), heading('first-label', 'first'), node('second'), heading('second-label', 'second')]);
+  const actual = spec([node('first', {id: 'a'}), {id: 'wrapper', parent: 'a', tag: 'div', leaf: false, style: {}},
+    heading('a-label', 'wrapper'), node('second', {id: 'b'}), heading('b-label', 'b')]);
+  const result = compareScreens(reference, actual);
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.matches.find(value => value.reference === 'first-label').actual, 'a-label');
+  assert.equal(result.matches.find(value => value.reference === 'second-label').actual, 'b-label');
+  const ambiguous = compareScreens(reference, {...actual, elements: [...actual.elements, heading('a-duplicate', 'a')]});
+  assert.ok(ambiguous.differences.some(value => value.kind === 'ambiguous-match' && value.reference === 'first-label'));
+  const outside = compareScreens(reference, {...actual, elements: actual.elements.filter(value => value.id !== 'a-label')});
+  assert.ok(outside.differences.some(value => value.kind === 'missing-element' && value.reference === 'first-label'));
+});
+
 test('matching icon slots never imply measured glyph identity', () => {
   const reference = spec([node('close', {image: {kind: 'icon'}, ownText: ''})]);
   const result = compareScreens(reference, structuredClone(reference));

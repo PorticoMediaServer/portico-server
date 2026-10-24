@@ -44,7 +44,7 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 				return nil, false
 			}
 			path := filepath.Join(dir, entry.Name)
-			slot := videoArtworkSlot(kind, root, media, path, season)
+			slot, rank := videoArtworkOrder(kind, root, media, path, season)
 			if slot == "" {
 				continue
 			}
@@ -94,53 +94,77 @@ func (s *Service) ReadArtworkCandidates(ctx context.Context, library, kind, root
 			}
 			s.artworkCandidateObservations[path] = observedArtworkImage{stamp: stamp, key: key}
 			s.mu.Unlock()
-			result = append(result, assets.LocalArtworkCandidate{Slot: slot, Key: key})
+			name := entry.Name
+			if _, _, err := assets.NormalizeLocalArtworkSource(name, rank); err != nil {
+				// Keep admitted image bytes even when their basename cannot be
+				// represented as an order fact. Unknown is never canonical.
+				name, rank = "", assets.LocalArtworkUnknownRank
+			}
+			result = append(result, assets.LocalArtworkCandidate{Slot: slot, Key: key, SourceName: name, SourceRank: rank})
 		}
 	}
 	if ctx.Err() != nil {
 		return nil, false
 	}
+	sort.Slice(result, func(i, j int) bool {
+		a, b := result[i], result[j]
+		if a.Slot != b.Slot {
+			return a.Slot < b.Slot
+		}
+		if a.SourceRank != b.SourceRank {
+			return a.SourceRank < b.SourceRank
+		}
+		if a.SourceName != b.SourceName {
+			return a.SourceName < b.SourceName
+		}
+		return a.Key < b.Key
+	})
 	return result, true
 }
 
 // videoArtworkSlot classifies only known image conventions in the file/show's
 // own allowed directories. A match does not authorize reading that path.
 func videoArtworkSlot(kind, root, media, candidate string, season int) string {
-	ext := strings.ToLower(filepath.Ext(candidate))
-	switch ext {
-	case ".jpg", ".jpeg", ".png", ".tbn", ".webp":
-	default:
-		return ""
+	slot, _ := videoArtworkOrder(kind, root, media, candidate, season)
+	return slot
+}
+
+func videoArtworkOrder(kind, root, media, candidate string, season int) (string, int64) {
+	unknown := assets.LocalArtworkUnknownRank
+	extension := strings.ToLower(filepath.Ext(candidate))
+	if artworkExtensionPriority(extension) < 0 {
+		return "", unknown
 	}
-	dir := filepath.Dir(media)
-	candidateDir := filepath.Dir(candidate)
+	dir, candidateDir := filepath.Dir(media), filepath.Dir(candidate)
 	stem := strings.TrimSuffix(filepath.Base(media), filepath.Ext(media))
 	name := strings.TrimSuffix(filepath.Base(candidate), filepath.Ext(candidate))
-	matches := func(bases ...string) bool {
-		for _, base := range bases {
-			if numberedArtName(name, base, false) {
-				return true
-			}
+	match := func(slot string, bases ...string) (string, int64) {
+		rank, ok := artworkNameRank(name, extension, bases, false, 0)
+		if ok {
+			return slot, rank
 		}
-		return false
+		return "", unknown
 	}
 	if kind == "movie" {
 		if candidateDir != dir {
-			return ""
+			return "", unknown
 		}
-		if matches(stem+"-poster", stem, "poster", "folder", "cover", "default", "movie") {
-			return "item/poster"
+		for _, group := range []struct {
+			slot  string
+			bases []string
+		}{
+			{"item/poster", []string{stem + "-poster", stem, "poster", "folder", "cover", "default", "movie"}},
+			{"item/backdrop", []string{stem + "-fanart", "fanart", "backdrop", "art", "background"}},
+			{"item/logo", []string{stem + "-clearlogo", "logo", "clearlogo"}},
+		} {
+			if slot, rank := match(group.slot, group.bases...); slot != "" {
+				return slot, rank
+			}
 		}
-		if matches(stem+"-fanart", "fanart", "backdrop", "art", "background") {
-			return "item/backdrop"
-		}
-		if matches(stem+"-clearlogo", "logo", "clearlogo") {
-			return "item/logo"
-		}
-		return ""
+		return "", unknown
 	}
 	if kind != "tv" && kind != "anime" {
-		return ""
+		return "", unknown
 	}
 	showDir := dir
 	inSeason := seasonFolderName.MatchString(filepath.Base(dir))
@@ -151,30 +175,42 @@ func videoArtworkSlot(kind, root, media, candidate string, season int) string {
 		}
 	}
 	if candidateDir == showDir {
-		if matches("poster", "folder", "show") {
-			return "show/poster"
-		}
-		if matches("fanart", "backdrop", "art", "background") {
-			return "show/backdrop"
-		}
-		if matches("logo", "clearlogo") {
-			return "show/logo"
-		}
-	}
-	if season >= 0 && season <= 9999 && (candidateDir == showDir || inSeason && candidateDir == dir) {
-		for _, base := range []string{"season" + strconv.Itoa(season), "season" + twoDigits(season), "season" + twoDigits(season) + "-poster"} {
-			if numberedArtName(name, base, true) {
-				return "season/" + strconv.Itoa(season) + "/poster"
+		for _, group := range []struct {
+			slot  string
+			bases []string
+		}{
+			{"show/poster", []string{"poster", "folder", "show"}},
+			{"show/backdrop", []string{"fanart", "backdrop", "art", "background"}},
+			{"show/logo", []string{"logo", "clearlogo"}},
+		} {
+			if slot, rank := match(group.slot, group.bases...); slot != "" {
+				return slot, rank
 			}
 		}
-		if season == 0 && numberedArtName(name, "season-specials-poster", false) {
-			return "season/0/poster"
-		}
-		if inSeason && candidateDir == dir && matches("poster", "folder") {
-			return "season/" + strconv.Itoa(season) + "/poster"
+	}
+	if season < 0 || season > 9999 || !(candidateDir == showDir || inSeason && candidateDir == dir) {
+		return "", unknown
+	}
+	slot := "season/" + strconv.Itoa(season) + "/poster"
+	contextRank := int64(0)
+	if inSeason && candidateDir != dir {
+		contextRank = 256
+	}
+	bases := []string{"season" + strconv.Itoa(season), "season" + twoDigits(season), "season" + twoDigits(season) + "-poster"}
+	if rank, ok := artworkNameRank(name, extension, bases, true, contextRank); ok {
+		return slot, rank
+	}
+	if season == 0 {
+		if rank, ok := artworkNameRank(name, extension, []string{"season-specials-poster"}, false, contextRank+24); ok {
+			return slot, rank
 		}
 	}
-	return ""
+	if inSeason && candidateDir == dir {
+		if rank, ok := artworkNameRank(name, extension, []string{"poster", "folder"}, false, 512); ok {
+			return slot, rank
+		}
+	}
+	return "", unknown
 }
 
 func numberedArtName(name, base string, letter bool) bool {

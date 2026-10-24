@@ -1,0 +1,751 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRecordingsController} from '../src/screens/live/recordings-controller.ts';
+import type {ChannelApi} from '@core/channel-guide.ts';
+
+type Call = Readonly<{path: string; method: string; body?: unknown; signal?: AbortSignal}>;
+type Reply = (call: Call) => unknown;
+const hex = (length = 64, character = 'a') => character.repeat(length);
+const time = '2026-09-06T12:00:00Z', end = '2026-09-06T13:00:00Z';
+/** Padding on the wire is milliseconds; the DVR DTO keeps seconds client-side. */
+const wireOptions = {beforeMs: 0, afterMs: 0, priority: 0, retentionDays: 0, episodeLimit: 0};
+const recording = (id: string, patch: Record<string, unknown> = {}) => ({id, revision: 1,
+  occurrence: {sourceId: hex(48), channelId: hex(64, 'b'), generation: hex(48, 'c'), programmeId: hex(64, 'd')},
+  programme: {id: hex(64, 'd'), channelId: hex(64, 'b'), title: 'Airing', start: time, end, lineage: 'provider-id', seriesId: 'series', episodeId: 'episode', newEvidence: 'unknown'},
+  options: {...wireOptions}, start: time, end, state: 'scheduled', reason: '', keep: false, itemId: '', libraryId: '',
+  coverageStart: '', coverageEnd: '', bytes: 0, ruleId: '', conflicts: [], ...patch});
+const pageOf = (recordings: unknown[], nextCursor = '', revision = 1) => ({recordings, rules: [], nextCursor, revision,
+  captureAvailable: true, captureUnavailableReason: '', deletionAvailable: true, usage: {bytes: 0, pendingDeleteBytes: 0, recordings: recordings.length}});
+const summaryFact = {upcoming: 3, recorded: 12, rules: 2, conflicts: 1, groups: 5, unwatched: 4};
+const groupsFact = (order: string, nextCursor: string) => ({revision: 8, nextCursor, groups: [{key: `${order}-one`, title: 'Show', latest: end,
+  recordings: 9, unwatched: 2, kept: 1, exceptions: 4, recording: recording(hex(64, '5'))}]});
+const storageFact = () => ({policy: {revision: 4, retentionDays: 30, episodeLimit: 10, floorBytes: 1000, capBytes: 2000},
+  measurement: {freeBytes: 300, usedBytes: 400, reservedBytes: 50, writeHealthy: true, measuredAt: time},
+  pendingDeleteBytes: 5, forecastBytes: 600, forecastHours: 12, forecastDescription: 'Room for a day', captureAvailable: true, warning: ''});
+const detailFact = (id: string) => ({recording: recording(id), capacity: {known: true, effective: 2}, overlaps: [], nextOverlap: ''});
+const envelope = (result: unknown, serverId = 'server') => ({protocolVersion: '1.0', serverId, result});
+const held = <T>() => {
+  let resolve!: (value: T) => void, reject!: (failure: unknown) => void;
+  const promise = new Promise<T>((done, failed) => { resolve = done; reject = failed; });
+  return {promise, resolve, reject};
+};
+const url = (call: Call) => new URL(call.path, 'http://portico.invalid');
+const params = (call: Call) => url(call).searchParams;
+const pathname = (call: Call) => url(call).pathname;
+const tick = () => new Promise<void>(done => setTimeout(done, 0));
+
+/** The canonical envelope every DVR read has to receive, with a per-test reply. */
+function fixtureServer(reply: Reply) {
+  const calls: Call[] = [];
+  const api: ChannelApi = {
+    async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+      const call = Object.freeze({path, method: method ?? 'GET', body, signal});
+      calls.push(call);
+      const value = await reply(call);
+      return (value && typeof value === 'object' && 'protocolVersion' in value ? value : envelope(value)) as T;
+    },
+  };
+  return {api, calls};
+}
+function controllerFor(api: ChannelApi, overrides: Partial<{requestId: () => Promise<string>; signal: AbortSignal; isCurrent: () => boolean}> = {}) {
+  return createRecordingsController({api, serverId: 'server', requestId: async () => hex(48, 'e'),
+    signal: new AbortController().signal, isCurrent: () => true, ...overrides});
+}
+
+test('construction is inert: no HTTP, no minted receipt and an empty snapshot', () => {
+  let receipts = 0;
+  const {api, calls} = fixtureServer(() => pageOf([]));
+  const controller = createRecordingsController({api, serverId: 'server',
+    requestId: async () => { receipts++; return hex(48, 'e'); }, signal: new AbortController().signal, isCurrent: () => true});
+  assert.equal(calls.length, 0);
+  assert.equal(receipts, 0);
+  assert.deepEqual(controller.getSnapshot(), {query: {view: 'upcoming'}, phase: 'idle', page: null, detail: null, storage: null,
+    summary: null, groups: null, groupsSort: 'recent', accessDenied: false, error: ''});
+  controller.dispose();
+  assert.equal(calls.length, 0);
+  assert.equal(receipts, 0);
+});
+
+test('all four destinations read one canonical envelope with the existing DVR query', async () => {
+  const upcoming = pageOf([recording(hex(64, '1'))], 'upcoming-next', 3);
+  const recorded = pageOf([recording(hex(64, '2'))], '', 4);
+  const history = pageOf([recording(hex(64, '3'))], '', 5);
+  const detail = detailFact(hex(64, '4'));
+  const {api, calls} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    if (pathname(call) === '/v1/dvr/storage') return storageFact();
+    if (pathname(call).startsWith('/v1/dvr/recordings/')) return detail;
+    const state = params(call).get('state');
+    return state === 'upcoming' ? upcoming : state === 'recorded' ? recorded : history;
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'upcoming'});
+    const first = params(calls.at(-1)!);
+    assert.equal(first.get('state'), 'upcoming');
+    assert.equal(first.get('limit'), '50');
+    assert.equal(first.get('sort'), 'recent');
+    assert.equal(first.has('cursor'), false);
+    assert.deepEqual(controller.getSnapshot().page?.recordings.map(value => value.id), [hex(64, '1')]);
+    assert.equal(controller.getSnapshot().page?.nextCursor, 'upcoming-next');
+    assert.equal(controller.getSnapshot().phase, 'ready');
+
+    await controller.load({view: 'recorded'});
+    assert.equal(params(calls.at(-1)!).get('state'), 'recorded');
+    assert.deepEqual(controller.getSnapshot().page?.recordings.map(value => value.id), [hex(64, '2')]);
+
+    await controller.load({view: 'history'});
+    assert.equal(params(calls.at(-1)!).get('state'), 'history');
+    assert.deepEqual(controller.getSnapshot().page?.recordings.map(value => value.id), [hex(64, '3')]);
+
+    await controller.load({view: 'storage'});
+    assert.equal(pathname(calls.at(-1)!), '/v1/dvr/storage');
+    assert.deepEqual(controller.getSnapshot().storage, storageFact());
+    assert.equal(controller.getSnapshot().page, null);
+
+    await controller.load({view: 'recorded', recordingId: hex(64, '4')});
+    assert.equal(pathname(calls.at(-1)!), '/v1/dvr/recordings/' + hex(64, '4'));
+    assert.equal(controller.getSnapshot().detail?.recording.id, hex(64, '4'));
+    assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
+    assert.ok(calls.every(call => call.method === 'GET' && call.body === undefined), 'reads never mutate');
+    assert.equal('act' in controller, false);
+    assert.equal('mutating' in controller.getSnapshot(), false);
+  } finally { controller.dispose(); }
+});
+
+test('an opaque cursor is carried forward exactly and the reply nextCursor is the only next token', async () => {
+  const pages: Record<string, unknown> = {'': pageOf([recording(hex(64, '1'))], 'opaque-two', 1),
+    'opaque-two': pageOf([recording(hex(64, '2'))], 'opaque-three', 2), 'opaque-three': pageOf([recording(hex(64, '3'))], '', 3)};
+  const {api, calls} = fixtureServer(call => pages[params(call).get('cursor') ?? '']);
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    assert.equal(params(calls.at(-1)!).has('cursor'), false);
+    assert.equal(controller.getSnapshot().page?.nextCursor, 'opaque-two');
+    await controller.load({view: 'recorded', cursor: controller.getSnapshot().page!.nextCursor});
+    assert.equal(params(calls.at(-1)!).get('cursor'), 'opaque-two');
+    assert.equal(controller.getSnapshot().page?.revision, 2);
+    await controller.load({view: 'recorded', cursor: 'opaque-three'});
+    assert.equal(params(calls.at(-1)!).get('cursor'), 'opaque-three');
+    assert.deepEqual(controller.getSnapshot().page?.recordings.map(value => value.id), [hex(64, '3')]);
+    assert.equal(controller.getSnapshot().page?.nextCursor, '');
+  } finally { controller.dispose(); }
+});
+
+test('genuine aggregates are the server counts, never the loaded page', async () => {
+  const {api, calls} = fixtureServer(call => pathname(call) === '/v1/dvr/summary' ? summaryFact
+    : pathname(call) === '/v1/dvr/groups' ? groupsFact(params(call).get('sort') ?? 'recent', 'group-next')
+    : pageOf([recording(hex(64, '1'))], '', 1));
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    assert.equal(controller.getSnapshot().page?.recordings.length, 1);
+    assert.equal(controller.getSnapshot().summary, null, 'a page is not a summary');
+    assert.equal(controller.getSnapshot().groups, null);
+
+    const summary = await controller.readSummary();
+    assert.deepEqual(summary, summaryFact);
+    assert.deepEqual(controller.getSnapshot().summary, summaryFact);
+    assert.notEqual(controller.getSnapshot().summary?.recorded, controller.getSnapshot().page?.recordings.length);
+
+    const groups = await controller.readGroups('title');
+    assert.equal(params(calls.at(-1)!).get('sort'), 'title');
+    assert.equal(params(calls.at(-1)!).has('cursor'), false);
+    assert.equal(groups.groups[0].recordings, 9);
+    assert.equal(groups.groups[0].unwatched, 2);
+    assert.equal(groups.groups[0].kept, 1);
+    assert.equal(groups.groups[0].exceptions, 4);
+    assert.equal(groups.revision, 8);
+    assert.equal(controller.getSnapshot().groupsSort, 'title');
+    assert.equal(controller.getSnapshot().groups?.nextCursor, 'group-next');
+
+    await controller.readGroups('title', 'group-next');
+    assert.equal(params(calls.at(-1)!).get('cursor'), 'group-next');
+    assert.equal(controller.getSnapshot().groups?.nextCursor, 'group-next');
+  } finally { controller.dispose(); }
+});
+
+test('a replaced group order erases the old order and a late reply cannot restore it', async () => {
+  const first = held<unknown>(), second = held<unknown>();
+  let served = 0;
+  const {api, calls} = fixtureServer(() => (served++ === 0 ? first.promise : second.promise));
+  const controller = controllerFor(api);
+  try {
+    const recent = controller.readGroups('recent');
+    const oldest = controller.readGroups('oldest');
+    assert.equal(controller.getSnapshot().groups, null);
+    second.resolve(groupsFact('oldest', 'oldest-next'));
+    await oldest;
+    assert.equal(controller.getSnapshot().groups?.nextCursor, 'oldest-next');
+    assert.equal(controller.getSnapshot().groupsSort, 'oldest');
+    first.resolve(groupsFact('recent', 'recent-next'));
+    await assert.rejects(recent, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    assert.equal(controller.getSnapshot().groups?.nextCursor, 'oldest-next');
+    assert.equal(controller.getSnapshot().groups?.groups[0].key, 'oldest-one');
+    assert.equal(calls.length, 2);
+    assert.equal(params(calls[0]).get('sort'), 'recent');
+    assert.equal(params(calls[1]).get('sort'), 'oldest');
+  } finally { controller.dispose(); }
+});
+
+test('a superseded view load settles without republishing its page', async () => {
+  const upcoming = held<unknown>(), history = held<unknown>();
+  let served = 0;
+  const {api} = fixtureServer(() => (served++ === 0 ? upcoming.promise : history.promise));
+  const controller = controllerFor(api);
+  try {
+    const first = controller.load({view: 'upcoming'});
+    const second = controller.load({view: 'history'});
+    history.resolve(pageOf([recording(hex(64, '9'))], '', 2));
+    await second;
+    upcoming.resolve(pageOf([recording(hex(64, '8'))], '', 1));
+    await assert.rejects(first, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.query.view, 'history');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.deepEqual(snapshot.page?.recordings.map(value => value.id), [hex(64, '9')]);
+  } finally { controller.dispose(); }
+});
+
+test('navigation and authority loss retire every fact and refuse further reads', async () => {
+  let live = true;
+  const {api, calls} = fixtureServer(call => pathname(call) === '/v1/dvr/summary' ? summaryFact
+    : pathname(call) === '/v1/dvr/groups' ? groupsFact('recent', '') : pageOf([recording(hex(64, '1'))], 'next', 1));
+  const controller = controllerFor(api, {isCurrent: () => live});
+  try {
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups();
+    let noticed = 0;
+    controller.subscribe(() => { noticed++; });
+    live = false;
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'retired');
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.groups, null);
+    assert.ok(noticed <= 1);
+    const before = calls.length;
+    await assert.rejects(controller.load({view: 'history'}), failure => failure instanceof DOMException && failure.name === 'AbortError');
+    await assert.rejects(controller.readSummary(), failure => failure instanceof DOMException && failure.name === 'AbortError');
+    await assert.rejects(controller.requestReceipt(), failure => failure instanceof DOMException && failure.name === 'AbortError');
+    assert.equal(calls.length, before, 'a retired viewer starts no request');
+    assert.equal(controller.contains(recording(hex(64, '1'))), false);
+  } finally { controller.dispose(); }
+});
+
+test('dispose aborts the in-flight read and erases every fact', async () => {
+  let active: AbortSignal | undefined;
+  const {api} = fixtureServer(call => {
+    active = call.signal;
+    return new Promise<unknown>((_done, failed) => {
+      const stop = () => failed(new DOMException('aborted', 'AbortError'));
+      if (call.signal?.aborted) stop();else call.signal?.addEventListener('abort', stop, {once: true});
+    });
+  });
+  const controller = controllerFor(api);
+  const pending = controller.load({view: 'recorded'});
+  await tick();
+  assert.equal(active?.aborted, false);
+  controller.dispose();
+  assert.equal(active?.aborted, true, 'disposal aborts the request signal');
+  await assert.rejects(pending, failure => failure instanceof DOMException && failure.name === 'AbortError');
+  await tick();
+  const snapshot = controller.getSnapshot();
+  assert.equal(snapshot.phase, 'retired');
+  assert.equal(snapshot.page, null);
+  assert.equal(snapshot.detail, null);
+  assert.equal(snapshot.storage, null);
+  assert.equal(snapshot.summary, null);
+  assert.equal(snapshot.groups, null);
+  assert.equal(controller.subscribe(() => {}) instanceof Function, true);
+});
+
+test('a page 403 clears page, detail, storage and both aggregates', async () => {
+  let deny = false;
+  const {api} = fixtureServer(call => {
+    if (deny) throw {status: 403};
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups();
+    deny = true;
+    await controller.load({view: 'history'});
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.accessDenied, true);
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.groups, null);
+    assert.equal(controller.contains(recording(hex(64, '1'))), false);
+
+    deny = false;
+    await controller.load({view: 'recorded'});
+    assert.equal(controller.getSnapshot().accessDenied, false);
+    assert.equal(controller.getSnapshot().page?.recordings.length, 1);
+  } finally { controller.dispose(); }
+});
+
+test('a summary 401 clears every fact and fences the aggregate read', async () => {
+  let deny = false;
+  const {api} = fixtureServer(call => {
+    if (deny && pathname(call) === '/v1/dvr/summary') throw {status: 401};
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups();
+    deny = true;
+    await assert.rejects(controller.readSummary(), failure => failure !== null && typeof failure === 'object' && (failure as {status?: number}).status === 401);
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.accessDenied, true);
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.groups, null);
+  } finally { controller.dispose(); }
+});
+
+test('the receipt is the genuine 48-hex DVR operation id, fenced before and after the await', async () => {
+  let minted = 0;
+  const {api, calls} = fixtureServer(() => pageOf([]));
+  const controller = controllerFor(api, {requestId: async () => { minted++; return hex(48, 'f'); }});
+  try {
+    assert.equal(await controller.requestReceipt(), hex(48, 'f'));
+    assert.equal(minted, 1);
+    assert.equal(calls.length, 0);
+  } finally { controller.dispose(); }
+
+  const uuid = controllerFor(fixtureServer(() => pageOf([])).api, {requestId: async () => '123e4567-e89b-12d3-a456-426614174000'});
+  await assert.rejects(uuid.requestReceipt(), /recordings-query-invalid/);
+  uuid.dispose();
+
+  let live = true;
+  const pendingId = held<string>();
+  const fenced = controllerFor(fixtureServer(() => pageOf([])).api, {requestId: () => pendingId.promise, isCurrent: () => live});
+  const receipt = fenced.requestReceipt();
+  live = false;
+  pendingId.resolve(hex(48, 'a'));
+  await assert.rejects(receipt, failure => failure instanceof DOMException && failure.name === 'AbortError');
+  fenced.dispose();
+});
+
+test('undrawn destinations, cursors and group orders perform no request', async () => {
+  const {api, calls} = fixtureServer(() => pageOf([]));
+  const controller = controllerFor(api);
+  try {
+    await assert.rejects(controller.load({view: 'rules' as never}), /recordings-query-invalid/);
+    await assert.rejects(controller.load({view: 'recorded', recordingId: 'recording-one'}), /recordings-query-invalid/);
+    await assert.rejects(controller.load({view: 'recorded', cursor: 'c'.repeat(4097)}), /recordings-query-invalid/);
+    await assert.rejects(controller.readGroups('newest' as never), /recordings-query-invalid/);
+    await assert.rejects(controller.readGroups('recent', 'c'.repeat(4097)), /recordings-query-invalid/);
+    assert.equal(calls.length, 0);
+    assert.equal(controller.getSnapshot().phase, 'idle');
+  } finally { controller.dispose(); }
+});
+
+test('a foreign envelope is refused and leaves no private facts', async () => {
+  const {api, calls} = fixtureServer(() => envelope(pageOf([recording(hex(64, '1'))]), 'another-server'));
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const snapshot = controller.getSnapshot();
+    assert.equal(calls.length, 1);
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    assert.equal(snapshot.phase, 'error');
+    assert.ok(snapshot.error.length > 0);
+    assert.ok(!snapshot.error.includes('another-server'));
+  } finally { controller.dispose(); }
+});
+
+test('contains accepts only the exact resident objects of this generation', async () => {
+  const resident = recording(hex(64, '1')), copy = {...resident};
+  const {api} = fixtureServer(call => pathname(call).startsWith('/v1/dvr/recordings/') ? detailFact(hex(64, '2')) : pageOf([resident], '', 1));
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    assert.equal(row.id, resident.id);
+    assert.equal(controller.contains(row), true);
+    assert.equal(controller.contains(copy), false);
+    await controller.load({view: 'recorded', recordingId: hex(64, '2')});
+    assert.equal(controller.contains(row), false, 'a different destination is not resident');
+    assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
+  } finally { controller.dispose(); }
+});
+
+// Queue item 1 — aggregate replacement, group order and view races on the real DVRModel.
+test('the newest summary reply wins even when an older one settles last', async () => {
+  const older = held<unknown>(), newer = held<unknown>();
+  let served = 0;
+  const {api} = fixtureServer(call => pathname(call) === '/v1/dvr/summary'
+    ? (served++ === 0 ? older.promise : newer.promise) : pageOf([]));
+  const controller = controllerFor(api);
+  try {
+    const first = controller.readSummary();
+    const second = controller.readSummary();
+    const newest = {upcoming: 1, recorded: 2, rules: 3, conflicts: 4, groups: 5, unwatched: 6};
+    newer.resolve(newest);
+    assert.deepEqual(await second, newest);
+    older.resolve({upcoming: 99, recorded: 99, rules: 99, conflicts: 99, groups: 99, unwatched: 99});
+    await assert.rejects(first, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    assert.deepEqual(controller.getSnapshot().summary, newest);
+  } finally { controller.dispose(); }
+});
+
+test('a same-order groups refresh keeps only the newest genuine page', async () => {
+  const older = held<unknown>(), newer = held<unknown>();
+  let served = 0;
+  const {api} = fixtureServer(call => pathname(call) === '/v1/dvr/groups'
+    ? (served++ === 0 ? older.promise : newer.promise) : pageOf([]));
+  const controller = controllerFor(api);
+  try {
+    const first = controller.readGroups('recent');
+    const second = controller.readGroups('recent');
+    newer.resolve(groupsFact('recent', 'newest-token'));
+    await second;
+    assert.equal(controller.getSnapshot().groups?.nextCursor, 'newest-token');
+    older.resolve(groupsFact('recent', 'stale-token'));
+    await assert.rejects(first, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.groupsSort, 'recent');
+    assert.equal(snapshot.groups?.nextCursor, 'newest-token');
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+  } finally { controller.dispose(); }
+});
+
+test('an aggregate authority failure fences a page reply that lands later', async () => {
+  const pageReply = held<unknown>();
+  let deny = false;
+  const {api, calls} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') { if (deny) throw {status: 401};return summaryFact; }
+    return pageReply.promise;
+  });
+  const controller = controllerFor(api);
+  try {
+    const loading = controller.load({view: 'recorded'});
+    deny = true;
+    await assert.rejects(controller.readSummary(), failure => (failure as {status?: number}).status === 401);
+    pageReply.resolve(pageOf([recording(hex(64, '1'))], '', 4));
+    await loading;
+    const snapshot = controller.getSnapshot();
+    assert.equal(calls.filter(call => pathname(call) === '/v1/dvr').length, 1);
+    assert.equal(snapshot.page, null, 'the page reply settled after the authority epoch changed');
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.accessDenied, true);
+    assert.notEqual(snapshot.phase, 'retired');
+  } finally { controller.dispose(); }
+});
+
+test('a view change keeps the server aggregates that are not page facts', async () => {
+  const {api} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('title', 'group-next');
+    return params(call).get('state') === 'recorded'
+      ? pageOf([recording(hex(64, '1'))], '', 1) : pageOf([recording(hex(64, '2'))], '', 2);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups('title');
+    await controller.load({view: 'history'});
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.query.view, 'history');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.deepEqual(snapshot.summary, summaryFact, 'the summary is the server total, not the old page');
+    assert.equal(snapshot.groupsSort, 'title');
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+    assert.equal(snapshot.groups?.nextCursor, 'group-next');
+  } finally { controller.dispose(); }
+});
+
+// Queue item 2 — two controllers never share captured state, lifetimes or receipts.
+test('two controllers on one API keep separate facts, lifetimes and generations', async () => {
+  let served = 0;
+  const {api} = fixtureServer(() => {
+    const revision = ++served;
+    return pageOf([recording(hex(64, revision === 1 ? '1' : '2'))], '', revision);
+  });
+  const first = controllerFor(api), second = controllerFor(api);
+  try {
+    await first.load({view: 'recorded'});
+    await second.load({view: 'recorded'});
+    assert.equal(first.getSnapshot().page?.revision, 1);
+    assert.equal(second.getSnapshot().page?.revision, 2);
+    first.dispose();
+    assert.equal(first.getSnapshot().phase, 'retired');
+    assert.equal(second.getSnapshot().phase, 'ready', 'one disposal cannot retire its neighbour');
+    assert.equal(second.getSnapshot().page?.revision, 2);
+    await second.load({view: 'recorded'});
+    assert.equal(second.getSnapshot().page?.revision, 3);
+  } finally { second.dispose(); }
+});
+
+test('an authority failure in one controller leaves the other controller’s facts intact', async () => {
+  let deny = false;
+  const {api} = fixtureServer(call => {
+    if (deny && params(call).get('state') === 'history') throw {status: 403};
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const first = controllerFor(api), second = controllerFor(api);
+  try {
+    await first.load({view: 'recorded'});
+    await second.load({view: 'recorded'});
+    deny = true;
+    await first.load({view: 'history'});
+    assert.equal(first.getSnapshot().accessDenied, true);
+    assert.equal(first.getSnapshot().page, null);
+    assert.notEqual(first.getSnapshot().phase, 'retired', 'a denied read is not a retirement');
+    assert.equal(second.getSnapshot().accessDenied, false);
+    assert.equal(second.getSnapshot().page?.recordings.length, 1);
+    await second.readGroups();
+    assert.equal(second.getSnapshot().groups?.groups[0].recordings, 9);
+    assert.equal(second.getSnapshot().groupsSort, 'recent');
+  } finally { first.dispose(); second.dispose(); }
+});
+
+test('each controller keeps the API and receipt source it captured', async () => {
+  const captured = fixtureServer(() => pageOf([recording(hex(64, '1'))], '', 1));
+  const other = fixtureServer(() => pageOf([recording(hex(64, '2'))], '', 2));
+  const options = {api: captured.api, serverId: 'server', requestId: async () => hex(48, 'e'),
+    signal: new AbortController().signal, isCurrent: () => true};
+  const controller = createRecordingsController(options);
+  const second = controllerFor(other.api, {requestId: async () => hex(48, 'b')});
+  try {
+    options.api = other.api;
+    options.requestId = async () => hex(48, '9');
+    await controller.load({view: 'recorded'});
+    assert.equal(captured.calls.length, 1, 'the API captured at construction is the one used');
+    assert.equal(other.calls.length, 0);
+    assert.equal(await controller.requestReceipt(), hex(48, 'e'), 'the captured receipt source is the one used');
+    assert.equal(other.calls.length, 0);
+    controller.dispose();
+    await assert.rejects(controller.requestReceipt(), failure => failure instanceof DOMException && failure.name === 'AbortError');
+    assert.equal(await second.requestReceipt(), hex(48, 'b'), 'one retirement cannot refuse another controller’s receipt');
+    assert.equal(second.getSnapshot().phase, 'idle');
+  } finally { second.dispose(); }
+});
+
+// Reviewer lifecycle fix 1 — replacement clears resident membership before it publishes.
+test('a replacement destination retires resident membership before the new query publishes', async () => {
+  const pending: Record<string, ReturnType<typeof held<unknown>>> = {};
+  const reply = (call: Call) => {
+    const name = pathname(call) === '/v1/dvr/storage' ? 'storage'
+      : pathname(call).startsWith('/v1/dvr/recordings/') ? 'detail' : params(call).get('state') ?? '';
+    if (name === 'recorded') return pageOf([recording(hex(64, '1'))], '', 1);
+    pending[name] ??= held<unknown>();
+    return pending[name].promise;
+  };
+  const {api} = fixtureServer(reply);
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    assert.equal(controller.contains(row), true);
+
+    const refreshing = controller.load({view: 'recorded'});
+    assert.equal(controller.contains(row), false, 'a refresh in flight is not a settled destination');
+    await refreshing;
+    assert.notEqual(controller.getSnapshot().page!.recordings[0], row);
+    assert.equal(controller.contains(row), false, 'a refresh republishes new resident objects');
+    assert.equal(controller.contains(controller.getSnapshot().page!.recordings[0]), true);
+
+    const history = controller.load({view: 'history'});
+    assert.equal(controller.contains(row), false, 'membership ends before the replacement publishes');
+    let snapshot = controller.getSnapshot();
+    assert.equal(snapshot.query.view, 'history');
+    assert.equal(snapshot.phase, 'loading');
+    assert.equal(snapshot.page, null, 'the old page cannot pose as the new destination');
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    pending['history'].reject(new Error('history read failed'));
+    await history;
+    assert.equal(controller.contains(row), false, 'a failed replacement cannot revive the old row');
+    assert.equal(controller.getSnapshot().page, null);
+    assert.equal(controller.getSnapshot().phase, 'error');
+
+    const storage = controller.load({view: 'storage'});
+    assert.equal(controller.getSnapshot().storage, null, 'the storage fact is not resident yet');
+    assert.equal(controller.contains(row), false);
+    pending['storage'].resolve(storageFact());
+    await storage;
+    assert.deepEqual(controller.getSnapshot().storage, storageFact());
+
+    const detailId = hex(64, '2');
+    const detail = controller.load({view: 'recorded', recordingId: detailId});
+    assert.equal(controller.getSnapshot().detail, null, 'the new detail is not resident yet');
+    assert.equal(controller.getSnapshot().storage, null, 'the previous destination storage is not resident');
+    assert.equal(controller.getSnapshot().page, null, 'no page belongs to a detail destination');
+    assert.equal(controller.contains(row), false);
+    pending['detail'].resolve(detailFact(detailId));
+    await detail;
+    assert.equal(controller.getSnapshot().detail?.recording.id, detailId);
+    assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
+  } finally { controller.dispose(); }
+});
+
+// Reviewer finding 2 (narrowed) — profile-wide aggregates and the receipt are
+// fenced by the borrowed lease, not by a local destination change.
+test('profile-wide summary, groups and receipt finish across a local destination change on one lease', async () => {
+  const summaryReply = held<unknown>(), groupsReply = held<unknown>(), receiptReply = held<string>();
+  const {api} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') return summaryReply.promise;
+    if (pathname(call) === '/v1/dvr/groups') return groupsReply.promise;
+    return params(call).get('state') === 'recorded'
+      ? pageOf([recording(hex(64, '1'))], '', 1) : pageOf([recording(hex(64, '2'))], '', 2);
+  });
+  const controller = controllerFor(api, {requestId: () => receiptReply.promise});
+  try {
+    await controller.load({view: 'recorded'});
+    const summary = controller.readSummary();
+    const groups = controller.readGroups('recent');
+    const receipt = controller.requestReceipt();
+    await controller.load({view: 'history'});
+
+    summaryReply.resolve(summaryFact);
+    groupsReply.resolve(groupsFact('recent', 'profile-token'));
+    receiptReply.resolve(hex(48, 'a'));
+    assert.deepEqual(await summary, summaryFact, 'a profile-wide total is not tied to the tab');
+    assert.equal((await groups).nextCursor, 'profile-token');
+    assert.equal(await receipt, hex(48, 'a'));
+
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.query.view, 'history');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.deepEqual(snapshot.summary, summaryFact);
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+    assert.equal(snapshot.groupsSort, 'recent');
+  } finally { controller.dispose(); }
+});
+
+test('profile-wide summary, groups and receipt are refused when the borrowed lease retires', async () => {
+  const summaryReply = held<unknown>(), groupsReply = held<unknown>(), receiptReply = held<string>();
+  let live = true;
+  const {api} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') return summaryReply.promise;
+    if (pathname(call) === '/v1/dvr/groups') return groupsReply.promise;
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api, {requestId: () => receiptReply.promise, isCurrent: () => live});
+  try {
+    await controller.load({view: 'recorded'});
+    const summary = controller.readSummary();
+    const groups = controller.readGroups('recent');
+    const receipt = controller.requestReceipt();
+    live = false;
+    summaryReply.resolve(summaryFact);
+    groupsReply.resolve(groupsFact('recent', 'late-token'));
+    receiptReply.resolve(hex(48, 'b'));
+    await assert.rejects(summary, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    await assert.rejects(groups, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    await assert.rejects(receipt, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'retired');
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.groups, null);
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.query.view, 'recorded');
+  } finally { controller.dispose(); }
+});
+
+// Queue item 3 — 401/403 retirement/recovery and resident-detail membership.
+test('a 401 does not retire: page, aggregates and detail recover on genuine reads', async () => {
+  let deny = false;
+  const id = hex(64, '3');
+  const {api} = fixtureServer(call => {
+    if (deny) throw {status: 401};
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('recent', '');
+    if (pathname(call).startsWith('/v1/dvr/recordings/')) return detailFact(id);
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups();
+    deny = true;
+    await assert.rejects(controller.readSummary(), failure => (failure as {status?: number}).status === 401);
+    let snapshot = controller.getSnapshot();
+    assert.notEqual(snapshot.phase, 'retired', 'an authority failure is not a retirement');
+    assert.equal(snapshot.accessDenied, true);
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.groups, null);
+    assert.equal(controller.contains(recording(hex(64, '1'))), false);
+
+    deny = false;
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups();
+    await controller.load({view: 'recorded', recordingId: id});
+    snapshot = controller.getSnapshot();
+    assert.equal(snapshot.accessDenied, false);
+    assert.equal(snapshot.phase, 'ready');
+    assert.equal(snapshot.page, null, 'the detail destination replaced the page');
+    assert.equal(snapshot.detail?.recording.id, id);
+    assert.equal(snapshot.summary?.recorded, summaryFact.recorded);
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+    assert.equal(controller.contains(snapshot.detail!.recording), true);
+  } finally { controller.dispose(); }
+});
+
+test('a resident detail dies with its generation and a 403 retires it without retiring the view', async () => {
+  let deny = false;
+  const id = hex(64, '4');
+  const {api} = fixtureServer(call => {
+    if (deny && pathname(call).startsWith('/v1/dvr/recordings/')) throw {status: 403};
+    if (pathname(call).startsWith('/v1/dvr/recordings/')) return detailFact(id);
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded', recordingId: id});
+    const resident = controller.getSnapshot().detail!.recording;
+    assert.equal(controller.contains(resident), true);
+    assert.equal(controller.contains({...resident}), false, 'the same id is not the resident object');
+
+    await controller.load({view: 'recorded'});
+    assert.equal(controller.contains(resident), false, 'a page destination retires the detail');
+
+    await controller.load({view: 'recorded', recordingId: id});
+    const fresh = controller.getSnapshot().detail!.recording;
+    assert.notEqual(fresh, resident, 'a re-read is a new resident object');
+    assert.equal(controller.contains(fresh), true);
+    assert.equal(controller.contains(resident), false);
+
+    deny = true;
+    await controller.load({view: 'recorded', recordingId: id});
+    const denied = controller.getSnapshot();
+    assert.equal(denied.accessDenied, true);
+    assert.equal(denied.detail, null);
+    assert.equal(controller.contains(fresh), false);
+    assert.notEqual(denied.phase, 'retired', 'the view stays usable after a detail 403');
+    assert.equal(denied.query.recordingId, id, 'the destination is retained for a retry');
+
+    deny = false;
+    await controller.load({view: 'recorded', recordingId: id});
+    assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
+    assert.equal(controller.contains(fresh), false, 'the recovered object is a new generation');
+  } finally { controller.dispose(); }
+});
