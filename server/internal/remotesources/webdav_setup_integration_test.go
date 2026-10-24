@@ -32,7 +32,7 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 	}
 	digest := hex.EncodeToString(sha256Sum(binary))
 	clear(binary)
-	for _, mode := range []string{"imported/supported", "imported/ignored", "imported/wrong", "crypt/supported", "crypt/ignored", "crypt/wrong", "imported/unknown"} {
+	for _, mode := range []string{"imported/supported", "imported/ignored", "imported/wrong", "crypt/supported", "crypt/ignored", "crypt/wrong", "imported/unknown", "union/supported", "union/partial"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
@@ -78,7 +78,7 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 						w.WriteHeader(400)
 						return
 					}
-					if strings.HasSuffix(mode, "/ignored") {
+					if strings.HasSuffix(mode, "/ignored") || mode == "union/partial" && r.Header.Get("X-Leaf") == "second" {
 						w.WriteHeader(200)
 						return
 					}
@@ -96,12 +96,18 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 			}))
 			raw := "[leaf]\ntype=webdav\nurl=" + server.URL + "/media/\nuser=fixture\npass=YWFhYWFhYWFhYWFhYWFhYXMaGgIlEQ\n"
 			remote := "leaf:cipher"
+			leafCount := 1
 			if crypt {
 				raw += "[outer]\ntype=crypt\nremote=leaf:cipher\npassword=YWFhYWFhYWFhYWFhYWFhYXMaGgIlEQ\nfilename_encryption=off\ndirectory_name_encryption=false\n"
 				remote = "outer:"
 			}
 			if strings.HasSuffix(mode, "/unknown") {
 				raw += "pacer_min_sleep=20ms\n"
+			}
+			if strings.HasPrefix(mode, "union/") {
+				raw += "[leaf2]\ntype=webdav\nurl=" + server.URL + "/media/\nuser=fixture\npass=YWFhYWFhYWFhYWFhYWFhYXMaGgIlEQ\nheaders=X-Leaf,second\n[outer]\ntype=union\nupstreams=leaf:cipher leaf2:cipher\n"
+				remote = "outer:"
+				leafCount = 2
 			}
 			approval, err := (remotemedia.Policy{}).PrepareEndpointApproval(ctx, server.URL)
 			if err != nil {
@@ -128,11 +134,19 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 			if strings.HasSuffix(mode, "/unknown") {
 				want, count = remotemedia.SetupRangeUnknown, 0
 			}
-			if len(observations) != 1 || aggregateWebDAVSetup(observations) != want || gets.Load() != count {
+			if mode == "union/supported" {
+				count = 6
+			}
+			if mode == "union/partial" {
+				want, count = remotemedia.SetupRangeUnsupported, 4
+			}
+			if len(observations) != leafCount || aggregateWebDAVSetup(observations) != want || gets.Load() != count {
 				t.Fatal("actual setup fact mismatch", aggregateWebDAVSetup(observations), gets.Load(), want, count)
 			}
-			if count > 0 && (observations[0].Object != name || observations[0].Size != int64(len(payload))) {
-				t.Fatal("raw listed object identity changed")
+			for _, row := range observations {
+				if count > 0 && (row.Object != name || row.Size != int64(len(payload))) {
+					t.Fatal("raw listed object identity changed")
+				}
 			}
 			if ownedRcloneChildren(t) != 0 {
 				t.Fatal("owned temporary process remains")
