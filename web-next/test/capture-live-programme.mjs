@@ -3,6 +3,7 @@
 // comes from the exact published design source. Chromium and ffmpeg are the
 // runner's own tools; no browser automation package is installed.
 import {spawn, spawnSync} from 'node:child_process';
+import {connect} from 'node:net';
 import {existsSync} from 'node:fs';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {resolve, join} from 'node:path';
@@ -13,6 +14,7 @@ const origin = 'http://127.0.0.1:5188', referenceOrigin = 'http://127.0.0.1:5199
 const chromium = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/snap/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'].find(path => existsSync(path));
 if (!chromium) throw new Error('Chromium is not installed on this runner.');
 const sleep = ms => new Promise(done => setTimeout(done, ms));
+const ready = port => new Promise(done => {const socket = connect({port, host: '127.0.0.1'});socket.once('connect', () => {socket.destroy();done(true);});socket.once('error', () => done(false));});
 const server = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5188'],
   {cwd: resolve('web-next'), detached: true, stdio: ['ignore', 'pipe', 'pipe']});
 let log = '';
@@ -20,7 +22,7 @@ server.stdout.on('data', data => {log += data;});server.stderr.on('data', data =
 let http;
 try {
   for (let attempt = 0; ; attempt++) {
-    try {if ((await fetch(origin)).ok) break;} catch {}
+    if (await ready(5188)) break;
     if (attempt > 150 || server.exitCode !== null) throw new Error(`Vite did not start: ${log}`);
     await sleep(100);
   }
@@ -34,7 +36,7 @@ try {
   await writeFile(join(root, 'index.html'), html);
   http = spawn('python3', ['-m', 'http.server', '5199', '--bind', '127.0.0.1', '--directory', root], {stdio: ['ignore', 'ignore', 'pipe']});
   for (let attempt = 0; ; attempt++) {
-    try {if ((await fetch(referenceOrigin)).ok) break;} catch {}
+    if (await ready(5199)) break;
     if (attempt > 100 || http.exitCode !== null) throw new Error('Reference server did not start');
     await sleep(100);
   }
