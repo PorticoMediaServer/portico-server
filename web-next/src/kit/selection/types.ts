@@ -32,8 +32,9 @@ export type SelectionBarProps = Readonly<{
   actions: SelectionActions;
   context?: string;
   typeCount?: number;
-  selectAll: {kind: 'view'; total: number} | {kind: 'row'} | {kind: 'clear'};
-  onSelectAll: () => void;
+  /** Omitted when the owner cannot honestly offer a whole-view or whole-row select. */
+  selectAll?: {kind: 'view'; total: number} | {kind: 'row'} | {kind: 'clear'};
+  onSelectAll?: () => void;
   onExit: () => void;
   allInView?: {visible: number};
   sticky?: boolean;
