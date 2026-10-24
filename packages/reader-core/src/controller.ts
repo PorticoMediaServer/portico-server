@@ -240,16 +240,27 @@ export class ReaderController<P extends object> {
     if (!query.trim() || query.length > 1024 || !Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > 500)
       throw new ReaderError('limit_exceeded');
     const scope = abortScope([options.signal, session.abort.signal]), signal=scope.signal;
+    const iterator = session.document.search(query, {...options, signal})[Symbol.asyncIterator]();
+    let abort!:()=>void;
+    const stopped = new Promise<never>((_,reject)=>{abort=()=>reject(new ReaderError('aborted'));signal.addEventListener('abort',abort,{once:true});});
     let count = 0;
     try {
-    for await (const result of session.document.search(query, {...options, signal})) {
+    for (;;) {
+      throwIfAborted(signal);
+      const next = await Promise.race([iterator.next(),stopped]);
+      if (next.done) return;
       throwIfAborted(signal);
       if (!this.current(session)) throw new ReaderError('aborted');
+      const result = next.value;
       validateLocation(result.location, session.document.format);
       yield Object.freeze({...result, location: copy(result.location)});
       if (++count >= options.limit) return;
     }
-    } finally {scope.dispose();}
+    } finally {
+      signal.removeEventListener('abort',abort);scope.dispose();
+      if (signal.aborted) { const closing=iterator.return?.(); if (closing) void closing.catch(()=>{}); }
+      else await iterator.return?.();
+    }
   }
 }
 function freezeToc(items: readonly import('./ports.ts').ReaderTocItem[]): readonly import('./ports.ts').ReaderTocItem[] {
