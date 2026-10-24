@@ -333,13 +333,8 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 				return e
 			}
 			if next.Stage == Installed && next.InstallationAcknowledged {
-				if next.Purpose == "setup" && local.SetupStart != nil && h.setupReturnResolver != nil {
-					// Installation alone is not a return registration. Resolve only
-					// the original setup capture, under the same current guard.
-					if e = h.setupReturnResolver(ctx, resume, next.OperationID); e != nil && !errors.Is(e, ErrUnavailable) {
-						return e
-					}
-					h.wakeClaimRecovery()
+				if e = h.afterWebClaimInstalled(ctx, next, local, resume); e != nil {
+					return e
 				}
 				status, e = h.snapshot(ctx)
 				return e
@@ -354,15 +349,31 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		log.Printf("Claim approval from the web could not be applied: %v", e)
 		return webClaimAnswer("approval_changed"), true
 	}
+	out, e := json.Marshal(status)
+	if e != nil {
+		return webClaimAnswer("approval_changed"), true
+	}
+	return out, true
+}
+
+// A genuine installed acknowledgement wakes its ordinary TLS and route work
+// before optional return binding. The first bind can legitimately find no
+// serving certificate row yet; that refusal must not leave both managers asleep.
+func (h *ClaimHandler) afterWebClaimInstalled(ctx context.Context, next Intent, local localWebClaim, resume string) error {
+	if next.Stage != Installed || !next.InstallationAcknowledged {
+		return ErrStale
+	}
 	if h.certificates != nil {
 		h.certificates.Wake()
 	}
 	if h.remote != nil {
 		h.remote.Invalidate()
 	}
-	out, e := json.Marshal(status)
-	if e != nil {
-		return webClaimAnswer("approval_changed"), true
+	h.wakeClaimRecovery()
+	if next.Purpose == "setup" && local.SetupStart != nil && h.setupReturnResolver != nil {
+		if err := h.setupReturnResolver(ctx, resume, next.OperationID); err != nil && !errors.Is(err, ErrUnavailable) {
+			return err
+		}
 	}
-	return out, true
+	return nil
 }
