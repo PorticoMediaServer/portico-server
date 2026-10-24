@@ -326,6 +326,12 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		return out, nil, browseIssue("range", "a direct range cannot include a cursor")
 	}
 	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: limit}
+	// A history cursor is scoped by acrossHistory's own view, not the general
+	// across view: decode it with the scope that will validate it.
+	historyPath := anchor.Field == "lastPlayedAt" && (sorts[0].Field == "groupOrder" || sorts[0].Field == "lastPlayed")
+	if historyPath {
+		scope = cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:history:" + pivot.ID, Sort: canonicalSort([]BrowseSortSelection{sorts[0]}), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: limit}
+	}
 	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
 	now := s.now()
 	var decoded cursorValue
