@@ -2,13 +2,14 @@ import type {ReadingSession,ReadingLocation,ReadingProgress} from '@portico/clie
 import type {ReaderSource,ReaderFormat,ReaderMetadata,ReaderLocation,ReaderRange} from './ports.ts';
 import type {ComicPageProvider} from './comic/archive.ts';
 import {rasterInfo} from './comic/image.ts';
-import {abortScope} from './abort.ts';
+import {abortScope,abortReason} from './abort.ts';
 import {ReaderError,throwIfAborted} from './errors.ts';
 import {validateLocation} from './controller.ts';
 
 /** Derived from the canonical captured facade. Native byte bridges implement
  * these same public callbacks; no HTTP client, token or URL enters an engine. */
-export type ReaderSessionInput=Pick<ReadingSession,'manifest'|'signal'|'headPDF'|'readRange'|'readAsset'|'page'>;
+export type ReaderSessionInput=Pick<ReadingSession,'manifest'|'signal'|'headPDF'|'readRange'|'readAsset'|'page'> &
+  Partial<Pick<ReadingSession,'openSequential'>>;
 export type ReadingPublication=Readonly<{
   format:ReaderFormat;source:ReaderSource;metadata:ReaderMetadata;signal:AbortSignal;
   comicPages?:(source:ReaderSource,signal:AbortSignal)=>Promise<ComicPageProvider>;
@@ -36,11 +37,11 @@ export function readingLocationFromReader(location:ReaderLocation):ReadingLocati
 }
 
 export async function createReadingPublication(session:ReaderSessionInput,callerSignal?:AbortSignal):Promise<ReadingPublication> {
-  const manifest=session.manifest,{sourceId:id,revision,size,sessionId}=manifest,life=new AbortController();
+  const manifest=session.manifest,{sourceId:id,revision,size,sessionId,sequential}=manifest,life=new AbortController();
   const scope=abortScope([session.signal,life.signal,...callerSignal?[callerSignal]:[]]),signal=scope.signal;
   const current=()=>{
     throwIfAborted(signal);
-    if(session.manifest!==manifest||manifest.sourceId!==id||manifest.revision!==revision||manifest.size!==size||manifest.sessionId!==sessionId)
+    if(session.manifest!==manifest||manifest.sourceId!==id||manifest.revision!==revision||manifest.size!==size||manifest.sessionId!==sessionId||manifest.sequential!==sequential)
       throw new ReaderError('invalid_source');
   };
   async function run<T>(taskSignal:AbortSignal,work:(signal:AbortSignal)=>Promise<T>):Promise<T> {
@@ -48,10 +49,46 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
     try{throwIfAborted(task.signal);const value=await work(task.signal);throwIfAborted(task.signal);current();return value;}
     finally{task.dispose();}
   }
+  // The operation scope must outlive the headers: retain it until EOF, consumer
+  // cancellation or authority retirement. Pull one bounded chunk, never a body.
+  async function openSequential(taskSignal:AbortSignal):Promise<ReadableStream<Uint8Array>> {
+    current();const task=abortScope([signal,taskSignal]);let stream:ReadableStream<Uint8Array>;
+    try {
+      throwIfAborted(task.signal);if(typeof session.openSequential!=='function')throw new ReaderError('invalid_source');
+      stream=await session.openSequential(task.signal);
+      try{throwIfAborted(task.signal);current();}catch(error){await stream.cancel(error).catch(()=>{});throw error;}
+    }catch(error){task.dispose();throw error;}
+    let reader:ReadableStreamDefaultReader<Uint8Array>;
+    try{reader=stream.getReader();}catch(error){task.dispose();throw error;}
+    let controller:ReadableStreamDefaultController<Uint8Array>,ended=false,total=0;
+    const unlock=()=>{try{reader.releaseLock();}catch{/* pending read releases after cancellation */}};
+    const finish=(error?:unknown,cancel=false)=>{
+      if(ended)return;ended=true;task.signal.removeEventListener('abort',abort);task.dispose();
+      if(!cancel){if(error!==undefined)controller.error(error);else controller.close();}
+      if(error!==undefined||cancel)return reader.cancel(error).catch(()=>{}).finally(unlock);
+      unlock();
+    };
+    const abort=()=>finish(abortReason(task.signal));
+    return new ReadableStream<Uint8Array>({
+      start(value){controller=value;task.signal.addEventListener('abort',abort,{once:true});if(task.signal.aborted)abort();},
+      async pull(){
+        if(ended)return;
+        try {
+          current();const next=await reader.read();if(ended)return;throwIfAborted(task.signal);current();
+          if(next.done){if(total!==size)throw new ReaderError('invalid_source');finish();return;}
+          if(!(next.value instanceof Uint8Array)||next.value.length===0||total+next.value.length>size)throw new ReaderError('invalid_source');
+          if(next.value.length>1024*1024)throw new ReaderError('limit_exceeded');
+          total+=next.value.length;controller.enqueue(next.value.slice());
+        }catch(error){finish(error);}finally{if(ended)unlock();}
+      },
+      cancel(reason){return finish(reason,true);}
+    },{highWaterMark:0});
+  }
   const dispose=()=>{life.abort();scope.dispose();};
   try {
     current();const format=manifest.format;
     if(format!=='epub'&&format!=='pdf'&&format!=='cbz')throw new ReaderError('unsupported_format');
+    if(sequential===true&&(format!=='pdf'||typeof session.openSequential!=='function'))throw new ReaderError('invalid_source');
     if(!id||!revision||!Number.isSafeInteger(size)||size<1)throw new ReaderError('invalid_source');
     const direction=manifest.metadata.direction;
     if(direction!==undefined&&direction!=='ltr'&&direction!=='rtl'&&direction!=='vertical')throw new ReaderError('invalid_source');
@@ -61,7 +98,7 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
     let source:ReaderSource;
     if(format==='pdf') {
       await session.headPDF(signal);current();
-      source=Object.freeze({id,revision,size,async read(range:ReaderRange,taskSignal:AbortSignal) {
+      source=sequential===true?Object.freeze({id,revision,size,sequential:Object.freeze({open:openSequential})}):Object.freeze({id,revision,size,async read(range:ReaderRange,taskSignal:AbortSignal) {
         const length=range.endExclusive-range.start;
         if(!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.endExclusive)||range.start<0||length<0||range.endExclusive>size)
           throw new ReaderError('invalid_source');
