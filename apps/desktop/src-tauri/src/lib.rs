@@ -17,6 +17,8 @@ mod spike;
 pub mod measurement;
 pub mod shutdown;
 #[cfg(feature = "shell")]
+pub use portico_desktop_discovery as discovery;
+#[cfg(feature = "shell")]
 pub mod shell;
 #[cfg(feature = "shell")]
 pub mod window;
