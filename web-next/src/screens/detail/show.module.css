@@ -47,7 +47,7 @@
 }
 
 /* Frame 4: the show's Details tab, its cast and crew, and the owner's Server panel. */
-.detailsTab { padding: 32px 64px 72px; }
+.detailsTab { padding: 32px 64px 74px; }
 
 .detailsGrid { display: grid; grid-template-columns: 360px minmax(0,1fr); gap: 64px; }
 
