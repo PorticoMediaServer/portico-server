@@ -163,6 +163,6 @@ func TestEpisodeRuntimeCapturesActualArtworkPolicyAndPublicationGuard(t *testing
 		t.Fatal(err)
 	}
 	if encoded, check, err = runtime.ArtworkContext(ctx); !errors.Is(err, sql.ErrNoRows) || encoded != nil || check != nil {
-		t.Fatal("missing policy became a placeholder edge", encoded, check, err)
+		t.Fatalf("missing policy became a placeholder edge: encoded=%t guard=%t err=%v", encoded != nil, check != nil, err)
 	}
 }
