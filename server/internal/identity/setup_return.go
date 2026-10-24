@@ -36,15 +36,36 @@ func (s *Service) SetupClaimOperationTx(ctx context.Context, tx *sql.Tx, pending
 	return operation, s.CheckSetupContinuationTx(ctx, tx, pending, proof, operation, "")
 }
 func CheckSetupReturnOriginTx(ctx context.Context, tx *sql.Tx, operation, origin, audience string) error {
-	var cp, cs, sp, ss []byte
-	if err := tx.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature FROM identity_setup_completions WHERE operation_id=?`, operation).Scan(&cp, &cs, &sp, &ss); err != nil {
+	actual, err := setupReturnOriginTx(ctx, tx, operation, audience)
+	if err != nil {
 		return err
 	}
-	claim, _, err := claimweb.VerifySetupStart(claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(cp), Signature: base64.RawURLEncoding.EncodeToString(cs)}, claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(sp), Signature: base64.RawURLEncoding.EncodeToString(ss)}, audience, time.Now())
-	if err != nil || origin == "" || claim.Address != origin {
+	if origin == "" || actual != origin {
 		return ErrUnauthorized
 	}
 	return ctx.Err()
+}
+
+// CapturedSetupReturnOriginTx recovers only an existing frozen continuation's
+// signed origin. The persisted proof remains bound to current pending setup;
+// this does not reconstruct a setup token or grant an owner session.
+func (s *Service) CapturedSetupReturnOriginTx(ctx context.Context, tx *sql.Tx, pending PendingAccountSetup, proof, operation, audience string) (string, error) {
+	if err := s.CheckSetupContinuationTx(ctx, tx, pending, proof, operation, ""); err != nil {
+		return "", err
+	}
+	return setupReturnOriginTx(ctx, tx, operation, audience)
+}
+
+func setupReturnOriginTx(ctx context.Context, tx *sql.Tx, operation, audience string) (string, error) {
+	var cp, cs, sp, ss []byte
+	if err := tx.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature FROM identity_setup_completions WHERE operation_id=?`, operation).Scan(&cp, &cs, &sp, &ss); err != nil {
+		return "", err
+	}
+	claim, _, err := claimweb.VerifySetupStart(claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(cp), Signature: base64.RawURLEncoding.EncodeToString(cs)}, claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(sp), Signature: base64.RawURLEncoding.EncodeToString(ss)}, audience, time.Now())
+	if err != nil || claim.Address == "" {
+		return "", ErrUnauthorized
+	}
+	return claim.Address, ctx.Err()
 }
 func setupReturnRouteTx(ctx context.Context, tx *sql.Tx, operation string, route SetupReturnRoute) error {
 	if !serverreturn.Origin(route.Registration.Origin) || route.Generation < 1 {
