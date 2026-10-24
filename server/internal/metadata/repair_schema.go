@@ -59,6 +59,8 @@ func repairSchema(kind, itemKind string) []RepairFieldSpec {
 	switch kind {
 	case "item":
 		switch itemKind {
+		case "ebook", "comic":
+			return []RepairFieldSpec{textSpec("title", "Title", "general", false), multilineSpec("description", "Description"), yearSpec, textSpec("author", "Author", "general", true), textSpec("series", "Series", "general", true), textSpec("seriesNumber", "Series number", "general", true)}
 		case "movie":
 			return []RepairFieldSpec{
 				textSpec("title", "Title", "general", false),
@@ -181,6 +183,9 @@ func schemaIndex(specs []RepairFieldSpec) map[string]RepairFieldSpec {
 // artworkRolesFor publishes the roles the artwork store accepts for a target, so
 // a client knows which upload and selection surfaces to offer.
 func artworkRolesFor(kind, itemKind string) []string {
+	if kind == "item" && readingRepairKind(itemKind) {
+		return []string{}
+	}
 	switch kind {
 	case "item":
 		switch itemKind {

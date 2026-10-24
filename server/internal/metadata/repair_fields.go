@@ -42,7 +42,7 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 		return e, sql.ErrNoRows
 	}
 	e.itemKind = kindName
-	if t.Kind == "item" {
+	if t.Kind == "item" && !readingRepairKind(kindName) {
 		var stamp string
 		err = tx.QueryRowContext(ctx, `SELECT h.incarnation||':'||h.source_revision||':'||h.identity_revision||':'||h.metadata_revision FROM metadata_publication_heads h WHERE h.item_id=?`, entity).Scan(&stamp)
 		if err != nil {
@@ -132,6 +132,22 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 	for _, spec := range e.schema {
 		e.fields[spec.Field] = repairFieldValue(t.Kind, kindName, spec.Field, backbone, details, side, airDate)
 	}
+	if readingRepairKind(kindName) {
+		var retired bool
+		if err = tx.QueryRowContext(ctx, `SELECT retired FROM catalog_entities WHERE id=?`, entity).Scan(&retired); err != nil {
+			return e, err
+		}
+		if retired {
+			return e, sql.ErrNoRows
+		}
+		values, err := readReadingOwnerFields(ctx, tx, entity)
+		if err != nil {
+			return e, err
+		}
+		for field, value := range values {
+			e.fields[field] = value
+		}
+	}
 	if _, ok := e.fields["seasonNumber"]; ok {
 		var number sql.NullInt64
 		if err = tx.QueryRowContext(ctx, `SELECT n.number FROM catalog_episodes e NOT INDEXED CROSS JOIN catalog_seasons n ON n.entity_id=e.season_id WHERE e.entity_id=?`, entity).Scan(&number); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -153,7 +169,7 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 			}
 		}
 	}
-	if t.Kind != "item" {
+	if t.Kind != "item" || readingRepairKind(kindName) {
 		// A bulk job captures independent target fences before it applies any
 		// edits. A library-wide revision would stale every remaining sibling
 		// after the first edit. Fence the target's source files and publication
@@ -306,6 +322,18 @@ func repairOwnerField(kind, itemKind, field string) (string, bool) {
 // the catalogue projection goes through the write API as an owner write, and
 // owner locks are enforced there for later scanner and provider writes.
 func applyRepairField(ctx context.Context, tx *sql.Tx, t RepairTarget, field string, spec RepairFieldSpec, current RepairField, edit RepairFieldEdit, actor, now string) error {
+	entity, err := resolveEntity(ctx, tx, t.ID)
+	if err != nil {
+		return err
+	}
+	reading := t.Kind == "item" && readingRepairKind(repairItemKind(ctx, tx, entity)) && readingAttributionField(field)
+	if reading {
+		var err error
+		edit, err = readingAttributionEdit(field, current, edit)
+		if err != nil {
+			return err
+		}
+	}
 	value := current.Value
 	locked := current.Locked
 	if edit.Automatic {
@@ -340,15 +368,14 @@ func applyRepairField(ctx context.Context, tx *sql.Tx, t RepairTarget, field str
 	if !validFieldValue(t.Kind, spec, value) {
 		return ErrRepairInput
 	}
-	entity, err := resolveEntity(ctx, tx, t.ID)
-	if err != nil {
-		return err
-	}
 	// The owner row holds exactly the text the catalogue projects, so later
 	// automatic writes record their value as automatic and keep the owner's.
 	automatic := current.Automatic
 	if _, err := tx.ExecContext(ctx, `INSERT INTO metadata_owner_fields VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,field) DO UPDATE SET value=excluded.value,automatic_value=excluded.automatic_value,locked=excluded.locked,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, field, value, automatic, locked, actor, now); err != nil {
 		return err
+	}
+	if reading {
+		return readingAttributionChanged(ctx, tx, entity)
 	}
 	if field == "seasonNumber" {
 		return applySeasonNumber(ctx, tx, t, entity, value)
