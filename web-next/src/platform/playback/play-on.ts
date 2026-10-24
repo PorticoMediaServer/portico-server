@@ -208,7 +208,7 @@ export function mediaAirPlayPort(video: HTMLVideoElement, userAgent = navigator.
   const element = video as WirelessVideo;
   const safari = /Safari\//.test(userAgent) && !/Chrome\/|Chromium\/|Edg\/|OPR\/|CriOS\/|FxiOS\//.test(userAgent);
   const supported = safari && typeof element.webkitShowPlaybackTargetPicker === 'function';
-  const available = () => {try {return supported && !element.disableRemotePlayback && source?.isCurrent() !== false;} catch {return false;}};
+  const available = () => {try {return supported && !element.disableRemotePlayback && source?.isCurrent() === true;} catch {return false;}};
   return {
     available,
     subscribe: listener => {

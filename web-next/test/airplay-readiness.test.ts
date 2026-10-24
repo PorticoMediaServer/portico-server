@@ -11,6 +11,7 @@ class PickerVideo extends EventTarget {
 
 test('the browser AirPlay port uses the current source at the gesture and never borrows stale availability',()=>{
  const video=new PickerVideo();let current=false,throws=false;
+ const unbound=mediaAirPlayPort(video as unknown as HTMLVideoElement,safari);assert.equal(unbound.available(),false);unbound.showPicker();assert.equal(video.picks,0);
  const port=mediaAirPlayPort(video as unknown as HTMLVideoElement,safari,{isCurrent:()=>{if(throws)throw new Error('retired');return current;},subscribe:()=>()=>{}});
  assert.equal(port.available(),false);port.showPicker();assert.equal(video.picks,0);
  current=true;assert.equal(port.available(),true);port.showPicker();assert.equal(video.picks,1);
