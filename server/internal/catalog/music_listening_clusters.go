@@ -38,6 +38,7 @@ type MusicListeningClusters struct {
 	EligibleTracks, AnalyzedTracks int
 	Model                          *sonic.Identity
 	Groups                         []MusicListeningCluster
+	HistoryDigest                  string
 }
 type musicPlayedTrack struct {
 	public  string
@@ -131,6 +132,22 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 	if err = s.listeningClusterTags(tracks); err != nil {
 		return out, err
 	}
+	// Every row's style reuse and ordering depend on the complete permitted
+	// listening sample, not only that mix's selected members. Bind all IDs to
+	// that sample so a play in another cluster also expires old row names.
+	historyIDs := make([]int64, 0, len(tracks))
+	for id := range tracks {
+		historyIDs = append(historyIDs, id)
+	}
+	sort.Slice(historyIDs, func(i, j int) bool { return historyIDs[i] < historyIDs[j] })
+	history := [][]any{}
+	for _, id := range historyIDs {
+		track := tracks[id]
+		history = append(history, []any{track.public, track.result, track.weight})
+	}
+	encodedHistory, _ := json.Marshal(history)
+	historyDigest := sha256.Sum256(encodedHistory)
+	out.HistoryDigest = hex.EncodeToString(historyDigest[:])
 	out.Model = &sonic.Identity{ID: sonic.ModelID, Version: sonic.ModelVersion, SHA256: sonic.ModelSHA256}
 	// The publisher decides whether its row has enough plays/coverage. These
 	// counts and clusters remain actual facts, without a guessed UI threshold.

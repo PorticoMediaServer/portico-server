@@ -84,7 +84,7 @@ func (s *Service) MusicMixes(viewer Viewer, at time.Time) (MusicMixes, error) {
 	}
 	if out.Model != nil {
 		for _, cluster := range clusters.Groups {
-			out.Mixes = append(out.Mixes, MusicMix{ID: musicMixID(viewer, *out.Model, cluster.Tracks, cluster.HistoryDigest), Cluster: cluster})
+			out.Mixes = append(out.Mixes, MusicMix{ID: musicMixID(viewer, *out.Model, cluster.Tracks, clusters.HistoryDigest+":"+cluster.HistoryDigest), Cluster: cluster})
 		}
 	}
 	return out, nil
