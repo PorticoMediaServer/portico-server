@@ -679,6 +679,9 @@ func (s *Service) commitAudioTrack(ctx context.Context, tx *sql.Tx, library, kin
 		if err = compactcatalog.SetSongArtistsTx(ctx, tx, item, credited); err != nil {
 			return err
 		}
+		if err = musicAlbumBackdropTx(ctx, tx, album, f.ArtworkExtra); err != nil {
+			return err
+		}
 		// Artist sidecars resolve to the album artist; a compilation's folder
 		// art belongs to the release, never to "Various Artists".
 		if carriers := artistSidecarCarriers(albumArtistID, albumArtist, f.ArtworkExtra); len(carriers) > 0 {
