@@ -34,7 +34,7 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
     } catch (value) {if (current === generation.current) setError(value);}
     finally {if (current === generation.current) setLoading(false);}
   }, [service]);
-  useEffect(() => {void load(''); return () => {generation.current++;};}, [load]);
+  useEffect(() => {void load('');}, [load]);
   // A search or a match settles on the server; the list reloads until it does.
   const settling = !!page?.entries.some(entry => attentionInProgress(entry.reason));
   useEffect(() => {
