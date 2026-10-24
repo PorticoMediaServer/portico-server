@@ -29,7 +29,7 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 		t.Fatal(err)
 	}
 	entryID, item, ok := l.entryAt(0)
-	stored, err := loadQueue(context.Background(), tx, q)
+	stored, err := loadQueue(context.Background(), tx, q.id)
 	if err = tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
