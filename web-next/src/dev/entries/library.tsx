@@ -276,6 +276,14 @@ export function createLibrarySpecimen(state: LibraryState) {
   return Object.freeze({serverId, libraryId, state, records, record, request, capabilities: custom, page, counts, entries: built.entries, total: built.total});
 }
 
+
+/** A specimen records the failure's stable code for its own diagnostics; the
+ * server's error text is never rendered or kept as specimen output. */
+const failureCode = (error: unknown): string => {
+  const code = error && typeof error === 'object' && 'code' in error ? (error as {code?: unknown}).code : undefined;
+  return typeof code === 'string' && /^[a-z0-9_]{1,64}$/.test(code) ? code : 'error';
+};
+
 /* ---------- the entry: production router, shell and route ---------- */
 const root = typeof document === 'undefined' ? null : document.getElementById('root');
 const state = (typeof location === 'undefined' ? 'grid' : new URLSearchParams(location.search).get('state') ?? 'grid') as LibraryState;
@@ -342,7 +350,7 @@ async function mount(element: HTMLElement) {
     switchProfile: async () => {}, switchServer: async () => {}, savedServers: [],
   };
   const activity = createOwnerActivity(contextBase as never, time, () => record('open-dashboard'), () => record('open-update'), issue => record('open-issue', issue));
-  const playback = {artwork, environment: time, skips: {back: 10, forward: 30}, reportError: (error: unknown) => record('report-error', String(error)),
+  const playback = {artwork, environment: time, skips: {back: 10, forward: 30}, reportError: (error: unknown) => record('report-error', failureCode(error)),
     runtime: {playFromQueue: async (source: unknown, _context: unknown, options: {shuffle?: boolean}) => { record('play-from-queue', {source, shuffle: options.shuffle === true}); },
       cataloguePlayback: () => undefined}};
   const home = {
@@ -350,7 +358,7 @@ async function mount(element: HTMLElement) {
     selection: {toolbar: null, card: () => undefined, channel: () => undefined, collection: () => undefined, registerWindow: () => undefined,
       registerSpotlight: () => undefined, moreAvailable: () => false, moreExpanded: () => false},
     effects: {play: async () => record('play'), playChannel: async () => {}, openEntry: () => record('open-entry'), openSeeAll: () => record('open-see-all'),
-      openMore: () => record('open-more'), setMyList: async () => {}, reportError: (error: unknown) => record('report-error', String(error))},
+      openMore: () => record('open-more'), setMyList: async () => {}, reportError: (error: unknown) => record('report-error', failureCode(error))},
   };
   const binding = {api, events, scopeKey: `library-${state}-specimen`, playback,
     shell: {identity, OwnerActivity: activity.OwnerActivity, dockVisible: false, onSignOut: () => record('sign-out')}, home};
