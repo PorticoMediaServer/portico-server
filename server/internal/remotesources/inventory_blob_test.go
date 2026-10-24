@@ -168,7 +168,8 @@ func TestInventoryBlobRejectsUnknownOrCrossPurposeFactsBeforeIO(t *testing.T) {
 
 func TestInventorySidecarFormatsDoNotGrantOtherMediaReads(t *testing.T) {
 	for operation, files := range map[string][]string{
-		"local_metadata": {"movie.nfo", "metadata.opf", "book.cue", "cover.JPG", "folder.webp", "book.mp3.portico.json", "metadata.json", "desc.txt", "reader.txt"},
+		"probe":          {"poster.tbn"},
+		"local_metadata": {"poster.TBN", "movie.nfo", "metadata.opf", "book.cue", "cover.JPG", "folder.webp", "book.mp3.portico.json", "metadata.json", "desc.txt", "reader.txt"},
 		"subtitles":      {"movie.en.srt", "movie.sup", "movie.idx", "movie.sub", "movie.ttml"},
 	} {
 		for _, file := range files {
@@ -182,6 +183,14 @@ func TestInventorySidecarFormatsDoNotGrantOtherMediaReads(t *testing.T) {
 			if inventorySidecarCandidate(operation, file) {
 				t.Fatal("metadata operation granted a different content input", operation, file)
 			}
+		}
+	}
+}
+
+func TestInventoryThumbnailAliasDoesNotGrantOtherOperations(t *testing.T) {
+	for _, operation := range []string{"subtitles", "decode", "episode_thumbnail", "reading", "playback", ""} {
+		if inventorySidecarCandidate(operation, "poster.tbn") {
+			t.Fatal("image alias granted another operation", operation)
 		}
 	}
 }

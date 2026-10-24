@@ -112,7 +112,7 @@ func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Vie
 			return out, jobInvalid("invalid preview filter")
 		}
 	}
-	compiler := &browseCompiler{profile: v.Profile, restrictions: v.EffectiveRestrictions(), count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: v.Profile, restrictions: v.EffectiveRestrictions(), count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
 	for _, name := range entityKindMembers(pivot) {
 		if kind, e := compactcatalog.ParseKind(name); e == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))

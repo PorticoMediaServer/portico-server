@@ -5,6 +5,13 @@ import {compareScreens} from './compare.mjs';
 const node = (frame, patch = {}) => ({id: frame, frame, tag: 'h1', ownText: 'Public heading', box: {x: 10, y: 20, width: 100, height: 40}, style: {fontFamily: 'Example', fontSize: '32px', fontWeight: '800', opacity: '.7', color: 'rgb(46, 63, 73)'}, ...patch});
 const spec = elements => ({scope: 'screen', fullViewport: true, root: {width: 200, height: 100}, viewport: {deviceScaleFactor: 1}, anchorIssues: [], elements});
 
+test('matching icon slots never imply measured glyph identity', () => {
+  const reference = spec([node('close', {image: {kind: 'icon'}, ownText: ''})]);
+  const result = compareScreens(reference, structuredClone(reference));
+  assert.equal(result.verdict, 'PASS');
+  assert.ok(result.diagnostics.some(value => value.property === 'icon.identity/contents' && value.scored === false));
+});
+
 test('identical semantic screen passes, diagnostic DOM classes never change measured typography', () => {
   const reference = spec([node('title')]), actual = spec([node('title', {classes: ['different-implementation-wrapper']})]);
   const result = compareScreens(reference, actual);

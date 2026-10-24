@@ -58,3 +58,8 @@ c++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-fast-math -ffp-contract=off \
 python3 scripts/check-sonic-cpu-baseline.py --helper "$work/portico-sonic" \
   --model "$work/model/model.onnx" --qemu "$qemu_binary"
 python3 -m unittest discover -s scripts -p test_prepare_sonic_runtime.py
+
+# Exercise the actual server aggregation/normalization and cancellation boundary.
+export PORTICO_SONIC_HELPER_TEST="$work/portico-sonic" PORTICO_SONIC_MODEL_TEST="$work/model"
+(cd server && GOTOOLCHAIN=go1.26.10 GOMAXPROCS=1 GOMEMLIMIT=1200MiB GOTMPDIR="$TMPDIR" GOFLAGS="-p=1 -trimpath" \
+  go test -count=1 ./internal/sonic -run "^TestRuntimeActual(CPUAndCurrentVerifiedModel|CancellationRetiresHelperAndInput)$")
