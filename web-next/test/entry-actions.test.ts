@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {entryActions, deleteTitleEffect} from '../src/shell/entry-actions.ts';
+import {addToDestinationEffect, deleteTitleEffect, entryActions} from '../src/shell/entry-actions.ts';
 
 const target = {libraryId: 'library', itemId: 'item', kind: 'movie' as const, title: 'Film'};
 const ports = {api: {request: async () => ({})}, serverId: 'server', viewerId: 'viewer', isCurrent: () => true, requestId: async () => 'operation'};
