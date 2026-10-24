@@ -11,5 +11,5 @@ export function RecordingsLayout({title, sourceLabel, allChannels, sourceName, c
       <p><strong>{sourceName}</strong><RuleGap/>{channels}<RuleGap/>{through}</p></header>{children}</section>;
 }
 export function RecordingStorage({used, free, remaining, label, fraction}: {used: string; free: string; remaining: string; label: string; fraction: number}) {
-  return <div className={styles.storage} role="img" aria-label={label}><span><b>{used}</b><RuleGap/>{free}</span><span className={styles.meter}><i style={{width: `${Math.min(1, Math.max(0, fraction)) * 100}%`}}/></span><small>{remaining}</small></div>;
+  return <div className={styles.storage} role="img" aria-label={label}><span><b>{used}</b><RuleGap/>{free}</span><span className={styles.meter}><i style={{width: `${Math.round(Math.min(1, Math.max(0, fraction)) * 1000) / 10}%`}}/></span><small>{remaining}</small></div>;
 }

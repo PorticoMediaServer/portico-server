@@ -1,12 +1,16 @@
 // Remote-only acceptance harness. No server data or credentials; one browser and server.
 import {spawn} from 'node:child_process';
-import {readFile, writeFile} from 'node:fs/promises';
+import {readFile, writeFile, symlink, unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {checkSeriesRules} from '../test/live-series-rules.browser.mjs';
 const output = process.env.PORTICO_RUNNER_OUTPUT, reference = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
 if (!output || !reference || !process.env.PORTICO_BROWSER_MODULE) throw new Error('Run on the external runner with --browser and the exact design secondary source.');
 const {chromium} = await import(pathToFileURL(process.env.PORTICO_BROWSER_MODULE));
+// Existing gallery families resolve the design checkout as a sibling worktree.
+// The runner supplies that exact archive separately; link it only for this job.
+const designLink = resolve('../../design-ui-v1');
+await symlink(reference, designLink);
 const origin = 'http://127.0.0.1:5188';
 const server = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5188'], {cwd: resolve('web-next'), detached: true, stdio: ['ignore', 'pipe', 'pipe']});
 let log = '';
@@ -47,4 +51,5 @@ try {
   try {process.kill(-server.pid, 'SIGTERM');} catch {}
   await new Promise(resolve => {if (server.exitCode !== null) resolve();else server.once('exit', resolve);});
   await writeFile(`${output}/vite.log`, log);
+  await unlink(designLink);
 }
