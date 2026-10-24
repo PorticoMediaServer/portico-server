@@ -11,7 +11,7 @@ await writeFile(join(output, 'capture.log'), '{"kind":"capture started"}\n', {mo
 const chrome = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.PORTICO_CHROMIUM || '/usr/bin/chromium';
 const height = 1037;
 const mime = {'.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2'};
-const vite = await createViteServer({root: resolve('web-next'), configFile: resolve('web-next/vite.config.ts'), cacheDir: join(process.env.TMPDIR, 'search-vite'),
+const vite = await createViteServer({root: resolve('.'), configFile: resolve('vite.config.ts'), cacheDir: join(process.env.TMPDIR, 'search-vite'),
   server: {host: '127.0.0.1', port: 0, strictPort: false}});
 let reference;
 try {
