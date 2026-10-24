@@ -25,6 +25,7 @@ import {LibrariesPanel} from './libraries/LibrariesPanel';
 import {LibraryScanAction} from './libraries/LibraryActions';
 import {isLibraryPanelContext, libraryScanAction} from './libraries/model';
 import {createServerSettingsSurfaces} from './server';
+import {createTroubleshootingSurfaces} from './server/troubleshooting';
 import {presetEnginesAvailable} from './server/engines';
 import {LibraryFolders} from './libraries/LibraryFolders';
 import {readingSettingsAdapter} from './reading-adapter';
@@ -129,6 +130,8 @@ export function SettingsEntry() {
     // Storage & backups owns one bounded usage sweep shared by its drawn rows.
     const server = route.section === 'storage' ? createServerSettingsSurfaces({transport: context.api, serverId: viewer.serverId, isCurrent: current, openTarget: openSettingsRow,
       backups: controller.backups, subscribe: controller.subscribe, scopeKey: `${viewer.serverId}/${options.viewerId}`, reportError}) : undefined;
+    const troubleshooting = route.section === 'troubleshooting' ? createTroubleshootingSurfaces({transport: context.api, serverId: viewer.serverId,
+      viewerId: options.viewerId, downloadBase: context.api.baseUrl, isCurrent: current, subscribe: controller.subscribe, reportError}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         const storageControl = server?.special(row, state);
@@ -157,7 +160,7 @@ export function SettingsEntry() {
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
-      section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
+      section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
@@ -173,7 +176,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();server?.dispose();controller.dispose();};
+    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();server?.dispose();troubleshooting?.dispose();controller.dispose();};
   }, [context, retry, route.section, reportTimeZone]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};

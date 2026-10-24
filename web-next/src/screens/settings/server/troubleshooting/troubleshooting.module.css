@@ -1,0 +1,38 @@
+.reports { display: flex; flex-direction: column; gap: 28px; }
+.panel { display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 16px; background: var(--color-raised); }
+.panelHead { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.panelHead h3 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -.02em; color: var(--color-text); }
+.lede { margin: 0; font-size: 14px; line-height: 1.45; color: var(--color-text-tertiary); }
+.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.reportRow { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 0; border-top: 1px solid var(--color-line-soft, color-mix(in srgb, var(--color-text) 8%, transparent)); }
+.reportRow:first-child { border-top: 0; }
+.reportRow > svg { flex: none; color: var(--color-text-tertiary); }
+.reportText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.reportText b { font-size: 15px; font-weight: 700; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reportText small { font-size: 13px; color: var(--color-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.none { margin: 0; font-size: 14px; color: var(--color-text-tertiary); }
+.pager { display: flex; align-items: center; gap: 10px; }
+.note { margin: 0; font-size: 13px; color: var(--color-text-tertiary); }
+.failure { display: flex; align-items: center; gap: 14px; margin: 0; font-size: 14px; color: var(--color-text-secondary); }
+.failure button { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--color-accent-strong); cursor: pointer; }
+.reportMeta { margin: 0 0 12px; font-size: 13px; color: var(--color-text-tertiary); }
+.log { margin: 0; max-height: 420px; overflow: auto; padding: 16px; border-radius: 12px; background: color-mix(in srgb, var(--color-ink) 70%, transparent); font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; line-height: 1.5; color: var(--color-text-secondary); white-space: pre-wrap; word-break: break-word; }
+.download { display: inline-flex; align-items: center; margin-right: auto; font-size: 14px; font-weight: 700; color: var(--color-accent-strong); text-decoration: none; }
+.lanes { display: flex; align-items: center; gap: 6px; }
+.lane { border: 0; background: none; padding: 6px 10px; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 600; color: var(--color-text-tertiary); cursor: pointer; }
+.lane[aria-selected="true"] { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); }
+.lane:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.setAsideRow { display: grid; grid-template-columns: 20px minmax(0, 1.05fr) minmax(0, 1fr); align-items: start; gap: 14px; padding: 12px 0; border-top: 1px solid var(--color-line-soft, color-mix(in srgb, var(--color-text) 8%, transparent)); }
+.setAsideRow:first-child { border-top: 0; }
+.setAsideRow > svg { color: var(--color-text-tertiary); margin-top: 2px; }
+.reason { margin: 0; font-size: 13px; line-height: 1.4; color: var(--color-text-tertiary); text-align: right; }
+.recordRow { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--color-line-soft, color-mix(in srgb, var(--color-text) 8%, transparent)); }
+.recordRow:first-child { border-top: 0; }
+.component { font-weight: 600; color: var(--color-text-tertiary); }
+.sequence { margin-left: auto; flex: none; font-size: 13px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.level { flex: none; min-width: 44px; font-size: 12px; font-weight: 800; letter-spacing: .02em; }
+.level[data-level="warn"] { color: var(--color-warning, #e8bc6a); }
+.level[data-level="error"] { color: var(--color-danger, #f38b88); }
+.level[data-level="debug"] { color: var(--color-text-tertiary); }
+.level[data-level="info"] { color: var(--color-text-secondary); }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; background: color-mix(in srgb, var(--color-text) 8%, transparent); font-size: 12px; font-weight: 700; color: var(--color-text-tertiary); }
