@@ -17,6 +17,7 @@ import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
 import {BrowseController} from './controller';
 import {createLibraryPlaySelection} from './play-selection';
+import {useMusicMixes} from './music-mixes-hook';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
 import {LibraryDiscoveryScreen} from './Discovery';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
@@ -45,6 +46,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   const tabs = libraryTabs(library.kind), requested = tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
+  const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
   const browse = !!pivot && !search.entityId && !search.category && !search.q && view !== 'discover';
   const sourceKey = JSON.stringify({libraryId: library.id, pivot: pivot ?? '', predicates: search.query ? [search.query] : undefined,
@@ -101,7 +103,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
   return <>{view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
-    : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} header={<LibraryIdentity {...header}/>} empty={empty}
+    : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
       actions={(_section, entry) => actions(entry)} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
     {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
