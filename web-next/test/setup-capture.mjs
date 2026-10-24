@@ -62,7 +62,9 @@ try {
   await capture('setup-1', {width: 1440, height: 860}, '1');
   await capture('setup-1c', {width: 1440, height: 1130}, '1c', async () => {
     await page.getByRole('radio', {name: /Local sign-in/}).click();
-    await page.getByLabel('Username', {exact: true}).waitFor();
+    await page.getByLabel('Username', {exact: true}).fill('demo');
+    await page.getByLabel('Password', {exact: true}).fill('a long enough password 1');
+    await page.getByLabel('Confirm password', {exact: true}).fill('a long enough password 1');
   });
   await capture('setup-3', {width: 1440, height: 1120}, '3');
   await capture('setup-2b', {width: 1440, height: 986}, '2b');
