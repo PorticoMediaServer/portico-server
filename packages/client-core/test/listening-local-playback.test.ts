@@ -28,4 +28,7 @@ test('real local PlaybackService and V1QueuePlayer never request a server listen
   assert.deepEqual(paths, ['/v1/listening/preferences']);
   assert.equal(player.listening.mayAdvance(), true);
   assert.equal(player.listening.mayTransition(3600), true);
+  player.dispose(); playback.leave();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.deepEqual(paths, ['/v1/listening/preferences']);
 });
