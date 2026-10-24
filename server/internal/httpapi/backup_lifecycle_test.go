@@ -229,7 +229,9 @@ func TestBackupMutationsRefuseNonownersAndExpiredSessionsWithoutSideEffects(t *t
 	}
 	body, _ := json.Marshal(map[string]any{"backupFolder": t.TempDir(), "includeArtwork": true, "passphraseProtected": true, "passphrase": "permission fixture private phrase"})
 	routes := []struct{ method, path, body string }{
+		{"GET", "/v1/admin/backups/settings", ""},
 		{"PUT", "/v1/admin/backups/settings", string(body)},
+		{"POST", "/v1/admin/backups/inspect", `{"source":{"path":"/unread-fixture"}}`},
 		{"POST", "/v1/admin/backups", `{"operationId":"denied-backup-op"}`},
 		{"DELETE", "/v1/admin/backups/2026-10-23T030000Z", ""},
 		{"POST", "/v1/admin/backups/restore", `{"operationId":"denied-restore-op","source":{"path":"/unread-fixture"},"passphrase":"permission fixture private phrase"}`},
