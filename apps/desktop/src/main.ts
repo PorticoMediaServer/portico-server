@@ -13,11 +13,12 @@ import {installPlatformInstallationProvider} from '../../../web-next/src/platfor
 import {nativeInstallation} from './installation';
 import {createDesktopDownloadsHost} from './downloads-host.ts';
 import {createDesktopAppLifetime} from './app-lifetime.ts';
+import {installDesktopCloseHost} from './close-host.ts';
 
 const lifetime=createDesktopAppLifetime();
 const close=()=>{void lifetime.dispose().catch(()=>console.warn('desktop_shutdown_failed'));};
-window.addEventListener('pagehide',close,{once:true});
-lifetime.retain(()=>window.removeEventListener('pagehide',close));
+const closeHost=installDesktopCloseHost({events:window,disposeApp:()=>lifetime.dispose(),acknowledge:()=>nativeWindowBridge.action('close'),onError:()=>console.warn('desktop_shutdown_failed')});
+lifetime.retain(()=>closeHost.dispose());
 async function startDesktop(){
   const native=await nativeWindowBridge.read();lifetime.assertCurrent();
   lifetime.retain(installPlatformInstallationProvider(nativeInstallation));
