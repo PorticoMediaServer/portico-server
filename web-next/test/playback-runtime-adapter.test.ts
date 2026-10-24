@@ -2481,3 +2481,55 @@ test('subtitle choices preserve the offered clock exactly and refuse fractional 
   }
  }
 });
+
+test('catalogue playback uses the same admitted runtime and returns the actual whole-resource QueueHeader',async t=>{
+ const {webDeclaredProfile}=await import('../../packages/client-core/src/client-profile.ts');let probes=0;
+ const f=setup(t,{}, {capabilities:async()=>{probes++;return webDeclaredProfile({app:'catalogue-test'});}});await settle();
+ const before=f.log.length,port=f.runtime.cataloguePlayback();assert.equal(port,f.runtime.cataloguePlayback());assert.equal(f.log.length,before,'obtaining the port starts no work');
+ const segments=Object.freeze([{source:{items:{ids:['movie']}}},{source:{container:{kind:'collection',id:'ordered_release'}}}]);
+ const header=await port.playSegments(segments,{signal:new AbortController().signal,isCurrent:()=>true});await f.arrive();
+ assert.equal(header.id,f.runtime.getSnapshot().queueView!.queue.id);assert.equal(header.total,13,'all server collection members remain in the queue');
+ assert.equal(f.runtime.getSnapshot().session!.queue!.queueId,header.id);assert.equal(f.runtime.getSnapshot().session!.itemId,'movie');
+ const request=f.log.find(r=>r.method==='POST'&&r.path==='/v1/queues')!;
+ assert.deepEqual((request.body as {segments:unknown}).segments,segments);assert.ok(probes>0);assert.ok(f.log.some(r=>r.method==='PUT'&&r.path.endsWith('/capabilities')));
+ assert.equal(f.log.some(r=>r.path.startsWith('/v1/home')),false,'catalogue commands do not fabricate a Home context');
+ const resumed=await port.playSegments([{source:{items:{ids:['movie']}}}],{startSeconds:33,signal:new AbortController().signal,isCurrent:()=>true});await f.arrive();
+ assert.equal(resumed.id,f.runtime.getSnapshot().session!.queue!.queueId);
+ assert.equal((f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').at(-1)!.body as {startPositionMs:number}).startPositionMs,33000);
+});
+
+test('catalogue playback requires the original signal and currentness before changing media or issuing a request',async t=>{
+ const f=setup(t);await f.runtime.play('movie');await f.arrive();const current=f.runtime.getSnapshot().fence!,port=f.runtime.cataloguePlayback(),count=f.log.length;
+ const segments=[{source:{items:{ids:['other']}}}],abort=new AbortController();abort.abort();
+ for(const options of [undefined,{signal:new AbortController().signal},{isCurrent:()=>true},{signal:abort.signal,isCurrent:()=>true},{signal:new AbortController().signal,isCurrent:()=>false}]){
+  await assert.rejects(port.playSegments(segments,options),/stale_selection_context/);assert.equal(f.log.length,count);assert.deepEqual(f.runtime.getSnapshot().fence,current);
+ }
+ await assert.rejects(port.playSegments([],{signal:new AbortController().signal,isCurrent:()=>true}),/invalid_queue_playback_source/);
+ await assert.rejects(port.playSegments(segments,{startSeconds:NaN,signal:new AbortController().signal,isCurrent:()=>true}),/invalid_queue_playback_source/);
+ assert.equal(f.log.length,count);assert.deepEqual(f.runtime.getSnapshot().fence,current);
+ f.invalidate();await assert.rejects(port.playSegments(segments,{signal:new AbortController().signal,isCurrent:()=>true}),/playback_authority_retired/);assert.equal(f.log.length,count);
+});
+
+test('catalogue playback retains original caller guards through queue POST and adoption without stopping a newer Play',async t=>{
+ for(const retire of ['abort','member','new-play'] as const){
+  const f=setup(t),gate=deferred(),life=new AbortController();let current=true,held=false,sessionId='',signal:AbortSignal|undefined;
+  f.intercept(async(request,response)=>{if(!held&&request.method==='POST'&&request.path==='/v1/queues'){
+   held=true;signal=request.signal;sessionId=(response.body as {session:{id:string}}).session.id;await gate.hold();
+  }return response;});
+  const pending=f.runtime.cataloguePlayback().playSegments([{source:{container:{kind:'collection',id:'ordered_release'}}}],{signal:life.signal,isCurrent:()=>current});
+  const rejected=assert.rejects(pending,/AbortError|cancelled|retired|stale_selection_context/);await gate.started;
+  if(retire==='abort'){life.abort();assert.equal(signal!.aborted,true);}else if(retire==='member')current=false;
+  else{await f.runtime.play('newer');await f.arrive();}
+  const newer=retire==='new-play'?f.runtime.getSnapshot().fence:undefined;
+  gate.resolve();await rejected;await settle();
+  assert.equal(f.server.session(sessionId)!.ended,true,'the late actual session is abandoned, not left holding a lease');
+  if(newer)assert.deepEqual(f.runtime.getSnapshot().fence,newer);else assert.equal(f.runtime.getSnapshot().presentation,undefined);
+ }
+});
+
+test('catalogue playback cannot manufacture a queue when actual capability admission fails',async t=>{
+ const f=setup(t,{}, {capabilities:async()=>{throw new Error('capability probe unavailable');}});
+ await assert.rejects(f.runtime.cataloguePlayback().playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true}));
+ assert.equal(f.log.some(r=>r.method==='POST'&&r.path==='/v1/queues'),false);
+ assert.equal(f.runtime.getSnapshot().queueView,null);assert.equal(f.runtime.getSnapshot().presentation,undefined);
+});
