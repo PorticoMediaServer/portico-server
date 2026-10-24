@@ -1076,6 +1076,7 @@ export const webMessages = {
   'web.chooser.loadFailed': 'Your servers couldn’t be loaded',
   'web.chooser.lede': 'Choose the server to watch from.',
   'web.chooser.loading': 'Loading your servers',
+  'web.chooser.checkingAgain': 'Checking again in {seconds, plural, one {# second} other {# seconds}}',
   'web.chooser.connecting': 'Opening {server}…',
   'web.chooser.current': 'Current server',
   'web.chooser.noneTitle': 'No servers yet',
