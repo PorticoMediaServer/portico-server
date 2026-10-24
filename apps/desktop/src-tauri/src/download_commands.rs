@@ -820,7 +820,7 @@ mod tests {
             std::fs::read(session.local_file(&lease, source).unwrap()).unwrap(),
             b"media"
         );
-        let mut observation=crate::boundary::Observation{generation:0,state:"idle".into(),position_ms:0.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false};
+        let mut observation=crate::boundary::Observation{observed_playback:Default::default(),generation:0,state:"idle".into(),position_ms:0.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false};
         let mut load=LocalLoadRequest{preparation_id:prepared.preparation_id.clone(),local_source_id:source.clone(),generation:10,start_position_ms:0.0,autoplay:true};
         let first=session.load_local(&lease,&load,&observation,|path|{assert_eq!(std::fs::read(path).unwrap(),b"media");Ok(())}).unwrap();
         assert!(first.scope==scope());assert_eq!(first.generation,10);assert_eq!(first.entry_id,entry.id);
@@ -931,7 +931,7 @@ mod tests {
         let mut session=DownloadsSession::open(&root).unwrap();let lease=session.bind(scope()).unwrap();let viewer=scope().viewer().unwrap();
         let entry=session.store.enroll(Enrollment{viewer: viewer.clone(),preparation_id:"preparation".into(),item_id:"item".into(),quality:"original".into(),sha256:"a".repeat(64),bytes:5,title:DownloadTitle{kind:"song".into(),title:"Actual title".into(),artist:String::new(),parent_id:String::new(),parent_title:String::new(),group_id:String::new(),group_title:String::new(),group_number:None,number:None,year:2026,duration_ms:10000,on_server:true}}).unwrap();
         session.active_local=Some(ActiveLocal{viewer: viewer.clone(),entry_id:entry.id,item_id:"item".into(),play_id:"play".into(),generation:7,last_write:std::time::Instant::now(),last_position_ms:0});
-        let mut observation=crate::boundary::Observation{generation:6,state:"playing".into(),position_ms:1234.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false};
+        let mut observation=crate::boundary::Observation{observed_playback:Default::default(),generation:6,state:"playing".into(),position_ms:1234.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false};
         session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
         observation.generation=7;observation.state="loading".into();session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
         observation.state="playing".into();observation.position_ms=f64::NAN;session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());

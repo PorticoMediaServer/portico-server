@@ -8,6 +8,14 @@ import type {DesktopLocalPlayback} from '../src/local-playback.ts';
 import type {LocalPlayerSource} from '../../../packages/client-core/src/playback-v1/local-port.ts';
 
 const source = {url:'/v1/media/opaque',generation:1,mode:'direct' as const,startPositionMs:0,autoplay:true,subtitles:[]};
+test('only canonical measured audio leaves the native bridge; malformed or unsupported facts clear safely',()=>{
+  const raw={generation:1,state:'playing',positionMs:1,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false};
+  const value=observation({...raw,observedPlayback:{audio:{handling:'pcm',sampleRate:48000,channels:2,path:'/private'},screen:{dynamicRange:'dolby_vision'},video:{width:1920},token:'SECRET'}});
+  assert.deepEqual(value.observedPlayback,{audio:{handling:'pcm',sampleRate:48000,channels:2}});
+  assert.doesNotMatch(JSON.stringify(value),/private|SECRET|dolby_vision|1920/);
+  assert.deepEqual(observation({...raw,observedPlayback:{audio:{sampleRate:NaN}}}).observedPlayback,{});
+  assert.deepEqual(observation(raw).observedPlayback,{});
+});
 function harness(local?:DesktopLocalPlayback) {
   const commands: NativeCommand[] = [], handlers = new Map<string,()=>void>();
   let reading: NativeObservation = {generation:0,state:'paused',positionMs:0,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false};
@@ -18,6 +26,21 @@ function harness(local?:DesktopLocalPlayback) {
   const player = new DesktopMediaPlayer(video,{resolveUrl:path=>'https://server.test'+path},bridge,false,local);
   return {player,commands,handlers,setCommand:(effect:NonNullable<typeof commandEffect>)=>{commandEffect=effect;},setReading:(x:Partial<NativeObservation>)=>{reading={...reading,...x};},setAnswer:(x:()=>Promise<NativeObservation>)=>{answer=x;}};
 }
+test('measured output survives only its current private load and clears on terminal/error despite repeated public generation',async()=>{
+  const h=harness();h.player.load(source);await h.player.tick();
+  const original=h.commands[0]!.source!.generation;
+  h.setReading({state:'playing',observedPlayback:{audio:{handling:'pcm',sampleRate:48000,channels:2}}});await h.player.tick();
+  assert.equal(h.player.observe().observedPlayback?.audio?.sampleRate,48000);
+  h.setReading({state:'ended'});await h.player.tick();assert.deepEqual(h.player.observe().observedPlayback,{});
+  h.player.load(source);assert.equal(h.player.observe().observedPlayback,undefined);await h.player.tick();
+  const replacement=h.commands.at(-1)!.source!.generation;assert.notEqual(replacement,original);
+  h.setReading({generation:original,state:'playing',observedPlayback:{audio:{sampleRate:192000}}});await h.player.tick();
+  assert.deepEqual(h.player.observe().observedPlayback,{});
+  h.setReading({generation:replacement,state:'playing',observedPlayback:{audio:{sampleRate:44100}}});await h.player.tick();
+  assert.equal(h.player.observe().observedPlayback?.audio?.sampleRate,44100);
+  h.setAnswer(async()=>{throw new Error('native unavailable')});await h.player.tick();
+  assert.equal(h.player.observe().state,'error');assert.deepEqual(h.player.observe().observedPlayback,{});h.player.dispose();
+});
 function processingSnapshot(id:string,gainDb:number):Pick<PlaybackSnapshot,'phase'|'session'|'audioEffects'>{
  return {phase:'ready',session:{id,generation:1,streamUrl:source.url,mode:'direct',duration:2,resumeSeconds:0,audio:{version:2,id:'audio',mode:'direct',url:source.url,gain:{trackDb:gainDb,trackPeak:1,source:'ebur128'}}},
   audioEffects:{settings:{gapless:true,crossfadeSeconds:0,normalization:'track'},rendering:false,rate:1,eqApplied:false,levelingApplied:false}};
