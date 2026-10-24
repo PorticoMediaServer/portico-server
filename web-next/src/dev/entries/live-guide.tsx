@@ -44,11 +44,11 @@ const channels: readonly SpecimenChannel[] = [
   {id: 'ss', number: '201', name: 'Summit Sports', group: 'Sports', mark: 'SS', programmes: [  // lint-strings-allow
     {id: 'ss1', title: 'Cycling: Mountain Stage', from: [15, 30], to: [18, 30]},  // lint-strings-allow
     {id: 'ss2', title: 'The Locker Room', from: [18, 30], to: [19, 30]},  // lint-strings-allow
-    {id: 'ss3', title: 'Match Highlights', from: [19, 30], to: [20, 30]}  // lint-strings-allow]}, // lint-strings-allow
+    {id: 'ss3', title: 'Match Highlights', from: [19, 30], to: [20, 30]}]},  // lint-strings-allow
   {id: 'sse', number: '202', name: 'Summit Sports Extra', group: 'Sports', mark: 'SSE', programmes: [  // lint-strings-allow
     {id: 'sse1', title: 'Cycling: Mountain Stage', from: [14, 0], to: [17, 0]}, // lint-strings-allow
     {id: 'sse2', title: 'Cycling: Mountain Stage', from: [17, 0], to: [20, 0]},  // lint-strings-allow
-    {id: 'sse3', title: t('next.live.example.football'), from: [20, 0], to: [23, 0], flags: {live: true}}]}, // lint-strings-allow
+    {id: 'sse3', title: t('next.live.example.football'), from: [20, 0], to: [23, 0], flags: {live: true}}]},  // lint-strings-allow
   {id: 'lm', number: '301', name: 'Lantern Movies', group: 'Movies', mark: 'LM', programmes: [  // lint-strings-allow
     {id: 'lm1', title: 'Beneath the Glass Sky', from: [13, 57], to: [16, 11]}, // lint-strings-allow
     {id: 'lm2', title: 'A Quiet Harbor', from: [16, 11], to: [17, 53], flags: {premiere: true}}, // lint-strings-allow
@@ -57,7 +57,7 @@ const channels: readonly SpecimenChannel[] = [
     {id: 'lc1', title: 'A Quiet Harbor', from: [14, 12], to: [15, 54]}, // lint-strings-allow
     {id: 'lc2', title: "The Lighthouse Keeper's Daughter", from: [15, 54], to: [17, 52]}, // lint-strings-allow
     {id: 'lc3', title: 'Paper Moons', from: [17, 52], to: [19, 28]},  // lint-strings-allow
-    {id: 'lc4', title: 'Beneath the Glass Sky', from: [19, 28], to: [21, 40]}  // lint-strings-allow]}, // lint-strings-allow
+    {id: 'lc4', title: 'Beneath the Glass Sky', from: [19, 28], to: [21, 40]}]},  // lint-strings-allow
   {id: 'pk', number: '401', name: 'Pebble Kids', group: 'Kids', mark: 'PK', favorite: true, programmes: [  // lint-strings-allow
     {id: 'pk1', title: 'The Tiny Gardeners', from: [15, 15], to: [15, 45], episode: 'S4 E9', subtitle: 'The Long Night'}, // lint-strings-allow
     {id: 'pk2', title: 'Pebble and Friends', from: [15, 45], to: [16, 0], flags: {new: true}, episode: 'S3 E11', subtitle: 'The Long Night'}, // lint-strings-allow
@@ -95,7 +95,7 @@ const channels: readonly SpecimenChannel[] = [
   {id: 'pt', number: '902', name: 'Patchwork TV', group: 'Other', mark: 'PT', programmes: [  // lint-strings-allow
     {id: 'pt1', title: 'Station Nine', from: [15, 15], to: [16, 0], episode: 'S5 E4', subtitle: t('next.live.example.crossed')}, // lint-strings-allow
     {id: 'pt2', title: inherit, from: [16, 15], to: [17, 0], episode: 'S1 E9', subtitle: 'Second Chances'},  // lint-strings-allow
-    {id: 'pt3', title: 'Neighbors & Rivals', from: [19, 0], to: [19, 30], flags: {new: true}, episode: 'S3 E9', subtitle: t('next.live.example.doors')}  // lint-strings-allow]}, // lint-strings-allow
+    {id: 'pt3', title: 'Neighbors & Rivals', from: [19, 0], to: [19, 30], flags: {new: true}, episode: 'S3 E9', subtitle: t('next.live.example.doors')}]},  // lint-strings-allow
 ];
 const groups = ['News', 'Sports', 'Movies', 'Kids', 'Documentary', 'Music', 'Local', 'Entertainment', 'Other'];
 const mark = (text: string): ChannelMarkModel => ({sourceId: 'synthetic', id: text, text, seed: text});
