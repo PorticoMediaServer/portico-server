@@ -164,19 +164,18 @@ async function settle() {
   }
   return 'unsettled';
 }
-async function shot(name, selector, pageWidth) {
-  const rect = await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;const r=el.getBoundingClientRect();
-    return {x:Math.floor(r.x+scrollX),y:Math.floor(r.y+scrollY),width:Math.ceil(r.width),height:Math.ceil(r.height)}})()`);
+const rectOf = selector => evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;const r=el.getBoundingClientRect();
+  return {x:Math.floor(r.x+scrollX),y:Math.floor(r.y+scrollY),width:Math.ceil(r.width),height:Math.ceil(r.height)}})()`);
+async function shot(name, selector, pageWidth, url, ready) {
+  let rect = await rectOf(selector);
   if (!rect) throw new Error(`Element not found: ${selector}`);
+  // Measure at the reader's window, then reload with the whole screen in view so the
+  // genuine lazy artwork is requested and painted inside the captured viewport.
   await setViewport(pageWidth, rect.y + rect.height);
-  await wait(300);
-  // The pinned sheet is taller than any window; a real reader scrolls it, which is what
-  // starts the genuine lazy artwork. Sweep the whole screen, then return to the top.
-  const total = await evaluate('document.documentElement.scrollHeight');
-  for (let y = 0; y < total; y += 600) { await evaluate(`window.scrollTo(0, ${y})`); await wait(120); }
-  await evaluate('window.scrollTo(0, 0)');
-  await wait(300);
+  await open(url, ready);
   await settle();
+  rect = await rectOf(selector);
+  if (!rect) throw new Error(`Element not found after reload: ${selector}`);
   await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 4, y: 4, button: 'none'}, sessionId);
   await wait(300);
   const {data} = await call('Page.captureScreenshot', {format: 'png', fromSurface: true, captureBeyondViewport: true,
@@ -191,7 +190,7 @@ if (only !== 'actual') {
   await setViewport(2048, 1400);
   await open(`${frameOrigin}/mock.html`, '#home');
   report.reference.zoom = await evaluate(`getComputedStyle(document.querySelector('#home')).zoom`);
-  report.reference.rect = await shot('web-home-r46-reference', '#home', 2048);
+  report.reference.rect = await shot('web-home-r46-reference', '#home', 2048, `${frameOrigin}/mock.html`, '#home');
   report.reference.pointer = await evaluate(`({hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches})`);
   report.reference.rows = await evaluate(`[...document.querySelectorAll('#home .rows > .row')].map(row=>{const r=row.getBoundingClientRect(),track=row.querySelector('.track'),head=row.querySelector('.row-head');
     return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), headBox:head?Math.round(head.getBoundingClientRect().height):null, trackPadding:track?getComputedStyle(track).paddingLeft:null,
@@ -212,7 +211,8 @@ if (only !== 'actual') {
 if (only !== 'reference') {
   await setViewport(viewportWidth, 900);
   await open(`${buildOrigin}/src/screens/home/ds-web-home-r46.html?assets=${encodeURIComponent(frameOrigin + '/')}`, '[data-home-document]');
-  report.actual.rect = await shot('web-home-r46-actual', '[data-home-document]', viewportWidth);
+  const actualUrl = `${buildOrigin}/src/screens/home/ds-web-home-r46.html?assets=${encodeURIComponent(frameOrigin + '/')}`;
+  report.actual.rect = await shot('web-home-r46-actual', '[data-home-document]', viewportWidth, actualUrl, '[data-home-document]');
   report.actual.pointer = await evaluate(`({hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches})`);
   report.actual.artwork = await evaluate(`(()=>{const all=[...document.querySelectorAll('[data-artwork-status]')],counts={};for(const node of all){const key=node.dataset.artworkStatus;counts[key]=(counts[key]??0)+1;}
     const fetches=performance.getEntriesByType('resource').filter(entry=>entry.name.includes('/assets/')).map(entry=>entry.name.split('/assets/')[1]);
