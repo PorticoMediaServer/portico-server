@@ -189,7 +189,10 @@ class ReviewDeployment(unittest.TestCase):
         files = {'assets/index.android.bundle': b'x' * 2048,
                  'assets/media-engine/THIRD-PARTY-NOTICES.txt': b'notices',
                  'lib/arm64-v8a/libporticompv.so': b'current bridge',
-                 'lib/arm64-v8a/libmpv.so': b'engine'}
+                 'lib/arm64-v8a/libmpv.so': b'engine',
+                 'assets/PorticoReader.bundle/index.html': b'production Reader entry',
+                 'assets/PorticoReader.bundle/licences.json': b'{}',
+                 'assets/PorticoReader.bundle/assets/pdf.worker-fixture.mjs': b'PDF worker'}
         with zipfile.ZipFile(path, 'w') as archive:
             for name, data in files.items():
                 if name not in omit:
@@ -212,3 +215,13 @@ class ReviewDeployment(unittest.TestCase):
             self.make_apk(path, omit=['lib/arm64-v8a/libporticompv.so'])
             with self.assertRaises(ValueError):
                 apk.validate_apk(path)
+
+    def test_reader_entry_and_worker_must_be_packaged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'review.apk'
+            for missing in ['assets/PorticoReader.bundle/index.html',
+                            'assets/PorticoReader.bundle/assets/pdf.worker-fixture.mjs']:
+                with self.subTest(missing=missing):
+                    self.make_apk(path, omit=[missing])
+                    with self.assertRaises(ValueError):
+                        apk.validate_apk(path)

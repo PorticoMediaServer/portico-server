@@ -15,11 +15,16 @@ def validate_apk(path):
         names = set(apk.namelist())
         arches = {name.split('/')[1] for name in names if name.startswith('lib/') and name.endswith('.so')}
         required = {'assets/index.android.bundle', 'assets/media-engine/THIRD-PARTY-NOTICES.txt',
-                    'lib/arm64-v8a/libporticompv.so', 'lib/arm64-v8a/libmpv.so'}
+                    'lib/arm64-v8a/libporticompv.so', 'lib/arm64-v8a/libmpv.so',
+                    'assets/PorticoReader.bundle/index.html', 'assets/PorticoReader.bundle/licences.json'}
         if arches != {'arm64-v8a'} or not required <= names:
             raise ValueError('arm64 APK must contain its JS, current JNI bridge, mpv and notices')
         if apk.getinfo('assets/index.android.bundle').file_size < 1024:
             raise ValueError('embedded JavaScript bundle is empty')
+        workers = [name for name in names if name.startswith('assets/PorticoReader.bundle/assets/pdf.worker-')
+                   and name.endswith('.mjs')]
+        if not workers or any(apk.getinfo(name).file_size == 0 for name in workers):
+            raise ValueError('Reader PDF worker is missing or empty')
 
 
 def prepare_dependencies(project, donor):
@@ -54,6 +59,8 @@ def main():
     p.add_argument('--repo', type=Path, required=True)
     p.add_argument('--seed', type=Path, help='optional dependency seed with the exact native lockfile')
     p.add_argument('--engine', type=Path, required=True)
+    p.add_argument('--reader-bundle', type=Path, required=True,
+                   help='extracted immutable production Reader build graph')
     p.add_argument('--scratch', type=Path, required=True)
     p.add_argument('--artifacts', type=Path, required=True)
     p.add_argument('--admitted', action='store_true', help=argparse.SUPPRESS)
@@ -69,8 +76,11 @@ def main():
         raise ValueError('native release source must be clean')
     subprocess.run(['git', '-C', str(repo), 'merge-base', '--is-ancestor', sha, 'origin/main'], check=True)
     a.scratch.mkdir(parents=True, exist_ok=True)
+    if not a.reader_bundle.is_dir():
+        raise ValueError('Reader build input must be an extracted directory')
     os.environ.update(TMPDIR=str(a.scratch), JAVA_HOME='/usr/lib/jvm/java-17-openjdk-amd64',
-                      ANDROID_HOME='/home/justin/Android/Sdk', ANDROID_SDK_ROOT='/home/justin/Android/Sdk')
+                      ANDROID_HOME='/home/justin/Android/Sdk', ANDROID_SDK_ROOT='/home/justin/Android/Sdk',
+                      PORTICO_READER_BUNDLE_DIR=str(a.reader_bundle.resolve()))
     # Bound Metro as well as Gradle: Node observes this affinity when sizing workers.
     os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:2])
     project = repo / 'apps/native'
@@ -81,7 +91,7 @@ def main():
         if target.exists() or target.is_symlink():
             raise FileExistsError('preserve existing dependencies; use a fresh owned release checkout')
         subprocess.run(['npm', 'ci', '--no-audit', '--no-fund', '--legacy-peer-deps'], cwd=project, check=True)
-    for patch in ['patch-apple-blur.mjs', 'patch-android-blur.mjs']:
+    for patch in ['patch-apple-blur.mjs', 'patch-android-blur.mjs', 'patch-android-reader.mjs']:
         subprocess.run(['node', 'scripts/' + patch], cwd=project, check=True)
     subprocess.run(['python3', 'third_party/media-engine/verify.py', 'android', '--out', str(a.engine.parent),
                     '--abis', 'arm64-v8a'], cwd=repo, check=True)
