@@ -5,7 +5,7 @@ import {parseOptions,parseSession} from '@core/playback-v1/types.ts';
 import type {PlayerOffersData} from '@core/player-offers.ts';
 import type {SubtitlePlan,SubtitleResource} from '@core/subtitles.ts';
 import type {WebPlaybackRuntimeSnapshot,WebShellPlaybackRuntime} from '../src/platform/playback';
-import {watchPanelModel} from '../src/screens/watch/panel-model.ts';
+import {phoneOptionRows,watchPanelModel} from '../src/screens/watch/panel-model.ts';
 import {roomActionAllowed} from '../src/screens/watch/room-guard.ts';
 const scope={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'};
 const fence={kind:'queue' as const,playback:{scope,run:1},sessionId:'session',itemId:'movie',sourceId:'source',entryId:'entry',generation:1};
@@ -110,4 +110,16 @@ test('a rendered room Leave cannot act after its binding holds another room',asy
  await act({phase:'live',group:{id:'old-room'}},false);assert.equal(leaves,1);
  // Runtime playback identity alone never grants the action after the handler went stale.
  assert.equal(roomActionAllowed({groupPlaybackMatches:()=>false} as never,true,fence as never,{phase:'live',group:{id:'old-room'}},'old-room','entry'),false);
+});
+
+test('the phone options rows carry only real current choices in drawn order',()=>{
+ const f=fixture(),model=f.model()!;
+ const rows=phoneOptionRows(model,defaultI18n.t);
+ assert.deepEqual(rows.map(row=>row.id),['subtitles','audio','quality','speed']);
+ assert.equal(rows[0].value,model.subtitleLabel);
+ assert.equal(rows[1].value,'English');
+ assert.equal(rows[2].value,'Automatic');assert.equal(rows[2].detail,'720p');
+ assert.equal(rows[3].value,'1.5×');
+ f.set({...f.live,offers:{...f.live.offers!,subtitlePlan:null}});
+ assert.deepEqual(phoneOptionRows(f.model()!,defaultI18n.t).map(row=>row.id),['audio','quality','speed']);
 });

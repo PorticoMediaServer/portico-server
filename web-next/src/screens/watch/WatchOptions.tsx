@@ -1,38 +1,86 @@
-import {useEffect,useLayoutEffect,useRef} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {I18n} from '@i18n';
 import {Segmented} from '../../kit/controls';
 import {TrackChoices} from '../../kit/media';
-import {Icon} from '../../kit/Icon';
+import {Icon, type IconName} from '../../kit/Icon';
 import {BottomSheet} from '../../kit/overlays';
 import type {WatchPanelContext} from './types';
-import type {WatchPanelModel,WatchRadioChoice} from './panel-model';
+import {phoneOptionRows,type WatchPanelModel,type WatchRadioChoice} from './panel-model';
 import styles from './panels.module.css';
 
-function RadioColumn({title,rows,select,reportError}:{title:string;rows:readonly WatchRadioChoice[];select(id:string):void|Promise<void>;reportError(error:unknown):void}){
+type Section = 'subtitles' | 'audio' | 'quality' | 'speed';
+const sectionOf = (panel: string | null): Section | undefined => panel === 'subtitles-audio' ? undefined : panel === 'subtitles' || panel === 'audio' || panel === 'quality' || panel === 'speed' ? panel : undefined;
+
+function RadioRows({rows,select,reportError,label}:{rows:readonly WatchRadioChoice[];select(id:string):void|Promise<void>;reportError(error:unknown):void;label:string}){
  const buttons=useRef(new Map<string,HTMLButtonElement>()),selected=rows.find(row=>row.selected),first=rows.find(row=>row.enabled);
  const act=(row:WatchRadioChoice)=>{if(!row.enabled)return;try{void Promise.resolve(select(row.id)).catch(reportError);}catch(error){reportError(error);}};
- return <section className={styles.column} aria-label={title}><h3>{title}</h3><div role="radiogroup" aria-label={title}>{rows.map(row=><button key={row.id} type="button" role="radio"
+ return <div role="radiogroup" aria-label={label}>{rows.map(row=><button key={row.id} type="button" role="radio"
   ref={node=>{if(node)buttons.current.set(row.id,node);else buttons.current.delete(row.id);}} aria-checked={row.selected} aria-disabled={!row.enabled||undefined}
   tabIndex={row.selected||!selected&&row.id===first?.id?0:-1} className={styles.row} data-selected={row.selected||undefined}
   onClick={()=>act(row)} onKeyDown={event=>{
    const direction=['ArrowDown','ArrowRight'].includes(event.key)?1:['ArrowUp','ArrowLeft'].includes(event.key)?-1:0;
    if(!direction)return;event.preventDefault();event.stopPropagation();const enabled=rows.filter(r=>r.enabled),at=enabled.findIndex(r=>r.id===row.id);
    const next=enabled[(at+direction+enabled.length)%enabled.length];if(next){buttons.current.get(next.id)?.focus();act(next);}
-  }}><span>{row.label}{row.detail&&<small>{row.detail}</small>}</span><Icon name="i-check" size={20}/></button>)}</div></section>;
+  }}><span>{row.label}{row.detail&&<small>{row.detail}</small>}</span><Icon name="i-check" size={20}/></button>)}</div>;
 }
+function RadioColumn({title,rows,select,reportError}:{title:string;rows:readonly WatchRadioChoice[];select(id:string):void|Promise<void>;reportError(error:unknown):void}){
+ return <section className={styles.column} aria-label={title}><h3>{title}</h3>
+  <RadioRows rows={rows} select={select} reportError={reportError} label={title}/></section>;
+}
+
 /** The drawn single options panel. Every visible radio row has actual source membership and
- * every action calls that same runtime with its captured full fence. No optimistic selection. */
+ * every action calls that same runtime with its captured full fence. No optimistic selection.
+ * On a phone the drawn sheet lists one row per control; each row opens its own panel. */
 export function WatchOptions({model,context,i18n,reportError,openSettings}:{openSettings():void|Promise<void>;model:WatchPanelModel;context:WatchPanelContext;i18n:I18n;reportError(error:unknown):void}){
- const root=useRef<HTMLDivElement>(null),t=i18n.t;
+ const root=useRef<HTMLDivElement>(null),rowRefs=useRef(new Map<Section,HTMLButtonElement>()),lastSection=useRef<Section|null>(null),t=i18n.t;
+ const icons:Readonly<Record<Section,IconName>>=Object.freeze({subtitles:'i-cc',audio:'i-audio',quality:'i-quality',speed:'i-gauge'});
+ const sections=phoneOptionRows(model,t).map(row=>({...row,icon:icons[row.id]}));
+ const [section,setSection]=useState<Section|null>(()=>{const asked=sectionOf(context.panel);return asked&&sections.some(row=>row.id===asked)?asked:null});
+ useLayoutEffect(()=>{
+  if(context.layout!=='phone')return;
+  if(section){
+   lastSection.current=section;
+   const scope=root.current?.querySelector(`[data-section="${section}"]`)??root.current;
+   scope?.querySelector<HTMLButtonElement>('[aria-checked="true"], [role="radio"][tabindex="0"], button')?.focus({preventScroll:true});
+   return;
+  }
+  const previous=lastSection.current;lastSection.current=null;
+  if(previous)rowRefs.current.get(previous)?.focus({preventScroll:true});
+ },[section,context.layout]);
  useLayoutEffect(()=>{
   if(!context.returnFocusRef.current?.matches(':focus-visible'))return;
-  const section=context.panel==='quality'?'quality':context.panel==='speed'?'speed':context.panel==='audio'?'audio':'subtitles';
-  const scope=root.current?.querySelector(`[data-section="${section}"]`)??root.current;
+  const asked=sectionOf(context.panel);
+  if(context.layout==='phone'&&!asked)return;
+  const target=asked==='quality'?'quality':asked==='speed'?'speed':asked==='audio'?'audio':asked==='subtitles'?'subtitles':undefined;
+  const scope=(target?root.current?.querySelector(`[data-section="${target}"]`):root.current)??root.current;
   scope?.querySelector<HTMLButtonElement>('[aria-checked="true"], [role="radio"][tabindex="0"]')?.focus({preventScroll:true});
- },[context.panel,context.returnFocusRef]);
+ },[context.panel,context.returnFocusRef,context.layout]);
  useEffect(()=>()=>{const button=context.returnFocusRef.current;if(button?.isConnected)button.focus({preventScroll:true});},[context.returnFocusRef]);
  if(!model.isCurrent())return null;
- const content=<><div ref={root} className={styles.columns} onKeyDown={event=>{
+ const sectionRows=(id:Section):readonly WatchRadioChoice[] => id==='subtitles'?model.subtitles.map(row=>({id:row.id,label:row.primary,detail:row.secondary,selected:row.selected,enabled:!row.unavailable}))
+  :id==='audio'?model.audio.map(row=>({id:row.id,label:row.primary,detail:row.secondary,selected:row.selected,enabled:!row.unavailable}))
+  :id==='quality'?model.quality:[];
+ const sectionSelect=(id:Section,value:string)=>id==='subtitles'?model.selectSubtitle(value):id==='audio'?model.selectAudio(value):id==='quality'?model.selectQuality(value):model.selectSpeed(value);
+ const sectionTitle=(id:Section)=>id==='subtitles'?t('player.opt.subtitles'):id==='audio'?t('player.opt.audio'):id==='quality'?t('player.opt.quality'):t('player.opt.speed');
+ const subPanel=section?<div ref={root} data-section={section} className={styles.subBody} onKeyDown={event=>{
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();setSection(null);}
+ }}>{section==='speed'?<div className={styles.column}>
+   <Segmented className={styles.speeds} aria-label={sectionTitle('speed')} value={model.speed.find(row=>row.selected)?.id??''}
+    items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
+    onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
+   </div>:<RadioRows rows={sectionRows(section)} select={id=>sectionSelect(section,id)} reportError={reportError} label={sectionTitle(section)}/>}</div>:null;
+ const list=<div ref={root} className={styles.phoneRows} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}}}>
+  <p className={styles.phoneNote}><Icon name="i-info" size={18}/><span>{t('player.opt.temporaryChanges')}{' '}{t('player.opt.defaultsUnchanged')}</span></p>
+  {sections.map(row=><button key={row.id} type="button" className={styles.phoneRow}
+   ref={node=>{if(node)rowRefs.current.set(row.id,node);else rowRefs.current.delete(row.id);}}
+   onClick={()=>setSection(row.id)}>
+   <span className={styles.phoneIcon}><Icon name={row.icon} size={18}/></span>
+   <span className={styles.phoneLabel}>{row.label}</span>
+   <span className={styles.phoneValue}>{row.value}{row.detail&&<small>{row.detail}</small>}</span>
+   <Icon name="i-right" size={18}/>
+  </button>)}
+ </div>;
+ const columns=<><div ref={root} className={styles.columns} onKeyDown={event=>{
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}
   else if(event.defaultPrevented&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))event.stopPropagation();
  }}>
@@ -48,7 +96,9 @@ export function WatchOptions({model,context,i18n,reportError,openSettings}:{open
     onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
   </div>}
  </div><div className={styles.note}><Icon name="i-info" size={20}/><span><b>{t('player.opt.temporaryChanges')}</b>{' '}{t('player.opt.defaultsUnchanged')}</span><a href="/settings" onClick={event=>{if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();try{context.close();void Promise.resolve(openSettings()).catch(reportError);}catch(error){reportError(error);}}}>{t('next.reader.openSettings')}<Icon name="i-right" size={16}/></a></div></>;
- return context.layout==='phone'?<BottomSheet open title={t('next.dock.options')} onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}
-  detents={[Math.max(1,(typeof window==='undefined'?context.phoneTop:window.visualViewport?.height??window.innerHeight)-context.phoneTop)]}>{content}</BottomSheet>
-  :<section className={styles.options} role="dialog" aria-label={t('next.dock.options')}>{content}</section>;
+ return context.layout==='phone'?<BottomSheet open title={section?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>setSection(null)}><Icon name="i-left" size={20}/></button><span>{sectionTitle(section)}</span></span>:t('next.dock.options')}
+  headerAction={<button type="button" className={styles.done} onClick={context.close}>{t('action.done')}</button>} showCloseButton={false}
+  onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}
+  detents={[Math.max(1,(typeof window==='undefined'?context.phoneTop:window.visualViewport?.height??window.innerHeight)-context.phoneTop)]}>{section?subPanel:list}</BottomSheet>
+  :<section className={styles.options} role="dialog" aria-label={t('next.dock.options')}>{columns}</section>;
 }

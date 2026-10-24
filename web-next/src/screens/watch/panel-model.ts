@@ -75,3 +75,14 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   selectSpeed:id=>{check();const row=speed.find(r=>r.id===id);if(!row)throw new Error('playback_speed_unavailable');runtime.setSpeed(fence,Number(row.id));},
  });
 }
+
+export type PhoneOptionRow=Readonly<{id:'subtitles'|'audio'|'quality'|'speed';label:string;value?:string;detail?:string}>;
+/** The drawn phone row list: one row per real control, carrying its current choice only. */
+export function phoneOptionRows(model:WatchPanelModel,t:I18n['t']):readonly PhoneOptionRow[]{
+ return [
+  ...(model.subtitles.length?[{id:'subtitles' as const,label:t('player.opt.subtitles'),value:model.subtitleLabel??t('player.opt.off')}]:[]),
+  ...(model.audio.length?[{id:'audio' as const,label:t('player.opt.audio'),...(model.audioLabel?{value:model.audioLabel}:{})}]:[]),
+  ...(model.quality.length?[{id:'quality' as const,label:t('player.opt.quality'),value:model.automatic?t('next.kit.quality.automatic'):model.qualityLabel,...(model.automatic&&model.qualityLabel?{detail:model.qualityLabel}:{})}]:[]),
+  ...(model.speed.length?[{id:'speed' as const,label:t('player.opt.speed'),value:model.speed.find(row=>row.selected)?.label}]:[]),
+ ];
+}
