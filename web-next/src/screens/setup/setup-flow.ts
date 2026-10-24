@@ -20,7 +20,8 @@ export type SetupPorts = Readonly<{
   acceptLocal: (server: SetupServer, session: LocalSession) => Promise<void>;
   continueHosted: (server: SetupServer, input: Readonly<{name: string}>) => Promise<void>;
   resumeHosted?: (server: SetupServer, pending: PendingAccountSetup) => Promise<void>;
-  addLibrary: (server: SetupServer, input: Readonly<{kind: SetupLibraryKind; name: string; path: string}>) => Promise<void>;
+  /** Bound to the admitted owner, never the pre-admission setup bearer. */
+  addLibrary: (input: Readonly<{kind: SetupLibraryKind; name: string; path: string}>) => Promise<void>;
   complete: () => void;
   hostname?: () => string;
 }>;
@@ -155,7 +156,7 @@ export class SetupFlow {
     const op = this.operation();
     this.publish({busy: true, error: undefined});
     try {
-      await this.ports.addLibrary(server, {kind: state.kind, name: state.libraryName.trim(), path: state.path.trim()});
+      await this.ports.addLibrary({kind: state.kind, name: state.libraryName.trim(), path: state.path.trim()});
       if (this.current(server, op)) this.ports.complete();
     } catch (error) {
       if (this.current(server, op)) this.publish({busy: false, error: setupErrorMessage(error)});
