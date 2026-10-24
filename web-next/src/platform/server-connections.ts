@@ -4,6 +4,8 @@ import {RouteError} from '@core/route-identity';
 import {restoreNativeSession,forgetNativeSession,savedConnectionDamaged,type RememberedServer,type ServerConnectionStorage,type HostedConnectionSource,type ConnectionEnvironment} from '@core/server-connections';
 import {browserAccount} from './account';
 import {AppSessionStore, type AppSessionRecord, type NewServerConnection} from '@core/app-sessions.ts';
+import {browserDiscoveryProvider} from './discovery-provider';
+export {installBrowserDiscoveryProvider} from './discovery-provider';
 
 /** Version 1 is encrypted with a non-exportable key. Version 2 is plain JSON, used where the
  * page has no `crypto.subtle` (a server's web app over plain HTTP on the LAN): HTTP is
@@ -116,7 +118,7 @@ export function browserAppSessions():AppSessionStore {
 }
 let listening=false,active:RouteConnection|undefined,networkRevision=0;
 export function browserConnectionEnvironment(serverId?:string,admission?:NewServerConnection):ConnectionEnvironment {
- const store=browserAppSessions(),environment:ConnectionEnvironment={storage:serverId?store.connectionStorage(serverId,admission):store.selectedStorage()};
+ const discover=browserDiscoveryProvider(),store=browserAppSessions(),environment:ConnectionEnvironment={storage:serverId?store.connectionStorage(serverId,admission):store.selectedStorage(),...(discover?{discover}:{})};
  if(listening)return environment;listening=true;
  const changed=()=>active?.networkChanged('browser:'+ ++networkRevision);
  addEventListener('online',changed);addEventListener('offline',changed);
