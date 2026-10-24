@@ -16,7 +16,7 @@ export function controlledEntry(entry) {
 export async function verifyGalleryEntry(browser, entry, viewport) {
   const selected = controlledEntry(entry);
   if (!selected.gallery) return;
-  const observed = await browser.evaluate(`(async()=>{const {loadGalleryFamilies}=await import('/src/dev/gallery-registry.ts');const families=(await loadGalleryFamilies()).filter(value=>value.id===${JSON.stringify(selected.family)});const cases=families.flatMap(value=>value.cases.filter(item=>item.id===${JSON.stringify(selected.case)}));return{families:families.length,cases:cases.length,width:cases[0]?.width,height:cases[0]?.height}})()`);
+  const observed = await browser.evaluate(`(async()=>{const {loadGalleryFamilies}=await import('/src/dev/gallery-registry.ts');const families=(await loadGalleryFamilies(${JSON.stringify(selected.family)})).filter(value=>value.id===${JSON.stringify(selected.family)});const cases=families.flatMap(value=>value.cases.filter(item=>item.id===${JSON.stringify(selected.case)}));return{families:families.length,cases:cases.length,width:cases[0]?.width,height:cases[0]?.height}})()`);
   if (observed.families !== 1 || observed.cases !== 1 || (selected.width ?? observed.width) !== viewport.width || (selected.height ?? observed.height) !== viewport.height) throw new Error('Requested genuine gallery case/viewport does not exist; fallback rendering is not a specimen');
 }
 

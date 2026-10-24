@@ -25,7 +25,10 @@ export function browserCheck(messages) {
 export function familyImports(root) {
   const directory = join(root, 'src/dev/families');
   const names = existsSync(directory) ? readdirSync(directory).filter(name => /^[a-z][a-z0-9-]*\.tsx$/.test(name)).sort() : [];
-  return `export default [${names.map(name => `() => import(${JSON.stringify('/src/dev/families/' + name)})`).join(',')}];`;
+  const families = names.map(name => [name.slice(0, -4), '/src/dev/families/' + name]);
+  // Keep unselected families outside Vite's eager dependency crawl. Their genuine
+  // module is requested only when the registry calls this public loader.
+  return `const families=${JSON.stringify(families)};const load=url=>import(/* @vite-ignore */ url);export default families.map(([familyId,url])=>Object.assign(()=>load(url),{familyId}));`;
 }
 export function kitFamilies() {
   const id = 'virtual:portico-kit-families';

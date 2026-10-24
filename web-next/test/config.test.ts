@@ -32,11 +32,15 @@ test('browser guard substitutes catalogue words and stops unsupported engines be
   const modern = {window: {}, CSS: {supports: () => true}, ResizeObserver: class {}, structuredClone, document: {createElement: () => ({noModule: false})}};
   runInNewContext(source, modern); assert.deepEqual(modern.window, {});
 });
-test('gallery discovery creates sorted explicit dynamic imports and no production registrations', t => {
+test('gallery discovery creates sorted on-demand public loaders and no production registrations', t => {
   const root = mkdtempSync(join(tmpdir(), 'portico-gallery-')); t.after(() => rmSync(root, {recursive: true, force: true}));
   const dir = join(root, 'src/dev/families'); mkdirSync(dir, {recursive: true});
   for (const name of ['states.tsx', 'controls.tsx', 'notes.md']) writeFileSync(join(dir, name), '');
-  assert.equal(familyImports(root), 'export default [() => import("/src/dev/families/controls.tsx"),() => import("/src/dev/families/states.tsx")];');
+  const source = familyImports(root);
+  assert.ok(source.indexOf('["controls","/src/dev/families/controls.tsx"]') < source.indexOf('["states","/src/dev/families/states.tsx"]'));
+  assert.match(source, /import\(\/\* @vite-ignore \*\/ url\)/);
+  assert.doesNotMatch(source, /import\(["']\/src\/dev\/families\//);
+  assert.doesNotMatch(source, /notes\.md/);
   const plugin = kitFamilies(); plugin.configResolved({root, command: 'build'});
   assert.equal(plugin.load('\0virtual:portico-kit-families'), 'export default [];');
   assert.match(read('../src/router.tsx'), /import\.meta\.env\.DEV\s*\?/);

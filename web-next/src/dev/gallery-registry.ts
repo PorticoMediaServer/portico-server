@@ -4,10 +4,12 @@ import familyLoaders from 'virtual:portico-kit-families';
 export type GalleryCase = Readonly<{id: string; labelKey: MessageId; width: number; height: number; render: ComponentType}>;
 export type GalleryFamily = Readonly<{id: string; labelKey: MessageId; cases: readonly GalleryCase[]}>;
 export function defineGalleryFamily<const T extends GalleryFamily>(family: T): T { return family; }
-export async function loadGalleryFamilies(): Promise<readonly GalleryFamily[]> {
-  const families = await Promise.all(familyLoaders.map(load => load().then(module => module.default)));
+export async function loadGalleryFamilies(onlyFamily?: string): Promise<readonly GalleryFamily[]> {
+  const selected = onlyFamily === undefined ? familyLoaders : familyLoaders.filter(load => load.familyId === onlyFamily);
+  const families = await Promise.all(selected.map(load => load().then(module => module.default)));
   const ids = new Set<string>();
   for (const family of families) {
+    if (onlyFamily !== undefined && family.id !== onlyFamily) throw new Error('Selected gallery family does not match its public module.');
     if (!/^[a-z0-9][a-z0-9-]*$/.test(family.id) || ids.has(family.id)) throw new Error('Invalid or duplicate gallery family.');
     ids.add(family.id);
     const cases = new Set<string>();
