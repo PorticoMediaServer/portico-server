@@ -15,7 +15,7 @@ export type RecordedGroupSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready
 export function createRecordedGroupReader(context: ScreenContext, group: string, sort: 'recent' | 'title' | 'oldest') {
   const life = screenLifetime(context), listeners = new Set<() => void>();
   const client = new DVRClient(life.api, context.scope.serverId, randomHex);
-  let closed = false, generation = 0, pending: Promise<void> | undefined;
+  let closed = false, generation = 0, pending: Promise<void> | undefined, pendingToken: object | undefined;
   let page: DVRPage | undefined;
   let state: RecordedGroupSnapshot = Object.freeze({phase: 'idle', recordings: [], busy: false});
   const current = () => !closed && life.current();
@@ -30,6 +30,7 @@ export function createRecordedGroupReader(context: ScreenContext, group: string,
     if (pending) return pending;
     if (more && !page?.nextCursor) return;
     const ticket = generation, cursor = more ? page!.nextCursor : '';
+    const token = {};
     const task = (async () => {
       try {
         const result = await client.list('recorded', cursor, sort, group);
@@ -40,9 +41,9 @@ export function createRecordedGroupReader(context: ScreenContext, group: string,
       } catch (error) {
         if (current() && ticket === generation) publish({phase: state.phase === 'ready' ? 'ready' : 'error', error: dvrMessage(error)});
         throw error;
-      } finally { if (pending === task) pending = undefined; }
+      } finally { if (pendingToken === token) pending = undefined; }
     })();
-    pending = task;return task;
+    pending = task;pendingToken = token;return task;
   };
   const command = async (work: (target: Recording) => Promise<unknown>, target: Recording): Promise<boolean> => {
     assert();
