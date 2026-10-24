@@ -238,11 +238,30 @@ func TestSeedLocalArtworkSeedsEveryAcceptedAlternativeAcrossPages(t *testing.T) 
 }
 
 // The catalogue reader caps one call at 128; 130 accepted images must cross that
-// bound through continuation instead of being capped.
+// bound through continuation instead of being capped, with at most one page of
+// work committed per worker call.
 func TestSeedLocalArtworkContinuationCrossesTheReaderBound(t *testing.T) {
 	db, movie := openAlternativesFixture(t, "alt130")
 	keys := alternativesKeys(130)
 	seedScannedAlternatives(t, db, "alt130", movie, "poster", keys...)
+	calls, committed := 0, 0
+	for call := 0; call < 64; call++ {
+		done, _ := seedLocalArtworkCall(t, db, "item", movie)
+		calls++
+		origins, _ := localCandidates(t, db, movie.ID, "poster")
+		if grew := len(origins) - committed; grew > localArtworkCandidatePage || grew < 0 {
+			t.Fatalf("call %d committed %d keys, want at most %d", calls, grew, localArtworkCandidatePage)
+		} else if calls == 1 && grew != localArtworkCandidatePage {
+			t.Fatalf("first call committed %d keys, want one full page", grew)
+		}
+		committed = len(origins)
+		if done {
+			break
+		}
+	}
+	if calls < 2 {
+		t.Fatal("130 accepted images were treated as one page")
+	}
 	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
 	if len(origins) != len(keys) {

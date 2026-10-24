@@ -196,18 +196,28 @@ const localArtworkCandidatePage = 8
 // accepted for a head's slot (inventory_artwork_candidates), after the primary
 // local_artwork images above. The primary, an owner lock or a pending local job
 // already holds the slot, so an alternative only queues a fetch when nothing
-// else does — it never replaces a choice. Each call seeds one bounded page per
-// slot; the caller keeps the target's dirty row until every slot reports a
-// short page, so later calls continue from committed progress.
+// else does — it never replaces a choice. One worker call advances at most one
+// slot by one page; the caller keeps the target's dirty row until every slot
+// reports a short page, so later calls continue from committed progress.
 func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, fence, now string) (bool, error) {
 	if t.Kind != "item" && t.Kind != "show" && t.Kind != "season" {
 		return true, nil
 	}
 	complete := true
+	seeded := false
 	for _, role := range []string{"poster", "backdrop", "logo"} {
-		done, err := seedLocalArtworkCandidateCall(ctx, tx, t, entity, role, fence, now)
+		if seeded {
+			// This role was not examined in this call; the dirty row keeps it
+			// for the next one.
+			complete = false
+			break
+		}
+		done, count, err := seedLocalArtworkCandidateCall(ctx, tx, t, entity, role, fence, now)
 		if err != nil {
 			return false, err
+		}
+		if count > 0 {
+			seeded = true
 		}
 		if !done {
 			complete = false
@@ -222,20 +232,20 @@ func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarge
 // one stopped without re-reading the pages before it. A newly accepted image
 // can sort below that cursor, so one bounded probe of the first page resets the
 // walk when it is not fully committed.
-func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string) (bool, error) {
+func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string) (bool, int, error) {
 	after, err := committedLocalArtworkCursor(ctx, tx, t, entity, role, fence)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	if after != "" {
 		head, err := catalog.ReadLocalArtworkCandidatesTx(ctx, tx, t.Kind, entity, role, "", localArtworkCandidatePage)
 		if err != nil {
-			return false, err
+			return false, 0, err
 		}
 		if len(head) == localArtworkCandidatePage {
 			seeded, err := localArtworkCandidatesSeeded(ctx, tx, t, entity, role, head)
 			if err != nil {
-				return false, err
+				return false, 0, err
 			}
 			for _, key := range head {
 				if !seeded[key] {
@@ -247,15 +257,15 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 	}
 	keys, err := catalog.ReadLocalArtworkCandidatesTx(ctx, tx, t.Kind, entity, role, after, localArtworkCandidatePage)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	for _, key := range keys {
 		origin := "local:" + key
 		if err = seedArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
-			return false, err
+			return false, 0, err
 		}
 	}
-	return len(keys) < localArtworkCandidatePage, nil
+	return len(keys) < localArtworkCandidatePage, len(keys), nil
 }
 
 // committedLocalArtworkCursor is the last accepted key this slot already committed
