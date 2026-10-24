@@ -51,6 +51,9 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
   const current = useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
   if (current.phase !== 'ready' || !current.selection?.active) return null;
   const summary = current.selection.summary, whole = descriptor?.(), selectWhole = playSelection.selectWhole;
+  // Play dispatches explicit picks only; a whole view needs the server queue capture
+  // that does not exist yet, so the button is not drawn for it.
+  const canPlay = summary.every.play && current.selection.target?.mode === 'explicit';
   // Whole-view Select all N is offered only with the server's exact descriptor and
   // a model that can hold it; never as a local guess from the loaded window.
   const selectAll = whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
@@ -58,7 +61,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
-      ...(summary.every.play ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
+      ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
       ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
       ...(offers.favorite ? {onFavorite: () => { void personal({favorite: true}); }} : {}),

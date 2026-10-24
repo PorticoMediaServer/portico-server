@@ -144,3 +144,14 @@ test('a container pick never becomes a personal job', async () => {
   await assert.rejects(adapter.personal({watched: true}), /container-personal-state-unsupported/);
   assert.equal(requested, 0);
 });
+
+
+test('Play is offered for explicit picks only until a whole view can be queued', () => {
+  const whole = {...target, mode: 'query' as const, items: undefined, selector: {query: {libraryId: 'a', pivot: 'movies'}}, total: 48000, sourceTotal: 48000, refinement: {kind: null, excludedItems: []}, expected: {catalogRevision: 'r1'}};
+  const {selection} = fake({selection: {active: true, summary: {count: 48000, types: [{kind: 'movie', count: 48000}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
+    selectedKeys: [], version: 2, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: whole}});
+  const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
+  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  assert.match(html, /48,000 selected/);
+  assert.doesNotMatch(html, />Play</);
+});
