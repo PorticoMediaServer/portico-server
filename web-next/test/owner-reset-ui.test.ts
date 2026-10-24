@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {defaultI18n} from '@i18n';
 import type {AccountEntryState} from '../src/platform/account-entry.ts';
 import {finishOwnerResetAndSignIn} from '../src/screens/accounts/owner-reset.ts';
 import {componentModule, hooks} from '../../web/test/helpers/component-harness.mjs';
@@ -54,7 +55,7 @@ test('an unproved or retired phase never reaches the atomic password command', a
 async function surface(phone = false) {
   const h = hooks();
   const m = await componentModule(new URL('../src/kit/accounts/OwnerPasswordRecovery.tsx', import.meta.url), {
-    react: {...h.react, useId: () => 'strength'},
+    react: {...h.react, useId: () => 'strength'}, '@i18n': {defaultI18n},
     '../controls': {Button: 'button', TextField: 'field', Switch: 'switch'},
     './AuthStage': {AuthStage: 'stage', AuthPasswordField: 'password', AuthError: 'error'},
     './ServicesAuth': {ServicesStrength: 'strength'}, '../Icon': {Icon: 'icon'}, './accounts.module.css': {default: {}},
