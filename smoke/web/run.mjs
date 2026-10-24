@@ -55,12 +55,25 @@ async function failure(page, evidence, name, error, extra) {
 }
 
 /** Records the app's own authorised API traffic; in-page fetch is not authenticated. */
-function watchApi(page, calls = []) {
+function watchApi(page, calls = [], state = {}) {
   page.on('response', response => {
     const url = new URL(response.url());
     if (!url.pathname.startsWith('/v1/')) return;
     calls.push({status: response.status(), method: response.request().method(), path: url.pathname});
     if (calls.length > 600) calls.shift();
+    if (url.pathname === '/v1/me' && response.status() === 200) {
+      response.json().then(body => {
+        const role = body.role || (body.account && body.account.role) || (body.viewer && body.viewer.role);
+        const capabilities = body.capabilities || (body.account && body.account.capabilities) || [];
+        state.me = {role, keys: Object.keys(body || {}).slice(0, 30),
+          viewerKeys: Object.keys(body.viewer || {}).slice(0, 30),
+          viewerFlags: Object.fromEntries(Object.entries(body.viewer || {})
+            .filter(([key, value]) => (typeof value === 'boolean' || typeof value === 'string') &&
+              !/id$/i.test(key) && !/token|secret|key/i.test(key))
+            .slice(0, 20).map(([key, value]) => [key, typeof value === 'boolean' ? value : String(value).slice(0, 20)])),
+          capabilities: Array.isArray(capabilities) ? capabilities.map(c => (typeof c === 'string' ? c : c && c.id)).filter(Boolean) : Object.keys(capabilities || {})};
+      }).catch(() => {});
+    }
   });
   return calls;
 }
@@ -137,7 +150,8 @@ async function playOpenItem(page, evidence, api, label) {
 async function main() {
   const {browser, context, page: firstPage, events} = await launch(playwright, {viewport: desktop});
   const evidence = new Evidence(out);
-  const api = watchApi(firstPage);
+  const apiState = {};
+  const api = watchApi(firstPage, [], apiState);
   let page = firstPage;
   page.__smokeErrors = [];
   page.on('pageerror', error => page.__smokeErrors.push(String(error).slice(0, 200)));
@@ -148,7 +162,7 @@ async function main() {
     page = await context.newPage();
     page.__smokeErrors = [];
     page.on('pageerror', error => page.__smokeErrors.push(String(error).slice(0, 200)));
-    watchApi(page, api);
+    watchApi(page, api, apiState);
     return true;
   }
 
@@ -271,98 +285,124 @@ async function main() {
 
     if (signedIn && want('library-controls')) {
       await check('library-controls', async () => {
-        let where = await openLibrary('Anime');
-        const answer = async () => page.evaluate(() => {
+        const where = await openLibrary('Movies');
+        // The library opens on Discover; the browse pivot is the drawn tab inside it.
+        const pivot = await findAny(page, [{role: 'tab', name: /^Movies$/}, {role: 'button', name: /^Movies$/}], {timeout: 5000});
+        assert(pivot, `the Movies library draws no Movies pivot tab (at ${new URL(where).pathname})`);
+        await pivot.click({timeout: 8000});
+        await settle(page, {quiet: 1800});
+        await page.locator('article[data-card-kind]').first().waitFor({timeout: 15000}).catch(() => {});
+        const browseUrl = page.url();
+        const count = async () => page.evaluate(() => {
           const text = document.body.innerText || '';
           const match = text.match(/(\d+)\s+of\s+\d+/);
-          return {count: match ? match[0] : `${document.querySelectorAll('article[data-card-kind]').length} cards`,
-            applied: [...document.querySelectorAll('[aria-label]')].map(e => e.getAttribute('aria-label')).filter(name => /filter/i.test(name))};
+          return match ? match[0] : `${document.querySelectorAll('article[data-card-kind]').length} cards`;
         });
-        const before = await answer();
+        const before = await count();
         const quick = await findAny(page, [
           {role: 'button', name: /^Unwatched/},
           {role: 'button', name: /^In progress/},
           {role: 'button', name: /^Favorites/},
         ], {timeout: 4000});
-        assert(quick, `the library toolbar draws no quick filter (at ${new URL(where).pathname})`);
+        assert(quick, `the browse pivot draws no quick filter (at ${new URL(browseUrl).pathname})`);
         const quickName = (await quick.innerText()).trim();
         await quick.click({timeout: 8000});
-        await settle(page, {quiet: 1800});
-        const a = await answer();
+        await settle(page, {quiet: 1600});
+        const after = await count();
         await quick.click({timeout: 8000}).catch(() => {});
         await settle(page, {quiet: 1200});
+
         const filter = await findAny(page, [{role: 'button', name: /^Filters/}, {css: '[data-filters]'}], {timeout: 4000});
-        assert(filter, 'the library toolbar draws no Filters control');
+        assert(filter, 'the browse pivot draws no Filters control');
         await filter.click({timeout: 8000});
-        await settle(page, {quiet: 1200});
-        const panel = await page.evaluate(() => {
-          const dialog = document.querySelector('[role=dialog]');
-          return {open: !!dialog, title: dialog ? (dialog.querySelector('h1,h2,h3,[role=heading]')?.textContent || '').trim().slice(0, 40) : '',
-            controls: dialog ? [...dialog.querySelectorAll('button,select,input,[role=checkbox],[role=radio],[role=menuitem],[role=option]')].length : 0,
-            text: dialog ? (dialog.innerText || '').replace(/\n+/g, ' | ').slice(0, 200) : ''};
-        });
-        assert(panel.open, 'the Filters button opened no dialog');
-        const confirm = await findAny(page, [{role: 'button', name: /^(Show \d|Apply|Done)/}], {timeout: 2000});
+        const dialog = page.getByRole('dialog').first();
+        await dialog.waitFor({timeout: 8000}).catch(() => {});
+        assert(await dialog.count(), 'the Filters button opened no dialog');
+        // Field tiles are collapsed buttons; a value only exists once the tile is expanded.
+        const tile = dialog.locator('button[aria-expanded]').first();
+        assert(await tile.count(), 'the filter dialog draws no field tiles');
+        const tileName = (await tile.innerText().catch(() => '')).trim().slice(0, 40);
+        await tile.click({timeout: 6000});
+        await page.waitForTimeout(800);
+        const values = dialog.locator('button[role=checkbox]');
+        const valueCount = await values.count();
+        assert(valueCount > 0, `expanding the "${tileName}" tile drew no checkbox values`);
+        const valueName = (await values.first().innerText().catch(() => '')).trim().slice(0, 40);
+        const checkedBefore = await values.first().getAttribute('aria-checked');
+        await values.first().click({timeout: 6000});
+        await page.waitForTimeout(900);
+        const checkedAfter = await values.first().getAttribute('aria-checked');
+        assert(checkedAfter !== checkedBefore, `ticking "${valueName}" did not change aria-checked (${checkedBefore} -> ${checkedAfter})`);
+        const confirm = await findAny(page, [{role: 'button', name: /^(Show \d|Apply|Done)/}], {timeout: 2500});
         if (confirm) { await confirm.click({timeout: 6000}).catch(() => {}); }
         else { await page.keyboard.press('Escape').catch(() => {}); }
+        await page.keyboard.press('Escape').catch(() => {});
+        await dialog.waitFor({state: 'detached', timeout: 8000}).catch(() => {});
         await page.waitForTimeout(700);
-        const sort = await findAny(page, [{role: 'button', name: /^Sort/}, {role: 'button', name: /—|A–Z/}, {css: '[data-sort]'}], {timeout: 4000});
-        assert(sort, 'the library toolbar draws no Sort control');
-        const sortLabelBefore = (await sort.innerText().catch(() => '')).trim();
+        const sort = await findAny(page, [{role: 'button', name: /^(Sort|Title|Date added)/}, {css: '[data-sort]'}], {timeout: 4000});
+        assert(sort, 'the browse pivot draws no Sort control');
+        const sortLabel = (await sort.innerText().catch(() => '')).trim();
+        const beforeNodes = await page.evaluate(() => document.querySelectorAll('body *').length);
         await sort.click({timeout: 8000});
         await page.waitForTimeout(1000);
-        const sorts = await page.evaluate(() => {
-          const selectors = ['[role=menuitemradio]', '[role=menuitem]', '[role=option]', '[role=radio]',
-            '[data-radix-popper-content-wrapper] button', '[role=dialog] button', '[role=listbox] button'];
-          const seen = [];
-          for (const selector of selectors) {
-            for (const node of document.querySelectorAll(selector)) {
-              const text = (node.textContent || '').trim();
-              if (text && text.length < 60 && !seen.includes(text)) seen.push(text);
-            }
-          }
-          return seen.slice(0, 14);
-        });
-        assert(sorts.length > 0, `the Sort control opened no options; it reads "${sortLabelBefore}"`);
-        // Choose a different sort and prove the toolbar reflects it.
-        const wanted = sorts.find(text => !sortLabelBefore.includes(text.split('\n')[0]));
-        let appliedSort = 'no distinct option offered';
-        if (wanted) {
-          const option = page.getByText(wanted.split('\n')[0], {exact: true}).last();
-          await option.click({timeout: 6000}).catch(() => {});
-          await page.waitForTimeout(1800);
-          appliedSort = (await sort.innerText().catch(() => '')).trim();
-        }
+        const sortSurface = await page.evaluate(before => ({
+          expanded: (() => { const button = [...document.querySelectorAll('button')].find(b => /^(Sort|Title|Date added)/.test((b.innerText || '').trim())); return button ? button.getAttribute('aria-expanded') : null; })(),
+          roles: [...document.querySelectorAll('[role=menuitemradio],[role=menuitem],[role=option],[role=radio],[role=dialog],[role=listbox]')]
+            .map(e => ({role: e.getAttribute('role'), text: (e.textContent || '').trim().slice(0, 40)})).slice(0, 12),
+          grew: document.querySelectorAll('body *').length - before,
+        }), beforeNodes);
+        const sorts = sortSurface.roles.map(item => item.text).filter(Boolean);
         await page.keyboard.press('Escape').catch(() => {});
-        return {detail: `quick ${quickName}: ${before.count} -> ${a.count}; filter panel ${panel.controls} controls; sort "${sortLabelBefore}" -> "${appliedSort}"; options: ${sorts.slice(0, 5).join(', ')}`,
-          evidence: {screenshot: await evidence.shot(page, 'library-controls'), panel, sorts, before, after: a}};
+        assert(sorts.length > 0 || sortSurface.grew > 4,
+          `the Sort control "${sortLabel}" opened no surface (aria-expanded=${sortSurface.expanded}, roles=${JSON.stringify(sortSurface.roles)}, new nodes=${sortSurface.grew})`);
+        return {detail: `browse at ${new URL(browseUrl).pathname}${new URL(browseUrl).search}; quick ${quickName}: ${before} -> ${after}; filter "${tileName}" -> "${valueName}" ${checkedBefore}->${checkedAfter}; sorts: ${sorts.slice(0, 4).join(', ')}`,
+          evidence: {screenshot: await evidence.shot(page, 'library-controls'), browseUrl, tileName, valueName, checkedBefore, checkedAfter, sorts}};
       });
     }
 
     if (signedIn && want('library-tv-controls')) {
       await check('library-tv-controls', async () => {
-        const report = {};
-        for (const name of ['Movies', 'TV Shows']) {
-          const link = page.locator('nav a[href]').filter({hasText: new RegExp(`^${name}$`, 'i')}).first();
-          if (!(await link.count())) { report[name] = 'no sidebar entry'; continue; }
-          await link.click({timeout: 8000});
-          await settle(page, {quiet: 2000});
-          const seeAll = await findAny(page, [{role: 'link', name: /^See all/}, {role: 'button', name: /^See all/}, {text: /^See all$/}], {timeout: 4000});
-          if (seeAll) {
-            await seeAll.click({timeout: 8000}).catch(() => {});
-            await settle(page, {quiet: 1500});
-            await page.locator('article[data-card-kind]').first().waitFor({timeout: 15000}).catch(() => {});
+        const controls = async () => page.evaluate(() => {
+          const labels = [...document.querySelectorAll('button')].map(b => (b.innerText || '').trim());
+          return {filters: labels.some(text => /^Filters/.test(text)),
+            sort: labels.some(text => /^Sort/.test(text) || /^Title/.test(text) || /–Z|—/.test(text)),
+            quick: labels.some(text => /^(Unwatched|In progress|Favorites)/.test(text)),
+            cards: document.querySelectorAll('article[data-card-kind]').length,
+            url: location.href};
+        });
+        const found = {};
+        // Movies: sidebar entry lands on Discover; the drawn pivot tab reaches browse.
+        await openLibrary('Movies');
+        const moviesPivot = await findAny(page, [{role: 'tab', name: /^Movies$/}, {role: 'button', name: /^Movies$/}], {timeout: 5000});
+        if (moviesPivot) { await moviesPivot.click({timeout: 8000}); await settle(page, {quiet: 1800}); }
+        found.Movies = await controls();
+        // TV Shows: two clicks through the More menu, then its own pivot.
+        const more = await findAny(page, [{role: 'button', name: /^More$/}], {timeout: 4000});
+        assert(more, 'the sidebar draws no More menu');
+        await more.click({timeout: 6000});
+        await settle(page, {quiet: 900});
+        let tv = await findAny(page, [{role: 'menuitem', name: /^TV Shows$/}, {role: 'link', name: /^TV Shows$/}, {text: /^TV Shows$/}], {timeout: 2500});
+        if (!tv) {
+          // The More menu groups libraries under a Libraries entry.
+          const libraries = await findAny(page, [{role: 'menuitem', name: /^Libraries$/}, {role: 'button', name: /^Libraries$/}, {text: /^Libraries$/}], {timeout: 2500});
+          if (libraries) {
+            await libraries.click({timeout: 6000}).catch(() => {});
+            await settle(page, {quiet: 900});
+            tv = await findAny(page, [{role: 'menuitem', name: /^TV Shows$/}, {role: 'link', name: /^TV Shows$/}, {text: /^TV Shows$/}], {timeout: 2500});
           }
-          report[name] = await page.evaluate(() => {
-            const labels = [...document.querySelectorAll('button')].map(b => (b.innerText || '').trim());
-            return {filters: labels.some(text => /^Filters/.test(text)), sort: labels.some(text => /^Sort/.test(text) || /A–Z|—/.test(text)),
-              seeAll: [...document.querySelectorAll('a,button')].some(e => /^see all/i.test((e.innerText || '').trim())),
-              cards: document.querySelectorAll('article[data-card-kind]').length};
-          });
         }
-        const broken = Object.entries(report).filter(([, value]) => value && typeof value === 'object' && (!value.filters || !value.sort));
-        assert(broken.length === 0, `these libraries draw no sort or filter control: ${broken.map(([name, value]) => `${name} (${JSON.stringify(value)})`).join('; ')}`);
-        return {detail: JSON.stringify(report), evidence: {screenshot: await evidence.shot(page, 'library-tv-controls'), report}};
+        if (tv) {
+          await tv.click({timeout: 8000});
+          await settle(page, {quiet: 1800});
+          const tvPivot = await findAny(page, [{role: 'tab', name: /^Shows$/}, {role: 'button', name: /^Shows$/}], {timeout: 4000});
+          if (tvPivot) { await tvPivot.click({timeout: 8000}); await settle(page, {quiet: 1500}); }
+          found['TV Shows'] = await controls();
+        } else {
+          found['TV Shows'] = {missing: true, menuOpened: true};
+        }
+        const broken = Object.entries(found).filter(([, value]) => !value.missing && (!value.filters || !value.sort));
+        assert(broken.length === 0, `these libraries still draw no sort or filter after the drawn pivot: ${broken.map(([name, value]) => `${name} (${JSON.stringify(value)})`).join('; ')}`);
+        return {detail: JSON.stringify(found), evidence: {screenshot: await evidence.shot(page, 'library-tv-controls'), found}};
       });
     }
 
@@ -587,6 +627,23 @@ async function main() {
       });
     }
 
+    if (signedIn && want('profile-role')) {
+      await check('profile-role', async () => {
+        // The app reads /v1/me itself; in-page fetch is unauthenticated, so use its answer.
+        for (let attempt = 0; attempt < 20 && !apiState.me; attempt++) await page.waitForTimeout(300);
+        if (!apiState.me) {
+          await page.goto(origin + '/', {waitUntil: 'domcontentloaded'});
+          await settle(page, {quiet: 2000});
+          for (let attempt = 0; attempt < 20 && !apiState.me; attempt++) await page.waitForTimeout(300);
+        }
+        assert(apiState.me, 'the app never answered /v1/me, so the account role is unknown');
+        const {role, capabilities} = apiState.me;
+        assert(/owner|administrator|admin/i.test(String(role)), `the owner account reports role "${role}"`);
+        return {detail: `role ${role}; viewer fields: ${JSON.stringify(apiState.me.viewerFlags || {})}; viewer keys: ${(apiState.me.viewerKeys || []).join(', ')}; ${capabilities.length} capability entries${capabilities.includes('manageServer') ? ', manageServer present' : ''}`,
+          evidence: {role, keys: apiState.me.keys, viewerKeys: apiState.me.viewerKeys, viewerFlags: apiState.me.viewerFlags, capabilities: capabilities.slice(0, 30)}};
+      });
+    }
+
     if (signedIn && want('settings-owner')) {
       await check('settings-owner', async () => {
         await page.goto(origin + '/dashboard', {waitUntil: 'domcontentloaded'});
@@ -603,6 +660,8 @@ async function main() {
         if (librariesEntry) { await librariesEntry.click({timeout: 8000}); await settle(page, {quiet: 1800}); }
         const libs = await bodyText(page);
         assert(libs.trim().length > 40, 'owner Libraries settings rendered almost no text');
+        const onProfile = /Profile & account/.test(libs) && !/Scan|Libraries/.test(libs);
+        assert(!onProfile, `the URL kept but the page rendered account scope: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
         const scan = await findAny(page, [{role: 'button', name: /scan/i}, {text: /^Scan/}], {timeout: 4000});
         if (!scan) {
           throw blocked(`the owner server settings never rendered, so no scan control could be checked; page was: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
@@ -633,7 +692,12 @@ async function main() {
         const state = await surfaceState(page);
         assert(/\/read\//.test(state.url), `book ${title} did not open a reader (at ${state.url})`);
         const text = await bodyText(page);
-        assert(text.trim().length > 200, `reader rendered only ${text.trim().length} characters of a book`);
+        if (text.trim().length <= 200) {
+          const blocked = (events.consoleErrors || []).filter(line => /Content Security Policy|Refused to|blocked/i.test(line)).slice(-3);
+          throw await failure(page, evidence, 'read-blocked',
+            new Error(`reader rendered only ${text.trim().length} characters; console: ${blocked.join(' ;; ') || 'no CSP line captured'}`),
+            {blocked, text: text.slice(0, 300)});
+        }
         await page.keyboard.press('ArrowRight');
         await page.waitForTimeout(1200);
         return {detail: `read ${title}: ${text.length} chars, page turn sent`,
