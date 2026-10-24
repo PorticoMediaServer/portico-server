@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AccountMoveClient,MemberAccountMoveClient,ReadOnlySignInClient,parseSignInSettings,parseAccountMove,parseMovePasswordTicket,parseMoveCodePreview,parseAccountMoveCodes,consumeMoveCodeFragment,accountMoveLink} from '../src/account-move.ts';
+import {AccountMoveClient,MemberAccountMoveClient,ReadOnlySignInClient,parseSignInSettings,parseAccountMove,parseMovePasswordTicket,parseMoveCodePreview,parseAccountMoveCodes,consumeMoveCodeFragment,consumeAccountMoveFragment,accountMoveLink} from '../src/account-move.ts';
 import {HttpLocalApi} from '../src/index.ts';
 import {parseServerSignIn} from '../src/sign-in.ts';
 import {makeMemberResetCode} from '../src/account-reset.ts';
@@ -96,4 +96,19 @@ test('actual HTTP collision retains only the checked current DTO; English text a
  const api=new HttpLocalApi('https://server.test','',async()=>Response.json({error:{code:'move_collision',message:'untrusted server prose',current}},{status:409}));
  await assert.rejects(api.request('/v1/auth/move/portico','POST',{}),(error:any)=>{assert.equal(error.code,'move_collision');assert.deepEqual(error.current,{existingUsername:'sam_k',serverName:'Home'});return true;});
  for(const invalid of [undefined,{existingUsername:'',serverName:'Home'},{existingUsername:'sam_k',serverName:'Home',code}]){current=invalid;await assert.rejects(api.request('/v1/auth/move/portico','POST',{}),{code:'invalid_account_move'});}
+});
+
+test('move links preserve the genuine optional expected identity and scrub before returning private code',()=>{
+ const id='srv_'+'A'.repeat(43),kept:string[]=[];
+ const history={replaceState:(_state:unknown,_title:string,path?:string|URL|null)=>{kept.push(String(path));}};
+ const url=new URL(accountMoveLink('https://server.test',code,id));
+ assert.equal(url.href,'https://server.test/sign-in#code='+code+'&id='+id);
+ assert.deepEqual(consumeAccountMoveFragment(url,history),{code,id});assert.deepEqual(kept,['/sign-in']);
+ assert.deepEqual(consumeAccountMoveFragment(new URL(accountMoveLink('https://server.test',code)),history),{code});
+ assert.throws(()=>consumeMoveCodeFragment(url,history),'code-only callers must not discard identity');
+ for(const hash of ['#code='+code+'&id=wrong','#code='+code+'&id='+id+'&id='+id,'#code='+code+'&id=','#code='+code+'&token=private']){
+  assert.throws(()=>consumeAccountMoveFragment({pathname:'/sign-in',search:'',hash},history));assert.equal(kept.at(-1),'/sign-in');
+ }
+ assert.throws(()=>consumeAccountMoveFragment({pathname:'/sign-in',search:'?id='+id,hash:'#code='+code},history));
+ assert.throws(()=>accountMoveLink('https://server.test',code,'srv_'+'B'.repeat(43)));
 });
