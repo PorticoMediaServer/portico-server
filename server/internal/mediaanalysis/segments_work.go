@@ -214,7 +214,7 @@ func (s *Service) segmentCatchup(ctx context.Context) (bool, error) {
 	if _, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id IN(SELECT f.object_id FROM segment_files f LEFT JOIN inventory_objects o ON o.id=f.object_id WHERE o.id IS NULL OR o.retired=1 LIMIT 64)`); err != nil {
 		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO segment_catchup(singleton,cursor,settled,pass_ms,change_sequence,modes) VALUES(1,?,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET cursor=excluded.cursor,settled=excluded.settled,pass_ms=excluded.pass_ms,change_sequence=excluded.change_sequence,modes=excluded.modes`, state.Cursor, state.Settled, state.PassMS, state.ChangeSequence, state.Modes); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO segment_catchup(singleton,cursor,settled,pass_ms,change_sequence,modes) VALUES(1,?,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET cursor=excluded.cursor,settled=excluded.settled,pass_ms=excluded.pass_ms,change_sequence=excluded.change_sequence,modes=excluded.modes WHERE segment_catchup.cursor IS NOT excluded.cursor OR segment_catchup.settled IS NOT excluded.settled OR segment_catchup.pass_ms IS NOT excluded.pass_ms OR segment_catchup.change_sequence IS NOT excluded.change_sequence OR segment_catchup.modes IS NOT excluded.modes`, state.Cursor, state.Settled, state.PassMS, state.ChangeSequence, state.Modes); err != nil {
 		return false, err
 	}
 	return more, gated.Commit()
