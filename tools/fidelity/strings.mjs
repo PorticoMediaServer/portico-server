@@ -1,6 +1,6 @@
 /** Measured strings are data. This tool neither adds copy nor edits catalogues. */
 export function stringInventory(screen) {
-  if (!['screen', 'component'].includes(screen?.scope) || !Array.isArray(screen.strings)) throw new Error('A screen or component measurement is required');
+  if (!['screen', 'component'].includes(screen?.scope) || !Array.isArray(screen.strings)) throw new Error('A screen measurement or explicit component measurement is required');
   const inventory = new Map();
   for (const value of screen.strings) {
     if (typeof value.text !== 'string' || typeof value.id !== 'string') throw new Error('Invalid measured string');
