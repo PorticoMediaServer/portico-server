@@ -36,3 +36,5 @@ export * from './browse-groups.ts';
 export * from './licences.ts';
 export * as kitModel from './kit-model/index.ts';
 export * from './home-spotlight.ts';
+export {savedViewSummary, type SavedViewSummary, type SavedViewSummaryText} from './saved-view-summary.ts';
+export {orderToolbarPredicates} from './browse-toolbar.ts';

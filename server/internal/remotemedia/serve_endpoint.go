@@ -165,10 +165,10 @@ func (s *ServeEndpoint) readRange(ctx context.Context, relative, etag string, si
 		clear(data)
 		return nil, ErrRepresentationRange
 	}
-	if err = reconnect(ctx); err != nil {
-		clear(data)
-		return nil, err
-	}
+	// ReadRange closes this response and releases its operation before
+	// rangeResult performs each caller's fresh post-read check. Checking again
+	// here would repeat the same observation inside the just-completed body;
+	// it supplies no additional I/O boundary and spends the source's TPS twice.
 	return data, nil
 }
 

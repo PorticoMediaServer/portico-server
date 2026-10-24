@@ -209,6 +209,7 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-profile.patch" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-join.patch" "$WORK/provenance/contract/"
+  cp "$ROOT/third_party/ffmpeg/portico-bluray-playlist-minimum.patch" "$WORK/provenance/contract/"
   cp "$ROOT/scripts/qualify-linux-ffmpeg-hdr.py" "$ROOT/scripts/qualify-hdr-video.py" "$ROOT/scripts/qualify-dovi-join.py" "$WORK/provenance/scripts/"
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
@@ -227,5 +228,7 @@ if [[ "$PHASE" == working ]]; then
 else
   "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$WORK/bundle"
 fi
-tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1' -cf "$WORK/$archive_name" .
+# The payload includes the compressed corresponding-source archive. Keep this
+# outer compression pass fast; the manifest seals every extracted file.
+tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1 -0' -cf "$WORK/$archive_name" .
 echo "$WORK/$archive_name"

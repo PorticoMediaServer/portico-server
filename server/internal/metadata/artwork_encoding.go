@@ -23,6 +23,7 @@ func encodeDisplayArtwork(source image.Image, edge int, preferJPEG bool) ([]byte
 }
 
 func encodeDisplayArtworkContext(ctx context.Context, source image.Image, edge int, preferJPEG bool) ([]byte, int, int, error) {
+	edge, ceiling := artworkEncodingLimits(ctx, edge)
 	bounds := source.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w < 1 || h < 1 {
@@ -44,7 +45,7 @@ func encodeDisplayArtworkContext(ctx context.Context, source image.Image, edge i
 			if err := encoder.Encode(&b, scaled); err != nil {
 				return nil, 0, 0, err
 			}
-			if b.Len() <= artworkDisplayBytes {
+			if b.Len() <= ceiling {
 				return b.Bytes(), w, h, nil
 			}
 		}
@@ -54,7 +55,7 @@ func encodeDisplayArtworkContext(ctx context.Context, source image.Image, edge i
 				if err := jpeg.Encode(&b, scaled, &jpeg.Options{Quality: quality}); err != nil {
 					return nil, 0, 0, err
 				}
-				if b.Len() <= artworkDisplayBytes {
+				if b.Len() <= ceiling {
 					return b.Bytes(), w, h, nil
 				}
 			}

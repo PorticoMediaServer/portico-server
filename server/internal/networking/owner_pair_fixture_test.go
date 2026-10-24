@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// OwnerPairCommitRequestForTest reuses the real transport's ordered wire DTO.
+// A map changes JSON field order and the strict Hosted decoder rejects it
+// before the cancellation/credential authority check under test.
+func OwnerPairCommitRequestForTest(commit Commit) any {
+	return commitRequest(Intent{Binding: Binding{OperationID: commit.OperationID, ServerID: commit.ServerID}, ClaimGeneration: commit.ClaimGeneration, CredentialGeneration: commit.CredentialGeneration})
+}
+
 // OwnerPairHTTPSForTest controls only CA issuance and the successful route
 // observation after the real pair has installed/ACKed its own claim. It does
 // not create a claim, credential, registration, approval or authority observation.

@@ -1,5 +1,6 @@
 import type {BrowseCapabilities, BrowseFieldCapability, BrowseNode, BrowseQuickFilter, BrowseSortCapability, BrowseSortSelection} from '../../browse.ts';
 import {part, type FactPart, type KitMessageId, type TextEnvironment} from './text.ts';
+import {orderToolbarPredicates} from '../browse-toolbar.ts';
 
 export type BrowseToolbarEnvironment = TextEnvironment & Readonly<{
   owner?: boolean;
@@ -100,6 +101,6 @@ export function browseToolbarModel(capabilities: BrowseCapabilities, libraryKind
   const reshufflable = validDirection && !!selected && (selected.seeded === true || selected.id === 'random');
   return Object.freeze({quick: Object.freeze(quick.map(modelQuick)), filterQuick: Object.freeze(offered.filter(q => !quick.includes(q)).map(modelQuick)), groups: Object.freeze(groups), sorts: Object.freeze(sorts),
     sort: Object.freeze({...sort, flippable: validDirection && !reshufflable && !!selected && selected.directions.length > 1, reshufflable}),
-    applied: Object.freeze(predicates.filter(p => !quick.some(q => sameNode(p, q.query)))),
+    applied: Object.freeze(orderToolbarPredicates(predicates.filter(p => !quick.some(q => sameNode(p, q.query))))),
   });
 }

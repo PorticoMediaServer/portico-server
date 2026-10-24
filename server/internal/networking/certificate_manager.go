@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"portico.local/server/internal/dbwork"
 	"strconv"
 	"time"
 )
@@ -54,11 +53,6 @@ func NewCertificateManager(ctx context.Context, store *SQLiteStore, runner *Auth
 		}
 	}
 	e = runner.Do(ctx, func(ctx context.Context) error {
-		// One SQLite connection is configured by the existing store. FULL durability
-		// is also checked inside every material publication and serving transaction.
-		if _, e := dbwork.ExecWrite(ctx, store.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), `PRAGMA synchronous=FULL`); e != nil {
-			return e
-		}
 		var e error
 		m.tlsKey, e = ensureTLSKey(ctx, store.db, stateDir)
 		if e != nil {

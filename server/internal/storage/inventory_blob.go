@@ -1,5 +1,7 @@
 package storage
 
+import "context"
+
 // InventoryBlobPurpose distinguishes an analysis sidecar from a bounded
 // inventory configuration file. Neither a purpose nor a pool label is a grant.
 type InventoryBlobPurpose string
@@ -25,4 +27,11 @@ type InventoryBlobAdmission struct {
 	ObjectID, SourceRevision, Operation string
 	ListingID                           string
 	Member                              Snapshot
+}
+
+// RemoteInventoryBlobReader resolves current durable inventory authority and
+// candidate observations itself. Storage never turns a pool or read guard into
+// that authority, and an unsupported producer cannot fall back to Acquire.
+type RemoteInventoryBlobReader interface {
+	ReadInventoryBlob(context.Context, string, InventoryRequest, InventoryBlobAdmission, int64) ([]byte, error)
 }

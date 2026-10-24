@@ -170,10 +170,7 @@
      {
       "codec": "eac3",
       "maxChannels": 8,
-      "evidence": "declared",
-      "objectAudio": [
-       "atmos"
-      ]
+      "evidence": "declared"
      },
      {
       "codec": "alac",
@@ -347,10 +344,7 @@
      {
       "codec": "eac3",
       "maxChannels": 8,
-      "evidence": "declared",
-      "objectAudio": [
-       "atmos"
-      ]
+      "evidence": "declared"
      },
      {
       "codec": "alac",
@@ -2221,8 +2215,7 @@
   "display": {
    "dynamicRanges": [
     "sdr"
-   ],
-   "maxFrameRate": 60
+   ]
   },
   "audioOutput": {
    "maxChannels": 2
@@ -2242,8 +2235,21 @@
       ],
       "evidence": "probed",
       "maxFrameRate": 60,
-      "maxWidth": 4096,
-      "maxHeight": 2160
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
+      "limits": [
+       {
+        "bitDepths": [
+         8
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       }
+      ]
      },
      {
       "codec": "av1",
@@ -2256,8 +2262,29 @@
       ],
       "evidence": "probed",
       "maxFrameRate": 60,
-      "maxWidth": 4096,
-      "maxHeight": 2160
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
+      "limits": [
+       {
+        "bitDepths": [
+         8
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       },
+       {
+        "bitDepths": [
+         10
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       }
+      ]
      },
      {
       "codec": "vp9",
@@ -2270,8 +2297,29 @@
       ],
       "evidence": "probed",
       "maxFrameRate": 60,
-      "maxWidth": 4096,
-      "maxHeight": 2160
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
+      "limits": [
+       {
+        "bitDepths": [
+         8
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       },
+       {
+        "bitDepths": [
+         10
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       }
+      ]
      }
     ],
     "audio": [
@@ -2405,8 +2453,7 @@
     "sdr",
     "hdr10",
     "hlg"
-   ],
-   "maxFrameRate": 60
+   ]
   },
   "audioOutput": {
    "maxChannels": 6
@@ -2426,8 +2473,21 @@
       ],
       "evidence": "probed",
       "maxFrameRate": 60,
-      "maxWidth": 4096,
-      "maxHeight": 2160
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
+      "limits": [
+       {
+        "bitDepths": [
+         8
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       }
+      ]
      },
      {
       "codec": "hevc",
@@ -2442,8 +2502,32 @@
       ],
       "evidence": "probed",
       "maxFrameRate": 60,
-      "maxWidth": 4096,
-      "maxHeight": 2160
+      "maxWidth": 7680,
+      "maxHeight": 4320,
+      "chromaSubsampling": [
+       "4:2:0"
+      ],
+      "limits": [
+       {
+        "bitDepths": [
+         8
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       },
+       {
+        "bitDepths": [
+         10
+        ],
+        "maxWidth": 7680,
+        "maxHeight": 4320,
+        "maxFrameRate": 60
+       }
+      ],
+      "codecTags": [
+       "hvc1"
+      ]
      }
     ],
     "audio": [
@@ -2465,10 +2549,7 @@
      {
       "codec": "eac3",
       "maxChannels": 8,
-      "evidence": "probed",
-      "objectAudio": [
-       "atmos"
-      ]
+      "evidence": "probed"
      },
      {
       "codec": "flac",
@@ -2628,6 +2709,9 @@
       "dolbyVisionProfiles": [
        5,
        8
+      ],
+      "dolbyVisionProfile8Compatibility": [
+       1
       ]
      }
     ],
@@ -3091,6 +3175,9 @@
       "dolbyVisionProfiles": [
        5,
        8
+      ],
+      "dolbyVisionProfile8Compatibility": [
+       1
       ]
      }
     ],

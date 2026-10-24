@@ -173,3 +173,52 @@ func TestServeProcessStartupFailureRetiresLeaseAndConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestServeProcessWaitRemovesRecreatedTransientFilesOnly(t *testing.T) {
+	spec, lease, _ := serveProcessFixture(t, "ready")
+	enforce := spec.Enforce
+	var transient string
+	spec.Enforce = func(command *exec.Cmd) error {
+		for i, arg := range command.Args {
+			if arg == "--config" && i+1 < len(command.Args) {
+				transient = filepath.Dir(command.Args[i+1])
+			}
+		}
+		return enforce(command)
+	}
+	process, err := StartServe(context.Background(), Program{Path: "/test-substituted", Included: true}, spec, lease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer process.Stop()
+	if transient == "" || filepath.Dir(transient) != spec.PrivateDirectory {
+		t.Fatal("fixture lost exact transient custody")
+	}
+	if _, err = os.Stat(transient); !os.IsNotExist(err) {
+		t.Fatal("readiness retained transient files", err)
+	}
+	// Model a later writer recreating this command's private HOME/config path.
+	// This tests cleanup custody, not any particular provider's auth refresh.
+	if err = os.Mkdir(transient, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(transient, "rclone.conf"), []byte("fixture-copy"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	retained := filepath.Join(spec.PrivateDirectory, "retained-source.conf")
+	if err = os.WriteFile(retained, []byte("fixture-original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	process.Stop()
+	wait, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err = process.Wait(wait); !errors.Is(err, ErrServeStopped) || lease.released.Load() != 1 {
+		t.Fatal("physical retirement", err, lease.released.Load())
+	}
+	if _, err = os.Stat(transient); !os.IsNotExist(err) {
+		t.Fatal("physical retirement forgot recreated transient files", err)
+	}
+	if raw, err := os.ReadFile(retained); err != nil || string(raw) != "fixture-original" {
+		t.Fatal("retained source configuration changed", err)
+	}
+}

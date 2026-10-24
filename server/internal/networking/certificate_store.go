@@ -133,6 +133,10 @@ func (m *CertificateManager) material(ctx context.Context, scope certificateScop
 	return mat, e
 }
 func (m *CertificateManager) mutate(ctx context.Context, scope certificateScope, enabled bool, apply func(*sql.Tx, certificateState) error) error {
+	// Material publication/withdrawal must be durable on this exact writer.
+	// The normal pool is NORMAL, including after another security commit;
+	// dbwork owns switching FULL for the fence and restoring the connection.
+	ctx = dbwork.WithClass(ctx, dbwork.ClassSecurityFence)
 	return m.store.WithInstalledTransaction(ctx, scope.Intent, func(ctx context.Context, tx *sql.Tx) error {
 		c, q, _, e := m.snapshotTx(ctx, tx)
 		if e != nil {

@@ -387,6 +387,10 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 		// Wait for capacity before acquiring a lease or downloading any bytes.
 		return nil
 	}
+	ctx, checkPolicy, err := s.CaptureArtworkContext(ctx)
+	if err != nil {
+		return err
+	}
 	if err := s.seedArtwork(ctx); err != nil {
 		return err
 	}
@@ -491,6 +495,17 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	}
 	if !live {
 		return nil
+	}
+	if err = checkPolicy(ctx, tx); err != nil {
+		if !errors.Is(err, ErrEpisodeThumbnailEncodingStale) {
+			return err
+		}
+		// Pixels acquired under an old policy cannot be published. The next
+		// bounded turn captures the new policy before fetching/encoding again.
+		if _, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='retry',next_attempt='',attempts=0,lease='',lease_until='',error='encoding_policy_changed' WHERE id=? AND lease=?`, j.id, j.lease); err != nil {
+			return err
+		}
+		return gated2.Commit()
 	}
 	fence, err = artworkFence(ctx, tx, j.target)
 	if err != nil {
