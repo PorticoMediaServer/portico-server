@@ -303,3 +303,19 @@ test('a first partial edit reads a genuine complete document and refuses an unkn
   assert.deepEqual(calls.at(-1).body.values,{...values,name:'First edit'});
  }finally{c.dispose();}
 });
+
+test('a late duplicate receipt cannot clear a newer unconfirmed action on the same route',async()=>{
+ const sent:{body:any;resolve:(value:unknown)=>void}[]=[];
+ const c=client(async(_path,_method,body)=>new Promise(resolve=>sent.push({body,resolve})));
+ try{
+  const first=c.submit(submission),duplicate=c.submit(submission);
+  assert.equal(sent.length,2);assert.equal(sent[0].body.idempotencyKey,sent[1].body.idempotencyKey);
+  sent[0].resolve(envelope(report));await first;
+  const newer=c.submit({...submission,message:'Next message'});
+  assert.equal(sent.length,3);assert.notEqual(sent[2].body.idempotencyKey,sent[0].body.idempotencyKey);
+  sent[1].resolve(envelope(report));await duplicate;
+  assert.equal(c.hasUnconfirmed(),true,'the newer action has no receipt yet');
+  sent[2].resolve(envelope({...report,message:'Next message'}));await newer;
+  assert.equal(c.hasUnconfirmed(),false);
+ }finally{c.dispose();}
+});

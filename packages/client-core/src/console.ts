@@ -136,7 +136,7 @@ export class ConsoleClient {
  async reconcilePending(){
   const entry=this.intents.entries().next().value;if(!entry)return;
   const [path,intent]=entry;const body=JSON.parse(intent.body) as Record<string,unknown>;
-  try{const value=await this.call(path,intent.method,{...body,idempotencyKey:intent.key},intent.parse);this.intents.delete(path);
+  try{const value=await this.call(path,intent.method,{...body,idempotencyKey:intent.key},intent.parse);if(this.intents.get(path)===intent)this.intents.delete(path);
    if(path===routePath("post_admin_console_exports"))this.recoveredExport=value as SupportExport;
    if(path===routePath("get_feedback"))this.drafts.delete('feedback');
    else if(path.startsWith(routePrefix("get_admin_feedback_id", 3)))this.drafts.delete('reply:'+decodeURIComponent(path.split('/').pop()!));
@@ -179,9 +179,9 @@ export class ConsoleClient {
   const serialized=JSON.stringify(body);let intent=this.intents.get(path);
   if(intent&&intent.body!==serialized)throw new Error('A previous action has an unconfirmed result. Confirm the pending action before submitting different values.');
   if(!intent){intent={body:serialized,key:consoleOperationId(),method,parse};this.intents.set(path,intent);}
-  try{const result=await this.call(path,method,{...body,idempotencyKey:intent.key},parse);this.intents.delete(path);return result;}
+  try{const result=await this.call(path,method,{...body,idempotencyKey:intent.key},parse);if(this.intents.get(path)===intent)this.intents.delete(path);return result;}
   catch(e){// A refusal is definite: the server did not act, so nothing is left unconfirmed (412 and 428 are a revision that moved or was missing).
-   if(obj(e)&&[400,404,409,410,412,428,429].includes(e.status))this.intents.delete(path);throw e;}
+   if(obj(e)&&[400,404,409,410,412,428,429].includes(e.status)&&this.intents.get(path)===intent)this.intents.delete(path);throw e;}
 
  }
  registry(){return this.call(routePath("get_console_registry"),'GET',undefined,base);}
@@ -197,7 +197,7 @@ export class ConsoleClient {
    if(current.revision!==expectedRevision)throw Object.assign(new Error('The settings changed. Reload them before saving.'),{status:409,code:'revision_mismatch',currentRevision:current.revision});
    baseline=current.requested;
   }
-  const original=baseline,patch:Record<string,unknown>={};
+  const original=JSON.parse(JSON.stringify(baseline)) as RuntimeSettings,patch:Record<string,unknown>={};
   for(const [key,value] of Object.entries(values))if(JSON.stringify(value)!==JSON.stringify((original as unknown as Record<string,unknown>)[key]))patch[key]=value;
   const patchText=JSON.stringify(Object.fromEntries(Object.entries(patch).sort(([a],[b])=>a<b?-1:a>b?1:0)));
   const pending=this.intents.get(path);
