@@ -5,6 +5,7 @@ import type {Library} from '@core/index.ts';
 import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentView} from '@core/library-content.ts';
 import {libraryTabs, readingTabModel, type LibraryTab} from '@core/presentation/library-tabs.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, type BrowseCapabilities} from '@core/browse.ts';
+import {metadataAgentPath, parseMetadataAgent} from '@core/server-admin/metadata-agent.ts';
 import type {SavedDefinition} from '@core/personal-saved.ts';
 import {randomId} from '@core/random-id.ts';
 import {defineWebScreen} from '../../route-registry';
@@ -73,7 +74,15 @@ function LibraryShow({context, libraryId, search}: {context: ScreenContext; libr
 }
 function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly LibraryTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
+  // The offer needs this exact library's own online metadata agent. The fact is keyed to the
+  // library and screen scope that produced it, so a stale read can never enable another library
+  // or survive a scope change; unknown, reset and failed reads all withhold the tab.
+  const [agentFact, setAgentFact] = useState<Readonly<{key: string; context: typeof context; online: boolean}>>();
+  const agentKey = JSON.stringify([context.scope.serverId, context.scope.viewerId, library.id, library.kind]);
+  // The captured ScreenContext itself is part of the fact: a new capture for the same viewer
+  // must not reuse a previous true before its own read, including on early lifetime refusal.
+  const onlineAttention = agentFact?.key === agentKey && agentFact.context === context && context.isCurrent() && agentFact.online === true;
+  const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true, onlineAttention}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
@@ -88,6 +97,20 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   }, [context, sourceKey]);
   useEffect(() => () => {resources.life.dispose();resources.controller.dispose();resources.service.dispose();}, [resources]);
   const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
+  useEffect(() => {
+    if (!resources.life.current()) return;
+    let live = true;
+    const withhold = () => {if (live && resources.life.current()) setAgentFact({key: agentKey, context, online: false});};
+    void resources.life.api.request(metadataAgentPath(library.id), 'GET').then(raw => {
+      if (!live || !resources.life.current()) return;
+      let agent;
+      try {agent = parseMetadataAgent(raw);} catch {withhold(); return;}
+      // A read that answers for another library or kind is not this library's fact.
+      if (agent.libraryId !== library.id || agent.libraryKind !== library.kind) {withhold(); return;}
+      setAgentFact({key: agentKey, context, online: agent.agent === 'online'});
+    }, withhold).catch(withhold);
+    return () => {live = false;};
+  }, [resources, library.id, library.kind, agentKey, context]);
   const href = useLocation({select: location => location.href}), runtime = captured.binding.playback?.runtime;
   const runtimeRef = useRef(runtime);runtimeRef.current = runtime;
   const playSelection = useMemo(() => {
@@ -151,11 +174,14 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   const unmatched = requested?.shows === 'unmatched';
   const openAttention = (entry: {kind: string; itemKind: string; entityId: string; parentId: string}) => {
     if (entry.kind === 'show' || entry.itemKind === 'episode') navigate({view: 'show', entityId: entry.kind === 'show' ? entry.entityId : entry.parentId});
+    else if (entry.kind === 'album') navigate({view: 'album', entityId: entry.entityId});
+    else if (entry.kind === 'song') navigate({view: 'album', entityId: entry.parentId});
+    else if (entry.kind === 'book') navigate({view: 'book', entityId: entry.entityId});
     else if (entry.entityId) navigate({view: 'browse', entityId: entry.entityId});
   };
   if (library.kind === 'audiobook' && width < 1024 && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
-  return <>{unmatched ? <NeedsAttention libraryId={library.id} api={resources.life.api} onOpen={openAttention}/>
+  return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention}/></>
     : view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}

@@ -1,4 +1,4 @@
-import {useEffect, useSyncExternalStore, type RefObject} from 'react';
+import {useEffect, useMemo, useRef, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import type {HomeSelectionController, HomeSelectionSnapshot} from '@core/home-selection/index.ts';
 import {summarizeSelection} from '@core/selection-model/index.ts';
@@ -16,10 +16,13 @@ import {retryEditorRead, runSelectionCommand, selectionCallbacks} from './select
 import {editorCoreDraft, editorResultView, editorUiDraft, editorValues, selectionMemberDisplay} from './selection-presentation';
 import {SelectionPickerSurface} from './SelectionPickerSurface';
 import {useShellWidth} from './viewport';
+import {MetadataEditor} from '../screens/metadata/MetadataEditor';
+import metadataStyles from '../screens/metadata/metadata.module.css';
 import styles from './selection.module.css';
 
 export type SelectionRendererSource = Readonly<{
   controller: HomeSelectionController;
+  metadata?: Readonly<{api: Parameters<typeof MetadataEditor>[0]['api']; scope: Parameters<typeof MetadataEditor>[0]['scope']; current: (snapshot: HomeSelectionSnapshot) => boolean}>;
   anchor: RefObject<HTMLElement | null>;
   artwork: ShellArtwork;
   owner: boolean;
@@ -87,6 +90,7 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
     return {...display, artwork: <Artwork alt="" source={source.artwork.foreground(display.posterUrl, 100 * (globalThis.devicePixelRatio || 1), 2 / 3, {group: 'home-selection', priority: 'high'})} />};
   });
   const editorBusy = editor?.phase === 'loading' || editor?.phase === 'saving';
+  const singleEditor = source.metadata && editor?.phase === 'ready' && editor.preview?.total === 1 && editor.preview.targets.length === 1 && snapshot.displayMembers.length === 1 && source.metadata.current(snapshot);
   return <>
     {snapshot.selection.active && <div className={styles.bar}><SelectionBar selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
       actions={actionsFor(source, snapshot)} typeCount={summary.types.length} selectAll={{kind: 'row'}}
@@ -96,7 +100,7 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
       anchorRef={source.anchor} items={entries} width={300} />
     {snapshot.mixedEdit && <MixedEditExplainer open onOpenChange={open => { if (!open) controller.closeEditor(); }} anchorRef={source.anchor}
       types={dialogSummary.types} reason={snapshot.editExplanation === 'no-bulk-fields' ? 'no-bulk-fields' : 'mixed-types'} onKeepOnly={kind => { controller.keepOnly(kind); }} />}
-    {editor?.preview && editor.phase !== 'uncertain' && editor.phase !== 'error' && dialogSummary.types.length === 1 ? <BulkEditor open onOpenChange={open => { if (!open && !editorBusy) controller.closeEditor(); }} returnFocusRef={source.anchor}
+    {singleEditor ? <SingleMetadataEditor source={source} snapshot={snapshot}/> : editor?.preview && editor.phase !== 'uncertain' && editor.phase !== 'error' && dialogSummary.types.length === 1 ? <BulkEditor open onOpenChange={open => { if (!open && !editorBusy) controller.closeEditor(); }} returnFocusRef={source.anchor}
       selection={{count: dialogSummary.count, kind: dialogSummary.types[0].kind}} schema={editor.preview.schema} singleItemFields={editor.preview.singleItemFields} values={editorValues(editor.preview)} draft={editorUiDraft(editor.draft)}
       onDraftChange={draft => controller.setEditorDraft(editorCoreDraft(draft))}
       onSave={draft => run(source, async () => { controller.setEditorDraft(editorCoreDraft(draft)); await controller.saveEditor(); })}
@@ -141,5 +145,22 @@ function RatingSurface({source, snapshot}: {source: SelectionRendererSource; sna
     {busy && <p role="status">{t('next.selection.checking')}</p>}
     {rating.phase === 'result' && <p role="status">{t('next.selection.saved')}</p>}
     {rating.error && <p role="alert">{errorText(rating.error)}</p>}
+  </Dialog>;
+}
+
+/** Open only after the controller has validated the concrete target and owner preview. */
+function SingleMetadataEditor({source, snapshot}: {source: SelectionRendererSource; snapshot: HomeSelectionSnapshot}) {
+  const grant = useRef(snapshot).current;
+  const metadata = source.metadata!, preview = grant.editor!.preview!, target = preview.targets[0];
+  const api = useMemo(() => ({async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    const assert = () => {if (!metadata.current(grant) || source.controller.getSnapshot().editor?.preview !== preview) throw new DOMException('Metadata authority changed', 'AbortError');};
+    assert();
+    const value = await metadata.api.request<T>(path, method, body, signal);
+    assert();
+    return value;
+  }}), [metadata, source.controller, grant, preview]);
+  return <Dialog open onOpenChange={open => {if (!open) source.controller.closeEditor();}} title={t('next.home.editSelection')}
+    returnFocusRef={source.anchor} placement="right" width={720} showCloseButton={false} headerClassName={metadataStyles.hostTitle} bodyClassName={metadataStyles.hostBody}>
+    <MetadataEditor api={api} scope={metadata.scope} target={target} onClose={() => source.controller.closeEditor()}/>
   </Dialog>;
 }

@@ -66,12 +66,13 @@ const unmatched: LibraryTab = {id: 'unmatched', label: 'library.tab.unmatched', 
 /** The tabs of a library of this kind, in order. Anime has television's. */
 const ownerUnmatched: LibraryTab = {id: 'unmatched', label: 'library.tab.unmatched', shows: 'unmatched'};
 
-export function libraryTabs(kind: string, options: Readonly<{owner?: boolean; /** True only from the current public albums capability; absent/offline/local-only is false. */ unmatched?: boolean}> = {}): readonly LibraryTab[] {
+export function libraryTabs(kind: string, options: Readonly<{owner?: boolean; /** True only from the current public albums capability; absent/offline/local-only is false. */ unmatched?: boolean; /** True only when the current library's own metadata agent read says online; unknown is false. */ onlineAttention?: boolean}> = {}): readonly LibraryTab[] {
   const tabs = TABS[kind === 'anime' ? 'tv' : kind] ?? [discover];
-  const withPublicUnmatched = kind === 'music' && options.unmatched===true ? [...tabs, unmatched] : tabs;
-  // The owner's own list is the library's Unmatched items tab; Music reaches the same list
-  // through its pivot, so it never grows a second tab with the same name.
-  const owner = options.owner === true && kind !== 'music' && ['movie', 'tv', 'anime', 'audiobook'].includes(kind);
+  // An owner's last pivot is the real unmatched list (owner-metadata#5), but only for a library
+  // the server actually matches online; a local-only library and Audiobooks never show it. Music
+  // keeps its public albums match filter for non-owners only, so no two tabs share the name.
+  const owner = options.owner === true && options.onlineAttention === true && kind !== 'audiobook' && ['movie', 'tv', 'anime', 'music'].includes(kind);
+  const withPublicUnmatched = !owner && kind === 'music' && options.unmatched===true ? [...tabs, unmatched] : tabs;
   return owner ? [...withPublicUnmatched, ownerUnmatched] : withPublicUnmatched;
 }
 
