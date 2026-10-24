@@ -35,6 +35,12 @@ func TestSavedQueryEchoCarriesTheFilterAlone(t *testing.T) {
 	if _, e := db.Exec(`UPDATE personal_items SET favorite=1 WHERE profile_id='p' AND item_id=?`, names["c"].ID); e != nil {
 		t.Fatal(e)
 	}
+	// Watched is an accepted explicit intent, not the legacy personal_items
+	// cache column seeded above. Use the genuine writer to establish it.
+	watched := true
+	if _, e := s.SetPersonal("a", "p", names["a"].Public, PersonalMutation{OperationID: "saved-watched", ExpectedRevision: 1, Watched: &watched}, nil); e != nil {
+		t.Fatal(e)
+	}
 	libraries := []string{"m"}
 	for _, shape := range []string{"", "posters", "squares"} {
 		for _, filter := range []string{"all", "unwatched", "inProgress", "watched", "favorites"} {
