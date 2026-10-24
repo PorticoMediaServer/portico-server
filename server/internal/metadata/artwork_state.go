@@ -262,7 +262,7 @@ func queueArtworkCandidate(ctx context.Context, tx *sql.Tx, t RepairTarget, cand
 	if selectedLocked && !force {
 		return nil
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO artwork_jobs(id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject,preview) DO UPDATE SET id=excluded.id,candidate_id=excluded.candidate_id,origin=excluded.origin,provider=excluded.provider,source_fence=excluded.source_fence,selection_revision=excluded.selection_revision,status='pending',attempts=0,next_attempt='',lease='',lease_until='',error='',actor=excluded.actor,locked=excluded.locked,created_at=excluded.created_at`, identity.Token(), t.Kind, entity, role, subject, candidate, origin, provider, fence, rev, actor, locked, now)
+	_, err = tx.ExecContext(ctx, `INSERT INTO artwork_jobs(id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject,preview) DO UPDATE SET id=excluded.id,candidate_id=excluded.candidate_id,origin=excluded.origin,provider=excluded.provider,source_fence=excluded.source_fence,selection_revision=excluded.selection_revision,status='pending',attempts=0,next_attempt='',lease='',lease_until='',error='',size_refresh=0,actor=excluded.actor,locked=excluded.locked,created_at=excluded.created_at`, identity.Token(), t.Kind, entity, role, subject, candidate, origin, provider, fence, rev, actor, locked, now)
 	return err
 }
 func (s *Service) repairArtworkTx(ctx context.Context, tx *sql.Tx, t RepairTarget, m RepairCommand, actor, now string) error {

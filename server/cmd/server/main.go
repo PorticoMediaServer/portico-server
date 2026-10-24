@@ -392,7 +392,7 @@ func run() (runErr error) {
 	defer db.Close()
 	backupPolicy := backup.NewPolicyStore(db, state)
 	configurationStore := operations.New(db)
-	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, backup.Configuration{Store: backupPolicy}}
+	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, backup.Configuration{Store: backupPolicy}, metadata.Configuration{}}
 	if e = configurationStore.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
@@ -851,6 +851,7 @@ func run() (runErr error) {
 		log.Print("Media conversion unavailable; compatible direct playback remains available")
 	}
 	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
+	meta.ConfigurationCommitted = configurationStore.FlushConfiguration
 	meta.Admission = workAdmission.Admit
 	meta.SubtitleCredentials = subtitleProvider.SetCredentials
 	meta.SubtitleStatus = func() metadata.OpenSubtitlesStatus {
