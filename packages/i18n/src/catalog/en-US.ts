@@ -23,6 +23,7 @@ import {connectionTrustMessages} from './en-US/connection-trust.ts';
 import {systemMessages} from './en-US/system.ts';
 import {accountMessages} from './en-US/accounts.ts';
 import {secureConnectionMessages} from './en-US/secure-connection.ts';
+import {tvMoreMessages} from './en-US/tv-more.ts';
 import {servicesMessages} from './en-US/services.ts';
 import {savedViewSummaryMessages} from './en-US/saved-view.ts';
 
@@ -2191,6 +2192,7 @@ export const enUS = {
   // ── Owner certificates and Apple's local plain HTTP (catalog/en-US/connection-trust.ts) ──
   ...connectionTrustMessages,
   ...secureConnectionMessages,
+  ...tvMoreMessages,
   ...servicesMessages,
   ...savedViewSummaryMessages,
   ...nextMessages,
