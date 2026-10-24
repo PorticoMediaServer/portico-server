@@ -13,6 +13,8 @@ export type SelectionActionsOptions = Readonly<{
   events: Pick<EventsClient, 'on'>;
   requestId: () => Promise<string>;
   isCurrent: () => boolean;
+  /** The route's lifetime; an absent signal is a private, never-aborted one. */
+  signal?: AbortSignal;
   reportError: (error: unknown) => void;
 }>;
 
@@ -43,7 +45,8 @@ export class SelectionActionError extends Error {
   }
 }
 
-export function createSelectionActions({api, events, requestId, isCurrent, reportError}: SelectionActionsOptions) {
+export function createSelectionActions({api, events, requestId, isCurrent, reportError, signal: lifetime}: SelectionActionsOptions) {
+  const routeSignal = lifetime ?? new AbortController().signal;
   const run = async (operation: AnyOperation, args: JobArgs, signal: AbortSignal): Promise<SelectionActionResult> => {
     const target = operation.target as SelectionTarget;
     if (!isCurrent() || signal.aborted) throw new SelectionActionError('cancelled');
@@ -57,7 +60,7 @@ export function createSelectionActions({api, events, requestId, isCurrent, repor
   };
   return {
     /** The three personal commands the drawn bar offers on a selection. */
-    async personal(operation: AnyOperation, action: PersonalSelectionAction, signal: AbortSignal): Promise<SelectionActionResult> {
+    async personal(operation: AnyOperation, action: PersonalSelectionAction, signal: AbortSignal = routeSignal): Promise<SelectionActionResult> {
       if (action.watched === undefined && action.favorite === undefined && action.watchlist === undefined) throw new SelectionActionError('empty-command');
       if (action.watched !== undefined && action.favorite === undefined && action.watchlist === undefined) return run(operation, {watched: action.watched}, signal);
       if (action.favorite !== undefined && action.watched === undefined && action.watchlist === undefined) return run(operation, {favorite: action.favorite}, signal);

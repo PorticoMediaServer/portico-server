@@ -15,6 +15,7 @@ const {createLibrarySelection} = await import('../src/screens/browse/selection.t
 const capabilities = {play: true, queue: true, playlist: true, myList: true, watched: true, collection: true, favorite: true, download: false, edit: true, refresh: true, delete: true};
 const entry = {id: 'm1', kind: 'movie', title: 'Alpha', libraryId: 'a'};
 const row = {entry, position: 0, key: 'key-0', capabilities};
+const target = {mode: 'explicit' as const, context: {}, items: [{key: 'key-0', item: {kind: 'movie', id: 'm1', libraryId: 'a', capabilities}}], displayItems: []};
 const fake = (over: Record<string, unknown> = {}, host: Record<string, unknown> = {}) => {
   const calls: string[] = [];
   const snapshot = {
@@ -24,7 +25,7 @@ const fake = (over: Record<string, unknown> = {}, host: Record<string, unknown> 
     playing: false,
     canPlay: true,
     selection: {active: true, context: {}, summary: {count: 1, types: [{kind: 'movie', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
-      selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: null},
+      selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target},
     ...over,
   };
   const selection = {
@@ -105,4 +106,41 @@ test('a card previews the range only when the play adapter says it would join it
   const quiet = fake({}, {preview: () => false});
   const noPreview = createLibrarySelection({playSelection: quiet.selection, reportError: () => {}});
   assert.equal(noPreview.entry({membershipId: 'm1', entry} as never, 0)?.preview, undefined);
+});
+
+
+test('Watched and My List appear only with real job ports, and the job carries the real target', async () => {
+  const requests: {path: string; body: unknown}[] = [];
+  const actions = {
+    api: {request: async (path: string, _method?: string, body?: unknown) => {
+      requests.push({path, body});
+      return {jobId: 'job-1', command: 'personal-state', state: 'complete', total: 1, totalKnown: true, done: 1, failed: 0};
+    }},
+    events: {on: () => () => {}}, requestId: async () => 'operation-1', isCurrent: () => true, reportError: () => {},
+  };
+  const {selection} = fake();
+  const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
+  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  assert.match(html, />Watched</);
+  assert.match(html, />My List</);
+  await adapter.personal({watched: true});
+  assert.deepEqual(requests[0]?.body?.selector ?? {}, {items: {ids: ['m1']}});
+  assert.equal((requests[0]?.body as {command: string}).command, 'personal-state');
+  assert.deepEqual((requests[0]?.body as {args: unknown}).args, {watched: true});
+  // Without the ports the bar offers no personal action at all.
+  const bare = createLibrarySelection({playSelection: fake().selection, reportError: () => {}});
+  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, bare.toolbar)), />Watched</);
+});
+
+test('a container pick never becomes a personal job', async () => {
+  let requested = 0;
+  const actions = {api: {request: async () => { requested++; return {}; }}, events: {on: () => () => {}}, requestId: async () => 'op', isCurrent: () => true, reportError: () => {}};
+  const containerTarget = {...target, items: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities}}]};
+  const {selection} = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
+    selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: containerTarget}});
+  const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
+  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  assert.doesNotMatch(html, />Watched</);
+  await assert.rejects(adapter.personal({watched: true}), /container-personal-state-unsupported/);
+  assert.equal(requested, 0);
 });
