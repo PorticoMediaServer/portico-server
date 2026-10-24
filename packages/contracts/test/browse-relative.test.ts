@@ -20,8 +20,11 @@ test('published relative browse predicate advertises date fields and whole day l
  for(const field of relative.properties.field.enum)for(const value of [1,30,36500]) {
   const node={field,operator:'within-last-days',value};assert.deepEqual({...api.decode('BrowseNode',node)},node);
  }
- for(const value of [null,'30',true,[],{},0,-1,36501,1.5])assert.throws(()=>api.decode('BrowseNode',{field:'dateAdded',operator:'within-last-days',value}));
+ for(const value of [null,'30',true,[],{},0,-1,36501,1.5,NaN,Infinity])assert.throws(()=>api.decode('BrowseNode',{field:'dateAdded',operator:'within-last-days',value}));
  assert.throws(()=>api.decode('BrowseNode',{field:'dateAdded',operator:'within-last-days'}));
  assert.throws(()=>api.decode('BrowseNode',{field:'year',operator:'within-last-days',value:30}));
+ assert.throws(()=>api.decode('BrowseNode',{field:'dateAdded',operator:'within-last-days',value:30,at:'2026-10-24T00:00:00Z'}));
+ assert.throws(()=>api.decode('BrowseNode',{field:'dateAdded',operator:'within-last-days',value:30,all:[]}));
  assert.doesNotThrow(()=>api.decode('BrowseNode',{field:'dateAdded',operator:'at-least',value:'2026-09-23'}));
+ assert.doesNotThrow(()=>api.decode('BrowseNode',{all:[{field:'dateAdded',operator:'at-least',value:'2026-09-23'}]}));
 });
