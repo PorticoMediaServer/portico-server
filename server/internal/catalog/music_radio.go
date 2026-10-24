@@ -315,6 +315,12 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		lastArtists = item.artists
 		pool = append(pool[:chosen], pool[chosen+1:]...)
 	}
+	// A one-song library still has an honest next occurrence. Keeping one
+	// buffered occurrence lets normal completion/prepare policy see it; no
+	// invented song or second active session is needed.
+	if request.Start && len(out.IDs) == 1 && limit > 1 {
+		out.IDs = append(out.IDs, out.IDs[0])
+	}
 	return out, nil
 }
 

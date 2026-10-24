@@ -31,12 +31,10 @@ func validRadioBatch(ids []string, limit int) bool {
 	if len(ids) == 0 || len(ids) > limit {
 		return false
 	}
-	seen := map[string]bool{}
 	for _, id := range ids {
-		if _, ok := entityid.Decode(id); !ok || seen[id] {
+		if _, ok := entityid.Decode(id); !ok {
 			return false
 		}
-		seen[id] = true
 	}
 	return true
 }

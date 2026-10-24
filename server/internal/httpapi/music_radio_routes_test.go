@@ -18,7 +18,7 @@ import (
 
 // The real HTTP/queue/authority fixture uses declared media facts, not an audio
 // decoder. These tests qualify selection, persistence and session transfer only.
-func radioHTTPFixture(t *testing.T) (*v1Fixture, []catalogtest.Item) {
+func radioHTTPFixture(t *testing.T, counts ...int) (*v1Fixture, []catalogtest.Item) {
 	t.Helper()
 	f := newV1Fixture(t, 0)
 	c := f.catalogTest
@@ -26,7 +26,11 @@ func radioHTTPFixture(t *testing.T) (*v1Fixture, []catalogtest.Item) {
 	library := c.Library("radio-music", "Music", "music", root)
 	album := c.Album(c.Artist(library, "Radio Artist"), "Radio album", 2026)
 	items := []catalogtest.Item{}
-	for n := 0; n < 3; n++ {
+	count := 3
+	if len(counts) > 0 {
+		count = counts[0]
+	}
+	for n := 0; n < count; n++ {
 		path := filepath.Join(root, fmt.Sprintf("song-%d.mp4", n))
 		if err := os.WriteFile(path, make([]byte, 1000), 0600); err != nil {
 			t.Fatal(err)
@@ -144,5 +148,31 @@ func TestMusicRadioHTTPRechecksSeedAuthorityAfterSelection(t *testing.T) {
 	f.call("GET", base, nil, nil, 200, &unchanged)
 	if unchanged.Revision != q.Queue.Revision || unchanged.Total != q.Queue.Total || unchanged.Current.EntryID != q.Queue.Current.EntryID {
 		t.Fatal("rejected batch changed queue", unchanged)
+	}
+}
+
+func TestMusicRadioHTTPOneSongPreparedCommitKeepsARealNextOccurrence(t *testing.T) {
+	f, items := radioHTTPFixture(t, 1)
+	var q playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "radio-single-00000001"}, map[string]any{"selector": map[string]any{"container": map[string]any{"kind": "radio", "id": items[0].Public}}, "startPlayback": map[string]any{"state": "playing"}}, 201, &q)
+	base := "/v1/queues/" + q.Queue.ID
+	for n := 0; n < 3; n++ {
+		if q.Session == nil || q.Queue.Next == nil || !q.Queue.Next.Available {
+			t.Fatal("one-song radio has no real next occurrence", q)
+		}
+		prepared := prepareNext(t, f, q, fmt.Sprintf("radio-single-prepare-%04d", n))
+		if prepared.Presentation.AudioRender == nil || prepared.Presentation.AudioRender.URL == "" {
+			t.Fatal(prepared)
+		}
+		url := prepared.Presentation.AudioRender.URL
+		old := q.Session.ID
+		f.call("POST", base+":commit-next", nil, map[string]any{"token": prepared.Token}, 200, &q)
+		if q.Session == nil || q.Session.ID == old || q.Session.ItemID != items[0].Public || q.Session.Presentation.AudioRender == nil || q.Session.Presentation.AudioRender.URL != url {
+			t.Fatal("prepared identity or authority changed", q)
+		}
+		var active int
+		if err := f.db.QueryRow(`SELECT count(*) FROM playback_v1_sessions WHERE ended_ms=0`).Scan(&active); err != nil || active != 1 {
+			t.Fatal("parallel active session", active, err)
+		}
 	}
 }
