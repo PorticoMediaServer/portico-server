@@ -21,12 +21,15 @@ import {BrowserProfileRecovery} from './profile-recovery';
 import {createBrowserRegisteredSignIn, type BrowserRegisteredSignIn} from './registered-sign-in';
 import {dispatchPorticoReturn, type CapturedPorticoReturn} from './portico-return-dispatch';
 import {createBrowserOwnerClaim, type BrowserOwnerClaim} from './owner-claim';
+import {createBrowserSetupClaim, type BrowserSetupClaim} from './setup-claim';
 import {buildHostedSignInStartURL} from '@core/hosted-sign-in-start.ts';
 import type {AccountServerAccess} from './account-server-access';
 
 type RegisteredController=Pick<BrowserRegisteredSignIn,'prepare'|'finish'|'completeChallenge'|'cancel'>;
 type RegisteredCompletion=Awaited<ReturnType<RegisteredController['finish']>>;
 type OwnerReturnController=Pick<BrowserOwnerClaim,'pendingReturn'|'finish'|'cancel'>;
+type SetupReturnController=Pick<BrowserSetupClaim,'pendingReturn'|'finish'|'cancel'>;
+type ContinuationReturnController=OwnerReturnController|SetupReturnController;
 type AdmittedCompletion=Readonly<{api:HttpLocalApi;result:Extract<DirectSignIn,{kind:'signed-in'}>}>;
 export type OwnerResetDetails=Readonly<{username:string;twoStepEnabled:boolean}>;
 export type HostedDirectoryServer=Readonly<Pick<HostedServer,'id'|'name'|'publicKey'|'policyRevision'|'baseUrl'|'routes'>>;
@@ -52,6 +55,8 @@ type EntryPorts = Readonly<{
  observeSelection?:(changed:()=>void)=>()=>void;
  registered?:()=>Readonly<{controller:RegisteredController;installationId:()=>string}>;
  ownerReturn?:()=>OwnerReturnController;
+ setupReturn?:()=>SetupReturnController;
+ setupRequired?:(origin:string,pin:ServerPin)=>void;
  rememberName?:(api:HttpLocalApi,name:string)=>void;
 }>;
 
@@ -63,7 +68,7 @@ export class BrowserAccountEntry {
  private readonly retiredListeners=new Set<()=>void>();private offSelection?:()=>void;
  private epoch=0;private controller?:AbortController;private api?:HttpLocalApi;private session?:LocalSession;
  private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private challengeRevision?:number;private disposed=false;
- private registered?:RegisteredController;private registeredChallenge?:RegisteredController;private ownerReturn?:OwnerReturnController;
+ private registered?:RegisteredController;private registeredChallenge?:RegisteredController;private ownerReturn?:ContinuationReturnController;
  private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
  private ownerReset?:OwnerResetCapture;private ownerResetTimer?:ReturnType<typeof setTimeout>;
  private moveProof?:Readonly<{code:string;revision:number;preview:MoveCodePreview}>;
@@ -181,7 +186,10 @@ export class BrowserAccountEntry {
    const pin=await this.ports.inspect(origin,this.ports.environment(server.id),op.signal);
    if(!op.current())return;if(pin.serverId!==server.id)throw new RouteError('identity_mismatch','The server identity changed.');
    assertFirstContactIdentity(origin,pin,{linkId,knownRoutes:knownServerRoutes(await this.ports.store.read())});
-   if(!op.current())return;if(server.setupRequired)throw new RouteError('setup_required','This server needs setup.');
+   if(!op.current())return;if(server.setupRequired){
+    if(this.ports.setupRequired){this.ports.setupRequired(origin,pin);return;}
+    throw new RouteError('setup_required','This server needs setup.');
+   }
    const connected=await this.ports.connect(origin,pin,this.ports.environment(server.id),op.signal);
    if(!op.current()){connected.connection.dispose();return;}
    // A second kind read on the verified connection closes a change between discovery and entry.
@@ -566,18 +574,24 @@ export class BrowserAccountEntry {
   // Cancel prior entry work BEFORE selecting an owner journal. Calling cancel
   // between pendingReturn and finish would delete that very captured attempt.
   this.cancel();const op=this.operation();this.publish({phase:'checking',busy:true});
-  let owner:OwnerReturnController|undefined;
+  let owner:ContinuationReturnController|undefined;
   try{
-   if(this.ports.ownerReturn){
-    owner=this.ports.ownerReturn();this.ownerReturn=owner;
-    const pending=await owner.pendingReturn();
-    if(!op.current()){await owner.cancel();return;}
-    if(pending){
-     dispatchPorticoReturn(captured,pending);
-     this.stopAuthorityWatch();
-     await this.admittedCompletion(await owner.finish(captured),op);return;
-    }
-    this.ownerReturn=undefined;await owner.cancel();if(!op.current())return;
+   // Only the protected journal selects a continuation. An ambiguous pair of
+   // active journals refuses without consuming either one; URL purpose cannot
+   // choose setup or confer owner-switch authority.
+   const choices:{controller:ContinuationReturnController;pending:NonNullable<Awaited<ReturnType<ContinuationReturnController['pendingReturn']>>>}[]=[];
+   for(const create of [this.ports.setupReturn,this.ports.ownerReturn]){
+    if(!create)continue;
+    const controller=create(),pending=await controller.pendingReturn();
+    if(!op.current())return;
+    if(pending)choices.push({controller,pending});
+   }
+   if(choices.length>1)throw new CodedError('invalid_return',unreadableServerResponse);
+   if(choices.length===1){
+    const choice=choices[0]!;owner=choice.controller;this.ownerReturn=owner;
+    dispatchPorticoReturn(captured,choice.pending);
+    this.stopAuthorityWatch();
+    await this.admittedCompletion(await owner.finish(captured),op);return;
    }
    if(!this.ports.registered)throw new CodedError('invalid_return',unreadableServerResponse);
    const {controller}=this.ports.registered();this.registered=controller;
@@ -653,4 +667,4 @@ export class BrowserAccountEntry {
 
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();this.retiredListeners.clear();}
 }
-export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,registered:()=>createBrowserRegisteredSignIn(buildHostedSignInStartURL),ownerReturn:createBrowserOwnerClaim,rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
+export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,registered:()=>createBrowserRegisteredSignIn(buildHostedSignInStartURL),ownerReturn:createBrowserOwnerClaim,setupReturn:createBrowserSetupClaim,setupRequired:(origin)=>location.assign(new URL('/setup',origin).href),rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
