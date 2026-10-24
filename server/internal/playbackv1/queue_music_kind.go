@@ -44,13 +44,22 @@ func writeQueueChunkTx(ctx context.Context, tx *sql.Tx, snapshot string, number 
 // Every live segment must have a completed, proved music-only capture. A
 // music-looking current window cannot activate smoothing in a mixed queue.
 func (l *layout) musicQueue() bool {
-	if !l.q.shuffle || len(l.segments) == 0 {
+	if !l.q.shuffle || !l.musicOnlySources() {
 		return false
 	}
+	for _, g := range l.segments {
+		if g.live() > 0 && g.state != "ready" {
+			return false
+		}
+	}
+	return true
+}
+
+func (l *layout) musicOnlySources() bool {
 	hasMusic := false
 	for _, g := range l.segments {
 		if g.live() > 0 {
-			if g.state != "ready" || !g.musicOnly {
+			if !g.musicOnly {
 				return false
 			}
 			hasMusic = true

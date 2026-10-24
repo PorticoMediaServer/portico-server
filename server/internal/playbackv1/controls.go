@@ -161,9 +161,14 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 				l, e := s.readLayout(ctx, tx, q)
 				if e == nil {
 					if pos, _, ok := completionNext(l); ok {
-						entries, e := s.window(ctx, l, c.Principal, pos, 1)
-						if e == nil && len(entries) == 1 && entries[0].Available {
-							remote.Next = &entries[0]
+						missing, e := l.loadExistingSonicRange(pos, 1)
+						// Monitoring another profile cannot create its recommendation order.
+						// An uncaptured music window is unknown, never a guessed next song.
+						if e == nil && (len(missing) == 0 || !l.musicOnlySources()) {
+							entries, e := s.window(ctx, l, c.Principal, pos, 1)
+							if e == nil && len(entries) == 1 && entries[0].Available {
+								remote.Next = &entries[0]
+							}
 						}
 					}
 				}

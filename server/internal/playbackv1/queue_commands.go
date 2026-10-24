@@ -23,7 +23,7 @@ func init() {
 // queueWrite runs one queue mutation in a gated transaction with the layout
 // read inside it; mutate returns whether it changed the queue. The revision,
 // the event and the updated time follow automatically.
-func (s *Service) queueWrite(ctx context.Context, q queueRow, mutate func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error)) (*layout, error) {
+func (s *Service) queueWrite(ctx context.Context, c Caller, q queueRow, mutate func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error)) (*layout, error) {
 	var out *layout
 	var canceled []string
 	err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
@@ -31,14 +31,28 @@ func (s *Service) queueWrite(ctx context.Context, q queueRow, mutate func(ctx co
 		if err != nil {
 			return err
 		}
+		if !ownsQueue(c, fresh) {
+			return ErrNotFound
+		}
+		if err := s.castQueueAuthorityTx(ctx, tx, c, q.id); err != nil {
+			return err
+		}
 		if fresh.revision != q.revision {
 			return ErrRevision
 		}
-		l, err := s.readLayout(ctx, tx, fresh)
+		l, err := s.readMusicWriterLayout(ctx, tx, fresh, c)
 		if err != nil {
 			return err
 		}
+		defer func() {
+			if l != nil {
+				l.sonicPrepare = nil
+			}
+		}()
 		changed, err := mutate(ctx, tx, l)
+		if l.sonicErr != nil {
+			return l.sonicErr
+		}
 		if err != nil {
 			return err
 		}
@@ -68,12 +82,15 @@ func (s *Service) queueWrite(ctx context.Context, q queueRow, mutate func(ctx co
 				}
 			}
 			// The layout changed underneath: re-read it for the answer and the event.
-			if l, err = s.readLayout(ctx, tx, l.q); err != nil {
+			if l, err = s.readMusicWriterLayout(ctx, tx, l.q, c); err != nil {
 				return err
 			}
 			if err = s.queueEventsTx(ctx, tx, l, now); err != nil {
 				return err
 			}
+		}
+		if err := s.finishMusicWriterLayout(l); err != nil {
+			return err
 		}
 		out = l
 		return nil
@@ -315,6 +332,9 @@ func (s *Service) staleQueue(ctx context.Context, q queueRow) error {
 	if err != nil {
 		return err
 	}
+	if _, err = l.loadExistingSonicRange(l.q.current, 1); err != nil {
+		return err
+	}
 	return &RevisionError{Current: s.header(l), Revision: q.revision}
 }
 
@@ -528,9 +548,14 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 		if _, err := tx.ExecContext(ctx, `UPDATE queues_v1 SET current_position=?,shuffle_on=?,shuffle_seed=?,shuffle_domain=?,shuffle_first=? WHERE id=?`, q.current, q.shuffle, q.seed, q.domain, q.first, q.id); err != nil {
 			return err
 		}
-		if l, err = s.readLayout(ctx, tx, q); err != nil {
+		if l, err = s.readMusicWriterLayout(ctx, tx, q, c); err != nil {
 			return err
 		}
+		defer func() {
+			if l != nil {
+				l.sonicPrepare = nil
+			}
+		}()
 		return s.queueEventsTx(ctx, tx, l, now)
 	})
 	if errors.Is(err, errCreateRaced) {
@@ -607,7 +632,7 @@ func (s *Service) createReplay(ctx context.Context, c Caller, key, want string, 
 // repeat is the same session), the header and window, and the kept response.
 func (s *Service) finishCreate(ctx context.Context, c Caller, key string, req CreateQueueRequest, q queueRow) (QueueReply, error) {
 	var reply QueueReply
-	if err := s.withLayout(ctx, q, func(l *layout) error { reply.Queue = s.header(l); return nil }); err != nil {
+	if err := s.withMusicLayout(ctx, c, q.id, sonicCurrentWindow, func(l *layout) error { q = l.q; reply.Queue = s.header(l); return nil }); err != nil {
 		return QueueReply{}, err
 	}
 	if sp := req.StartPlayback; sp != nil && reply.Queue.Current != nil {
@@ -621,7 +646,11 @@ func (s *Service) finishCreate(ctx context.Context, c Caller, key string, req Cr
 			q = fresh
 		}
 	}
-	if err := s.withLayout(ctx, q, func(l *layout) error {
+	if err := s.withMusicLayout(ctx, c, q.id, func(l *layout) ([]int64, error) {
+		from := max(0, l.q.current-20)
+		return l.sonicWindowsForRange(from, l.q.current-from+51)
+	}, func(l *layout) error {
+		q = l.q
 		reply.Queue = s.header(l)
 		from := max(0, l.q.current-20)
 		var err error
@@ -668,7 +697,7 @@ func (s *Service) Queue(ctx context.Context, c Caller, id string) (QueueView, er
 		return QueueView{}, err
 	}
 	var out QueueView
-	err = s.withLayout(ctx, q, func(l *layout) error { out = s.header(l); return nil })
+	err = s.withMusicLayout(ctx, c, q.id, sonicCurrentWindow, func(l *layout) error { q = l.q; out = s.header(l); return nil })
 	if err == nil {
 		s.withNext(ctx, c, &out, q)
 		err = s.castQueueAuthority(ctx, c, id)
@@ -691,7 +720,10 @@ func (s *Service) Window(ctx context.Context, c Caller, id string, before, after
 		return EntryPage{}, err
 	}
 	var out EntryPage
-	err = s.withLayout(ctx, q, func(l *layout) error {
+	err = s.withMusicLayout(ctx, c, q.id, func(l *layout) ([]int64, error) {
+		from := max(0, l.q.current-before)
+		return l.sonicWindowsForRange(from, l.q.current-from+after+1)
+	}, func(l *layout) error {
 		from := max(0, l.q.current-before)
 		items, err := s.window(ctx, l, c.Principal, from, l.q.current-from+after+1)
 		out = EntryPage{Items: items, Page: Page{Limit: int(l.q.current - from + after + 1), Total: l.total(), Start: from, Revision: strconv.FormatInt(l.q.revision, 10)}}
@@ -713,7 +745,9 @@ func (s *Service) Entries(ctx context.Context, c Caller, id string, from int64, 
 		return EntryPage{}, err
 	}
 	var out EntryPage
-	err = s.withLayout(ctx, q, func(l *layout) error {
+	err = s.withMusicLayout(ctx, c, q.id, func(l *layout) ([]int64, error) {
+		return l.sonicWindowsForRange(from, int64(limit))
+	}, func(l *layout) error {
 		items, err := s.window(ctx, l, c.Principal, from, int64(limit))
 		total := l.total()
 		out = EntryPage{Items: items, Page: Page{Limit: limit, Total: total, Start: from, Revision: strconv.FormatInt(l.q.revision, 10)}}
@@ -822,7 +856,7 @@ func (s *Service) AddSegment(ctx context.Context, c Caller, id, ifMatch string, 
 	if snap.count == 0 {
 		return QueueReply{}, ErrNotFound
 	}
-	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
+	l, err := s.queueWrite(ctx, c, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
 		current, _ := l.currentEntry()
 		if l.total()+snap.count > s.queueKeyLimit() {
 			return false, ErrQueueTooLarge
@@ -878,7 +912,7 @@ func (s *Service) AddSegment(ctx context.Context, c Caller, id, ifMatch string, 
 				return false, err
 			}
 		}
-		fresh, err := s.readLayout(ctx, tx, l.q)
+		fresh, err := s.readMusicWriterLayout(ctx, tx, l.q, c)
 		if err != nil {
 			return false, err
 		}
@@ -926,7 +960,7 @@ func (s *Service) RemoveEntry(ctx context.Context, c Caller, id, ifMatch, entry 
 	if err != nil {
 		return QueueReply{}, err
 	}
-	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
+	l, err := s.queueWrite(ctx, c, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
 		src, segIndex, ok := l.sourceIndexOf(entry)
 		if !ok {
 			return false, ErrNotFound
@@ -950,7 +984,7 @@ func (s *Service) RemoveEntry(ctx context.Context, c Caller, id, ifMatch, entry 
 		if err := s.tombstone(ctx, tx, l, segIndex, entry); err != nil {
 			return false, err
 		}
-		fresh, err := s.readLayout(ctx, tx, l.q)
+		fresh, err := s.readMusicWriterLayout(ctx, tx, l.q, c)
 		if err != nil {
 			return false, err
 		}
@@ -996,7 +1030,7 @@ func (s *Service) MoveEntry(ctx context.Context, c Caller, id, ifMatch, entry st
 	if err != nil {
 		return QueueReply{}, err
 	}
-	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
+	l, err := s.queueWrite(ctx, c, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
 		_, segIndex, ok := l.sourceIndexOf(entry)
 		target := req.After + req.Before
 		_, targetIndex, targetOK := l.sourceIndexOf(target)
@@ -1031,7 +1065,7 @@ func (s *Service) MoveEntry(ctx context.Context, c Caller, id, ifMatch, entry st
 			return false, err
 		}
 		// The split below must see the tombstone.
-		if l, err = s.readLayout(ctx, tx, l.q); err != nil {
+		if l, err = s.readMusicWriterLayout(ctx, tx, l.q, c); err != nil {
 			return false, err
 		}
 		if _, targetIndex, targetOK = l.sourceIndexOf(target); !targetOK {
@@ -1068,7 +1102,7 @@ func (s *Service) MoveEntry(ctx context.Context, c Caller, id, ifMatch, entry st
 		if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_segments(id,queue_id,sort_key,snapshot_id,first_ordinal,count) VALUES(?,?,?,?,0,1)`, newShortID("g"), l.q.id, key, snap); err != nil {
 			return false, err
 		}
-		fresh, err := s.readLayout(ctx, tx, l.q)
+		fresh, err := s.readMusicWriterLayout(ctx, tx, l.q, c)
 		if err != nil {
 			return false, err
 		}
@@ -1100,7 +1134,7 @@ func (s *Service) UpdateQueue(ctx context.Context, c Caller, id, ifMatch string,
 	if err != nil {
 		return QueueReply{}, err
 	}
-	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
+	l, err := s.queueWrite(ctx, c, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
 		changed := false
 		if change.Repeat != "" && change.Repeat != l.q.repeat {
 			l.q.repeat, changed = change.Repeat, true
@@ -1151,7 +1185,7 @@ func (s *Service) UpdateQueue(ctx context.Context, c Caller, id, ifMatch string,
 				}
 				l.q.shuffle = false
 				l.spans = nil
-				normal, err := s.readLayout(ctx, tx, l.q)
+				normal, err := s.readMusicWriterLayout(ctx, tx, l.q, c)
 				if err != nil {
 					return false, err
 				}
@@ -1188,7 +1222,7 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 			return QueueReply{}, err
 		}
 	}
-	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
+	l, err := s.queueWrite(ctx, c, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
 		if err := s.castQueueAuthorityTx(ctx, tx, c, id); err != nil {
 			return false, err
 		}
@@ -1331,7 +1365,7 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 			}
 			reply.Session = &session
 			if q, err := loadQueue(ctx, s.DB, l.q.id); err == nil {
-				_ = s.withLayout(ctx, q, func(l *layout) error { reply.Queue = s.header(l); return nil })
+				_ = s.withMusicLayout(ctx, c, q.id, sonicCurrentWindow, func(l *layout) error { reply.Queue = s.header(l); return nil })
 			}
 		}
 	}
@@ -1374,7 +1408,8 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 		return SessionView{}, false, ErrNotFound
 	}
 	var item string
-	err = s.withLayout(ctx, q, func(l *layout) error {
+	err = s.withMusicLayout(ctx, c, q.id, sonicEntryWindow(req.Queue.EntryID), func(l *layout) error {
+		q = l.q
 		p, ok := l.positionOf(req.Queue.EntryID)
 		if !ok {
 			return ErrNotFound
@@ -1486,40 +1521,56 @@ func (s *Service) EntryForItem(ctx context.Context, c Caller, id, item string) (
 	if err != nil {
 		return QueueItemView{}, err
 	}
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
-	if err != nil {
-		return QueueItemView{}, err
-	}
-	defer done()
-	l, err := s.readLayout(ctx, tx, q)
-	if err != nil {
-		return QueueItemView{}, err
-	}
-	for from := int64(0); from < l.total(); from += WindowMax {
-		l.chunks = map[string][]byte{}
-		if err = l.prefetch(from, min(WindowMax, l.total()-from)); err != nil {
-			return QueueItemView{}, err
+	var candidate string
+	err = func() error {
+		tx, done, err := dbwork.BeginRead(ctx, s.DB)
+		if err != nil {
+			return err
 		}
-		for position := from; position < min(from+WindowMax, l.total()); position++ {
-			_, key, e := l.entryAtErr(position)
-			if e != nil {
-				if errors.Is(e, ErrQueueBuilding) {
-					return QueueItemView{}, e
+		defer done()
+		l, err := s.readLayout(ctx, tx, q)
+		if err != nil {
+			return err
+		}
+		for from := int64(0); from < l.total(); from += WindowMax {
+			l.chunks = map[string][]byte{}
+			if _, err = l.loadExistingSonicRange(from, min(WindowMax, l.total()-from)); err != nil {
+				return err
+			}
+			if err = l.prefetch(from, min(WindowMax, l.total()-from)); err != nil {
+				return err
+			}
+			for position := from; position < min(from+WindowMax, l.total()); position++ {
+				entry, key, e := l.entryAtErr(position)
+				if e != nil {
+					return e
 				}
-				return QueueItemView{}, e
+				if key == item {
+					candidate = entry
+					return nil
+				}
 			}
-			if key != item {
-				continue
-			}
-			entries, e := s.window(ctx, l, c.Principal, position, 1)
-			if e != nil {
-				return QueueItemView{}, e
-			}
-			if len(entries) != 1 || !entries[0].Available {
-				return QueueItemView{}, ErrNotFound
-			}
-			return QueueItemView{Revision: strconv.FormatInt(q.revision, 10), Entry: entries[0]}, nil
 		}
+		return ErrNotFound
+	}()
+	if err != nil {
+		return QueueItemView{}, err
 	}
-	return QueueItemView{}, ErrNotFound
+	var out QueueItemView
+	err = s.withMusicLayout(ctx, c, q.id, sonicEntryWindow(candidate), func(l *layout) error {
+		position, ok := l.positionOf(candidate)
+		if !ok {
+			return ErrNotFound
+		}
+		entries, err := s.window(ctx, l, c.Principal, position, 1)
+		if err != nil {
+			return err
+		}
+		if len(entries) != 1 || !entries[0].Available || entries[0].ItemID != item {
+			return ErrNotFound
+		}
+		out = QueueItemView{Revision: strconv.FormatInt(l.q.revision, 10), Entry: entries[0]}
+		return nil
+	})
+	return out, err
 }

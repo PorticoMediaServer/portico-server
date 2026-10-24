@@ -239,6 +239,9 @@ func (g segment) live() int64 { return g.count - g.removed }
 // entry in O(segments + removals), independent of queue length.
 type layout struct {
 	sonicWindows map[int64]sonicWindowCapture
+	sonicMisses  map[int64]bool
+	sonicPrepare func(*layout, int64) error
+	sonicErr     error
 	spans        []orderSpan
 	q            queueRow
 	segments     []segment
@@ -484,14 +487,25 @@ func (l *layout) key(snap string, ordinal int64) (string, error) {
 // need and the request hasn't read yet: a shuffled window touches up to n
 // different chunks, which were n statements (P14).
 func (l *layout) prefetch(from, n int64) error {
+	if n <= 0 {
+		return nil
+	}
+	sources := make([]int64, 0, min(n, WindowMax))
+	for p := from; p < from+n; p++ {
+		sources = append(sources, l.orderToSource(p))
+	}
+	return l.prefetchSources(sources)
+}
+
+func (l *layout) prefetchSources(sources []int64) error {
 	type ref struct {
 		Snapshot string `json:"s"`
 		Chunk    int64  `json:"c"`
 	}
 	want := []ref{}
 	seen := map[string]bool{}
-	for p := from; p < from+n; p++ {
-		i, ordinal, ok := l.sourceAt(l.orderToSource(p))
+	for _, source := range sources {
+		i, ordinal, ok := l.sourceAt(source)
 		if !ok {
 			continue
 		}
@@ -536,7 +550,11 @@ func (l *layout) entryAt(p int64) (string, string, bool) {
 // entryAtErr is entryAt that tells a pending entry (ErrQueueBuilding: it has an
 // id and a place, but its key isn't built yet) from one that doesn't exist.
 func (l *layout) entryAtErr(p int64) (string, string, error) {
-	i, ordinal, ok := l.sourceAt(l.orderToSource(p))
+	source := l.orderToSource(p)
+	if l.sonicErr != nil {
+		return "", "", l.sonicErr
+	}
+	i, ordinal, ok := l.sourceAt(source)
 	if !ok {
 		return "", "", ErrNotFound
 	}
@@ -565,17 +583,22 @@ func (s *Service) header(l *layout) QueueView {
 	v := QueueView{ID: l.q.id, Revision: strconv.FormatInt(l.q.revision, 10), Total: l.total(), Repeat: l.q.repeat, Segments: []SegmentView{}, RemainingCount: max(0, l.total()-l.q.current-1)}
 	// While a start waits for its snapshot (P16) there's no current entry; a
 	// current entry that's still pending has its id and position already.
-	if entry, _, err := l.entryAtErr(l.q.current); !l.waiting() && (err == nil || errors.Is(err, ErrQueueBuilding)) {
-		v.Current = &QueueCurrent{EntryID: entry, Position: l.q.current}
+	if !l.waiting() {
+		if entry, _, err := l.entryAtErr(l.q.current); err == nil || errors.Is(err, ErrQueueBuilding) {
+			v.Current = &QueueCurrent{EntryID: entry, Position: l.q.current}
+		}
 	}
+
 	if l.q.shuffle {
 		v.Shuffle = &QueueShuffle{Seed: strconv.FormatInt(l.q.seed, 10), Lap: l.q.lap}
 	}
 	// A constant-size header (P15): the segments from the current one on.
 	v.SegmentCount = len(l.segments)
 	start := 0
-	if i, _, ok := l.sourceAt(l.orderToSource(l.q.current)); ok {
-		start = i
+	if !l.waiting() {
+		if i, _, ok := l.sourceAt(l.orderToSource(l.q.current)); ok {
+			start = i
+		}
 	}
 	start = max(0, min(start, len(l.segments)-HeaderSegments))
 	for _, g := range l.segments[start:min(len(l.segments), start+HeaderSegments)] {
@@ -840,6 +863,9 @@ func ownsQueue(c Caller, q queueRow) bool {
 
 func (s *Service) queueEventsTx(ctx context.Context, tx *sql.Tx, l *layout, now time.Time) error {
 	v := s.header(l)
+	if l.sonicErr != nil {
+		return l.sonicErr
+	}
 	data := map[string]any{"total": v.Total}
 	if v.Current != nil {
 		data["current"] = v.Current

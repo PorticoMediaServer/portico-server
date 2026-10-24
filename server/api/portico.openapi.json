@@ -445651,7 +445651,8 @@
         "x-cost": "constant",
         "x-error-codes": [
           "unauthorized",
-          "not_found"
+          "not_found",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -449302,7 +449303,8 @@
         "x-error-codes": [
           "invalid_request",
           "unauthorized",
-          "not_found"
+          "not_found",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -452644,7 +452646,8 @@
           "invalid_request",
           "unauthorized",
           "not_found",
-          "queue_building"
+          "queue_building",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -454718,7 +454721,8 @@
         "x-error-codes": [
           "invalid_request",
           "unauthorized",
-          "not_found"
+          "not_found",
+          "revision_mismatch"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
