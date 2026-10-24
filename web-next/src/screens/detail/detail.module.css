@@ -60,9 +60,10 @@
 .sticky[data-stuck]::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 28px; background: linear-gradient(180deg,color-mix(in srgb,var(--color-ink) 60%,transparent),transparent); pointer-events: none; }
 .sticky[data-stuck] > .pinnedDesktopTitle,.sticky[data-stuck] .actions { display: flex; }
 .sticky[data-stuck] > .pinnedRule { display: block; }
-.sticky[data-stuck] .tabStrip > div { border-bottom: 0; }
-.sticky[data-stuck] [role="tablist"] { gap: 28px; align-self: stretch; }
-.sticky[data-stuck] [role="tab"] { display: flex; align-items: center; padding: 0; font-size: var(--detail-stuck-tab-size); }
+.sticky[data-stuck] .tabStrip { display: flex; align-self: stretch; }
+.sticky[data-stuck] .tabStrip > div { display: flex; align-self: stretch; border-bottom: 0; }
+.sticky[data-stuck] [role="tablist"] { gap: 28px; align-items: stretch; height: 100%; }
+.sticky[data-stuck] [role="tab"] { display: flex; align-items: center; height: 100%; padding: 0; font-size: var(--detail-stuck-tab-size); }
 .sticky[data-stuck] [role="tab"][data-state="active"]::after { inset: auto 0 0; }
 
 .details { display: grid; grid-template-columns: 360px 1fr; gap: 64px; padding: 32px 64px 80px; }
