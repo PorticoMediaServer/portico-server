@@ -43,6 +43,8 @@ type radioCandidate struct {
 	tie      uint64
 }
 
+const radioSeedMembershipSQL = `((?=7 AND item.id=?) OR (?=6 AND song.album_id=?) OR (?=5 AND (album.artist_id=? OR EXISTS(SELECT 1 FROM catalog_song_artists credit WHERE credit.song_id=item.id AND credit.artist_id=?))))`
+
 const radioArtistsSQL = `CASE WHEN EXISTS(SELECT 1 FROM catalog_song_artists credit WHERE credit.song_id=item.id)
  THEN (SELECT json_group_array(artist_id) FROM catalog_song_artists credit WHERE credit.song_id=item.id)
  ELSE json_array(album.artist_id) END`
@@ -129,9 +131,9 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 	rows, err := s.read().Query(`SELECT facet.facet FROM catalog_entities item
  JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
  JOIN catalog_rec_facets facet ON facet.entity_id=item.id AND facet.facet LIKE 'g:%'
- WHERE ((?=7 AND item.id=?) OR (?=6 AND song.album_id=?) OR (?=5 AND album.artist_id=?))
+ WHERE `+radioSeedMembershipSQL+`
  AND `+visible+` AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
- GROUP BY facet.facet ORDER BY count(*) DESC,facet.facet LIMIT 8`, append([]any{kind, seed, kind, seed, kind, seed}, args...)...)
+ GROUP BY facet.facet ORDER BY count(*) DESC,facet.facet LIMIT 8`, append([]any{kind, seed, kind, seed, kind, seed, seed}, args...)...)
 	if err != nil {
 		return out, err
 	}
@@ -272,10 +274,10 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
  JOIN catalog_libraries library ON library.id=item.library_id
  JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
  JOIN catalog_entities album_item ON album_item.id=album.entity_id AND album_item.retired=0
- WHERE ((?=7 AND item.id=?) OR (?=6 AND song.album_id=?) OR (?=5 AND album.artist_id=?))
+ WHERE `+radioSeedMembershipSQL+`
  AND `+visible+` AND `+currentSonicEligibleSQL+`
  AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
- ORDER BY album_item.year,album_item.sort_key,album_item.id,COALESCE(song.disc_number,1),COALESCE(song.track_number,0),item.id LIMIT 1`, append([]any{kind, seed, kind, seed, kind, seed}, args...)...).Scan(&first)
+ ORDER BY album_item.year,album_item.sort_key,album_item.id,COALESCE(song.disc_number,1),COALESCE(song.track_number,0),item.id LIMIT 1`, append([]any{kind, seed, kind, seed, kind, seed, seed}, args...)...).Scan(&first)
 		if err != nil {
 			return out, err
 		}
