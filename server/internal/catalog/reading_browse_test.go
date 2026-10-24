@@ -34,6 +34,7 @@ func readingBrowseFixture(t *testing.T,kind string) (*catalogtest.Catalog,*Servi
 		c.Exec(`INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('item',?,'author',?,'',1,'owner','now')`,items[i].ID,value)
 		c.Exec(`INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('item',?,'series','Real Series','',1,'owner','now')`,items[i].ID)
 	}
+	c.Exec(`UPDATE catalog_assets SET available=0`)
 	return c,New(c.DB),Viewer{Profile:"local:account:profile",Fence:"viewer",Libraries:[]string{"reading"}},items
 }
 
@@ -80,4 +81,25 @@ func TestReadingBrowseCursorBindsUnboundedSortAndRejectsInputDrift(t *testing.T)
 		}
 		return nil
 	});if err!=nil {t.Fatal(err)}
+}
+
+func TestReadingBrowseAvailabilityUsesOnlyTheSelectedReadingPublication(t *testing.T) {
+	c,s,viewer,items:=readingBrowseFixture(t,"book")
+	c.Write(func(ctx context.Context,tx *sql.Tx) error {
+		for i:=0;i<2;i++ {
+			asset,_,err:=compactcatalog.UpsertAssetTx(ctx,tx,compactcatalog.Asset{Path:filepath.Join(t.TempDir(),fmt.Sprintf("extra-%d.pdf",i)),Size:10,Container:"pdf"});if err!=nil {return err}
+			if err=compactcatalog.LinkAssetTx(ctx,tx,items[0].ID,asset,compactcatalog.Link{});err!=nil {return err}
+			if i==0 {
+				if _,err=tx.ExecContext(ctx,`INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,'pdf')`,items[0].ID,asset);err!=nil {return err}
+				if _,err=tx.ExecContext(ctx,`UPDATE catalog_assets SET available=0 WHERE id=?`,asset);err!=nil {return err}
+			}
+			// i=1 is an available linked asset, but not a Reading publication.
+			// Its availability must not become the Reading leaf's availability.
+		}
+		return nil
+	})
+	c.Drain()
+	page,err:=s.BrowseEntities(viewer,BrowseRequest{Library:"reading",Limit:100});if err!=nil {t.Fatal(err)}
+	for _,entry:=range page.Entries {if entry.ID==items[0].Public {if entry.Available==nil||*entry.Available {t.Fatal("unrelated available asset made unavailable publications readable")};return}}
+	t.Fatal("eligible unavailable Reading title was hidden")
 }

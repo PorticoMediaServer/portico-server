@@ -75,9 +75,13 @@ func (r *readingBrowseScope) eligibleSQL(entity string) string {
  JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
  WHERE reading_title.id=`+entity+` AND reading_title.library_id=`+strconv.FormatInt(r.library,10)+`
  AND reading_title.kind=`+kind+` AND reading_title.retired=0 AND reading_publication.format IN(`+formats+`)
- AND reading_publication.asset_id=(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=reading_title.id
+ AND reading_publication.asset_id=`+readingPrimaryPublicationSQL("reading_title.id")+`)`
+}
+
+func readingPrimaryPublicationSQL(item string) string {
+	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=`+item+`
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id
- AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1))`
+ AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)`
 }
 
 // predicate drives the same normalized ready members whether the caller is a
