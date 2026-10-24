@@ -545,7 +545,7 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		if state != "joined" {
 			return &Fault{Code: "participant_incompatible", Status: 409, Message: "That member is not in the group."}
 		}
-		selfClaim := req.MemberID == m.id && hostClaimAllowed(g, hostClaimFacts{role: role, state: state, readiness: ready, seenMS: seenAt, readyMS: readyAt, readyRevision: readyRevision}, s.ms())
+		selfClaim := req.MemberID == m.id && hostClaimAllowed(*g, hostClaimFacts{role: role, state: state, readiness: ready, seenMS: seenAt, readyMS: readyAt, readyRevision: readyRevision}, s.ms())
 		if m.role != "host" && !selfClaim {
 			return errHost
 		}
