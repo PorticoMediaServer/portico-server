@@ -596,6 +596,7 @@ index webhook_deliveries_coalesce
 index webhook_deliveries_due
 index webhook_deliveries_log
 index webhook_deliveries_queue
+table access_invitation_short_codes
 table access_invitations
 table access_limits
 table access_receipts
@@ -1364,6 +1365,7 @@ table webhook_deliveries
 table webhook_events
 table webhook_state
 table webhooks
+trigger access_invitation_short_retire
 trigger access_invitations_invitations_list_delete
 trigger access_invitations_invitations_list_insert
 trigger access_invitations_invitations_list_update
@@ -1965,11 +1967,14 @@ trigger identity_kind_insert_portico_fence
 trigger identity_kind_local_fence
 trigger identity_kind_no_delete
 trigger identity_kind_portico_fence
+trigger identity_kind_short_invitation_retire
 trigger identity_local_no_portico_link
 trigger identity_local_no_portico_link_update
 trigger identity_portico_no_password_insert
 trigger identity_portico_no_password_update
 trigger identity_restrictions_revision
+trigger identity_server_short_invitation_deleted
+trigger identity_server_short_invitation_retire
 trigger inventory_availability_object
 trigger inventory_availability_source
 trigger inventory_directory_cache_bound_check

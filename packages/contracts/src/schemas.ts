@@ -155904,6 +155904,8 @@ export const schemas = {
       {
         "properties": {
           "code": {
+            "maxLength": 128,
+            "minLength": 32,
             "type": "string"
           },
           "name": {
@@ -155925,7 +155927,34 @@ export const schemas = {
       },
       {
         "properties": {
+          "name": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "shortCode": {
+            "maxLength": 19,
+            "minLength": 16,
+            "pattern": "^(?:[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{16}|[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}(?:-[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}){3})$",
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "shortCode",
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
           "code": {
+            "maxLength": 128,
+            "minLength": 32,
             "type": "string"
           },
           "porticoIdentity": {
@@ -155996,6 +156025,86 @@ export const schemas = {
         },
         "required": [
           "code",
+          "porticoIdentity"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "porticoIdentity": {
+            "properties": {
+              "certificate": {
+                "properties": {
+                  "keyId": {
+                    "type": "string"
+                  },
+                  "notAfter": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "notBefore": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "publicKey": {
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "revoked": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "keyId",
+                  "publicKey",
+                  "purpose",
+                  "notBefore",
+                  "notAfter",
+                  "revision",
+                  "revoked",
+                  "signature"
+                ],
+                "type": "object"
+              },
+              "keyId": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature",
+              "keyId"
+            ],
+            "type": "object"
+          },
+          "shortCode": {
+            "maxLength": 19,
+            "minLength": 16,
+            "pattern": "^(?:[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{16}|[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}(?:-[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}){3})$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shortCode",
           "porticoIdentity"
         ],
         "type": "object"
@@ -156425,6 +156534,41 @@ export const schemas = {
     },
     "required": [
       "code",
+      "expiresAt"
+    ],
+    "type": "object"
+  },
+  "PostAdminAccessInvitationShortCodeRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PostAdminAccessInvitationShortCodeResponse": {
+    "properties": {
+      "expiresAt": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "shortCode": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
       "expiresAt"
     ],
     "type": "object"
@@ -183200,15 +183344,35 @@ export const schemas = {
     "type": "object"
   },
   "PreviewInvitationRequest": {
-    "properties": {
-      "code": {
-        "type": "string"
+    "oneOf": [
+      {
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 32,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "shortCode": {
+            "maxLength": 19,
+            "minLength": 16,
+            "pattern": "^(?:[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{16}|[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}(?:-[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{4}){3})$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shortCode"
+        ],
+        "type": "object"
       }
-    },
-    "required": [
-      "code"
-    ],
-    "type": "object"
+    ]
   },
   "PreviewInvitationResponse": {
     "properties": {
