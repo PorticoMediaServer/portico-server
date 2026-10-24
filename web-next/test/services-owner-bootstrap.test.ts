@@ -12,7 +12,7 @@ function fixture() {
   const store:HostedOwnerPendingStore={assertAvailable:()=>{calls.push('guard');},read:async()=>{calls.push('owner-read');return saved;},
     change:async update=>{calls.push('owner-write');saved=update(saved);}};
   const service={synchronize:async()=>{calls.push('cookie');if(failCookie)throw Error('cookie unavailable');},getSnapshot:()=>({}),accessSession:async()=>{throw Error('no session');}};
-  const account={service} as unknown as ServicesAccount;
+  const account={service,api:{origin,send:async()=>{throw Error('no automatic owner request');}}} as unknown as ServicesAccount;
   const boot=(capture?:{request?:typeof request})=>new ServicesBootstrap(account,()=>{throw Error('ordinary link store must not open');},undefined,undefined,{origin,capture,store:()=>store});
   return {calls,store,account,boot,get saved(){return saved;},set saved(value:HostedOwnerPending|undefined){saved=value;},set failCookie(value:boolean){failCookie=value;}};
 }
