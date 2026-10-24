@@ -85,6 +85,8 @@ class FocusNode {
   calls = 0;
   contains(other: FocusNode) { for (let at: FocusNode | undefined = other; at; at = at.parent) if (at === this) return true; return false; }
   focus() { this.calls++; page.activeElement = this; page.emit(this); }
+  addEventListener(_name: string, _listener: unknown) {}
+  removeEventListener(_name: string, _listener: unknown) {}
 }
 const listeners = new Set<(event: {target: FocusNode}) => void>();
 const page = {activeElement: null as FocusNode | null, addEventListener: (_name: string, fn: any) => listeners.add(fn), removeEventListener: (_name: string, fn: any) => listeners.delete(fn), emit: (target: FocusNode) => listeners.forEach(fn => fn({target}))};
