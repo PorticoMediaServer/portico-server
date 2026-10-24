@@ -2252,4 +2252,10 @@ export const webMessages = {
   'api.webhooks.group.other': 'Other',
   // Ruling 16: verbatim mechanical legacy preservation; removed with Phase 10.
   'legacy.librarySettings.needs': 'Needs: {requirements}.',
+  // Shipped by portico-react-native; carried into the canonical catalogue (REL-SHARED-CATALOGUE).
+  'web.dvrSettings.startEarly': 'Start early',
+  'web.dvrSettings.inheritedFromAccount': 'Inherited from the account',
+  'web.liveTv.sourceName': 'Name',
+  'web.liveTv.sourcesLede': 'Tuners and playlists that feed the guide.',
+  'web.liveTv.changesWaiting': '{count, plural, one {# change} other {# changes}} waiting. They apply to the whole server.',
 } as const satisfies Record<string, string>;

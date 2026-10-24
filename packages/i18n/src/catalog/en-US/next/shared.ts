@@ -185,4 +185,9 @@ export const shared = {
   'next.kit.hdr.hlg': 'HLG',
   'next.kit.object.atmos': 'Atmos',
   'next.kit.object.dtsx': 'DTS:X',
+  // Shipped by portico-react-native; carried into the canonical catalogue (REL-SHARED-CATALOGUE).
+  'next.watch.episodesWillRead': 'Episodes will read',
+  'next.watch.wasSeason': 'was S{season} E{episode}',
+  'next.watch.guestStars': 'Guest stars',
+  'next.watch.asCharacter': 'as {character}',
 } as const;
