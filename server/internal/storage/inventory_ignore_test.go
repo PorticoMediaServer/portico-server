@@ -20,6 +20,7 @@ func TestInventoryIgnoreRulesPreserveCursorProgress(t *testing.T) {
 	}
 	r := InventoryRequest{Root: root, RelativePath: ".", Limit: 1}
 	seen := map[string]bool{}
+	issues := map[string]string{}
 	for turn := 0; ; turn++ {
 		if turn > 30 {
 			t.Fatal("cursor failed to progress across exclusions")
@@ -34,6 +35,9 @@ func TestInventoryIgnoreRulesPreserveCursorProgress(t *testing.T) {
 			}
 			seen[e.Name] = true
 		}
+		for _, issue := range p.Issues {
+			issues[filepath.Base(issue.Path)] = issue.Reason
+		}
 		if p.Complete {
 			break
 		}
@@ -44,7 +48,15 @@ func TestInventoryIgnoreRulesPreserveCursorProgress(t *testing.T) {
 		r.RootIdentity = p.RootIdentity
 		r.DirectoryRevision = p.DirectoryRevision
 	}
-	if len(seen) != 3 || !seen["Film (2020)"] || !seen["Film.mkv"] || !seen["Sample (2020).mkv"] {
+	// A sample directory is traversed so a full-size file inside it survives the
+	// 300 MB sample boundary; everything else here is a built-in name or an
+	// explicit ignore file.
+	if len(seen) != 4 || !seen["Film (2020)"] || !seen["Film.mkv"] || !seen["Sample (2020).mkv"] || !seen["Samples"] {
 		t.Fatal(seen)
+	}
+	for _, name := range []string{".hidden", "@eaDir", "#recycle", "$RECYCLE.BIN", "lost+found", "._Film.mkv", "Film-sample.mkv", "sample.mkv", ".plexignore", ".ignore"} {
+		if issues[name] != "ignored_name" {
+			t.Fatalf("%s was not excluded by its built-in name: %v", name, issues)
+		}
 	}
 }
