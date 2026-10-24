@@ -20,7 +20,7 @@ func TestSeedLocalArtworkAddsScannedAlternativesAfterThePrimary(t *testing.T) {
 	primary := strings.Repeat("c", 64)
 	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	mustExec(t, db, `INSERT INTO local_artwork(library_id,kind,entity_id,role,art_key,observed_at) VALUES('alt1','item',?,'poster',?,'now')`, movie.ID, primary)
-	seedScannedAlternatives(t, db, "alt1", movie, "poster", first, second)
+	seedLegacyAlternatives(t, db, "alt1", movie, "poster", first, second)
 	fence := seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, fences := localCandidates(t, db, movie.ID, "poster")
 	want := []string{"local:" + first, "local:" + second, "local:" + primary}
@@ -47,7 +47,7 @@ func TestSeedLocalArtworkAddsScannedAlternativesAfterThePrimary(t *testing.T) {
 func TestSeedLocalArtworkQueuesTheFirstScannedAlternativeWhenNothingHoldsTheSlot(t *testing.T) {
 	db, movie := openAlternativesFixture(t, "alt2")
 	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
-	seedScannedAlternatives(t, db, "alt2", movie, "poster", second, first)
+	seedScannedAlternatives(t, db, "alt2", movie, "poster", first, second)
 	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
 	if len(origins) != 2 {
@@ -102,7 +102,19 @@ func openAlternativesFixture(t *testing.T, library string) (*sql.DB, catalogtest
 	return db, movie
 }
 
+// seedScannedAlternatives records accepted images with a deterministic source
+// basename and rank in argument order, as the current collector does.
 func seedScannedAlternatives(t *testing.T, db *sql.DB, library string, movie catalogtest.Item, role string, keys ...string) {
+	t.Helper()
+	for n, key := range keys {
+		mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key,source_name,source_rank) VALUES(?,?,?,'item',?,?,?,?,?)`,
+			"object-"+library, "r1", movie.Token, movie.ID, role, key, fmt.Sprintf("poster-%d.jpg", n+1), int64(1024+n+1))
+	}
+}
+
+// seedLegacyAlternatives records pre-addendum6 rows: accepted choices without a
+// named order fact, which the ranked default must not guess.
+func seedLegacyAlternatives(t *testing.T, db *sql.DB, library string, movie catalogtest.Item, role string, keys ...string) {
 	t.Helper()
 	for _, key := range keys {
 		mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES(?,?,?,'item',?,?,?)`, "object-"+library, "r1", movie.Token, movie.ID, role, key)
@@ -340,8 +352,8 @@ func TestSeedLocalArtworkRepeatDirtyIsStable(t *testing.T) {
 }
 
 // A source revision replaces the accepted evidence; the pass converges on the
-// new keys, keeps candidate history, and leaves an owner choice and the slot's
-// queued pick alone.
+// new keys, keeps candidate history, and the ranked default follows the new
+// preferred accepted image unless an owner holds the slot.
 func TestSeedLocalArtworkFollowsASourceRevision(t *testing.T) {
 	db, movie := openAlternativesFixture(t, "altrev")
 	keys := alternativesKeys(3)
@@ -354,8 +366,8 @@ func TestSeedLocalArtworkFollowsASourceRevision(t *testing.T) {
 	fresh := []string{fmt.Sprintf("%064x", 10), fmt.Sprintf("%064x", 11)}
 	mustExec(t, db, `UPDATE inventory_objects SET revision='r2' WHERE id='object-altrev'`)
 	mustExec(t, db, `DELETE FROM inventory_artwork_candidates WHERE object_id='object-altrev'`)
-	for _, key := range fresh {
-		mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES('object-altrev','r2',?,'item',?,'poster',?)`, movie.Token, movie.ID, key)
+	for n, key := range fresh {
+		mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key,source_name,source_rank) VALUES('object-altrev','r2',?,'item',?,'poster',?,?,?)`, movie.Token, movie.ID, key, fmt.Sprintf("poster-%d.jpg", n+1), int64(1024+n+1))
 	}
 	seedLocalArtworkToCompletion(t, db, "item", movie)
 	origins, _ := localCandidates(t, db, movie.ID, "poster")
@@ -364,8 +376,8 @@ func TestSeedLocalArtworkFollowsASourceRevision(t *testing.T) {
 			t.Fatalf("revised image %s was skipped", key)
 		}
 	}
-	if got := localArtworkJobs(t, db, movie.ID, "poster"); len(got) != 1 || got[0] != jobs[0] {
-		t.Fatalf("source revision changed the queued pick: %v then %v", jobs, got)
+	if got := localArtworkJobs(t, db, movie.ID, "poster"); len(got) != 1 || got[0] != "local:"+fresh[0] {
+		t.Fatalf("source revision did not queue the new preferred default: %v then %v", jobs, got)
 	}
 }
 
