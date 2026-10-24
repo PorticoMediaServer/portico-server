@@ -43,14 +43,17 @@ cdp.on('Debugger.scriptParsed', event => {
 cdp.on('Debugger.paused', async event => {
   // Always resume, whatever happens while summarising.
   try {
-    if (summaries.length < MAX_SUMMARIES && event.data) {
-      const details = event.data;
+    if (summaries.length < MAX_SUMMARIES) {
+      // Structure only: some pauses carry ExceptionDetails at the top level, others nest it.
+      const details = (event && event.data && typeof event.data === 'object') ? event.data : (event || {});
       const topFrame = details.callFrames && details.callFrames[0] ? details.callFrames[0] : null;
       const location = typeof details.scriptId === 'string'
         ? {scriptId: details.scriptId, line: details.lineNumber, column: details.columnNumber}
         : (topFrame ? {scriptId: topFrame.location.scriptId, line: topFrame.location.lineNumber, column: topFrame.location.columnNumber} : {});
       const summary = {
         at: new Date().toISOString(),
+        reason: typeof details.reason === 'string' ? details.reason.slice(0, 24) : null,
+        shape: {dataKeys: Object.keys(details).slice(0, 12), exceptionKeys: details.exception ? Object.keys(details.exception).slice(0, 8) : null},
         name: details.exception && details.exception.className ? String(details.exception.className).slice(0, 40) : null,
         script: scripts.get(location.scriptId) || null,
         line: typeof location.line === 'number' ? location.line + 1 : null,
@@ -103,7 +106,7 @@ try {
   await settle(page, {quiet: 2500});
 
   // Only now, and only for this one open.
-  await cdp.send('Debugger.setPauseOnExceptions', {state: 'caught'}).catch(() => {});
+  await cdp.send('Debugger.setPauseOnExceptions', {state: 'all'}).catch(() => {});
   const openedAt = new Date().toISOString();
   const card = page.locator('article[data-card-kind]').filter({hasText: title}).first();
   const read = card.getByRole('button', {name: /^Read$/}).first();
