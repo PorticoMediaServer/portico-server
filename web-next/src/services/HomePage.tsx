@@ -45,7 +45,7 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
   const download = () => location.assign(distributionPage);
   if (join) return <JoinPage account={account} link={join} onBack={() => setJoin(undefined)} />;
   const name = session.account.displayName || session.account.username;
-  return <ServicesStart header={<ServicesHeader notifications={false} avatar={<ProfileAvatar appearance="session" initial={[...name][0]?.toLocaleUpperCase() ?? ''} name={name} onClick={() => location.assign('/account')} />} />}
+  return <ServicesStart header={<ServicesHeader notifications={false} avatar={<ProfileAvatar initial={[...name][0]?.toLocaleUpperCase() ?? ''} name={name} onClick={() => location.assign('/account')} />} />}
     invitation={invitation} onInvitationChange={value => { setInvitation(value); setInvalid(false); }} onJoin={() => inspect()}
     onInvitationPaste={value => { setInvitation(value); inspect(value); }}
     onPaste={() => run(async () => { const value = await navigator.clipboard.readText(); setInvitation(value); inspect(value); })}
