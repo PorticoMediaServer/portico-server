@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/rcloneprogram"
+	"strconv"
 	"sync/atomic"
+	"time"
 
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/remotemedia"
@@ -81,6 +83,7 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 		input.Current = &current
 	}
 	var testing, tested atomic.Bool
+	var setupObservations []webDAVSetupObservation
 
 	var checked, used atomic.Bool
 	return &mounts.SourceCandidatePublication{
@@ -89,7 +92,7 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 				return storage.ErrRemoteConfig
 			}
 			defer clear(raw)
-			err := s.testCandidate(ctx, input, raw, program, approved, approvals, profile, authorize)
+			err := s.testCandidate(ctx, input, raw, program, approved, approvals, profile, authorize, &setupObservations)
 			if err == nil {
 				tested.Store(true)
 			}
@@ -164,10 +167,14 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 			if err != nil {
 				return err
 			}
+			if len(setupObservations) != webdavLeaves {
+				return storage.ErrRemoteChanged
+			}
+			support := aggregateWebDAVSetup(setupObservations)
 			result, err := tx.ExecContext(ctx, `INSERT INTO remote_sources(id,kind,name,root,generation,config,state,error_code,range_support,origin,credential_present,mount_id,webdav_leaf_count)
- VALUES(?,?,?,?,?,?,'ready','','unknown',?,1,?,?) ON CONFLICT(id) DO UPDATE SET
- kind=excluded.kind,name=excluded.name,generation=excluded.generation,config=excluded.config,state='ready',error_code='',range_support='unknown',origin=excluded.origin,credential_present=1,webdav_leaf_count=excluded.webdav_leaf_count
- WHERE remote_sources.root=excluded.root AND remote_sources.mount_id=excluded.mount_id AND remote_sources.removed=0 AND remote_sources.generation<=excluded.generation AND remote_sources.kind IN('rclone','sftp','smb')`, mount.ID, backend, mount.Name, root, generation, sealed, origin, mount.ID, webdavLeaves)
+ VALUES(?,?,?,?,?,?,'ready','',?,?,1,?,?) ON CONFLICT(id) DO UPDATE SET
+ kind=excluded.kind,name=excluded.name,generation=excluded.generation,config=excluded.config,state='ready',error_code='',range_support=excluded.range_support,origin=excluded.origin,credential_present=1,webdav_leaf_count=excluded.webdav_leaf_count
+ WHERE remote_sources.root=excluded.root AND remote_sources.mount_id=excluded.mount_id AND remote_sources.removed=0 AND remote_sources.generation<=excluded.generation AND remote_sources.kind IN('rclone','sftp','smb')`, mount.ID, backend, mount.Name, root, generation, sealed, support, origin, mount.ID, webdavLeaves)
 			if err != nil {
 				return err
 			}
@@ -175,7 +182,21 @@ func (s *Service) prepareSourceCandidate(life context.Context, input mounts.Sour
 			if err == nil && count != 1 {
 				return storage.ErrRemoteChanged
 			}
-			return err
+			if err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `DELETE FROM remote_source_webdav_tests WHERE source_id=?`, mount.ID); err != nil {
+				return err
+			}
+			for _, row := range setupObservations {
+				if row.Observed == 0 {
+					row.Observed = time.Now().UnixMilli()
+				}
+				if _, err = tx.ExecContext(ctx, `INSERT INTO remote_source_webdav_tests(source_id,source_generation,config_digest,leaf_remote,object_path,object_size,range_support,observed_ms) VALUES(?,?,?,?,?,?,?,?)`, mount.ID, strconv.FormatInt(generation, 10), digest, row.Remote, row.Object, row.Size, row.Support, row.Observed); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	}, nil
 }
