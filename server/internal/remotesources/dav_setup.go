@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
-	"errors"
 	"strconv"
 	"strings"
 
@@ -88,25 +87,10 @@ func (s *Service) testDAVSetup(ctx context.Context, currentID string, source Sou
 	}
 	policy := remotemedia.Policy{Resolver: s.resolver, SourceEndpoints: true, SourcePrivateOnly: strings.HasPrefix(config.Root, "http://"), Approvals: []remotemedia.Approval{config.Approval}}
 	support := unknown
-	observe := func(ctx context.Context, process *rcloneprogram.ServeProcess, hold *remotemedia.ExclusiveTest) (func(context.Context) error, error) {
-		metadata, err := process.Metadata(ctx)
-		if err != nil {
-			return nil, err
-		}
-		var file *remotemedia.DAVEntry
-		found := errors.New("setup file selected")
-		err = metadata.VisitDirectory(ctx, "", check, func(entry remotemedia.RcloneFileMetadata) error {
-			if entry.Directory || entry.Size < 1 {
-				return nil
-			}
-			file = &remotemedia.DAVEntry{Relative: entry.Path, Size: entry.Size}
-			return found
-		})
-		if err != nil && !errors.Is(err, found) {
-			return nil, err
-		}
+	observe := func(ctx context.Context, _ *rcloneprogram.ServeProcess, hold *remotemedia.ExclusiveTest, metadata map[string]candidateMetadata) (func(context.Context) error, func(), error) {
+		file := metadata["portico:"].file
 		if file == nil {
-			return nil, nil
+			return nil, nil, nil
 		}
 		return func(ctx context.Context) error {
 			// runCandidateServe has already stopped and physically waited for its
@@ -117,7 +101,7 @@ func (s *Service) testDAVSetup(ctx context.Context, currentID string, source Sou
 			}
 			support, err = dav.DiagnoseSetupRanges(ctx, *file, hold, profile.Limits.RequestsPerSecond, profile.Limits.BytesPerSecond, check)
 			return err
-		}, nil
+		}, nil, nil
 	}
 	raw := davServeConfiguration(config)
 	defer clear(raw)

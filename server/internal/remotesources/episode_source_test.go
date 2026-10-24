@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storage"
 )
 
 // The selected-artwork facts are a fixture, not a production metadata reader.
@@ -13,6 +14,11 @@ import (
 func episodeReadFixture(t *testing.T) (observationFixture, EpisodeAuthorityResolver, EpisodeAuthorityRequest, *episodeFactsFixture) {
 	t.Helper()
 	f := newObservationFixture(t)
+	// This unit fixture supplies known measured range support. Actual source
+	// setup qualification is exercised by the controlled provider fixtures.
+	if _, err := f.s.db.Exec(`UPDATE remote_sources SET range_support='conditional'`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.record(t, scanFacts("episode-source"), 0); err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +45,33 @@ func episodeReadFixture(t *testing.T) (observationFixture, EpisodeAuthorityResol
 	resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: facts}
 	request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "object", SourceRevision: revision, EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
 	return f, resolver, request, facts
+}
+
+func TestEpisodeReadSourceNeverUsesUnqualifiedWebDAVAsRandomInput(t *testing.T) {
+	for _, support := range []string{"unknown", "unsupported"} {
+		t.Run(support, func(t *testing.T) {
+			f, resolver, request, _ := episodeReadFixture(t)
+			if _, err := f.s.db.Exec(`UPDATE remote_sources SET range_support=?`, support); err != nil {
+				t.Fatal(err)
+			}
+			view, err := dbwork.BeginSnapshot(context.Background(), f.s.db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer view.Rollback()
+			source, err := resolver.ResolveEpisodeReadSourceTx(context.Background(), view.Tx(), request, func() {})
+			want := ErrEpisodeAuthority
+			if support == "unsupported" {
+				want = storage.ErrRemoteRange
+			}
+			if source != nil || !errors.Is(err, want) {
+				t.Fatal("unqualified WebDAV granted ranged decode", source, err)
+			}
+			if len(f.s.serveLeases) != 0 {
+				t.Fatal("refusal opened source")
+			}
+		})
+	}
 }
 
 func TestEpisodeReadSourceCaptureRetainsPurposeWithoutOpening(t *testing.T) {

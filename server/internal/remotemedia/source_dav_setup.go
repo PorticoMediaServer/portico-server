@@ -82,6 +82,8 @@ func (d *DAV) diagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 		return SetupRangeUnknown, err
 	}
 	defer release()
+	test.diagnosticMu.Lock()
+	defer test.diagnosticMu.Unlock()
 	if err = check(ctx); err != nil {
 		return SetupRangeUnknown, err
 	}
@@ -89,16 +91,20 @@ func (d *DAV) diagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 	if err != nil {
 		return SetupRangeUnknown, err
 	}
-	nextRequest := time.Now().Add(time.Second)
-	nextBytes := time.Time{}
+	if test.diagnosticNextRequest.IsZero() {
+		test.diagnosticNextRequest = time.Now().Add(time.Second)
+	}
 	seen := map[int64]bool{}
 	for _, start := range []int64{0, file.Size / 2, max(0, file.Size-16)} {
 		if seen[start] {
 			continue
 		}
 		seen[start] = true
+		if test.diagnosticRequests >= 3 {
+			return SetupRangeUnknown, nil
+		}
 		length := min(int64(16), file.Size-start)
-		if err = waitDiagnostic(ctx, nextRequest); err != nil {
+		if err = waitDiagnostic(ctx, test.diagnosticNextRequest); err != nil {
 			return SetupRangeUnknown, err
 		}
 		if err = check(ctx); err != nil {
@@ -115,12 +121,13 @@ func (d *DAV) diagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 			requestHeaders = make(http.Header)
 		}
 		requestHeaders.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+length-1))
+		test.diagnosticRequests++
 		response, err := client.request(ctx, http.MethodGet, nil, requestHeaders, headers != nil)
 		if err != nil {
 			client.Close()
 			return SetupRangeUnknown, err
 		}
-		support, err := readSetupRange(ctx, response, file.Size, start, length, bps, &nextBytes)
+		support, err := readSetupRange(ctx, response, file.Size, start, length, bps, &test.diagnosticNextBytes)
 		response.Body.Close()
 		client.Close()
 		if err != nil {
@@ -129,7 +136,7 @@ func (d *DAV) diagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 		if err = check(ctx); err != nil {
 			return SetupRangeUnknown, err
 		}
-		nextRequest = time.Now().Add(time.Second / time.Duration(rps))
+		test.diagnosticNextRequest = time.Now().Add(time.Second / time.Duration(rps))
 		if support != SetupRangeSupported {
 			return support, nil
 		}

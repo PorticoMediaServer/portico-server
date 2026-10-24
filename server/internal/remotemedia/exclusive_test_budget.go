@@ -20,6 +20,11 @@ type ExclusiveTest struct {
 	cancel     context.CancelFunc
 	operations *OperationBudget
 	once       sync.Once
+	// One setup phase follows the temporary serve. Every resolved leaf shares
+	// its original pacing boundary; a leaf never starts an independent pacer.
+	diagnosticMu                               sync.Mutex
+	diagnosticNextRequest, diagnosticNextBytes time.Time
+	diagnosticRequests                         int
 }
 
 func (t *ExclusiveTest) Context() context.Context     { return t.life }

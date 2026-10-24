@@ -95,6 +95,7 @@ func (m *RcloneMetadata) request(ctx context.Context, operation string, paramete
 		return ErrDAVResponse
 	}
 	raw, err = io.ReadAll(io.LimitReader(response.Body, (1<<20)+1))
+	defer clear(raw)
 	if err != nil || len(raw) > 1<<20 || json.Unmarshal(raw, result) != nil {
 		return ErrDAVResponse
 	}

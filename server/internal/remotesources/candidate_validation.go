@@ -135,7 +135,7 @@ func (s *Service) candidateProfile(ctx context.Context, current *mounts.Mount) (
 	return SourceReadProfileTx(ctx, snapshot.Tx(), current.ID)
 }
 
-func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidateInput, raw []byte, program rcloneprogram.Program, digest string, approvals []remotemedia.Approval, profile SourceReadProfile, authorize func(*sql.Tx) error) error {
+func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidateInput, raw []byte, program rcloneprogram.Program, digest string, approvals []remotemedia.Approval, profile SourceReadProfile, authorize func(*sql.Tx) error, observations *[]webDAVSetupObservation) error {
 	var err error
 	check := func(ctx context.Context) error {
 		snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
@@ -178,10 +178,19 @@ func (s *Service) testCandidate(ctx context.Context, input mounts.SourceCandidat
 			policy.Approvals = append(policy.Approvals, a)
 		}
 	}
-	return s.runCandidateServe(ctx, source, generation, profile, raw, input.Remote, program, digest, policy, check, nil)
+	observe, err := candidateWebDAVObserver(raw, input.Remote, profile, policy, check, observations)
+	if err != nil {
+		return err
+	}
+	return s.runCandidateServe(ctx, source, generation, profile, raw, input.Remote, program, digest, policy, check, observe)
 }
 
-type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remotemedia.ExclusiveTest) (func(context.Context) error, error)
+type candidateMetadata struct {
+	client *remotemedia.RcloneMetadata
+	file   *remotemedia.DAVEntry
+}
+
+type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remotemedia.ExclusiveTest, map[string]candidateMetadata) (func(context.Context) error, func(), error)
 
 // runCandidateServe holds source I/O exclusively through both phases. The
 // observer's second phase runs only after physical Wait, under the SAME hold.
@@ -243,14 +252,30 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	if err != nil {
 		return err
 	}
-	if err = metadataClient.CheckRoot(life, check); err != nil {
-		return mapError(err)
-	}
 	leaves, err := configuredBackends(raw, remote)
 	if err != nil {
 		return err
 	}
+	webdav := map[string]bool{}
+	for _, leaf := range leaves {
+		webdav[leaf.Remote] = leaf.Kind == "webdav"
+	}
+	checkRoot := func(client *remotemedia.RcloneMetadata, name string) (candidateMetadata, error) {
+		result := candidateMetadata{client: client}
+		var err error
+		if webdav[name] {
+			result.file, err = client.CheckRootFile(life, check)
+		} else {
+			err = client.CheckRoot(life, check)
+		}
+		return result, err
+	}
+	rootMetadata, err := checkRoot(metadataClient, remote)
+	if err != nil {
+		return mapError(err)
+	}
 	checked := map[string]bool{remote: true}
+	leafMetadata := map[string]candidateMetadata{remote: rootMetadata}
 	for _, leaf := range leaves {
 		if checked[leaf.Remote] {
 			continue
@@ -260,18 +285,23 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 		if err != nil {
 			return err
 		}
-		err = client.CheckRoot(life, check)
-		client.Close()
+		defer client.Close()
+		metadata, err := checkRoot(client, leaf.Remote)
 		if err != nil {
 			if life.Err() != nil {
 				return life.Err()
 			}
 			return mapError(err)
 		}
+		leafMetadata[leaf.Remote] = metadata
 	}
 	var afterStop func(context.Context) error
 	if observe != nil {
-		afterStop, err = observe(life, process, hold)
+		var cleanup func()
+		afterStop, cleanup, err = observe(life, process, hold, leafMetadata)
+		if cleanup != nil {
+			defer cleanup()
+		}
 		if err != nil {
 			return err
 		}

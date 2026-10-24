@@ -277,3 +277,49 @@ func (r *setupChangingResolver) LookupNetIP(ctx context.Context, _, _ string) ([
 	defer r.mu.Unlock()
 	return []netip.Addr{r.address}, ctx.Err()
 }
+
+func TestSourceDAVSetupSharesThreeRequestsAcrossLeafDiagnostics(t *testing.T) {
+	for _, firstSize := range []int64{64, 1} {
+		t.Run(strconv.FormatInt(firstSize, 10), func(t *testing.T) {
+			budget := NewOperationBudget(context.Background(), 1)
+			hold, err := budget.AcquireTest(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer hold.Close()
+			calls := 0
+			server := privateSetupServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				var start, end int64
+				if _, err := fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-%d", &start, &end); err != nil {
+					t.Error(err)
+					return
+				}
+				total := int64(64)
+				if r.URL.Path == "/first.bin" {
+					total = firstSize
+				}
+				w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, total))
+				w.WriteHeader(206)
+				_, _ = w.Write([]byte(strings.Repeat("x", int(end-start+1))))
+			}))
+			config, err := ValidateSourceDAVConfig(context.Background(), DAVConfig{Root: server.URL + "/", InsecureLocal: true}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dav, err := NewSourceDAV(config, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check := func(ctx context.Context) error { return ctx.Err() }
+			support, err := dav.DiagnoseSetupRanges(hold.Context(), DAVEntry{Relative: "first.bin", Size: firstSize}, hold, 50, 0, check)
+			if err != nil || support != SetupRangeSupported {
+				t.Fatal(support, err)
+			}
+			support, err = dav.DiagnoseSetupRanges(hold.Context(), DAVEntry{Relative: "second.bin", Size: 64}, hold, 50, 0, check)
+			if err != nil || support != SetupRangeUnknown || calls != 3 {
+				t.Fatal("aggregate allowance escaped", support, calls, err)
+			}
+		})
+	}
+}

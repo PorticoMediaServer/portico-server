@@ -32,13 +32,17 @@ func (m *RcloneMetadata) VisitDirectory(ctx context.Context, relative string, ch
 	if err != nil {
 		return err
 	}
-	if err = check(ctx); err != nil {
+	return m.visitDirectory(ctx, relative, check, visit, map[string]any{"recurse": false, "noMimeType": true, "showHash": capability.HashCostKnown && !capability.SlowHash})
+}
+
+func (m *RcloneMetadata) visitDirectory(ctx context.Context, relative string, check func(context.Context) error, visit func(RcloneFileMetadata) error, options map[string]any) error {
+	if err := check(ctx); err != nil {
 		return err
 	}
 	call := ctx
 	ctx = context.WithValue(ctx, serveReconnectKey{}, func() error { return check(call) })
 	ctx = context.WithValue(ctx, serveListingReadKey{}, true)
-	parameters, err := json.Marshal(map[string]any{"fs": m.fs, "remote": relative, "opt": map[string]any{"recurse": false, "noMimeType": true, "showHash": capability.HashCostKnown && !capability.SlowHash}})
+	parameters, err := json.Marshal(map[string]any{"fs": m.fs, "remote": relative, "opt": options})
 	if err != nil {
 		return ErrPolicy
 	}
