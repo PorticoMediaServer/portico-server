@@ -21,6 +21,15 @@ fn caller(window:&WebviewWindow)->Result<()> {
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
 }
 
+#[tauri::command]
+fn desktop_measurement_options(window:WebviewWindow,state:tauri::State<crate::measurement::MeasurementState>)->Result<Option<serde_json::Value>>{
+    caller(&window)?;state.options(window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str())
+}
+#[tauri::command]
+fn desktop_measurement_write(window:WebviewWindow,state:tauri::State<crate::measurement::MeasurementState>,report:serde_json::Value)->Result<()>{
+    caller(&window)?;state.write(window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,7 +408,7 @@ pub fn run() {
         .on_window_event(|window,event|{
             if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_shutdown(window.app_handle());}}
         })
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire,desktop_download_folder_location,desktop_download_folder_begin,desktop_download_folder_cancel,desktop_download_folder_choose,desktop_download_folder_open])
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire,desktop_download_folder_location,desktop_download_folder_begin,desktop_download_folder_cancel,desktop_download_folder_choose,desktop_download_folder_open,desktop_measurement_options,desktop_measurement_write])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
@@ -411,8 +420,11 @@ pub fn run() {
             *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);
             let downloads=data.join("offline");
             *app.state::<DownloadsState>().0.lock().map_err(|_|preference_error())?=crate::download_commands::DownloadsSession::open(&downloads);
-            let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App("index.html".into()))
-                .title("Portico").inner_size(1440.0,900.0).min_inner_size(600.0,600.0)
+            let measurement=crate::measurement::MeasurementState::from_env().map_err(|_|std::io::Error::other("desktop_measurement_unavailable"))?;
+            let (route,width,height)=measurement.window().map_err(|_|std::io::Error::other("desktop_measurement_unavailable"))?;
+            app.manage(measurement);
+            let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App(route.trim_start_matches('/').into()))
+                .title("Portico").inner_size(width,height).min_inner_size(600.0,600.0)
                 // Linux uses the desktop's title bar. Windows keeps OS controls until the
                 // installed web caption host supplies its actual control rectangles.
                 .decorations(true)

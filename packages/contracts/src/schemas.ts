@@ -790,6 +790,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -805,6 +808,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -1056,6 +1062,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -1071,6 +1080,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -2283,6 +2295,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -2298,6 +2313,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -2549,6 +2567,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -2564,6 +2585,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -3900,6 +3924,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -3915,6 +3942,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -4166,6 +4196,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -4181,6 +4214,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -9843,6 +9879,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
                   "dolbyVisionCmVersion": {
                     "type": "string"
                   },
@@ -9858,6 +9897,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
                   },
                   "dynamicRange": {
                     "type": "string"
@@ -10109,6 +10151,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
                   "dolbyVisionCmVersion": {
                     "type": "string"
                   },
@@ -10124,6 +10169,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
                   },
                   "dynamicRange": {
                     "type": "string"
@@ -11284,6 +11332,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -11299,6 +11350,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -11550,6 +11604,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -11565,6 +11622,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -14737,6 +14797,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -14752,6 +14815,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -15003,6 +15069,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -15018,6 +15087,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -34980,6 +35052,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "identityCode": {
+        "type": "string"
+      },
       "interfaces": {
         "items": {
           "properties": {
@@ -35012,6 +35087,9 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "localUrl": {
+        "type": "string"
       },
       "observedAt": {
         "type": "string"
@@ -118378,6 +118456,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
                   "dolbyVisionCmVersion": {
                     "type": "string"
                   },
@@ -118393,6 +118474,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
                   },
                   "dynamicRange": {
                     "type": "string"
@@ -118644,6 +118728,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
                   "dolbyVisionCmVersion": {
                     "type": "string"
                   },
@@ -118659,6 +118746,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
                   },
                   "dynamicRange": {
                     "type": "string"
@@ -150153,6 +150243,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -150168,6 +150261,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -150419,6 +150515,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -150434,6 +150533,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -191082,6 +191184,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -191097,6 +191202,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -191348,6 +191456,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -191363,6 +191474,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -203463,6 +203577,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
                   "dolbyVisionCmVersion": {
                     "type": "string"
                   },
@@ -203478,6 +203595,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
                   },
                   "dynamicRange": {
                     "type": "string"
@@ -203729,6 +203849,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
                   "dolbyVisionCmVersion": {
                     "type": "string"
                   },
@@ -203744,6 +203867,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
                   },
                   "dynamicRange": {
                     "type": "string"
@@ -205103,6 +205229,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -205118,6 +205247,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -205369,6 +205501,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -205384,6 +205519,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"

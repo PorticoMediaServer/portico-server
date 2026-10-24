@@ -797,6 +797,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -812,6 +815,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -1063,6 +1069,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -1078,6 +1087,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -2290,6 +2302,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -2305,6 +2320,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -2556,6 +2574,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -2571,6 +2592,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -3983,6 +4007,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -3998,6 +4025,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -4249,6 +4279,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -4264,6 +4297,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -10143,6 +10179,9 @@
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -10158,6 +10197,9 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -10409,6 +10451,9 @@
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -10424,6 +10469,9 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -11584,6 +11632,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -11599,6 +11650,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -11850,6 +11904,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -11865,6 +11922,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -16373,6 +16433,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -16388,6 +16451,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -16639,6 +16705,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -16654,6 +16723,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -37278,6 +37350,9 @@
             ],
             "type": "object"
           },
+          "identityCode": {
+            "type": "string"
+          },
           "interfaces": {
             "items": {
               "properties": {
@@ -37310,6 +37385,9 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "localUrl": {
+            "type": "string"
           },
           "observedAt": {
             "type": "string"
@@ -122604,6 +122682,9 @@
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -122619,6 +122700,9 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -122870,6 +122954,9 @@
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -122885,6 +122972,9 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -168423,6 +168513,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -168438,6 +168531,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -168689,6 +168785,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -168704,6 +168803,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -209854,6 +209956,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -209869,6 +209974,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -210120,6 +210228,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -210135,6 +210246,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -222859,6 +222973,9 @@
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -222874,6 +222991,9 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -223125,6 +223245,9 @@
                         ],
                         "type": "object"
                       },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
                       "dolbyVisionCmVersion": {
                         "type": "string"
                       },
@@ -223140,6 +223263,9 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "dynamicRange": {
                         "type": "string"
@@ -224499,6 +224625,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -224514,6 +224643,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -224765,6 +224897,9 @@
                             ],
                             "type": "object"
                           },
+                          "dolbyVisionBaseLayer": {
+                            "type": "boolean"
+                          },
                           "dolbyVisionCmVersion": {
                             "type": "string"
                           },
@@ -224780,6 +224915,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "dolbyVisionRpu": {
+                            "type": "boolean"
                           },
                           "dynamicRange": {
                             "type": "string"
@@ -232683,6 +232821,9 @@
                       ],
                       "type": "object"
                     },
+                    "identityCode": {
+                      "type": "string"
+                    },
                     "interfaces": {
                       "items": {
                         "properties": {
@@ -232715,6 +232856,9 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "localUrl": {
+                      "type": "string"
                     },
                     "observedAt": {
                       "type": "string"
@@ -431245,6 +431389,9 @@
                                   ],
                                   "type": "object"
                                 },
+                                "dolbyVisionBaseLayer": {
+                                  "type": "boolean"
+                                },
                                 "dolbyVisionCmVersion": {
                                   "type": "string"
                                 },
@@ -431260,6 +431407,9 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "dolbyVisionRpu": {
+                                  "type": "boolean"
                                 },
                                 "dynamicRange": {
                                   "type": "string"
@@ -431511,6 +431661,9 @@
                                   ],
                                   "type": "object"
                                 },
+                                "dolbyVisionBaseLayer": {
+                                  "type": "boolean"
+                                },
                                 "dolbyVisionCmVersion": {
                                   "type": "string"
                                 },
@@ -431526,6 +431679,9 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "dolbyVisionRpu": {
+                                  "type": "boolean"
                                 },
                                 "dynamicRange": {
                                   "type": "string"
@@ -432605,6 +432761,9 @@
                                   ],
                                   "type": "object"
                                 },
+                                "dolbyVisionBaseLayer": {
+                                  "type": "boolean"
+                                },
                                 "dolbyVisionCmVersion": {
                                   "type": "string"
                                 },
@@ -432620,6 +432779,9 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "dolbyVisionRpu": {
+                                  "type": "boolean"
                                 },
                                 "dynamicRange": {
                                   "type": "string"
@@ -432871,6 +433033,9 @@
                                   ],
                                   "type": "object"
                                 },
+                                "dolbyVisionBaseLayer": {
+                                  "type": "boolean"
+                                },
                                 "dolbyVisionCmVersion": {
                                   "type": "string"
                                 },
@@ -432886,6 +433051,9 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "dolbyVisionRpu": {
+                                  "type": "boolean"
                                 },
                                 "dynamicRange": {
                                   "type": "string"
@@ -434010,6 +434178,9 @@
                                   ],
                                   "type": "object"
                                 },
+                                "dolbyVisionBaseLayer": {
+                                  "type": "boolean"
+                                },
                                 "dolbyVisionCmVersion": {
                                   "type": "string"
                                 },
@@ -434025,6 +434196,9 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "dolbyVisionRpu": {
+                                  "type": "boolean"
                                 },
                                 "dynamicRange": {
                                   "type": "string"
@@ -434276,6 +434450,9 @@
                                   ],
                                   "type": "object"
                                 },
+                                "dolbyVisionBaseLayer": {
+                                  "type": "boolean"
+                                },
                                 "dolbyVisionCmVersion": {
                                   "type": "string"
                                 },
@@ -434291,6 +434468,9 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "dolbyVisionRpu": {
+                                  "type": "boolean"
                                 },
                                 "dynamicRange": {
                                   "type": "string"
@@ -442123,6 +442303,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -442138,6 +442321,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -442389,6 +442575,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -442404,6 +442593,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -443995,6 +444187,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -444010,6 +444205,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -444261,6 +444459,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -444276,6 +444477,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -445690,6 +445894,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -445705,6 +445912,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -445956,6 +446166,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -445971,6 +446184,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -447479,6 +447695,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -447494,6 +447713,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -447745,6 +447967,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -447760,6 +447985,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -449055,6 +449283,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -449070,6 +449301,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -449321,6 +449555,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -449336,6 +449573,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -450947,6 +451187,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -450962,6 +451205,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -451213,6 +451459,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -451228,6 +451477,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -452749,6 +453001,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -452764,6 +453019,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -453015,6 +453273,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -453030,6 +453291,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -454322,6 +454586,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -454337,6 +454604,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"
@@ -454588,6 +454858,9 @@
                                       ],
                                       "type": "object"
                                     },
+                                    "dolbyVisionBaseLayer": {
+                                      "type": "boolean"
+                                    },
                                     "dolbyVisionCmVersion": {
                                       "type": "string"
                                     },
@@ -454603,6 +454876,9 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "dolbyVisionRpu": {
+                                      "type": "boolean"
                                     },
                                     "dynamicRange": {
                                       "type": "string"

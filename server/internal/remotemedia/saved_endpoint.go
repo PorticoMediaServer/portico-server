@@ -56,21 +56,9 @@ func (p Policy) PrepareEndpointApproval(ctx context.Context, raw string) (Approv
 // Native schemes, a different origin, path-scoped approvals and forbidden
 // addresses never cover it. No Policy.Approvals or library rules are inferred.
 func (p Policy) CheckEndpointApproval(ctx context.Context, raw string, saved Approval) error {
-	u, err := parseURL(raw)
-	if err != nil || u.RawQuery != "" || ctx == nil || saved.Root != origin(u)+"/" || len(saved.Addresses) > 32 {
+	u, approved, err := savedEndpointAddresses(raw, saved)
+	if err != nil || ctx == nil {
 		return ErrPolicy
-	}
-	root, err := url.Parse(saved.Root)
-	if err != nil || root.Path != "/" || root.RawQuery != "" || !strings.HasPrefix(saved.Root, u.Scheme+"://") {
-		return ErrPolicy
-	}
-	approved := map[netip.Addr]bool{}
-	for _, value := range saved.Addresses {
-		ip, err := netip.ParseAddr(value)
-		if err != nil || ip != ip.Unmap() || ip.String() != value || !nativeAddressAllowed(ip) || !nativePrivate(ip) || approved[ip] {
-			return ErrPolicy
-		}
-		approved[ip] = true
 	}
 	addresses, err := p.resolve(ctx, u.Hostname())
 	if err != nil {
@@ -78,9 +66,31 @@ func (p Policy) CheckEndpointApproval(ctx context.Context, raw string, saved App
 	}
 	for _, address := range addresses {
 		ip := address.Unmap()
-		if !nativeAddressAllowed(ip) || !public(ip) && !approved[ip] {
+		if !nativeAddressAllowed(ip) || !public(ip) && !approved[ip] || p.SourcePrivateOnly && !nativePrivate(ip) {
 			return ErrPolicy
 		}
 	}
 	return ctx.Err()
+}
+
+// savedEndpointAddresses is purely local validation, safe in a caller-owned
+// transaction. DNS belongs at actual use/start/reconnect, outside that reader.
+func savedEndpointAddresses(raw string, saved Approval) (*url.URL, map[netip.Addr]bool, error) {
+	u, err := parseURL(raw)
+	if err != nil || u.RawQuery != "" || saved.Root != origin(u)+"/" || len(saved.Addresses) > 32 {
+		return nil, nil, ErrPolicy
+	}
+	root, err := url.Parse(saved.Root)
+	if err != nil || root.Path != "/" || root.RawQuery != "" || !strings.HasPrefix(saved.Root, u.Scheme+"://") {
+		return nil, nil, ErrPolicy
+	}
+	approved := map[netip.Addr]bool{}
+	for _, value := range saved.Addresses {
+		ip, err := netip.ParseAddr(value)
+		if err != nil || ip != ip.Unmap() || ip.String() != value || !nativeAddressAllowed(ip) || !nativePrivate(ip) || approved[ip] {
+			return nil, nil, ErrPolicy
+		}
+		approved[ip] = true
+	}
+	return u, approved, nil
 }

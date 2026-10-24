@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -49,6 +48,8 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 			return out, err
 		}
 		out.Policy.Approvals = append(out.Policy.Approvals, c.Approval)
+		out.Policy.SourceEndpoints = true
+		out.Policy.SourcePrivateOnly = strings.HasPrefix(c.Root, "http://")
 	}
 	if kind == "sftp" || kind == "smb" {
 		var err error
@@ -94,9 +95,7 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 		if json.Unmarshal([]byte(raw), &approvals) != nil || len(approvals) > 256 {
 			return out, storage.ErrRemoteConfig
 		}
-		if kind == "webdav" {
-			out.Policy.Approvals = append(out.Policy.Approvals, approvals...)
-		}
+
 		evidence = append(evidence, []any{id, directory, revision, raw})
 	}
 	if err = rows.Err(); err != nil {
@@ -352,11 +351,7 @@ func (s *Service) serveMaterial(ctx context.Context, slot *sourceProcessLease) (
 	if err != nil {
 		return out, err
 	}
-	config := "[portico]\ntype=webdav\nurl=" + c.Root + "\nvendor=other\n"
-	if c.Username != "" || c.Password != "" {
-		config += "headers=Authorization,Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)) + "\n"
-	}
-	return serveMaterial{Program: program, Remote: "portico:", Configuration: []byte(config)}, nil
+	return serveMaterial{Program: program, Remote: "portico:", Configuration: davServeConfiguration(c)}, nil
 }
 
 // privateDAVConfig uses the existing bounded private-format opener. Its current
@@ -374,7 +369,7 @@ func (s *Service) privateDAVConfig(stored []byte) (remotemedia.DAVConfig, error)
 	if json.Unmarshal(raw, &c) != nil {
 		return c, storage.ErrRemoteConfig
 	}
-	_, err = remotemedia.NewDAV(c, s.resolver)
+	_, err = remotemedia.NewSourceDAV(c, s.resolver)
 	return c, err
 }
 

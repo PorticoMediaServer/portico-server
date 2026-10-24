@@ -11,6 +11,7 @@ var episodeToken = regexp.MustCompile(`(?i)s[0-9]{1,4}e[0-9]{1,4}(?:(?:e|-e?)[0-
 var episodeContinuation = regexp.MustCompile(`(?i)^[ ._-]*[ex]([0-9]{1,4})(?:$|[ ._-])`)
 var digits = regexp.MustCompile(`[0-9]+`)
 var dateToken = regexp.MustCompile(`(?:^|[ ._-])((?:18|19|20)[0-9]{2})[ ._-]([0-9]{2})[ ._-]([0-9]{2})(?:$|[^0-9])`)
+var dayFirstDateToken = regexp.MustCompile(`(?:^|[ ._-])([0-9]{2})[ .-]([0-9]{2})[ .-]((?:18|19|20)[0-9]{2})(?:$|[^0-9])`)
 var episodeOnly = regexp.MustCompile(`(?i)^(?:e|episode[ ._-]*)([0-9]{1,4})(?:$|[ ._-])`)
 var leadingNumber = regexp.MustCompile(`^([0-9]{1,3})(?:$|[ ._-])`)
 var numberedTail = regexp.MustCompile(`(?i)^(.*?)[ ._]+-[ ._]+([0-9]{1,4})(?:v([0-9]{1,2}))?(?:$|[ ._\[-])`)
@@ -127,6 +128,15 @@ func readEpisode(r *Reading, name, p, kind string, folderSeason int, hasFolder b
 	}
 	if m := dateToken.FindStringSubmatchIndex(s); m != nil {
 		d := s[m[2]:m[3]] + "-" + s[m[4]:m[5]] + "-" + s[m[6]:m[7]]
+		if date, err := time.Parse("2006-01-02", d); err != nil || date.Year() < 1900 {
+			r.Diagnostics = append(r.Diagnostics, "invalid_air_date")
+		} else {
+			r.AirDates = append(r.AirDates, ev(d, FileName, p, .98))
+		}
+		return s[:m[0]]
+	}
+	if m := dayFirstDateToken.FindStringSubmatchIndex(s); m != nil {
+		d := s[m[6]:m[7]] + "-" + s[m[4]:m[5]] + "-" + s[m[2]:m[3]]
 		if date, err := time.Parse("2006-01-02", d); err != nil || date.Year() < 1900 {
 			r.Diagnostics = append(r.Diagnostics, "invalid_air_date")
 		} else {
