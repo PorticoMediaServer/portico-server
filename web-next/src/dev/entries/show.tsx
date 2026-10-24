@@ -30,7 +30,7 @@ import '../../bootstrap.css';
  */
 if (!import.meta.env.DEV) throw new Error('Show specimens require the development server.');
 const frame = new URLSearchParams(location.search).get('frame');
-if (frame !== null && frame !== '4' && frame !== '5' && frame !== '4b') throw new Error('The show specimen measures desktop frames 4, 4b and 5 only.');
+if (frame !== null && frame !== '4' && frame !== '5' && frame !== '4b' && frame !== '6') throw new Error('The show specimen measures desktop frames 4, 4b, 5 and 6.');
 
 type SpecimenEvent = Readonly<{kind: string; at: number; value?: unknown}>;
 
@@ -38,6 +38,9 @@ const serverId = 'specimen-server';
 const libraryId = 'tv';
 const showId = 'the-last-of-us';
 const seasonId = 'season-1';
+const simpsonsId = 'the-simpsons';
+const simpsonsSeasonId = 'simpsons-season-3';
+const activeShowId = frame === '6' ? simpsonsId : showId;
 const viewerFence = 'specimen-viewer-fence';
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl+0AAAAASUVORK5CYII=';
 const artPath = (id: string, role: 'poster' | 'backdrop' | 'still', query: string) => `/v1/metadata/show/${encodeURIComponent(id)}/art/${role}?${query}`;
@@ -155,6 +158,57 @@ function episodeDetail(index = 0) {
   };
 }
 
+const simpsonsSeasons = [
+  {id: 'simpsons-season-1', showId: simpsonsId, number: 1, title: 'Season 1', episodeCount: 13, watchedCount: 13, unwatchedCount: 0, firstAired: '1989-12-17', lastAired: '1990-05-13'},
+  {id: 'simpsons-season-2', showId: simpsonsId, number: 2, title: 'Season 2', episodeCount: 22, watchedCount: 22, unwatchedCount: 0, firstAired: '1990-10-11', lastAired: '1991-07-11'},
+  {id: simpsonsSeasonId, showId: simpsonsId, number: 3, title: 'Season 3', episodeCount: 24, watchedCount: 4, unwatchedCount: 20, firstAired: '1991-09-19', lastAired: '1992-05-14'},
+  {id: 'simpsons-season-4', showId: simpsonsId, number: 4, title: 'Season 4', episodeCount: 22, watchedCount: 0, unwatchedCount: 22, firstAired: '1992-09-24', lastAired: '1993-05-13'},
+  {id: 'simpsons-season-5', showId: simpsonsId, number: 5, title: 'Season 5', episodeCount: 22, watchedCount: 0, unwatchedCount: 22, firstAired: '1993-09-30', lastAired: '1994-05-19'},
+  {id: 'simpsons-season-6', showId: simpsonsId, number: 6, title: 'Season 6', episodeCount: 25, watchedCount: 0, unwatchedCount: 25, firstAired: '1994-09-04', lastAired: '1995-05-21'},
+  {id: 'simpsons-specials', showId: simpsonsId, number: 0, title: 'Specials', episodeCount: 12, watchedCount: 0, unwatchedCount: 12},
+] as const;
+const simpsonsEpisodeFacts = [
+  ['Stark Raving Dad', '1991-09-19', true],
+  ['Mr. Lisa Goes to Washington', '1991-09-26', true],
+  ['When Flanders Failed', '1991-10-03', true],
+  ['Bart the Murderer', '1991-10-10', true],
+  ['Homer Defined', '1991-10-17', false],
+  ['Like Father, Like Clown', '1991-10-24', false],
+  ['Treehouse of Horror II', '1991-10-31', false],
+  ["Lisa's Pony", '1991-11-07', false],
+] as const;
+const simpsonsEpisode = (index: number) => {
+  const [title, airDate, watched] = simpsonsEpisodeFacts[index]!;
+  const id = `simp-ep-${index + 1}`;
+  return {id, kind: 'episode', libraryId, title, seasonNumber: 3, episodeNumber: index + 1, airDate, durationMs: 1_380_000, progressMs: 0, watched,
+    overview: 'A fixture episode of the drawn long-running show, with the real season, number and air date.', stillUrl: imageArt('still', id), available: true,
+    navigation: {view: 'item', entityId: id}, playback: {itemId: id}};
+};
+function simpsonsWorkspace() {
+  const revision = {catalog: 1, viewer: 1};
+  return {
+    scope: {serverId, libraryId, viewerFence}, revision,
+    show: {id: simpsonsId, libraryId, title: 'The Simpsons', year: 1989, libraryKind: 'tv', providerMatchStatus: 'matched',
+      overview: 'The satirical adventures of the Simpson family in Springfield.', network: 'Fox', studio: 'Gracie Films', contentRating: 'TV-14',
+      status: 'Continuing', firstAired: '1989-12-17', originalLanguage: 'en', addedAt: '2026-10-17T00:00:00Z', episodeCount: 24, genres: ['Animation', 'Comedy'], // lint-strings-allow fixture data
+      posterUrl: imageArt('poster', simpsonsId), backdropUrl: imageArt('backdrop', simpsonsId)},
+    showCredits: [],
+    seasons: simpsonsSeasons.map(season => ({...season})), seasonTotalCount: 36, nextSeasonCursor: 'specimen-season-page-2', groups: [],
+    selected: {seasonId: simpsonsSeasonId},
+    episodes: {scope: {serverId, libraryId, libraryKind: 'tv', view: 'season', entityId: simpsonsSeasonId, viewerFence}, revision,
+      query: {sort: 'episode', direction: 'asc', category: '', q: '', limit: 40, searchMode: 'none'},
+      sections: [{id: 'episodes', type: 'list', heading: 'Season 3', totalCount: simpsonsEpisodeFacts.length, nextCursor: '', entries: simpsonsEpisodeFacts.map((_, index) => simpsonsEpisode(index))}]},
+    nextUp: simpsonsEpisode(4),
+    settings: {hideSeasons: false, absoluteNumbering: false, ranges: false, newestFirst: false, revision: 1},
+  };
+}
+const simpsonsContainerState = () => ({scope: {serverId, libraryId, viewerFence}, revision: 1, watched: false, watermark: '', watchlisted: false, favorite: false, watchedCount: 4, unwatchedCount: 20, libraryId});
+function simpsonsRecommendations() {
+  return {showId: simpsonsId, revision: {catalog: 1, viewer: 1}, rows: [
+    recommendationRow('more-like', 'More like The Simpsons', cardRow([['Futurama', 1999, 'show'], ['Bob’s Burgers', 2011, 'show'], ['King of the Hill', 1997, 'show']])),
+  ]};
+}
+
 function activityDocument(now: string) {
   const session = (id: string) => ({id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: 'Demo'}, // lint-strings-allow
     device: {id: 'specimen-device', name: 'Portico web'}, kind: 'vod', state: 'playing', startedAt: now, // lint-strings-allow
@@ -185,9 +239,9 @@ function showRecommendations() {
 const request = async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
   const route = path.split('?')[0];
   record('request', {path: route, method});
-  if (method === 'GET' && route === `/v1/libraries/${libraryId}/show-workspace`) return showWorkspace() as T;
-  if (method === 'GET' && route === `/v1/containers/show/${showId}/personal-state`) return containerState() as T;
-  if (method === 'GET' && route === `/v1/shows/${showId}/recommendations`) return showRecommendations() as T;
+  if (method === 'GET' && route === `/v1/libraries/${libraryId}/show-workspace`) return (frame === '6' ? simpsonsWorkspace() : showWorkspace()) as T;
+  if (method === 'GET' && route === `/v1/containers/show/${activeShowId}/personal-state`) return (frame === '6' ? simpsonsContainerState() : containerState()) as T;
+  if (method === 'GET' && route === `/v1/shows/${activeShowId}/recommendations`) return (frame === '6' ? simpsonsRecommendations() : showRecommendations()) as T;
   if (method === 'GET' && /^\/v1\/items\/ep-\d+\/detail$/.test(route)) return episodeDetail(Number(route.split('/')[3].slice(3)) - 1) as T;
   if (method === 'PUT' && route === `/v1/admin/libraries/${libraryId}/shows/${showId}/settings`) {
     const settings = (body ?? {}) as Record<string, unknown>;
@@ -262,7 +316,7 @@ const binding: ShellBindings = {api, events, scopeKey: 'show-specimen', shell: {
 // The fixture's real command receipts are inspectable from the page; no credentials or server data.
 (window as Window & {__porticoShowSpecimen?: unknown}).__porticoShowSpecimen = {records, show: showWorkspace, container: containerState, detail: episodeDetail};
 
-router.update({history: createMemoryHistory({initialEntries: [`/library/${libraryId}?view=show&entityId=${showId}`]})});
+router.update({history: createMemoryHistory({initialEntries: [`/library/${libraryId}?view=show&entityId=${activeShowId}`]})});
 createRoot(document.getElementById('root')!).render(
   <WebScreenProvider value={{binding, context: contextBase}}>
     <IconSprite />
@@ -281,6 +335,13 @@ const activate = () => {
     if (!related) { requestAnimationFrame(activate); return; }
     if (related.getAttribute('aria-selected') !== 'true') { related.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); related.click(); }
     requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.setAttribute('data-show-frame4b-ready', 'true'))));
+    return;
+  }
+  if (frame === '6') {
+    const season = [...document.querySelectorAll<HTMLElement>('button')].find(button => button.textContent?.trim() === defaultI18n.t('next.kit.season', {number: 3}));
+    if (!season) { requestAnimationFrame(activate); return; }
+    if (season.getAttribute('aria-expanded') !== 'true') season.click();
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.setAttribute('data-show-frame6-ready', 'true'))));
     return;
   }
   if (frame === '5') {
