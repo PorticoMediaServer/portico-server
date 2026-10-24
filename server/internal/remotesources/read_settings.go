@@ -137,7 +137,10 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	fingerprint := s.mounts.PrivateDigest(facts)
 	clear(facts)
 	if receipt, err := s.receipt(ctx, actor, in.OperationID, fingerprint); err == nil {
-		return receipt, nil
+		if receipt.ReadSettings == nil {
+			return Receipt{}, storage.ErrRemoteConfig
+		}
+		return receipt, s.finishReadSettings(ctx, source, receipt.ReadSettings.Revision)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Receipt{}, err
 	}
@@ -149,7 +152,7 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	defer writer.Rollback()
-	result, err := s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: in.ExpectedGeneration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source)})
+	_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: in.ExpectedGeneration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source)})
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -168,8 +171,28 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	if err = writer.Commit(); err != nil {
 		return Receipt{}, err
 	}
-	if err = s.ReadProfileCommitted(ctx, source, result.Profile.Revision); err != nil {
-		return receipt, err
+	return receipt, s.finishReadSettings(ctx, source, settings.Revision)
+}
+
+// A committed command must retire obsolete readers even when its HTTP request
+// has ended. This bounded cleanup does only DB reads and cancellation: it never
+// opens a source or grants authority. Receipt replay retries it without a write.
+// Read the current profile, so an old receipt never retires its replacement.
+func (s *Service) finishReadSettings(ctx context.Context, source string, committedRevision int64) error {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+	snapshot, err := dbwork.BeginSnapshot(cleanup, s.db)
+	if err != nil {
+		return err
 	}
-	return receipt, nil
+	profile, err := SourceReadProfileTx(cleanup, snapshot.Tx(), source)
+	snapshot.Rollback()
+	if err != nil {
+		return err
+	}
+	if !profile.Saved || profile.Revision < committedRevision {
+		return storage.ErrRemoteChanged
+	}
+	s.retireReadProfile(source, profile)
+	return nil
 }

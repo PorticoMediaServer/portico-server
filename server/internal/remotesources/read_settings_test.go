@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/storage"
@@ -108,5 +109,90 @@ func TestSourceReadSettingsRejectMissingAuthorityAndPartialValues(t *testing.T) 
 		if json.Unmarshal(bytes, &got) == nil {
 			t.Fatal("partial settings value accepted", field)
 		}
+	}
+}
+
+func TestSourceReadSettingsRetirementSurvivesRequestCancelAndReceiptReplay(t *testing.T) {
+	ctx := context.Background()
+	f, _, identities, owner, _, _ := nativeSaveFixture(t)
+	ref, err := f.record(t, scanFacts("settings-retirement"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete, _ := SourceReadPreset("everything")
+	input := SourceReadSettingsChange{OperationID: nativeSaveOperation(620), ExpectedGeneration: "1", Values: sourceReadValues(complete)}
+	accepted, err := f.s.SaveSourceReadSettings(ctx, identities, owner, "remote", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A real committed sole-writer update with its notification missed models
+	// the post-commit failure boundary. This test opens no provider connection.
+	commitWithoutNotification := func(revision int64, preset string) int64 {
+		t.Helper()
+		profile, _ := SourceReadPreset(preset)
+		writer, err := dbwork.Begin(ctx, f.s.db, dbwork.ClassInteractive)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer writer.Rollback()
+		out, err := f.s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: "remote", Generation: "1", ExpectedRevision: revision, Profile: profile})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = writer.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		return out.Profile.Revision
+	}
+	old, err := f.s.reserveSourceProcess(ctx, "remote", "1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer old.Release()
+	reader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+	defer reader.Close()
+	revision := commitWithoutNotification(1, "list")
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err = f.s.finishReadSettings(canceled, "remote", revision); err != nil {
+		t.Fatal("request cancellation prevented committed cleanup", err)
+	}
+	if old.CheckLocal() == nil || reader.life.Err() == nil {
+		t.Fatal("committed cleanup left old process/reader alive")
+	}
+	if _, err = f.s.reserveSourceProcess(ctx, "remote", "1", revision); !errors.Is(err, storage.ErrBusy) {
+		t.Fatal("cancellation released physical custody before Wait", err)
+	}
+	old.Release()
+	second, err := f.s.reserveSourceProcess(ctx, "remote", "1", revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Release()
+	secondReader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+	defer secondReader.Close()
+	revision = commitWithoutNotification(revision, "everything")
+	replayed, err := f.s.SaveSourceReadSettings(ctx, identities, owner, "remote", input)
+	if err != nil || replayed.ReadSettings == nil || *replayed.ReadSettings != *accepted.ReadSettings {
+		t.Fatal("receipt replay failed after missed notification", replayed, err)
+	}
+	if second.CheckLocal() == nil || secondReader.life.Err() == nil {
+		t.Fatal("receipt replay did not retire obsolete process/reader")
+	}
+	second.Release()
+	current, err := f.s.reserveSourceProcess(ctx, "remote", "1", revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer current.Release()
+	if _, err = f.s.SaveSourceReadSettings(ctx, identities, owner, "remote", input); err != nil {
+		t.Fatal(err)
+	}
+	if err = current.CheckLocal(); err != nil {
+		t.Fatal("old receipt retired current replacement", err)
+	}
+	actual, err := f.s.ReadSourceReadSettings(ctx, identities, owner, "remote")
+	if err != nil || actual.Revision != revision || actual.Generation != "1" {
+		t.Fatal("cleanup/recovery wrote authority or source identity", actual, err)
 	}
 }

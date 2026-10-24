@@ -246,11 +246,15 @@ func (s *Service) ReadProfileCommitted(ctx context.Context, source string, revis
 	if profile.Revision != revision {
 		return storage.ErrRemoteChanged
 	}
+	s.retireReadProfile(source, profile)
+	return nil
+}
+
+func (s *Service) retireReadProfile(source string, profile SourceReadProfile) {
 	s.serveMu.Lock()
 	if lease := s.serveLeases[source]; lease != nil && lease.profile != profile {
 		lease.cancel()
 	}
 	s.serveMu.Unlock()
 	s.stopReadLeases(source, storage.ErrRemoteChanged, &profile)
-	return nil
 }
