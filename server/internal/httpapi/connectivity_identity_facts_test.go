@@ -87,7 +87,7 @@ func TestConnectivityOwnerFactsOmitUnpublishedIdentityAndUnboundURL(t *testing.T
 func TestConnectivityIdentityCodeOmitsCanonicalPorticoKind(t *testing.T) {
 	f := administrationFixtureNew(t)
 	ctx := context.Background()
-	if _, err := dbwork.ExecWrite(ctx, f.deps.DB, dbwork.ClassMaintenance, `UPDATE identity_state SET sign_in_kind='portico' WHERE singleton=1`); err != nil {
+	if _, err := dbwork.ExecWrite(ctx, f.deps.DB, dbwork.ClassMaintenance, `UPDATE accounts SET password_hash=X''; UPDATE identity_state SET sign_in_kind='portico' WHERE singleton=1`); err != nil {
 		t.Fatal(err)
 	}
 	read, err := dbwork.BeginSnapshot(ctx, f.deps.DB)
