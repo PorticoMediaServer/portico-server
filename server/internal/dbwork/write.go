@@ -256,7 +256,7 @@ func (w *Write) Commit() error {
 		}
 	}
 	if err == nil && changed {
-		noteCommitSite()
+		noteCommitSite(w.changes)
 		// Something actually changed. Every background loop that was waiting to be
 		// told hears it now, instead of asking four times a second whether anything
 		// had. A transaction that wrote nothing — the shape a "nothing to do" pass
@@ -395,7 +395,7 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 				// gated write like any transaction: caches and response
 				// validators keyed on Publications must see it (PERF-12).
 				publications.Add(1)
-				noteCommitSite()
+				noteCommitSite(changes)
 				notifyCommit(changes)
 				// Lane C's direct-write subscribers (event feed) also hear
 				// autocommit ExecWrite statements.

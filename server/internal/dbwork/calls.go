@@ -52,12 +52,26 @@ func countCall() {
 // noteCommitSite attributes a commit that actually changed rows, which is what
 // wakes every background loop. A loop that writes on every pass keeps the whole
 // server awake, and this is how it is found by name.
-func noteCommitSite() {
+func noteCommitSite(changes *changeSet) {
 	if !traceCalls {
 		return
 	}
 	traceOnce.Do(startCallTrace)
 	site := callerSite(4)
+	roots := changes.roots()
+	if roots == nil {
+		site += " [unknown scope]"
+	} else {
+		names := make([]string, 0, len(roots))
+		for name := range roots {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		if len(names) > 4 {
+			names = names[:4]
+		}
+		site += " [" + strings.Join(names, ",") + "]"
+	}
 	callSitesMu.Lock()
 	commitSites[site]++
 	callSitesMu.Unlock()
