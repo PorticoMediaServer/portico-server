@@ -36878,6 +36878,21 @@
                   },
                   "type": "array"
                 },
+                "facetSource": {
+                  "properties": {
+                    "endpoint": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "endpoint",
+                    "field"
+                  ],
+                  "type": "object"
+                },
                 "filters": {
                   "items": {
                     "type": "string"
@@ -37130,6 +37145,21 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "facetSource": {
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "field"
+                ],
+                "type": "object"
               },
               "filters": {
                 "items": {
@@ -103174,6 +103204,21 @@
                   },
                   "type": "array"
                 },
+                "facetSource": {
+                  "properties": {
+                    "endpoint": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "endpoint",
+                    "field"
+                  ],
+                  "type": "object"
+                },
                 "filters": {
                   "items": {
                     "type": "string"
@@ -103426,6 +103471,21 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "facetSource": {
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "field"
+                ],
+                "type": "object"
               },
               "filters": {
                 "items": {
@@ -287117,6 +287177,21 @@
                             },
                             "type": "array"
                           },
+                          "facetSource": {
+                            "properties": {
+                              "endpoint": {
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "endpoint",
+                              "field"
+                            ],
+                            "type": "object"
+                          },
                           "filters": {
                             "items": {
                               "type": "string"
@@ -287369,6 +287444,21 @@
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "facetSource": {
+                          "properties": {
+                            "endpoint": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "endpoint",
+                            "field"
+                          ],
+                          "type": "object"
                         },
                         "filters": {
                           "items": {
@@ -399643,6 +399733,21 @@
                             },
                             "type": "array"
                           },
+                          "facetSource": {
+                            "properties": {
+                              "endpoint": {
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "endpoint",
+                              "field"
+                            ],
+                            "type": "object"
+                          },
                           "filters": {
                             "items": {
                               "type": "string"
@@ -399896,6 +400001,21 @@
                           },
                           "type": "array"
                         },
+                        "facetSource": {
+                          "properties": {
+                            "endpoint": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "endpoint",
+                            "field"
+                          ],
+                          "type": "object"
+                        },
                         "filters": {
                           "items": {
                             "type": "string"
@@ -400087,6 +400207,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "browsing",
