@@ -26,7 +26,7 @@ func refreshReadingDirectoryTx(ctx context.Context, tx *sql.Tx, job string, sour
 	if err != nil {
 		return err
 	}
-	if current.ID != source.ID || current.Generation != source.Generation || current.Incarnation != source.Incarnation || current.RootIdentity != source.RootIdentity {
+	if current.ID != source.ID || current.Generation != source.Generation || current.Incarnation != source.Incarnation || current.RootIdentity != source.RootIdentity || current.LibraryID != source.LibraryID || filepath.Clean(current.ResolvedPath) != filepath.Clean(source.ResolvedPath) {
 		return context.Canceled
 	}
 	key, err := compactcatalog.ReadingDirectoryKey(filepath.ToSlash(directory))

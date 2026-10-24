@@ -8,6 +8,7 @@ import (
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/readingtest"
 )
 
@@ -50,6 +51,8 @@ func TestReadingPrivatePathProducerGeneratedTree(t *testing.T) {
 		"Isaac Asimov/Foundation.pdf", "Isaac Asimov/Isaac Asimov - Foundation.epub",
 		"Books/Sci-fi/Frank Herbert/Dune.pdf", "Ebooks/Foundation.pdf",
 		"Some Book [Group] (Digital) 1080p.pdf", "[Group] (Digital).pdf",
+		"Books/Identity/Identity One.pdf", "Downloads/Identity/Identity Two.pdf",
+		"     /Reader Book.pdf", "Author\nName - Work.pdf",
 	} {
 		readingTreeFile(t, r, relative)
 	}
@@ -75,6 +78,10 @@ func TestReadingPrivatePathProducerGeneratedTree(t *testing.T) {
 		{"Ebooks/Foundation.pdf", "Foundation", "", "", ""},
 		{"Some Book [Group] (Digital) 1080p.pdf", "Some Book", "", "", ""},
 		{"[Group] (Digital).pdf", "[Group] (Digital)", "", "", ""},
+		{"Books/Identity/Identity One.pdf", "Identity One", "Identity", "", compactcatalog.ReadingFolder},
+		{"Downloads/Identity/Identity Two.pdf", "Identity Two", "Identity", "", compactcatalog.ReadingFolder},
+		{"     /Reader Book.pdf", "Reader Book", "", "", ""},
+		{"Author\nName - Work.pdf", "Work", "Author Name", "", compactcatalog.ReadingFileName},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			id := readingPathItem(t, r, filepath.Join(filepath.Dir(r.path), filepath.FromSlash(tc.path)))
@@ -212,10 +219,14 @@ func TestReadingPrivatePathCandidatesAndCurrentAssociation(t *testing.T) {
 	if err := r.f.db.QueryRow(`SELECT text_value FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='folder'`, item, asset).Scan(&pathValue); err != nil || pathValue != "Attribution" {
 		t.Fatal("real path refresh did not run", pathValue, err)
 	}
-	if _, err := r.f.db.Exec(`INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('item',?,'author','A & B','Embedded attribution',1,'fixture-owner',datetime('now'))`, item); err != nil {
+	if _, err := r.f.db.Exec(`INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('item',?,'author','A & B','Embedded attribution',1,?,datetime('now'))`, item, identity.PersonalKey(r.p.Viewer)); err != nil {
 		t.Fatal(err)
 	}
-	session, document, err := r.s.Prepare(ctx, r.p, id, "")
+	var sourceID string
+	if err := r.f.db.QueryRow(`SELECT token FROM catalog_assets WHERE id=?`, asset).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	session, document, err := r.s.Prepare(ctx, r.p, id, sourceID)
 	if err != nil {
 		t.Fatal(err)
 	}

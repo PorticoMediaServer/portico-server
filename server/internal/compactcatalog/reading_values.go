@@ -75,11 +75,18 @@ func readingFolders(relative string) []string {
 	var out []string
 	parts := strings.Split(relative, "/")
 	for _, part := range parts[:len(parts)-1] {
-		if !readingGenericFolders[ReadingValueKey(readingCleanTitle(part))] {
+		if strings.TrimSpace(part) != "" && !readingGenericFolders[ReadingValueKey(readingCleanTitle(part))] {
 			out = append(out, part)
 		}
 	}
 	return out
+}
+
+func readingFolderLabel(value string) string {
+	if strings.ContainsAny(value, "\r\n") {
+		return strings.Join(strings.Fields(value), " ")
+	}
+	return value
 }
 
 func readingFileAuthor(stem string) (string, string) {
@@ -91,6 +98,9 @@ func readingFileAuthor(stem string) (string, string) {
 	first, _ := utf8.DecodeRuneInString(left)
 	if left == "" || right == "" || unicode.IsDigit(first) || readingHasSequence(left) {
 		return "", stem
+	}
+	if strings.ContainsAny(left, "\r\n") {
+		left = strings.Join(strings.Fields(left), " ")
 	}
 	return left, right
 }
@@ -136,7 +146,7 @@ func ReadingFilenameTitle(filename string) string {
 	if title = strings.TrimSpace(stem); title != "" {
 		return title
 	}
-	return filename
+	return strings.TrimSpace(filename)
 }
 
 func readingStripPrefix(value, prefix string) (string, bool) {
@@ -222,7 +232,7 @@ func ReadingDirectoryKey(directory string) (string, error) {
 	parts := strings.Split(directory, "/")
 	end := -1
 	for i, part := range parts {
-		if !readingGenericFolders[ReadingValueKey(readingCleanTitle(part))] {
+		if strings.TrimSpace(part) != "" && !readingGenericFolders[ReadingValueKey(readingCleanTitle(part))] {
 			end = i
 		}
 	}
@@ -253,10 +263,10 @@ func ReadingPathValue(in ReadingRuleInput, titles int, everySeries bool) (Readin
 		v.Author = &ReadingValue{author, ReadingFileName}
 	}
 	if len(parts) > 0 {
-		inner := parts[len(parts)-1]
+		inner := readingFolderLabel(parts[len(parts)-1])
 		parent := ""
 		if len(parts) > 1 {
-			parent = parts[len(parts)-2]
+			parent = readingFolderLabel(parts[len(parts)-2])
 		}
 		switch {
 		case titles == 1:
