@@ -92,6 +92,7 @@ func (h *Hub) Run(ctx context.Context) {
 	})
 	var after int64
 	runChanges(ctx, signal, func(ctx context.Context) time.Duration {
+		before := dbwork.Publications()
 		count := 0
 		err := dbwork.WithWriteTx(ctx, h.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error { var err error; count, err = apievents.Flush(ctx, tx, 64); return err })
 		if err != nil {
@@ -124,9 +125,30 @@ func (h *Hub) Run(ctx context.Context) {
 		if count == 64 || read == 1000 {
 			return 2 * time.Second
 		}
+		retireOwnFlushWake(signal, before)
 		return 0
 	})
 
+}
+
+// The flush commits one gated transaction and this pass reads through its
+// events. The write gate publishes every successful non-readOnly commit,
+// including an empty-outbox flush that changes no rows, so exactly one
+// publication between the sample and here is the pass's own batch; a wake still
+// pending for it is already covered. Anything beyond it is a peer (including an
+// unknown write scope), whose pass must stay pending. A zero delta is
+// defensive: no current path skips that publication, but if one ever did, a
+// still-pending wake was already read through by this pass, and re-arming it
+// would ask for the same empty pass at the feed's two-second floor forever. A
+// commit after this check wakes the signal normally, so no queued work is
+// swallowed.
+func retireOwnFlushWake(signal *worker.Signal, before uint64) {
+	if !signal.Take() {
+		return
+	}
+	if publications := dbwork.Publications(); publications != before && publications != before+1 {
+		signal.Wake()
+	}
 }
 
 func (h *Hub) Wake() {

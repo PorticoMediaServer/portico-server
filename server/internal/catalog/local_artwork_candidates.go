@@ -65,9 +65,9 @@ func ReadLocalArtworkCandidatesTx(ctx context.Context, tx *sql.Tx, kind string, 
 	if tx == nil || entity <= 0 || limit < 1 || limit > 128 || (kind != "item" && kind != "show" && kind != "season") || (role != "poster" && role != "backdrop" && role != "logo") {
 		return nil, ErrAdminQuery
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT c.art_key FROM inventory_artwork_candidates c
- JOIN inventory_objects o ON o.id=c.object_id AND o.revision=c.source_revision AND o.asset_id=c.asset_id
- JOIN library_sources s ON s.id=o.source_id
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT c.art_key FROM inventory_artwork_candidates c INDEXED BY inventory_artwork_candidates_entity
+ CROSS JOIN inventory_objects o ON o.id=c.object_id AND o.revision=c.source_revision AND o.asset_id=c.asset_id
+ CROSS JOIN library_sources s ON s.id=o.source_id
  WHERE c.entity_id=? AND c.kind=? AND c.role=? AND c.art_key>?
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
  AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed')
