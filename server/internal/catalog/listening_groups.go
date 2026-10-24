@@ -27,6 +27,11 @@ const ListeningGroupPassGap = 30 * time.Second
 
 var listeningGroupPassGap = ListeningGroupPassGap
 
+// ListeningGroupPassSettled is replaced only by the isolated idle-budget test
+// process. It marks a pass that read its last batch, which is the point after
+// which only the documented coalescing gap can schedule one more pass.
+var ListeningGroupPassSettled = func() {}
+
 // RefreshListeningGroups advances the current pass over the books by one
 // bounded batch and publishes any author or series navigation identity the
 // batch names that does not exist yet. It returns true while the pass has more
@@ -186,6 +191,7 @@ func (s *Service) ListeningGroupStep(changed *worker.Signal) worker.Step {
 			return time.Millisecond
 		}
 		inPass, ended = false, time.Now()
+		ListeningGroupPassSettled()
 		if dirty {
 			return listeningGroupPassGap
 		}

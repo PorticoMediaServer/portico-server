@@ -979,16 +979,7 @@ func run() (runErr error) {
 		defer unregisterWake()
 		unregisterChanged := dbwork.WakeOnTables(changed, "books", "book_files")
 		defer unregisterChanged()
-		// A settled step (zero) means the startup pass over existing books has
-		// finished; later settled steps are its ordinary idle backstop.
-		step, settled := cat.ListeningGroupStep(changed), sync.OnceFunc(listeningGroupsStartupDoneHook)
-		worker.Run(life, "cmd.listening-groups", wake, func(ctx context.Context) time.Duration {
-			wait := step(ctx)
-			if wait == 0 {
-				settled()
-			}
-			return wait
-		})
+		worker.Run(life, "cmd.listening-groups", wake, cat.ListeningGroupStep(changed))
 	})
 	supervise.Supervise(ctx, "cmd.metadata", meta.Run)
 	supervise.Supervise(ctx, "cmd.artwork", meta.RunArtwork)

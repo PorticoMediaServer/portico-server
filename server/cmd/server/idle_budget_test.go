@@ -92,7 +92,7 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 	var listeningOnce sync.Once
 	serverReadyHook = func() { close(ready) }
 	deferredMaintenanceDoneHook = func() { close(maintenanceDone) }
-	listeningGroupsStartupDoneHook = func() { listeningOnce.Do(func() { close(listeningDone) }) }
+	catalog.ListeningGroupPassSettled = func() { listeningOnce.Do(func() { close(listeningDone) }) }
 	go func() {
 		// The router and deferred one-shot maintenance each publish an explicit
 		// completion signal. The latter may legitimately be library-sized; a
