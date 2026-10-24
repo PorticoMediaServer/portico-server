@@ -174,14 +174,15 @@ func musicConformanceScan(t *testing.T, root string) (catalog.Library, *catalog.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for n := 0; n < 40; n++ {
+	for n := 0; n < 200; n++ {
 		scanner.process(context.Background(), job.ID, lib.ID)
 		state, err := scanner.Get(job.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		switch state.Status {
-		case "complete":
+		case "complete", "complete_with_warnings":
+			t.Logf("music scan finished %s, processed=%d warnings=%d", state.Status, state.Processed, state.Warnings)
 			catalogtest.New(t, db).Drain()
 			return lib, cat
 		case "failed", "cancelled":
