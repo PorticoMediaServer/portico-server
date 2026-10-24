@@ -61,9 +61,18 @@ function watchApi(page, calls = [], state = {}) {
     if (!url.pathname.startsWith('/v1/')) return;
     calls.push({status: response.status(), method: response.request().method(), path: url.pathname});
     if (calls.length > 600) calls.shift();
+    if (url.pathname === '/v1/direct' && response.status() === 200) {
+      response.json().then(body => {
+        state.direct = {
+          canManage: body.canManage,
+          profiles: (body.profiles || []).map(profile => ({id: profile.id, name: profile.name, primary: profile.primary === true})),
+        };
+      }).catch(() => {});
+    }
     if (url.pathname === '/v1/me' && response.status() === 200) {
       response.json().then(body => {
         const role = body.role || (body.account && body.account.role) || (body.viewer && body.viewer.role);
+        if (body.viewer && body.viewer.profileId) state.viewerProfileId = body.viewer.profileId;
         const capabilities = body.capabilities || (body.account && body.account.capabilities) || [];
         state.me = {role, keys: Object.keys(body || {}).slice(0, 30),
           viewerKeys: Object.keys(body.viewer || {}).slice(0, 30),
@@ -671,12 +680,29 @@ async function main() {
 
     if (signedIn && want('settings-owner')) {
       await check('settings-owner', async () => {
-        await page.goto(origin + '/dashboard', {waitUntil: 'domcontentloaded'});
-        await settle(page, {quiet: 2500});
-        const dash = await bodyText(page);
-        assert(dash.trim().length > 60, 'owner Dashboard rendered almost no text');
-        // The documented address is correct; use it directly, and only fall back to the drawn
-        // General group when that address really does render account scope.
+        // The shell hides every server section unless the session is on the primary profile, so
+        // establish that first instead of blaming the page.
+        let profileNote = 'profile not inspected';
+        if (apiState.direct && apiState.direct.profiles.length) {
+          const current = apiState.direct.profiles.find(profile => profile.id === apiState.viewerProfileId);
+          const primary = apiState.direct.profiles.find(profile => profile.primary);
+          profileNote = `session profile ${current ? current.name : 'unknown'}${current && current.primary ? ' (primary)' : ''}`;
+          if (primary && (!current || !current.primary)) {
+            const menu = await findAny(page, [{role: 'button', name: /account menu|switch profile/i}, {css: '[data-profile-menu]'}], {timeout: 4000});
+            if (menu) {
+              await menu.click({timeout: 8000});
+              await settle(page, {quiet: 700});
+              const choice = await findAny(page, [{role: 'menuitem', name: new RegExp(primary.name, 'i')}, {role: 'button', name: new RegExp(primary.name, 'i')}], {timeout: 4000});
+              if (choice) {
+                await choice.click({timeout: 8000});
+                await page.waitForTimeout(3500);
+                profileNote += `, switched to ${primary.name}`;
+              }
+            }
+          }
+        }
+        // The documented address is correct; use it directly before anything else touches the
+        // shell, and only fall back to the drawn General group when it really renders account scope.
         await page.goto(origin + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
         await settle(page, {quiet: 2000});
         // The shell re-bootstraps before the server group appears; poll rather than assume.
@@ -695,16 +721,20 @@ async function main() {
           if (librariesEntry) { await librariesEntry.click({timeout: 8000}); await settle(page, {quiet: 1800}); }
           libs = await bodyText(page);
         }
-        assert(/Owner only|Server/.test(libs), `the owner server settings never rendered: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
+        assert(/Owner only/.test(libs), `the owner server settings never rendered: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
         assert(libs.trim().length > 40, 'owner Libraries settings rendered almost no text');
+        await page.goto(origin + '/dashboard', {waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 2500});
+        const dash = await bodyText(page);
+        assert(dash.trim().length > 60, 'owner Dashboard rendered almost no text');
         const scan = await findAny(page, [{role: 'button', name: /scan/i}, {text: /^Scan/}], {timeout: 4000});
         if (!scan) {
-          throw blocked(`the owner server settings never rendered, so no scan control could be checked; page was: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
+          throw blocked(`no scan control on the owner Libraries page; ${profileNote}; at ${new URL(page.url()).pathname}${new URL(page.url()).search}; page was: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
         }
         await scan.click({timeout: 8000});
         await page.waitForTimeout(3000);
         const scanResult = 'scan control pressed';
-        return {detail: `dashboard ${dash.length} chars; libraries ${libs.length} chars; ${scanResult}`,
+        return {detail: `dashboard ${dash.length} chars; libraries ${libs.length} chars; ${scanResult}; ${profileNote}`,
           evidence: {screenshot: await evidence.shot(page, 'settings-libraries')}};
       });
     }
