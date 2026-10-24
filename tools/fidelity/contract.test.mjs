@@ -89,3 +89,17 @@ test('unavailable native paint is one measurement failure rather than an invente
   const report = compareMeasurements(reference, actual);
   assert.equal(report.differenceCount, 1); assert.equal(report.differences[0].kind, 'unavailable-measurement');
 });
+test('declared unavailable native text is not replaced with empty strings or a copy defect', () => {
+  const reference = fixture(), actual = fixture(); actual.elements[0].ownText = null; actual.elements[0].normalizedText = null;
+  actual.unavailable = ['ownText', 'normalizedText'].map(property => ({element: '0', property, reason: 'Visible native text has not been observed'}));
+  assert.deepEqual(validateMeasurement(actual), []);
+  const result = compareMeasurements(reference, actual);
+  assert.equal(result.differenceCount, 2); assert.ok(result.differences.every(value => value.kind === 'unavailable-measurement'));
+});
+test('actual font scale is unscored metadata and cannot cancel a measured font difference', () => {
+  const reference = fixture(), actual = fixture(); actual.diagnostics = {fontScale: 1.25};
+  assert.deepEqual(validateMeasurement(actual), []); assert.equal(compareMeasurements(reference, actual).verdict, 'PASS');
+  actual.elements[0].style.fontSize = '30px';
+  assert.ok(compareMeasurements(reference, actual).differences.some(value => value.property === 'fontSize'));
+  actual.diagnostics.fontScale = 0; assert.ok(validateMeasurement(actual).includes('diagnostics.fontScale'));
+});

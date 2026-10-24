@@ -27,9 +27,9 @@ import (
 //     file's directory is a season folder ("Season 01", "Specials") the show's
 //     images come from the parent only, and the season folder's own
 //     poster.jpg/folder.jpg is that season's poster.
-//   - music: artist.jpg and fanart.jpg/backdrop.jpg in the file's directory,
-//     then its parent (never above the root); the album's parent-folder cover
-//     is reported as album/cover for CD1/-style layouts.
+//   - music: album art is beside the tracks (above a CD1-style directory);
+//     artist art is in the album's parent. Album backgrounds fall back to the
+//     artist background. Every lookup stays below the library root.
 //
 // Only positive hits are cached by path (a show's hundred episodes share one
 // read). A miss is not remembered here; instead the scan says which names it
@@ -100,7 +100,9 @@ func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path st
 				out["season/"+strconv.Itoa(season)+"/poster"] = key
 			}
 		}
-	case "music", "audiobook":
+	case "music":
+		return musicSidecars(root, path, first)
+	case "audiobook":
 		if key := first(dirs, "artist.jpg", "artist.png"); key != "" {
 			out["artist/portrait"] = key
 		}

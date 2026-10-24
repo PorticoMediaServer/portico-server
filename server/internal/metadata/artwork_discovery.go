@@ -141,6 +141,9 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 		if e = seedLocalArtwork(ctx, tx, t, fence, now); e != nil {
 			return e
 		}
+		if e = seedMusicAlbumBackdrop(ctx, tx, t, entity, fence, now); e != nil {
+			return e
+		}
 		if t.Kind == "book" || t.Kind == "album" {
 			table, column := "catalog_book_files", "book_id"
 			if t.Kind == "album" {

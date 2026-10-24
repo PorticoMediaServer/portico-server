@@ -10,6 +10,8 @@ test('Live accepts an actual channel identity without inventing its source or pr
   assert.deepEqual(parseLiveScreenSearch({channelId: 'opaque/channel', token: 'unowned'}), {channelId: 'opaque/channel'});
   assert.deepEqual(parseLiveScreenSearch({sourceId: 'actual-source', kind: 'library-channel', view: 'guide', group: 'Drama'}),
     {sourceId: 'actual-source', kind: 'library-channel', view: 'guide', group: 'Drama'});
+  assert.deepEqual(parseLiveScreenSearch({tab: 'recordings', sourceId: 'actual-source', kind: 'live-source'}), {tab: 'recordings', sourceId: 'actual-source', kind: 'live-source'});
+  assert.throws(() => parseLiveScreenSearch({tab: 'invented'}));
   for (const raw of [{view: 'invented'}, {kind: 'library'}, {favorites: 'true'}, {channelId: ['opaque']}, {sourceId: 'x\n'}]) assert.throws(() => parseLiveScreenSearch(raw));
 });
 test('Search navigation preserves only its canonical channel tuple and keeps Person separate', () => {
