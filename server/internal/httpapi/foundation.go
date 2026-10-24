@@ -182,6 +182,9 @@ func (d Dependencies) viewerCapabilities(r *http.Request) (CapabilitiesDocument,
 	// Playback Protocol v1 (sessions, queues, events) is a property of the server, not a
 	// permission: clients switch their playback path on it, per media kind.
 	out.Features["playback_v1"] = "enabled"
+	// Protocol support for the opt-in server-composed Reading series row.
+	// This does not grant access to any library or establish projection readiness.
+	out.Features["reading_discover_series"] = "enabled"
 	if d.LiveChannels != nil {
 		out.Features["guide_windowed_directory"] = "enabled"
 	}
