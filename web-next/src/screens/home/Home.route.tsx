@@ -1,12 +1,28 @@
+import {useEffect, useState} from 'react';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
+import {router} from '../../router';
 import {useScreenAppearance} from '../browse/screen-preferences';
+import {isReadingLibrary} from '../browse/reading-library';
 import {HomeScreen} from './Home';
+import {createReadingContinueBindings, type ReadingContinueBindings} from './reading-continue';
 
 function HomeRouteScreen() {
   const captured = useProtectedWebScreenContext();
   const appearance = useScreenAppearance(captured?.context);
-  return captured ? <HomeScreen {...captured.binding.home} appearance={appearance}/> : null;
+  const context = captured?.context, supported = !!context?.facts.identity.libraries.some(library => isReadingLibrary(library.kind));
+  const [reading, setReading] = useState<Readonly<{context: NonNullable<typeof context>; binding: ReadingContinueBindings}>>();
+  useEffect(() => {
+    if (!context || !supported) return;
+    const current = () => context.isCurrent() && router.state.location.pathname === '/';
+    const binding = createReadingContinueBindings({context: {...context, isCurrent: current}, open: destination => {
+      if (!current()) throw new DOMException('Home reading scope changed', 'AbortError');
+      return router.navigate(destination);
+    }});
+    setReading({context, binding});
+    return () => {void binding.dispose().catch(() => {});};
+  }, [context, supported]);
+  return captured ? <HomeScreen {...captured.binding.home} appearance={appearance} readingContinue={reading?.context === context && supported ? reading.binding : undefined}/> : null;
 }
 
 export default defineWebScreen({id: 'home', component: HomeRouteScreen});
