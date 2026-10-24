@@ -14,6 +14,13 @@ import {createBrowserSetupClaim, type BrowserSetupClaim} from './setup-claim';
 import {secureBrowserPending} from './secure-pending';
 
 export type SetupTarget = Readonly<{server: ServerSignIn; api: HttpLocalApi; pin: ServerPin; draft: SetupDraftStore; dispose: () => void; admittedOwner?: true}>;
+type CompositionPorts = Readonly<{
+  sessions: typeof browserAppSessions; environment: typeof browserConnectionEnvironment; restore: typeof restoreBrowserConnection;
+  remember: typeof rememberNativeSession; claim: () => Pick<BrowserSetupClaim,'prepare'|'cancel'>;
+  draft: (id: string) => SetupDraftStore & {assertAvailable: () => void};
+}>;
+const defaultPorts: CompositionPorts = {sessions: browserAppSessions, environment: browserConnectionEnvironment, restore: restoreBrowserConnection,
+  remember: rememberNativeSession, claim: createBrowserSetupClaim, draft: id => secureBrowserPending<SetupDraft>('portico.initialize.' + id)};
 const changed = () => new CodedError('cancelled', 'The pending setup or selected server changed.');
 
 /** The screen owns form state; this lifetime owns real credential adoption and
@@ -23,25 +30,25 @@ export class BrowserSetupComposition {
   private readonly abort = new AbortController();
   private readonly captures = new WeakMap<SetupTarget, {revision: number; installationId: string}>();
   private owner?: {api: HttpLocalApi; session: LocalSession};
-  private claim?: BrowserSetupClaim;
+  private claim?: Pick<BrowserSetupClaim,'prepare'|'cancel'>;
   private handoffDelivered = false;
-  constructor(private readonly hostedOrigin: string, private readonly navigate: (url: string) => void = url => location.assign(url)) {}
+  constructor(private readonly hostedOrigin: string, private readonly navigate: (url: string) => void = url => location.assign(url), private readonly ports: CompositionPorts = defaultPorts) {}
   private current() {if (!this.active || this.abort.signal.aborted) throw changed();}
   private install() {const value = installationIdentity(); if (!value) throw changed(); return value.installationId;}
   private async assert(server: SetupTarget) {
     this.current(); const capture = this.captures.get(server);
     if (!capture || capture.installationId !== this.install() || !sameServerPin(server.pin, server.api.getRouteConnection()?.pin ?? {serverId: '', publicKey: '', fingerprint: ''})) throw changed();
-    const selected = await browserAppSessions().read(); this.current();
+    const selected = await this.ports.sessions().read(); this.current();
     if (selected.revision !== capture.revision) throw changed();
     return capture;
   }
   /** Capture before the first pairing await. An unrelated selection cannot be
    * overwritten by a late setup response, including a completed-server resume. */
   connect = async (connect: (signal: AbortSignal) => Promise<SetupTarget>, signal: AbortSignal): Promise<SetupTarget> => {
-    this.current(); const state = await browserAppSessions().read(), install = this.install(); this.current();
+    this.current(); const state = await this.ports.sessions().read(), install = this.install(); this.current();
     const server = await connect(AbortSignal.any([signal, this.abort.signal]));
     try {
-      this.current(); const current = await browserAppSessions().read(); this.current();
+      this.current(); const current = await this.ports.sessions().read(); this.current();
       if (current.revision !== state.revision || install !== this.install()) throw changed();
       if (server.server.setupRequired) {
         this.captures.set(server, {revision: current.revision, installationId: install}); return server;
@@ -49,10 +56,10 @@ export class BrowserSetupComposition {
       // A callback resumes auth3 only through a genuine saved owner session.
       const selected = current.servers.find(value => value.connection.pin.serverId === current.selectedServerId);
       if (!selected || !sameServerPin(selected.connection.pin, server.pin) || selected.connection.session.viewer.role !== 'owner') throw changed();
-      const restored = await restoreBrowserConnection(selected.connection.session); this.current();
+      const restored = await this.ports.restore(selected.connection.session); this.current();
       if (!restored) throw changed();
       try {
-        const after = await browserAppSessions().read(); this.current();
+        const after = await this.ports.sessions().read(); this.current();
         const live = after.servers.find(value => value.connection.pin.serverId === after.selectedServerId);
         if (!live || !sameServerPin(live.connection.pin, server.pin) || live.connection.session.sessionFamilyId !== restored.session.sessionFamilyId || restored.session.viewer.role !== 'owner') throw changed();
         await this.ownerSnapshot(restored.api, restored.session); this.current();
@@ -74,10 +81,10 @@ export class BrowserSetupComposition {
     if (session.viewer.role !== 'owner' || Date.parse(session.expiresAt) <= Date.now()) throw changed();
     const draft = await server.draft.read(); await this.assert(server);
     if (!draft || draft.authMode !== 'local' || draft.serverId !== server.pin.serverId) throw changed();
-    const sessions = browserAppSessions(), environment = browserConnectionEnvironment(server.pin.serverId);
+    const sessions = this.ports.sessions(), environment = this.ports.environment(server.pin.serverId);
     let adopted = false;
     try {
-      await rememberNativeSession(server.api, session, {...environment, storage: sessions.connectionStorage(server.pin.serverId,
+      await this.ports.remember(server.api, session, {...environment, storage: sessions.connectionStorage(server.pin.serverId,
         {signIn: 'local', expectedRevision: capture.revision})}, undefined, () => this.active && this.install() === capture.installationId);
       this.current();
       const selected = await sessions.selected(); this.current();
@@ -97,8 +104,8 @@ export class BrowserSetupComposition {
   };
   continueHosted = async (server: SetupTarget, input: Readonly<{name: string}>): Promise<void> => {
     // Require secure/encrypted atomic storage before acquiring or saving the secret.
-    const claim = this.claim ??= createBrowserSetupClaim();
-    const draft = secureBrowserPending<SetupDraft>('portico.initialize.' + server.pin.serverId); draft.assertAvailable();
+    const claim = this.claim ??= this.ports.claim();
+    const draft = this.ports.draft(server.pin.serverId); draft.assertAvailable();
     await this.assert(server);
     const old = await draft.read(); await this.assert(server);
     const issue = old ? {serverId: old.serverId, setupToken: old.setupToken} : await server.api.request<{serverId: string; setupToken: string}>(routePath('start_browser_setup'), 'POST', {}, this.abort.signal);
@@ -112,7 +119,7 @@ export class BrowserSetupComposition {
     this.handoffDelivered = true; this.navigate(url);
   };
   resumeHosted = async (server: SetupTarget, pending: PendingAccountSetup): Promise<void> => {
-    const claim = this.claim ??= createBrowserSetupClaim();
+    const claim = this.claim ??= this.ports.claim();
     await this.assert(server);
     const draft = await server.draft.read(); await this.assert(server);
     if (!draft || pending.serverId !== server.pin.serverId || pending.requestId !== draft.requestId || draft.authMode !== 'hosted') throw changed();
@@ -122,7 +129,7 @@ export class BrowserSetupComposition {
   addLibrary = async (input: Readonly<{kind: string; name: string; path: string}>): Promise<void> => {
     this.current(); const owner = this.owner; if (!owner) throw changed();
     const assert = async () => {
-      this.current(); const selected = await browserAppSessions().selected(); this.current();
+      this.current(); const selected = await this.ports.sessions().selected(); this.current();
       if (!selected || selected.connection.session.sessionFamilyId !== owner.session.sessionFamilyId || !sameServerPin(selected.connection.pin, owner.api.getRouteConnection()!.pin) || selected.connection.session.viewer.role !== 'owner') throw changed();
       owner.api.setAccessToken(selected.connection.session.accessToken);
     };
