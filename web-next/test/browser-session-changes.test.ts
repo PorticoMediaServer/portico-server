@@ -20,10 +20,11 @@ test('actual app-session writer emits a noncredential read hint only after commi
   let raw: unknown = {version: 1, revision: 1, selectedServerId: 'first', servers: [connection('first'), connection('second')]};
   let release: (() => void) | undefined, commit: Promise<void> | undefined, failing = false, committed = false;
   t.mock.method(BrowserProtectedStore.prototype, 'read', async () => raw);
-  t.mock.method(BrowserProtectedStore.prototype, 'change', async (update: (old: unknown) => unknown) => {
+  t.mock.method(BrowserProtectedStore.prototype, 'change', async (update: (old: unknown) => unknown, beforeCommit?: () => void) => {
     const next = update(raw);
     if (failing) throw new Error('Durable write refused.');
     if (commit) await commit;
+    beforeCommit?.();
     raw = next; committed = true;
   });
   let heard = 0;
@@ -40,6 +41,13 @@ test('actual app-session writer emits a noncredential read hint only after commi
   assert.equal(heard, 2, 'a true no-op publishes nothing');
   failing = true; await assert.rejects(store.select('first')); failing = false;
   assert.equal(heard, 2, 'a failed write publishes nothing'); assert.deepEqual(sent, ['changed', 'changed']);
+  let current = true;
+  commit = new Promise<void>(resolve => {release = resolve;});
+  const cancelled = assert.rejects(store.select('first', () => current), {code: 'cancelled'});
+  await new Promise(resolve => setImmediate(resolve)); current = false; release!(); await cancelled; commit = undefined;
+  assert.equal((await store.read()).selectedServerId, 'second');
+  assert.equal(heard, 2, 'a cancelled write publishes no same-tab retirement');
+  assert.deepEqual(sent, ['changed', 'changed'], 'a cancelled write publishes no cross-tab retirement');
   const otherTab = new Channel('portico.app-session-change.v1');
   otherTab.postMessage('changed'); assert.equal(heard, 3);
   otherTab.postMessage({changed: true}); assert.equal(heard, 3, 'unknown channel payload is not an authority event');
