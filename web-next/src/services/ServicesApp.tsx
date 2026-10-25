@@ -3,7 +3,7 @@ import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterPro
 import type {JoinLink} from '@core/join-link.ts';
 import {IconSprite} from '../kit/Icon';
 import {StateView} from '../kit/states';
-import {ServicesAuthStage, ServicesActions, ServicesHeading, ServicesNotice} from '../kit/accounts/ServicesAuth';
+import {ServicesAuthStage, ServicesActions, ServicesHeading, ServicesLead, ServicesNotice, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
 import {Button} from '../kit/controls';
 import {servicesAccount, type ServicesAccount} from './session';
 import {ServicesBootstrap} from './bootstrap';
@@ -81,10 +81,14 @@ function HomeRoute() {
 }
 function AccountRoute() {
   const {account, session} = useAccount(), {tab} = workspace.useSearch<ServicesRouter>();
-  const [authenticating, setAuthenticating] = useState(() => !session);
+  const [authenticating, setAuthenticating] = useState(() => !session), [deleted, setDeleted] = useState(false);
+  const {t} = servicesI18n();
+  useEffect(() => {if (session) setDeleted(false);}, [session]);
   useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
+  if (deleted && !session) return <ServicesAuthStage><ServicesStateIcon/><ServicesHeading>{t('web.deleteAccount.doneTitle')}</ServicesHeading>
+    <ServicesLead>{t('web.deleteAccount.doneBody')}</ServicesLead><ServicesActions><Button variant="glass" onClick={() => {setDeleted(false);location.assign('/');}}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
   if (!session || authenticating) return <ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} />;
-  return <AccountPage account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} />;
+  return <AccountPage account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} onDeleted={() => setDeleted(true)} />;
 }
 function DeviceRoute() {
   const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), link = bootstrap.getSnapshot().link;

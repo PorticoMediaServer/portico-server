@@ -8,13 +8,13 @@ import {ServicesAuthenticator, ServicesBadge, ServicesDangerAction, ServicesGrou
 import {HostedError, ServicesLabel, ServicesNotice, ServicesQuiet, ServicesStrength} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
-import {currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
+import {accountIdentity, sameAccount, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 import type {WorkspaceApi} from './workspace-api';
 import styles from './services.module.css';
 
 type Task = 'password_set_or_change' | 'email_change' | 'mfa_enroll' | 'mfa_disable' | 'recovery_codes';
-export function SecurityPanel({account, api, identity, username, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; error?: unknown}) {
+export function SecurityPanel({account, api, identity, username, onDeleted, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; onDeleted?: () => void; error?: unknown}) {
   const {t} = useMemo(servicesI18n, []);
   const [state, setState] = useState<SecurityState>(), [offered, setOffered] = useState<IdentityProvider[]>([]);
   const [error, setError] = useState<unknown>(), [task, setTask] = useState<Task>(), [deleting, setDeleting] = useState(false);
@@ -105,7 +105,7 @@ export function SecurityPanel({account, api, identity, username, error: parentEr
       {exportPending && <ServicesQuiet>{t('web.account.export.preparing')}</ServicesQuiet>}
       <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')} help={t('web.deleteAccount.help')}><ServicesDangerAction compact icon="i-trash" onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
       {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
-      {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onClose={() => setDeleting(false)} />}
+      {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onDeleted={onDeleted} onClose={() => setDeleting(false)} />}
     </>}
     <Dialog open={Boolean(disconnecting)} onOpenChange={open => { if (!open && !busy) setDisconnecting(undefined); }} title={t('web.hostedSecurity.disconnectTitle', {provider: disconnecting ? providerName(disconnecting.provider) : ''})}
       description={t('web.hostedSecurity.disconnectBody', {provider: disconnecting ? providerName(disconnecting.provider) : ''})} footer={<><Button size="small" disabled={busy} onClick={() => setDisconnecting(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction loading={busy} onClick={() => void disconnect()}>{t('web.hostedSecurity.disconnect')}</ServicesDangerAction></>}><></></Dialog>
@@ -160,7 +160,7 @@ function SecurityTask({account, identity, state, task, onClose}: {account: Servi
   </Dialog>;
 }
 
-function DeleteAccount({account, identity, target, onClose}: {account: ServicesAccount; identity: AccountIdentity; target: string; onClose: () => void}) {
+function DeleteAccount({account, identity, target, onClose, onDeleted}: {account: ServicesAccount; identity: AccountIdentity; target: string; onClose: () => void; onDeleted?: () => void}) {
   const {t} = useMemo(servicesI18n, []), [operationId] = useState(() => crypto.randomUUID());
   const [preview, setPreview] = useState<DeletionPreview>(), [typed, setTyped] = useState(''), [error, setError] = useState<unknown>(), [busy, setBusy] = useState(false);
   const life = useRef<AbortController | null>(null);
@@ -169,12 +169,29 @@ function DeleteAccount({account, identity, target, onClose}: {account: ServicesA
     void currentAccountWork(account, session => account.client.deletionPreview(operationId, session.accessToken, controller.signal), identity).then(value => { if (!controller.signal.aborted) setPreview(value); }, value => { if (!controller.signal.aborted) setError(value); });
     return () => controller.abort();
   }, [account, identity, operationId]);
+  const pending = useRef(false);
   const remove = async () => {
-    if (!preview?.canDelete || !target || typed.trim().toLowerCase() !== target.toLowerCase() || busy || !life.current) return;
-    const signal = life.current.signal; setBusy(true);
-    try { await currentAccountWork(account, session => account.client.acceptDeletion(preview, typed, session.accessToken, signal), identity); if (!signal.aborted) await account.service.logout(); }
-    catch (value) { if (!signal.aborted) setError(value); }
-    finally { if (!signal.aborted) setBusy(false); }
+    const flight = life.current, reviewed = preview, confirmation = typed;
+    if (!reviewed?.canDelete || !target || confirmation.trim().toLowerCase() !== target.toLowerCase() || pending.current || !flight || flight.signal.aborted) return;
+    const signal = flight.signal; pending.current = true; setBusy(true);
+    try {
+      // Obtain the exact family before the terminal request. A successful deletion
+      // itself ends that family, so a post-request session refresh is not proof of failure.
+      const session = await currentAccountWork(account, async session => session, identity);
+      signal.throwIfAborted();
+      const receipt = await account.client.acceptDeletion(reviewed, confirmation, session.accessToken, signal);
+      signal.throwIfAborted();
+      if (!receipt.accountDeleted || !receipt.deletionId || (receipt.status !== 'complete' && receipt.status !== 'pending-offline-servers')) throw new ApiError(400, 'invalid_response', 'invalid_response', false);
+      const current = account.service.getSnapshot().session;
+      if (current && sameAccount(accountIdentity(current), identity)) {
+        const cleanup = account.service.logoutIfCurrent(identity);
+        // logoutIfCurrent clears only this family synchronously before its secure
+        // persistence awaits. The receipt-backed done view survives that unmount.
+        onDeleted?.();
+        await cleanup;
+      }
+    } catch (value) { if (!signal.aborted) setError(value); }
+    finally { pending.current = false; if (!signal.aborted) setBusy(false); }
   };
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={t('web.deleteAccount.confirmTitle')} description={t('web.deleteAccount.help')} showCloseButton={false}
     footer={<><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{preview?.ownedServers.length ? <Button size="small" variant="primary" onClick={() => location.assign('/account?tab=servers')}>{t('account.delete.manageServers')}</Button> : null}{preview?.canDelete && <ServicesDangerAction icon="i-trash" loading={busy} disabled={!target || typed.trim().toLowerCase() !== target.toLowerCase()} onClick={() => void remove()}>{t('web.deleteAccount.confirmAction')}</ServicesDangerAction>}</>}>

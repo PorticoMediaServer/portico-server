@@ -13,11 +13,11 @@ import {workspaceApi} from './workspace-api';
 import {accountIdentity, type ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 
-export function AccountPage({account, session, section}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection}) {
+export function AccountPage({account, session, section, onDeleted}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; onDeleted?: () => void}) {
   const identity = accountIdentity(session);
-  return <BoundAccount key={identity.accountId + '/' + identity.familyId} account={account} session={session} section={section} />;
+  return <BoundAccount key={identity.accountId + '/' + identity.familyId} account={account} session={session} section={section} onDeleted={onDeleted} />;
 }
-function BoundAccount({account, session, section}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection}) {
+function BoundAccount({account, session, section, onDeleted}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; onDeleted?: () => void}) {
   const {t} = useMemo(servicesI18n, []);
   const accountId = session.account.id, familyId = session.familyId!;
   const identity = useMemo(() => ({accountId, familyId}), [accountId, familyId]);
@@ -34,14 +34,14 @@ function BoundAccount({account, session, section}: {account: ServicesAccount; se
   }, [api]);
   const name = session.account.displayName || session.account.username, initial = [...name][0]?.toLocaleUpperCase() ?? '';
   const select = (tab: ServicesSection) => location.assign('/account?tab=' + tab);
-  const signOut = () => { void account.service.logout().catch(setError); };
+  const signOut = () => { void account.service.logoutIfCurrent(identity).catch(setError); };
   const header = <ServicesHeader unread={state.unread > 0} avatar={<ProfileAvatar appearance="session" initial={initial} name={name} onClick={() => select('devices')} />} />;
   const frame = (children: ReactNode, actions?: ReactNode, description?: ReactNode) => <ServicesWorkspace header={header} account={{name, email: contact, initial}} section={section}
     onSection={select} onSignOut={signOut} actions={actions} phoneActions={section === 'devices' ? actions : undefined} unread={state.unread} description={description}>{error ? <HostedError error={error} /> : null}{children}</ServicesWorkspace>;
   if (section === 'devices') return <DevicesPanel api={api} frame={(children, actions) => frame(children, actions, t('services.workspace.devicesBody'))} />;
   if (section === 'notifications') return frame(<FeedPanel feed={feed} onReviewDevices={() => select('devices')} />,
     <Button size="small" icon="i-check" disabled={state.busy || !state.unread} onClick={() => void feed.markRead('all')}>{t('web.account.notif.markAll')}</Button>);
-  if (section === 'security') return frame(<SecurityPanel account={account} api={api} identity={identity} username={session.account.username} />,
+  if (section === 'security') return frame(<SecurityPanel account={account} api={api} identity={identity} username={session.account.username} onDeleted={onDeleted} />,
     undefined, t('services.workspace.securityBody'));
   return frame(<ServersPanel api={api} />, undefined, t('web.hostedAccount.serversHelp'));
 }
