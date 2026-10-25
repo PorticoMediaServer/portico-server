@@ -72,18 +72,21 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
   return owner.value;
 }
 
-/** Fresh committed context for generic Browse. The original binding/runtime and
- * route own all effects; a successor never revives an already retired owner.
- * Existing callers keep the previous hook until their own areas migrate. */
+/** Fresh committed context for a route's original authority and runtime. Shell
+ * publication also updates dock, unread and preference presentation; those
+ * publications must not retire the route's controllers or drafts. Each owner
+ * keeps the original binding, never adopts a later one, and is replaced only
+ * when its authority, route or actual playback runtime changes. */
 export function useCommittedLibraryScreenContext(captured: ProtectedLibraryScreen, routeKey: string, routeCurrent: () => boolean): ScreenContext | undefined {
-  const context = captured.context, binding = captured.binding;
-  const [published, publish] = useState<Readonly<{context: typeof context; binding: ShellBindings; routeKey: string; owner: ReturnType<typeof libraryScreenOwner>}>>();
+  const context = captured.context, binding = captured.binding, scopeKey = binding.scopeKey, runtime = binding.playback?.runtime;
+  const [published, publish] = useState<Readonly<{context: typeof context; scopeKey: string; runtime: typeof runtime; routeKey: string; owner: ReturnType<typeof libraryScreenOwner>}>>();
   useLayoutEffect(() => {
-    const owner = libraryScreenOwner(context, binding.scopeKey, () => binding, routeCurrent);
-    publish({context, binding, routeKey, owner});
+    const owner = libraryScreenOwner(context, scopeKey, () => binding, routeCurrent);
+    publish({context, scopeKey, runtime, routeKey, owner});
     return owner.dispose;
-    // routeCurrent belongs to this exact route key and is never adopted later.
-  }, [context, binding, routeKey]);
-  return published?.context === context && published.binding === binding && published.routeKey === routeKey && published.owner.value.isCurrent()
+    // binding and routeCurrent are captured for this tuple, never adopted later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context, scopeKey, runtime, routeKey]);
+  return published?.context === context && published.scopeKey === scopeKey && published.runtime === runtime && published.routeKey === routeKey && published.owner.value.isCurrent()
     ? published.owner.value : undefined;
 }
