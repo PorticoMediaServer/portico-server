@@ -117,6 +117,9 @@ func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p ide
 		return err
 	}
 	input.Source = &source
+	if err = discPlanInputTx(ctx, tx, input); err != nil {
+		return err
+	}
 	input.ExcludedByEngine, err = routeFailuresTx(ctx, tx, p, input.SourceID)
 	return err
 }
@@ -463,7 +466,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		}
 	}
 
-	if mode == "hls" && s.hls.finite != nil && delivery.ConversionTarget == nil {
+	if mode == "hls" && !inputs.input.Disc && s.hls.finite != nil && delivery.ConversionTarget == nil {
 		delivery.Profile = finiteDeliveryProfile
 		delivery.Strategy = DeliveryVideoConversion
 		delivery.Reason = ReasonFiniteNormalization
@@ -503,6 +506,9 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	if pinRows != 1 {
 		return Session{}, ErrStaleOffer
+	}
+	if e = pinDiscSessionTx(ctx, tx, id, aid); e != nil {
+		return Session{}, e
 	}
 	if mode == "remote" && prepared.subtitleEvidence != "" {
 		if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {

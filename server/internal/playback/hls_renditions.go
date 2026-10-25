@@ -575,7 +575,21 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 		return
 	}
 	offset := strconv.Itoa(from * HLSSegmentSeconds)
-	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,pipe", "-ss", offset, "-i", input.Argument, "-ss", "0", "-map", "0:" + strconv.Itoa(r.StreamIndex), "-vn", "-sn", "-dn"}
+	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,pipe"}
+	readerOptions, readerURL, residual := input.Options, input.Argument, int64(0)
+	if input.InputAt != nil {
+		var at int64
+		readerOptions, readerURL, at, err = input.InputAt(ctx, int64(from*HLSSegmentSeconds*1000))
+		if err != nil {
+			failed(FailureConverter)
+			return
+		}
+		residual = int64(from*HLSSegmentSeconds*1000) - at
+	} else {
+		args = append(args, "-ss", offset)
+	}
+	args = append(args, readerOptions...)
+	args = append(args, "-i", readerURL, "-ss", strconv.FormatFloat(float64(residual)/1000, 'f', 3, 64), "-map", "0:"+strconv.Itoa(r.StreamIndex), "-vn", "-sn", "-dn")
 	audioTarget := decoder.ConversionTarget{AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, AudioSampleRate: r.SampleRate, AudioChannelLayout: r.ChannelLayout, AudioBitDepth: r.BitDepth, Packaging: renditionPackaging(r)}
 	graph, err := decoder.BuildConversion(decoder.ConversionRequest{Target: &audioTarget, Toolchain: decoder.CurrentToolchain(), CopyAudio: r.Action == "copy", ConvertAudio: r.Action == "convert", AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, Downmix: r.Downmix == DownmixITULimited, AudioSampleRate: r.SampleRate})
 	if err != nil {
@@ -587,7 +601,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	initWindow := fmt.Sprintf("audio-%d-init-%d.mp4", r.Ordinal, from)
 	outputDir := dir
 	clock := &convertedFragmentClock{}
-	if fragmented {
+	if fragmented || input.InputAt != nil {
 		outputDir = filepath.Join(dir, fmt.Sprintf("audio-window-%d-%d", r.Ordinal, from))
 		_ = os.RemoveAll(outputDir)
 		if err := os.MkdirAll(outputDir, 0700); err != nil {
@@ -620,11 +634,28 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 				return
 			case <-tick.C:
 			}
+			if input.Validate != nil {
+				if err := input.Validate(run); err != nil {
+					cancel()
+					failed(FailureConverter)
+					return
+				}
+			}
 			h.mu.Lock()
 			produced := w.produced
 			h.mu.Unlock()
 			for produced+1 < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(dir, renditionSegmentFile(r, produced+1))) {
 				produced++
+			}
+			if input.InputAt != nil && !fragmented {
+				for next := produced + 1; next < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(outputDir, renditionSegmentFile(r, next))); next++ {
+					if err := os.Rename(filepath.Join(outputDir, renditionSegmentFile(r, next)), filepath.Join(dir, renditionSegmentFile(r, next))); err != nil {
+						cancel()
+						failed(FailureConverter)
+						return
+					}
+					produced = next
+				}
 			}
 			if fragmented {
 				var publishErr error
@@ -680,8 +711,19 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			args = append([]string{"-progress", "pipe:1", "-stats_period", "1", "-nostats"}, args...)
 			progress = vod.NewConversionProgressWriter(observe)
 		}
+		if input.Validate != nil {
+			if err = input.Validate(run); err != nil {
+				cancel()
+				<-watchDone
+				failed(FailureConverter)
+				return
+			}
+		}
+		for _, extra := range input.Extra {
+			_, _ = extra.Seek(0, io.SeekStart)
+		}
 		var cmd *exec.Cmd
-		if cmd, err = mediaexec.CommandContext(run, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}}); err == nil {
+		if cmd, err = mediaexec.CommandContext(run, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), InputFD: input.MountFD, InputMount: input.MountPath, ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}}); err == nil {
 			cmd.WaitDelay = 2 * time.Second
 			cmd.Stderr = tail
 			if progress != nil {
@@ -692,6 +734,24 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	cancel()
 	<-watchDone
+	if input.Validate != nil {
+		if err := input.Validate(ctx); err != nil {
+			failed(FailureConverter)
+			return
+		}
+	}
+	if input.InputAt != nil && !fragmented {
+		for next := from; next < hlsSegmentCount(plan.Duration); next++ {
+			source := filepath.Join(outputDir, renditionSegmentFile(r, next))
+			if !segmentReady(source) {
+				continue
+			}
+			if err := os.Rename(source, filepath.Join(dir, renditionSegmentFile(r, next))); err != nil {
+				failed(FailureConverter)
+				return
+			}
+		}
+	}
 	if fragmented {
 		if _, publishErr := promoteConvertedFragments(outputDir, dir, initWindow, from, &r, clock); publishErr != nil {
 			failed(FailureConverter)

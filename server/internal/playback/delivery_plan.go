@@ -177,6 +177,7 @@ const DownmixITULimited = "itu_limited"
 // the viewer's resolved position. Planning is a pure function of it, which is
 // what makes the decision matrix testable without a database.
 type DeliveryInput struct {
+	Disc   bool
 	BurnIn bool
 	Server *decoder.ToolchainFacts
 	// Source and Client are the full facts. When Source is nil the flat fields
@@ -508,6 +509,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	// Route 1: the original file.
 	{
 		rejections := excluded(DeliveryOriginal)
+		if in.Disc {
+			rejections = append(rejections, RouteRejection{RejectContainer, "disc_reader_required"})
+		}
 		rejections = append(rejections, audioRules...)
 		rejections = append(rejections, pictureRules...)
 		if policy.DirectPlay == "never" {

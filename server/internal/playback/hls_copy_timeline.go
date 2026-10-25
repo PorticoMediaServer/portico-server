@@ -211,13 +211,19 @@ func probeFormatStart(ctx context.Context, ffprobe string, input *assets.Playbac
 
 func runProbe(ctx context.Context, ffprobe string, input *assets.PlaybackInput, args ...string) ([]byte, error) {
 	full := append([]string{"-v", "error", "-protocol_whitelist", "file,pipe"}, args...)
+	full = append(full, input.Options...)
 	full = append(full, input.Argument)
 	// Where /dev/fd shares this process's file offset, the previous child left it
 	// wherever it stopped reading.
 	if input.File != nil {
 		_, _ = input.File.Seek(0, io.SeekStart)
 	}
-	cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: ffprobe, Args: full, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths()})
+	if input.Validate != nil {
+		if err := input.Validate(ctx); err != nil {
+			return nil, err
+		}
+	}
+	cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: ffprobe, Args: full, Files: input.ExtraFiles(), InputFD: input.MountFD, InputMount: input.MountPath, ReadPaths: input.ReadPaths()})
 	if err != nil {
 		return nil, errCopyTimeline
 	}
@@ -226,6 +232,11 @@ func runProbe(ctx context.Context, ffprobe string, input *assets.PlaybackInput, 
 	cmd.Stdout = &limitedWriter{buffer: &out, limit: 1 << 20}
 	if err := cmd.Run(); err != nil {
 		return nil, errCopyTimeline
+	}
+	if input.Validate != nil {
+		if err := input.Validate(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return out.Bytes(), nil
 }

@@ -186,7 +186,7 @@ func (s *Service) PlanV1(ctx context.Context, p identity.Principal, item string,
 	if e != nil {
 		return DeliveryPlan{}, e
 	}
-	if plan.Mode == "hls" && s.hls != nil && s.hls.finite != nil && plan.ConversionTarget == nil {
+	if plan.Mode == "hls" && !inputs.input.Disc && s.hls != nil && s.hls.finite != nil && plan.ConversionTarget == nil {
 		plan.Strategy, plan.VideoAction, plan.OutputVideoCodec = DeliveryVideoConversion, "convert", "h264"
 		plan.ReasonCodes = append(plan.ReasonCodes, ReasonFiniteNormalization)
 	}

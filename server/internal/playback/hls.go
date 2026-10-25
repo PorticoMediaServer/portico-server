@@ -408,7 +408,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 		position = timeline.Boundaries[from]
 	}
-	if timeline != nil || grid && delivery != nil && delivery.OutputContainer == "fmp4_hls" {
+	if input.InputAt != nil || timeline != nil || grid && delivery != nil && delivery.OutputContainer == "fmp4_hls" {
 		staging = filepath.Join(dir, "window-"+strconv.Itoa(from))
 		_ = os.RemoveAll(staging)
 		if e = os.MkdirAll(staging, 0700); e != nil {
@@ -434,7 +434,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		if plan != nil && plan.VideoAction == "copy" {
 			args = append(args, "-fflags", "+genpts+discardcorrupt")
 		}
-		if grid && from > 0 {
+		if grid && from > 0 && input.InputAt == nil {
 			// Input-side seek, so the decoder skips rather than decodes-and-drops.
 			// A copy window seeks a hair past its keyframe: the demuxer lands on
 			// the index entry at or before the target, and rounding the target
@@ -463,8 +463,33 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			}
 		}
 		args = append(args, inputArgs...)
+		readerOptions := input.Options
+		residual := int64(0)
+		if input.InputAt != nil {
+			options, url, at, err := input.InputAt(ctx, int64(math.Round(position*1000)))
+			if err != nil {
+				return nil, nil, err
+			}
+			readerOptions = options
+			path = url
+			residual = int64(math.Round(position*1000)) - at
+		}
+		args = append(args, readerOptions...)
 		args = append(args, "-i", path)
 		args = append(args, extraInput...)
+		if input.InputAt != nil {
+			// Burn-in may already occupy input 1. Chapters are the final input.
+			chapterIndex := 1
+			for _, arg := range extraInput {
+				if arg == "-i" {
+					chapterIndex++
+				}
+			}
+			args = append(args, "-protocol_whitelist", "file,pipe", "-format_whitelist", "ffmetadata", "-f", "ffmetadata", "-i", "pipe:4", "-map_chapters", strconv.Itoa(chapterIndex))
+			if residual > 0 {
+				args = append(args, "-ss", strconv.FormatFloat(float64(residual)/1000, 'f', 3, 64))
+			}
+		}
 		// The plan names the programme audio by absolute stream index. A plan
 		// without a choice (an older session) takes the first track, as before.
 		audioMap := "0:a:0?"
@@ -552,7 +577,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 		supervise.Go("playback.hls.watch-window", func() {
 			defer close(watchDone)
-			h.watchWindow(watchCtx, id, dir, staging, from, limit, cancel, delivery, timeline, fragmentClock)
+			h.watchWindow(watchCtx, id, dir, staging, from, limit, cancel, delivery, timeline, fragmentClock, input.Validate)
 		})
 	} else {
 		close(watchDone)
@@ -590,6 +615,9 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		if len(stages) > 0 {
 			h.recordStages(ctx, id, plan, stages)
 		}
+		for _, extra := range input.Extra {
+			_, _ = extra.Seek(0, io.SeekStart)
+		}
 		// Every child starts at the beginning of the source. On platforms where
 		// /dev/fd shares the file offset with this process, the index probe that
 		// ran before has moved it.
@@ -623,7 +651,12 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			}
 		}
 		defer releasePermit()
-		cmd, err := mediaexec.CommandContext(processCtx, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: conversionJobHardware(plan, stages)})
+		if input.Validate != nil {
+			if err := input.Validate(processCtx); err != nil {
+				return err, ""
+			}
+		}
+		cmd, err := mediaexec.CommandContext(processCtx, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), InputFD: input.MountFD, InputMount: input.MountPath, ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: conversionJobHardware(plan, stages)})
 		if err != nil {
 			return err, ""
 		}
@@ -634,6 +667,9 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		tail := &tailWriter{limit: 4096}
 		cmd.Stderr = tail
 		err = cmd.Run()
+		if err == nil && input.Validate != nil {
+			err = input.Validate(processCtx)
+		}
 		return err, sanitizeConverterOutput(tail.String(), input.Argument, h.root)
 	}
 	e, diagnostic := run(delivery)
@@ -674,7 +710,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		if grid {
 			supervise.Go("playback.hls.watch-quota-window", func() {
 				defer close(watchDone)
-				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock)
+				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock, input.Validate)
 			})
 		} else {
 			close(watchDone)
@@ -707,7 +743,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		if grid {
 			supervise.Go("playback.hls.watch-software-window", func() {
 				defer close(watchDone)
-				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock)
+				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock, input.Validate)
 			})
 		} else {
 			close(watchDone)
@@ -741,6 +777,12 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 	} else if e != nil {
 		status = "failed"
 	}
+	if input.Validate != nil {
+		if err := input.Validate(ctx); err != nil {
+			h.failedWith(ctx, id, FailureConverter, "")
+			return
+		}
+	}
 	// Record the final edge here as well as on the watcher's tick: a window that
 	// finishes inside one tick would otherwise publish no progress at all.
 	produced := from - 1
@@ -764,7 +806,11 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 				return
 			}
 		} else {
-			produced = highestProducedSegment(dir, from)
+			if staging != "" {
+				produced = promoteCopySegments(staging, dir, from, e == nil)
+			} else {
+				produced = highestProducedSegment(dir, from)
+			}
 		}
 	}
 
@@ -778,7 +824,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 // run far enough ahead of the viewer is stopped rather than paused: a stopped
 // converter costs nothing, and the fixed grid means the next demand restarts it
 // exactly where the viewer is instead of where it left off.
-func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, limit int, cancel context.CancelFunc, plan *DeliveryPlan, timeline *copyTimeline, fragmentClock *convertedFragmentClock) {
+func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, limit int, cancel context.CancelFunc, plan *DeliveryPlan, timeline *copyTimeline, fragmentClock *convertedFragmentClock, guards ...func(context.Context) error) {
 	cfg := h.configuration()
 	interval := 500 * time.Millisecond
 	if staging != "" {
@@ -793,6 +839,15 @@ func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, li
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+		}
+		for _, guard := range guards {
+			if guard != nil {
+				if err := guard(ctx); err != nil {
+					h.publicationFailed(id, err)
+					cancel()
+					return
+				}
+			}
 		}
 		produced := from - 1
 		if staging != "" {

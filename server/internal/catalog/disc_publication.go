@@ -78,6 +78,8 @@ func (s *Service) CommitInventoryDiscProbe(ctx context.Context, job, object, rev
  media_title_key=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.source_generation=excluded.source_generation AND inventory_disc_facts.root_incarnation=excluded.root_incarnation AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.media_title_key ELSE '' END,
  media_stream_revision=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.source_generation=excluded.source_generation AND inventory_disc_facts.root_incarnation=excluded.root_incarnation AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.media_stream_revision ELSE 0 END,
  media_chapter_revision=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.source_generation=excluded.source_generation AND inventory_disc_facts.root_incarnation=excluded.root_incarnation AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.media_chapter_revision ELSE 0 END,
+ owner_title_key=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.source_generation=excluded.source_generation AND inventory_disc_facts.root_incarnation=excluded.root_incarnation AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.owner_title_key ELSE '' END,
+ choice_revision=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.choice_revision ELSE inventory_disc_facts.choice_revision+1 END,
  asset_id=excluded.asset_id,source_revision=excluded.source_revision,source_generation=excluded.source_generation,root_incarnation=excluded.root_incarnation,kind=excluded.kind,packaging=excluded.packaging,encryption=excluded.encryption,fingerprint=excluded.fingerprint`,
 		object, asset, revision, source.Generation, source.Incarnation, validated.Kind, validated.Packaging, validated.Encryption, fingerprint)
 	if err != nil {
@@ -114,15 +116,31 @@ func persistDiscMediaSelectionTx(ctx context.Context, tx *sql.Tx, source Library
 	selection := facts.DiscSelection
 	result, err := tx.ExecContext(ctx, `UPDATE inventory_disc_facts SET media_title_key=?,media_stream_revision=?,media_chapter_revision=?
  WHERE object_id=? AND asset_id=? AND source_revision=? AND source_generation=? AND root_incarnation=? AND fingerprint=? AND encryption='none'
+ AND (owner_title_key='' OR owner_title_key=?)
  AND EXISTS(SELECT 1 FROM inventory_disc_titles t WHERE t.object_id=inventory_disc_facts.object_id AND t.title_key=?
  AND t.duration_ms=? AND (SELECT COUNT(*) FROM inventory_disc_chapters c WHERE c.object_id=t.object_id AND c.title_key=t.title_key)=?)`,
-		selection.TitleKey, streams, chapters, object, asset, revision, source.Generation, source.Incarnation, selection.StructureFingerprint, selection.TitleKey, int64(math.Round(facts.Duration*1000)), len(facts.Chapters))
+		selection.TitleKey, streams, chapters, object, asset, revision, source.Generation, source.Incarnation, selection.StructureFingerprint, selection.TitleKey, selection.TitleKey, int64(math.Round(facts.Duration*1000)), len(facts.Chapters))
 	if err != nil {
 		return err
 	}
 	if n, _ := result.RowsAffected(); n != 1 {
 		return errors.New("disc media selection changed during analysis")
 	}
+	if len(selection.Members) > disc.MaxConsumedMembers {
+		return disc.ErrProtocol
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_disc_media_members WHERE object_id=?`, object); err != nil {
+		return err
+	}
+	for _, member := range selection.Members {
+		if member.Path == "" || member.ObjectIdentity == "" {
+			return disc.ErrProtocol
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_disc_media_members(object_id,path,object_identity,size,modified_ns,required,directory) VALUES(?,?,?,?,?,?,?)`, object, member.Path, member.ObjectIdentity, member.Size, member.ModifiedNS, member.Required, member.Directory); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

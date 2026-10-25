@@ -12,6 +12,7 @@ import (
 )
 
 func registerFileInfo(registry *apikit.Registry, d Dependencies) {
+	registerDiscTitles(registry, d)
 	v1Route(registry, apikit.Metadata{ID: "get_items_id_file_info", Method: "GET", Path: "/v1/items/{id}/file-info", Summary: "Read authorized file information lazily", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}, func(ctx context.Context, r *http.Request, _ struct{}) (catalog.FileInfo, error) {
 		out := catalog.FileInfo{}
 		if err := homeAllowedQuery(r, "cursor", "limit"); err != nil {

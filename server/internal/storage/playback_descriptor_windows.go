@@ -22,3 +22,7 @@ func (c *Client) ValidatePlaybackDescriptor(context.Context, *os.File, int64, in
 	return ErrPlaybackSource
 }
 func playbackValidateDescriptorHelper(request, io.Writer) error { return ErrPlaybackSource }
+
+func (c *Client) OpenDiscPlaybackDescriptor(context.Context, InventoryRequest, string, int64, int64, bool) (*os.File, error) {
+	return nil, ErrPlaybackSource
+}

@@ -347,8 +347,10 @@ func (h *HLS) copyTimelineFor(ctx context.Context, id, asset string, input *asse
 	if err := dbwork.QueryRow(ctx, h.db, `SELECT size,modified_ns FROM playback_source_pins WHERE session_id=? AND asset_id=?`, id, asset).Scan(&size, &modified); err != nil {
 		return nil, err
 	}
-	if t, err := loadCopyTimeline(ctx, h.db, asset, size, modified); err == nil && t != nil {
-		return t, nil
+	if input.InputAt == nil {
+		if t, err := loadCopyTimeline(ctx, h.db, asset, size, modified); err == nil && t != nil {
+			return t, nil
+		}
 	}
 	if h.ffprobe == "" {
 		return nil, errCopyTimeline
@@ -357,7 +359,11 @@ func (h *HLS) copyTimelineFor(ctx context.Context, id, asset string, input *asse
 	if err != nil {
 		return nil, err
 	}
-	storeCopyTimeline(ctx, h.db, asset, size, modified, t)
+	if input.InputAt != nil {
+		h.storeDiscTimeline(ctx, id, t)
+	} else {
+		storeCopyTimeline(ctx, h.db, asset, size, modified, t)
+	}
 	return t, nil
 }
 
@@ -369,6 +375,9 @@ func (h *HLS) sessionTimeline(ctx context.Context, id string) *copyTimeline {
 	t := h.timelines[id]
 	h.mu.Unlock()
 	if t != nil {
+		return t
+	}
+	if t, disc := h.discTimeline(ctx, id); disc {
 		return t
 	}
 	var action, asset string

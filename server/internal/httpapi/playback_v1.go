@@ -119,6 +119,10 @@ func v1Error(err error) error {
 	}
 	code := ""
 	switch {
+	case errors.Is(err, catalog.ErrSourceBusy):
+		code = "source_unavailable"
+	case errors.Is(err, catalog.ErrDiscPreparing):
+		code = "source_unavailable"
 	case errors.As(err, &field):
 		fields := []apierror.Field{}
 		if field.Path != "" {

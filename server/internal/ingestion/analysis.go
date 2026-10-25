@@ -575,7 +575,10 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 	if structure.Encryption != "none" {
 		return assets.Facts{}, disc.ErrEncrypted
 	}
-	title, ok := structure.MainTitle()
+	title, ok, err := s.catalog.InventoryDiscMainTitle(ctx, object, revision, structure)
+	if err != nil {
+		return assets.Facts{}, err
+	}
 	if !ok {
 		return assets.Facts{}, errors.New("disc has no title of at least a minute")
 	}
@@ -639,7 +642,7 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 		return assets.Facts{}, err
 	}
 	digest := sha256.Sum256(append([]byte("disc_structure_v1\x00"), raw...))
-	facts.DiscSelection = &assets.DiscMediaSelection{TitleKey: title.Key(again.Kind), StructureFingerprint: hex.EncodeToString(digest[:])}
+	facts.DiscSelection = &assets.DiscMediaSelection{TitleKey: title.Key(again.Kind), StructureFingerprint: hex.EncodeToString(digest[:]), Members: before}
 	return facts, nil
 }
 

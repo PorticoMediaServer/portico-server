@@ -21,6 +21,28 @@ const DescriptorPassing = true
 // OpenPlaybackDescriptor transfers a validated descriptor, not a source path
 // reopened by the parent. No network-filesystem syscall runs in the parent.
 func (c *Client) OpenPlaybackDescriptor(ctx context.Context, path string, size, modified int64) (*os.File, error) {
+	return c.openPlaybackDescriptorRequest(ctx, request{Operation: "playback-descriptor", Path: path, Size: size, ModifiedNS: modified})
+}
+
+// OpenDiscPlaybackDescriptor pins the exact inventory object beneath its
+// admitted root. Directory inputs can only be handed to the fd-bound sandbox.
+func (c *Client) OpenDiscPlaybackDescriptor(ctx context.Context, r InventoryRequest, object string, size, modified int64, directory bool) (*os.File, error) {
+	path, err := inventoryPath(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = CheckScanRead(ctx, path); err != nil {
+		return nil, err
+	}
+	operation := "disc-file-descriptor"
+	if directory {
+		operation = "disc-directory-descriptor"
+	}
+	return c.openPlaybackDescriptorRequest(ctx, request{Operation: operation, Path: path, Inventory: &r, Identity: object, Size: size, ModifiedNS: modified})
+}
+func (c *Client) openPlaybackDescriptorRequest(ctx context.Context, req request) (*os.File, error) {
+	path := req.Path
+
 	if c.Guard != nil {
 		if e := c.Guard(path); e != nil {
 			return nil, e
@@ -50,7 +72,7 @@ func (c *Client) OpenPlaybackDescriptor(ctx context.Context, path string, size, 
 	}
 	defer conn.Close()
 	socket := conn.(*net.UnixConn)
-	req := request{Operation: "playback-descriptor", Path: path, ManagedArtifact: managed, Size: size, ModifiedNS: modified}
+	req.ManagedArtifact = managed
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}
@@ -121,7 +143,22 @@ func (c *Client) OpenPlaybackDescriptor(ctx context.Context, path string, size, 
 	}
 }
 func playbackDescriptorHelper(req request, out io.Writer) error {
-	f, e := os.Open(req.Path)
+	var f *os.File
+	var e error
+	switch req.Operation {
+	case "disc-directory-descriptor":
+		if req.Inventory == nil {
+			return ErrPlaybackSource
+		}
+		f, e = openInventoryDirectory(*req.Inventory)
+	case "disc-file-descriptor":
+		if req.Inventory == nil {
+			return ErrPlaybackSource
+		}
+		f, e = openInventoryContent(*req.Inventory)
+	default:
+		f, e = os.Open(req.Path)
+	}
 	if e != nil {
 		return ErrPlaybackSource
 	}
@@ -130,8 +167,14 @@ func playbackDescriptorHelper(req request, out io.Writer) error {
 		return e
 	}
 	info, e := f.Stat()
-	if e != nil || !info.Mode().IsRegular() || info.Size() != req.Size || info.ModTime().UnixNano() != req.ModifiedNS {
+	if e != nil || (req.Operation == "disc-directory-descriptor" && !info.IsDir() || req.Operation != "disc-directory-descriptor" && !info.Mode().IsRegular()) || info.Size() != req.Size || info.ModTime().UnixNano() != req.ModifiedNS {
 		return ErrPlaybackSource
+	}
+	if req.Inventory != nil {
+		actual, err := FileObjectIdentity(f)
+		if err != nil || req.Identity == "" || actual != req.Identity {
+			return ErrPlaybackSource
+		}
 	}
 	current, e := os.Stat(req.Path)
 	if e != nil || !os.SameFile(info, current) {

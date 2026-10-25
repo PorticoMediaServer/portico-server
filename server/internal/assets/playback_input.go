@@ -27,6 +27,14 @@ type PlaybackInput struct {
 	Argument string
 	// Inherit says the file belongs in the child's ExtraFiles.
 	Inherit bool
+	// Options apply to this one reader, before -i. MountFD is inherited directory
+	// descriptor 3, bound only at MountPath by mediaexec.
+	Options   []string
+	InputAt   func(context.Context, int64) ([]string, string, int64, error)
+	MountFD   int
+	MountPath string
+	Validate  func(context.Context) error
+	Extra     []*os.File
 }
 
 // ExtraFiles is the slice to assign to exec.Cmd.ExtraFiles: the descriptor on
@@ -35,7 +43,7 @@ func (p *PlaybackInput) ExtraFiles() []*os.File {
 	if p == nil || !p.Inherit || p.File == nil {
 		return nil
 	}
-	return []*os.File{p.File}
+	return append([]*os.File{p.File}, p.Extra...)
 }
 
 // ReadPaths is what a sandboxed converter must be allowed to read by name: the
@@ -54,7 +62,13 @@ func (p *PlaybackInput) Close() error {
 	if p == nil || p.File == nil {
 		return nil
 	}
-	return p.File.Close()
+	err := p.File.Close()
+	for _, f := range p.Extra {
+		if e := f.Close(); err == nil {
+			err = e
+		}
+	}
+	return err
 }
 
 // OpenPlaybackInput resolves a session's pinned source and opens it the way this

@@ -8380,6 +8380,8 @@ CREATE TABLE inventory_disc_facts(
  packaging TEXT NOT NULL CHECK(packaging IN('iso','folder')),
  encryption TEXT NOT NULL CHECK(encryption IN('none','aacs','bdplus','css')),
  fingerprint TEXT NOT NULL CHECK(length(fingerprint)=64),
+ owner_title_key TEXT NOT NULL DEFAULT '',
+ choice_revision INTEGER NOT NULL DEFAULT 1 CHECK(choice_revision>0),
  media_title_key TEXT NOT NULL DEFAULT '',
  media_stream_revision INTEGER NOT NULL DEFAULT 0 CHECK(media_stream_revision>=0),
  media_chapter_revision INTEGER NOT NULL DEFAULT 0 CHECK(media_chapter_revision>=0)
@@ -8413,6 +8415,20 @@ CREATE TABLE inventory_disc_chapters(
  PRIMARY KEY(object_id,title_key,chapter_order),
  FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
+
+CREATE TABLE inventory_disc_media_members(
+ object_id TEXT NOT NULL REFERENCES inventory_disc_facts(object_id) ON DELETE CASCADE,
+ path TEXT NOT NULL, object_identity TEXT NOT NULL, size INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
+ required INTEGER NOT NULL CHECK(required IN(0,1)), directory INTEGER NOT NULL CHECK(directory IN(0,1)),
+ PRIMARY KEY(object_id,path)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE playback_disc_pins(
+ session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
+ object_id TEXT NOT NULL,
+ title_key TEXT NOT NULL, source_revision TEXT NOT NULL, fingerprint TEXT NOT NULL,
+ stream_revision INTEGER NOT NULL, chapter_revision INTEGER NOT NULL,
+ timeline TEXT NOT NULL DEFAULT ''
+) STRICT;
 
 CREATE TABLE playback_observed_output(
  session_id TEXT PRIMARY KEY REFERENCES playback_v1_sessions(id) ON DELETE CASCADE,

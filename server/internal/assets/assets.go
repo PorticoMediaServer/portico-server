@@ -75,6 +75,7 @@ type Facts struct {
 // read. Both values are private scan evidence, never client display/selection IDs.
 type DiscMediaSelection struct {
 	TitleKey, StructureFingerprint string
+	Members                        []storage.DiscMember
 }
 type Source struct {
 	ID string `json:"id"`

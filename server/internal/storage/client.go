@@ -247,7 +247,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		return playbackStreamHelper(r, io.MultiReader(decoder.Buffered(), in), out)
 	case "playback-validate-descriptor":
 		return playbackValidateDescriptorHelper(r, out)
-	case "playback-descriptor":
+	case "playback-descriptor", "disc-file-descriptor", "disc-directory-descriptor":
 		return playbackDescriptorHelper(r, out)
 	case "root":
 		if err := checkLocalRoot(r.Path); err != nil {

@@ -73,6 +73,9 @@ func (h *HLS) openWindowInput(ctx context.Context, id string, plan *DeliveryPlan
 		input, e := h.WindowInputs.OpenPlaybackWindow(ctx, id)
 		return &assets.PlaybackInput{}, input, e
 	}
+	if input, handled, err := h.openDiscInput(ctx, id); handled {
+		return input, nil, err
+	}
 	input, e := assets.OpenPlaybackInput(ctx, h.db, h.SourceStorage, id)
 	return input, nil, e
 }

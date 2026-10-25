@@ -28,6 +28,7 @@ func (h *HLS) extractBurnFonts(ctx context.Context, input *assets.PlaybackInput,
 		for i := 0; i < 32; i++ {
 			args = append(args, fmt.Sprintf("-dump_attachment:t:%d", i), filepath.Join(fonts, fmt.Sprintf("font-%02d.ttf", i)))
 		}
+		args = append(args, input.Options...)
 		return append(args, "-i", source, "-map", "0:v:0?", "-frames:v", "0", "-an", "-sn", "-dn", "-f", "null", "-")
 	}
 	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -41,7 +42,7 @@ func (h *HLS) extractBurnFonts(ctx context.Context, input *assets.PlaybackInput,
 		if input.File != nil {
 			_, _ = input.File.Seek(0, io.SeekStart)
 		}
-		cmd, err := mediaexec.CommandContext(bounded, mediaexec.Job{Executable: h.binary, Args: build(input.Argument, "file,pipe"), Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, MaxFileBytes: 8 << 20})
+		cmd, err := mediaexec.CommandContext(bounded, mediaexec.Job{Executable: h.binary, Args: build(input.Argument, "file,pipe"), Files: input.ExtraFiles(), InputFD: input.MountFD, InputMount: input.MountPath, ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, MaxFileBytes: 8 << 20})
 		if err != nil {
 			return "", err
 		}

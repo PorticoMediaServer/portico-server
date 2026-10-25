@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"portico.local/server/internal/disc"
 )
@@ -71,6 +72,9 @@ func readInventoryDiscProbe(ctx context.Context, q discQueryer, object, revision
 		}
 		if _, exists := byKey[key]; exists || key != title.Key(out.Kind) {
 			return disc.ErrProtocol
+		}
+		if title.Playlist != nil {
+			title.PlaylistFile = fmt.Sprintf("%05d.mpls", *title.Playlist)
 		}
 		title.Clips, title.Streams, title.Chapters = []disc.Clip{}, []disc.Stream{}, []disc.Chapter{}
 		byKey[key] = len(out.Titles)
