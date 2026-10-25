@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {shellPlaybackSettings} from '../src/shell/settings.ts';
 
-const preferences = {effective: {
+const preferences = {registry:{fields:[]},effective: {
   'playback.defaultSpeed': 1.25, 'audiobooks.defaultSpeed': 1.75,
   'playback.introSkip': 'auto', 'playback.creditsSkip': 'ask', 'playback.recapSkip': 'off',
   'music.gapless': true, 'music.crossfadeMs': 3000, 'music.audioNormalization': 'album',

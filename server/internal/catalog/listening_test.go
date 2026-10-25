@@ -615,3 +615,26 @@ func TestListeningArtistSelectionSeeksTheArtistsSongs(t *testing.T) {
 		t.Fatalf("artist selection walks the library:\n%s", plan)
 	}
 }
+
+func TestListeningBookResumeUsesOnlySelectedAmount(t *testing.T) {
+	s, db, names := listeningFixture(t)
+	c := catalogtest.New(t, db)
+	r := listeningRequest("books", "book", names["book-a"].Public)
+	target := ListeningTarget{"books", "book", names["book-a"].Public}
+	c.Exec(`INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit,completed) VALUES(?,?,?,'stored',2000,0,0)`, r.Profile, names["book-a"].ID, names["part-a2"].ID)
+	for _, ms := range []int{0, 5000, 15000, 30000} {
+		r.ResumeRewindMs = ms
+		page, err := s.ListeningSelection(r, target, "ordered", "", true, "")
+		want := 2.0
+		if ms > 0 {
+			want = 0
+		}
+		if err != nil || page.Resume == nil || page.Resume.PositionSeconds != want {
+			t.Fatalf("choice %d: %+v %v", ms, page.Resume, err)
+		}
+	}
+	r.ResumeRewindMs = 7000
+	if _, err := s.ListeningSelection(r, target, "ordered", "", true, ""); err == nil {
+		t.Fatal("unsupported internal amount admitted")
+	}
+}

@@ -24,7 +24,7 @@ export type ScreenContext = Readonly<{
     back?: () => void;
     chooseProfile?: () => void;
     openBrowse?: (selector: QueueBrowseSelector) => void;
-    play: (target: Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string}>, signal: AbortSignal, isCurrent?: () => boolean) => Promise<void>;
+    play: (target: Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean}>, signal: AbortSignal, isCurrent?: () => boolean) => Promise<void>;
     chooseVersion?: (request: WatchVersionRequest) => Promise<void>;
     reportError: (error: unknown) => void;
   }>;

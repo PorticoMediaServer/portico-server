@@ -210,7 +210,7 @@ export class WebShellPlaybackRuntime {
         await this.capabilityPublisher.publish(profile, life.signal);
       } catch (error) {stackReference.capabilityRejected = true;throw error;}
     }});
-    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference)});
+    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, audiobookPreferences: this.source.settings.audiobookPreferences, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference)});
     // The actual controller retains its ordered stop barrier across consecutive channel starts.
     service.useChannelPlayback(this.channelControl);
     queue.setCompletionPolicy(() => 'hold');
@@ -380,13 +380,14 @@ export class WebShellPlaybackRuntime {
     const item = parseMediaItem(raw);
     if (item.id !== captured.itemId || item.libraryId !== captured.libraryId || !item.available || raw.missing) problem('invalid_playback_target');
     const subject = itemSubject(raw);
+    if (captured.storedResume !== undefined && (typeof captured.storedResume !== 'boolean' || captured.storedResume && (subject.kind !== 'audiobook' || captured.versionId !== undefined))) problem('invalid_playback_target');
     const options = await previous.optionsClient.options(item.id, {}, reading);
     check();
     if (!this.current(previous) || serial !== this.operation) problem('stale_selection_context');
     if (options.itemId !== item.id || !options.versions.length || captured.versionId !== undefined && !options.versions.some(version => version.id === captured.versionId)) problem('playback_version_unavailable');
     // Explicit version choice never remembers a caller's old resume position (§21).
-    const startSeconds = captured.versionId === undefined ? captured.startSeconds : (options.resume?.positionMs ?? 0) / 1000;
-    if (!validSeconds(startSeconds)) problem('invalid_playback_position');
+    const startSeconds = captured.storedResume ? undefined : captured.versionId === undefined ? captured.startSeconds : (options.resume?.positionMs ?? 0) / 1000;
+    if (startSeconds !== undefined && !validSeconds(startSeconds)) problem('invalid_playback_position');
     const stack = this.replace();
     stack.itemId = item.id; stack.libraryId = item.libraryId; stack.subject = subject;
     stack.posterUrl = item.posterUrl; stack.backdropUrl = item.backdropUrl; stack.expanded = subject.kind !== 'music';
@@ -1313,7 +1314,7 @@ export class WebShellPlaybackRuntime {
     else await stack.web.setEqualizer(settings);
     if (this.current(stack)) this.sync();
   }
-  refreshSettings(): void { this.assertCurrent(); this.surface?.applyPreferences(this.source.settings.subtitlePreferences?.()); this.stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects()); this.sync(); }
+  refreshSettings(): void { this.assertCurrent(); this.stack.queue.listening.refreshAudiobookPreferences(); this.surface?.applyPreferences(this.source.settings.subtitlePreferences?.()); this.stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects()); this.sync(); }
 
   onAction = async (action: WebPlaybackAction): Promise<void> => {
     if (action.remote) problem('remote_playback_binding_unavailable');

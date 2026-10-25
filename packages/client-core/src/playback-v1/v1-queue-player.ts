@@ -34,6 +34,7 @@
  * Not here yet: live channels (phase 6).
  */
 import type {PlaybackService, PlaybackSession} from '../index.ts';
+import type {AudiobookPreferences} from '../audiobook-preferences.ts';
 import {serviceText} from '../presentation/service-text.ts';
 import {playbackUserMessage} from '../playback-messages.ts';
 import {ListeningService, loadListeningSelection, type ListeningTarget} from '../listening.ts';
@@ -84,6 +85,8 @@ export interface QueueSessionTransport {
 }
 
 export type V1QueuePlayerOptions = Readonly<{
+  /** Same viewer's current confirmed settings, owned by the caller lifetime. */
+  audiobookPreferences?: () => AudiobookPreferences;
   http: V1Http;
   api: QueueSessionTransport;
   /** The quality a new playback starts with (the viewer's saved default for this network), when
@@ -220,7 +223,7 @@ export class V1QueuePlayer implements QueueController {
     // The listening service speaks plain v1 REST (preferences, selections); it has no controller lane.
     this.scope = Object.freeze({...options.viewer, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'});
     // PERF-24: a video session never asks for listening details.
-    this.listening = new ListeningService(this.scope, (path, body, method, signal) => this.request(path, body, method, signal), options.playback, undefined, (itemId, sessionId) => this.session?.id !== sessionId || this.session.itemId !== itemId || this.session.kind === 'audio');
+    this.listening = new ListeningService(this.scope, (path, body, method, signal) => this.request(path, body, method, signal), options.playback, undefined, (itemId, sessionId) => this.session?.id !== sessionId || this.session.itemId !== itemId || this.session.kind === 'audio', options.audiobookPreferences);
     const self = this;
     this.workspace = Object.freeze({service: {
       getSnapshot: () => self.queueState,
