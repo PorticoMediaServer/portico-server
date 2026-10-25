@@ -5,6 +5,7 @@ import {Button, TextField} from '../../kit/controls';
 import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
+import {metadataDraftValue} from './draft-value';
 
 const t = defaultI18n.t;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
@@ -43,7 +44,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
     if (!data) return [];
     return Object.entries(draft).filter(([field, value]) => {
       const original = data.snapshot.fields[field];
-      return value.locked !== (original?.locked ?? false) || value.value !== (original?.value ?? '');
+      return value.locked !== (original?.locked ?? false) || value.value !== metadataDraftValue(data, field);
     }).map(([field, value]) => ({field, ...value}));
   }, [data, draft]);
   const edit = async (fields: Record<string, {value?: string; locked?: boolean}>) => {
@@ -59,7 +60,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
   };
   const set = (field: string, patch: Partial<{value: string; locked: boolean}>) => {
     const original = data?.snapshot.fields[field];
-    setDraft(current => ({...current, [field]: {value: patch.value ?? current[field]?.value ?? original?.value ?? '', locked: patch.locked ?? current[field]?.locked ?? original?.locked ?? false}}));
+    setDraft(current => ({...current, [field]: {value: patch.value ?? current[field]?.value ?? metadataDraftValue(data, field), locked: patch.locked ?? current[field]?.locked ?? original?.locked ?? false}}));
   };
   const save = () => {
     if (!changed.length) return;
