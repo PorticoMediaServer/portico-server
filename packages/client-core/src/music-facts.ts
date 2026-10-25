@@ -1,7 +1,7 @@
 /** Safe measured catalogue facts. Missing/invalid facts stay absent; a codec or
  * filename never supplies a guessed bit depth, rate, channel count or losslessness. */
 export type MusicTechnicalFacts = Readonly<{
- codec: string; sampleRate?: number; bitDepth?: number; channels?: number; lossless?: boolean;
+ codec: string; sampleRate?: number; bitDepth?: number; channels?: number; layout?: string; lossless?: boolean;
 }>;
 export function parseMusicTechnicalFacts(value: unknown): MusicTechnicalFacts | undefined {
  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -12,6 +12,8 @@ export function parseMusicTechnicalFacts(value: unknown): MusicTechnicalFacts | 
   const amount = raw[key];
   if (typeof amount === 'number' && Number.isSafeInteger(amount) && amount > 0) facts[key] = amount;
  }
+ // Layout is the measured stream label, never inferred from channel count.
+ if (typeof raw.layout === 'string' && raw.layout.length > 0 && raw.layout.length <= 128 && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(raw.layout)) facts.layout = raw.layout;
  if (typeof raw.lossless === 'boolean') facts.lossless = raw.lossless;
  return Object.freeze(facts);
 }

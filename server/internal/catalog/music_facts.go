@@ -13,6 +13,7 @@ type MusicTechnicalFacts struct {
 	SampleRate int    `json:"sampleRate,omitempty"`
 	BitDepth   int    `json:"bitDepth,omitempty"`
 	Channels   int    `json:"channels,omitempty"`
+	Layout     string `json:"layout,omitempty"`
 	Lossless   *bool  `json:"lossless,omitempty"`
 }
 
@@ -33,11 +34,16 @@ func persistMusicFacts(tx *sql.Tx, asset string, f assets.Facts) error {
 	return nil
 }
 
-const musicFactsQuery = `SELECT f.codec,f.sample_rate,f.bit_depth,f.channels,f.lossless FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id JOIN music_technical_facts f ON f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns WHERE e.public_id=pid_blob(?) AND e.kind=7 AND l.available=1 AND a.available=1 ORDER BY l.part_index,a.id LIMIT 1`
+// The probe's first audio stream is the one persistMusicFacts records. A count
+// alone does not establish a speaker layout; absence stays unknown. This remains
+// in the same bounded item/page query and current asset-size/mtime fence.
+const musicLayoutProjection = `COALESCE((SELECT stream.channel_layout FROM asset_streams stream WHERE stream.asset_id=a.token AND stream.type='audio' ORDER BY stream.stream_index LIMIT 1),'')`
+
+const musicFactsQuery = `SELECT f.codec,f.sample_rate,f.bit_depth,f.channels,f.lossless,` + musicLayoutProjection + ` FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id JOIN music_technical_facts f ON f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns WHERE e.public_id=pid_blob(?) AND e.kind=7 AND l.available=1 AND a.available=1 ORDER BY l.part_index,a.id LIMIT 1`
 
 func (s *Service) musicFacts(item string) (*MusicTechnicalFacts, error) {
 	var f MusicTechnicalFacts
-	e := s.read().QueryRow(musicFactsQuery, item).Scan(&f.Codec, &f.SampleRate, &f.BitDepth, &f.Channels, &f.Lossless)
+	e := s.read().QueryRow(musicFactsQuery, item).Scan(&f.Codec, &f.SampleRate, &f.BitDepth, &f.Channels, &f.Lossless, &f.Layout)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -53,7 +59,7 @@ func (s *Service) musicFactsPage(items map[string]*Item) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, e := s.read().Query(`SELECT pid(e.public_id),f.codec,f.sample_rate,f.bit_depth,f.channels,f.lossless FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id JOIN music_technical_facts f ON f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns WHERE e.public_id IN(SELECT pid_blob(value) FROM json_each(?)) AND e.kind=7 AND l.available=1 AND a.available=1 ORDER BY l.part_index,a.id`, idList(ids))
+	rows, e := s.read().Query(`SELECT pid(e.public_id),f.codec,f.sample_rate,f.bit_depth,f.channels,f.lossless,`+musicLayoutProjection+` FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id JOIN music_technical_facts f ON f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns WHERE e.public_id IN(SELECT pid_blob(value) FROM json_each(?)) AND e.kind=7 AND l.available=1 AND a.available=1 ORDER BY l.part_index,a.id`, idList(ids))
 	if e != nil {
 		return e
 	}
@@ -61,7 +67,7 @@ func (s *Service) musicFactsPage(items map[string]*Item) error {
 	for rows.Next() {
 		var id string
 		var f MusicTechnicalFacts
-		if e = rows.Scan(&id, &f.Codec, &f.SampleRate, &f.BitDepth, &f.Channels, &f.Lossless); e != nil {
+		if e = rows.Scan(&id, &f.Codec, &f.SampleRate, &f.BitDepth, &f.Channels, &f.Lossless, &f.Layout); e != nil {
 			return e
 		}
 		if item := items[id]; item != nil && item.AudioFacts == nil {
