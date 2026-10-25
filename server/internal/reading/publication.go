@@ -17,6 +17,7 @@ type Publication struct {
 	Resources  []Resource
 	Spine      []string
 	PageNames  []string
+	Contents []ContentsEntry
 }
 
 // Inspect returns only actual, bounded package/archival facts. PDF page count
@@ -32,6 +33,8 @@ func Inspect(f *Source) (Publication, error) {
 		out.Metadata.Direction = e.Metadata.Direction
 		out.Resources = e.Resources
 		out.Spine = e.Spine
+		out.Contents, err = e.Contents(f.ctx)
+		if err != nil {return out,err}
 	case "cbz":
 		c, err := f.comic()
 		if err != nil {
