@@ -59,6 +59,8 @@ export type SettingsCapabilities = Readonly<{
   audioEffects?: boolean;
   /** This device's audio engine can match the output rate to the file (Smart/Strict/Off). Absent: it cannot. */
   sampleRateMatching?: boolean;
+  /** This device has its own equalizer screen and device-local store. Absent: it has none. */
+  equalizer?: boolean;
   /** This build has mpv as a second player beside the device's own, so there is a player to choose (the capability document then has an `mpv` engine). Absent or false: there is not (the web never has). */
   playerEngines?: boolean;
   /** This device can hand sound to a receiver undecoded (the capability document lists `audioPassthrough`). */
@@ -98,7 +100,7 @@ export type CompositeId =
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV' | 'customizeHome';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
+  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'equalizer' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
@@ -297,6 +299,7 @@ const accountPages: readonly AuthoredPage[] = [
         pref('music.crossfadeMs', 'pref.label.music.crossfadeMs', {type: 'choice', choices: [{value: 0, label: 'pref.value.music.crossfadeMs.0'}, ...seconds(2, 4, 6, 8, 10, 12)]}, {help: 'pref.help.music.crossfadeMs', needs: c => c.audioEffects !== false}),
         toggle('music.smoothTransitions', 'next.settingsSpec.account.music.groups.0.rows.1.children.0.label', {help: 'next.settingsSpec.account.music.groups.0.rows.1.children.0.help', enableWhen: {key: 'music.crossfadeMs', in: [2000, 4000, 6000, 8000, 10000, 12000]}, needs: c => c.audioEffects !== false}),
         toggle('music.gapless', 'pref.label.music.gapless', {help: 'settings.help.gapless', needs: c => c.audioEffects !== false}),
+        custom('equalizer', 'next.settingsSpec.account.music.groups.0.rows.3.label', {platforms: ['phone', 'tv'], needs: c => c.equalizer === true}),
       ]},
       {id: 'lyrics', title: 'next.settingsSpec.account.music.groups.1.title', rows: [
         toggle('playback.showSyncedLyrics', 'settings.row.lyrics', {help: 'settings.help.lyrics'}),
