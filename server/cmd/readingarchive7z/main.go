@@ -2,15 +2,17 @@
 // never parses a 7z archive in its own address space: it starts this program
 // with a fixed argument vector, feeds the leased bytes on stdin within a bounded
 // spool, and reads a small typed result. The helper refuses encoded headers,
-// external streams, oversized headers, members and output, and exits on the
-// parent's deadline or cancellation via its stdin pipe closing.
+// external streams, oversized headers, members and output. The parent owns the
+// process group, deadline, hard address-space/CPU/scratch/output limits and the
+// private scratch root (TMPDIR): the helper only writes beneath that root, and a
+// SIGKILL cannot clean up on its behalf, so the parent removes it after a
+// physical wait.
 package main
 
 import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,20 +36,31 @@ type reply struct {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fail("mode required")
+	code := 0
+	if err := run(); err != nil {
+		emit(reply{Error: err.Error()})
+		code = 2
 	}
-	mode := os.Args[1]
-	switch mode {
+	os.Exit(code)
+}
+
+// run keeps every owned resource unwinding through defers before main exits; a
+// fail path returns an error instead of calling os.Exit inside a worker.
+func run() error {
+	limitProcess()
+	if len(os.Args) < 2 {
+		return errors.New("mode required")
+	}
+	switch os.Args[1] {
 	case "list":
-		list()
+		return list()
 	case "page":
 		if len(os.Args) != 3 {
-			fail("member required")
+			return errors.New("member required")
 		}
-		page(os.Args[2])
+		return page(os.Args[2])
 	default:
-		fail("unknown mode")
+		return errors.New("unknown mode")
 	}
 }
 
@@ -120,10 +133,10 @@ func open() (*sevenzip.ReadCloser, string, error) {
 	return reader, directory, nil
 }
 
-func list() {
+func list() error {
 	reader, directory, err := open()
 	if err != nil {
-		fail(err.Error())
+		return err
 	}
 	defer os.RemoveAll(directory)
 	defer reader.Close()
@@ -135,15 +148,16 @@ func list() {
 		names = append(names, file.Name)
 	}
 	emit(reply{Members: names})
+	return nil
 }
 
-func page(name string) {
+func page(name string) error {
 	if !plainName(name) {
-		fail("invalid member")
+		return errors.New("invalid member")
 	}
 	reader, directory, err := open()
 	if err != nil {
-		fail(err.Error())
+		return err
 	}
 	defer os.RemoveAll(directory)
 	defer reader.Close()
@@ -153,17 +167,19 @@ func page(name string) {
 		}
 		body, err := file.Open()
 		if err != nil {
-			fail("member refused")
+			return errors.New("member refused")
 		}
 		defer body.Close()
 		out, err := io.ReadAll(io.LimitReader(body, maxMemberBytes+1))
 		if err != nil || int64(len(out)) != int64(file.UncompressedSize64) || len(out) > maxMemberBytes {
-			fail("member out of bounds")
+			return errors.New("member out of bounds")
 		}
-		_, _ = os.Stdout.Write(out)
-		return
+		if _, err = os.Stdout.Write(out); err != nil {
+			return errors.New("output failed")
+		}
+		return nil
 	}
-	fail("member not found")
+	return errors.New("member not found")
 }
 
 func plainName(name string) bool {
@@ -199,10 +215,3 @@ func plainMember(name string, dir bool, size uint64) bool {
 func emit(value reply) {
 	_ = json.NewEncoder(os.Stdout).Encode(value)
 }
-
-func fail(reason string) {
-	emit(reply{Error: reason})
-	os.Exit(2)
-}
-
-var _ = fmt.Sprintf
