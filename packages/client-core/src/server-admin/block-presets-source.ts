@@ -108,7 +108,7 @@ export class BlockPresetsSource {
     this.publish({busy:true,error:undefined});
     try{
       if(!owns())return;
-      const raw=await this.api.request(browseCapabilitiesPath(definition.libraryId),'GET',undefined,AbortSignal.any([flight.signal,this.lifetime.signal,caller]));
+      const raw=await this.api.request(browseCapabilitiesPath(definition.libraryId, ''),'GET',undefined,AbortSignal.any([flight.signal,this.lifetime.signal,caller]));
       if(!owns())return;
       const capabilities=parseBrowseCapabilities(raw);
       if(capabilities.library.id!==definition.libraryId||!['movie','tv','anime'].includes(capabilities.library.kind))throw new Error('unsupported_block_preset_library');
