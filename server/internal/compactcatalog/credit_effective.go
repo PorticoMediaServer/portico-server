@@ -51,37 +51,39 @@ type capturedCredit struct {
 	original                 AcceptedCreditTuple
 }
 
-func creditHeads(ctx context.Context, tx *sql.Tx, entity int64) ([]capturedCredit, error) {
+func creditHeads(ctx context.Context, tx *sql.Tx, entity int64) ([]capturedCredit, map[string]string, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT provider FROM credit_source_heads WHERE entity_id=? ORDER BY provider COLLATE BINARY`, entity)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	providers := []string{}
 	for rows.Next() {
 		var provider string
 		if err = rows.Scan(&provider); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		providers = append(providers, provider)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := []capturedCredit{}
+	references := map[string]string{}
 	for _, provider := range providers {
 		head, e := ReadCreditSourceHead(ctx, tx, entity, provider)
 		if e != nil {
-			return nil, e
+			return nil, nil, e
 		}
+		references[provider] = head.RecordReference
 		for _, member := range head.Members {
 			out = append(out, capturedCredit{provider, member.SourceRowID, "current", member.Position, member.Original})
 		}
 	}
 	sortCapturedCredits(out)
-	return out, nil
+	return out, references, nil
 }
 func capturedCreditByID(ctx context.Context, tx *sql.Tx, entity int64, source string) (capturedCredit, error) {
 	var c capturedCredit
@@ -110,11 +112,11 @@ func ownerCreditEntries(ctx context.Context, tx *sql.Tx, entity int64) ([]OwnerC
 	}
 	return out, rows.Err()
 }
-func missingCreditStatus(original capturedCredit, current []capturedCredit) string {
-	for _, c := range current {
-		if c.provider == original.provider && (c.original.RecordReference != original.original.RecordReference || c.original.CreditID == original.original.CreditID && c.original.TargetKind == original.original.TargetKind && c.original.TargetID == original.original.TargetID) {
-			return "replaced"
-		}
+func missingCreditStatus(original capturedCredit, references map[string]string) string {
+	// A sealed head is meaningful even when its successful publication is empty.
+	// No member/name/role comparison can establish record identity or a rebind.
+	if reference, ok := references[original.provider]; ok && reference != original.original.RecordReference {
+		return "replaced"
 	}
 	return "missing"
 }
@@ -125,7 +127,7 @@ func RebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) er
 	return creditProjectionChange(ctx, tx, func() error { return rebuildEffectiveCreditsTx(ctx, tx, entity) })
 }
 func rebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) error {
-	current, err := creditHeads(ctx, tx, entity)
+	current, references, err := creditHeads(ctx, tx, entity)
 	if err != nil {
 		return err
 	}
@@ -163,7 +165,7 @@ func rebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) er
 			if err != nil {
 				return err
 			}
-			c.status = missingCreditStatus(c, current)
+			c.status = missingCreditStatus(c, references)
 		}
 		out = append(out, EffectiveCredit{SourceRowID: c.source, OwnerEntryID: entry.EntryID, Provider: c.provider, SourceStatus: c.status, Original: c.original, CreditedName: entry.CreditedName, Role: entry.Role, Department: entry.Department})
 	}
