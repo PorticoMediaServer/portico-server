@@ -349,3 +349,38 @@ func TestDolbyVisionManifestDoesNotInventMissingSourceLevel(t *testing.T) {
 		t.Fatal("actual compatible base range lost", manifest)
 	}
 }
+
+// Apple's HLS authoring specification, exactly (VIDEO.md VS-1d): profile 5 is
+// a dvh1 sample entry on its own, 8.4 keeps its HLG base and names the db4h
+// brand in SUPPLEMENTAL-CODECS, and neither is signalled as anything else.
+func TestAppleHLSReportsTheDeliveredDolbyVisionProfile(t *testing.T) {
+	facts := matrixToolchain()
+	qualified := func(in *DeliveryInput) { in.FMP4Output = true; in.Server = facts }
+	eac3 := SourceAudio{Codec: "eac3", Channels: 6}
+
+	p5 := hdr10Detail
+	p5.DynamicRange, p5.DolbyVisionProfile, p5.DolbyVisionLevel, p5.CodecTag = assets.RangeDolbyVision, 5, 6, "dvh1"
+	manifest := string(hlsMasterManifest(func() *DeliveryPlan {
+		p := decide(t, videoSource("mkv", "hevc", p5, eac3), appleTVProfile(), qualified)
+		return &p
+	}()))
+	if !strings.Contains(manifest, `CODECS="dvh1.05.06,ec-3"`) || strings.Contains(manifest, "SUPPLEMENTAL-CODECS") || !strings.Contains(manifest, "VIDEO-RANGE=PQ") {
+		t.Fatal(manifest)
+	}
+
+	p84 := hdr10Detail
+	p84.DynamicRange, p84.DolbyVisionProfile, p84.DolbyVisionCompatibility, p84.DolbyVisionLevel, p84.CodecTag = assets.RangeDolbyVision, 8, 4, 6, "dvh1"
+	client := appleTVProfile()
+	for i := range client.Video {
+		if client.Video[i].Codec == "hevc" {
+			client.Video[i].DolbyVisionProfile8Compatibility = []int{1, 4}
+		}
+	}
+	manifest = string(hlsMasterManifest(func() *DeliveryPlan {
+		p := decide(t, videoSource("mkv", "hevc", p84, eac3), client, qualified)
+		return &p
+	}()))
+	if !strings.Contains(manifest, `CODECS="dvh1.08.06,ec-3"`) || !strings.Contains(manifest, `SUPPLEMENTAL-CODECS="dvh1.08.06/db4h"`) || !strings.Contains(manifest, "VIDEO-RANGE=HLG") {
+		t.Fatal(manifest)
+	}
+}

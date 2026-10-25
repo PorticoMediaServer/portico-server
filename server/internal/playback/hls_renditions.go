@@ -396,8 +396,15 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 				dynamicRange = v.DynamicRange
 			}
 			switch dynamicRange {
-			case assets.RangeHDR10, "hdr10_plus", assets.RangeDolbyVision:
+			case assets.RangeHDR10, "hdr10_plus":
 				dr = "PQ"
+			case assets.RangeDolbyVision:
+				// Dolby Vision 8.4 sits on an HLG base picture; Apple's
+				// authoring specification names its range as HLG (VS-1d).
+				dr = "PQ"
+				if profile, compatibility := deliveredDolbyVision(p); profile == 8 && compatibility == 4 {
+					dr = "HLG"
+				}
 			case assets.RangeHLG:
 				dr = "HLG"
 			}
