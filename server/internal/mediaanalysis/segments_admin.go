@@ -562,10 +562,6 @@ func (s *Service) SegmentApprove(ctx context.Context, authorize func(*sql.Tx) er
 	if err != nil {
 		return 0, err
 	}
-	policy, err := segmentmarkers.ReadConfidencePolicy(ctx, tx)
-	if err != nil {
-		return out, err
-	}
 	files, err := reviewFilesTx(ctx, tx, entity, kind)
 	if err != nil {
 		return 0, err
