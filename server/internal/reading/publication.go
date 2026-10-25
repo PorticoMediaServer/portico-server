@@ -59,6 +59,11 @@ func Inspect(f *Source) (Publication, error) {
 		if err != nil {
 			return out, err
 		}
+		if pageList, pageErr := e.PageListCount(f.ctx); pageErr != nil {
+			return out, pageErr
+		} else if pageList != nil {
+			out.Metadata.PageCount = pageList
+		}
 	case "cbz", "cb7":
 		c, err := f.comic()
 		if err != nil {

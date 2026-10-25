@@ -307,3 +307,241 @@ func (e *EPUB) Contents(ctx context.Context) ([]ContentsEntry, error) {
 	}
 	return out, nil
 }
+
+const (
+	pageListXHTMLNamespace = "http://www.w3.org/1999/xhtml"
+	pageListNCXNamespace   = "http://www.daisy.org/z3986/2005/ncx/"
+)
+
+// PageListCount returns the publisher's explicit EPUB page-list count when the
+// navigation declares exactly one correctly namespaced page-list whose authored
+// entries target admitted spine files. The href proof is spine membership only;
+// no target file is opened, so a fragment's existence is not verified. Repeated
+// identical canonical targets (file plus fragment) are ambiguous and unknown.
+// Missing, malformed, duplicate or unresolved page-lists leave the fact unknown;
+// no page estimate, content length or spine file count substitutes.
+func (e *EPUB) PageListCount(ctx context.Context) (*int64, error) {
+	name := e.ncx
+	modern := len(e.navigation) > 0
+	if modern {
+		if len(e.navigation) != 1 {
+			return nil, nil
+		}
+		name = e.navigation[0]
+	}
+	if name == "" {
+		return nil, nil
+	}
+	raw, err := e.archive.read(ctx, name, 1<<20)
+	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrLimit) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if modern && validateXHTML(name, raw, e.allowed) != nil {
+		return nil, nil
+	}
+	root, err := navigationTree(raw)
+	if err != nil {
+		return nil, nil
+	}
+	spine := map[string]bool{}
+	for _, item := range e.Spine {
+		spine[item] = true
+	}
+	targets := map[string]bool{}
+	count := int64(0)
+	addTarget := func(href string) bool {
+		if href == "" || len(href) > 4096 {
+			return false
+		}
+		section, err := resolveReference(name, href)
+		if err != nil || !spine[section] {
+			return false
+		}
+		u, err := url.Parse(href)
+		if err != nil {
+			return false
+		}
+		key := section + "\x00" + u.Fragment
+		if targets[key] {
+			return false
+		}
+		targets[key] = true
+		count++
+		return count <= 4096
+	}
+	var hasAnchor func(*navigationNode) bool
+	hasAnchor = func(n *navigationNode) bool {
+		if n.name.Local == "a" && n.name.Space == pageListXHTMLNamespace {
+			return true
+		}
+		for _, c := range n.children {
+			if hasAnchor(c) {
+				return true
+			}
+		}
+		return false
+	}
+	if modern {
+		if root.name.Space != pageListXHTMLNamespace {
+			return nil, nil
+		}
+		var navs []*navigationNode
+		var find func(*navigationNode)
+		find = func(n *navigationNode) {
+			if n.name.Space == pageListXHTMLNamespace && n.name.Local == "nav" {
+				for _, kind := range strings.Fields(n.attr("type", "http://www.idpf.org/2007/ops")) {
+					if kind == "page-list" {
+						navs = append(navs, n)
+					}
+				}
+			}
+			for _, c := range n.children {
+				find(c)
+			}
+		}
+		find(root)
+		if len(navs) != 1 {
+			return nil, nil
+		}
+		var lists []*navigationNode
+		for _, c := range navs[0].children {
+			if c.name.Space != pageListXHTMLNamespace {
+				if hasAnchor(c) {
+					return nil, nil
+				}
+				continue
+			}
+			switch c.name.Local {
+			case "ol":
+				lists = append(lists, c)
+			case "h1", "h2", "h3", "h4", "h5", "h6":
+			default:
+				if hasAnchor(c) {
+					return nil, nil
+				}
+			}
+		}
+		if len(lists) != 1 {
+			return nil, nil
+		}
+		ok := true
+		var walkList func(*navigationNode)
+		walkList = func(list *navigationNode) {
+			if !ok {
+				return
+			}
+			for _, entry := range list.children {
+				if entry.name.Local == "" && entry.name.Space == "" {
+					if len(strings.TrimSpace(entry.text)) != 0 {
+						ok = false
+					}
+					continue
+				}
+				if entry.name.Space != pageListXHTMLNamespace || entry.name.Local != "li" {
+					// An ol may contain only list items; any other element can
+					// hide authored anchors and must decline the fact.
+					ok = false
+					continue
+				}
+				anchors, nested := 0, 0
+				for _, c := range entry.children {
+					if c.name.Space == pageListXHTMLNamespace && c.name.Local == "a" {
+						anchors++
+						if !addTarget(c.attr("href", "")) {
+							ok = false
+						}
+						continue
+					}
+					if c.name.Space == pageListXHTMLNamespace && c.name.Local == "ol" {
+						nested++
+						walkList(c)
+						continue
+					}
+					if hasAnchor(c) {
+						ok = false
+					}
+				}
+				if anchors != 1 || nested > 1 {
+					ok = false
+				}
+			}
+		}
+		walkList(lists[0])
+		if !ok || count == 0 {
+			return nil, nil
+		}
+	} else {
+		if root.name.Space != pageListNCXNamespace || root.name.Local != "ncx" {
+			return nil, nil
+		}
+		var lists []*navigationNode
+		var find func(*navigationNode)
+		find = func(n *navigationNode) {
+			if n.name.Space == pageListNCXNamespace && n.name.Local == "pageList" {
+				lists = append(lists, n)
+			}
+			for _, c := range n.children {
+				find(c)
+			}
+		}
+		find(root)
+		if len(lists) != 1 {
+			return nil, nil
+		}
+		ok := true
+		for _, entry := range lists[0].children {
+			if entry.name.Local == "" && entry.name.Space == "" {
+				if len(strings.TrimSpace(entry.text)) != 0 {
+					ok = false
+				}
+				continue
+			}
+			if entry.name.Space != pageListNCXNamespace {
+				ok = false
+				continue
+			}
+			switch entry.name.Local {
+			case "navLabel", "navInfo":
+				// Metadata children cannot carry page targets.
+				var containsTarget func(*navigationNode) bool
+				containsTarget = func(n *navigationNode) bool {
+					if n.name.Space == pageListNCXNamespace && n.name.Local == "pageTarget" {
+						return true
+					}
+					for _, c := range n.children {
+						if containsTarget(c) {
+							return true
+						}
+					}
+					return false
+				}
+				if containsTarget(entry) {
+					ok = false
+				}
+			case "pageTarget":
+				targets := 0
+				href := ""
+				for _, c := range entry.children {
+					if c.name.Space == pageListNCXNamespace && c.name.Local == "content" {
+						targets++
+						href = c.attr("src", "")
+					}
+				}
+				if targets != 1 || !addTarget(href) {
+					ok = false
+				}
+			default:
+				// Unknown or foreign element subtree under pageList.
+				ok = false
+			}
+		}
+		if !ok || count == 0 {
+			return nil, nil
+		}
+	}
+	out := count
+	return &out, nil
+}
