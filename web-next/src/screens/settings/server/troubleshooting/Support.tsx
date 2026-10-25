@@ -1,4 +1,4 @@
-import {useEffect, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {CAPABILITY_ROWS, capabilityReasonId, type ServerCapability} from '@core/server-admin/capabilities.ts';
 import {Button} from '../../../../kit/controls';
@@ -29,6 +29,10 @@ const capabilityLabel = (capability: string) => KNOWN.has(capability) ? t(`web.c
 /** The drawn Support tab: permissions, what this server can do, the export and what was left out. */
 export function SupportPanel(props: SupportPanelProps) {
   const {source, reportError} = props;
+  const [pathChoice,setPathChoice] = useState<Readonly<{source:SettingsSupportSource;value:boolean}>>();
+  const choice = useRef<typeof pathChoice>(undefined), scope = useRef<SettingsSupportSource|undefined>(source);
+  if (scope.current !== source) {scope.current=source;choice.current=undefined;}
+  useLayoutEffect(()=>{scope.current=source;choice.current=undefined;return()=>{scope.current=undefined;choice.current=undefined;};},[source]);
   const state = useSyncExternalStore(props.subscribe, props.source.getSnapshot, props.source.getSnapshot);
   const [busy, setBusy] = useState(false), [fixed, setFixed] = useState(false);
   const [window, setWindow] = useState('24h'), [parts, setParts] = useState<readonly SupportComponent[]>([...SUPPORT_COMPONENTS]);
@@ -36,7 +40,20 @@ export function SupportPanel(props: SupportPanelProps) {
   useEffect(() => {if (state.phase === 'error' && state.error) reportError(state.error);}, [state.phase, state.error, reportError]);
   if (state.phase === 'error') return <p className={styles.failure} role="alert"><span>{t('next.states.pageFailedBody')}</span><button type="button" onClick={() => {void props.source.retry();}}>{t('next.shell.tryAgain')}</button></p>;
   if (state.phase === 'idle' || state.phase === 'loading') return <p role="status">{t('next.settings.loading')}</p>;
-  const exportReady = state.export;
+  const exportReady = state.export, frozen = state.preparing || !!state.pendingExport;
+  const shownParts = state.pendingExport?.components ?? parts;
+  const shownWindow = state.pendingExport ? WINDOWS.find(entry=>entry.ms===state.pendingExport!.windowMs)?.id : window;
+  const includePaths = state.pendingExport?.includePaths ?? (pathChoice?.source===source && choice.current===pathChoice && pathChoice.value && parts.includes('snapshot'));
+  const choosePaths = (value:boolean) => {if(scope.current!==source)return;const next={source,value};choice.current=next;setPathChoice(next);};
+  const prepare = () => {
+    if(scope.current!==source)return;
+    const captured=pathChoice, pending=source.getSnapshot().pendingExport;
+    const selected=!!pending?.includePaths || !pending && !!captured && captured.source===source && choice.current===captured && captured.value && parts.includes('snapshot');
+    // Consume the opt-in before any source notification can re-enter. A pending
+    // request displays its captured choice, but a later export starts unchecked.
+    if(choice.current===captured){choice.current=undefined;setPathChoice(current=>current===captured?undefined:current);}
+    void source.prepare(WINDOWS.find(entry=>entry.id===window)!.ms,parts,selected).catch(reportError);
+  };
   return <div className={`${styles.reports} ${styles.support}`}>
     {state.permissions && <section className={styles.permissions}>
       <div className={styles.panelHead}><h3>{t('web.maintenance.permissionsTitle')}</h3></div>
@@ -58,18 +75,23 @@ export function SupportPanel(props: SupportPanelProps) {
       <>
         <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.timeWindow')}</span>
           <div className={styles.statusChoice} role="radiogroup" aria-label={t('web.logs.timeWindow')}>{WINDOWS.map(entry => <button key={entry.id} type="button" role="radio"
-            aria-checked={entry.id === window} className={styles.statusOption} disabled={state.preparing} onClick={() => setWindow(entry.id)}>{t(entry.label)}</button>)}</div></div>
+            aria-checked={entry.id === shownWindow} className={styles.statusOption} disabled={frozen} onClick={() => setWindow(entry.id)}>{t(entry.label)}</button>)}</div></div>
         <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.include')}</span>
           <div className={styles.checks}>{SUPPORT_COMPONENTS.map(component => <label key={component} className={styles.check}>
-            <input type="checkbox" checked={parts.includes(component)} disabled={state.preparing}
-              onChange={event => setParts(current => event.currentTarget.checked ? [...new Set([...current, component])] : current.filter(part => part !== component))} />
+            <input type="checkbox" checked={shownParts.includes(component)} disabled={frozen}
+              onChange={event => {const checked=event.currentTarget.checked;setParts(current=>checked?[...new Set([...current,component])]:current.filter(part=>part!==component));if(component==='snapshot'&&!checked)choosePaths(false);}} />
             {t(PART_LABEL[component])}</label>)}</div></div>
       </>
+      {(state.supportsPaths || state.pendingExport?.includePaths) && <div className={styles.exportRow}><label className={styles.check}>
+        <input type="checkbox" checked={!!includePaths} disabled={frozen || !parts.includes('snapshot') || !state.supportsPaths} onChange={event=>choosePaths(event.currentTarget.checked)}/>
+        {t('next.settingsSpec.server.troubleshooting.groups.1.rows.0.children.0.label')}</label><p className={styles.note}>{t('web.logs.pathsHelp')}</p></div>}
+      {state.prepareError && <p role="alert" className={styles.failure}>{t('error.unconfirmedChange')}</p>}
       <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.prepareExport')}</span>
         <SettingsAction size="small" appearance="glass" loading={state.preparing} disabled={state.preparing || !parts.length}
-          onClick={() => {void props.source.prepare(WINDOWS.find(entry => entry.id === window)!.ms, parts).catch(props.reportError);}}>{t('web.logs.prepare')}</SettingsAction></div>
+          onClick={prepare}>{t(state.pendingExport?'action.tryAgain':'web.logs.prepare')}</SettingsAction></div>
       {exportReady && <div className={styles.exportReady}>
         <b>{t('web.logs.readyToDownload')}</b>
+        {exportReady.manifest.includePaths && <p className={styles.note}>{t('web.logs.pathsRequested')}</p>}
         <p className={styles.note}>{t('web.logs.readyHelp', {included: exportReady.manifest.included.join(', ') || t('web.logs.exportNothing'),
           excluded: exportReady.manifest.excluded.length ? exportReady.manifest.excluded.join(', ') : t('web.logs.exportNothing'),
           redaction: exportReady.manifest.redaction, expires: defaultI18n.dateTime(exportReady.expiresAt)})}</p>
