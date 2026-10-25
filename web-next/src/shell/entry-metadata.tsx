@@ -66,7 +66,7 @@ function CheckedMetadata({value}: {value: Open & {target: EntryActionTarget}}) {
   }} : {})}), [api, data, value]);
   const scope = useMemo(() => ({serverId: value.ports.serverId, viewerId: value.ports.viewerId}), [value]);
   const target = useMemo(() => ({kind: 'item' as const, id: value.target.itemId, libraryId: value.target.libraryId}), [value]);
-  return <Dialog open onOpenChange={open => {if (!open) close();}} title={defaultI18n.t('next.home.editSelection')}
+  return <Dialog open responsive={false} onOpenChange={open => {if (!open) close();}} title={defaultI18n.t('next.home.editSelection')}
     returnFocusRef={anchor} placement="right" width={720} showCloseButton={!data} headerClassName={data ? styles.hostTitle : undefined} bodyClassName={data ? styles.hostBody : undefined}>
     {data ? <MetadataEditor api={metadataApi} scope={scope} target={target} onClose={close}/>
       : <p role={failed ? 'alert' : 'status'}>{defaultI18n.t(failed ? 'next.states.crashed' : 'next.states.loading')}</p>}
@@ -111,7 +111,7 @@ function CheckedAggregateMetadata({value}: {value: Open & {target: AggregateMeta
     }} : {})};
   }, [api, grant, value]);
   const dismiss = () => {if (opened === value) close();};
-  return <Dialog open onOpenChange={open => {if (!open) dismiss();}} title={defaultI18n.t('next.home.editSelection')}
+  return <Dialog open responsive={false} onOpenChange={open => {if (!open) dismiss();}} title={defaultI18n.t('next.home.editSelection')}
     returnFocusRef={anchor} placement="right" width={720} showCloseButton={!grant} headerClassName={grant ? styles.hostTitle : undefined} bodyClassName={grant ? styles.hostBody : undefined}>
     {grant ? <MetadataEditor api={metadataApi} scope={scope} target={target} initialTab={value.target.initialTab} onClose={dismiss}/>
       : <p role={failed ? 'alert' : 'status'}>{defaultI18n.t(failed ? 'next.states.crashed' : 'next.states.loading')}</p>}
