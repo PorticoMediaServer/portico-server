@@ -80,6 +80,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const details = <ReadBookFacts heading={t('next.reader.details')} facts={[
     ...(author ? [{id: 'author', label: t('filter.field.author'), value: author}] : []),
     ...(manifest.metadata.language ? [{id: 'language', label: t('next.selection.language'), value: manifest.metadata.language}] : []),
+    ...(manifest.format === 'cbz' && manifest.pageNames?.length ? [{id: 'pages', label: t('next.reader.pagesStrip'), value: defaultI18n.number(manifest.pageNames.length)}] : []),
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
