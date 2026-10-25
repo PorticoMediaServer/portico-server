@@ -5,7 +5,7 @@ import {ApiError} from '@core/index.ts';
 import {runAccountExport} from '@core/account-notifications.ts';
 import {AuthCodeBoxes, AuthPasswordField, AuthLinks} from '../kit/accounts';
 import {ServicesAuthenticator, ServicesBadge, ServicesDangerAction, ServicesGroup, ServicesRecoveryCodes, ServicesRowNote, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
-import {HostedError, ServicesLabel, ServicesNotice, ServicesQuiet, ServicesStrength, ServicesAuthStage, ServicesHeading, ServicesActions} from '../kit/accounts/ServicesAuth';
+import {HostedError, ServicesLabel, ServicesNotice, ServicesQuiet, ServicesRegistrationLead, ServicesStrength, ServicesAuthStage, ServicesHeading, ServicesActions} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import {accountIdentity, sameAccount, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
@@ -185,7 +185,7 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded}
     {error ? <HostedError error={error} /> : null}
     {codes ? <><ServicesQuiet>{t('services.security.codesBody')}</ServicesQuiet><ServicesRecoveryCodes codes={codes}
       onCopy={() => void navigator.clipboard.writeText(codes.join('\n')).catch(setError)} onDownload={() => downloadText(codes.join('\n'), 'portico-recovery-codes.txt')} /></> :
-      confirm ? <div className={styles.form}>{task === 'mfa_enroll' ? <><ServicesQuiet>{t('web.hostedSecurity.enterKey')}</ServicesQuiet>{result?.secret && <ServicesAuthenticator secret={result.secret} uri={result.otpAuthUri} onCopy={() => void navigator.clipboard.writeText(result.secret!).catch(setError)} onError={setError} />}</> : <ServicesQuiet>{t('web.hostedSecurity.sentCode', {address: result?.maskedAddress ?? maskedEmail(value.trim())})}</ServicesQuiet>}<AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('web.twoStep.code')} disabled={busy} />{task === 'email_change' && <AuthLinks><button type="button" disabled={!current() || busy || result?.resendsRemaining === 0} onClick={() => void resend()}>{t('auth.sendCodeAgain')}</button></AuthLinks>}</div> :
+      confirm ? <div className={styles.form}>{task === 'mfa_enroll' ? <><ServicesQuiet>{t('web.hostedSecurity.enterKey')}</ServicesQuiet>{result?.secret && <ServicesAuthenticator secret={result.secret} uri={result.otpAuthUri} onCopy={() => void navigator.clipboard.writeText(result.secret!).catch(setError)} onError={setError} />}</> : <ServicesRegistrationLead address={result?.maskedAddress ?? maskedEmail(value.trim())} message="web.hostedSecurity.sentCode" />}<AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('web.twoStep.code')} disabled={busy} />{task === 'email_change' && <AuthLinks><button type="button" disabled={!current() || busy || result?.resendsRemaining === 0} onClick={() => void resend()}>{t('auth.sendCodeAgain')}</button></AuthLinks>}</div> :
       <form className={styles.form} onSubmit={event => { event.preventDefault(); if (ready) void submit(); }}>
         {task === 'password_set_or_change' && <ServicesQuiet>{t('web.hostedSecurity.othersSignedOut')}</ServicesQuiet>}
         {task === 'mfa_disable' && <ServicesQuiet>{t('services.security.disableBody')}</ServicesQuiet>}

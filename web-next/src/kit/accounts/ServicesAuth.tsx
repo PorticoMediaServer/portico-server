@@ -1,5 +1,5 @@
 import {Fragment, type ReactNode} from 'react';
-import {createI18n, deviceRegion, resolveRegion, parseMessage} from '@i18n';
+import {createI18n, deviceRegion, parseMessage, resolveRegion, type MessageId} from '@i18n';
 import type {IdentityProvider} from '@core/hosted-security.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {presentError} from '@core/presentation/errors.ts';
@@ -93,8 +93,8 @@ export function ServicesDeviceCodeHelp({fromQR}: {fromQR: boolean}) {
 }
 export function ServicesDeviceWarning({children}: {children: ReactNode}) { return <p className={styles.deviceWarning}>{children}</p>; }
 export function ServicesDeviceAnother({disabled, onClick}: {disabled?: boolean; onClick: () => void}) { return <div className={styles.deviceAnother}><button type="button" disabled={disabled} onClick={onClick}>{t('web.device.anotherCode')}</button></div>; }
-export function ServicesRegistrationLead({address}: {address: string}) {
-  const message = t('auth.codeSentTo', {address: '{address}'});
+export function ServicesRegistrationLead({address, message: id = 'auth.codeSentTo'}: {address: string; message?: MessageId}) {
+  const message = t(id, {address: '{address}'});
   return <ServicesLead>{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'address' ? <b key={index} className={styles.verifiedAddress}>{address}</b> : null)}</ServicesLead>;
 }
 export function ServicesVerificationCode({children, label = true}: {children: ReactNode; label?: boolean}) { return <div className={styles.verificationCode}>{label && <span aria-hidden="true">{t('auth.code')}</span>}{children}</div>; }
