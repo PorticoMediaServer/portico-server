@@ -58,9 +58,9 @@ test('late filter reads and opens cannot replace the newest filter or duplicate 
   const source = new SettingsMessagesSource({request: async <T>(path: string) => path.includes('/settings') ? settings as T : new Promise<T>(resolve => reads.push(value => resolve(value as T)))}, {open: () => new Promise(resolve => opens.push(resolve))}, () => true);
   source.setLive(true);
   const first = source.select('warn', 'network'), second = source.select('error', 'server');
-  reads[1]({...page, items: [line('latest')]});await second;
-  reads[0]({...page, items: [line('stale')]});await first;
-  assert.deepEqual(source.getSnapshot().lines.map(x => x.sequence), ['latest']);assert.equal(opens.length, 2);
+  reads[1]({...page, items: [line('20')]});await second;
+  reads[0]({...page, items: [line('10')]});await first;
+  assert.deepEqual(source.getSnapshot().lines.map(x => x.sequence), ['20']);assert.equal(opens.length, 2);
   opens[0](new Response(new ReadableStream({cancel() {cancelled++;}})));await flush();assert.equal(cancelled, 1);
   source.pause();opens[1](new Response(''));await flush();assert.equal(source.getSnapshot().live, false);source.dispose();
 });
@@ -97,4 +97,29 @@ test('uncertain debug write reconciles the immutable intent before accepting a c
   }}, undefined, () => true);
   await assert.rejects(source.detail(true));await assert.rejects(source.detail(false));assert.equal(writes.length, 1);
   reconcileFails = false;await source.detail(false);assert.equal(writes.length, 1);assert.equal(source.getSnapshot().changing, false);source.dispose();
+});
+
+
+test('opposite debug action reconciles without replaying the old nonmatching intent', async () => {
+  const writes: {operationId: string; minutes: number}[] = [];
+  const source = new SettingsMessagesSource({request: async <T>(_path: string, method?: string, body?: unknown) => {
+    if (method === 'POST') {writes.push(body as {operationId: string; minutes: number});throw new Error('Response lost');}
+    return settings as T;
+  }}, undefined, () => true);
+  await assert.rejects(source.detail(true));await source.detail(false);
+  assert.equal(writes.length, 1);assert.equal(writes[0].minutes, 30);
+  assert.equal(source.getSnapshot().changing, false);source.dispose();
+});
+
+test('a queued old reconnect callback cannot open after pause or replacement', async t => {
+  const callbacks: (() => void)[] = [];
+  t.mock.method(globalThis, 'setTimeout', ((callback: () => void) => {callbacks.push(callback);return 1;}) as typeof setTimeout);
+  t.mock.method(globalThis, 'clearTimeout', () => {});
+  let opens = 0;
+  const source = new SettingsMessagesSource(transport, {open: async () => {opens++;return new Response('');}}, () => true);
+  source.setLive(true);await flush();assert.equal(opens, 1);assert.equal(callbacks.length, 1);
+  source.pause();callbacks[0]();await flush();assert.equal(opens, 1);
+  source.setLive(true);await flush();assert.equal(opens, 2);
+  source.setLive(true);await flush();assert.equal(opens, 3);
+  callbacks[1]();await flush();assert.equal(opens, 3);source.dispose();
 });
