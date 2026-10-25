@@ -107,9 +107,9 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
   const summary = openSubtitlesSummary(document.openSubtitles, defaultI18n);
   return <div data-testid="server-metadata-settings">
     {problem}
-    {!!document.libraries?.length && <MetadataLibraries libraries={document.libraries} changes={draft.libraries} busy={busy} onChange={setLibrary}/>}
+    {document.librariesComplete && !!document.libraries?.length && <MetadataLibraries libraries={document.libraries} changes={draft.libraries} busy={busy} onChange={setLibrary}/>}
     <SettingsGroup title={t('server.metadata.lookups')}>
-      {!document.libraries?.length && <SettingsRow label={t('server.metadata.perLibrary')} help={t('server.metadata.perLibraryHelp')}><Button size="small" onClick={() => {if (current()) onLibraries();}}>{t('settings.server.libraries')}</Button></SettingsRow>}
+      {(!document.librariesComplete || !document.libraries?.length) && <SettingsRow label={t('server.metadata.perLibrary')} help={t('server.metadata.perLibraryHelp')}><Button size="small" onClick={() => {if (current()) onLibraries();}}>{t('settings.server.libraries')}</Button></SettingsRow>}
       <SettingsRow label={t('metadata.settings.includeAdult')} help={t('server.metadata.adultHelp')}><Switch aria-label={t('metadata.settings.includeAdult')} checked={draft.adult} disabled={busy} onCheckedChange={value => set('adult', value)}/></SettingsRow>
     </SettingsGroup>
     <SettingsGroup title={t('next.settingsSpec.server.metadata.groups.2.title')}>

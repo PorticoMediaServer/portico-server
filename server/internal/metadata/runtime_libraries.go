@@ -67,37 +67,37 @@ func readMetadataLibrary(ctx context.Context, tx *sql.Tx, id string) (MetadataLi
 	out.Revision = publicationDigest([]any{id, out.Kind, out.Managed, agent.Revision, prefs.Revision, scan.Revision})
 	return out, nil
 }
-func readMetadataLibraries(ctx context.Context, tx *sql.Tx) ([]MetadataLibrarySettings, error) {
+func readMetadataLibraries(ctx context.Context, tx *sql.Tx) ([]MetadataLibrarySettings, bool, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT id FROM libraries ORDER BY position,id LIMIT 513`)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err = rows.Scan(&id); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, false, err
 		}
 		ids = append(ids, id)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(ids) > 512 {
-		return nil, ErrRepairInput
+		return nil, false, nil
 	}
 	out := []MetadataLibrarySettings{}
 	for _, id := range ids {
 		row, err := readMetadataLibrary(ctx, tx, id)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		out = append(out, row)
 	}
-	return out, nil
+	return out, true, nil
 }
 func applyMetadataLibraries(ctx context.Context, tx *sql.Tx, changes []MetadataLibraryChange) error {
 	if len(changes) > 512 {
