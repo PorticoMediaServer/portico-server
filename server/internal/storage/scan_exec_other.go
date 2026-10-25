@@ -4,6 +4,13 @@ package storage
 
 import "errors"
 
+func inventoryDirectoryCommandHelper(r request) error {
+	if err := validateInventoryCommand(r); err != nil {
+		return err
+	}
+	return errors.New("descriptor-bound directory scan execution is unsupported on this server platform")
+}
+
 func inventoryCommandHelper(r request) error {
 	if err := validateInventoryCommand(r); err != nil {
 		return err

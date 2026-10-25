@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/naming"
 	"portico.local/server/internal/notify"
 	"portico.local/server/internal/storage"
 	"time"
@@ -161,6 +162,9 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 // listing failed, was unstable or is the only one pending), or when the
 // shared publication failed; the caller then takes the first folder alone.
 func (s *Service) inventoryFolders(ctx context.Context, job string, source catalog.LibrarySource) (bool, error) {
+	// Resolve the disc-folder capability before the page writer opens; it may
+	// read bubblewrap's help once.
+	storage.DirectoryDiscScanSupported()
 	rows, err := s.db.QueryContext(ctx, `SELECT relative_path,cursor,revision FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT ?`, job, storage.MaxInventoryBatch)
 	if err != nil {
 		return false, err
@@ -217,11 +221,49 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 	}
 	for _, w := range writes {
 		s.noteDirectoryPage(job, w.Relative, w.Cursor, w.Page)
+		if err = s.observeDiscRootPage(ctx, job, source, w.Relative, w.Page); err != nil {
+			return false, err
+		}
 	}
 	return true, nil
 }
 
+// observeDiscRootPage publishes a folder that holds BDMV or VIDEO_TS as one
+// disc title after its page is committed. The directory is stat'ed outside any
+// writer, so the object carries the exact snapshot the analysis fence rechecks.
+func (s *Service) observeDiscRootPage(ctx context.Context, job string, source catalog.LibrarySource, relative string, page storage.InventoryPage) error {
+	if relative == "" || relative == "." || source.Kind != "local" || !discRootOnPage(relative, page) {
+		return nil
+	}
+	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}
+	var v storage.Snapshot
+	var err error
+	if s.storage != nil {
+		v, err = s.storage.InventoryDirectory(ctx, source.ID, req)
+	} else {
+		v, err = storage.LocalInventoryDirectory(req)
+	}
+	if err != nil || !v.Directory {
+		// A folder that changed or vanished is left to the next observation.
+		return nil
+	}
+	v.Name = filepath.Base(relative)
+	return s.catalog.CommitInventoryDiscRoot(ctx, job, relative, v)
+}
+
+// discRootOnPage reports whether this page holds the BDMV or VIDEO_TS folder
+// that makes its own directory a disc title.
+func discRootOnPage(relative string, page storage.InventoryPage) bool {
+	for _, entry := range page.Entries {
+		if entry.Directory && len(naming.DiscLayout(filepath.ToSlash(filepath.Join(relative, entry.Name)))) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
+	storage.DirectoryDiscScanSupported()
 	var cursor, revision string
 	if err := s.db.QueryRowContext(ctx, `SELECT cursor,revision FROM inventory_directories WHERE job_id=? AND relative_path=? AND state='pending'`, job, relative).Scan(&cursor, &revision); err != nil {
 		return err
@@ -259,6 +301,9 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 		return err
 	}
 	s.noteDirectoryPage(job, relative, cursor, page)
+	if err = s.observeDiscRootPage(ctx, job, source, relative, page); err != nil {
+		return err
+	}
 	if page.Unstable {
 		gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 		if e != nil {

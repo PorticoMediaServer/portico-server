@@ -11,9 +11,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	"portico.local/server/internal/mediaexec"
 )
+
+// descriptorDirectoryRoot is the one sandbox path an admitted disc folder is
+// mounted at. It is a mount point, never a host path.
+const descriptorDirectoryRoot = "/disc"
 
 type scanInputKey struct{}
 type scanInput struct {
@@ -56,17 +61,50 @@ func inventoryReadRequest(ctx context.Context, path string) (InventoryRequest, *
 // RunScanCommand runs a media tool through the already-supervised helper. Unix
 // replaces the helper; Windows retains a locked input and owns a nested job.
 func RunScanCommand(ctx context.Context, binary string, args []string, path string, out io.Writer) (bool, error) {
-	return runScanCommand(ctx, binary, args, path, false, out)
+	return runScanCommand(ctx, binary, args, path, false, false, out)
 }
 
 // RunDiscScanCommand preserves only FFmpeg's closed bluray: input syntax while
 // retaining the same admitted regular file, root guard, helper and supervisor.
 // It adds no directory/remote/network authority or general URL substitution.
 func RunDiscScanCommand(ctx context.Context, binary string, args []string, path string, bluray bool, out io.Writer) (bool, error) {
-	return runScanCommand(ctx, binary, args, path, bluray, out)
+	return runScanCommand(ctx, binary, args, path, bluray, false, out)
 }
 
-func runScanCommand(ctx context.Context, binary string, args []string, path string, bluray bool, out io.Writer) (bool, error) {
+// RunDiscDirectoryCommand reads an admitted disc folder through one inherited
+// directory descriptor. The helper mounts only that descriptor read-only at
+// descriptorDirectoryRoot inside the empty sandbox root; the tool never sees a
+// host path and cannot walk out with "..".
+func RunDiscDirectoryCommand(ctx context.Context, binary string, args []string, path string, out io.Writer) (bool, error) {
+	return runScanCommand(ctx, binary, args, path, true, true, out)
+}
+
+// DirectoryDiscScanSupported reports whether this host can mount an admitted
+// directory descriptor into the scan sandbox. Older bubblewrap releases and
+// non-Linux hosts keep disc folders unsupported rather than exposing a path.
+func DirectoryDiscScanSupported() bool {
+	directoryDiscSupported.Do(func() {
+		if runtime.GOOS != "linux" {
+			return
+		}
+		bwrap, err := exec.LookPath("bwrap")
+		if err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		out, _ := exec.CommandContext(ctx, bwrap, "--help").CombinedOutput()
+		directoryDiscSupported.ok = bytes.Contains(out, []byte("--ro-bind-fd"))
+	})
+	return directoryDiscSupported.ok
+}
+
+var directoryDiscSupported struct {
+	sync.Once
+	ok bool
+}
+
+func runScanCommand(ctx context.Context, binary string, args []string, path string, bluray, directory bool, out io.Writer) (bool, error) {
 	r, input, err := inventoryReadRequest(ctx, path)
 	if err != nil {
 		return true, err
@@ -108,12 +146,22 @@ func runScanCommand(ctx context.Context, binary string, args []string, path stri
 	// The helper opens the admitted file and hands it over as descriptor 3; the
 	// tool (sandboxed, or with the baseline) never gets the path (mediaexec).
 	fdArgs := append([]string{}, args...)
-	fdArgs[index] = prefix + descriptorInput
-	argv, err := mediaexec.Argv(mediaexec.Job{Executable: binary, Args: fdArgs, Background: true, MaxCPUSeconds: scanCPUSeconds})
+	job := mediaexec.Job{Executable: binary, Args: fdArgs, Background: true, MaxCPUSeconds: scanCPUSeconds}
+	if directory {
+		fdArgs[index] = prefix + descriptorDirectoryRoot
+		job.InputFD, job.InputMount = 3, descriptorDirectoryRoot
+	} else {
+		fdArgs[index] = prefix + descriptorInput
+	}
+	argv, err := mediaexec.Argv(job)
 	if err != nil {
 		return true, err
 	}
-	req := request{Operation: "inventory-command", Path: path, Inventory: &r, Argv: argv}
+	operation := "inventory-command"
+	if directory {
+		operation = "inventory-directory-command"
+	}
+	req := request{Operation: operation, Path: path, Inventory: &r, Argv: argv}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}
@@ -152,6 +200,36 @@ func openInventoryRoot(r InventoryRequest) (*os.Root, error) {
 	}
 	return root, nil
 }
+
+// openInventoryDirectory opens an admitted directory beneath the retained
+// inventory root. The returned descriptor is the only authority the scan
+// sandbox gets; no host pathname is passed to the tool.
+func openInventoryDirectory(r InventoryRequest) (*os.File, error) {
+	path, err := inventoryPath(r)
+	if err != nil {
+		return nil, err
+	}
+	relative, err := filepath.Rel(r.Root, path)
+	if err != nil || !filepath.IsLocal(relative) || relative == "." {
+		return nil, ErrInventoryChanged
+	}
+	root, err := openInventoryRoot(r)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	dir, err := root.Open(relative)
+	if err != nil {
+		return nil, err
+	}
+	info, err := dir.Stat()
+	if err != nil || !info.IsDir() {
+		dir.Close()
+		return nil, ErrInventoryChanged
+	}
+	return dir, nil
+}
+
 func openInventoryContent(r InventoryRequest) (*os.File, error) {
 	path, err := inventoryPath(r)
 	if err != nil {

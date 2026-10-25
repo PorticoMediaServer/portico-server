@@ -357,3 +357,38 @@ func TestMainTitleIsTheLongestOfAtLeastAMinute(t *testing.T) {
 		t.Fatal("an empty probe named a main title")
 	}
 }
+
+// A title's consumed-member manifest is bounded, relative and complete for the
+// files its reader opens.
+func TestConsumedMembersAreRelativeAndBounded(t *testing.T) {
+	playlist := 1
+	title := Title{DiscOrder: 0, DurationMs: 120000, Playlist: &playlist, PlaylistFile: "00001.mpls",
+		Clips: []Clip{{Sequence: 0, File: "00001.m2ts", InTime90k: 0, OutTime90k: 1}}}
+	members, err := ConsumedMembers(Probe{Kind: "bluray"}, title)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"PLAYLIST/00001.mpls", "STREAM/00001.m2ts", "CLIPINF/00001.clpi", "index.bdmv"} {
+		found := false
+		for _, member := range members {
+			if member == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing %s in %v", want, members)
+		}
+	}
+	dvd := Title{DiscOrder: 0, DurationMs: 120000, Title: 1, VTS: 3, PGC: 1}
+	members, err = ConsumedMembers(Probe{Kind: "dvd"}, dvd)
+	if err != nil || len(members) != 12 || members[1] != "VIDEO_TS/VTS_03_0.IFO" {
+		t.Fatal(members, err)
+	}
+	many := Title{DiscOrder: 0, DurationMs: 120000}
+	for i := 0; i < MaxConsumedMembers; i++ {
+		many.Clips = append(many.Clips, Clip{Sequence: i, File: "00001.m2ts", InTime90k: 0, OutTime90k: 1})
+	}
+	if _, err = ConsumedMembers(Probe{Kind: "bluray"}, many); err == nil {
+		t.Fatal("an unbounded title was admitted")
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 const Schema = 1
@@ -198,6 +199,40 @@ func (p Probe) OrderedTitles() []Title {
 	out := append([]Title(nil), p.Titles...)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].DurationMs > out[j].DurationMs })
 	return out
+}
+
+// MaxConsumedMembers bounds the file manifest one title analysis may stat.
+const MaxConsumedMembers = 256
+
+// ConsumedMembers names the files the selected title's reader consumes, as
+// paths relative to the disc root. It is a bounded manifest: a title that
+// needs more members than the bound is refused rather than sampled.
+func ConsumedMembers(p Probe, t Title) ([]string, error) {
+	out := []string{}
+	switch p.Kind {
+	case "bluray":
+		if t.PlaylistFile != "" {
+			out = append(out, "PLAYLIST/"+t.PlaylistFile)
+		}
+		out = append(out, "index.bdmv", "MovieObject.bdmv")
+		for _, clip := range t.Clips {
+			out = append(out, "STREAM/"+clip.File)
+			if base, ok := strings.CutSuffix(clip.File, ".m2ts"); ok {
+				out = append(out, "CLIPINF/"+base+".clpi")
+			}
+		}
+	case "dvd":
+		out = append(out, "VIDEO_TS/VIDEO_TS.IFO", fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS))
+		for n := 0; n < 10; n++ {
+			out = append(out, fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n))
+		}
+	default:
+		return nil, ErrProtocol
+	}
+	if len(out) > MaxConsumedMembers {
+		return nil, fmt.Errorf("disc title needs more than %d consumed members", MaxConsumedMembers)
+	}
+	return out, nil
 }
 
 // MainTitle is the title a disc plays by default: the longest title of at

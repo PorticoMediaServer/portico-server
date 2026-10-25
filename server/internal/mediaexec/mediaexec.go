@@ -84,6 +84,13 @@ type Job struct {
 	// ReadPaths are extra files or folders the process may read, such as a
 	// subtitle file the server wrote for burn-in.
 	ReadPaths []string
+	// InputFD is an inherited directory descriptor that the sandbox
+	// read-only binds at InputMount. It exists for disc folders, whose reader
+	// needs a subtree without granting any host path: no other part of the
+	// host filesystem is mounted and the sandbox root stays empty.
+	InputFD int
+	// InputMount is the absolute sandbox path InputFD is bound at.
+	InputMount string
 	// WriteDirs are the job's private output folders.
 	WriteDirs []string
 	// Loopback is the numeric 127.0.0.1:port bridge the process may connect to,
@@ -197,6 +204,12 @@ func Argv(job Job) ([]string, error) {
 			if posture.Setting == SettingRequired {
 				return nil, ErrSandboxRequired
 			}
+			if job.InputFD != 0 {
+				// A bare descriptor directory cannot be mounted without the
+				// sandbox; the disc folder stays unsupported rather than
+				// leaking a host path.
+				return nil, ErrSandboxRequired
+			}
 			inner = append([]string{exe}, job.Args...)
 		} else {
 			if inner, err = sandboxArgv(job, posture); err != nil {
@@ -234,6 +247,16 @@ func validate(job *Job) error {
 	}
 	if job.Loopback != "" && !loopbackEndpoint(job.Loopback) {
 		return ErrInvalidJob
+	}
+	if job.InputFD != 0 || job.InputMount != "" {
+		if job.InputFD != 3 || !filepath.IsAbs(job.InputMount) || filepath.Clean(job.InputMount) != job.InputMount || strings.ContainsAny(job.InputMount, "\x00\n\r") {
+			return ErrInvalidJob
+		}
+		if runtime.GOOS != "linux" || job.PreConfined {
+			// Descriptor-bound directory mounts are a Linux sandbox feature and
+			// exist only where this package builds the sandbox itself.
+			return ErrInvalidJob
+		}
 	}
 	if job.MaxFileBytes == 0 {
 		job.MaxFileBytes = NoOutputFiles

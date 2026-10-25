@@ -33,7 +33,7 @@ func (p Probe) InspectDiscScan(ctx context.Context, path string, structure disc.
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	options := append([]string{"-probesize", "8388608", "-analyzeduration", "5000000"}, input.Options...)
-	data, err := p.probeOutput(ctx, path, input.URL, options)
+	data, err := p.probeOutputMode(ctx, path, input.URL, options, structure.Packaging == "folder")
 	if err != nil {
 		return Facts{}, err
 	}

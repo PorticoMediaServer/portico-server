@@ -4,6 +4,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,6 +150,13 @@ func windowsProbeContext(timeout time.Duration) (context.Context, func()) {
 		stop()
 		cancel()
 	}
+}
+
+func inventoryDirectoryCommandHelper(r request) error {
+	if err := validateInventoryCommand(r); err != nil {
+		return err
+	}
+	return errors.New("descriptor-bound directory scan execution is unsupported on this server platform")
 }
 
 func inventoryCommandHelper(r request) error {
