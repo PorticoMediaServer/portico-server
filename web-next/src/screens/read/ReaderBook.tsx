@@ -10,18 +10,19 @@ import {ReaderSearch, type ReaderSearchHit} from '../../kit/reader/ReaderSearch'
 import {ReadReader} from './ReadReader';
 import {ReadingDisplay} from './ReadingDisplay';
 import {readingDisplayCopy} from './display-copy';
+import {readerBookPresentation, type ReaderEnvironment} from './native/tablet-presentation';
 import type {ReaderMountAuthority} from './mount';
 const {t} = defaultI18n;
 export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation}>;
 
-export function ReaderBook({book, active, reportError, onBack, onOpenSettings}: {book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
+export function ReaderBook({book, active, reportError, onBack, onOpenSettings, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
   const {controller, publication, authority} = book;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
   const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [currentHit, setCurrentHit] = useState<string>();
   const anchor = useRef<HTMLButtonElement>(null);
   const engineError = useCallback((code: ReaderErrorCode) => reportError({code}), [reportError]);
-  const presentation = width < 600 ? 'phone' : width < 1024 ? 'tablet' : 'desktop';
+  const layout = readerBookPresentation(width, environment), {presentation} = layout;
   useEffect(() => {if (!active) setPanel(undefined);}, [active]);
   const navigate = (location: ReaderLocation) => {
     if (!authority.isCurrent()) return;
@@ -56,7 +57,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings}: 
         onStep={direction => {const index = hits.findIndex(hit => hit.id === currentHit), next = hits[(index + (direction === 'next' ? 1 : -1) + hits.length) % hits.length]; if (next) {setCurrentHit(next.id); navigate(next.location);}}}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
       : panel === 'display' ? <ReadingDisplay controller={controller} authority={authority} copy={readingDisplayCopy(defaultI18n, presentation, 7)}
-        scale={{min: 1, max: 7, step: 1, ticks: [1, 2, 3, 4, 5, 6, 7]}} presentation={presentation} label={t('next.reader.display')}
+        scale={{min: 1, max: 7, step: 1, ticks: [1, 2, 3, 4, 5, 6, 7]}} presentation={presentation} popover={layout.displayPopover} label={t('next.reader.display')}
         open onOpenChange={open => {if (!open) setPanel(undefined);}} anchorRef={anchor} reportError={code => reportError({code})}
         onOpenSettings={() => {setPanel(undefined); onOpenSettings();}}/> : undefined;
   return <ReadReader<ReadingPreferences> controller={controller} source={publication.source} format={publication.format} initialLocation={book.location}
@@ -64,15 +65,15 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings}: 
     state={state => state.status === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}/> : <Skeleton height="100%"/>}
     presentation={value => ({copy: {back: t('next.reader.back'), previous: t('next.reader.previous'), next: t('next.reader.next'), progress: t('next.reader.position')},
       direction: publication.format === 'cbz' && value.preferences.comicDirection !== 'file' ? value.preferences.comicDirection === 'rtl' ? 'rtl' : 'ltr'
-        : value.metadata?.direction === 'rtl' ? 'rtl' : 'ltr', tapTurnEnabled: value.preferences.tapToTurn, showPageArrows: width >= 1024,
+        : value.metadata?.direction === 'rtl' ? 'rtl' : 'ltr', tapTurnEnabled: value.preferences.tapToTurn, showPageArrows: layout.showPageArrows,
       chapter: value.location?.chapter, pages: value.location?.pageLabel ? t('next.reader.pageLabel', {page: value.location.pageLabel}) : undefined,
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
-      percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: !!panel && presentation !== 'phone',
+      percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
       onPanelDismiss: () => setPanel(undefined), actions: [
         {id: 'contents', label: t('next.reader.contents'), icon: 'i-chapters', expanded: panel === 'contents', onPress: () => setPanel(panel === 'contents' ? undefined : 'contents')},
         {id: 'search', label: t('next.reader.search'), icon: 'i-search', expanded: panel === 'search', onPress: () => setPanel(panel === 'search' ? undefined : 'search')},
         ...(publication.format === 'epub' ? [{id: 'display', label: t('next.reader.displayAction'), text: <ReaderDisplayMark sample={t('next.reader.sample')}/>, expanded: panel === 'display', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'display' ? undefined : 'display');}}] : []),
-        ...(presentation === 'desktop' && document.fullscreenEnabled ? [{id: 'fullscreen', label: t('next.reader.fullscreen'), icon: 'i-fs' as const, separatorBefore: true,
+        ...(layout.fullscreen && document.fullscreenEnabled ? [{id: 'fullscreen', label: t('next.reader.fullscreen'), icon: 'i-fs' as const, separatorBefore: true,
           onPress: (element: HTMLButtonElement) => {const root = element.closest<HTMLElement>('[data-reader-root]'); void (document.fullscreenElement ? document.exitFullscreen() : root?.requestFullscreen())?.catch(reportError);}}] : []),
       ]})}/>;
 }
