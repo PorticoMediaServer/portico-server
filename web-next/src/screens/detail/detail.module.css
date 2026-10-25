@@ -24,7 +24,7 @@
 
 .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 24px; }
 
-.copy > .actions { margin: 0; }
+.copy > .actions { margin: 0; flex-wrap: nowrap; }
 
 .phoneTopBar { height: 44px; display: flex; align-items: center; padding: 0 10px; }
 

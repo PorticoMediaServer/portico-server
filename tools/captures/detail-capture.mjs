@@ -51,6 +51,8 @@ try {
     if (state === '3') {
       const tab = page.getByRole('tab', {name: 'Details', exact: true});
       if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
+      await page.getByRole('heading', {name: 'About', exact: true}).waitFor({state: 'visible'});
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     }
     if (state === '3' || state === '6') {
       await page.locator('[class*=tabAnchor]').evaluate(anchor => {
@@ -62,6 +64,7 @@ try {
       if (state === '6') await page.getByRole('option').filter({hasText: 'Season 4'}).focus();
     }
     await settle();
+    if (state === '2') { await page.getByRole('button', {name: 'More', exact: true}).click(); await page.getByRole('menu').waitFor({state: 'visible'}); }
     await page.screenshot({path: `${output}/${prefix}-build.jpg`, type: 'jpeg', quality: 90});
     await page.goto(`${origin}/__detail_reference__?only=${state}`);
     // The gallery zooms designs to its padded page. Capture the actual drawn
