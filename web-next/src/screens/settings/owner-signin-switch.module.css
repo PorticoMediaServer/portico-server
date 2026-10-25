@@ -10,8 +10,3 @@
 .codesRow { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 12px; font-size: var(--type-row-subtitle-size); color: var(--color-text-secondary); }
 .codesRow small { display: block; margin-top: 3px; color: var(--color-text-tertiary); font-size: var(--type-caption-size); }
 .hostNote { margin: 8px 0 0; color: var(--color-text-tertiary); font-size: var(--type-caption-size); }
-
-.waitingList { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
-.waitingList li { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.waitingList li b { font-weight: var(--type-display-weight); }
-.waitingList li small { display: block; margin-top: 2px; color: var(--color-text-tertiary); font-size: var(--type-caption-size); }

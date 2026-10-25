@@ -3,6 +3,7 @@ import type {AccountMove, AccountMoveCode, AccountMoveWaiting} from '@core/accou
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import type {SettingsOwnerSwitch} from './owner-switch';
+import {useMoveCodePublisher} from './move-codes-port';
 import {MoveCodesSheet} from './MoveCodesSheet';
 import styles from './owner-signin-switch.module.css';
 
@@ -104,6 +105,16 @@ export function MoveCodesHost({source, serverName, isCurrent, onError}: {
 	const current = flight, list = waiting && waiting.flight === current ? waiting.value : undefined;
 	const receiptShown = receipt && receipt.flight === current ? receipt : undefined;
 	const held = busy && busy.flight === current ? busy.value : undefined;
+	// Publish this flight's narrow row port while it stands; the People table's row
+	// action then issues through this same receipt owner, never a second one.
+	const publishPort = useMoveCodePublisher();
+	useLayoutEffect(() => {
+		if (!current) {publishPort(undefined); return;}
+		const expires = new Map<string, string>();
+		if (list) for (const row of list.items) if (row.expiresAt) expires.set(row.accountId, row.expiresAt);
+		publishPort({expires, busy: held ?? '', make: accountId => {void makeFor(current, [accountId]);}});
+		return () => publishPort(undefined);
+	}, [flightId, list, held]);
 	return <>
 		<div className={styles.codesRow}>
 			<span>{t('accounts.move.sheetTitle')}
@@ -117,14 +128,6 @@ export function MoveCodesHost({source, serverName, isCurrent, onError}: {
 		</div>
 		{move ? <p className={styles.hostNote}>{t('accounts.settings.finishNowHelp')}</p> : null}
 		{note && <p className={styles.hostNote}>{note}</p>}
-		{current && list ? <ul className={styles.waitingList}>
-			{list.items.map(row => <li key={row.accountId}>
-				<span><b>{row.username}</b><small>{row.expiresAt ? `${t('accounts.move.validUntil')} ${defaultI18n.date(row.expiresAt)}` : t('accounts.move.noCodeYet')}</small></span>
-				<Button variant="glass" size="small" loading={held === row.accountId} disabled={Boolean(held)}
-					onClick={() => void makeFor(current, [row.accountId])}>{row.expiresAt ? t('accounts.move.newCode') : t('accounts.move.makeCode')}</Button>
-			</li>)}
-			{list.truncated ? <li><small>{t('accounts.move.waitingTruncated', {count: defaultI18n.number(list.items.length)})}</small></li> : null}
-		</ul> : null}
 		{receiptShown ? <MoveCodesSheet codes={receiptShown.codes} serverName={serverName} address={receiptShown.issuer}
 			isCurrent={() => live(receiptShown.flight)} onClose={() => close(receiptShown)} onError={onError}/> : null}
 	</>;
