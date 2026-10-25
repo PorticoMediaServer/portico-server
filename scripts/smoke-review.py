@@ -67,9 +67,12 @@ def main():
     p.add_argument('--credentials', required=True, type=Path)
     p.add_argument('--output', required=True, type=Path)
     p.add_argument('--host', choices=['netcup', 'contabo'], default='netcup')
+    p.add_argument('--origin', choices=('https://demo.getportico.tv', 'http://127.0.0.1:48142'), default='https://demo.getportico.tv', help='public demo or the fixed owned loopback staging tunnel')
     p.add_argument('--activate-cycle')
     p.add_argument('--attempt')
     a = p.parse_args()
+    if a.activate_cycle and a.origin != 'https://demo.getportico.tv':
+        p.error('public activation requires the public demo origin')
     if not re.fullmatch('[0-9a-f]{40}', a.commit):
         p.error('exact MAIN source cutoff required')
     if a.activate_cycle and not re.fullmatch('review-[a-z0-9-]{1,64}', a.activate_cycle):
@@ -81,7 +84,7 @@ def main():
     tools_repo = Path(__file__).resolve().parents[1]
     tools_commit = subprocess.check_output(['git', '-C', str(tools_repo), 'rev-parse', 'HEAD'], text=True).strip()
     script = subprocess.check_output(['git', '-C', str(tools_repo), 'show', tools_commit + ':scripts/review-smoke.mjs'], text=True)
-    command = ['bash', '-c', 'set -eu; (cd "$PORTICO_RUNNER_SECONDARY_SOURCE/scripts" && python3 -m unittest -v test_deploy_review.py && node --check review-smoke.mjs && node --test test_review_smoke_privacy.mjs); export PORTICO_REVIEW_ORIGIN="$2" PORTICO_REVIEW_COMMIT="$3" PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$4" PORTICO_REVIEW_AWAIT_ACTIVATION="$5"; npm install --prefix "$TMPDIR/browser" --no-save --package-lock=false --no-audit --no-fund playwright@1.58.2 >/dev/null; node --input-type=module -e "$1"', 'release-smoke', script, 'https://demo.getportico.tv', a.commit, '/usr/bin/chromium' if a.host == 'netcup' else '/snap/bin/chromium', '1' if a.activate_cycle else '']
+    command = ['bash', '-c', 'set -eu; (cd "$PORTICO_RUNNER_SECONDARY_SOURCE/scripts" && python3 -m unittest -v test_deploy_review.py && node --check review-smoke.mjs && node --test test_review_smoke_privacy.mjs); export PORTICO_REVIEW_ORIGIN="$2" PORTICO_REVIEW_COMMIT="$3" PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$4" PORTICO_REVIEW_AWAIT_ACTIVATION="$5"; npm install --prefix "$TMPDIR/browser" --no-save --package-lock=false --no-audit --no-fund playwright@1.58.2 >/dev/null; node --input-type=module -e "$1"', 'release-smoke', script, a.origin, a.commit, '/usr/bin/chromium' if a.host == 'netcup' else '/snap/bin/chromium', '1' if a.activate_cycle else '']
     args = ['python3', str(a.runner), '--host', a.host, '--browser', '--repo', str(a.repo), '--commit', a.commit, '--secondary-repo', str(tools_repo), '--secondary-commit', tools_commit, '--lane', 'release-signin-smoke', '--cwd', '.', '--output', str(a.output), '--collect', 'failure-dom.log', '--collect', 'owner-home.png', '--'] + command
     if (a.output / 'runner.log').exists():
         raise FileExistsError('retain existing browser evidence; use a new cycle output')

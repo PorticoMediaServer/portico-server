@@ -122,6 +122,16 @@ class ReviewDeployment(unittest.TestCase):
             with self.assertRaises(OSError):
                 smoke.read_credentials(link)
 
+
+    def test_stage_origin_cannot_activate_public_service(self):
+        args = ['smoke-review.py', 'a' * 40, '--repo', '/checkout', '--runner', '/runner',
+                '--credentials', '/private', '--output', '/output', '--activate-cycle', 'review-test',
+                '--origin', 'http://127.0.0.1:48142']
+        with patch('sys.argv', args), patch.object(smoke, 'ReviewActivation') as activation:
+            with self.assertRaises(SystemExit):
+                smoke.main()
+            activation.assert_not_called()
+
     def test_activation_without_real_browser_inputs_is_refused_before_mutation(self):
         with patch('sys.argv', ['deploy-review.py', 'a' * 40, '/artifact', '--cycle', 'review-test', '--activate-only']), patch.object(deploy, 'remote') as remote:
             with self.assertRaises(SystemExit):
