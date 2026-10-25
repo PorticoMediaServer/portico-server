@@ -4,6 +4,10 @@
 
 .toolbarActions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
+.toolbarActions > button[data-variant="toolbar"] { height: 38px; padding: 0 13px; font-size: 14px; gap: 7px; }
+
+.toolbarActions > button[data-icon-only] { width: 38px; height: 38px; }
+
 .progress { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 
 .progressDivider { width: 1px; height: 22px; background: var(--color-line); }
