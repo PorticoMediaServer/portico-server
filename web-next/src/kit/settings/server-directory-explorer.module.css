@@ -106,3 +106,14 @@
  .explorerColumns { grid-template-rows: auto minmax(0, 1fr); }
  .explorerColumns[data-roots] { grid-template-rows: minmax(0, 1fr); }
 }
+
+/* owner-libraries#24: at phone width the explorer fills the viewport between the
+   browser's bars instead of rising as a sheet. */
+@media (max-width: 599px) {
+ .explorer.explorer { inset: 0; translate: none; width: auto; height: auto; max-height: none; padding: 0; border-radius: 0; display: flex; flex-direction: column; background: var(--color-ink); }
+ .explorer.explorer > header { flex: none; padding: 16px 18px 0; }
+ .explorer.explorer > p { flex: none; margin: 0; padding: 6px 18px 0; }
+ .explorerBody.explorerBody { flex: 1; min-height: 0; }
+ .explorer .explorerFooter { flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--color-line-soft); background: var(--color-ink); }
+ .explorerBody .pickerPath { margin: 12px 16px 0; }
+}

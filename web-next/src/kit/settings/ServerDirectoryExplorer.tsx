@@ -148,7 +148,7 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
       <span className={styles.pickerPlaceIcon}><Icon name={rootIcon(root)} size={24}/></span>
       <span className={styles.pickerPlaceCopy}><b>{root.name}</b><small>{root.description || root.path}</small></span>
     </button>;
-  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder')} description={serverName?.trim() ? t('next.ownerLibraries.explorer.subtitle', {server: serverName.trim()}) : t('next.settings.folderBreadcrumbs')}
+  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} responsive={false} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder')} description={serverName?.trim() ? t('next.ownerLibraries.explorer.subtitle', {server: serverName.trim()}) : t('next.settings.folderBreadcrumbs')}
     footer={<>
       {onChooseMany ? <ChosenServerFolders paths={chosen} onRemove={toggle}/> : null}
       <Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
