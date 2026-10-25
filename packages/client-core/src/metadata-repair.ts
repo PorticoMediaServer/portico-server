@@ -1,5 +1,5 @@
 import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePattern} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
 /** Owner repairs are current-view CAS commands. A lost response is reconciled, never replayed. */
@@ -11,6 +11,7 @@ export type RepairFieldSpec = Readonly<{field:string;label:string;group:'general
 export type RepairRelationship = Readonly<{recordId?:string;provider?:string;department?:string;kind:string;targetKind:string;targetId:string;label:string;role?:string;ordinal:number;source:string;locked:boolean;observedAt?:string}>;
 export type RepairChoice = Readonly<{role:string;subject:string;candidateId:string;digest:string;thumbnailDigest:string;locked:boolean;revision:number;attribution:string;url:string}>;
 export type RepairData = Readonly<{
+ artworkFallbackUrl?:string;
  canMakeEpisodeThumbnail?:boolean;
  target:{kind:RepairTarget['kind'];id:string};libraryId:string;serverId:string;viewerFence:string;revision:string;
  snapshot:{relationshipLocks:Readonly<Record<string,boolean>>;fields:Readonly<Record<string,RepairField>>;identity?:{engine?:'screen';type?:string;provider:string;id:string;order?:string;revision:number;status:string;locked:boolean};relationships:readonly RepairRelationship[];artwork:readonly RepairChoice[]};
@@ -44,6 +45,7 @@ function readable(part:string,v:unknown,max:number,check:(v:Record<string,unknow
 }
 const when=(v:unknown)=>str(v,64)&&(v===''||Number.isFinite(Date.parse(v)));
 const roles=['poster','backdrop','cover','square','thumbnail','banner','logo','still','portrait'];
+const fallbackPattern=new RegExp('^'+routePattern('get_metadata_kind_id_art_role').replace('{kind}','show').replace('{id}','[A-Za-z0-9_-]{1,128}').replace('{role}','backdrop')+'\\?v=[a-f0-9]{64}$');
 function bad():never{throw Object.assign(new Error(unreadableServerResponse),{code:'invalid_metadata_repair'});}
 /**
  * The owner's editing view of one title. Its target, library, server, viewer fence and revision are
@@ -84,6 +86,7 @@ export function validateRepair(raw:unknown,scope:RepairScope,target:RepairTarget
  return Object.freeze({target:Object.freeze({kind:target.kind,id:target.id}),libraryId:target.libraryId,serverId:scope.serverId,viewerFence:raw.viewerFence,revision:raw.revision,
  ...(Array.isArray(raw.tabs)?{tabs:Object.freeze(raw.tabs.filter((tab):tab is string=>typeof tab==='string'&&['general','numbers','text','identity'].includes(tab)))}:{}),schema:rows(raw.schema,['field','label','group','type','maxLength','min','max','allowed','bulk']),artworkRoles:Object.freeze(artworkRoles),
  ...(raw.canMakeEpisodeThumbnail===true?{canMakeEpisodeThumbnail:true}:{}),
+ ...(target.kind==='item'&&typeof raw.artworkFallbackUrl==='string'&&fallbackPattern.test(raw.artworkFallbackUrl)?{artworkFallbackUrl:raw.artworkFallbackUrl}:{}),
  snapshot:Object.freeze({fields:Object.freeze(Object.fromEntries(Object.entries(raw.snapshot.fields).map(([k,v])=>[k,pick(v,['value','automaticValue','locked','source','observedAt','values'])]))),relationshipLocks:Object.freeze({...raw.snapshot.relationshipLocks}),...(ident===undefined?{}:{identity:pick(ident,['engine','type','provider','id','order','revision','status','locked'])}),relationships:rows(relationships,['recordId','provider','department','kind','targetKind','targetId','label','role','ordinal','source','locked','observedAt']),artwork:rows(chosenArtwork,['role','subject','candidateId','digest','thumbnailDigest','locked','revision','attribution','url'])}),
  candidates:Object.freeze(candidates.map(c=>Object.freeze({...pick(c,['id','identityId','identityType','provider','title','subtitle','observedAt','year','previewUrl']),...(c.orders===undefined?{}:{orders:rows(c.orders,['id','name'])})}))),history:rows(history,['id','trigger','observedAt']),
  artwork:Object.freeze({candidates:rows(artCandidates,['id','role','subject','provider','imageId','locale','rank','votes','attribution','observedAt','current','previewUrl']),jobs:rows(artJobs,['id','role','subject','status','error','attempts','nextAttempt'])}),cascades:rows(cascades,['id','intent','status','processed','failed','completed','skipped','pending'])}) as unknown as RepairData;
