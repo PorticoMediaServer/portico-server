@@ -9,6 +9,12 @@ import (
 	"unicode/utf8"
 )
 
+// ReadingProjectionRuleVersion folds classifier changes and this membership
+// policy. Bumping membership must not invalidate unchanged original package
+// classification evidence; future classifier changes still invalidate readers
+// and rebuilding automatically through the composite version.
+const ReadingProjectionRuleVersion = ReadingPublicationTypeRuleVersion*1000 + 1
+
 // ReadingGeneration identifies one complete effective-attribution projection.
 // This metadata is not library/content authority. A consumer must authorize its
 // explicit Reading library and retain this same snapshot for every read.
@@ -20,7 +26,7 @@ func ReadingProjectionReadyTx(ctx context.Context, tx *sql.Tx, library int64) (R
 	var out ReadingGeneration
 	var rule int
 	err := tx.QueryRowContext(ctx, `SELECT namespace,input_generation,ready_generation,publication_rule_version FROM reading_attribution_state WHERE library_id=?`, library).Scan(&out.Namespace, &out.Input, &out.Ready, &rule)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.Input != out.Ready || out.Ready == 0 || rule != ReadingPublicationTypeRuleVersion) {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.Input != out.Ready || out.Ready == 0 || rule != ReadingProjectionRuleVersion) {
 		return ReadingGeneration{}, ErrBuilding
 	}
 	return out, err
@@ -36,12 +42,12 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
 	// Rule changes retire readiness before any reader can consume a stale type.
 	// Invalidate one indexed library per step, then use the normal bounded rebuild.
 	var stale int64
-	ruleErr := tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version<? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingPublicationTypeRuleVersion).Scan(&stale)
+	ruleErr := tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version<? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingProjectionRuleVersion).Scan(&stale)
 	if errors.Is(ruleErr, sql.ErrNoRows) {
-		ruleErr = tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version>? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingPublicationTypeRuleVersion).Scan(&stale)
+		ruleErr = tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version>? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingProjectionRuleVersion).Scan(&stale)
 	}
 	if ruleErr == nil {
-		_, err := tx.ExecContext(ctx, `UPDATE reading_attribution_state SET publication_rule_version=?,input_generation=input_generation+1,phase='scan' WHERE library_id=?`, ReadingPublicationTypeRuleVersion, stale)
+		_, err := tx.ExecContext(ctx, `UPDATE reading_attribution_state SET publication_rule_version=?,input_generation=input_generation+1,phase='scan' WHERE library_id=?`, ReadingProjectionRuleVersion, stale)
 		return 1, err
 	}
 	if !errors.Is(ruleErr, sql.ErrNoRows) {
@@ -83,12 +89,15 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
 	if phase != "scan" {
 		return 0, ErrReadingValue
 	}
+	// Immutable membership belongs to the real title, not whichever version is
+	// currently preferred or decodable on this server. Any linked original in the
+	// explicit library/kind format set qualifies; readers apply runtime readiness
+	// and choose their eligible primary BEFORE pagination in their own snapshot.
 	rows, err := tx.QueryContext(ctx, `SELECT e.id,e.sort_key,cl.library_id,
  CASE WHEN e.retired=0 AND cl.retired=0 AND ((lib.kind='book' AND e.kind=20) OR (lib.kind='comic' AND e.kind=21)) AND EXISTS(
  SELECT 1 FROM reading_publications p JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
- WHERE p.item_id=e.id AND p.asset_id=(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=e.id
- ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)
- AND ((e.kind=20 AND p.format IN('epub','pdf')) OR (e.kind=21 AND p.format IN('cbz','pdf')))) THEN 1 ELSE 0 END
+ WHERE p.item_id=e.id
+ AND ((e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND p.format IN('cbz','pdf')))) THEN 1 ELSE 0 END
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
  WHERE e.library_id=? AND e.id>? ORDER BY e.id LIMIT ?`, library, after, limit)
 	if err != nil {

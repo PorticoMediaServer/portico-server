@@ -65,7 +65,7 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 	err = s.read().QueryRow(`SELECT c.id,a.namespace,a.input_generation,a.ready_generation,a.publication_rule_version
  FROM catalog_libraries c JOIN reading_attribution_state a ON a.library_id=c.id
  WHERE c.library_id=? AND c.retired=0`, library).Scan(&out.library, &out.generation.Namespace, &out.generation.Input, &out.generation.Ready, &rule)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.generation.Ready == 0 || out.generation.Input != out.generation.Ready || rule != compactcatalog.ReadingPublicationTypeRuleVersion) {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.generation.Ready == 0 || out.generation.Input != out.generation.Ready || rule != compactcatalog.ReadingProjectionRuleVersion) {
 		return nil, ErrReadingProjectionChanged
 	}
 	return out, err
