@@ -20,10 +20,10 @@ export type RecentReadingItem = Readonly<{
  */
 export function recentCards(
   items: readonly RecentReadingItem[],
-  actions: Readonly<{read: string; open: (item: RecentReadingItem) => void; play: (item: RecentReadingItem) => void}>,
+  actions: Readonly<{kind?: 'book' | 'comic'; read: string; open: (item: RecentReadingItem) => void; play: (item: RecentReadingItem) => void}>,
 ): readonly ReadCoverItem[] {
   return items.map(item => ({id: item.id, card: {
-    kind: 'book',
+    kind: actions.kind ?? 'book',
     context: 'shelf',
     density: 'shelf',
     model: {

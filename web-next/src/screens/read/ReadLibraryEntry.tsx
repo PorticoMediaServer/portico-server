@@ -93,7 +93,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
     ...(resume.length > 0 ? [{id: 'continue', kind: 'resume' as const, heading: t('next.cards.read'), items: resumeRows(resources, resume)}] : []),
     ...(recent && recent.length > 0 ? [{
       id: 'recent', kind: 'covers' as const, heading: t('next.layout.recentIn', {library: name}),
-      items: recentCards(recent, {read: t('next.reader.read'),
+      items: recentCards(recent, {kind: comic ? 'comic' : 'book', read: t('next.reader.read'),
         open: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.id}}).catch(resources.reportError);},
         play: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.id, entry.sourceId)).catch(resources.reportError);}}),
     }] : []),
