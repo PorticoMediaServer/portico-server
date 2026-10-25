@@ -1,5 +1,7 @@
 name: CI
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -18,8 +20,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: merge-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ci-main
+  cancel-in-progress: true
 env:
   CI_BASE: ${{ inputs.base || github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
   GOTOOLCHAIN: go1.26.10
@@ -101,6 +103,18 @@ jobs:
           npx --no-install tsc -p packages/reader-core/tsconfig.json
           npx --no-install tsc -p web-next/tsconfig.json --noEmit
           npx --no-install tsc -p web/tsconfig.json --noEmit
+      - if: ${{ !cancelled() }}
+        name: Web lint (informational)
+        run: |
+          status=0
+          npm run lint:design --workspace portico-web -- --strict || status=1
+          npm run lint:hooks --workspace portico-web || status=1
+          npm run lint:strings --workspace portico-web || status=1
+          npm run lint:design --workspace portico-web-next || status=1
+          npm run lint:hooks --workspace portico-web-next || status=1
+          npm run lint:strings --workspace portico-web-next || status=1
+          npm run lint:boundary --workspace portico-web-next || status=1
+          exit "$status"
       - if: ${{ !cancelled() }}
         name: Affected tests plus mandatory account/session/privacy checks
         run: python3 scripts/ci-affected.py js
