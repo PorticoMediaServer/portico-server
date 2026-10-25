@@ -652,9 +652,20 @@ func validateLibrarySettings(v *LibrarySettings) error {
 			}
 		}
 	}
-	// Thumbnails are cut on whole seconds, so the interval is too.
-	if v.Navigation.TrickplayIntervalMs%1000 != 0 {
+	// Thumbnails are cut on whole seconds, so the interval is too, and the bounds
+	// are the ones that will be stored: a value outside them is refused with its
+	// own name, never quietly replaced by one the owner did not choose.
+	if v.Navigation.TrickplayIntervalMs < 1000 || v.Navigation.TrickplayIntervalMs > 600000 || v.Navigation.TrickplayIntervalMs%1000 != 0 {
 		fields = append(fields, "settings.navigation.trickplayIntervalMs")
+	}
+	if v.Navigation.TrickplayTileWidth < 64 || v.Navigation.TrickplayTileWidth > 640 || v.Navigation.TrickplayTileWidth%2 != 0 {
+		fields = append(fields, "settings.navigation.trickplayTileWidth")
+	}
+	if v.Navigation.TrickplayMaxTiles < 16 || v.Navigation.TrickplayMaxTiles > catalog.MaxTrickplayTiles {
+		fields = append(fields, "settings.navigation.trickplayMaxTiles")
+	}
+	if v.Navigation.VideoPreviewMs < 5000 || v.Navigation.VideoPreviewMs > 120000 {
+		fields = append(fields, "settings.navigation.videoPreviewMs")
 	}
 	if !oneOf(v.Navigation.ChapterThumbnailMode, ChapterThumbnailModes...) {
 		fields = append(fields, "settings.navigation.chapterThumbnailMode")
@@ -665,10 +676,6 @@ func validateLibrarySettings(v *LibrarySettings) error {
 	if len(fields) > 0 {
 		return invalid(fields...)
 	}
-	clampInt(&v.Navigation.TrickplayIntervalMs, 1000, 600000)
-	clampInt(&v.Navigation.TrickplayTileWidth, 96, 640)
-	clampInt(&v.Navigation.TrickplayMaxTiles, 20, catalog.MaxTrickplayTiles)
-	clampInt(&v.Navigation.VideoPreviewMs, 5000, 120000)
 	return nil
 }
 
