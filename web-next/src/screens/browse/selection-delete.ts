@@ -1,5 +1,5 @@
 import {deletionAllowed, parseDeletePreview, parseDeleteResult, type DeletePreview, type DeleteResult} from '@core/administration.ts';
-import {routePath} from '../../../packages/contracts/src/routes.ts';
+import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import type {EntryActionPorts, EntryActionTarget} from '../../shell/entry-actions';
 
 export type LibraryDeletePhase = 'idle' | 'loading' | 'ready' | 'confirming' | 'blocked' | 'deleting' | 'uncertain' | 'result' | 'error';
@@ -22,7 +22,7 @@ function envelope(raw: unknown, serverId: string): unknown {
 export class LibraryDeleteProducer {
   private state: LibraryDeleteSnapshot = idle;
   private listeners = new Set<() => void>();
-  private target?: readonly EntryActionTarget[]; private ports?: EntryActionPorts;
+  private target?: readonly Pick<EntryActionTarget, 'itemId' | 'libraryId' | 'kind'>[]; private ports?: EntryActionPorts;
   private attempt = 0; private controller?: AbortController; private preview?: DeletePreview; private body?: DeleteBody;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => {this.listeners.delete(listener);}; };
   getSnapshot = (): LibraryDeleteSnapshot => this.state;
@@ -30,7 +30,7 @@ export class LibraryDeleteProducer {
   private live(attempt: number) { return this.target !== undefined && attempt === this.attempt && this.ports?.isCurrent() === true; }
   private fail(code: string) { this.state = {...this.state, errorCode: code}; this.emit(); }
 
-  open(target: readonly EntryActionTarget[], ports: EntryActionPorts) {
+  open(target: readonly Pick<EntryActionTarget, 'itemId' | 'libraryId' | 'kind'>[], ports: EntryActionPorts) {
     if (!ports.isCurrent() || !target.length || target.length > 200 || new Set(target.map(item => item.itemId)).size !== target.length) { this.close(); return; }
     this.attempt++; this.controller?.abort();
     this.target = Object.freeze(target.map(item => Object.freeze({...item}))); this.ports = ports; this.preview = undefined; this.body = undefined;
