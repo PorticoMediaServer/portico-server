@@ -120,6 +120,9 @@ func repairIdentityLocked(ctx context.Context, tx *sql.Tx, t RepairTarget) (bool
 // Provider families stay as published: only the owner's manual family is
 // replaced, through the catalogue write API.
 func applyRelationshipSet(ctx context.Context, tx *sql.Tx, t RepairTarget, class string, values []RepairRelationship, locked bool, actor, now string, restore bool) error {
+	return applyRelationshipSetMode(ctx, tx, t, class, values, locked, actor, now, restore, false)
+}
+func applyRelationshipSetMode(ctx context.Context, tx *sql.Tx, t RepairTarget, class string, values []RepairRelationship, locked bool, actor, now string, restore, effective bool) error {
 	if t.Kind != "item" || (class != "credit" && class != "genre") || len(values) > 512 || class == "genre" && len(values) > 64 {
 		return ErrRepairInput
 	}
@@ -132,12 +135,20 @@ func applyRelationshipSet(ctx context.Context, tx *sql.Tx, t RepairTarget, class
 		return err
 	}
 	if class == "credit" {
+		// Old clients retain the manual-family contract. A dropped/unreadable row
+		// is never silently promoted into a provider exclusion by the new server.
+		if !restore && !effective && !providerCreditsUnchanged(current, values) {
+			return ErrRepairInput
+		}
 		available, e := creditOverridesAvailable(ctx, tx, entity)
 		if e != nil {
 			return e
 		}
 		if available || restore {
 			return applyEffectiveCreditSet(ctx, tx, t, entity, values, locked, actor, now, restore)
+		}
+		if effective {
+			return ErrRepairInput
 		}
 	}
 	// This writer replaces only the manual family. A provider edit must not

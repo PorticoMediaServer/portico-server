@@ -23,6 +23,7 @@ export type RepairData = Readonly<{
  cascades:readonly {id:string;intent:string;status:string;processed:number;failed:number;completed?:number;skipped?:number;pending?:number}[];
 }>;
 export type RepairCommand = Readonly<{
+ effectiveCredits?:true;
  action:'make_episode_thumbnail'|'retry'|'preview_artwork'|'edit'|'identify'|'search'|'undo'|'lock_all'|'unlock_all'|'select_artwork'|'artwork_lock'|'repair_assets'|'discover_artwork'|'cascade'|'cancel_cascade'|'relationship_lock'|'edit_relationships';
  fields?:Record<string,{value?:string;values?:readonly string[];locked?:boolean;useAutomatic?:boolean}>;
  provider?:string;candidateId?:string;order?:string;historyId?:number;confirm?:boolean;
