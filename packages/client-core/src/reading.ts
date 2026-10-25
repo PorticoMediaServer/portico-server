@@ -234,6 +234,8 @@ function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSe
   }
 }
 
+/** Shared bridge validation delegates to the canonical current-manifest location policy. */
+export function validateReadingLocation(location: ReadingLocation, manifest: ReadingManifest) {validateLocation(location, manifest);}
 function validateLocation(location: ReadingLocation, manifest: ReadingManifest, stale = false) {
   if (location.format !== manifest.format || !Number.isFinite(location.progression) || location.progression < 0 || location.progression > 1) fail('invalid_location');
   if (location.format === 'epub') {
