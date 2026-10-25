@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {UploadSourceController} from '../src/screens/live/owner/upload-source-controller.ts';
-const preview = {serverId: 'server', preview: {channels: 1, programmes: 0, names: ['Stored channel']}};
+import {uploadPreview as preview, sourceReceipt} from './live-owner-fixtures.ts';
 test('file replacement retires preview and save retries retain the draft request id', async () => {
   const writes: unknown[] = [];
   const controller = new UploadSourceController({async request<T>(path: string, _method?: string, body?: unknown) {
-    if (!path.endsWith('/preview')) {writes.push(body);if (writes.length === 1) throw {status: 503};}return preview as T;
+    if (!path.endsWith('/preview')) {writes.push(body);if (writes.length === 1) throw {status: 503};return sourceReceipt((body as {id: string}).id) as T;}return preview as T;
   }}, 'server', () => true, () => {});
   controller.edit({name: 'Stored playlist'});await controller.read('playlist', async () => '#EXTM3U');await controller.check();
   assert.ok(controller.getSnapshot().preview);await controller.read('guide', async () => '<tv/>');assert.equal(controller.getSnapshot().preview, undefined);

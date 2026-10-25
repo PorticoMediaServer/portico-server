@@ -1,4 +1,4 @@
-import {useSyncExternalStore} from 'react';
+import {useEffect, useRef, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {SourceKind} from '@core/linear-api.ts';
 import {errorMessage} from '@core/presentation/errors.ts';
@@ -7,18 +7,22 @@ import {Button, Segmented, Select, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import type {RemoteSourceController} from './remote-source-controller';
 import styles from './owner.module.css';
+import {dialogAction} from './dialog-lifetime';
 const t = defaultI18n.t;
 
 /** Dialog ownership stays with the page: closing disposes its controller and
  * clears credentials rather than keeping them in the source list model. */
 export function RemoteSourceDialog({controller, close, saved}: {controller: RemoteSourceController; close: () => void; saved: () => void}) {
+  const owner = useRef(controller);owner.current = controller;
+  useEffect(() => () => controller.dispose(), [controller]);
+  const closeCurrent = dialogAction(owner, controller, () => {controller.dispose();close();}), savedCurrent = dialogAction(owner, controller, saved);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const {draft, preview, confirm, busy} = state;
   const skipped = preview && importSkipped(t, defaultI18n.has, preview.preview.diagnostics);
-  const check = () => void controller.check(!!confirm);
-  return <Dialog open onOpenChange={open => {if (!open) close();}} title={t('web.liveTv.addDialog')} description={t('web.liveTv.addDialogLede')} width={560}
-    footer={<><Button variant="text" size="small" onClick={close}>{t('action.cancel')}</Button><Button variant="primary" size="small" loading={busy}
-      disabled={!draft.name.trim() || !draft.locator.trim()} onClick={preview ? () => void controller.save().then(ok => {if (ok) saved();}) : check}>
+  const check = dialogAction(owner, controller, () => void controller.check(!!confirm));
+  return <Dialog open onOpenChange={open => {if (!open) closeCurrent();}} title={t('web.liveTv.addDialog')} description={t('web.liveTv.addDialogLede')} width={560}
+    footer={<><Button variant="text" size="small" onClick={closeCurrent}>{t('action.cancel')}</Button><Button variant="primary" size="small" loading={busy}
+      disabled={!draft.name.trim() || !draft.locator.trim()} onClick={preview ? dialogAction(owner, controller, () => void controller.save().then(ok => {if (ok) savedCurrent();})) : check}>
       {t(preview ? 'web.liveTv.addSource' : confirm ? 'web.liveTv.lanConfirm' : 'web.liveTv.checkSource')}</Button></>}>
     <div className={styles.fields}>
       <Segmented aria-label={t('web.libraries.kind')} value={draft.kind} disabled={busy}
