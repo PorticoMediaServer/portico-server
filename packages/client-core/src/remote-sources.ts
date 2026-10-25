@@ -239,7 +239,13 @@ const scanStates:readonly RemoteScanStateCode[]=['queued','running','paused'];
 const scanModes:readonly RemoteScanMode[]=['first-import','incremental','integrity','full'];
 const scanPhases:readonly RemoteScanPhase[]=['inventory','legacy_inventory','basic_pending','basic_running','analysis_enqueue','reconciling','sidecars','verifying','extras'];
 function scanTimestamp(value:unknown):string|undefined{
- return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value))?value:undefined;
+ if(typeof value!=='string')return undefined;
+ const match=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+ if(!match)return undefined;
+ const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),hour=Number(match[4]),minute=Number(match[5]),second=Number(match[6]),offsetHour=Number(match[8]??0),offsetMinute=Number(match[9]??0);
+ const monthDays=[31,year%4===0&&(year%100!==0||year%400===0)?29:28,31,30,31,30,31,31,30,31,30,31];
+ if(month<1||month>12||day<1||day>monthDays[month-1]||hour>23||minute>59||second>59||offsetHour>23||offsetMinute>59)return undefined;
+ return Number.isFinite(Date.parse(value))?value:undefined;
 }
 const scanBounded=(value:unknown):value is number=>integer(value)&&value<=2**40;
 const sourceHealths:readonly RemoteSourceHealth[]=['ready','healthy','degraded','inventory_running','cancelled','offline','root_changed','removing'];

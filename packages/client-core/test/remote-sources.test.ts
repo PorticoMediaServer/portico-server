@@ -620,3 +620,17 @@ test('the drawn OneDrive or Dropbox token builds the cloud section and tells oth
  assert.equal(reason(cloudTokenDraft({...fields,token:JSON.stringify({type:'service_account'})})),'google');
  assert.equal(reason(cloudTokenDraft({...fields,folder:'a/../b'})),'folder');
 });
+test('source status keeps only real RFC3339 scan times, never a normalized impossible date',async()=>{
+ const scan={state:'running',sourceGeneration:1,runPolicyRevision:2,processed:0,discovered:10,analyzed:2,warnings:0};
+ const status=(extra:Record<string,unknown>)=>({sourceId:'dav',generation:'7',state:'ready',rangeSupport:'conditional',lastCheckedAt:'2026-10-25T10:00:00Z',connectionsInUse:0,playbackReads:0,analysisReads:0,scanIntervalSeconds:3600,libraries:[],librariesTruncated:false,...extra});
+ const read=async(extra:Record<string,unknown>)=>{const service=new RemoteSourceService(api(async()=>({scope:wire,status:status(extra)})),scope,async()=>op);const out=await service.readStatus('dav');service.dispose();return out;};
+ for(const bad of ['2026-02-31T10:00:00Z','2026-02-29T10:00:00Z','2026-04-31T10:00:00Z','2026-01-01T24:00:00Z','2026-01-01T10:60:00Z','2026-01-01T10:00:60Z','2026-00-10T10:00:00Z','2026-01-01T10:00:00+24:00','2026-01-01T10:00:00+05:60']){
+  const out=await read({lastCompleteAt:bad,scan:{...scan,queuedAt:bad,completedAt:bad,finishedAt:bad}});
+  assert.equal(out.lastCompleteAt,undefined,bad);assert.deepEqual([out.scan?.queuedAt,out.scan?.completedAt,out.scan?.finishedAt],[undefined,undefined,undefined],bad);
+  assert.equal(out.scan?.processed,0);assert.equal(out.scan?.discovered,10);
+ }
+ for(const good of ['2026-02-28T23:59:59Z','2024-02-29T00:00:00.123456789Z','2026-01-01T10:00:00.5+05:30','2026-01-01T10:00:00-08:00']){
+  const out=await read({lastCompleteAt:good,scan:{...scan,queuedAt:good}});
+  assert.equal(out.lastCompleteAt,good);assert.equal(out.scan?.queuedAt,good);
+ }
+});
