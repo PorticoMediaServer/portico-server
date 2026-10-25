@@ -17,7 +17,7 @@ import readItemStyles from './read-item.module.css';
 
 const {t} = defaultI18n;
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type Resources = Readonly<{artwork: Captured['context']['artwork']; comic: boolean; bindings: ReturnType<typeof createReadBindings>;
+type Resources = Readonly<{context: Captured['context']; artwork: Captured['context']['artwork']; comic: boolean; bindings: ReturnType<typeof createReadBindings>;
   libraryId: string; seriesId: string; rows: ReturnType<typeof createReadingSeriesCollection>; reportError: (error: unknown) => void}>;
 
 /** The canonical series cursor owns complete membership and ordering, including unnumbered volumes. */
@@ -31,15 +31,16 @@ function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libra
     const bindings = createReadBindings(captured.context), rows = createReadingSeriesCollection(bindings.client, libraryId, seriesId);
     setRetired(false);
     const off = bindings.authority.subscribe(() => {setRetired(true); setResources(undefined);});
-    setResources({artwork: captured.context.artwork, bindings, comic: captured.context.facts.identity.libraries.find(library => library.id === libraryId)?.kind === 'comic', libraryId, seriesId, rows,
+    setResources({context: captured.context, artwork: captured.context.artwork, bindings, comic: captured.context.facts.identity.libraries.find(library => library.id === libraryId)?.kind === 'comic', libraryId, seriesId, rows,
       reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}});
     return () => {off(); rows.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, seriesId, retry]);
   if (retired) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
-  return resources ? <SeriesRows resources={resources} retry={() => setRetry(value => value + 1)}/> : <Skeleton height={320}/>;
+  return resources && resources.context === captured.context ? <SeriesRows resources={resources} retry={() => setRetry(value => value + 1)}/> : <Skeleton height={320}/>;
 }
 function SeriesRows({resources, retry}: {resources: Resources; retry: () => void}) {
   const state = useSyncExternalStore(resources.rows.collection.subscribe, resources.rows.collection.getSnapshot, resources.rows.collection.getSnapshot);
+  const overview = useSyncExternalStore(resources.rows.overview.subscribe, resources.rows.overview.getSnapshot, resources.rows.overview.getSnapshot);
   const width = useShellWidth(), grid = useRef<HTMLDivElement>(null), [height, setHeight] = useState(600);
   // The actual progressed member of this series comes from the canonical continue
   // index; its version and non-stale flag are the server's, never a guess. A
@@ -61,7 +62,7 @@ function SeriesRows({resources, retry}: {resources: Resources; retry: () => void
     return () => {observer.disconnect(); window.removeEventListener('resize', measure);};
   }, [state.status]);
   const resident = resources.rows.collection.residentItems();
-  const title = resident.find(item => item.series)?.series?.name;
+  const title = overview?.title ?? resident.find(item => item.series)?.series?.name;
   const report = (error: unknown) => {resources.reportError(error);};
   const cardWidth = width < 600 ? 108 : 190;
   if (state.status === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
@@ -70,13 +71,13 @@ function SeriesRows({resources, retry}: {resources: Resources; retry: () => void
   const target = continued?.item ?? first, number = target?.series?.number;
   const actionLabel = continued ? number === undefined ? t('next.reader.readNext') : t('next.reader.readVolume', {number: defaultI18n.number(number)}) : t('next.reader.readNext');
   const start = () => {if (!target || !resources.bindings.authority.isCurrent()) return; void router.navigate(readDestination(target.id, target.sourceId)).catch(report);};
-  const authors = [...new Set(resident.map(item => item.author?.value).filter((value): value is string => !!value))];
-  const total = state.total !== undefined && !state.totalIsLowerBound ? state.total : undefined;
+  const author = overview?.author?.value;
+  const total = overview?.total ?? (state.total !== undefined && !state.totalIsLowerBound ? state.total : undefined);
   const tint = generatedCoverTint(title ?? '');
   const coverItem = target ?? resident[0];
   return <section className={styles.library}>
-    {title ? <><ReadBookHero title={title} author={authors.length ? {name: defaultI18n.list(authors)} : undefined}
-      facts={total === undefined ? [] : [{id: 'count', text: t(resources.comic ? 'next.reader.volumeCount' : 'next.kit.books', {count: total}), role: 'value' as const}]}
+    {title ? <><ReadBookHero title={title} author={author ? {name: author} : undefined}
+      facts={[...(total === undefined ? [] : [{id: 'count', text: t(resources.comic ? 'next.reader.volumeCount' : 'next.kit.books', {count: total}), role: 'value' as const}]), ...(overview ? [{id: 'read', text: t('next.reader.seriesReadCount', {read: defaultI18n.number(overview.completed), count: defaultI18n.number(overview.total)}), role: 'value' as const}] : [])]}
       cover={resources.artwork.foreground(coverItem?.coverUrl, 784, 2 / 3)}
       ambient={<span className={readItemStyles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
       actions={<Button variant="primary" icon="i-book" onClick={start} disabled={!target}>{actionLabel}</Button>}/>
