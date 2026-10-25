@@ -1,6 +1,7 @@
 /** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
 export const readerMessages = {
   'next.reader.bulkLimit': 'Edit up to {count, number} books at a time.',
+  'next.reader.chooseCoverPage': 'Choose a page as the cover',
   'next.reader.seriesReadCount': '{read} of {count} read',
   'next.reader.display': 'Display',
   'next.reader.page': 'Page',
