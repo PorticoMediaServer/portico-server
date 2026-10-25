@@ -63,6 +63,17 @@ func TimeshiftLimits(minutes *int) (time.Duration, int64, error) {
 	return time.Duration(chosen) * time.Minute, maxBytes, nil
 }
 
+// TimeshiftMinutesOrDefault is the one read fallback for stored settings. An
+// unset or invalid legacy value reads as the actual default, matching what the
+// owner settings getter shows. New writes still validate explicitly.
+func TimeshiftMinutesOrDefault(minutes *int) *int {
+	if minutes != nil && ValidTimeshiftMinutes(*minutes) {
+		return minutes
+	}
+	value := DefaultTimeshiftMinutes
+	return &value
+}
+
 type FilterRule struct {
 	Mode   string   `json:"mode"`
 	Values []string `json:"values"`
@@ -151,6 +162,7 @@ func RuntimeConfigurationTx(ctx context.Context, tx *sql.Tx, sid string) (LiveDe
 	if v.UserAgent != "" {
 		d.UserAgent = v.UserAgent
 	}
+	d.TimeshiftMinutes = TimeshiftMinutesOrDefault(d.TimeshiftMinutes)
 	d.ImportLimits = d.ImportLimits.effective()
 	return d, v, nil
 }

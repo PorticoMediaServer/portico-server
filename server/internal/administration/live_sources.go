@@ -29,10 +29,7 @@ func DefaultLiveDefaults() LiveDefaults {
 // closed choice. It is not used on a write, where an invalid value must be
 // refused rather than repaired.
 func normalizeLiveDefaults(v *LiveDefaults) {
-	if v.TimeshiftMinutes == nil || !livechannels.ValidTimeshiftMinutes(*v.TimeshiftMinutes) {
-		minutes := livechannels.DefaultTimeshiftMinutes
-		v.TimeshiftMinutes = &minutes
-	}
+	v.TimeshiftMinutes = livechannels.TimeshiftMinutesOrDefault(v.TimeshiftMinutes)
 }
 
 // preserveLiveDefaults runs inside the accepting transaction. An old client
