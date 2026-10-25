@@ -38,25 +38,51 @@ const (
 // its middle); credits in its last third, at most eight minutes. A film's
 // credits are looked for in its last quarter, at most twenty minutes.
 func planSegments(kind, mode string, durationUS int64, audio, video bool) segmentPlan {
+	return planSegmentsWithPolicy(kind, mode, durationUS, audio, video, defaultSegmentPlanning())
+}
+
+func planSegmentsWithPolicy(kind, mode string, durationUS int64, audio, video bool, policy segmentPlanning) segmentPlan {
 	var p segmentPlan
+	introCap, creditsCap, filmCap := int64(600_000_000), int64(480_000_000), int64(1_200_000_000)
+	if policy.IntroWindow == "long" {
+		introCap = 900_000_000
+	}
+	if policy.CreditsWindow == "long" {
+		creditsCap = 900_000_000
+	}
+	if policy.FilmCreditsWindow == "long" {
+		filmCap = 1_800_000_000
+	}
 	switch kind {
 	case "episode":
-		if durationUS < minEpisodeUS || !audio && !(video && mode == SegmentModeThorough) {
+		if durationUS < policy.EpisodeMinutes*60_000_000 || !audio && !(video && mode == SegmentModeThorough) {
 			return p
 		}
 		if audio {
-			opening := min(durationUS/2, max(durationUS/4, 300_000_000), 600_000_000)
-			closing := min(durationUS/3, 480_000_000)
+			opening := min(durationUS/2, max(durationUS/4, 300_000_000), introCap)
+			if policy.IntroWindow == "long" {
+				opening = min(durationUS/2, introCap)
+			}
+			closing := min(durationUS/3, creditsCap)
+			if policy.CreditsWindow == "long" {
+				closing = min(durationUS, creditsCap)
+			}
 			p.Opening = region{0, opening}
 			p.Closing = region{durationUS - closing, closing}
 		}
 		if video && mode == SegmentModeThorough {
-			closing := min(durationUS/3, 480_000_000)
+			closing := min(durationUS/3, creditsCap)
+			if policy.CreditsWindow == "long" {
+				closing = min(durationUS, creditsCap)
+			}
 			p.Frames = region{durationUS - closing, closing}
 		}
 	case "movie":
-		if video && mode == SegmentModeThorough && durationUS >= minFilmUS {
-			closing := min(durationUS/4, 1_200_000_000)
+		if video && mode == SegmentModeThorough && durationUS >= policy.FilmMinutes*60_000_000 {
+			closing := min(durationUS/4, filmCap)
+			if policy.FilmCreditsWindow == "long" {
+				closing = min(durationUS, filmCap)
+			}
 			p.Frames = region{durationUS - closing, closing}
 		}
 	}

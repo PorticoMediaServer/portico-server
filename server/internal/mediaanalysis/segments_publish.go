@@ -37,7 +37,7 @@ func (s *Service) publishSegmentEvidence(ctx context.Context, f segmentFile, e s
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	id := token("segment-evidence", f.ObjectID, f.Revision, f.Mode, segmentdetect.EvidenceAlgorithm, fmt.Sprint(nowMS()))
+	id := token("segment-evidence", f.ObjectID, f.Revision, f.Mode, f.Planning.digest(), segmentdetect.EvidenceAlgorithm, fmt.Sprint(nowMS()))
 	out := produced{Artifacts: []artifactOutput{}, Markers: []Marker{}}
 	if err := s.adder(ctx, id, &out)(e.Marshal(), SegmentStage, "application/json", 0, 0, f.DurationUS, 0, 0); err != nil {
 		return err
@@ -71,7 +71,20 @@ func (s *Service) publishSegmentEvidence(ctx context.Context, f segmentFile, e s
 	if err != nil {
 		return err
 	}
-	summary := map[string]any{"algorithm": segmentdetect.EvidenceAlgorithm, "mode": f.Mode, "openingPoints": len(e.Opening.Points), "closingPoints": len(e.Closing.Points), "frames": len(e.Frames), "fileDetections": len(detections)}
+	planning, err := segmentPlanningTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	var queuedPolicy, queuedMode string
+	if err = tx.QueryRowContext(ctx, `SELECT planning_policy,mode FROM segment_files WHERE object_id=? AND source_revision=?`, f.ObjectID, f.Revision).Scan(&queuedPolicy, &queuedMode); errors.Is(err, sql.ErrNoRows) {
+		return gated.Commit()
+	} else if err != nil {
+		return err
+	}
+	if planning != f.Planning || queuedPolicy != planning.digest() || queuedMode != f.Mode {
+		return gated.Commit()
+	}
+	summary := map[string]any{"algorithm": segmentdetect.EvidenceAlgorithm, "mode": f.Mode, "planningPolicy": f.Planning.digest(), "openingPoints": len(e.Opening.Points), "closingPoints": len(e.Closing.Points), "frames": len(e.Frames), "fileDetections": len(detections)}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO analysis_results(id,object_id,asset_id,source_revision,root_incarnation,configuration_generation,policy_revision,stage,algorithm,evidence,tool_digest,duration_us,summary_json,created_ms) VALUES(?,?,?,?,?,?,0,?,?,?,?,?,?,?)`, id, f.ObjectID, f.AssetID, f.Revision, f.Incarnation, f.Generation, SegmentStage, segmentdetect.EvidenceAlgorithm+"/"+f.Mode, inputEvidence, tool, f.DurationUS, jsonString(summary), nowMS()); err != nil {
 		return err
 	}

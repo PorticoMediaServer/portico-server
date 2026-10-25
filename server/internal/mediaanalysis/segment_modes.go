@@ -16,6 +16,7 @@ var SegmentLibraryChoices = []string{"server", SegmentModeOff, SegmentModeStanda
 type segmentLibrary struct {
 	ID, Kind string // Kind is the item kind measured: "episode" or "movie"
 	Mode     string // effective: off, standard or thorough
+	Planning string // measurement policy identity
 	Choice   string // the library's own choice (SegmentLibraryChoices)
 }
 
@@ -102,7 +103,7 @@ func segmentLibrariesTx(ctx context.Context, q queryer) ([]segmentLibrary, strin
 func segmentModesDigest(libraries []segmentLibrary) string {
 	parts := make([]string, 0, len(libraries))
 	for _, l := range libraries {
-		parts = append(parts, l.ID+"="+l.Mode)
+		parts = append(parts, l.ID+"="+l.Mode+":"+l.Planning)
 	}
 	sort.Strings(parts)
 	return token(strings.Join(parts, ","))

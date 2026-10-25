@@ -24,6 +24,11 @@ type settingConsumer struct{ file, witness, effect string }
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+	"operations.Settings.segments.filmCreditsWindow":                         {"internal/mediaanalysis/segment_planning.go", "literal:segments.filmCreditsWindow", "Bound the region read by the existing detector"},
+	"operations.Settings.segments.creditsWindow":                             {"internal/mediaanalysis/segment_planning.go", "literal:segments.creditsWindow", "Bound the region read by the existing detector"},
+	"operations.Settings.segments.introWindow":                               {"internal/mediaanalysis/segment_planning.go", "literal:segments.introWindow", "Bound the region read by the existing detector"},
+	"operations.Settings.segments.shortestFilm":                              {"internal/mediaanalysis/segment_planning.go", "literal:segments.shortestFilm", "Bound measured detection to eligible file lengths"},
+	"operations.Settings.segments.shortestEpisode":                           {"internal/mediaanalysis/segment_planning.go", "literal:segments.shortestEpisode", "Bound measured detection to eligible file lengths"},
 	"operations.Settings.segments.tvMode":                                    {"internal/mediaanalysis/segment_modes.go", "literal:segments.tvMode", "Resolve the effective library kind detection mode"},
 	"operations.Settings.segments.animeMode":                                 {"internal/mediaanalysis/segment_modes.go", "literal:segments.animeMode", "Resolve the effective library kind detection mode"},
 	"operations.Settings.segments.movieMode":                                 {"internal/mediaanalysis/segment_modes.go", "literal:segments.movieMode", "Resolve the effective library kind detection mode"},

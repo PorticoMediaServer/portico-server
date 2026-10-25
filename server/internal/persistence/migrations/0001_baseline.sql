@@ -7771,6 +7771,7 @@ CREATE TRIGGER social_groups_together_list_ended AFTER UPDATE OF state ON social
 CREATE TABLE segment_files (
  object_id TEXT PRIMARY KEY, source_revision TEXT NOT NULL, library_id TEXT NOT NULL,
  show_id INTEGER NOT NULL DEFAULT 0, mode TEXT NOT NULL CHECK(mode IN('standard','thorough')),
+ planning_policy TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('pending','complete','failed','unsupported')),
  attempt INTEGER NOT NULL DEFAULT 0, next_ms INTEGER NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '',
  result_id TEXT NOT NULL DEFAULT '', match_digest TEXT NOT NULL DEFAULT '', updated_ms INTEGER NOT NULL
@@ -8234,6 +8235,11 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "library.missingTitles" TEXT,
  "library.missingTitlesDays" INTEGER,
  "library.segmentDetection" TEXT,
+ "segments.shortestEpisode" INTEGER CHECK("segments.shortestEpisode" IN(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30)),
+ "segments.shortestFilm" INTEGER CHECK("segments.shortestFilm" IN(5,10,15,20,25,30,35,40,45,50,55,60)),
+ "segments.introWindow" TEXT CHECK("segments.introWindow" IN('usual','long')),
+ "segments.creditsWindow" TEXT CHECK("segments.creditsWindow" IN('usual','long')),
+ "segments.filmCreditsWindow" TEXT CHECK("segments.filmCreditsWindow" IN('usual','long')),
  "segments.tvMode" TEXT CHECK("segments.tvMode" IN('server','standard','thorough','off')),
  "segments.animeMode" TEXT CHECK("segments.animeMode" IN('server','standard','thorough','off')),
  "segments.movieMode" TEXT CHECK("segments.movieMode" IN('server','standard','thorough','off')),

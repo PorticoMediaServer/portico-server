@@ -23,6 +23,11 @@ func ConfigurationBindings() []ConfigurationBinding {
 	return []ConfigurationBinding{
 		{"storage.missingRule", "storage.remove_missing_titles", "library.missingTitles", 1, false},
 		{"storage.missingDaysExact", "storage.remove_missing_titles_days", "library.missingTitlesDays", 1, false},
+		{"segments.shortestEpisode", "segments.shortest_episode_minutes", "segments.shortestEpisode", 1, false},
+		{"segments.shortestFilm", "segments.shortest_film_minutes", "segments.shortestFilm", 1, false},
+		{"segments.introWindow", "segments.intro_window", "segments.introWindow", 1, false},
+		{"segments.creditsWindow", "segments.credits_window", "segments.creditsWindow", 1, false},
+		{"segments.filmCreditsWindow", "segments.film_credits_window", "segments.filmCreditsWindow", 1, false},
 		{"segments.tvMode", "segments.tv_mode", "segments.tvMode", 1, false},
 		{"segments.animeMode", "segments.anime_mode", "segments.animeMode", 1, false},
 		{"segments.movieMode", "segments.movie_mode", "segments.movieMode", 1, false},
