@@ -46,3 +46,20 @@ test('a response for another server cannot populate the page', async () => {
   const controller = new LiveSourceController({async request<T>() {return {...document, serverId: 'other'} as T;}}, 'server', () => true, () => {});
   await controller.load();assert.equal(controller.getSnapshot().document, undefined);assert.ok(controller.getSnapshot().error);controller.dispose();
 });
+test('a superseded list response cannot replace the newer result', async () => {
+  const resolves: ((value: unknown) => void)[] = [];
+  const controller = new LiveSourceController({request<T>() {return new Promise(done => resolves.push(done)) as Promise<T>;}}, 'server', () => true, () => {});
+  const first = controller.load(), second = controller.load();
+  resolves[1]({...document, sources: [{...source, revision: 9}]});await second;
+  resolves[0](document);await first;
+  assert.equal(controller.getSnapshot().document?.sources[0]?.revision, 9);controller.dispose();
+});
+test('disposing during a command aborts it and does not launch a readback', async () => {
+  let complete!: (value: unknown) => void, signal: AbortSignal | undefined;let calls = 0;
+  const controller = new LiveSourceController({request<T>(_path: string, method?: string, _body?: unknown, active?: AbortSignal) {
+    calls++;if (method === 'POST') {signal = active;return new Promise(done => {complete = done;}) as Promise<T>;}
+    return Promise.resolve(document as T);
+  }}, 'server', () => true, () => {});
+  await controller.load();const action = controller.act(source, 'remove');controller.dispose();complete({});
+  assert.equal(await action, false);assert.equal(signal?.aborted, true);assert.equal(calls, 2);
+});

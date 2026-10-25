@@ -1,5 +1,6 @@
 import type {LibraryContentApi} from '@core/library-content.ts';
 import type {RefreshStatus} from '@core/linear-api.ts';
+import {canRefreshSource} from '@core/server-admin/panel-logic.ts';
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {createOperationIds} from '@core/server-admin/server-forms.ts';
 
@@ -50,7 +51,7 @@ export class LiveSourceController {
    * deliberate user action; never silently replay removal against new facts. */
   async act(source: OwnerLiveSource, action: 'refresh' | 'toggle' | 'remove') {
     if (!this.current() || this.snapshot.busy || !this.snapshot.document?.sources.some(row => row.id === source.id && row.revision === source.revision)) return false;
-    if (action === 'refresh' && (source.state === 'disabled' || this.snapshot.document.refresh.some(row => row.sourceId === source.id && row.state === 'refreshing'))) return false;
+    if (action === 'refresh' && (!canRefreshSource(source, this.snapshot.document.refresh) || this.snapshot.document.refresh.some(row => row.sourceId === source.id && row.state === 'refreshing'))) return false;
     const command = this.command = new AbortController();
     const body = action === 'refresh' ? {expectedRevision: source.revision} : {
       expectedRevision: source.revision, requestId: this.operations.forPayload(JSON.stringify({id: source.id, revision: source.revision, action, enabled: source.state === 'disabled'})), ...(action === 'toggle' ? {enabled: source.state === 'disabled'} : {}),
