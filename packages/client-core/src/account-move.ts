@@ -69,14 +69,15 @@ export type AccountMoveWaiting=Readonly<{accountId:string;username:string}>;
 /** The waiting people for the active move: exact ids the codes route accepts,
  * bounded and unique, with the usernames the owner recognises. No code, hash or
  * password material is part of this read. */
-export function parseAccountMoveWaiting(raw:unknown):readonly AccountMoveWaiting[]{
- if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>2000)invalid();
+export function parseAccountMoveWaiting(raw:unknown):Readonly<{items:readonly AccountMoveWaiting[];truncated:boolean}>{
+ if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>2000||typeof raw.truncated!=='boolean')invalid();
  const seen=new Set<string>();
- return Object.freeze(raw.items.map(row=>{
+ const items=Object.freeze(raw.items.map(row=>{
   if(!obj(row)||!text(row.accountId,128)||seen.has(row.accountId)||!text(row.username,64)||!row.username)invalid();
   seen.add(row.accountId);
   return Object.freeze({accountId:row.accountId,username:row.username});
  }));
+ return Object.freeze({items,truncated:raw.truncated});
 }
 export type MoveCodeLink=Readonly<{code:string;id?:string}>;
 /** Codes live in memory only. Scrub even an invalid fragment before any await/analytics.

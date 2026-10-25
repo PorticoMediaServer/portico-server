@@ -52,7 +52,7 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		write(w, 200, out)
+		write(w, 200, moveWaitingList{Items: out.Items, Truncated: out.Truncated})
 	})
 	d.httpHandle(mux, "POST /v1/admin/sign-in/move/preview", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := d.owner(r); err != nil {
@@ -248,6 +248,31 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 		writeAuth(w, r, 200, out)
 	})
 }
+
+// moveWaitingList is the published target read: bounded to one sheet's 2000
+// accounts and explicit about a larger waiting population.
+type moveWaitingList struct {
+	Items     []identity.MoveWaiting `json:"items"`
+	Truncated bool                   `json:"truncated"`
+}
+
+func (moveWaitingList) JSONSchema() map[string]any {
+	type wire struct {
+		Items     []identity.MoveWaiting `json:"items"`
+		Truncated bool                   `json:"truncated"`
+	}
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	items := shape["properties"].(map[string]any)["items"].(map[string]any)
+	items["maxItems"] = 2000
+	item := items["items"].(map[string]any)["properties"].(map[string]any)
+	for key, limit := range map[string]int{"accountId": 128, "username": 64} {
+		field := item[key].(map[string]any)
+		field["minLength"] = 1
+		field["maxLength"] = limit
+	}
+	return shape
+}
+
 func registerAccountMoveContracts(registry *apikit.Registry) error {
 	owner := func(id, method, path string, status int) apikit.Metadata {
 		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: "Manage the server sign-in move", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 16384, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "sign_in_kind_portico", "sign_in_kind_local", "move_collision", "move_confirmation", "move_code_invalid", "internal"}}
@@ -258,7 +283,12 @@ func registerAccountMoveContracts(registry *apikit.Registry) error {
 	if e := apikit.RegisterHTTP[struct{}, moveStatus](registry, owner("get_sign_in_move", "GET", "/v1/admin/sign-in/move", 200)); e != nil {
 		return e
 	}
-	if e := apikit.RegisterHTTP[struct{}, identity.MoveWaitingList](registry, owner("get_sign_in_move_waiting", "GET", "/v1/admin/sign-in/move/waiting", 200)); e != nil {
+	if e := func() error {
+		m := owner("get_sign_in_move_waiting", "GET", "/v1/admin/sign-in/move/waiting", 200)
+		// The read joins and orders up to 2000 targets, so it is page-sized.
+		m.Cost = apikit.PageSized
+		return apikit.RegisterHTTP[struct{}, moveWaitingList](registry, m)
+	}(); e != nil {
 		return e
 	}
 	if e := apikit.RegisterHTTP[identity.MovePreviewRequest, identity.AccountMove](registry, owner("post_sign_in_move_preview", "POST", "/v1/admin/sign-in/move/preview", 200)); e != nil {
