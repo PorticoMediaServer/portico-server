@@ -169,11 +169,11 @@ func (d Dependencies) savedContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request := catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: q.Get("view"), Sort: q.Get("sort"), Direction: q.Get("direction"), Filter: q.Get("filter"), Shape: q.Get("shape"), Cursor: q.Get("cursor"), Limit: limit, Restrictions: restrictions}
-	var out catalog.ContentEnvelope
+	var out catalog.SavedContentEnvelope
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		var composeErr error
 		if q.Get("view") == "playlists" {
-			out, composeErr = cat.PlaylistDirectory(request, resourceActor(p))
+			out.ContentEnvelope, composeErr = cat.PlaylistDirectory(request, resourceActor(p))
 			if composeErr == nil {
 				for i := range out.Sections {
 					if composeErr = cat.ProjectPlaylistSamples(viewer, out.Sections[i].Entries); composeErr != nil {
@@ -182,9 +182,21 @@ func (d Dependencies) savedContent(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else {
-			out, composeErr = cat.Saved(request, libraries)
+			var admit catalog.SavedGroupAdmission
+			if identity.CanUsePersonalState(p) {
+				admit = d.savedReadingGroupsAdmission(p, viewer)
+			}
+			out, composeErr = cat.SavedWithReadingGroups(request, libraries, admit)
 			if composeErr == nil {
-				composeErr = d.projectSavedActions(cat.Context(), p, viewer, cat, savedContentEntries(&out))
+				entries := savedContentEntries(&out.ContentEnvelope)
+				for i := range out.SavedSections {
+					for j := range out.SavedSections[i].Cards {
+						if entry := out.SavedSections[i].Cards[j].Entry; entry != nil {
+							entries = append(entries, entry)
+						}
+					}
+				}
+				composeErr = d.projectSavedActions(cat.Context(), p, viewer, cat, entries)
 			}
 		}
 		return composeErr
