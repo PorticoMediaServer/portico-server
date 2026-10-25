@@ -14,7 +14,7 @@ function fixture(options: {otherPeopleCount?: number} = {}) {
     accessSession: async () => session()}} as unknown as ServicesAccount;
   const review: HostedOwnerClaimReview = Object.freeze({request: {hostedOrigin: 'https://accounts.test', code: 'private-code', operation: 'private-operation', nameHint: 'Server'},
     identity: {accountId: 'account', familyId: 'family'}, serverId: 'actual-server-id', name: 'Actual server', address: 'https://original.test',
-    transactionId: 'private-transaction', requestedAt: new Date(clock - 1000).toISOString(), expiresAt: new Date(clock + 60000).toISOString(), status: 'pending',
+    transactionId: 'private-transaction', requestedAt: new Date(clock - 1000).toISOString(), expiresAt: new Date(clock + 60000).toISOString(), status: 'pending', reason: 'switch',
     ...(options.otherPeopleCount === undefined ? {} : {otherPeopleCount: options.otherPeopleCount})});
   const controller: ReturnType<typeof scopedHostedOwnerClaim> = {
     review: async () => {calls.push('review'); await hold('review'); return {...review, status};},

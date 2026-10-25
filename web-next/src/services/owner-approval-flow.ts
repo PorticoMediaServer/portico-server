@@ -6,6 +6,8 @@ import type {scopedHostedOwnerClaim} from './owner-pending';
 type Controller = ReturnType<typeof scopedHostedOwnerClaim>;
 export type OwnerApprovalDisplay = Readonly<{
   name: string; address: string; accountName: string; requestedAt: string; expiresAt: string;
+  /** The signed claim's own reason; a plain switch carries no previous-owner role. */
+  reason: 'switch' | 'change-owner'; previousOwnerRole?: 'admin' | 'member' | 'remove';
   /** Signed other-people count when the producer supplied one; absent otherwise. */
   otherPeopleCount?: number;
 }>;
@@ -63,7 +65,8 @@ export class OwnerApprovalFlow {
       this.identity = identity; this.review = review;
       const display = Object.freeze({name: review.name, address: review.address,
         accountName: session.account.displayName || session.account.username,
-        requestedAt: review.requestedAt, expiresAt: review.expiresAt,
+        requestedAt: review.requestedAt, expiresAt: review.expiresAt, reason: review.reason,
+        ...(review.previousOwnerRole === undefined ? {} : {previousOwnerRole: review.previousOwnerRole}),
         ...(review.otherPeopleCount === undefined ? {} : {otherPeopleCount: review.otherPeopleCount})});
       this.publish({phase: review.status === 'approved' ? 'approved' : 'review', busy: false, display});
     });
