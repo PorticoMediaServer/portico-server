@@ -496,10 +496,15 @@ CREATE TABLE catalog_credits(
  credit_id TEXT NOT NULL,
  provider_person_id TEXT NOT NULL DEFAULT '',
  source_ordinal INTEGER NOT NULL,
+ source_row_id TEXT REFERENCES credit_source_rows(source_row_id),
+ owner_entry_id TEXT REFERENCES credit_owner_entries(entry_id),
+ source_status TEXT NOT NULL DEFAULT 'current' CHECK(source_status IN('current','missing','replaced')),
  PRIMARY KEY(entity_id,ord)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_credits_person ON catalog_credits(person_id,entity_id);
 CREATE INDEX catalog_credits_provider_person ON catalog_credits(provider,provider_person_id,entity_id) WHERE provider_person_id<>'';
 CREATE INDEX catalog_credits_name ON catalog_credits(credited_name,entity_id);
+CREATE INDEX catalog_credits_source_row ON catalog_credits(source_row_id);
+CREATE INDEX catalog_credits_owner_entry ON catalog_credits(owner_entry_id);
 CREATE TABLE catalog_credit_names(
  name TEXT PRIMARY KEY,
  credits INTEGER NOT NULL) WITHOUT ROWID, STRICT;
@@ -8751,18 +8756,18 @@ CREATE TABLE credit_owner_families(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL CHECK(revision>0),
  locked INTEGER NOT NULL CHECK(locked IN(0,1)),
- actor TEXT NOT NULL,
- observed_at TEXT NOT NULL
+ actor TEXT NOT NULL CHECK(length(CAST(actor AS BLOB)) BETWEEN 1 AND 256),
+ observed_at TEXT NOT NULL CHECK(length(CAST(observed_at AS BLOB)) BETWEEN 1 AND 64)
 ) STRICT;
 CREATE TABLE credit_owner_entries(
  entry_id TEXT PRIMARY KEY CHECK(length(entry_id)=32 AND entry_id NOT GLOB '*[^0-9a-f]*'),
  entity_id INTEGER NOT NULL REFERENCES credit_owner_families(entity_id) ON DELETE CASCADE,
- position INTEGER NOT NULL CHECK(position>=0),
+ position INTEGER NOT NULL CHECK(position>=0 AND position<2048),
  operation TEXT NOT NULL CHECK(operation IN('retain','edit','exclude','add')),
  source_row_id TEXT,
- credited_name TEXT NOT NULL,
- role TEXT NOT NULL,
- department TEXT NOT NULL,
+ credited_name TEXT NOT NULL CHECK(length(CAST(credited_name AS BLOB)) BETWEEN 1 AND 512),
+ role TEXT NOT NULL CHECK(length(CAST(role AS BLOB))<=512),
+ department TEXT NOT NULL CHECK(length(CAST(department AS BLOB))<=200),
  UNIQUE(entity_id,position),
  FOREIGN KEY(source_row_id,entity_id) REFERENCES credit_source_rows(source_row_id,entity_id),
  CHECK((operation='add' AND source_row_id IS NULL) OR(operation<>'add' AND source_row_id IS NOT NULL))
