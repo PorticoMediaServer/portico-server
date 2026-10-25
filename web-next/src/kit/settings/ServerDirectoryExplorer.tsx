@@ -22,8 +22,11 @@ function rootIcon(root: Readonly<{kind: string; description: string}>): IconName
 
 /** The server's own folder explorer, folders only (owner-libraries.html#9). A
  * typed path is always available; Places are the roots the server publishes. */
-export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onChooseMany, initialPaths, initialPath, checkWritable = false, returnFocusRef}: Readonly<{
+export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onChooseMany, initialPaths, initialPath, checkWritable = false, returnFocusRef, serverName}: Readonly<{
   open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; onChoose: (path: string) => void; onChooseMany?: (paths: readonly string[]) => void; initialPaths?: readonly string[]; initialPath?: string; checkWritable?: boolean; returnFocusRef?: import('react').RefObject<HTMLElement | null>;
+  /** The real server this explorer is browsing, for the drawn subtitle. When the
+   * caller has none, the dialog keeps its truthful generic label. */
+  serverName?: string;
 }>) {
   const [chosen, setChosen] = useState<readonly string[]>([]), [typing, setTyping] = useState(false);
   const [attempt, setAttempt] = useState<object>();
@@ -134,7 +137,7 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
       <span className={styles.pickerPlaceIcon}><Icon name={rootIcon(root)} size={24}/></span>
       <span className={styles.pickerPlaceCopy}><b>{root.name}</b><small>{root.description || root.path}</small></span>
     </button>;
-  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
+  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder')} description={serverName?.trim() ? t('next.ownerLibraries.explorer.subtitle', {server: serverName.trim()}) : t('next.settings.folderBreadcrumbs')}
     footer={<>
       {onChooseMany ? <ChosenServerFolders paths={chosen} onRemove={toggle}/> : null}
       <Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>

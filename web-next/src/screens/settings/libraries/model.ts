@@ -1,8 +1,24 @@
 import type {ManagedLibrary} from '@core/library-management.ts';
 import type {InventorySource} from '@core/library-inventory.ts';
+import {defaultI18n, type MessageId} from '@i18n';
 
 /** The seven drawn kinds, in the order Portico lists them. */
 export const libraryKindIds = Object.freeze(['movie', 'tv', 'anime', 'music', 'audiobook', 'book', 'comic'] as const);
+
+/** The frames' own name and one-line description for each kind, shared by every
+ * place that asks the owner to choose one. */
+export type LibraryKind = ManagedLibrary['kind'];
+export const libraryKindMessages: Readonly<Record<LibraryKind, Readonly<{label: MessageId; description: MessageId}>>> = Object.freeze({
+  movie: {label: 'next.ownerLibraries.kind.movie', description: 'next.ownerLibraries.kindDescription.movie'},
+  tv: {label: 'next.ownerLibraries.kind.tv', description: 'next.ownerLibraries.kindDescription.tv'},
+  anime: {label: 'next.ownerLibraries.kind.anime', description: 'next.ownerLibraries.kindDescription.anime'},
+  music: {label: 'next.ownerLibraries.kind.music', description: 'next.ownerLibraries.kindDescription.music'},
+  audiobook: {label: 'next.ownerLibraries.kind.audiobook', description: 'next.ownerLibraries.kindDescription.audiobook'},
+  book: {label: 'next.ownerLibraries.kind.book', description: 'next.ownerLibraries.kindDescription.book'},
+  comic: {label: 'next.ownerLibraries.kind.comic', description: 'next.ownerLibraries.kindDescription.comic'},
+});
+export const libraryKindLabel = (kind: LibraryKind) => defaultI18n.t(libraryKindMessages[kind].label);
+export const libraryKindDescription = (kind: LibraryKind) => defaultI18n.t(libraryKindMessages[kind].description);
 
 /** Audiobooks, books and comics have no online source today: local files only. */
 export const localOnlyKind = (kind: ManagedLibrary['kind']) => kind === 'audiobook' || kind === 'book' || kind === 'comic';
