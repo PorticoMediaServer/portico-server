@@ -11,7 +11,7 @@ import {
   type GetReadingSessionsSessionIdProgressResponse,
   type PutReadingSessionsSessionIdProgressRequest, type PutReadingSessionsSessionIdProgressResponse,
 } from '../../contracts/src/index.ts';
-import type {schemas} from '../../contracts/src/schemas.ts';
+import {schemas} from '../../contracts/src/schemas.ts';
 import type {Viewer} from './index.ts';
 
 export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
@@ -32,6 +32,8 @@ export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
 export type ReadingDiscover = GetReadingDiscoverResponse;
 export type ReadingShortRead = NonNullable<ReadingDiscover['rows'][number]['shortReads']>[number];
 export type ReadingSeriesPage = GetReadingSeriesItemsResponse;
+/** Checked presenter summary, distinct from the generated wire envelope. */
+export type ReadingSeriesOverview = Readonly<{id: string; title: string; total: number; completed: number; author?: ReadingAuthor}>;
 export type ReadingPeriodicalGroupsPage = GetReadingPeriodicalGroupsResponse;
 export type ReadingPeriodicalIssuesPage = GetReadingPeriodicalIssuesResponse;
 export type ReadingPeriodicalType = (typeof schemas)['GetReadingPeriodicalGroupsResponse']['properties']['publicationType']['enum'][number];
@@ -78,6 +80,25 @@ function validateIssue(value: ReadingPeriodicalIssue, library: string, kind: Rea
   const item = value.item;
   if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== library || !id(item.sourceId) || item.format !== 'epub' && item.format !== 'pdf' || item.publicationType?.value !== kind || item.series?.id !== group || !issueDate(value.issueDate, kind)) fail('invalid_document');
 }
+
+function isReadingObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function readingSeriesOverview(value: unknown, series: string, pageLength: number): ReadingSeriesOverview {
+  if (!isReadingObject(value) || value.id !== series || typeof value.name !== 'string' || !value.name.trim() || [...value.name].length > 4096
+    || typeof value.count !== 'number' || !integer(value.count, 1, Number.MAX_SAFE_INTEGER) || value.count < pageLength
+    || typeof value.readCount !== 'number' || !integer(value.readCount, 0, value.count)) fail('invalid_document');
+  let author: ReadingAuthor | undefined;
+  if (value.author !== undefined) {
+    const raw = value.author;
+    if (!isReadingObject(raw) || typeof raw.value !== 'string' || !raw.value.trim() || [...raw.value].length > 4096 || typeof raw.source !== 'string') fail('invalid_document');
+    const source = schemas.GetReadingItemsResponse.properties.items.items.properties.author.properties.source.enum.find(source => source === raw.source);
+    if (source === undefined) fail('invalid_document');
+    author = {value: raw.value, source};
+  }
+  return Object.freeze({id: series, title: value.name, total: value.count, completed: value.readCount, ...(author ? {author: Object.freeze(author)} : {})});
+}
+
 const format = (s: string) => s === 'epub' || s === 'pdf' || s === 'cbz';
 const mime = (s: string | null) => s?.split(';', 1)[0].trim().toLowerCase();
 const member = (s: string) => typeof s === 'string' && s.length > 0 && s.length <= 1024 && !/[\\\x00-\x1f\x7f?#]/.test(s) && !/^[a-z][a-z0-9+.-]*:/i.test(s) && s.split('/').every(p => p !== '' && p !== '.' && p !== '..');
@@ -448,7 +469,7 @@ export class ReadingClient {
     }
     return {...out, yearChoices, dayChoices, calendarMonth: options.month};
   }
-  async series(libraryId: string, seriesId: string, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingSeriesPage> {
+  async series(libraryId: string, seriesId: string, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingSeriesPage & {overview?: ReadingSeriesOverview}> {
     const cursor = options.cursor;
     if (!id(libraryId) || !/^[A-Za-z0-9_-]{43}$/.test(seriesId) || !integer(options.limit ?? 50, 1, 100) || (cursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(cursor))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_series_items', {libraryId, seriesId}), options), 'GET', undefined, signal, decodeGetReadingSeriesItemsResponse, 2 << 20);
@@ -458,7 +479,9 @@ export class ReadingClient {
       if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
-    return out;
+    const overview = 'summary' in out && out.summary !== undefined ? readingSeriesOverview(out.summary, seriesId, out.items.length) : undefined;
+    if (overview && out.nextCursor && overview.total <= out.items.length) fail('invalid_document');
+    return {...out, ...(overview ? {overview} : {})};
   }
   async continue(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingContinueResponse> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(options.cursor))) fail('invalid_request');

@@ -1,4 +1,4 @@
-import {ReadingError, type ReadingClient, type ReadingPeriodicalType, type ReadingPeriodicalGroup, type ReadingPeriodicalIssue, type ReadingYearChoice, type ReadingDayChoice} from '@portico/client-core';
+import {ReadingError, type ReadingClient, type ReadingPeriodicalType, type ReadingPeriodicalGroup, type ReadingPeriodicalIssue, type ReadingYearChoice, type ReadingDayChoice, type ReadingSeriesOverview} from '@portico/client-core';
 import {createWindowedCollection} from '@core/collections/windowed.ts';
 
 export type ReadingLibraryItem = Awaited<ReturnType<ReadingClient['list']>>['items'][number];
@@ -16,8 +16,21 @@ export function createReadingCollection(client: ReadingClient, libraryId: string
  * Reuse the bounded collection; never sort a generic browse result or derive an id
  * from a label. No progress, numbering or page-count facts are added here. */
 export function createReadingSeriesCollection(client: ReadingClient, libraryId: string, seriesId: string) {
-  return cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
-    (cursor, limit, signal) => client.series(libraryId, seriesId, {cursor, limit}, signal));
+  let overview: ReadingSeriesOverview | undefined, disposed = false;
+  const listeners = new Set<() => void>();
+  const pages = cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
+    async (cursor, limit, signal) => {
+      const page = await client.series(libraryId, seriesId, {cursor, limit}, signal);
+      if (!disposed && !signal.aborted) {
+        if (overview && page.overview && (overview.id !== page.overview.id || overview.title !== page.overview.title || overview.total !== page.overview.total)) throw new ReadingError('invalid_document');
+        overview = page.overview; for (const listener of [...listeners]) listener();
+      }
+      return page;
+    });
+  return {...pages, overview: {getSnapshot: () => overview, subscribe: (listener: () => void) => {
+    if (!disposed) listeners.add(listener);
+    return () => {listeners.delete(listener);};
+  }}, dispose() {disposed = true; overview = undefined; for (const listener of [...listeners]) listener(); listeners.clear(); pages.dispose();}};
 }
 
 export function createReadingPeriodicalGroupsCollection(client: ReadingClient, libraryId: string, kind: ReadingPeriodicalType) {
