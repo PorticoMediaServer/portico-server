@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
+import {attentionInProgress} from '@core/server-admin/attention-words.ts';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
 import {EditorHeader} from '../../kit/shell';
 import {Button, TextField} from '../../kit/controls';
@@ -49,6 +50,11 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
       return value.locked !== (original?.locked ?? false) || (list ? JSON.stringify(value.values ?? original?.values ?? []) !== JSON.stringify(original?.values ?? []) : value.value !== metadataDraftValue(data, field));
     }).map(([field, value]) => ({field, ...value}));
   }, [data, draft]);
+  useEffect(() => {
+    if (state.phase !== 'ready' || !data || changed.length || !attentionInProgress(data.snapshot.identity?.status ?? '')) return;
+    const timer = setTimeout(() => {void service.refresh(data);}, 2000);
+    return () => clearTimeout(timer);
+  }, [service, state.phase, data, changed.length]);
   const edit = async (fields: NonNullable<RepairCommand['fields']>) => {
     if (!data) return;
     setError(undefined);
