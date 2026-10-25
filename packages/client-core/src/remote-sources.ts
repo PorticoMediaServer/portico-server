@@ -403,7 +403,7 @@ export class RemoteSourceService{
   const raw=await this.request(path,'POST',body,guard);
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);
-  if(!record(raw)||!['pending','ready','expired','denied'].includes(String(raw.phase)))invalid();
+  if(!record(raw)||typeof raw.phase!=='string'||!['pending','ready','expired','denied'].includes(raw.phase))invalid();
   if(raw.phase==='ready'){if(!text(raw.token,16384)||!raw.token)invalid();return Object.freeze({phase:'ready',token:raw.token});}
   return Object.freeze({phase:raw.phase as DriveOAuthPhase,token:''});
  }
