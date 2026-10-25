@@ -67,6 +67,15 @@ builds the helper natively on Linux x64 and ARM64. Each extracted bundle runs
 against outputs of the original TensorFlow checkpoint and through the supervised
 Go runtime before publication. `runtime.lock.json` names the non-latest release.
 
+The reviewed model export is itself published once per pin: the workflow first
+tries `sonic-bundle.py model-fetch`, which verifies and stages the pinned
+`musicnn-mtt-<version>.tar.xz` from the model release named by
+`third_party/musicnn/model.lock.json` `releaseTag`. Only when that release does
+not exist yet does the job export the original wheel and publish it, never
+replacing an existing pin. Later runs therefore reuse exact reviewed bytes
+instead of installing TensorFlow, and the published bundles cannot drift from
+the committed model pin.
+
 `build-sonic-runtime.sh SDK BUILD OUTPUT` uses only the SDK already verified by
 `prepare-sonic-runtime.py`. CMake sets `$ORIGIN/lib` for the packaged SDK library.
 `sonic-bundle.py` reads the actual ELF NEEDED closure and packages its ONNX
@@ -89,3 +98,14 @@ until its exact byte pin is reviewed and committed. A later manual workflow can
 set `modelRunId` to reuse those exact bytes: only an ancestor MAIN run of this
 same repository/workflow with byte-identical exporter/original-weight inputs
 is accepted. This avoids re-exporting a model while updating its source pin.
+
+The reviewed export is published once per pin, under
+`third_party/musicnn/model.lock.json` `releaseTag`, as a non-latest release
+holding `musicnn-mtt-<version>.tar.xz` and `checksums.sha256`. The archive
+contains only the model trio, the original-checkpoint conformance reference and
+the pin itself. `sonic-bundle.py model-fetch` verifies and atomically stages it;
+`model-package` re-creates it only from already-verified bytes; `model-verify`
+checks a staged directory. Later workflow runs reuse that published export
+instead of installing TensorFlow again, and a missing release still exports the
+original wheel exactly as before. The export is an input pin, not an
+installation, and it enables no inference on its own.

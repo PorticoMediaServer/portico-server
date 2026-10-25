@@ -231,5 +231,84 @@ class SonicBundleTests(unittest.TestCase):
                     bundle.verify_installed(ffmpeg, 'linux-arm64')
 
 
+    def model_export(self, root):
+        _, _, model, _ = self.fixture(root)
+        conformance = root / 'conformance.json'
+        conformance.write_text(json.dumps({'modelSHA256': bundle.locks()[1]['onnx']['sha256'], 'reference': 'fixture'}))
+        archive = root / 'model.tar.xz'
+        bundle.model_package(archive, model, conformance)
+        return archive, conformance
+
+    def test_model_export_round_trips_and_never_replaces_the_pin(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, _ = self.model_export(root)
+            bundle.model_extract(archive, root / 'exported')
+            self.assertEqual(bundle.model_verify(root / 'exported/musicnn-mtt')['sha256'], bundle.locks()[1]['onnx']['sha256'])
+            self.assertEqual(json.loads((root / 'exported/model.lock.json').read_text()), bundle.locks()[1])
+            self.assertTrue((root / 'exported/conformance.json').is_file())
+            self.assertEqual(sorted(p.name for p in (root / 'exported/musicnn-mtt').iterdir()),
+                             ['LICENSE.md', 'model.json', 'model.onnx'])
+            with self.assertRaises(ValueError):
+                bundle.model_extract(archive, root / 'exported')
+
+    def test_model_package_refuses_a_replaced_export_and_a_wrong_reference(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, conformance = self.model_export(root)
+            model = root / 'model'
+            with self.assertRaises(ValueError):
+                bundle.model_package(archive, model, conformance)
+            wrong = root / 'wrong.json'
+            wrong.write_text(json.dumps({'modelSHA256': '0' * 64}))
+            with self.assertRaises(ValueError):
+                bundle.model_package(root / 'refused.tar.xz', model, wrong)
+            self.assertFalse((root / 'refused.tar.xz').exists())
+
+    def test_model_archive_refuses_extra_members_and_changed_bytes(self):
+        for change in ('extra', 'bytes', 'pin'):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                archive, _ = self.model_export(root)
+                unpacked = root / 'unpacked'
+                bundle.model_extract(archive, unpacked)
+                if change == 'extra':
+                    (unpacked / 'extra').write_bytes(b'unlisted')
+                elif change == 'bytes':
+                    (unpacked / 'musicnn-mtt/model.onnx').write_bytes(b'changed')
+                else:
+                    (unpacked / 'model.lock.json').write_text(json.dumps({'modelId': 'other'}))
+                changed = root / 'changed.tar.xz'
+                with tarfile.open(changed, 'w:xz') as stream:
+                    for item in sorted(unpacked.rglob('*')):
+                        if item.is_file():
+                            stream.add(item, item.relative_to(unpacked).as_posix())
+                with self.assertRaises(ValueError):
+                    bundle.model_extract(changed, root / 'rejected')
+                self.assertFalse((root / 'rejected').exists())
+
+    def test_model_fetch_verifies_the_published_checksum(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, _ = self.model_export(root)
+            name = bundle.model_name(bundle.locks()[1])
+            sums = (bundle.digest(archive) + '  ' + name + '\n').encode()
+            with patch.object(bundle.urllib.request, 'urlopen', side_effect=[io.BytesIO(sums), io.BytesIO(archive.read_bytes())]):
+                bundle.model_fetch(root / 'fetched')
+            self.assertTrue((root / 'fetched/musicnn-mtt/model.onnx').is_file())
+            sums = ('0' * 64 + '  ' + name + '\n').encode()
+            with patch.object(bundle.urllib.request, 'urlopen', side_effect=[io.BytesIO(sums), io.BytesIO(archive.read_bytes())]):
+                with self.assertRaises(ValueError):
+                    bundle.model_fetch(root / 'other')
+            self.assertFalse((root / 'other').exists())
+
+    def test_model_fetch_reports_an_unpublished_pin_distinctly(self):
+        error = bundle.urllib.error.HTTPError('url', 404, 'Not Found', None, None)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(bundle.urllib.request, 'urlopen', side_effect=error):
+                with self.assertRaisesRegex(ValueError, 'not published yet'):
+                    bundle.model_fetch(root / 'missing')
+            self.assertFalse((root / 'missing').exists())
 if __name__ == '__main__':
     unittest.main()
