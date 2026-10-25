@@ -57,6 +57,8 @@ export type SettingsCapabilities = Readonly<{
   playbackSpeed?: boolean;
   /** This device renders audio itself: gapless, crossfade and volume leveling. Absent: it does (a Roku's player cannot). */
   audioEffects?: boolean;
+  /** This device's audio engine can match the output rate to the file (Smart/Strict/Off). Absent: it cannot. */
+  sampleRateMatching?: boolean;
   /** This build has mpv as a second player beside the device's own, so there is a player to choose (the capability document then has an `mpv` engine). Absent or false: there is not (the web never has). */
   playerEngines?: boolean;
   /** This device can hand sound to a receiver undecoded (the capability document lists `audioPassthrough`). */
@@ -89,7 +91,7 @@ export type SettingsControl =
 export type CompositeId =
   | 'playbackMethod' | 'cardSize'
   // Kept by the device and published in its capability document (`withViewerSettings`).
-  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr' | 'tvHdr' | 'tvSurround'
+  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr' | 'tvHdr' | 'tvSurround' | 'tvSupports' | 'music.sampleRateMatching'
   | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices'
   // Kept by the device and read before the app draws anything (B-19.10).
   | 'layout';
@@ -268,9 +270,15 @@ const accountPages: readonly AuthoredPage[] = [
         ]}},
       ]},
       // Where the device cannot detect them, the viewer says what the TV shows and plays. Off: standard range and stereo.
-      {id: 'tvOutputs', title: 'settings.section.tvOutputs', description: 'settings.section.tvOutputsHelp', rows: [
-        {kind: 'composite', id: 'tvHdr', storage: 'device', label: 'settings.row.tvHdr', help: 'settings.help.tvHdr', scope: 'device', needs: c => c.declaredOutputs === true, control: {type: 'switch'}},
-        {kind: 'composite', id: 'tvSurround', storage: 'device', label: 'settings.row.tvSurround', help: 'settings.help.tvSurround', scope: 'device', needs: c => c.declaredOutputs === true, control: {type: 'switch'}},
+      // One drawn choice, shown on a television. Its value is the viewer's override;
+      // what the TV reports is read live and shown only until an override exists.
+      {id: 'tvOutputs', title: 'next.settingsSpec.account.quality.groups.2.title', description: 'settings.section.tvOutputsHelp', platforms: ['tv'], rows: [
+        {kind: 'composite', id: 'tvSupports', storage: 'device', label: 'next.settingsSpec.account.quality.groups.2.rows.0.label', help: 'next.settingsSpec.account.quality.groups.2.rows.0.help', scope: 'device', control: {type: 'choice', choices: [
+          {value: 'none', label: 'next.settingsSpec.account.quality.groups.2.rows.0.control.options.0.label'},
+          {value: 'hdr', label: 'next.settingsSpec.account.quality.groups.2.rows.0.control.options.1.label'},
+          {value: 'surround', label: 'next.settingsSpec.account.quality.groups.2.rows.0.control.options.2.label'},
+          {value: 'hdr-surround', label: 'next.settingsSpec.account.quality.groups.2.rows.0.control.options.3.label'},
+        ]}},
       ]},
       // The short list for when detection is wrong. Each narrows what the server plans this device as.
       {id: 'fixes', title: 'settings.section.playbackFixes', description: 'settings.section.playbackFixesHelp', rows: [
@@ -308,6 +316,14 @@ const accountPages: readonly AuthoredPage[] = [
         ]}, {scope: 'deviceClass'}),
       ]},
       {id: 'advancedSound', title: 'next.settingsSpec.account.music.advanced.groups.0.title', advanced: true, rows: [
+        // One device-local engine value, never an account preference (23 Oct ruling).
+        {kind: 'composite', id: 'music.sampleRateMatching', storage: 'device', scope: 'device', platforms: ['phone', 'tv'],
+          label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.label', help: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.help',
+          needs: c => c.sampleRateMatching === true, control: {type: 'choice', choices: [
+            {value: 'smart', label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.0.label'},
+            {value: 'strict', label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.1.label'},
+            {value: 'off', label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.2.label'},
+          ]}},
         toggle('music.neverBoost', 'next.settingsSpec.account.music.advanced.groups.0.rows.1.label', {help: 'next.settingsSpec.account.music.advanced.groups.0.rows.1.help', needs: c => c.audioEffects !== false}),
         pref('music.dsdGainDb', 'next.settingsSpec.account.music.advanced.groups.0.rows.2.label', {type: 'choice', choices: [0, -3, -6, -9, -12].map((value, index) => ({value, label: `next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.${index}.label` as MessageId}))}, {help: 'next.settingsSpec.account.music.advanced.groups.0.rows.2.help'}),
       ]},
