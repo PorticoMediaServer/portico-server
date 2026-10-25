@@ -127,7 +127,8 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openDelete: (
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
       ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && current.selection.target?.mode === 'explicit' && queueLease ? {onDelete: props.openDelete} : {}),
-      ...(props.owner && summary.count > 200 ? {deleteDisabledReason: defaultI18n.t('next.selection.tooMany')} : {}),
+      ...(props.owner && props.deletion && summary.library.kind !== 'single' ? {deleteDisabledReason: defaultI18n.t('next.selection.oneLibrary')} : {}),
+      ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? {onDelete: props.openDelete, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
       ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly) && queueLease ? {onEdit: props.openEditor, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
@@ -169,8 +170,8 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   const deleteStore = {subscribe: (listener: () => void) => {deleteListeners.add(listener); return () => {deleteListeners.delete(listener);};}, getSnapshot: () => deleteSession};
   const openDelete = () => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
-    if (!deletion || deletion.signal.aborted || !deletion.isCurrent() || !selection || !selection.summary.every.delete || selection.summary.library.kind !== 'single' || selection.summary.count > 200
-      || !operation || operation.target !== selection.target || operation.target.mode !== 'explicit' || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-delete-unavailable');
+    if (!deletion || deletion.signal.aborted || !deletion.isCurrent() || !selection || selection.summary.library.kind !== 'single' || !operation || operation.target !== selection.target || !playSelection.isOperationCurrent?.(operation)
+      || (selection.summary.count <= 200 && (!selection.summary.every.delete || selection.summary.library.kind !== 'single' || operation.target.mode !== 'explicit'))) throw new Error('selection-delete-unavailable');
     closeDelete();
     const lifetime = new AbortController();
     const current = () => !lifetime.signal.aborted && !deletion.signal.aborted && deletion.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;

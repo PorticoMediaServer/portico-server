@@ -12,10 +12,12 @@ const t = defaultI18n.t;
 export function LibraryDeleteSurface({session, options, onClose}: {session: LibraryEditorSession; options: LibraryDeleteOptions; onClose(): void}) {
   const anchor = useRef<HTMLElement | null>(session.anchor);
   const producer = useMemo(() => new LibraryDeleteProducer(), [session]);
+  const targetCount = session.operation.target.mode === 'explicit' ? session.operation.target.items.length : session.operation.target.total;
+  const tooMany = targetCount > 200;
   const state = useSyncExternalStore(producer.subscribe, producer.getSnapshot, producer.getSnapshot);
   useEffect(() => {
     const target = session.operation.target;
-    if (target.mode !== 'explicit' || !session.current()) return;
+    if (tooMany || target.mode !== 'explicit' || !session.current()) return;
     const targets: Pick<EntryActionTarget, 'itemId' | 'libraryId' | 'kind'>[] = [];
     for (const pick of target.items) {
       if (!('libraryId' in pick.item) || !pick.item.capabilities.delete) return;
@@ -29,7 +31,7 @@ export function LibraryDeleteSurface({session, options, onClose}: {session: Libr
       },
     }});
     return () => producer.close();
-  }, [producer, session, options]);
+  }, [producer, session, options, tooMany]);
   const close = () => {session.lifetime.abort(); producer.close(); onClose();};
   const run = () => {void (state.phase === 'uncertain' ? producer.retry() : producer.confirm());};
   if (state.phase === 'uncertain' || state.phase === 'error') return <Dialog open onOpenChange={open => {if (!open) close();}}
@@ -38,9 +40,9 @@ export function LibraryDeleteSurface({session, options, onClose}: {session: Libr
     <p role="alert">{t(state.phase === 'uncertain' ? 'next.selection.deleteUncertain' : 'next.selection.deleteFailed')}</p>
   </Dialog>;
   return <DeleteMediaDialog owner open onOpenChange={open => {if (!open && state.phase !== 'deleting' && state.phase !== 'confirming') close();}}
-    returnFocusRef={anchor} selectionCount={session.operation.target.mode === 'explicit' ? session.operation.target.items.length : 0}
+    returnFocusRef={anchor} selectionCount={targetCount}
     preview={state.preview ?? null} confirmation={state.confirmation} onConfirmationChange={value => producer.setConfirmation(value)}
     removeFiles={state.removeFiles} onRemoveFilesChange={value => producer.setRemoveFiles(value)} onDelete={run}
-    busy={state.phase === 'idle' || state.phase === 'loading' || state.phase === 'confirming' || state.phase === 'deleting'}
+    busy={!tooMany && (state.phase === 'idle' || state.phase === 'loading' || state.phase === 'confirming' || state.phase === 'deleting')}
     error={state.errorCode ? t('next.selection.deleteNotReady') : undefined} result={state.result} ownerTag={<span>{t('next.selection.owner')}</span>}/>;
 }
