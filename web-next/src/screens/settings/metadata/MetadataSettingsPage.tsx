@@ -120,6 +120,6 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
     </SettingsGroup>
     <div><Button size="small" variant="primary" disabled={busy || !dirty || bytes === undefined} onClick={() => {void save();}}>{t('action.save')}</Button>
       <Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) {setDraft(draftFor(document)); setError(undefined);}}}>{t('action.cancel')}</Button>
-      <Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) setReload(value => value + 1);}}>{t('action.tryAgain')}</Button></div>
+      <Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) setReload(value => value + 1);}}>{t('action.refresh')}</Button></div>
   </div>;
 }
