@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/buildinfo"
+	"portico.local/server/internal/metadataprovider"
 	"portico.local/server/internal/progressio"
 	"portico.local/server/internal/remotemedia"
 )
@@ -371,6 +372,10 @@ func tokenExpiry(token string, now time.Time) time.Time {
 }
 
 func (p *OpenSubtitles) requestOnce(ctx context.Context, method, path string, body, out any) error {
+	check, e := metadataprovider.BeginNetworkAdmission(ctx)
+	if e != nil {
+		return e
+	}
 	p.mu.Lock()
 	delay := p.next.Sub(p.clock())
 	p.mu.Unlock()
@@ -408,6 +413,9 @@ func (p *OpenSubtitles) requestOnce(ctx context.Context, method, path string, bo
 	if p.token != "" && path != "/login" {
 		req.Header.Set("Authorization", "Bearer "+p.token)
 	}
+	if e = check(); e != nil {
+		return e
+	}
 	response, e := p.client.Do(req)
 	if e != nil {
 		if ctx.Err() != nil {
@@ -419,6 +427,9 @@ func (p *OpenSubtitles) requestOnce(ctx context.Context, method, path string, bo
 	raw, e = io.ReadAll(io.LimitReader(response.Body, MaxInputBytes+1))
 	if e != nil || len(raw) > MaxInputBytes {
 		return ErrUnavailable
+	}
+	if e = check(); e != nil {
+		return e
 	}
 	switch response.StatusCode {
 	case http.StatusOK:
@@ -573,6 +584,10 @@ func (p *OpenSubtitles) SearchMedia(ctx context.Context, media ProviderQuery) ([
 	return out, nil
 }
 func (p *OpenSubtitles) Download(ctx context.Context, id int64) ([]byte, error) {
+	check, e := metadataprovider.BeginNetworkAdmission(ctx)
+	if e != nil {
+		return nil, e
+	}
 	var response struct {
 		Link      string `json:"link"`
 		Remaining *int   `json:"remaining"`
@@ -591,10 +606,22 @@ func (p *OpenSubtitles) Download(ctx context.Context, id int64) ([]byte, error) 
 	if e != nil || u.Scheme != "https" || u.User != nil || u.Fragment != "" {
 		return nil, ErrUnavailable
 	}
-	if p.fetch != nil {
-		return p.fetch(ctx, response.Link)
+	if e = check(); e != nil {
+		return nil, e
 	}
-	return fetchPublic(ctx, response.Link)
+	var raw []byte
+	if p.fetch != nil {
+		raw, e = p.fetch(ctx, response.Link)
+	} else {
+		raw, e = fetchPublic(ctx, response.Link)
+	}
+	if e != nil {
+		return nil, e
+	}
+	if e = check(); e != nil {
+		return nil, e
+	}
+	return raw, nil
 }
 
 // fetchPublic reads a download link through the public-network transport: no
@@ -603,24 +630,58 @@ func (p *OpenSubtitles) Download(ctx context.Context, id int64) ([]byte, error) 
 func fetchPublic(ctx context.Context, link string) ([]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	client, e := remotemedia.New(ctx, link, remotemedia.Policy{})
+	check, e := metadataprovider.BeginNetworkAdmission(ctx)
 	if e != nil {
-		return nil, ErrUnavailable
+		return nil, e
 	}
-	defer client.Close()
-	res, e := client.Open(ctx, "GET", "")
-	if e != nil {
-		return nil, ErrUnavailable
+	for hop := 0; hop <= 4; hop++ {
+		u, e := url.Parse(link)
+		if e != nil || u.Scheme != "https" || u.User != nil || u.Fragment != "" {
+			return nil, ErrUnavailable
+		}
+		if e = check(); e != nil {
+			return nil, e
+		}
+		client, e := remotemedia.New(ctx, link, remotemedia.Policy{ManualRedirects: true})
+		if e != nil {
+			return nil, ErrUnavailable
+		}
+		if e = check(); e != nil {
+			client.Close()
+			return nil, e
+		}
+		res, e := client.Open(ctx, "GET", "")
+		if e != nil {
+			client.Close()
+			return nil, ErrUnavailable
+		}
+		if res.StatusCode >= 300 && res.StatusCode < 400 {
+			next, err := res.Location()
+			res.Body.Close()
+			client.Close()
+			if err != nil || hop == 4 {
+				return nil, ErrUnavailable
+			}
+			link = next.String()
+			continue
+		}
+		if res.StatusCode != 200 {
+			res.Body.Close()
+			client.Close()
+			return nil, ErrUnavailable
+		}
+		raw, e := io.ReadAll(io.LimitReader(res.Body, MaxInputBytes+1))
+		res.Body.Close()
+		client.Close()
+		if e != nil || len(raw) > MaxInputBytes {
+			return nil, ErrCapacity
+		}
+		if e = check(); e != nil {
+			return nil, e
+		}
+		return raw, nil
 	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return nil, ErrUnavailable
-	}
-	raw, e := io.ReadAll(io.LimitReader(res.Body, MaxInputBytes+1))
-	if e != nil || len(raw) > MaxInputBytes {
-		return nil, ErrCapacity
-	}
-	return raw, nil
+	return nil, ErrUnavailable
 }
 
 // Status is what every viewer's subtitle catalogue says about searching online.

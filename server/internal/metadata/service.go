@@ -249,6 +249,7 @@ func (s *Service) RunArtwork(ctx context.Context) {
 // as a *metadataprovider.Error, so a 429's Retry-After reaches the work row's
 // backoff and the provider cooldown instead of being flattened into a string.
 func (s *Service) tmdbGet(ctx context.Context, route string) ([]byte, error) {
+	ctx = s.lookupContext(ctx)
 	if s.tmdbPaced == nil {
 		return nil, errors.New("metadata provider unavailable")
 	}

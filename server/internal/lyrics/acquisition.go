@@ -30,7 +30,15 @@ func (s *Service) settings(ctx context.Context, tx *sql.Tx) (ProviderSettings, e
 	out.Configured = s.Provider != nil
 	e := tx.QueryRowContext(ctx, `SELECT (SELECT value FROM configuration WHERE key='lyrics_lrclib_enabled'),CAST((SELECT value FROM configuration WHERE key='lyrics_provider_revision') AS INTEGER)`).Scan(&enabled, &out.Revision)
 	out.LRCLIB = enabled == "true" && out.Configured
-	return out, e
+	if e != nil {
+		return out, e
+	}
+	_, epoch, err := localonly.Online(ctx, tx)
+	if err != nil {
+		return out, err
+	}
+	out.Revision += epoch - 1
+	return out, nil
 }
 
 // librarySettings narrows the existing global provider authority for one song.
@@ -161,7 +169,13 @@ func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe st
 		gated.Rollback()
 		return out, e
 	}
+	var lookupEpoch int64
 	if in.Provider == "lrclib" {
+		lookupEpoch, e = localonly.CaptureOnline(ctx, tx)
+		if e != nil {
+			gated.Rollback()
+			return out, e
+		}
 		if !settings.LRCLIB {
 			gated.Rollback()
 			return out, ErrUnavailable
@@ -215,6 +229,10 @@ func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe st
 		if !settings.LRCLIB || s.Provider == nil {
 			return out, ErrUnavailable
 		}
+		if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.DB), lookupEpoch); e != nil {
+			return out, e
+		}
+		ctx = localonly.WithOnlineAdmission(ctx, s.DB, lookupEpoch)
 		found, e = s.Provider.Search(ctx, query)
 		if e != nil {
 			return out, e

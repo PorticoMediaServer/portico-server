@@ -35,6 +35,10 @@ func NewAcoustID(key string) (*AcoustID, error) {
 	return &AcoustID{http: newTransport("acoustid", "https://api.acoustid.org/v2", "Portico/0.1 (https://getportico.tv)"), key: key}, nil
 }
 func (s *AcoustID) Lookup(ctx context.Context, fingerprint string, duration int) ([]AcousticMatch, error) {
+	check, err := networkAdmission(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if !ValidFingerprint(fingerprint) || duration < 1 || duration > 86400 {
 		return nil, &Error{Provider: "acoustid", Code: "invalid_fingerprint"}
 	}
@@ -51,6 +55,9 @@ func (s *AcoustID) Lookup(ctx context.Context, fingerprint string, duration int)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", s.http.userAgent)
+	if err := check(); err != nil {
+		return nil, err
+	}
 	resp, err := s.http.client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -81,6 +88,9 @@ func (s *AcoustID) Lookup(ctx context.Context, fingerprint string, duration int)
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, budget+1))
 	if err != nil || len(raw) > budget {
 		return nil, &Error{Provider: "acoustid", Code: "malformed"}
+	}
+	if err := check(); err != nil {
+		return nil, err
 	}
 	var body struct {
 		Status string `json:"status"`

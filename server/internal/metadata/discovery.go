@@ -158,6 +158,13 @@ func discoveryProviderType(feed discoveryFeed) string {
 // check calls it inside a read snapshot. One rule, one observation scope.
 func (s *Service) discoveryPermission(feed discoveryFeed) persistence.SnapshotPermission {
 	return func(ctx context.Context, tx *sql.Tx, provider, mediaKind string) (bool, error) {
+		if err := checkLookupContextTx(ctx, tx); err != nil {
+			return false, err
+		}
+		online, _, err := onlineLookupPolicyTx(ctx, tx)
+		if err != nil || !online {
+			return false, err
+		}
 		var confirmed int
 		if err := tx.QueryRowContext(ctx, `SELECT confirmed FROM screen_metadata_consent WHERE singleton=1`).Scan(&confirmed); err != nil {
 			return false, err
@@ -190,6 +197,7 @@ func (s *Service) discoveryStillPermitted(ctx context.Context, feed discoveryFee
 // request unless a feed is actually due, and on a server with nothing due it
 // reads a handful of rows and writes nothing.
 func (s *Service) DiscoveryStep(ctx context.Context) error {
+	ctx = s.lookupContext(ctx)
 	confirmed, err := s.discoveryConsent(ctx)
 	if err != nil {
 		return err
@@ -231,6 +239,7 @@ func (s *Service) DiscoveryStep(ctx context.Context) error {
 }
 
 func (s *Service) refreshDiscoveryFeed(ctx context.Context, feed persistence.DiscoveryEntry, language string) error {
+	ctx = s.lookupContext(ctx)
 	current := discoveryFeed{Provider: feed.Provider, MediaKind: feed.MediaKind, Language: language}
 	// The permission gate is per feed and immediately before its request: a
 	// consent or policy revocation during another feed's request must prevent

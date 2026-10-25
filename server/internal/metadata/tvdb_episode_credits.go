@@ -33,6 +33,7 @@ const tvdbEpisodeCreditAttempts = 5
 // episode item's tvdb credits. It runs when TVDBStep has no projection or
 // acquisition work, so it never delays a show publication.
 func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
+	ctx = s.lookupContext(ctx)
 	provider, ok := s.tvdb.(tvdbEpisodeCharacterProvider)
 	if !ok {
 		return nil
@@ -82,6 +83,9 @@ func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
 		results[i].credits, results[i].err = provider.EpisodeCharacters(ctx, c.providerID)
 	}
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		if err := checkLookupContextTx(ctx, tx); err != nil {
+			return err
+		}
 		stamp := tvdbStamp(s.publicationTime())
 		for i, c := range claims {
 			if results[i].err != nil {

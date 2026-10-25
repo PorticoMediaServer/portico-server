@@ -449,6 +449,7 @@ func noteScreenFailure(kind, id string, err error) {
 	log.Printf("metadata: %s %s could not be published and will back off: %s", kind, id, message)
 }
 func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCandidate, int, string, error) {
+	ctx = s.lookupContext(ctx)
 	b := p.Base
 	names, year, ids := screenQueries(b)
 	providers := append([]string{}, b.Providers...)

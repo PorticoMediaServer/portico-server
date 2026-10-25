@@ -46,6 +46,7 @@ func mbArtist(credits []metadataprovider.ArtistCredit) string {
 	return b.String()
 }
 func (s *Service) MusicBrainzStep(ctx context.Context) (result error) {
+	ctx = s.lookupContext(ctx)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() {
@@ -305,6 +306,7 @@ func (s *Service) mbFailure(ctx context.Context, j mbJob, problem error) error {
 	return s.commitMBCurrent(ctx, gated4, j)
 }
 func (s *Service) mbRecording(ctx context.Context, id string) (metadataprovider.RecordingLookup, string, error) {
+	ctx = s.lookupContext(ctx)
 	var raw, observed string
 	out := metadataprovider.RecordingLookup{RequestedID: strings.ToLower(id)}
 	e := s.db.QueryRowContext(ctx, `SELECT r.payload,a.observed_at FROM mb_recording_aliases a JOIN mb_recording_evidence r ON r.revision_id=a.evidence_revision AND r.sealed=1 WHERE a.requested_id=? AND a.observed_at>? ORDER BY a.observed_at DESC,a.evidence_revision LIMIT 1`, out.RequestedID, s.publicationTime().Add(-30*24*time.Hour).Format(time.RFC3339)).Scan(&raw, &observed)
@@ -322,6 +324,7 @@ func (s *Service) mbRecording(ctx context.Context, id string) (metadataprovider.
 	return out, s.publicationTime().Format(time.RFC3339), e
 }
 func (s *Service) mbRelease(ctx context.Context, id string) (metadataprovider.ReleaseLookup, string, error) {
+	ctx = s.lookupContext(ctx)
 	var raw, observed string
 	out := metadataprovider.ReleaseLookup{RequestedID: strings.ToLower(id)}
 	e := s.db.QueryRowContext(ctx, `SELECT r.payload,a.observed_at FROM mb_release_aliases a JOIN mb_release_evidence r ON r.revision_id=a.evidence_revision AND r.sealed=1 WHERE a.requested_id=? AND a.observed_at>? ORDER BY a.observed_at DESC,a.evidence_revision LIMIT 1`, out.RequestedID, s.publicationTime().Add(-30*24*time.Hour).Format(time.RFC3339)).Scan(&raw, &observed)
