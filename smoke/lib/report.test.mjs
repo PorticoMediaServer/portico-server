@@ -59,3 +59,24 @@ for (const [name, end] of [
     }
   });
 }
+
+test('a long checkpoint error stays failed while its saved diagnostic is bounded', async () => {
+  const out = mkdtempSync(join(tmpdir(), 'portico-smoke-error-'));
+  try {
+    const report = createReport({surface: 'web', origin: 'https://example.invalid', out});
+    const message = 'checkpoint fixture '.repeat(100);
+    const evidence = {step: 'fixture-step', path: '/fixture'};
+    await report.check('required-flow', async () => {
+      requireCheck(false, message, evidence);
+    });
+    report.write();
+    const saved = JSON.parse(readFileSync(join(out, 'report.json'), 'utf8'));
+    assert.equal(saved.verdict, 'fail');
+    assert.equal(saved.checks[0].required, true);
+    assert.equal(saved.checks[0].detail, message.slice(0, 1200));
+    assert.equal(saved.checks[0].detail.length, 1200);
+    assert.deepEqual(saved.checks[0].evidence, evidence);
+  } finally {
+    rmSync(out, {recursive: true, force: true});
+  }
+});
