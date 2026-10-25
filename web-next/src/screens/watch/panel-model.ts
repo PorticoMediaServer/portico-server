@@ -20,6 +20,8 @@ export type WatchPanelModel=Readonly<{
  /** The style this playback draws with; a change lasts until it stops. */
  subtitleStyle?:Readonly<{size:SubtitlePreferences['size'];background:SubtitlePreferences['background'];set(patch:Readonly<{size?:SubtitlePreferences['size'];background?:SubtitlePreferences['background']}>):void}>;
  sleepTimer?:Readonly<{minutes:number;set(minutes:number):void}>;
+ /** The image track's own mixed forced lines; absent when it has none. */
+ subtitleForced?:Readonly<{only:boolean;set(on:boolean):void}>;
  isCurrent():boolean;selectAudio(id:string):Promise<void>;selectSubtitle(id:string):Promise<void>;
  selectQuality(id:string):Promise<void>;selectSpeed(id:string):void;
 }>;
@@ -99,6 +101,8 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  const writeSleep=typeof runtime.setSleepTimer==='function'?runtime.setSleepTimer.bind(runtime):undefined;
  const writeStyle=typeof runtime.setSubtitleStyle==='function'?runtime.setSubtitleStyle.bind(runtime):undefined;
  const writeTiming=typeof runtime.setSubtitleOffset==='function'?runtime.setSubtitleOffset.bind(runtime):undefined;
+ const readForced=typeof runtime.subtitleForced==='function'?runtime.subtitleForced.bind(runtime):undefined;
+ const writeForced=typeof runtime.setSubtitleForcedOnly==='function'?runtime.setSubtitleForcedOnly.bind(runtime):undefined;
  const timingPlan=matched?plan:null;
  // The plan's own signed correction is exact to the millisecond; a value the replan wire
  // cannot carry is no control at all, never a silent zero or a rounded clock.
@@ -114,11 +118,13 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  const sleep=matched?readSleep?.(fence):undefined;
  const sleepTimer=matched&&writeSleep?Object.freeze({minutes:sleep?.minutes??0,set:(minutes:number)=>{check();writeSleep(fence,minutes);}}):undefined;
  const subtitleStyle=style&&writeStyle?Object.freeze({...style,set:(patch:Readonly<{size?:SubtitlePreferences['size'];background?:SubtitlePreferences['background']}>)=>{check();writeStyle(fence,patch);}}):undefined;
+ const forced=matched?readForced?.(fence):undefined;
+ const subtitleForced=forced&&writeForced?Object.freeze({only:forced.only,set:(on:boolean)=>{check();writeForced(fence,on);}}):undefined;
  const provider=matched?readProvider?.(fence):undefined;
  const subtitleSearch=provider&&!provider.enabled?Object.freeze({reason:subtitleReason(provider.reason,t)}):undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
- return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),subtitleAdditions:Object.freeze(subtitleAdditions),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),...(subtitleStyle?{subtitleStyle}:{}),...(sleepTimer?{sleepTimer}:{}),
+ return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),subtitleAdditions:Object.freeze(subtitleAdditions),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),...(subtitleStyle?{subtitleStyle}:{}),...(sleepTimer?{sleepTimer}:{}),...(subtitleForced?{subtitleForced}:{}),
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,
   selectAudio:async id=>{check();if(!audio.some(r=>r.id===id&&!r.unavailable))throw new Error('playback_audio_unavailable');await runtime.selectAudio(fence,id);},

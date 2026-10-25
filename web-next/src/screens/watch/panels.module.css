@@ -55,6 +55,8 @@
 .timingStep button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .timingStep b { min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; font-weight: var(--type-body-strong-weight); }
 .additions { margin-top: 6px; }
+.forcedRow { display: flex; align-items: flex-start; gap: 12px; margin: 10px 12px 2px; color: var(--color-text); font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
+.forcedRow small { display: block; margin-top: 1px; font-size: var(--type-caption-size); font-weight: var(--type-micro-weight); color: var(--color-text-tertiary); }
 .styleLabel { margin: 10px 12px 4px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .sleepRow { margin-top: 14px; }
 .sleepButton { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 6px 12px; border: 0; border-radius: 10px; background: none; color: var(--color-text); font: inherit; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); cursor: pointer; }
