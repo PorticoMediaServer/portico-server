@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BulkMetadataPreview} from '@core/home-selection/index.ts';
 import type {BulkReceipt} from '@core/metadata-bulk.ts';
+import {selectionKindHasBulkFields} from '@core/selection-model/index.ts';
 import type {BrowseSelectionContext, SelectionOperation, SelectionKind} from '@core/selection-model/index.ts';
 import {BulkEditor, MixedEditExplainer, type BulkEditorDraft, type SelectionItemDisplay} from '../../kit/selection';
 import {Dialog} from '../../kit/overlays';
@@ -18,10 +19,10 @@ export function SelectionEditorSurface({session, options, onKeepOnly, onClose}: 
   const [draft, setDraft] = useState<BulkEditorDraft>(() => editorUiDraft({lockEdited: true}));
   const [receipts, setReceipts] = useState<readonly BulkReceipt[]>([]), [busy, setBusy] = useState(true), [error, setError] = useState(false);
   const types = session.operation.target.mode === 'explicit' ? [...session.operation.target.items.reduce((counts, pick) => counts.set(pick.item.kind, (counts.get(pick.item.kind) ?? 0) + 1), new Map<SelectionKind, number>())].map(([kind, count]) => ({kind, count})) : session.operation.target.summary.types;
-  const mixed = types.length > 1;
+  const mixed = types.length > 1, noBulkKind = types.length === 1 && !selectionKindHasBulkFields(types[0].kind);
   const flight = useRef(false), operation = useRef(session.operation);
   const load = async () => {
-    if (mixed || flight.current || !session.current()) return;
+    if (mixed || noBulkKind || flight.current || !session.current()) return;
     flight.current = true; setBusy(true); setError(false);
     try {
       const next = await producer.preview(operation.current), display = await producer.display(operation.current);
@@ -38,7 +39,7 @@ export function SelectionEditorSurface({session, options, onKeepOnly, onClose}: 
     catch {if (session.current()) setError(true);}
     finally {flight.current = false; if (session.current()) setBusy(false);}
   };
-  if (mixed) return <MixedEditExplainer open onOpenChange={open => {if (!open) close();}} anchorRef={anchor} returnFocusRef={anchor}
+  if (mixed || noBulkKind) return <MixedEditExplainer open reason={noBulkKind ? 'no-bulk-fields' : 'mixed-types'} onOpenChange={open => {if (!open) close();}} anchorRef={anchor} returnFocusRef={anchor}
     types={types} onKeepOnly={kind => {if (session.current()) onKeepOnly(kind);}}/>;
   if (!preview) return <Dialog open onOpenChange={open => {if (!open) close();}} title={defaultI18n.t('next.selection.edit')} returnFocusRef={anchor}>
     <p role={error ? 'alert' : 'status'}>{defaultI18n.t(error ? 'next.states.crashed' : 'next.states.loading')}</p>

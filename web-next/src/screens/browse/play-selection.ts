@@ -133,7 +133,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     const leaf = selectionItem(entry);
     // A missing executor is not a grant: personal Detail reads do not depend on
     // holding a playback port, and every reported capability comes from Detail.
-    if (!executable || !leaf || leaf.itemId !== entry.id) return Promise.resolve(Object.freeze({kind: entry.kind, id: entry.id,
+    if (!executable || (!leaf && !['show', 'season', 'album', 'artist', 'book', 'collection'].includes(entry.kind)) || leaf && leaf.itemId !== entry.id) return Promise.resolve(Object.freeze({kind: entry.kind, id: entry.id,
       libraryId: entry.libraryId, capabilities: selectionCapabilities(entry.kind, {})}));
     const cached = grants.get(entry);if (cached) return cached.promise;
     let resolve!: Grant['resolve'], reject!: Grant['reject'];
