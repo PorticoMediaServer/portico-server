@@ -784,7 +784,18 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
-	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(cache, "linear-media"), LockDirectory: storagepaths.Path(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))}); e != nil {
+	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(cache, "linear-media"), LockDirectory: storagepaths.Path(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")), ReadBufferLimits: func(ctx context.Context) (time.Duration, int64, error) {
+		snapshot, err := dbwork.BeginSnapshot(ctx, db)
+		if err != nil {
+			return 0, 0, err
+		}
+		defer snapshot.Rollback()
+		defaults, _, err := livechannels.RuntimeConfigurationTx(ctx, snapshot.Tx(), "")
+		if err != nil {
+			return 0, 0, err
+		}
+		return livechannels.TimeshiftLimits(defaults.TimeshiftMinutes)
+	}}); e != nil {
 		return e
 	}
 	// Channels on v1 sessions open a Library Channels title the way every v1

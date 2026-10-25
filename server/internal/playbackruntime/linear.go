@@ -45,6 +45,10 @@ type LinearConfig struct {
 	DecoderLibraries                               []string
 	Retention                                      time.Duration
 	MaxBytes                                       int64
+	// ReadBufferLimits supplies the current owner policy for each new buffer.
+	// Existing buffers retain the limits under which they admitted their media.
+	// Nil keeps the fixed Retention/MaxBytes configuration for other embedders.
+	ReadBufferLimits func(context.Context) (time.Duration, int64, error)
 }
 type LinearRuntime struct {
 	owner *Runtime
@@ -316,7 +320,21 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 			return
 		}
 	}
-	buffer, e := linearbuffer.New(linearbuffer.Options{Parent: l.config.CacheDirectory, OriginMS: time.Now().UnixMilli(), MaxBytes: l.config.MaxBytes, Retention: l.config.Retention, Scheduled: work.Selection.Reference.Kind == "library-channel"})
+	retention, maxBytes := l.config.Retention, l.config.MaxBytes
+	if l.config.ReadBufferLimits != nil {
+		retention, maxBytes, e = l.config.ReadBufferLimits(ctx)
+		if e == nil && (retention < 12*time.Second || retention > 24*time.Hour || maxBytes < 64<<20 || maxBytes > 16<<30) {
+			e = errors.New("invalid channel retention limits")
+		}
+		if e != nil {
+			l.fail(ctx, entry, work, startFault(e))
+			return
+		}
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	buffer, e := linearbuffer.New(linearbuffer.Options{Parent: l.config.CacheDirectory, OriginMS: time.Now().UnixMilli(), MaxBytes: maxBytes, Retention: retention, Scheduled: work.Selection.Reference.Kind == "library-channel"})
 	if e != nil {
 		l.report(ctx, entry, work, "timeshift_storage_unavailable", "delivery", e)
 		return
