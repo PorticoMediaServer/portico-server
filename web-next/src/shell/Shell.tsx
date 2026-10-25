@@ -18,6 +18,7 @@ import type {OwnerActivityProps} from './Activity';
 import {LibraryNavigation} from './LibraryNavigation';
 import {DesktopNavigation} from './DesktopNavigation';
 import {usePageWindowChrome} from './window-chrome';
+import {ConnectionAway} from './ConnectionAway';
 
 export type ShellIdentity = Readonly<{
   viewer: Viewer; signIn?:SignInKind; capabilities?:ManagementCapabilities; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string; serverVersion?: string;
@@ -29,6 +30,8 @@ export type ShellProps = Readonly<{
   /** Mount owns its reads. Compact and non-owner shells do not mount it. */
   OwnerActivity: ComponentType<OwnerActivityProps>;
   dockVisible: boolean;
+  /** The verified connection reports the server away; the native desktop host draws one quiet line. */
+  serverAway?: boolean;
   onSignOut: () => void; onSignOutPorticoAccount?: () => void; onSwitchProfile?:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; onSwitchServer?:(serverId:string)=>Promise<void>; savedServers?:readonly {id:string;label:string}[];
   onFeedback?: () => void;
   overlays?: ReactNode;
@@ -40,11 +43,13 @@ const t = defaultI18n.t;
 function libraryMemory() { try { return window.localStorage; } catch { return undefined; } }
 const collapseMemoryKey = 'portico.next.sidebar-collapsed';
 
-export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOutPorticoAccount,onSwitchProfile,onSwitchServer,savedServers,onFeedback, phoneSelection, overlays, windowChrome, children}: ShellProps) {
+export function Shell({identity, OwnerActivity, dockVisible, serverAway, onSignOut, onSignOutPorticoAccount,onSwitchProfile,onSwitchServer,savedServers,onFeedback, phoneSelection, overlays, windowChrome, children}: ShellProps) {
   useWindowScrollAnchor();
   const sizeClass = useSizeClass(), coarsePointer = useCoarsePointer();
   const desktop = sizeClass === 'expanded' && !coarsePointer, compact = sizeClass === 'compact', scrolled = useShellScrolled();
   const chrome = usePageWindowChrome(scrolled);
+  // Only the native desktop host, whose window chrome reports an OS, draws the away line.
+  const awayShown = serverAway === true && chrome.os !== undefined;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return window.localStorage.getItem(collapseMemoryKey) === 'true'; } catch { return false; }
   });
@@ -113,7 +118,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
           <Link className={styles.icon} to="/search" search={{q: lastSearch.current}} aria-label={t('next.home.shell.search')} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /></Link>
           <Link className={styles.icon} to="/saved" aria-label={t('next.home.shell.saved')} activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /></Link>
           <Link className={styles.icon} to="/notifications" aria-label={identity.unread > 0 ? t('next.home.shell.unread', {count: identity.unread}) : t('next.home.shell.notifications')} activeProps={{'aria-current': 'page'}}><Icon name="i-bell" size={22} />{identity.showNotificationDot && identity.unread > 0 && <span className={styles.dot} />}</Link>
-          {identity.capabilities?.manageServer === true && showOwnerActivity(viewer.role, desktop) && <OwnerActivity />}
+          {identity.capabilities?.manageServer === true && showOwnerActivity(viewer.role, desktop) && !awayShown && <OwnerActivity />}
           {account}
         </div>
       </nav> : !compact ? <nav className={styles.rail} data-window-drag-region="rail-empty" aria-label={t('next.home.shell.main')}>
@@ -134,7 +139,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
         </div>
         <div className={styles.railBottom} data-window-no-drag>
           <Link className={styles.railItem} to="/notifications" data-icon-only={navigation === 'rail' || undefined} aria-label={identity.unread > 0 ? t('next.home.shell.unread', {count: identity.unread}) : t('next.home.shell.notifications')} activeProps={{'aria-current': 'page'}}><Icon name="i-bell" size={22} />{navigation === 'sidebar' && <span data-nav-label>{t('next.home.shell.notifications')}</span>}{identity.showNotificationDot && identity.unread > 0 && <span data-nav-count aria-hidden="true">{identity.unread}</span>}</Link>
-          {identity.capabilities?.manageServer === true && viewer.role === 'owner' && <OwnerActivity presentation={navigation === 'sidebar' ? 'sidebar' : 'rail'} className={styles.railItem} />}
+          {identity.capabilities?.manageServer === true && viewer.role === 'owner' && !awayShown && <OwnerActivity presentation={navigation === 'sidebar' ? 'sidebar' : 'rail'} className={styles.railItem} />}
           <Link className={styles.railItem} to="/settings" activeProps={{'aria-current': 'page'}}><Icon name="i-settings" size={22} /><span data-nav-label>{t('next.shell.settings')}</span></Link>
           {account}
         </div>
@@ -151,6 +156,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
         </nav>}
       </>}
     </div>
+    {awayShown && <ConnectionAway serverName={identity.serverName} />}
     {children}
     <Dialog open={!!profileChoice&&(profileChoice.pinRequired===true||!!profileError)} onOpenChange={open=>{if(!open){profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');setProfileError(undefined);}}} title={profileChoice?.name??identity.profileName} footer={<><Button variant="glass" onClick={()=>{profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');}}>{t('accounts.profiles.cancel')}</Button><Button disabled={profileBusy||!!profileChoice?.pinRequired&&!/^\d{4}$/.test(profilePin)} onClick={()=>{if(profileChoice)void chooseProfile(profileChoice,profilePin);}}>{t('accounts.profiles.continue')}</Button></>}>
       {profileChoice?.pinRequired&&<TextField type="password" inputMode="numeric" maxLength={4} autoComplete="off" label={t('accounts.profiles.pinForProfile',{profile:profileChoice.name})} value={profilePin} onChange={event=>setProfilePin(event.currentTarget.value)} error={(profileError as {code?:unknown}|undefined)?.code==='profile_pin_invalid'?t('accounts.profiles.pinFailed'):undefined} />}

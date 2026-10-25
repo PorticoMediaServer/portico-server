@@ -24,6 +24,7 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
 }) {
   const width = useShellWidth(), [tick, setTick] = useState(() => Date.now()), [detailsOpen, setDetailsOpen] = useState(initialDetailsOpen), [copied, setCopied] = useState(false);
   const now = fixedNow ?? tick, waiting = !facts.retrying;
+  const computerOffline = facts.category === 'offline' || globalThis.navigator?.onLine === false;
   useEffect(() => {
     if (!waiting || fixedNow !== undefined) return;
     const timer = setInterval(() => setTick(Date.now()), 250);
@@ -48,8 +49,8 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   return <>
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="warning" icon="i-srvoff"
       contentStyle={{top: width >= 1024 ? 500 : 250}}
-      title={facts.serverName ? t('next.states.cantReach', {server: facts.serverName}) : t('next.states.cantReachServer')}
-      body={t('next.states.cantReachBody')}
+      title={computerOffline ? t('next.states.thisComputerOffline') : facts.serverName ? t('next.states.cantReach', {server: facts.serverName}) : t('next.states.cantReachServer')}
+      body={computerOffline ? t('next.states.reconnectsWhenBack') : t('next.states.cantReachBody')}
       retry={facts.retrying ? {progress: null, label: t('next.states.retrying')} : {progress: retryProgress(facts.startedAt, facts.nextRetryAt, now), label: t('next.states.retryIn', {seconds: retrySeconds(facts.nextRetryAt, now)}), detail: firstFailure}}
       primary={{id: 'retry', label: t('next.states.tryNow'), icon: 'i-retry', onPress: onRetry, loading: facts.retrying}}
       secondary={{id: 'switch', label: t('next.states.switchServer'), icon: 'i-server', onPress: onSwitchServer}}

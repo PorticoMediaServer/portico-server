@@ -70,6 +70,28 @@ test('a server whose name was never cached keeps the page without inventing one'
   assert.match(markup, /Trying again/);
 });
 
+test('desktop-app.html#15: an offline computer says so instead of blaming the server', () => {
+  const markup = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts: {...facts, category: 'offline' as const}, now: facts.startedAt, onRetry: () => {}, onSwitchServer: () => {}}));
+  assert.match(markup, new RegExp(defaultI18n.t('next.states.thisComputerOffline')));
+  assert.match(markup, new RegExp(defaultI18n.t('next.states.reconnectsWhenBack').replace(/'/g, '&#x27;')));
+  assert.doesNotMatch(markup, /Portico demo/);
+});
+
+test('a retired wait stops waking on focus, view or network return', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
+  let restores = 0;
+  const bootstrap = bootstrapped(async () => { restores++; throw transport(); });
+  await bootstrap.start();
+  assert.equal(bootstrap.getSnapshot().phase, 'unreachable');
+  globalThis.dispatchEvent(new Event('focus'));
+  for (let flush = 0; flush < 4; flush++) await Promise.resolve();
+  assert.equal(restores, 2);
+  bootstrap.dispose();
+  t.mock.timers.tick(120000);
+  for (let flush = 0; flush < 4; flush++) await Promise.resolve();
+  assert.equal(restores, 2);
+});
+
 
 /* ---- lifecycle: the wait belongs to exactly one launch attempt ---- */
 

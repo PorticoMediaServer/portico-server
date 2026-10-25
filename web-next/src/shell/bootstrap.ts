@@ -130,6 +130,7 @@ export class ShellBootstrap {
   private running?: Promise<void>;
   private disposed = false;
   private retryTimer?: ReturnType<typeof setTimeout>;
+  private waitWakers?: () => void;
   private failure?: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number};
   private launch?: {address: string; owner: boolean; serverId: string};
   /** Exactly the error the restore call raised; a later bug must never read as "server away". */
@@ -190,6 +191,30 @@ export class ShellBootstrap {
     this.publish({phase: 'unreachable', unreachable: this.unreachable(wait, category, error)});
     clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => { this.retryTimer = undefined; void this.start(true); }, Math.max(0, nextRetryAt - Date.now()));
+    this.armWaitWakers();
+  }
+
+  /** states.html#3 / desktop-app.html#15: a retry also runs at once when the
+   * window comes back into view, the computer wakes or the network returns. */
+  private armWaitWakers() {
+    this.disarmWaitWakers();
+    const wake = () => {
+      if (!this.disposed && this.state.phase === 'unreachable' && !this.state.unreachable?.retrying) void this.retryNow();
+    };
+    const visibility = () => { if (globalThis.document?.visibilityState !== 'hidden') wake(); };
+    globalThis.document?.addEventListener('visibilitychange', visibility);
+    globalThis.addEventListener?.('focus', wake);
+    globalThis.addEventListener?.('online', wake);
+    this.waitWakers = () => {
+      globalThis.document?.removeEventListener('visibilitychange', visibility);
+      globalThis.removeEventListener?.('focus', wake);
+      globalThis.removeEventListener?.('online', wake);
+    };
+  }
+
+  private disarmWaitWakers() {
+    this.waitWakers?.();
+    this.waitWakers = undefined;
   }
 
   private unreachable(wait: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number}, category: 'unreachable' | 'offline' | 'timeout', error?: unknown): LaunchUnreachable {
@@ -210,6 +235,7 @@ export class ShellBootstrap {
   };
 
   private clearWait() {
+    this.disarmWaitWakers();
     if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = undefined; }
     this.failure = undefined;
   }

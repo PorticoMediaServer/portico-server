@@ -9,6 +9,7 @@ import {webScreens, WebRetainedScreenHosts, useWebAction} from '../route-registr
 import {webScreenIdForRoute} from '../route-registry';
 import {BootstrapContent} from './BootstrapState';
 import {useShellWidth} from './viewport';
+import {useServerAway} from './ConnectionAway';
 
 function RouteContent() {
   const content = useRef<HTMLDivElement>(null);
@@ -24,7 +25,8 @@ export function ShellRoot() {
   const routeId = useRouterState({select: state => state.matches.at(-1)?.routeId ?? ''});
   const screenId = webScreenIdForRoute(routeId);
   const viewer = binding?.shell.identity.viewer, phone = useShellWidth() < 600;
+  const serverAway = useServerAway(binding?.api);
   const content = !binding || !viewer || screenId && (webScreens.chrome(screenId) !== 'shell' || phone && webScreens.phoneChrome(screenId) === 'standalone') ? <RouteContent />
-    : <Shell {...binding.shell} onFeedback={onFeedback}><RouteContent /></Shell>;
+    : <Shell {...binding.shell} serverAway={serverAway} onFeedback={onFeedback}><RouteContent /></Shell>;
   return <>{content}{binding?.playback && <GlobalShortcuts key={binding.scopeKey} playback={binding.playback}/>}<WebRetainedScreenHosts /></>;
 }
