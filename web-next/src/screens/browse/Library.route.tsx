@@ -129,15 +129,23 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
       // executors, and each title's own Detail actions still decide its grants.
       deletion: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
       editor: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
+      destinations: true,
       personal: {myList: true, favorite: true, watched: true},
       queue: runtime?.catalogueQueue(),
       playback: runtime?.cataloguePlayback()});
   }, [captured.context, context, resources, runtime, href, state.queryRevision]);
   useEffect(() => {playSelection.start();return () => playSelection.dispose();}, [playSelection]);
   // Queue dispatch retains both the original route and exact model operation.
-  // Saved-list pickers remain absent until their checked producers are wired.
-  const selection = useMemo(() => createLibrarySelection({
+  // Destination pickers capture their own checked leaves under that same lease.
+  const selection = useMemo(() => {
+    const viewer = captured.context.session().viewer;
+    if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
+    return createLibrarySelection({
     playSelection,
+    pickers: {api: resources.life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(),
+      signal: resources.life.signal(), isCurrent: resources.life.current,
+      canCreateCollection: context.identity?.viewer.role === 'owner',
+      pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}},
     ...(runtime ? {enqueue: playSelection.enqueue} : {}),
     owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
     descriptor: () => resources.controller.wholeSelection(),
@@ -149,7 +157,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     actions: {api: resources.life.api, events: context.events, requestId: async () => randomId(),
       signal: resources.life.signal(), isCurrent: () => resources.life.current(), reportError: context.effects.reportError},
     reportError: context.effects.reportError,
-  }), [context, playSelection, resources, runtime]);
+  });}, [captured.context, context, playSelection, resources, runtime]);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
