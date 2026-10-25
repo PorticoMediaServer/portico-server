@@ -177,7 +177,10 @@ func TestReadingContinueFormatLocations(t *testing.T) {
 			got := out.Items[0]
 			want, _ := json.Marshal(location)
 			actual, _ := json.Marshal(got.Progress.Location)
-			if string(actual) != string(want) || got.Progress.SourceRevision != m.Revision || got.Progress.Stale || got.Item.Format != m.Format || got.Item.SourceID != m.SourceID {
+			// The item reports the real original file, while the session reports the
+			// engine format its location is expressed in. This case opens a direct
+			// source, so both name the same format and the row must carry it.
+			if string(actual) != string(want) || got.Progress.SourceRevision != m.Revision || got.Progress.Stale || got.Item.Format != ReadingSourceFormat(m.Format) || got.Item.SourceID != m.SourceID {
 				t.Fatal("format-specific saved location changed", got)
 			}
 		})
