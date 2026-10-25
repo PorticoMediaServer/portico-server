@@ -22,6 +22,7 @@ import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {LibrariesPanel} from './libraries/LibrariesPanel';
+import {RenameLibrary} from './libraries/RenameLibrary';
 import {LibraryScanAction} from './libraries/LibraryActions';
 import {LibraryLyricsAction} from './libraries/LibraryLyricsAction';
 import {RemoveLibraryButton} from './libraries/RemoveLibrary';
@@ -279,6 +280,10 @@ export function SettingsEntry() {
         if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl row={row} api={context.api} onSendReport={sendReport ? () => sendReport() : undefined} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
         if (row.id === 'music.eq') return <MusicEqualizerRow platform={platform} isCurrent={current}/>;
         if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
+        if (row.id === 'libraries.name' && isLibraryPanelContext(rowContext) && rowContext.recordId && typeof state.value === 'string') {
+          const libraryId = rowContext.recordId;
+          return <RenameLibrary key={libraryId} name={state.value} disabled={state.disabled === true || state.saving === true} rename={name => controller.renameLibrary(libraryId, name)} />;
+        }
         if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries}
           onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
         if (row.id === 'libraries.skipped' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)

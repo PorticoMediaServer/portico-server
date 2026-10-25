@@ -149,6 +149,7 @@ export class SettingsController {
     });
   };
   private libraryRow = (context?: SettingsContext) => context?.section.scope === 'server' && context.section.id === 'libraries' && context.panelId === 'library' && !!context.recordId;
+  renameLibrary = (libraryId: string, name: string) => this.current() && !this.writing ? this.library.change(libraryId, 'libraries.name', name) : Promise.resolve(false);
   loadContext = (context: SettingsContext) => {
     const libraryId = this.libraryRow(context) && this.sectionVisible(context.section) ? context.recordId : undefined;
     return Promise.all([this.library.select(libraryId), this.folders.select(libraryId)]).then(() => undefined);

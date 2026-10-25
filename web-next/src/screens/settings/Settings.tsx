@@ -95,7 +95,7 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
     const frame = requestAnimationFrame(() => document.getElementById(found.row.id)?.scrollIntoView({block: 'center', behavior: 'instant'}));
     return () => cancelAnimationFrame(frame);
   }, [selected.scope, selected.section, selected.row]);
-  const rows = (holder: Parameters<typeof SettingsRows>[0]['holder'], context: SettingsContext) => <SettingsRows holder={holder} environment={environment} state={row => rowState(row, context)}
+  const rows = (holder: Parameters<typeof SettingsRows>[0]['holder'], context: SettingsContext) => <SettingsRows holder={{...holder, groups: holder.groups?.map(group => ({...group, rows: group.rows.map(row => context.panelId === 'library' && row.id === 'libraries.name' ? {...row, control: {...row.control, type: 'action' as const}} : row)}))}} environment={environment} state={row => rowState(row, context)}
     change={(row, value) => {if (rowState(row, context).present) bindings.change(row, value, context);}} reset={row => {if (rowState(row, context).present) bindings.reset(row, context);}} renderSpecial={(row, state) => rowState(row, context).present ? bindings.special(row, state, context, openPanel) : null}
     query={query} foundRowId={selected.row} advancedOpen={advanced} onAdvancedChange={setAdvanced} />;
   const navigation = <SettingsNav accountName={bindings.accountName} serverName={bindings.serverName} viewerRole={bindings.role === 'admin' ? 'administrator' : bindings.role}
