@@ -593,6 +593,8 @@ export const routes = [
     "errors": [
       "webhook_limit",
       "body_too_large",
+      "idempotency_key_reused",
+      "not_found",
       "unauthorized",
       "not_permitted",
       "insufficient_scope",
@@ -1271,6 +1273,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 0,
+    "query": [
+      "query"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -11676,6 +11681,25 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "post_admin_updates_check",
+    "method": "POST",
+    "path": "/v1/admin/updates/check",
+    "summary": "Check the release feed now and answer with what it lists",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "optionalBody": true,
+    "admission": "admin-heavy"
+  },
+  {
     "id": "post_albums_id_metadata_musicbrainz_policy",
     "method": "POST",
     "path": "/v1/albums/{id}/metadata/musicbrainz/policy",
@@ -19885,6 +19909,7 @@ export const routePaths = {
   "post_admin_segments_titles_id_redetect": "/v1/admin/segments/titles/{id}/redetect",
   "post_admin_state_permissions_fix": "/v1/admin/state-permissions:fix",
   "post_admin_storage_usage_category_cleanup": "/v1/admin/storage-usage/{category}/cleanup",
+  "post_admin_updates_check": "/v1/admin/updates/check",
   "post_albums_id_metadata_musicbrainz_policy": "/v1/albums/{id}/metadata/musicbrainz/policy",
   "post_albums_id_metadata_musicbrainz_retry": "/v1/albums/{id}/metadata/musicbrainz/retry",
   "post_albums_id_metadata_musicbrainz_search": "/v1/albums/{id}/metadata/musicbrainz/search",

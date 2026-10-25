@@ -835,6 +835,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -1109,6 +1112,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"
@@ -2346,6 +2352,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -2620,6 +2629,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"
@@ -4108,6 +4120,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -4382,6 +4397,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"
@@ -5745,6 +5763,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -5783,6 +5804,75 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "badges": {
+              "items": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bitDepth": {
+                        "minimum": 17,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "lossless"
+                      },
+                      "sampleRate": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "codec",
+                      "bitDepth",
+                      "sampleRate"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "atmos",
+                          "dsd"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "surround"
+                      },
+                      "layout": {
+                        "enum": [
+                          "5.1",
+                          "7.1"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "layout"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "type": "array"
             },
             "bookProgress": {
               "properties": {
@@ -6205,6 +6295,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -6243,6 +6336,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -7829,6 +7991,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -7867,6 +8032,75 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "badges": {
+              "items": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bitDepth": {
+                        "minimum": 17,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "lossless"
+                      },
+                      "sampleRate": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "codec",
+                      "bitDepth",
+                      "sampleRate"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "atmos",
+                          "dsd"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "surround"
+                      },
+                      "layout": {
+                        "enum": [
+                          "5.1",
+                          "7.1"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "layout"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "type": "array"
             },
             "bookProgress": {
               "properties": {
@@ -8289,6 +8523,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -8327,6 +8564,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -11404,6 +11710,9 @@ export const schemas = {
                   "layout": {
                     "type": "string"
                   },
+                  "lossless": {
+                    "type": "boolean"
+                  },
                   "objectAudio": {
                     "type": "string"
                   },
@@ -11678,6 +11987,9 @@ export const schemas = {
                   },
                   "layout": {
                     "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
                   },
                   "objectAudio": {
                     "type": "string"
@@ -12863,6 +13175,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -13137,6 +13452,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"
@@ -16588,6 +16906,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -16862,6 +17183,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"
@@ -17906,6 +18230,9 @@ export const schemas = {
         "type": "array"
       },
       "name": {
+        "type": "string"
+      },
+      "operationId": {
         "type": "string"
       },
       "secret": {
@@ -20806,6 +21133,9 @@ export const schemas = {
           "observedState": {
             "type": "string"
           },
+          "programIncluded": {
+            "type": "boolean"
+          },
           "removalPending": {
             "type": "boolean"
           }
@@ -20824,7 +21154,7 @@ export const schemas = {
           "mountPath",
           "desiredState",
           "observedState",
-          "executableDigest"
+          "programIncluded"
         ],
         "type": "object"
       },
@@ -34574,6 +34904,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -35364,6 +35697,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -37418,6 +37754,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -48673,6 +49012,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -48711,6 +49053,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -49133,6 +49544,9 @@ export const schemas = {
                                 },
                                 "audioFacts": {
                                   "properties": {
+                                    "atmos": {
+                                      "type": "boolean"
+                                    },
                                     "bitDepth": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -49171,6 +49585,75 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "badges": {
+                                  "items": {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "bitDepth": {
+                                            "minimum": 17,
+                                            "type": "integer"
+                                          },
+                                          "codec": {
+                                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "const": "lossless"
+                                          },
+                                          "sampleRate": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "codec",
+                                          "bitDepth",
+                                          "sampleRate"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "enum": [
+                                              "atmos",
+                                              "dsd"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "surround"
+                                          },
+                                          "layout": {
+                                            "enum": [
+                                              "5.1",
+                                              "7.1"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "layout"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  "maxItems": 2,
+                                  "type": "array"
                                 },
                                 "bookProgress": {
                                   "properties": {
@@ -50139,6 +50622,9 @@ export const schemas = {
                         },
                         "audioFacts": {
                           "properties": {
+                            "atmos": {
+                              "type": "boolean"
+                            },
                             "bitDepth": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -50177,6 +50663,75 @@ export const schemas = {
                         },
                         "backdropUrl": {
                           "type": "string"
+                        },
+                        "badges": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "bitDepth": {
+                                    "minimum": 17,
+                                    "type": "integer"
+                                  },
+                                  "codec": {
+                                    "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "const": "lossless"
+                                  },
+                                  "sampleRate": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "codec",
+                                  "bitDepth",
+                                  "sampleRate"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "atmos",
+                                      "dsd"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "surround"
+                                  },
+                                  "layout": {
+                                    "enum": [
+                                      "5.1",
+                                      "7.1"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "layout"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 2,
+                          "type": "array"
                         },
                         "bookProgress": {
                           "properties": {
@@ -50599,6 +51154,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -50637,6 +51195,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -52063,6 +52690,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -52101,6 +52731,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -52523,6 +53222,9 @@ export const schemas = {
                                 },
                                 "audioFacts": {
                                   "properties": {
+                                    "atmos": {
+                                      "type": "boolean"
+                                    },
                                     "bitDepth": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -52561,6 +53263,75 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "badges": {
+                                  "items": {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "bitDepth": {
+                                            "minimum": 17,
+                                            "type": "integer"
+                                          },
+                                          "codec": {
+                                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "const": "lossless"
+                                          },
+                                          "sampleRate": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "codec",
+                                          "bitDepth",
+                                          "sampleRate"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "enum": [
+                                              "atmos",
+                                              "dsd"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "surround"
+                                          },
+                                          "layout": {
+                                            "enum": [
+                                              "5.1",
+                                              "7.1"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "layout"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  "maxItems": 2,
+                                  "type": "array"
                                 },
                                 "bookProgress": {
                                   "properties": {
@@ -54085,6 +54856,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -54123,6 +54897,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -54545,6 +55388,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -54583,6 +55429,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -55548,6 +56463,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -55586,6 +56504,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -56008,6 +56995,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -56046,6 +57036,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -57472,6 +58531,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -57510,6 +58572,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -57932,6 +59063,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -57970,6 +59104,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -59290,6 +60493,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -59328,6 +60534,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -59750,6 +61025,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -59788,6 +61066,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -60761,6 +62108,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -60799,6 +62149,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -61221,6 +62640,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -61259,6 +62681,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -62448,6 +63939,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -62486,6 +63980,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -62908,6 +64471,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -62946,6 +64512,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -63914,6 +65549,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -63952,6 +65590,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -64374,6 +66081,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -64412,6 +66122,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -65838,6 +67617,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -65876,6 +67658,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -66298,6 +68149,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -66336,6 +68190,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -67860,6 +69783,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -67898,6 +69824,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -68320,6 +70315,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -68358,6 +70356,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -69323,6 +71390,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -69361,6 +71431,75 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "badges": {
+              "items": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bitDepth": {
+                        "minimum": 17,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "lossless"
+                      },
+                      "sampleRate": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "codec",
+                      "bitDepth",
+                      "sampleRate"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "atmos",
+                          "dsd"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "surround"
+                      },
+                      "layout": {
+                        "enum": [
+                          "5.1",
+                          "7.1"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "layout"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "type": "array"
             },
             "bookProgress": {
               "properties": {
@@ -69783,6 +71922,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -69821,6 +71963,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -71247,6 +73458,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -71285,6 +73499,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -71707,6 +73990,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -71745,6 +74031,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -73802,6 +76157,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -73840,6 +76198,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -74262,6 +76689,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -74300,6 +76730,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -75207,6 +77706,9 @@ export const schemas = {
           },
           "audioFacts": {
             "properties": {
+              "atmos": {
+                "type": "boolean"
+              },
               "bitDepth": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -75999,6 +78501,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -76037,6 +78542,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -76459,6 +79033,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -76497,6 +79074,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -79599,6 +82245,9 @@ export const schemas = {
                   "layout": {
                     "type": "string"
                   },
+                  "lossless": {
+                    "type": "boolean"
+                  },
                   "objectAudio": {
                     "type": "string"
                   },
@@ -81525,6 +84174,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -81563,6 +84215,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -81985,6 +84706,9 @@ export const schemas = {
                                 },
                                 "audioFacts": {
                                   "properties": {
+                                    "atmos": {
+                                      "type": "boolean"
+                                    },
                                     "bitDepth": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -82023,6 +84747,75 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "badges": {
+                                  "items": {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "bitDepth": {
+                                            "minimum": 17,
+                                            "type": "integer"
+                                          },
+                                          "codec": {
+                                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "const": "lossless"
+                                          },
+                                          "sampleRate": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "codec",
+                                          "bitDepth",
+                                          "sampleRate"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "enum": [
+                                              "atmos",
+                                              "dsd"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "surround"
+                                          },
+                                          "layout": {
+                                            "enum": [
+                                              "5.1",
+                                              "7.1"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "layout"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  "maxItems": 2,
+                                  "type": "array"
                                 },
                                 "bookProgress": {
                                   "properties": {
@@ -82991,6 +85784,9 @@ export const schemas = {
                         },
                         "audioFacts": {
                           "properties": {
+                            "atmos": {
+                              "type": "boolean"
+                            },
                             "bitDepth": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -83029,6 +85825,75 @@ export const schemas = {
                         },
                         "backdropUrl": {
                           "type": "string"
+                        },
+                        "badges": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "bitDepth": {
+                                    "minimum": 17,
+                                    "type": "integer"
+                                  },
+                                  "codec": {
+                                    "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "const": "lossless"
+                                  },
+                                  "sampleRate": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "codec",
+                                  "bitDepth",
+                                  "sampleRate"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "atmos",
+                                      "dsd"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "surround"
+                                  },
+                                  "layout": {
+                                    "enum": [
+                                      "5.1",
+                                      "7.1"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "layout"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 2,
+                          "type": "array"
                         },
                         "bookProgress": {
                           "properties": {
@@ -83451,6 +86316,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -83489,6 +86357,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -84915,6 +87852,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -84953,6 +87893,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -85375,6 +88384,9 @@ export const schemas = {
                                 },
                                 "audioFacts": {
                                   "properties": {
+                                    "atmos": {
+                                      "type": "boolean"
+                                    },
                                     "bitDepth": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -85413,6 +88425,75 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "badges": {
+                                  "items": {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "bitDepth": {
+                                            "minimum": 17,
+                                            "type": "integer"
+                                          },
+                                          "codec": {
+                                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "const": "lossless"
+                                          },
+                                          "sampleRate": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "codec",
+                                          "bitDepth",
+                                          "sampleRate"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "enum": [
+                                              "atmos",
+                                              "dsd"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "surround"
+                                          },
+                                          "layout": {
+                                            "enum": [
+                                              "5.1",
+                                              "7.1"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "layout"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  "maxItems": 2,
+                                  "type": "array"
                                 },
                                 "bookProgress": {
                                   "properties": {
@@ -86937,6 +90018,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -86975,6 +90059,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -87397,6 +90550,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -87435,6 +90591,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -88400,6 +91625,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -88438,6 +91666,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -88860,6 +92157,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -88898,6 +92198,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -90324,6 +93693,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -90362,6 +93734,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -90784,6 +94225,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -90822,6 +94266,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -92385,6 +95898,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -92423,6 +95939,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -92845,6 +96430,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -92883,6 +96471,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -93851,6 +97508,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -93889,6 +97549,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -94311,6 +98040,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -94349,6 +98081,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -95775,6 +99576,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -95813,6 +99617,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -96235,6 +100108,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -96273,6 +100149,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -97797,6 +101742,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -97835,6 +101783,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -98257,6 +102274,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -98295,6 +102315,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -99260,6 +103349,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -99298,6 +103390,75 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "badges": {
+              "items": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bitDepth": {
+                        "minimum": 17,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "lossless"
+                      },
+                      "sampleRate": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "codec",
+                      "bitDepth",
+                      "sampleRate"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "atmos",
+                          "dsd"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "surround"
+                      },
+                      "layout": {
+                        "enum": [
+                          "5.1",
+                          "7.1"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "layout"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "type": "array"
             },
             "bookProgress": {
               "properties": {
@@ -99720,6 +103881,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -99758,6 +103922,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -101184,6 +105417,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -101222,6 +105458,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -101644,6 +105949,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -101682,6 +105990,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -102932,6 +107309,9 @@ export const schemas = {
       },
       "audioFacts": {
         "properties": {
+          "atmos": {
+            "type": "boolean"
+          },
           "bitDepth": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -103406,6 +107786,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -103444,6 +107827,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -103866,6 +108318,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -103904,6 +108359,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -105156,7 +109680,8 @@ export const schemas = {
                 "pdf",
                 "cbz",
                 "mobi",
-                "azw3"
+                "azw3",
+                "cb7"
               ],
               "type": "string"
             },
@@ -105204,6 +109729,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -107194,6 +111722,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -107799,6 +112330,9 @@ export const schemas = {
           },
           "audioFacts": {
             "properties": {
+              "atmos": {
+                "type": "boolean"
+              },
               "bitDepth": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -107837,6 +112371,75 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "badges": {
+            "items": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bitDepth": {
+                      "minimum": 17,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "lossless"
+                    },
+                    "sampleRate": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "codec",
+                    "bitDepth",
+                    "sampleRate"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "atmos",
+                        "dsd"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "surround"
+                    },
+                    "layout": {
+                      "enum": [
+                        "5.1",
+                        "7.1"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "layout"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 2,
+            "type": "array"
           },
           "bookProgress": {
             "properties": {
@@ -108259,6 +112862,9 @@ export const schemas = {
               },
               "audioFacts": {
                 "properties": {
+                  "atmos": {
+                    "type": "boolean"
+                  },
                   "bitDepth": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -108297,6 +112903,75 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "badges": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bitDepth": {
+                          "minimum": 17,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "lossless"
+                        },
+                        "sampleRate": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "codec",
+                        "bitDepth",
+                        "sampleRate"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "atmos",
+                            "dsd"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "surround"
+                        },
+                        "layout": {
+                          "enum": [
+                            "5.1",
+                            "7.1"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "layout"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 2,
+                "type": "array"
               },
               "bookProgress": {
                 "properties": {
@@ -109452,6 +114127,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -109490,6 +114168,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -109912,6 +114659,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -109950,6 +114700,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -111146,6 +115965,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -111184,6 +116006,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -111606,6 +116497,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -111644,6 +116538,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -113197,6 +118160,9 @@ export const schemas = {
               },
               "audioFacts": {
                 "properties": {
+                  "atmos": {
+                    "type": "boolean"
+                  },
                   "bitDepth": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -113235,6 +118201,75 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "badges": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bitDepth": {
+                          "minimum": 17,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "lossless"
+                        },
+                        "sampleRate": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "codec",
+                        "bitDepth",
+                        "sampleRate"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "atmos",
+                            "dsd"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "surround"
+                        },
+                        "layout": {
+                          "enum": [
+                            "5.1",
+                            "7.1"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "layout"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 2,
+                "type": "array"
               },
               "bookProgress": {
                 "properties": {
@@ -113657,6 +118692,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -113695,6 +118733,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -114850,6 +119957,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -114888,6 +119998,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -115310,6 +120489,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -115348,6 +120530,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -116451,6 +121702,9 @@ export const schemas = {
           },
           "audioFacts": {
             "properties": {
+              "atmos": {
+                "type": "boolean"
+              },
               "bitDepth": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -116489,6 +121743,75 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "badges": {
+            "items": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bitDepth": {
+                      "minimum": 17,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "lossless"
+                    },
+                    "sampleRate": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "codec",
+                    "bitDepth",
+                    "sampleRate"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "atmos",
+                        "dsd"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "surround"
+                    },
+                    "layout": {
+                      "enum": [
+                        "5.1",
+                        "7.1"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "layout"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 2,
+            "type": "array"
           },
           "bookProgress": {
             "properties": {
@@ -116911,6 +122234,9 @@ export const schemas = {
               },
               "audioFacts": {
                 "properties": {
+                  "atmos": {
+                    "type": "boolean"
+                  },
                   "bitDepth": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -116949,6 +122275,75 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "badges": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bitDepth": {
+                          "minimum": 17,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "lossless"
+                        },
+                        "sampleRate": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "codec",
+                        "bitDepth",
+                        "sampleRate"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "atmos",
+                            "dsd"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "surround"
+                        },
+                        "layout": {
+                          "enum": [
+                            "5.1",
+                            "7.1"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "layout"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 2,
+                "type": "array"
               },
               "bookProgress": {
                 "properties": {
@@ -119547,6 +124942,11 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "timeshiftMinutes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "userAgent": {
                 "type": "string"
               }
@@ -119647,6 +125047,11 @@ export const schemas = {
                 "type": "integer"
               },
               "streamBufferMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "timeshiftMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -122752,6 +128157,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -122790,6 +128198,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -123212,6 +128689,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -123250,6 +128730,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -124270,6 +129819,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -124308,6 +129860,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -124730,6 +130351,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -124768,6 +130392,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -125870,6 +131563,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -125908,6 +131604,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -126330,6 +132095,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -126368,6 +132136,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -128326,6 +134163,9 @@ export const schemas = {
                   "layout": {
                     "type": "string"
                   },
+                  "lossless": {
+                    "type": "boolean"
+                  },
                   "objectAudio": {
                     "type": "string"
                   },
@@ -128600,6 +134440,9 @@ export const schemas = {
                   },
                   "layout": {
                     "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
                   },
                   "objectAudio": {
                     "type": "string"
@@ -129664,6 +135507,9 @@ export const schemas = {
           },
           "audioFacts": {
             "properties": {
+              "atmos": {
+                "type": "boolean"
+              },
               "bitDepth": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -129702,6 +135548,75 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "badges": {
+            "items": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bitDepth": {
+                      "minimum": 17,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "lossless"
+                    },
+                    "sampleRate": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "codec",
+                    "bitDepth",
+                    "sampleRate"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "atmos",
+                        "dsd"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "surround"
+                    },
+                    "layout": {
+                      "enum": [
+                        "5.1",
+                        "7.1"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "layout"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 2,
+            "type": "array"
           },
           "bookProgress": {
             "properties": {
@@ -130124,6 +136039,9 @@ export const schemas = {
               },
               "audioFacts": {
                 "properties": {
+                  "atmos": {
+                    "type": "boolean"
+                  },
                   "bitDepth": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -130162,6 +136080,75 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "badges": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bitDepth": {
+                          "minimum": 17,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "lossless"
+                        },
+                        "sampleRate": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "codec",
+                        "bitDepth",
+                        "sampleRate"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "atmos",
+                            "dsd"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "surround"
+                        },
+                        "layout": {
+                          "enum": [
+                            "5.1",
+                            "7.1"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "layout"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 2,
+                "type": "array"
               },
               "bookProgress": {
                 "properties": {
@@ -131317,6 +137304,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -131355,6 +137345,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -131777,6 +137836,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -131815,6 +137877,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -133870,7 +140001,8 @@ export const schemas = {
                     "pdf",
                     "cbz",
                     "mobi",
-                    "azw3"
+                    "azw3",
+                    "cb7"
                   ],
                   "type": "string"
                 },
@@ -133968,7 +140100,8 @@ export const schemas = {
                       "enum": [
                         "epub",
                         "pdf",
-                        "cbz"
+                        "cbz",
+                        "cb7"
                       ],
                       "type": "string"
                     },
@@ -134084,7 +140217,8 @@ export const schemas = {
                       "pdf",
                       "cbz",
                       "mobi",
-                      "azw3"
+                      "azw3",
+                      "cb7"
                     ],
                     "type": "string"
                   },
@@ -134221,7 +140355,8 @@ export const schemas = {
                           "pdf",
                           "cbz",
                           "mobi",
-                          "azw3"
+                          "azw3",
+                          "cb7"
                         ],
                         "type": "string"
                       },
@@ -134373,7 +140508,8 @@ export const schemas = {
                             "pdf",
                             "cbz",
                             "mobi",
-                            "azw3"
+                            "azw3",
+                            "cb7"
                           ],
                           "type": "string"
                         },
@@ -134539,7 +140675,8 @@ export const schemas = {
                             "pdf",
                             "cbz",
                             "mobi",
-                            "azw3"
+                            "azw3",
+                            "cb7"
                           ],
                           "type": "string"
                         },
@@ -134692,7 +140829,8 @@ export const schemas = {
                           "pdf",
                           "cbz",
                           "mobi",
-                          "azw3"
+                          "azw3",
+                          "cb7"
                         ],
                         "type": "string"
                       },
@@ -134921,7 +141059,8 @@ export const schemas = {
                 "pdf",
                 "cbz",
                 "mobi",
-                "azw3"
+                "azw3",
+                "cb7"
               ],
               "type": "string"
             },
@@ -135084,7 +141223,8 @@ export const schemas = {
                         "pdf",
                         "cbz",
                         "mobi",
-                        "azw3"
+                        "azw3",
+                        "cb7"
                       ],
                       "type": "string"
                     },
@@ -135301,7 +141441,8 @@ export const schemas = {
                     "pdf",
                     "cbz",
                     "mobi",
-                    "azw3"
+                    "azw3",
+                    "cb7"
                   ],
                   "type": "string"
                 },
@@ -135500,7 +141641,8 @@ export const schemas = {
                 "pdf",
                 "cbz",
                 "mobi",
-                "azw3"
+                "azw3",
+                "cb7"
               ],
               "type": "string"
             },
@@ -135733,7 +141875,8 @@ export const schemas = {
                     "format": {
                       "enum": [
                         "pdf",
-                        "cbz"
+                        "cbz",
+                        "cb7"
                       ],
                       "type": "string"
                     },
@@ -135891,7 +142034,8 @@ export const schemas = {
                 "enum": [
                   "epub",
                   "pdf",
-                  "cbz"
+                  "cbz",
+                  "cb7"
                 ],
                 "type": "string"
               },
@@ -136256,6 +142400,9 @@ export const schemas = {
           },
           "audioFacts": {
             "properties": {
+              "atmos": {
+                "type": "boolean"
+              },
               "bitDepth": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -136294,6 +142441,75 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "badges": {
+            "items": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bitDepth": {
+                      "minimum": 17,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "lossless"
+                    },
+                    "sampleRate": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "codec",
+                    "bitDepth",
+                    "sampleRate"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "atmos",
+                        "dsd"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "surround"
+                    },
+                    "layout": {
+                      "enum": [
+                        "5.1",
+                        "7.1"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "layout"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 2,
+            "type": "array"
           },
           "bookProgress": {
             "properties": {
@@ -136716,6 +142932,9 @@ export const schemas = {
               },
               "audioFacts": {
                 "properties": {
+                  "atmos": {
+                    "type": "boolean"
+                  },
                   "bitDepth": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -136754,6 +142973,75 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "badges": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bitDepth": {
+                          "minimum": 17,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "lossless"
+                        },
+                        "sampleRate": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "codec",
+                        "bitDepth",
+                        "sampleRate"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "atmos",
+                            "dsd"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "surround"
+                        },
+                        "layout": {
+                          "enum": [
+                            "5.1",
+                            "7.1"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "layout"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 2,
+                "type": "array"
               },
               "bookProgress": {
                 "properties": {
@@ -137916,6 +144204,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -137954,6 +144245,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -138397,6 +144757,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -138435,6 +144798,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -139895,6 +146327,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -139933,6 +146368,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -140355,6 +146859,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -140393,6 +146900,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -141585,6 +148161,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -141623,6 +148202,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -142045,6 +148693,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -142083,6 +148734,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -143798,6 +150518,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -143836,6 +150559,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -144258,6 +151050,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -144296,6 +151091,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -145485,6 +152349,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -146245,6 +153112,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -147107,6 +153977,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -147145,6 +154018,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -147567,6 +154509,9 @@ export const schemas = {
                                 },
                                 "audioFacts": {
                                   "properties": {
+                                    "atmos": {
+                                      "type": "boolean"
+                                    },
                                     "bitDepth": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -147605,6 +154550,75 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "badges": {
+                                  "items": {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "bitDepth": {
+                                            "minimum": 17,
+                                            "type": "integer"
+                                          },
+                                          "codec": {
+                                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "const": "lossless"
+                                          },
+                                          "sampleRate": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "codec",
+                                          "bitDepth",
+                                          "sampleRate"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "enum": [
+                                              "atmos",
+                                              "dsd"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "surround"
+                                          },
+                                          "layout": {
+                                            "enum": [
+                                              "5.1",
+                                              "7.1"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "layout"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  "maxItems": 2,
+                                  "type": "array"
                                 },
                                 "bookProgress": {
                                   "properties": {
@@ -148573,6 +155587,9 @@ export const schemas = {
                         },
                         "audioFacts": {
                           "properties": {
+                            "atmos": {
+                              "type": "boolean"
+                            },
                             "bitDepth": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -148611,6 +155628,75 @@ export const schemas = {
                         },
                         "backdropUrl": {
                           "type": "string"
+                        },
+                        "badges": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "bitDepth": {
+                                    "minimum": 17,
+                                    "type": "integer"
+                                  },
+                                  "codec": {
+                                    "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "const": "lossless"
+                                  },
+                                  "sampleRate": {
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "codec",
+                                  "bitDepth",
+                                  "sampleRate"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "atmos",
+                                      "dsd"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "const": "surround"
+                                  },
+                                  "layout": {
+                                    "enum": [
+                                      "5.1",
+                                      "7.1"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "layout"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 2,
+                          "type": "array"
                         },
                         "bookProgress": {
                           "properties": {
@@ -149033,6 +156119,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -149071,6 +156160,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -150497,6 +157655,9 @@ export const schemas = {
                             },
                             "audioFacts": {
                               "properties": {
+                                "atmos": {
+                                  "type": "boolean"
+                                },
                                 "bitDepth": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -150535,6 +157696,75 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "badges": {
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "bitDepth": {
+                                        "minimum": 17,
+                                        "type": "integer"
+                                      },
+                                      "codec": {
+                                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "lossless"
+                                      },
+                                      "sampleRate": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "codec",
+                                      "bitDepth",
+                                      "sampleRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "enum": [
+                                          "atmos",
+                                          "dsd"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "surround"
+                                      },
+                                      "layout": {
+                                        "enum": [
+                                          "5.1",
+                                          "7.1"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "layout"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "maxItems": 2,
+                              "type": "array"
                             },
                             "bookProgress": {
                               "properties": {
@@ -150957,6 +158187,9 @@ export const schemas = {
                                 },
                                 "audioFacts": {
                                   "properties": {
+                                    "atmos": {
+                                      "type": "boolean"
+                                    },
                                     "bitDepth": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -150995,6 +158228,75 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "badges": {
+                                  "items": {
+                                    "oneOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "bitDepth": {
+                                            "minimum": 17,
+                                            "type": "integer"
+                                          },
+                                          "codec": {
+                                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "const": "lossless"
+                                          },
+                                          "sampleRate": {
+                                            "minimum": 1,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "codec",
+                                          "bitDepth",
+                                          "sampleRate"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "enum": [
+                                              "atmos",
+                                              "dsd"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "kind": {
+                                            "const": "surround"
+                                          },
+                                          "layout": {
+                                            "enum": [
+                                              "5.1",
+                                              "7.1"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "layout"
+                                        ],
+                                        "type": "object"
+                                      }
+                                    ]
+                                  },
+                                  "maxItems": 2,
+                                  "type": "array"
                                 },
                                 "bookProgress": {
                                   "properties": {
@@ -152519,6 +159821,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -152557,6 +159862,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -152979,6 +160353,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -153017,6 +160394,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -153982,6 +161428,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -154020,6 +161469,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -154442,6 +161960,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -154480,6 +162001,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -155906,6 +163496,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -155944,6 +163537,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -156366,6 +164028,9 @@ export const schemas = {
                           },
                           "audioFacts": {
                             "properties": {
+                              "atmos": {
+                                "type": "boolean"
+                              },
                               "bitDepth": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -156404,6 +164069,75 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "badges": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "bitDepth": {
+                                      "minimum": 17,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "lossless"
+                                    },
+                                    "sampleRate": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "codec",
+                                    "bitDepth",
+                                    "sampleRate"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "enum": [
+                                        "atmos",
+                                        "dsd"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "kind": {
+                                      "const": "surround"
+                                    },
+                                    "layout": {
+                                      "enum": [
+                                        "5.1",
+                                        "7.1"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "layout"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 2,
+                            "type": "array"
                           },
                           "bookProgress": {
                             "properties": {
@@ -158922,6 +166656,9 @@ export const schemas = {
             "observedState": {
               "type": "string"
             },
+            "programIncluded": {
+              "type": "boolean"
+            },
             "removalPending": {
               "type": "boolean"
             }
@@ -158940,7 +166677,7 @@ export const schemas = {
             "mountPath",
             "desiredState",
             "observedState",
-            "executableDigest"
+            "programIncluded"
           ],
           "type": "object"
         },
@@ -159049,6 +166786,9 @@ export const schemas = {
           "observedState": {
             "type": "string"
           },
+          "programIncluded": {
+            "type": "boolean"
+          },
           "removalPending": {
             "type": "boolean"
           }
@@ -159067,7 +166807,7 @@ export const schemas = {
           "mountPath",
           "desiredState",
           "observedState",
-          "executableDigest"
+          "programIncluded"
         ],
         "type": "object"
       },
@@ -160253,6 +167993,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -160291,6 +168034,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -160713,6 +168525,9 @@ export const schemas = {
                     },
                     "audioFacts": {
                       "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
                         "bitDepth": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -160751,6 +168566,75 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
                     },
                     "bookProgress": {
                       "properties": {
@@ -162987,7 +170871,8 @@ export const schemas = {
                           "enum": [
                             "epub",
                             "pdf",
-                            "cbz"
+                            "cbz",
+                            "cb7"
                           ],
                           "type": "string"
                         },
@@ -165625,6 +173510,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -165899,6 +173787,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"
@@ -176983,6 +184874,119 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAdminUpdatesCheckRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostAdminUpdatesCheckResponse": {
+    "properties": {
+      "autoInstall": {
+        "type": "boolean"
+      },
+      "channel": {
+        "type": "string"
+      },
+      "checkedAt": {
+        "type": "string"
+      },
+      "current": {
+        "properties": {
+          "buildId": {
+            "type": "string"
+          },
+          "builtAt": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "sourceDigest": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "buildId",
+          "sourceDigest",
+          "builtAt",
+          "channel"
+        ],
+        "type": "object"
+      },
+      "feedConfigured": {
+        "type": "boolean"
+      },
+      "latest": {
+        "properties": {
+          "buildId": {
+            "type": "string"
+          },
+          "builtAt": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "sourceDigest": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "buildId",
+          "sourceDigest",
+          "builtAt",
+          "channel"
+        ],
+        "type": "object"
+      },
+      "message": {
+        "type": "string"
+      },
+      "notesUrl": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "updateAvailable": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "current",
+      "channel",
+      "feedConfigured",
+      "state",
+      "updateAvailable",
+      "checkedAt",
+      "status",
+      "autoInstall"
+    ],
+    "type": "object"
+  },
   "PostAlbumsIdMetadataMusicbrainzPolicyRequest": {
     "properties": {
       "acoustidEnabled": {
@@ -183593,6 +191597,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -183631,6 +191638,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -184053,6 +192129,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -184091,6 +192170,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -185115,6 +193263,9 @@ export const schemas = {
             },
             "audioFacts": {
               "properties": {
+                "atmos": {
+                  "type": "boolean"
+                },
                 "bitDepth": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -185153,6 +193304,75 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "badges": {
+              "items": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bitDepth": {
+                        "minimum": 17,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "lossless"
+                      },
+                      "sampleRate": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "codec",
+                      "bitDepth",
+                      "sampleRate"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "atmos",
+                          "dsd"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "surround"
+                      },
+                      "layout": {
+                        "enum": [
+                          "5.1",
+                          "7.1"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "layout"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "type": "array"
             },
             "bookProgress": {
               "properties": {
@@ -185575,6 +193795,9 @@ export const schemas = {
                 },
                 "audioFacts": {
                   "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
                     "bitDepth": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -185613,6 +193836,75 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
                 },
                 "bookProgress": {
                   "properties": {
@@ -194243,6 +202535,31 @@ export const schemas = {
               "pageIndex"
             ],
             "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "format": {
+                "const": "cb7",
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 1000000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "progression": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "format",
+              "progression",
+              "pageIndex"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -194299,7 +202616,8 @@ export const schemas = {
                     "enum": [
                       "epub",
                       "pdf",
-                      "cbz"
+                      "cbz",
+                      "cb7"
                     ],
                     "type": "string"
                   },
@@ -194461,7 +202779,8 @@ export const schemas = {
                     "enum": [
                       "epub",
                       "pdf",
-                      "cbz"
+                      "cbz",
+                      "cb7"
                     ],
                     "type": "string"
                   },
@@ -194678,6 +202997,31 @@ export const schemas = {
                       "pageIndex"
                     ],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "format": {
+                        "const": "cb7",
+                        "type": "string"
+                      },
+                      "pageIndex": {
+                        "maximum": 1000000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "progression": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "progression",
+                      "pageIndex"
+                    ],
+                    "type": "object"
                   }
                 ]
               },
@@ -194875,7 +203219,8 @@ export const schemas = {
         "enum": [
           "epub",
           "pdf",
-          "cbz"
+          "cbz",
+          "cb7"
         ],
         "type": "string"
       },
@@ -196738,6 +205083,9 @@ export const schemas = {
           "observedState": {
             "type": "string"
           },
+          "programIncluded": {
+            "type": "boolean"
+          },
           "removalPending": {
             "type": "boolean"
           }
@@ -196756,7 +205104,7 @@ export const schemas = {
           "mountPath",
           "desiredState",
           "observedState",
-          "executableDigest"
+          "programIncluded"
         ],
         "type": "object"
       },
@@ -196932,6 +205280,9 @@ export const schemas = {
           "observedState": {
             "type": "string"
           },
+          "programIncluded": {
+            "type": "boolean"
+          },
           "removalPending": {
             "type": "boolean"
           }
@@ -196950,7 +205301,7 @@ export const schemas = {
           "mountPath",
           "desiredState",
           "observedState",
-          "executableDigest"
+          "programIncluded"
         ],
         "type": "object"
       },
@@ -208137,7 +216488,8 @@ export const schemas = {
                   "format": {
                     "enum": [
                       "pdf",
-                      "cbz"
+                      "cbz",
+                      "cb7"
                     ],
                     "type": "string"
                   },
@@ -208255,7 +216607,8 @@ export const schemas = {
             "enum": [
               "epub",
               "pdf",
-              "cbz"
+              "cbz",
+              "cb7"
             ],
             "type": "string"
           },
@@ -208298,7 +216651,8 @@ export const schemas = {
                 "enum": [
                   "epub",
                   "pdf",
-                  "cbz"
+                  "cbz",
+                  "cb7"
                 ],
                 "type": "string"
               },
@@ -210778,6 +219132,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -211052,6 +219409,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"
@@ -212867,7 +221227,8 @@ export const schemas = {
                           "enum": [
                             "epub",
                             "pdf",
-                            "cbz"
+                            "cbz",
+                            "cb7"
                           ],
                           "type": "string"
                         },
@@ -213251,7 +221612,8 @@ export const schemas = {
                           "enum": [
                             "epub",
                             "pdf",
-                            "cbz"
+                            "cbz",
+                            "cb7"
                           ],
                           "type": "string"
                         },
@@ -213881,6 +222243,9 @@ export const schemas = {
                   },
                   "audioFacts": {
                     "properties": {
+                      "atmos": {
+                        "type": "boolean"
+                      },
                       "bitDepth": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -213919,6 +222284,75 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "badges": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bitDepth": {
+                              "minimum": 17,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "lossless"
+                            },
+                            "sampleRate": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "codec",
+                            "bitDepth",
+                            "sampleRate"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "atmos",
+                                "dsd"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "surround"
+                            },
+                            "layout": {
+                              "enum": [
+                                "5.1",
+                                "7.1"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "layout"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 2,
+                    "type": "array"
                   },
                   "bookProgress": {
                     "properties": {
@@ -214341,6 +222775,9 @@ export const schemas = {
                       },
                       "audioFacts": {
                         "properties": {
+                          "atmos": {
+                            "type": "boolean"
+                          },
                           "bitDepth": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -214379,6 +222816,75 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "badges": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bitDepth": {
+                                  "minimum": 17,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "const": "lossless"
+                                },
+                                "sampleRate": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "codec",
+                                "bitDepth",
+                                "sampleRate"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "atmos",
+                                    "dsd"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "surround"
+                                },
+                                "layout": {
+                                  "enum": [
+                                    "5.1",
+                                    "7.1"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "layout"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 2,
+                        "type": "array"
                       },
                       "bookProgress": {
                         "properties": {
@@ -215540,6 +224046,11 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "timeshiftMinutes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "userAgent": {
             "type": "string"
           }
@@ -215625,6 +224136,11 @@ export const schemas = {
                 "type": "integer"
               },
               "streamBufferMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "timeshiftMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -215921,6 +224437,11 @@ export const schemas = {
                 "type": "integer"
               },
               "streamBufferMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "timeshiftMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -223546,6 +232067,9 @@ export const schemas = {
                   "layout": {
                     "type": "string"
                   },
+                  "lossless": {
+                    "type": "boolean"
+                  },
                   "objectAudio": {
                     "type": "string"
                   },
@@ -223820,6 +232344,9 @@ export const schemas = {
                   },
                   "layout": {
                     "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
                   },
                   "objectAudio": {
                     "type": "string"
@@ -225771,6 +234298,9 @@ export const schemas = {
                       "layout": {
                         "type": "string"
                       },
+                      "lossless": {
+                        "type": "boolean"
+                      },
                       "objectAudio": {
                         "type": "string"
                       },
@@ -226045,6 +234575,9 @@ export const schemas = {
                       },
                       "layout": {
                         "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
                       },
                       "objectAudio": {
                         "type": "string"

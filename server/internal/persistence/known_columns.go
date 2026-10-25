@@ -1802,6 +1802,7 @@ direct_memberships.allowed_libraries
 direct_memberships.disabled
 direct_memberships.disabled_ms
 direct_memberships.disabled_reason
+direct_memberships.incarnation
 direct_memberships.joined_ms
 direct_memberships.joined_via
 direct_memberships.max_profiles
@@ -2123,6 +2124,12 @@ hosted_identity_challenges.expires_ms
 hosted_identity_challenges.installation_id
 hosted_identity_nonces.expires_ms
 hosted_identity_nonces.nonce
+hosted_membership_endings.cause
+hosted_membership_endings.ended_ms
+hosted_membership_endings.expires_ms
+hosted_membership_endings.hosted_account_id
+hosted_membership_endings.incarnation
+hosted_membership_endings.sequence
 hosted_membership_journal.hosted_account_id
 hosted_membership_journal.sequence
 hosted_membership_sync.acked
@@ -2986,6 +2993,7 @@ managed_mounts.id
 managed_mounts.mount_path
 managed_mounts.name
 managed_mounts.observed
+managed_mounts.program_included
 managed_mounts.remote
 mb_album_heads.album_id
 mb_album_heads.incarnation
@@ -5684,6 +5692,11 @@ viewer_revisions.observation_revision
 viewer_revisions.profile_id
 viewer_revisions.revision
 viewer_revisions.title_path
+webhook_create_receipts.actor
+webhook_create_receipts.created_ms
+webhook_create_receipts.digest
+webhook_create_receipts.operation
+webhook_create_receipts.webhook_id
 webhook_deliveries.attempts
 webhook_deliveries.created_ms
 webhook_deliveries.data
@@ -5702,6 +5715,9 @@ webhook_events.subject
 webhook_events.type
 webhook_state.key
 webhook_state.value
+webhooks.create_actor
+webhooks.create_digest
+webhooks.create_operation
 webhooks.created_ms
 webhooks.dropped
 webhooks.enabled

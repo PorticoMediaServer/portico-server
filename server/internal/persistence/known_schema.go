@@ -328,6 +328,7 @@ index feedback_details_fingerprint
 index feedback_details_kind
 index hosted_identity_challenges_expiry
 index hosted_identity_nonces_expiry
+index hosted_membership_endings_expiry
 index identity_browser_accounts_recent
 index identity_credential_attempts_age
 index identity_device_families_device
@@ -629,6 +630,7 @@ index webhook_deliveries_coalesce
 index webhook_deliveries_due
 index webhook_deliveries_log
 index webhook_deliveries_queue
+index webhooks_create_identity
 table access_invitation_short_codes
 table access_invitations
 table access_limits
@@ -959,6 +961,7 @@ table hosted_claim_cleanup_receipts
 table hosted_claim_cleanup_schedule
 table hosted_identity_challenges
 table hosted_identity_nonces
+table hosted_membership_endings
 table hosted_membership_journal
 table hosted_membership_sync
 table hosted_migrated_families
@@ -1418,6 +1421,7 @@ table tvdb_series_candidates
 table video_nfo_evidence
 table video_nfo_status
 table viewer_revisions
+table webhook_create_receipts
 table webhook_deliveries
 table webhook_events
 table webhook_state
@@ -2010,6 +2014,9 @@ trigger hosted_member_link_delete
 trigger hosted_member_link_insert
 trigger hosted_member_link_update
 trigger hosted_member_standing
+trigger hosted_membership_endings_retention_delete
+trigger hosted_membership_endings_retention_insert
+trigger hosted_membership_endings_retention_update
 trigger hosted_membership_journal_bound_check
 trigger hosted_membership_journal_bound_delete
 trigger hosted_membership_journal_bound_insert
