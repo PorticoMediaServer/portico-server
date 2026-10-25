@@ -12,6 +12,7 @@ import {settledPlaybackChanged, settledPlaybackKey, type SettledPlayback} from '
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
 import styles from './watch.module.css';
 import {PlaybackWaiting} from '../../kit/states/PlaybackWaiting';
+import {PlaybackFailure} from '../../kit/states/PlaybackFailure';
 import {ScrubPreview} from './ScrubPreview';
 import {watchPreviewFrame} from './preview';
 import {useCoarsePointer} from '../../kit/theme';
@@ -258,6 +259,11 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
     <div ref={chrome} className={styles.chrome} style={rectStyle(geometry?.controls)}>
+      {open && snapshot.playback.phase === 'error' && <PlaybackFailure key={playbackKey} error={snapshot.playback.error}
+        onRetry={fence && binding.runtime.canRetryFailure(fence) ? () => binding.runtime.retryFailure(fence) : undefined}
+        onVersions={surfaces?.available.includes('versions') ? () => showPanel('versions') : undefined}
+        onReport={surfaces?.more?.find(action => action.id === 'report-problem') ? () => effect(() => surfaces.more!.find(action => action.id === 'report-problem')!.action()) : undefined}
+        onClose={onCollapse} onError={binding.reportError}/>}
       <PlaybackWaiting key={playbackKey} waiting={open && snapshot.playback.recovering === true && snapshot.playback.intent === 'playing' && snapshot.playback.phase !== 'error' && !snapshot.problem}/>
       <button type="button" className={styles.pictureTap} aria-label={t('player.stageLabel', {title: identity?.title ?? ''})}
         onPointerDown={event => { pointerKind.current = event.pointerType; event.preventDefault(); }}
