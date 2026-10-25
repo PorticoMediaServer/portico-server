@@ -371,6 +371,9 @@ CREATE TABLE catalog_book_chapters(
  start_seconds REAL NOT NULL,
  end_seconds REAL NOT NULL,
  UNIQUE(file_id,chapter_index)) STRICT;
+-- The canonical chapter end in the integer milliseconds completion facts use,
+-- so a crossing is an index seek over one file's candidates.
+CREATE INDEX catalog_book_chapters_end_ms ON catalog_book_chapters(file_id,CAST(round(end_seconds*1000) AS INTEGER));
 CREATE TABLE catalog_collections(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  library_id INTEGER NOT NULL REFERENCES catalog_libraries(id),
@@ -2294,20 +2297,39 @@ CREATE TABLE personal_history(id TEXT NOT NULL,profile_id TEXT NOT NULL,item_id 
 -- A viewer's own finished chapters. A fact exists only when accepted personal
 -- progress showed playback crossing the chapter's end, never from the book's
 -- container mark, the current chapter or a part's early completion threshold.
--- The chapter definition and the linked source asset are stored with it so a
--- replaced chapter or audio file cannot inherit the tick: a fact is published
--- only while both still match what was actually played.
+-- The source asset's monotonic chapter revision and the file's linked asset are
+-- stored with it, so a replaced chapter or audio file cannot inherit the tick:
+-- a fact is published only while both still match what was actually played.
 CREATE TABLE personal_chapter_completions(
  profile_id TEXT NOT NULL,
  file_entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  chapter_index INTEGER NOT NULL CHECK(chapter_index>=0),
  start_ms INTEGER NOT NULL CHECK(start_ms>=0),
  end_ms INTEGER NOT NULL CHECK(end_ms>start_ms),
+ asset_revision INTEGER NOT NULL CHECK(asset_revision>0),
  asset_id INTEGER NOT NULL REFERENCES catalog_assets(id) ON DELETE CASCADE,
  asset_size INTEGER NOT NULL,
  asset_modified_ns INTEGER NOT NULL,
  completed_at TEXT NOT NULL,
  PRIMARY KEY(profile_id,file_entity_id,chapter_index)) STRICT;
+-- The last accepted report of one playback, kept as the interval evidence the
+-- next report is judged against: state and rate are the session's own, not the
+-- viewer's resume point. Privacy or source-revision generations fence it.
+CREATE TABLE personal_playback_runs(
+ profile_id TEXT NOT NULL,
+ playback_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ sequence INTEGER NOT NULL,
+ position_ms INTEGER NOT NULL,
+ state TEXT NOT NULL,
+ rate_milli INTEGER NOT NULL,
+ preference_revision INTEGER NOT NULL,
+ asset_revision INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ asset_size INTEGER NOT NULL,
+ asset_modified_ns INTEGER NOT NULL,
+ reported_at TEXT NOT NULL,
+ PRIMARY KEY(profile_id,playback_id)) STRICT;
 CREATE TABLE personal_activity_revisions(profile_id TEXT PRIMARY KEY,revision INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE saved_operation_fences(owner_key TEXT NOT NULL,domain TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(owner_key,domain,operation_id)) STRICT;
 CREATE TABLE personal_snapshots(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,revision INTEGER NOT NULL,state TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(profile_id,item_id,revision)) STRICT;
@@ -6157,6 +6179,7 @@ CREATE INDEX lyric_resources_asset_id_fk ON lyric_resources(asset_id);
 CREATE INDEX mb_jobs_item_id_fk ON mb_jobs(item_id);
 CREATE INDEX mb_jobs_album_id_fk ON mb_jobs(album_id);
 CREATE INDEX personal_chapter_completions_asset_id_fk ON personal_chapter_completions(asset_id);
+CREATE INDEX personal_playback_runs_item_id_fk ON personal_playback_runs(item_id);
 CREATE INDEX personal_chapter_completions_file_entity_id_fk ON personal_chapter_completions(file_entity_id);
 CREATE INDEX personal_conflicts_item_id_fk ON personal_conflicts(item_id);
 CREATE INDEX personal_evidence_fences_item_id_fk ON personal_evidence_fences(item_id);

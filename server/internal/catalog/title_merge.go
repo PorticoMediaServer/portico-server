@@ -223,14 +223,11 @@ func movePersonalTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 		`UPDATE book_resume SET item_id=?2 WHERE item_id=?1`,
 
 		`UPDATE personal_history SET item_id=?2 WHERE item_id=?1`,
-		// Chapter facts move with the file they were heard from; a survivor that
-		// already finished the same chapter keeps its own fact. The read fence
-		// still requires the merged file's chapter definition and linked source,
-		// so nothing survives a merge onto different audio.
-		`WITH moved AS MATERIALIZED(SELECT profile_id,chapter_index,start_ms,end_ms,asset_id,asset_size,asset_modified_ns,completed_at FROM personal_chapter_completions WHERE file_entity_id=?1)
- INSERT OR IGNORE INTO personal_chapter_completions(profile_id,file_entity_id,chapter_index,start_ms,end_ms,asset_id,asset_size,asset_modified_ns,completed_at)
- SELECT profile_id,?2,chapter_index,start_ms,end_ms,asset_id,asset_size,asset_modified_ns,completed_at FROM moved`,
+		// A chapter completion is bound to one file's definition generation and
+		// selected source. A merge is a different file, so the old marks retire
+		// rather than reappear against audio that was never finished.
 		`DELETE FROM personal_chapter_completions WHERE file_entity_id=?1`,
+		`DELETE FROM personal_playback_runs WHERE item_id=?1`,
 		`UPDATE personal_completed_plays SET item_id=?2 WHERE item_id=?1`,
 		`INSERT INTO personal_play_counts(profile_id,item_id,plays) SELECT profile_id,?2,plays FROM personal_play_counts INDEXED BY personal_play_counts_item WHERE item_id=?1
  ON CONFLICT(profile_id,item_id) DO UPDATE SET plays=personal_play_counts.plays+excluded.plays`,

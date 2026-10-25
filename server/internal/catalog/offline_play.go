@@ -20,5 +20,7 @@ func (s *Service) AcceptPlaybackProgressAt(tx *sql.Tx, v identity.Viewer, playba
 	if at.IsZero() || at.After(time.Now().Add(24*time.Hour)) {
 		return jobInvalid("invalid playback time")
 	}
-	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, at.UTC())
+	// A downloaded play carries no player rate, so it cannot prove a played
+	// interval and records no chapter completion.
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, at.UTC())
 }
