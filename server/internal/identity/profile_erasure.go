@@ -38,6 +38,16 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 		}
 	}
 	key := PersonalKey(v)
+	// Explicit reading annotations are personal content even when automatic history is paused.
+	for _, table := range []string{"reading_annotations", "reading_annotation_sets"} {
+		if ok, e := exists(table); e != nil {
+			return e
+		} else if ok {
+			if e = run(`DELETE FROM `+table+` WHERE owner_key=?`, key); e != nil {
+				return e
+			}
+		}
+	}
 	// Reading positions and their removed-title copies are independently typed
 	// personal state. Erasing a profile must remove both before late callbacks
 	// are refused by the live identity fence.

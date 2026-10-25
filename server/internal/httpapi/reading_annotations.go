@@ -10,7 +10,10 @@ import (
 	"portico.local/server/internal/reading"
 )
 
-type ReadingAnnotationRevision int64
+type ReadingAnnotationRevision struct {
+	value    int64
+	supplied bool
+}
 
 func (r *ReadingAnnotationRevision) UnmarshalJSON(raw []byte) error {
 	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
@@ -23,7 +26,8 @@ func (r *ReadingAnnotationRevision) UnmarshalJSON(raw []byte) error {
 	if value < 0 || value > 9007199254740991 {
 		return reading.ErrInvalid
 	}
-	*r = ReadingAnnotationRevision(value)
+	r.value = value
+	r.supplied = true
 	return nil
 }
 func (ReadingAnnotationRevision) JSONSchema() map[string]any {
@@ -125,6 +129,10 @@ func (d Dependencies) readingMutateAnnotation(w http.ResponseWriter, r *http.Req
 		readingFailure(w, err)
 		return
 	}
+	if !request.ExpectedRevision.supplied {
+		readingFailure(w, reading.ErrInvalid)
+		return
+	}
 	var location reading.Location
 	if request.Operation == "upsert" && request.Location == nil {
 		readingFailure(w, reading.ErrInvalid)
@@ -134,7 +142,7 @@ func (d Dependencies) readingMutateAnnotation(w http.ResponseWriter, r *http.Req
 		l := request.Location
 		location = reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}
 	}
-	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: int64(request.ExpectedRevision), Operation: string(request.Operation), Annotation: reading.Annotation{ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
+	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: request.ExpectedRevision.value, Operation: string(request.Operation), Annotation: reading.Annotation{ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -159,4 +167,49 @@ func registerReadingAnnotationHTTPContracts(registry *apikit.Registry) error {
 	m.Admission = laneMediaBody
 	m.BodyLimit = 32768
 	return apikit.RegisterHTTP[ReadingAnnotationRequest, ReadingAnnotationSavedResponse](registry, m)
+}
+
+// Inline bounded declaration schemas are the Release generator's source, not generated outputs.
+func annotationInteger(max int64) map[string]any {
+	return map[string]any{"type": "integer", "minimum": 0, "maximum": max}
+}
+func annotationString(min, max int) map[string]any {
+	return map[string]any{"type": "string", "minLength": min, "maxLength": max}
+}
+func annotationIDSchema() map[string]any {
+	return map[string]any{"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$"}
+}
+func annotationLocationSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"format", "progression"},
+		"properties": map[string]any{"format": ReadingFormat("").JSONSchema(), "cfi": annotationString(11, 4096), "section": annotationString(1, 1024), "pageIndex": annotationInteger(1000000), "progression": map[string]any{"type": "number", "minimum": 0, "maximum": 1}},
+		"oneOf": []any{
+			map[string]any{"properties": map[string]any{"format": map[string]any{"const": "epub"}}, "required": []string{"cfi"}, "not": map[string]any{"required": []string{"pageIndex"}}},
+			map[string]any{"properties": map[string]any{"format": map[string]any{"enum": []string{"pdf", "cbz"}}}, "required": []string{"pageIndex"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"cfi"}}, map[string]any{"required": []string{"section"}}}}},
+		}}
+}
+func (ReadingAnnotation) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"id", "kind", "location", "text", "note", "colour", "createdAt", "updatedAt"},
+		"properties": map[string]any{"id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema(), "createdAt": annotationInteger(9007199254740991), "updatedAt": annotationInteger(9007199254740991)},
+	}
+}
+func (ReadingAnnotationsResponse) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"sourceId", "sourceRevision", "revision", "entries", "nextCursor"},
+		"properties": map[string]any{"sourceId": annotationString(1, 256), "sourceRevision": annotationString(1, 256), "revision": annotationInteger(9007199254740991), "entries": map[string]any{"type": "array", "maxItems": 50, "items": ReadingAnnotation{}.JSONSchema()}, "nextCursor": map[string]any{"type": "string", "maxLength": 64, "pattern": "^([A-Za-z0-9_-]{1,64})?$"}},
+	}
+}
+func (ReadingAnnotationSavedResponse) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"revision"}, "properties": map[string]any{"revision": map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991}}}
+}
+func (ReadingAnnotationRequest) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"expectedRevision", "operation", "id"},
+		"properties": map[string]any{"expectedRevision": annotationInteger(9007199254740990), "operation": ReadingAnnotationOperation("").JSONSchema(), "id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema()},
+		"oneOf": []any{
+			map[string]any{"properties": map[string]any{"operation": map[string]any{"const": "delete"}}},
+			map[string]any{"properties": map[string]any{"operation": map[string]any{"const": "upsert"}}, "required": []string{"kind", "location"}},
+		},
+	}
 }
