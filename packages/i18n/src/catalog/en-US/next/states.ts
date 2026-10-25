@@ -120,6 +120,7 @@ export const statesMessages = {
   'next.states.where': 'Where',
   'next.states.reference': 'Reference',
   'next.states.appVersion': 'Portico for web {version}',
+  'next.states.versionNotRecorded': 'Not recorded',
   'next.states.appUnversioned': 'Portico for web',
   'next.states.browserOnSystem': '{browser} on {system}',
   'next.states.unknownBrowser': 'A browser Portico could not name',
