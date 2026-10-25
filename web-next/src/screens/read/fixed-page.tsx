@@ -1,6 +1,7 @@
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
-import {createWindowedCollection, type WindowedCollection, type ReadingPreferences} from '@portico/client-core';
+import type {ReadingPreferences} from '@portico/client-core';
+import {createWindowedCollection, type WindowedCollection} from '@core/collections/index.ts';
 import {WindowedGrid} from '../../kit/layout/WindowedGrid';
 import {readerErrorCode, type ReadingController, type ReaderErrorCode, type ReaderFit, type ReaderFormat, type ReaderLocation, type ReaderZoom, type ReaderZoomState} from '@portico/reader-core';
 import {Menu, MenuItem, MenuSeparator} from '../../kit/overlays';
