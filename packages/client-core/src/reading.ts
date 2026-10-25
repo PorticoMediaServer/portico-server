@@ -334,11 +334,12 @@ export class ReadingClient {
         const ids = new Set<string>();
         for (const raw of issues) {
           if (typeof raw !== 'object' || raw === null || typeof raw.issueDate !== 'string' || !issueDate(raw.issueDate, 'magazine')) fail('invalid_document');
-          const item = decodeGetReadingItemsResponse({items: [raw.item]}).items[0];
+          let item: ReadingItem;
+          try { item = decodeGetReadingItemsResponse({items: [raw.item]}).items[0]; } catch { fail('invalid_document'); }
           checkItem(item, options.libraryId);
           if (!item.series || !seriesID(item.series.id) || !item.series.name.trim() || ids.has(item.id)) fail('invalid_document');
           const issue = {item, issueDate: raw.issueDate};
-          validateIssue(issue, options.libraryId!, 'magazine', item.series.id);
+          validateIssue(issue, options.libraryId ?? fail('invalid_request'), 'magazine', item.series.id);
           ids.add(item.id); newIssueCards.push(issue);
         }
         continue;
