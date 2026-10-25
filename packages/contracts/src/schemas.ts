@@ -9491,15 +9491,6 @@ export const schemas = {
           "remoteSignInPolicy": {
             "type": "string"
           },
-          "segments.animeMode": {
-            "enum": [
-              "server",
-              "standard",
-              "thorough",
-              "off"
-            ],
-            "type": "string"
-          },
           "segments.automaticConfidencePercent": {
             "enum": [
               70,
@@ -9509,24 +9500,6 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
-          },
-          "segments.movieMode": {
-            "enum": [
-              "server",
-              "standard",
-              "thorough",
-              "off"
-            ],
-            "type": "string"
-          },
-          "segments.tvMode": {
-            "enum": [
-              "server",
-              "standard",
-              "thorough",
-              "off"
-            ],
-            "type": "string"
           },
           "segments.useChapterNames": {
             "type": "boolean"
@@ -9866,15 +9839,6 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
-              "segments.animeMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -9884,24 +9848,6 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
-              },
-              "segments.movieMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
-              "segments.tvMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"
@@ -10257,15 +10203,6 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
-              "segments.animeMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -10275,24 +10212,6 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
-              },
-              "segments.movieMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
-              "segments.tvMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"
@@ -37117,15 +37036,6 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
-              "segments.animeMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -37135,24 +37045,6 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
-              },
-              "segments.movieMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
-              "segments.tvMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"
@@ -37508,15 +37400,6 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
-              "segments.animeMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -37526,24 +37409,6 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
-              },
-              "segments.movieMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
-              },
-              "segments.tvMode": {
-                "enum": [
-                  "server",
-                  "standard",
-                  "thorough",
-                  "off"
-                ],
-                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"

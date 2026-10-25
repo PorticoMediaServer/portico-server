@@ -4957,10 +4957,7 @@ server_settings.playHistoryDays
 server_settings.playedRetentionMs
 server_settings.remoteBitrateLimitKbps
 server_settings.remoteSignInPolicy
-server_settings.segments.animeMode
 server_settings.segments.automaticConfidencePercent
-server_settings.segments.movieMode
-server_settings.segments.tvMode
 server_settings.segments.useChapterNames
 server_settings.segments.viewerConfidencePercent
 server_settings.sessionStorageMiB
