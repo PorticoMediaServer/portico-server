@@ -1,6 +1,7 @@
 export {AuthStage, AuthPasswordField, AuthCodeBoxes, AuthError, AuthLinks} from './AuthStage';
 export {LocalServerSignIn, PorticoServerSignIn, type LocalServerSignInProps} from './ServerSignIn';
 export {ServerProfiles, ServerProfilePIN} from './ServerProfiles';
+export {PinEntry, type PinEntryProps} from './PinEntry';
 
 export {LocalInvitationForm, type LocalInvitationFormProps} from './Invitation';
 export {InvitationShortCodeDialog, type ShortCodeInvitation, type ShortCodeRequest} from './InvitationShortCodeDialog';
