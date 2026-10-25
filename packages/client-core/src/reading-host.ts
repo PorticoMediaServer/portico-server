@@ -6,6 +6,7 @@ import {decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProg
 /** Local trusted-app bridge only. No HTTP path, origin, credential or fetch port. */
 export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'> & Partial<Pick<ReadingSession, 'openSequential'>>;
 export type ReadingHostTransport = Readonly<{send: (message: string) => void; subscribe: (listener: (message: string) => void) => () => void}>;
+export type ReadingHostContentsTarget = Readonly<{sourceId: string; sourceRevision: string; index: number}>;
 type RecordValue = Record<string, unknown>;
 const record = (v: unknown): v is RecordValue => typeof v === 'object' && v !== null && !Array.isArray(v);
 const integer = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
@@ -45,15 +46,25 @@ function errorInfo(error: unknown) {
   return error instanceof ReadingError ? {code: error.code, status: error.status} : {code: 'reading_unavailable'};
 }
 
+/** A contents index is meaningful only for this exact opened publication. */
+function contentsTarget(value: unknown, manifest: ReadingManifest): ReadingHostContentsTarget | undefined {
+  if (value === undefined) return;
+  if (!record(value) || manifest.format !== 'epub' || value.sourceId !== manifest.sourceId || value.sourceRevision !== manifest.revision
+    || !integer(value.index, 0, 511) || value.index >= (manifest.contents?.length ?? 0)) fail('invalid_bridge');
+  return Object.freeze({sourceId: manifest.sourceId, sourceRevision: manifest.revision, index: value.index});
+}
+
 /** RN retains the actual captured facade. Its caller still owns session.close().
  * Binary messages are pulled in <=48KiB chunks; just one original member/page is
  * retained, with an idle deadline, never a book/archive cache. */
-export function createReadingHost({session, channel, preferences, initialProgress, current, send, onBack, onSettings}: Readonly<{
+export function createReadingHost({session, channel, preferences, initialProgress, initialContentsTarget, current, send, onBack, onSettings, onUnavailable}: Readonly<{
   session: ReadingHostSession; channel: string; preferences: () => PreferenceSnapshot; initialProgress: ReadingProgress;
+  initialContentsTarget?: ReadingHostContentsTarget; onUnavailable?: () => void;
   current: () => boolean; send: (message: string) => void; onBack: () => void; onSettings: () => void;
 }>) {
   if (!/^[A-Za-z0-9_-]{16,128}$/.test(channel)) fail();
   const manifest = session.manifest, life = new AbortController(), requests = new Map<number, AbortController>();
+  const capturedContentsTarget = contentsTarget(initialContentsTarget, manifest);
   let started = false, active = true, last = 0, binaryRequest = false, transfer: {id: number; bytes: Uint8Array; offset: number; timer: ReturnType<typeof setTimeout>} | undefined;
   type Sequential = {id: number; life: AbortController; reader?: Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel' | 'releaseLock'>; total: number; pulling: boolean; timer?: ReturnType<typeof setTimeout>};
   let sequential: Sequential | undefined;
@@ -92,7 +103,9 @@ export function createReadingHost({session, channel, preferences, initialProgres
     try {data = packet(message, 16384);} catch {return;}
     if (data.kind === 'ready') {
       if (started || !valid()) return;
-      started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress, active}); return;
+      if (capturedContentsTarget && data.contentsTarget !== true) {dispose(); onUnavailable?.(); return;}
+      started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress, active,
+        ...(capturedContentsTarget ? {contentsTarget: capturedContentsTarget} : {})}); return;
     }
     if (!started || data.channel !== channel || !valid()) return;
     if (data.kind === 'sequential-cancel' && sequential && data.stream === sequential.id) {stopSequential(sequential); release(); return;}
@@ -177,7 +190,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
 }
 
 export type ReadingGuest = Readonly<{
-  session: ReadingHostSession; initialProgress: ReadingProgress;
+  session: ReadingHostSession; initialProgress: ReadingProgress; contentsTarget?: ReadingHostContentsTarget;
   preferences: Readonly<{getSnapshot: () => PreferenceSnapshot; subscribe: (listener: () => void) => () => void}>;
   onActive: (listener: (active: boolean) => void) => () => void;
   back: () => Promise<void>; openSettings: () => Promise<void>; dispose: () => void;
@@ -277,6 +290,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
       if (data.kind === 'initial' && !initialized) {
         if (typeof data.channel !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(data.channel)) fail();
         const manifest: ReadingManifest = frozen(decodePostReadingSessionsResponse(data.manifest));
+        const initialContentsTarget = contentsTarget(data.contentsTarget, manifest);
         snapshot = parsePreferenceSnapshot(data.preferences);
         const initialProgress = frozen(decodeGetReadingSessionsSessionIdProgressResponse(data.progress));
         // Older trusted app hosts omit this optional v1 state. New hosts retain
@@ -297,7 +311,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
           progress: async signal => decodeGetReadingSessionsSessionIdProgressResponse(await call('progress', {}, signal)),
           saveProgress: async (request, signal): Promise<ReadingSavedProgress> => decodePutReadingSessionsSessionIdProgressResponse(await call('save', request, signal)),
         });
-        resolveReady(Object.freeze({session, initialProgress,
+        resolveReady(Object.freeze({session, initialProgress, ...(initialContentsTarget ? {contentsTarget: initialContentsTarget} : {}),
           preferences: Object.freeze({getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener); return () => {listeners.delete(listener);};}}),
           onActive: (listener: (active: boolean) => void) => {
             if (life.signal.aborted) return () => {};
@@ -318,6 +332,6 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
     } catch {dispose(new ReadingError('invalid_bridge'));}
   });
   const startDeadline = setTimeout(() => dispose(new ReadingError('reading_unavailable')), 30000);
-  transport.send(JSON.stringify({v: 1, kind: 'ready'}));
+  transport.send(JSON.stringify({v: 1, kind: 'ready', contentsTarget: true}));
   return Object.freeze({ready, dispose});
 }
