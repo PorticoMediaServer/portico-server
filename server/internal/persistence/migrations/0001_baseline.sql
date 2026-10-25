@@ -8706,7 +8706,7 @@ CREATE TABLE credit_source_publications(
  publication_id TEXT PRIMARY KEY CHECK(length(publication_id)=32 AND publication_id NOT GLOB '*[^0-9a-f]*'),
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  provider TEXT NOT NULL CHECK(length(CAST(provider AS BLOB)) BETWEEN 1 AND 64),
- accepted_record_reference TEXT NOT NULL CHECK(length(CAST(accepted_record_reference AS BLOB)) BETWEEN 1 AND 256 AND length(trim(accepted_record_reference))>0),
+ accepted_record_reference TEXT NOT NULL CHECK(length(CAST(accepted_record_reference AS BLOB)) BETWEEN 1 AND 4096 AND length(trim(accepted_record_reference))>0),
  observed_at TEXT NOT NULL CHECK(length(CAST(observed_at AS BLOB)) BETWEEN 1 AND 64),
  member_count INTEGER NOT NULL CHECK(member_count BETWEEN 0 AND 128),
  sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),
@@ -8718,7 +8718,7 @@ CREATE TABLE credit_source_rows(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  provider TEXT NOT NULL CHECK(length(CAST(provider AS BLOB)) BETWEEN 1 AND 64),
  tuple_digest TEXT NOT NULL CHECK(length(tuple_digest)=64 AND tuple_digest NOT GLOB '*[^0-9a-f]*'),
- original_record_reference TEXT NOT NULL CHECK(length(CAST(original_record_reference AS BLOB))<=256 AND length(trim(original_record_reference))>0),
+ original_record_reference TEXT NOT NULL CHECK(length(CAST(original_record_reference AS BLOB))<=4096 AND length(trim(original_record_reference))>0),
  original_credit_id TEXT NOT NULL CHECK(length(CAST(original_credit_id AS BLOB))<=256),
  original_provider_person_id TEXT NOT NULL CHECK(length(CAST(original_provider_person_id AS BLOB))<=256),
  original_person_identity_key TEXT NOT NULL CHECK(length(CAST(original_person_identity_key AS BLOB))<=512),
@@ -8733,6 +8733,7 @@ CREATE TABLE credit_source_rows(
  UNIQUE(source_row_id,entity_id)
 ) STRICT;
 CREATE INDEX credit_source_rows_tuple ON credit_source_rows(entity_id,provider,tuple_digest);
+CREATE INDEX credit_source_rows_person_reference ON credit_source_rows(original_person_identity_key,original_person_token);
 CREATE TABLE credit_source_publication_members(
  publication_id TEXT NOT NULL,
  entity_id INTEGER NOT NULL,

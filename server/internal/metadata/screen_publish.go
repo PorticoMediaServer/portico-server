@@ -976,7 +976,7 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 		}
 		if len(n.Credits) > 0 {
 			reference := "nfo:" + n.Locator
-			if n.Locator != "" && len(reference) <= 256 && (b.CreditRecordReference == "" || reference < b.CreditRecordReference) {
+			if n.Locator != "" && len(reference) <= compactcatalog.CreditSourceRecordReferenceMax && (b.CreditRecordReference == "" || reference < b.CreditRecordReference) {
 				b.CreditRecordReference = reference
 			}
 			put("credits", n.Credits)
@@ -1055,8 +1055,16 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 		if err != nil {
 			return err
 		}
-		if written {
-			localChanged = true
+		creditReferenceChanged := false
+		if field == "credits" && b.CreditRecordReference != "" {
+			head, e := compactcatalog.ReadCreditSourceHead(ctx, tx, b.Entity, "nfo")
+			if e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
+			creditReferenceChanged = errors.Is(e, sql.ErrNoRows) || head.RecordReference != b.CreditRecordReference
+		}
+		if written || creditReferenceChanged {
+			localChanged = localChanged || written
 			if err = s.screenCatalogField(ctx, tx, b, field, value, "nfo", "", stamp); err != nil {
 				return err
 			}
