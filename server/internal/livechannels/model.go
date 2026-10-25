@@ -31,6 +31,8 @@ type SourceInput struct {
 	parseContext           context.Context
 	configuration          *LiveSourceSettings
 	remote                 bool
+	guideSourceID          string
+	guideSourceRevision    int64
 	guideDays              int
 	RequestID              string           `json:"requestId"`
 	ID                     string           `json:"id"`
@@ -53,12 +55,15 @@ type Source struct {
 	Name               string            `json:"name"`
 	Revision           int64             `json:"revision"`
 	State              string            `json:"state"`
-	TunerCount         int               `json:"tunerCount"`
-	TunerCountMode     string            `json:"tunerCountMode"`
-	Generation         string            `json:"generation"`
-	PublishedAt        string            `json:"publishedAt"`
-	Channels           int               `json:"channels"`
-	Programmes         int               `json:"programmes"`
+	// Acquisition is how this source is kept current: "upload" for a saved
+	// manual import with no refresh loop, "remote" for a URL/tuner source.
+	Acquisition    string `json:"acquisition"`
+	TunerCount     int    `json:"tunerCount"`
+	TunerCountMode string `json:"tunerCountMode"`
+	Generation     string `json:"generation"`
+	PublishedAt    string `json:"publishedAt"`
+	Channels       int    `json:"channels"`
+	Programmes     int    `json:"programmes"`
 }
 type ImportLimits struct {
 	Bytes      int `json:"bytes"`

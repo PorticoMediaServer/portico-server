@@ -300,7 +300,15 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 	if e != nil {
 		return SourceInput{}, 0, e
 	}
+	var guideRevision int64
 	if v.GuideSourceID != "" {
+		var guideState string
+		if e = s.db.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, v.GuideSourceID).Scan(&guideRevision, &guideState); e != nil {
+			return SourceInput{}, 0, ErrSourceUnavailable
+		}
+		if guideState != "active" {
+			return SourceInput{}, 0, ErrSourceUnavailable
+		}
 		var raw []byte
 		e = s.db.QueryRowContext(ctx, `SELECT sealed FROM live_remote_configs WHERE source_id=?`, v.GuideSourceID).Scan(&raw)
 		if e != nil {
@@ -328,6 +336,7 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 	in.parseContext = ctx
 	in.guideDays = d.GuideDays
 	in.remote = true
+	in.guideSourceID, in.guideSourceRevision = v.GuideSourceID, guideRevision
 	if e = s.configureInput(ctx, &in); e != nil {
 		return in, count, e
 	}
