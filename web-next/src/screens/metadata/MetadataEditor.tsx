@@ -88,7 +88,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
       {shown === 'people' ? <People data={data} target={target} busy={state.phase === 'saving'}
         onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
         onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked})} /> : null}
-      {shown === 'matching' ? <Matching data={data} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
+      {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
@@ -199,12 +199,13 @@ function History({data, busy, onUndo, onAll}: {data: RepairData; busy: boolean; 
 
 
 /** Frame 10: current identity, its lock, and the server's own matching commands. */
-function Matching({data, busy, onSearch, onUse, onRetry, onLock}: {
-  data: RepairData; busy: boolean; onSearch: (query: string) => void;
+function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
+  data: RepairData; target: RepairTarget; busy: boolean; onSearch: (query: string) => void;
   onUse: (provider: string, candidateId: string, order?: string) => void; onRetry: () => void; onLock: (locked: boolean) => void;
 }) {
   const [query, setQuery] = useState(''), [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
   const identity = data.snapshot.identity;
+  const scannedMatch = target.kind === 'album';
   return <div className={styles.fields}>
     <section className={styles.candidate}>
       <div><b>{t('web.metadata.currentMatch')}</b>
@@ -212,9 +213,11 @@ function Matching({data, busy, onSearch, onUse, onRetry, onLock}: {
       <button type="button" className={styles.lock} disabled={busy} aria-pressed={identity?.locked === true}
         onClick={() => onLock(identity?.locked !== true)}>{t(identity?.locked ? 'web.metadata.identityLocked' : 'web.metadata.identityUnlocked')}</button>
     </section>
-    <form className={styles.matchSearch} onSubmit={event => {event.preventDefault(); if (query.trim() && !busy) onSearch(query.trim());}}>
-      <TextField label={t('web.metadata.searchProvider')} description={t('web.metadata.searchProviderHelp')} value={query} onChange={event => setQuery(event.currentTarget.value)} />
-      <Button size="small" type="submit" disabled={busy || !query.trim()}>{t('web.search.title')}</Button>
+    <form className={styles.matchSearch} onSubmit={event => {event.preventDefault(); if (!scannedMatch && query.trim() && !busy) onSearch(query.trim());}}>
+      {scannedMatch ? <p>{t('web.metadata.searchProviderHelpAuto')}</p> : <>
+        <TextField label={t('web.metadata.searchProvider')} description={t('web.metadata.searchProviderHelp')} value={query} onChange={event => setQuery(event.currentTarget.value)} />
+        <Button size="small" type="submit" disabled={busy || !query.trim()}>{t('web.search.title')}</Button>
+      </>}
       <Button size="small" type="button" disabled={busy} onClick={onRetry}>{t('web.chooser.tryAgain')}</Button>
     </form>
     {data.candidates.map(candidate => {
