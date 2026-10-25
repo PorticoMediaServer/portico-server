@@ -15,7 +15,7 @@ export function LiveDefaults({form, isCurrent, failure}: {form: DefaultsForm; is
   const number = (label: MessageId, value: number, min: number, max: number, set: (value: number) => void, unit?: MessageId, help?: MessageId) =>
     <SettingsRow label={t(label)} help={help && t(help)}><TextField type="number" required min={min} max={max} step={1} value={value}
       variant="setting" aria-label={t(label)} disabled={state.saving} onChange={event => {if (isCurrent() && Number.isFinite(event.currentTarget.valueAsNumber)) set(event.currentTarget.valueAsNumber);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</SettingsRow>;
-  return <form onSubmit={event => {event.preventDefault();if (isCurrent() && event.currentTarget.reportValidity()) void form.save().then(() => {const error = form.getSnapshot().saveError;if (error && isCurrent()) failure(error);});}}>
+  return <form onSubmit={event => {event.preventDefault();if (isCurrent() && event.currentTarget.reportValidity()) void form.save().catch(error => {if (isCurrent()) failure(error);});}}>
     <section className={styles.section}><div className={styles.heading}><h3>{t('web.dvrSettings.liveDefaults')}</h3></div><p className={styles.lede}>{t('web.dvrSettings.liveDefaultsLede')}</p><div className={styles.sources}>
       {number('web.dvrSettings.buffer', draft.streamBufferMs / 1000, 0, 120, value => form.set({streamBufferMs: value * 1000}), 'settings.unit.seconds', 'web.dvrSettings.bufferHelp')}
       {number('web.dvrSettings.retryWindow', draft.retryWindowMs / 1000, 5, 600, value => form.set({retryWindowMs: value * 1000}), 'settings.unit.seconds', 'web.dvrSettings.retryWindowHelp')}
