@@ -141,7 +141,7 @@ func (d Dependencies) appReportActorTx(ctx context.Context, tx *sql.Tx, p identi
 	if err != nil {
 		return p, err
 	}
-	if family.DeviceID == "" {
+	if family.DeviceID == "" || family.DeviceID != p.DeviceID {
 		return p, identity.ErrForbidden
 	}
 	p.DeviceID = family.DeviceID
@@ -339,7 +339,15 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		if again.Viewer != p.Viewer || again.Hash != p.Hash || again.Epoch != p.Epoch || again.DeviceID != p.DeviceID || again.Grant != p.Grant {
 			return nil, identity.ErrUnauthorized
 		}
-		return out, nil
+		// A read that crossed the payload deadline must not release that
+		// report merely because it was live in the earlier data snapshot.
+		live := out[:0]
+		for _, receipt := range out {
+			if receipt.ExpiresMs > time.Now().UnixMilli() {
+				live = append(live, receipt)
+			}
+		}
+		return live, nil
 	})
 }
 
