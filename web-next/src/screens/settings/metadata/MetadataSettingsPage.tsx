@@ -130,6 +130,7 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
     <SettingsGroup title={t('next.settingsSpec.server.metadata.groups.2.title')}>
       {secret('tmdb', 'metadata.settings.tmdbToken', document.tmdbCredentialConfigured)}
       {secret('tvdb', 'metadata.settings.tvdbKey', document.tvdbCredentialConfigured)}
+      <SettingsRow label={t('next.settingsSpec.server.metadata.groups.2.rows.2.label')} help={t('next.settingsSpec.server.metadata.groups.2.rows.2.help')}>{null}</SettingsRow>
     </SettingsGroup>
     <SettingsGroup title={t('server.metadata.artwork')}>
       <SettingsRow label={t('metadata.settings.artworkLimit')} help={t('server.metadata.artworkUsed', {used: defaultI18n.bytes(document.localArtworkUsedBytes), limit: defaultI18n.bytes(document.localArtworkLimitBytes)})}>
