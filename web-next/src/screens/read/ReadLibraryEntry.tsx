@@ -1,7 +1,7 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
-import {defaultI18n} from '@i18n';
+import {calendarDate, defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
-import type {ReadingDiscover, ReadingShortRead} from '@portico/client-core';
+import type {ReadingDiscover, ReadingShortRead, ReadingPeriodicalIssue} from '@portico/client-core';
 import type {FactPart} from '@portico/client-core/kit-model';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -60,6 +60,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const state = useSyncExternalStore(resources.books.collection.subscribe, resources.books.collection.getSnapshot, resources.books.collection.getSnapshot), failed = state.status === 'error';
   const reading = useSyncExternalStore(resources.resume.collection.subscribe, resources.resume.collection.getSnapshot, resources.resume.collection.getSnapshot);
   const [recent, setRecent] = useState<readonly RecentReadingItem[]>();
+  const [newIssues, setNewIssues] = useState<readonly ReadingPeriodicalIssue[]>([]);
   const [shortReads, setShortReads] = useState<readonly ReadingShortRead[]>([]);
   const [series, setSeries] = useState<NonNullable<ReadingDiscover['rows'][number]['series']>>([]);
   useLayoutEffect(() => {
@@ -75,12 +76,12 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
    *  has no recently-added values (Root §3), and the Reading list stays reachable. */
   useEffect(() => {
     const operation = new AbortController();
-    setSeries([]); setShortReads([]);
-    resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12, ...(!comic ? {shortReadsLimit: 12} : {})}, operation.signal)
-      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []);}})
+    setSeries([]); setShortReads([]); setNewIssues([]);
+    resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12, ...(!comic ? {shortReadsLimit: 12, newIssuesLimit: 12} : {})}, operation.signal)
+      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []); setNewIssues(response.newIssueCards);}})
       .catch(error => {
         if (operation.signal.aborted) return;
-        setRecent([]); setSeries([]); setShortReads([]);
+        setRecent([]); setSeries([]); setShortReads([]); setNewIssues([]);
         if (resources.bindings.authority.isCurrent()) resources.reportError(error);
       });
     return () => operation.abort();
@@ -117,6 +118,16 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
       segments: [], visible: true,
       onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', entityId: summary.id}}).catch(resources.reportError);},
     }}))}] : []),
+    ...(newIssues.length ? [{id: 'new-issues', kind: 'covers' as const, heading: t('next.reader.newIssues'), subtitle: t('next.reader.datesFromFileNames'),
+      items: newIssues.map(issue => ({id: issue.item.id, card: {
+        kind: 'magazine' as const, context: 'shelf' as const, density: 'shelf' as const, visible: true,
+        artwork: resources.artwork.foreground(issue.item.coverUrl, 380, 3 / 4), fallback: generated(issue.item),
+        model: {title: issue.item.series?.name ?? issue.item.title, caption: [{id: 'date', text: calendarDate(defaultI18n, issue.issueDate), role: 'identity' as const}]},
+        disabled: !issue.item.inventoryAvailable, playLabel: t('next.reader.read'),
+        onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: issue.item.id}}).catch(resources.reportError);},
+        onPlay: issue.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(issue.item.id, issue.item.sourceId)).catch(resources.reportError);} : undefined,
+      }})),
+    }] : []),
   ];
   /** Root §3: Discover draws the server's rows; Books draws the bounded Reading list. When no
    *  authorized row exists there is nothing to draw on Discover, so the list stays reachable. */

@@ -311,11 +311,12 @@ export class ReadingClient {
     if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format) || !validReadingCover(row.id, row.coverUrl))) fail('invalid_document');
     return out;
   }
-  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number; shortReadsLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
+  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number; shortReadsLimit?: number; newIssuesLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover & {newIssueCards: readonly ReadingPeriodicalIssue[]}> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 20, 1, 100) || options.seriesLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.seriesLimit,1,20))) fail('invalid_request');
     if (options.shortReadsLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.shortReadsLimit, 1, 20))) fail('invalid_request');
+    if (options.newIssuesLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.newIssuesLimit, 1, 20))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal, decodeGetReadingDiscoverResponse, 2 << 20);
-    if (out.rows.length < 1 || out.rows.length > 3 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].shortReads !== undefined || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
+    if (out.rows.length < 1 || out.rows.length > 4 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].shortReads !== undefined || 'newIssues' in out.rows[0] || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
     const seen = new Set<string>();
     const checkItem = (item: ReadingItem, libraryId?: string) => {
       if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
@@ -325,11 +326,29 @@ export class ReadingClient {
       if(seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
-    let seriesSeen = false, shortSeen = false;
+    const newIssueCards: ReadingPeriodicalIssue[] = [];
+    let seriesSeen = false, shortSeen = false, issuesSeen = false;
     for (const row of out.rows.slice(1)) {
+      if (row.key === 'new-issues') {
+        const issues = 'newIssues' in row ? row.newIssues : undefined;
+        if (issuesSeen || options.newIssuesLimit === undefined || row.series !== undefined || row.shortReads !== undefined || row.items.length !== 0 || !Array.isArray(issues) || issues.length < 1 || issues.length > options.newIssuesLimit) fail('invalid_document');
+        issuesSeen = true;
+        const ids = new Set<string>();
+        for (const raw of issues) {
+          if (typeof raw !== 'object' || raw === null || typeof raw.issueDate !== 'string' || !issueDate(raw.issueDate, 'magazine')) fail('invalid_document');
+          const item = decodeGetReadingItemsResponse({items: [raw.item]}).items[0];
+          checkItem(item, options.libraryId);
+          if (!item.series || !seriesID(item.series.id) || !item.series.name.trim() || ids.has(item.id)) fail('invalid_document');
+          const issue = {item, issueDate: raw.issueDate};
+          validateIssue(issue, options.libraryId!, 'magazine', item.series.id);
+          ids.add(item.id); newIssueCards.push(issue);
+        }
+        continue;
+      }
+      if ('newIssues' in row) fail('invalid_document');
       if (row.key === 'short-reads') {
         const short = row.shortReads ?? fail('invalid_document');
-        if (shortSeen || options.shortReadsLimit === undefined || row.series !== undefined || row.items.length !== 0 || short.length < 1 || short.length > options.shortReadsLimit) fail('invalid_document');
+        if (shortSeen || issuesSeen || options.shortReadsLimit === undefined || row.series !== undefined || row.items.length !== 0 || short.length < 1 || short.length > options.shortReadsLimit) fail('invalid_document');
         shortSeen = true;
         const ids = new Set<string>();
         for (const entry of short) {
@@ -339,7 +358,7 @@ export class ReadingClient {
         }
         continue;
       }
-      if (seriesSeen || shortSeen || row.shortReads !== undefined) fail('invalid_document');
+      if (seriesSeen || shortSeen || issuesSeen || row.shortReads !== undefined) fail('invalid_document');
       seriesSeen = true;
       const series=row.series??fail('invalid_document');
       if(options.seriesLimit===undefined || row.key!=='series' || row.items.length!==0 || series.length<1 || series.length>options.seriesLimit)fail('invalid_document');
@@ -354,7 +373,7 @@ export class ReadingClient {
         }
       }
     }
-    return out;
+    return {...out, newIssueCards};
   }
   async periodicalGroups(libraryId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalGroupsPage> {
     const limit = options.limit ?? 24;
