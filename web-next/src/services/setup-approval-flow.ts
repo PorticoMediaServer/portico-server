@@ -67,20 +67,31 @@ export class SetupApprovalFlow {
   }
   async decide(decision: 'approve' | 'deny') {
     if (decision !== 'approve' && decision !== 'deny' || this.state.phase !== 'review' || !this.review) return;
-    const review = this.review;
     return this.run(async (generation, identity) => {
       await this.controller.decide(decision);
       this.current(generation, identity);
       if (decision === 'deny') {
         // The protected controller has forgotten this exact attempt. Recheck
-        // family after that asynchronous write, before navigating its origin.
+        // family after that asynchronous write, before publishing the result.
         await currentAccountWork(this.account, async () => {this.current(generation, identity);}, identity);
         this.current(generation, identity);
-        this.publish({phase: 'denied', busy: false});
-        this.current(generation, identity);
-        this.navigate(review.address);
+        this.publish({phase: 'denied', busy: false, display: this.state.display});
       } else this.publish({phase: 'approved', busy: false, display: this.state.display});
     });
+  }
+  /** A denial has no credential exchange to finish. Return only to the original
+   * reviewed server, on the viewer's explicit action and under the same family. */
+  returnDenied() {
+    if (this.disposed || this.state.phase !== 'denied' || this.state.busy || !this.review || !this.identity) return;
+    const generation = this.epoch, identity = this.identity, address = this.review.address;
+    try {
+      this.current(generation, identity);
+      this.publish({...this.state, busy: true});
+      this.current(generation, identity);
+      this.navigate(address);
+    } catch (error) {
+      if (!this.disposed && generation === this.epoch) this.publish({...this.state, busy: false, error});
+    }
   }
   async complete() {
     if (this.state.phase !== 'approved' || !this.review) return;

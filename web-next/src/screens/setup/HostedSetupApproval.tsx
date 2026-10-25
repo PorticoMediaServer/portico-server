@@ -9,6 +9,7 @@ import styles from './setup.module.css';
 const t = defaultI18n.t;
 
 export type HostedSetupApprovalProps = Readonly<{
+  phase?: 'loading' | 'review' | 'approved' | 'denied' | 'returning' | 'error' | 'expired';
   serverName: string;
   address: string;
   accountName: string;
@@ -24,12 +25,20 @@ export type HostedSetupApprovalProps = Readonly<{
 /** auth2b/2c display-only. The strict Hosted lookup and decision controller are
  * Security's; this draws the review, the connected page and the shared failure
  * shape without switch wording, extra people counts or source authority. */
-export function HostedSetupApproval({serverName, address, accountName, requestedAt, approved = false, busy = false, error, onApprove, onDeny, onReturn}: HostedSetupApprovalProps) {
+export function HostedSetupApproval({phase, serverName, address, accountName, requestedAt, approved = false, busy = false, error, onApprove, onDeny, onReturn}: HostedSetupApprovalProps) {
   const steps = <div className={styles.steps} aria-label={t('web.setup.stepsLabel')}>
     <Step state="done" number={<Icon name="i-check" size={18}/>} title={t('web.setup.stepServer')} body={serverName}/>
     <Step state={approved ? 'done' : 'current'} number={approved ? <Icon name="i-check" size={18}/> : 2} title={t('web.setup.stepAccount')}
       body={approved ? t('web.claim.approved') : t('web.claim.approvalStep')}/>
     <Step state="next" number={3} title={t('web.setup.stepLibrary')} body={t('web.setup.stepLibraryBody')}/>
+  </div>;
+  if (phase === 'denied') return <div className={styles.host}>
+    <AuthStage service contentClassName={styles.approvalContent}>
+      <h1>{t('web.general.notConnectedBadge')}</h1>
+      <p className={styles.lede}>{t('web.claim.denied', {server: serverName})}</p>
+      {error && <HostedError error={error}/>}
+      <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
+    </AuthStage>
   </div>;
   if (error && !approved) return <div className={styles.host}>
     <AuthStage service contentClassName={styles.approvalContent}>

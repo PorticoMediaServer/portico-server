@@ -630,7 +630,7 @@ export const webMessages = {
   'web.claim.loading': 'Looking up this server',
   'web.claim.connected': '{server} is connected to your Portico Account. It is getting its secure connection now and finishes setting up on its own.',
   'web.claim.connectedTitle': 'Connected',
-  'web.claim.denied': 'You declined. {server} isn’t connected. You can close this window.',
+  'web.claim.denied': 'You declined. {server} isn’t connected.',
   'web.claim.returnTo': 'Return to {server}',
   'web.claim.expired': 'This connection request has expired or was already answered. Start again from the server.',
   'web.claim.notFound': 'This connection request isn’t for your Portico Account, or it no longer exists. Check you’re signed in to the right account, or start again from the server.',

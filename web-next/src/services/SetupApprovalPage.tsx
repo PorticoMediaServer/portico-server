@@ -1,4 +1,4 @@
-import {useEffect, useState, useSyncExternalStore, type ComponentType} from 'react';
+import {useEffect, useLayoutEffect, useState, useSyncExternalStore, type ComponentType} from 'react';
 import {ApiError} from '@core/index.ts';
 import type {ServicesAccount} from './session';
 import type {ServicesBootstrap} from './bootstrap';
@@ -24,7 +24,7 @@ export function SetupApprovalPage({account, bootstrap, Review}: {account: Servic
   const [instance, setInstance] = useState<Instance>();
   const active = instance?.scope === scope ? instance : undefined, flow = active?.flow;
   const state = useSyncExternalStore(flow?.subscribe ?? noSubscription, flow?.getSnapshot ?? emptySnapshot);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!scope) return;
     let created: SetupApprovalFlow | undefined;
     try {
@@ -51,5 +51,5 @@ export function SetupApprovalPage({account, bootstrap, Review}: {account: Servic
   return <Review phase={state.phase} serverName={display.name} address={new URL(display.address).host} accountName={display.accountName}
     requestedAt={requested} approved={state.phase === 'approved' || state.phase === 'returning'} busy={state.busy || state.phase === 'returning'}
     error={error} onApprove={() => {void flow?.decide('approve');}} onDeny={() => {void flow?.decide('deny');}}
-    onReturn={() => {if(error)window.location.assign(display.address);else void flow?.complete();}} />;
+    onReturn={() => {if(state.phase === 'denied') flow?.returnDenied();else if(error)window.location.assign(display.address);else void flow?.complete();}} />;
 }
