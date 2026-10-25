@@ -74,9 +74,14 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   }, [panel, onPanelDismiss, direction, onTurn, pageTurnsEnabled, textSelectionActive, wake]);
   useEffect(() => subscribeSurfaceInput?.(input => {
     if (input.kind === 'tap') tap(input.fraction);
+    else if (input.kind === 'swipe') {
+      if (panel) {onPanelDismiss?.('outside'); return;}
+      const turn = readTapTurn(input.direction === 'left' ? 1 : 0, direction);
+      if ((turn === 'next' || turn === 'previous') && pageTurnsEnabled && !textSelectionActive) onTurn(turn);
+    }
     else if (input.kind === 'activity') wake();
     else key(input);
-  }), [subscribeSurfaceInput, tap, wake, key]);
+  }), [subscribeSurfaceInput, tap, wake, key, panel, onPanelDismiss, direction, pageTurnsEnabled, textSelectionActive, onTurn]);
   const shown = visible || held, progress = observedProgress(progression);
   const customFixedFooter = fixedPage && fixedPageFooter != null;
   return <div ref={root} tabIndex={-1} className={styles.reader} data-reader-root data-fixed={fixedPage || undefined} data-reduced-motion={reducedMotion || undefined}
