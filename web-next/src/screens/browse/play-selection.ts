@@ -1,4 +1,5 @@
-import {BrowseSelectionModel, browseSelectionKey, readCatalogueSelectionItem, playCatalogueSelection, selectionCapabilities,
+import {BrowseSelectionModel, browseSelectionKey, readCatalogueSelectionItem, playCatalogueSelection, enqueueCatalogueSelection, selectionCapabilities,
+  type CatalogueSelectionQueuePort,
   type BrowseSelectionScope, type BrowseSelectionContext, type SelectionItem, type SelectionOperation, type SelectionQuery,
   type SelectionSnapshot} from '@core/selection-model/index.ts';
 import {selectionItem} from '@core/media-selection.ts';
@@ -31,6 +32,7 @@ export type LibraryPlaySelectionOptions = Readonly<{
   /** The caller's real personal-state executors. Each port is checked against
    * the title's own Detail actions; absent means the capability is not offered. */
   editor?: boolean;
+  queue?: CatalogueSelectionQueuePort;
   personal?: Readonly<{myList?: boolean; favorite?: boolean; watched?: boolean}>;
 }>;
 type Grant = {entry: ContentEntry; pending: boolean; controller: AbortController; promise: Promise<SelectionItem>; resolve: (item: SelectionItem) => void; reject: (error: unknown) => void};
@@ -51,11 +53,12 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   const scope = Object.freeze({serverId: input.scope.serverId, viewerId: input.scope.viewerId});
   if (scope.serverId !== principal.serverId) throw unavailable();
   const playback = input.playback && Object.freeze({playSegments: input.playback.playSegments.bind(input.playback)});
+  const queue = input.queue && Object.freeze({enqueueSegments: input.queue.enqueueSegments.bind(input.queue)});
   const personal = Object.freeze({...(input.personal ?? {})});
-  const ports = Object.freeze({...(input.editor ? {edit: true as const} : {}),...(playback ? {play: true as const} : {}),
+  const ports = Object.freeze({...(input.editor ? {edit: true as const} : {}),...(playback ? {play: true as const} : {}), ...(queue ? {queue: true as const} : {}),
     ...(personal.myList ? {myList: true as const} : {}), ...(personal.favorite ? {favorite: true as const} : {}),
     ...(personal.watched ? {watched: true as const} : {})});
-  const executable = !!(input.editor || playback || personal.myList || personal.favorite || personal.watched);
+  const executable = !!(input.editor || queue || playback || personal.myList || personal.favorite || personal.watched);
   const life = new AbortController(), listeners = new Set<() => void>(), grants = new Map<ContentEntry, Grant>(), queued: Grant[] = [];
   let active = 0, closed = false, started = false, model: BrowseSelectionModel | undefined, modelOff: (() => void) | undefined;
   let sourceOff = () => {}, collectionOff = () => {}, expected: Readonly<{queryRevision: number; revision: string}> | undefined;
@@ -258,6 +261,17 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     selectWhole,
     selectLoaded() {if (!current() || !model) throw cancelled();return model.selectLoaded('library');},
     clear() {if (!current() || !model) throw cancelled();model.clear();},
+    async enqueue(request: Readonly<{items: readonly string[]; placement: 'next' | 'end'; signal: AbortSignal; isCurrent(): boolean}>) {
+      if (!current() || !model || !queue || !request.isCurrent()) throw cancelled();
+      const operation = model.captureOperation();
+      if (!operation || operation.target.mode !== 'explicit' || !model.getSnapshot().summary.every.queue) throw unavailable();
+      const items = operation.target.displayItems.map(pick => pick.item);
+      if (items.length !== request.items.length || items.some((item, index) => item.id !== request.items[index])) throw unavailable();
+      return enqueueCatalogueSelection(queue, items, request.placement, {
+        signal: AbortSignal.any([signal, life.signal, request.signal]),
+        isCurrent: () => current() && request.isCurrent() && model!.isOperationCurrent(operation),
+      });
+    },
     async play(callerSignal: AbortSignal = signal) {
       if (!current()) throw cancelled();
       if (!model || !playback || !model.getSnapshot().summary.every.play) throw unavailable();

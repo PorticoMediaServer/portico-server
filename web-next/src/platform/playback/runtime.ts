@@ -5,6 +5,7 @@ import {parseMediaItem} from '@core/media-item.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
 import {SessionsClient} from '@core/playback-v1/sessions.ts';
+import type {CatalogueSelectionQueuePort} from '@core/catalogue-selection.ts';
 import {QueueClient, type SegmentInput} from '@core/playback-v1/queue.ts';
 import {V1ChannelControl} from '@core/playback-v1/channel-control.ts';
 import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@core/home-selection/types.ts';
@@ -611,6 +612,37 @@ export class WebShellPlaybackRuntime {
       },
     });
     return this.cataloguePort;
+  }
+
+  /** Append checked catalogue segments without inventing a Home document context. */
+  catalogueQueue(): CatalogueSelectionQueuePort {
+    this.assertCurrent();
+    return {enqueueSegments: async (segments, placement, lifetime) => {
+      const stack = this.stack;
+      const check = () => {
+        this.assertCurrent();
+        if (lifetime.signal.aborted || !lifetime.isCurrent() || !this.current(stack)) problem('stale_selection_context');
+      };
+      check();
+      if (!['next', 'end'].includes(placement) || !segments.length || segments.length > 256) problem('invalid_queue_placement');
+      const signal = AbortSignal.any([lifetime.signal, stack.life.signal, this.life.signal]);
+      const client = new QueueClient({send: value => {
+        check();
+        return stack.http.send({...value, signal: value.signal ? AbortSignal.any([value.signal, signal]) : signal});
+      }}, this.env.key);
+      const header = stack.queue.getSnapshot().view?.queue;
+      if (!header) {
+        if (stack.queue.getSnapshot().phase === 'preparing' || stack.service.getSnapshot().session) problem('queue_not_ready');
+        const created = await client.create(segments, {signal, retainQueueIds: this.retainedQueueIds(stack)});
+        check(); await stack.queue.open(created.queue.id, signal); check(); this.sync(); return created.queue;
+      }
+      let queue = await client.header(header.id, signal); check();
+      // Each next insertion is after current; reverse requests preserve pick order.
+      for (const segment of placement === 'next' ? [...segments].reverse() : segments) {
+        check(); queue = (await client.addSegment(queue.id, queue.revision, placement, segment)).queue; check();
+      }
+      await stack.queue.open(queue.id, signal); check(); this.sync(); return queue;
+    }};
   }
 
   async playFromQueue(source: WebPlaybackQueueSource, context: WebPlaybackScreenLifetime, options: Readonly<{shuffle?: boolean}> = {}): Promise<void> {
