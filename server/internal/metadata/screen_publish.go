@@ -269,7 +269,7 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 	// A successful accepted empty record is still a current source head.
 	// Legacy unproven locks keep their old path; normalized locks capture this
 	// evidence while their effective owner sequence remains authoritative.
-	if b.TargetKind == "item" && len(r.Credits) == 0 {
+	if b.TargetKind == "item" && !relationOnly && len(r.Credits) == 0 {
 		legacyLocked, e := relationshipClassLocked(ctx, tx, b.TargetID, "credit")
 		if e != nil {
 			return e
