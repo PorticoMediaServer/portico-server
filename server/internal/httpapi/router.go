@@ -1122,7 +1122,12 @@ func New(d Dependencies) http.Handler {
 			_, err := d.Ingestion.QueueTx(r.Context(), tx, l.ID)
 			return err
 		}
-		l, e := d.Catalog.CreateFoldersExpectedSourceAuthorizedThen(r.Context(), body.Name, body.Kind, folders, body.ExpectedRemoteSource, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, "") }, queue)
+		expectedRemoteSource, e := body.ExpectedRemoteSource.Selection()
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		l, e := d.Catalog.CreateFoldersExpectedSourceAuthorizedThen(r.Context(), body.Name, body.Kind, folders, expectedRemoteSource, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, "") }, queue)
 		if e != nil {
 			failure(w, e)
 			return

@@ -45,14 +45,14 @@ type LibrarySource struct {
 	Incarnation       string `json:"-"`
 }
 type SourceSettings struct {
-	ExpectedRemoteSource *ExpectedRemoteSource `json:"expectedRemoteSource,omitempty"`
-	Name                 string                `json:"name"`
-	Path                 string                `json:"path"`
-	Classification       string                `json:"classification"`
-	FollowSymlinks       bool                  `json:"followSymlinks"`
-	IntervalSeconds      int64                 `json:"intervalSeconds"`
-	ExpectedRevision     int64                 `json:"expectedRevision"`
-	AcceptReplacement    bool                  `json:"acceptReplacement"`
+	ExpectedRemoteSource ExpectedRemoteSourceInput `json:"expectedRemoteSource,omitempty"`
+	Name                 string                    `json:"name"`
+	Path                 string                    `json:"path"`
+	Classification       string                    `json:"classification"`
+	FollowSymlinks       bool                      `json:"followSymlinks"`
+	IntervalSeconds      int64                     `json:"intervalSeconds"`
+	ExpectedRevision     int64                     `json:"expectedRevision"`
+	AcceptReplacement    bool                      `json:"acceptReplacement"`
 }
 type ScanPolicy struct {
 	Tier       string            `json:"tier"`
@@ -305,9 +305,9 @@ func configurationFence(ctx context.Context, tx *sql.Tx, library string, expecte
 }
 func (s *Service) SaveSource(ctx context.Context, library, id string, input SourceSettings, authorize func(*sql.Tx) error) (LibrarySource, error) {
 	var result LibrarySource
-	if input.ExpectedRemoteSource != nil {
-		captured := *input.ExpectedRemoteSource
-		input.ExpectedRemoteSource = &captured
+	expectedRemoteSource, err := input.ExpectedRemoteSource.Selection()
+	if err != nil {
+		return result, err
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" {
@@ -353,7 +353,7 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 	if err = configurationFence(ctx, tx, library, input.ExpectedRevision, authorize); err != nil {
 		return result, err
 	}
-	if err = checkExpectedRemoteSource(ctx, tx, input.Path, input.ExpectedRemoteSource); err != nil {
+	if err = checkExpectedRemoteSource(ctx, tx, input.Path, expectedRemoteSource); err != nil {
 		return result, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT id,root FROM library_sources WHERE library_id=? AND enabled=1`, library)

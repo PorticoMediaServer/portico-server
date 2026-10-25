@@ -63,13 +63,13 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 }
 
 type libraryCreationRequest struct {
-	ExpectedRemoteSource *catalog.ExpectedRemoteSource `json:"expectedRemoteSource,omitempty"`
-	Name                 string                        `json:"name"`
-	Kind                 string                        `json:"kind"`
-	Path                 string                        `json:"path,omitempty"`
-	Folders              []string                      `json:"folders,omitempty"`
-	MetadataAgent        string                        `json:"metadataAgent,omitempty"`
-	MetadataLanguage     string                        `json:"metadataLanguage,omitempty"`
+	ExpectedRemoteSource catalog.ExpectedRemoteSourceInput `json:"expectedRemoteSource,omitempty"`
+	Name                 string                            `json:"name"`
+	Kind                 string                            `json:"kind"`
+	Path                 string                            `json:"path,omitempty"`
+	Folders              []string                          `json:"folders,omitempty"`
+	MetadataAgent        string                            `json:"metadataAgent,omitempty"`
+	MetadataLanguage     string                            `json:"metadataLanguage,omitempty"`
 }
 
 func (libraryCreationRequest) JSONSchema() map[string]any {
