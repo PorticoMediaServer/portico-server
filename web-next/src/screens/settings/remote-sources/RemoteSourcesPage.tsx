@@ -335,8 +335,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       : reason === 'type' ? 'next.remoteSources.driveKeyWrongType'
         : reason === 'email' ? 'next.remoteSources.driveKeyEmail'
           : reason === 'key' ? 'next.remoteSources.driveKeyUnreadable'
-            : reason === 'client' || reason === 'token' ? 'next.remoteSources.driveOAuthInvalid'
-              : 'next.remoteSources.driveLocationInvalid';
+            : 'next.remoteSources.driveLocationInvalid';
   // One rendered sign-in ticket owns Start/Paste/Status/Cancel and every phase.
   const oauthTicket = useRef<object | null>(null);
   const oauthPollPromise = useRef<Promise<void> | null>(null);
