@@ -38,7 +38,16 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
     const dispose = () => {
       if (disposal) return disposal;
       alive = false; offRetired(); life.abort();
-      disposal = (async () => {try {await reader?.dispose(); await progress?.stop();} finally {publication?.dispose(); fonts?.dispose(); await bindings.dispose();}})();
+      disposal = (async () => {
+        try {await reader?.dispose();}
+        finally {
+          try {await progress?.stop();}
+          finally {
+            try {publication?.dispose();}
+            finally {try {fonts?.dispose();} finally {await bindings.dispose();}}
+          }
+        }
+      })();
       return disposal;
     };
     setState({});
