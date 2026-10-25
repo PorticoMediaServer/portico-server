@@ -25,6 +25,9 @@ export function dispatchDockAction(binding: DockBinding, action: DockAction): bo
 export function commandFor(view: DockView, action: DockIntent): DockAction {
   return {...action, fence: view.playback.fence, ...(view.remote ? {remote: {id: view.remote.id, sequence: view.remote.sequence}} : {})};
 }
+/** phone-player f7d-7f: connecting is a pending ring; playing names the device and its
+ * clock and offers Back, Pause and Stop; a terminal state keeps the bar with the position,
+ * Continue here and Dismiss. The remote's own phase is the only input. */
 export const remoteTerminal = (remote: RemoteDock | undefined) => !!remote && ['stopped', 'replaced', 'error'].includes(remote.phase);
 export const remoteReady = (remote: RemoteDock | undefined) => !remote || remote.phase === 'playing';
 export function seekBounds(view: DockView): {start: number; end: number} | null {
