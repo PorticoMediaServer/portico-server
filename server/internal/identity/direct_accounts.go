@@ -901,5 +901,8 @@ func (s *Service) transferOwnershipTx(ctx context.Context, tx *sql.Tx, c directC
 	if e = RetierFamiliesTx(ctx, tx, c.account.ID, TierMember); e != nil {
 		return e
 	}
-	return RetierFamiliesTx(ctx, tx, target, TierOwner)
+	if e = RetierFamiliesTx(ctx, tx, target, TierOwner); e != nil {
+		return e
+	}
+	return s.ownerChangedTx(ctx, tx)
 }

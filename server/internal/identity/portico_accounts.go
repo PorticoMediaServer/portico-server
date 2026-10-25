@@ -480,6 +480,9 @@ func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, 
 		if e == nil {
 			e = CheckPorticoReturnTx(ctx, tx, who)
 		}
+		if e == nil {
+			e = s.ownerChangedTx(ctx, tx)
+		}
 		return e
 	})
 	if e != nil {

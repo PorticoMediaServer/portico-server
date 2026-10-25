@@ -106,6 +106,10 @@ type Service struct {
 	SetupClaimReadyTx                func(context.Context, *sql.Tx) (bool, error)
 	// Integration must wire this before exposing descendant v2 authority.
 	OnFamilyRevokedTx func(context.Context, *sql.Tx, FamilyState) error
+	// Runs inside the accepting owner-transfer transaction, after its guards.
+	// An error rolls the complete transfer back. Same-owner mode switches do
+	// not invoke it; integration retirement must not depend on family signout.
+	OnOwnerChangedTx func(context.Context, *sql.Tx) error
 	// Root installs this before exposing authentication. Tests without networking
 	// may omit it, but a production session must not synthesize a key from an id.
 	NativeIdentityTx func(context.Context, *sql.Tx) (NativeServerIdentity, error)

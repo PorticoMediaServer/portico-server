@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 )
@@ -177,5 +178,50 @@ func TestOwnershipTransferMovesBothPeoplesSessionsWithoutSigningThemOut(t *testi
 	}
 	if _, err = s.DirectMembers(ctx, login.Session.AccessToken); err != nil {
 		t.Fatalf("the new owner cannot list members: %v", err)
+	}
+}
+
+func TestOwnerTransitionHookSharesOnlyTheAcceptingTransaction(t *testing.T) {
+	ctx := context.Background()
+	s, owner, member, _ := memberWithSession(t)
+	if _, err := s.db.Exec(`CREATE TABLE owner_hook_probe(value INTEGER NOT NULL); INSERT INTO owner_hook_probe VALUES(0)`); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	refuse := errors.New("fixture retirement refused")
+	s.OnOwnerChangedTx = func(ctx context.Context, tx *sql.Tx) error {
+		calls++
+		var role string
+		if err := tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, member.ID).Scan(&role); err != nil {
+			return err
+		}
+		if role != TierOwner {
+			t.Fatalf("hook before accepted owner: %s", role)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE owner_hook_probe SET value=value+1`); err != nil {
+			return err
+		}
+		return refuse
+	}
+	if err := s.TransferDirectOwnership(ctx, owner.AccountToken, member.ID, "Testing1!", owner.Account.Revision+1); !errors.Is(err, ErrProfileChanged) || calls != 0 {
+		t.Fatal("preview/stale transfer invoked retirement", calls, err)
+	}
+	if err := s.TransferDirectOwnership(ctx, owner.AccountToken, member.ID, "Testing1!", owner.Account.Revision); !errors.Is(err, refuse) {
+		t.Fatal(err)
+	}
+	var value int
+	if err := s.db.QueryRow(`SELECT value FROM owner_hook_probe`).Scan(&value); err != nil || value != 0 {
+		t.Fatal("retirement escaped rollback", value, err)
+	}
+	principal, err := s.Authenticate(owner.Session.AccessToken)
+	if err != nil || principal.Role != TierOwner {
+		t.Fatal("failed retirement changed owner", principal.Role, err)
+	}
+	refuse = nil
+	if err = s.TransferDirectOwnership(ctx, owner.AccountToken, member.ID, "Testing1!", owner.Account.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.db.QueryRow(`SELECT value FROM owner_hook_probe`).Scan(&value); err != nil || value != 1 || calls != 2 {
+		t.Fatal("accepted retirement count", value, calls, err)
 	}
 }
