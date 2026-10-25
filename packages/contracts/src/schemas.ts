@@ -74321,6 +74321,52 @@ export const schemas = {
   },
   "GetItemsIdFileInfoResponse": {
     "properties": {
+      "disc": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "titles": {
+            "items": {
+              "properties": {
+                "angles": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "chapters": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "number",
+                "durationMs",
+                "chapters",
+                "angles"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "titles"
+        ],
+        "type": "object"
+      },
       "files": {
         "items": {
           "properties": {

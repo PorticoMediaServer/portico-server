@@ -3,6 +3,7 @@ package catalog
 import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"strconv"
 	"time"
 )
@@ -165,8 +166,25 @@ type FileInfo struct {
 	Revision   ContentRevision `json:"revision"`
 	Kind       string          `json:"kind"`
 	Files      []TitleFile     `json:"files"`
+	// Disc is the owner-only ordered title list of a disc image's current scan.
+	// Viewer reads never carry it; the block is absent when no probe is stored.
+	Disc       *FileInfoDisc   `json:"disc,omitempty"`
 	Manage     *FileInfoManage `json:"manage,omitempty"`
 	NextCursor string          `json:"nextCursor,omitempty"`
+}
+
+// FileInfoDisc names the disc image's own ordered titles. Positions are the stored
+// stable Title N order; a title's chapters and angles are the probe's own counts.
+type FileInfoDisc struct {
+	Kind   string         `json:"kind"`
+	Titles []FileInfoDiscTitle `json:"titles"`
+}
+
+type FileInfoDiscTitle struct {
+	Number     int   `json:"number"`
+	DurationMs int64 `json:"durationMs"`
+	Chapters   int   `json:"chapters"`
+	Angles     int   `json:"angles"`
 }
 
 func (s *Service) detailLanguages(item string) (DetailLanguages, error) {
@@ -279,6 +297,9 @@ func (s *Service) FileInfo(viewer Viewer, server, item, cursor string, limit int
 		}
 		out.Files = append(out.Files, files...)
 	}
+	if owner {
+		out.Disc = s.discTitles(out.Files)
+	}
 	after, err := s.ContentRevision(library, viewer.Profile)
 	if err != nil {
 		return out, err
@@ -287,6 +308,32 @@ func (s *Service) FileInfo(viewer Viewer, server, item, cursor string, limit int
 		return out, ErrStaleContinuation
 	}
 	return out, nil
+}
+
+// discTitles reads the stored probe that belongs to one exact current asset in this
+// same authorized snapshot. A disc with no stored probe, or a stale source, has no
+// block: the caller already authorized the item, and this grants no further access.
+func (s *Service) discTitles(files []TitleFile) *FileInfoDisc {
+	tx := dbwork.Snapshot(s.Context())
+	if tx == nil {
+		return nil
+	}
+	for _, file := range files {
+		var object, sourceRevision string
+		if err := tx.QueryRowContext(s.Context(), `SELECT o.id,o.source_revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.token=? AND o.retired=0 AND o.state='available'`, file.ID).Scan(&object, &sourceRevision); err != nil {
+			continue
+		}
+		probe, err := ReadInventoryDiscProbe(s.Context(), tx, object, sourceRevision)
+		if err != nil || len(probe.Titles) == 0 {
+			continue
+		}
+		out := &FileInfoDisc{Kind: probe.Kind, Titles: make([]FileInfoDiscTitle, 0, len(probe.Titles))}
+		for position, title := range probe.OrderedTitles() {
+			out.Titles = append(out.Titles, FileInfoDiscTitle{Number: position + 1, DurationMs: title.DurationMs, Chapters: len(title.Chapters), Angles: title.AngleCount})
+		}
+		return out
+	}
+	return nil
 }
 
 // Detail rows never silently reuse an old ordering after a publication.

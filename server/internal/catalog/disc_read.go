@@ -14,10 +14,27 @@ import (
 // no content access: the caller must authorize its item/library in this same
 // snapshot. A stale revision/generation/incarnation yields no result; the reader
 // never silently changes the requested observation or takes a fresh remote lease.
+// discQueryer is the read a caller already holds: a transaction for a write, or the
+// request's read handle so the observation is read in the same authorized snapshot.
+type discQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 func ReadInventoryDiscProbeTx(ctx context.Context, tx *sql.Tx, object, revision string) (disc.Probe, error) {
+	return readInventoryDiscProbe(ctx, tx, object, revision)
+}
+
+// ReadInventoryDiscProbe reads the same exact observation through an existing read
+// handle. It grants no access by itself; the caller authorizes its item and library.
+func ReadInventoryDiscProbe(ctx context.Context, q discQueryer, object, revision string) (disc.Probe, error) {
+	return readInventoryDiscProbe(ctx, q, object, revision)
+}
+
+func readInventoryDiscProbe(ctx context.Context, q discQueryer, object, revision string) (disc.Probe, error) {
 	out := disc.Probe{Schema: disc.Schema, Titles: []disc.Title{}}
 	var fingerprint string
-	err := tx.QueryRowContext(ctx, `SELECT d.kind,d.packaging,d.encryption,d.fingerprint
+	err := q.QueryRowContext(ctx, `SELECT d.kind,d.packaging,d.encryption,d.fingerprint
  FROM inventory_disc_facts d JOIN inventory_objects o ON o.id=d.object_id AND o.asset_id=d.asset_id
  JOIN library_sources s ON s.id=o.source_id
  WHERE d.object_id=? AND d.source_revision=? AND o.revision=d.source_revision
@@ -28,7 +45,7 @@ func ReadInventoryDiscProbeTx(ctx context.Context, tx *sql.Tx, object, revision 
 	}
 	// Fixed query count and bounded result sets, independent of title count.
 	read := func(query string, limit int, scan func(*sql.Rows) error) error {
-		rows, err := tx.QueryContext(ctx, query, object, limit+1)
+		rows, err := q.QueryContext(ctx, query, object, limit+1)
 		if err != nil {
 			return err
 		}
