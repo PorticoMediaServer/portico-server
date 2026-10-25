@@ -178,3 +178,6 @@
 .runSkipChoice[data-picked] { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-accent); }
 .runSkipChoice:disabled { cursor: default; opacity: .6; }
 .monoInput { font-family: var(--font-mono); }
+
+/* The spec's own row label for the source list (s/server-remote-sources#group1). */
+.sectionLabel { margin: 0; padding: 0 2px; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
