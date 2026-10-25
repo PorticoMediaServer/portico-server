@@ -178,7 +178,11 @@ func (s *Service) musicDiscoverPlaylists(r ContentRequest, offset int) (ContentS
 	if err := s.read().QueryRow(acl+`SELECT count(*)`+from, args...).Scan(&sec.TotalCount); err != nil {
 		return sec, err
 	}
-	rows, err := s.read().Query(acl+`SELECT p.token,p.name`+from+` ORDER BY p.name COLLATE NOCASE,p.id LIMIT ? OFFSET ?`, append(args, r.Limit+1, offset)...)
+	direction := "ASC"
+	if r.Direction == "desc" {
+		direction = "DESC"
+	}
+	rows, err := s.read().Query(acl+`SELECT p.token,p.name`+from+` ORDER BY p.name COLLATE NOCASE `+direction+`,p.id `+direction+` LIMIT ? OFFSET ?`, append(args, r.Limit+1, offset)...)
 	if err != nil {
 		return sec, err
 	}

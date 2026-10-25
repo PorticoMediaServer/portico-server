@@ -274,13 +274,29 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	if out.PageInfo.HasMore {
 		rows = rows[:request.Limit]
 	}
+	musicGenres := false
+	if pivot.Aggregate == "genre" {
+		library, err := s.library(request.Library)
+		if err != nil {
+			return out, err
+		}
+		musicGenres = library.Kind == "music"
+	}
 	for _, g := range rows {
 		label := g.value
 		if pivot.Aggregate == "decade" {
 			label += "s"
 		}
 		count := g.count
-		entry := ContentEntry{ID: pivot.Aggregate + ":" + g.value, Kind: pivot.EntityKinds[0], Title: label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + g.value}}
+		entry := ContentEntry{ID: pivot.Aggregate + ":" + g.value, LibraryID: request.Library, Kind: pivot.EntityKinds[0], Title: label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + g.value}}
+		if musicGenres {
+			entry.Navigation.View = "releases"
+			entry.Navigation.Browse = &ContentSeeAll{Pivot: "albums", Query: &BrowseNode{Field: "genre", Operator: "equals", Value: g.value}, Sort: titleAscending()}
+			entry.ArtworkPaths, err = s.musicGenreCovers(request.viewer, request.Library, g.value)
+			if err != nil {
+				return out, err
+			}
+		}
 		if count > browseTotalThreshold {
 			// "10,000+": the count is a lower bound.
 			count = browseTotalThreshold

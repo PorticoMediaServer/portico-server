@@ -47,7 +47,7 @@ const TABS: Readonly<Record<string, readonly LibraryTab[]>> = {
     {id: 'releases', label: 'library.tab.albums', pivot: 'albums', shows: 'titles'},
     {id: 'songs', label: 'library.tab.songs', pivot: 'songs', shows: 'tracks'},
     {id: 'genres', label: 'library.tab.genres', pivot: 'genres', shows: 'genres', opens: {tab: 'releases', field: 'genre'}},
-    {id: 'playlists', label: 'library.tab.playlists', shows: 'playlists'},
+    {id: 'playlists', label: 'library.tab.playlists', pivot: 'playlists', shows: 'playlists'},
   ],
   audiobook: [
     discover,

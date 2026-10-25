@@ -319,6 +319,7 @@ var browsePivots = map[string][]browsePivot{
 		{ID: "albums", LabelKey: "library.albums", EntityKinds: []string{"album"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
 		{ID: "songs", LabelKey: "library.songs", EntityKinds: []string{"song"}, SupportedViews: []string{"list"}, DefaultSort: titleAscending(), Browsable: true},
 		{ID: "genres", LabelKey: "library.genres", EntityKinds: []string{"category"}, SupportedViews: []string{"grid"}, DefaultSort: titleAscending(), Aggregate: "genre"},
+		{ID: "playlists", LabelKey: "library.tab.playlists", EntityKinds: []string{"playlist"}, SupportedViews: []string{"grid"}, DefaultSort: titleAscending(), Browsable: true},
 	},
 	"audiobook": {
 		{ID: "discover", LabelKey: "library.discover", EntityKinds: []string{"book"}, SupportedViews: []string{"rail"}, DefaultSort: titleAscending()},
@@ -488,6 +489,9 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		return out, err
 	}
 	out.Library = lib
+	if lib.Kind == "music" && pivot == "playlists" {
+		return musicPlaylistCapabilities(lib), nil
+	}
 	if isReadingLibrary(lib.Kind) {
 		return out, requestinput.New("Reading capabilities require an authorized viewer")
 	}
@@ -500,6 +504,10 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		return out, requestinput.New("this library kind publishes no browse pivots")
 	}
 	for _, entry := range available {
+		if lib.Kind == "music" && entry.ID == "playlists" {
+			out.Pivots = append(out.Pivots, musicPlaylistCapabilities(lib).Pivots[0])
+			continue
+		}
 		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable || entry.Aggregate != "", Aggregate: entry.Aggregate, Members: entry.Members, Sorts: pivotSortIDs(lib.Kind, entry), Filters: libraryBrowseFields(lib.Kind, entry, online), Paging: "keyset"})
 	}
 	kindFilter := map[string]bool{}
@@ -569,6 +577,13 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		}
 	}
 	out.QuickFilters = quick
+	if lib.Kind == "music" {
+		for i := range out.Sorts {
+			if out.Sorts[i].ID == "title" {
+				out.Sorts[i].ApplicableKinds = append(append([]string{}, out.Sorts[i].ApplicableKinds...), "playlist")
+			}
+		}
+	}
 	ids, filters := []string{}, []string{}
 	for _, sort := range out.Sorts {
 		if out.ResolvedPivot == nil && (sort.ID == "count" || sort.ID == "recentActivity") {

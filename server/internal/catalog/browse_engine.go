@@ -395,6 +395,9 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		})
 		return result, err
 	}
+	if request.Pivot == "playlists" {
+		return s.browseMusicPlaylists(request)
+	}
 	out, rows, err := s.browseSelect(request)
 	if errors.Is(err, ErrVisibilityBuilding) || errors.Is(err, ErrStaleContinuation) {
 		if lib, lookupErr := s.library(request.Library); lookupErr == nil && isReadingLibrary(lib.Kind) {

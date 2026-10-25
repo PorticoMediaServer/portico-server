@@ -41,6 +41,9 @@ type ServerText struct {
 }
 
 type ContentNavigation struct {
+	// An explicit server-authored browse destination, using the same query
+	// vocabulary as section See all. A label or category name is not a query.
+	Browse *ContentSeeAll `json:"browse,omitempty"`
 	// Live channel anchors are the published mapping, not a source inferred
 	// from a channel id or a client-side scan of the lineup.
 	SourceID   string `json:"sourceId,omitempty"`

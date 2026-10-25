@@ -53,7 +53,7 @@ export type ContentEntry = Readonly<{
   removed?:boolean;
   artworkPaths?: readonly string[];
   yearMin?:number; yearMax?:number; origin?:'automatic'|'owner';
-  navigation?: Readonly<{ view: ContentView | 'item' | 'playlist' | 'radio'; entityId?: string; category?: string }>;
+  navigation?: Readonly<{ view: ContentView | 'item' | 'playlist' | 'radio'; entityId?: string; category?: string; browse?: ContentSeeAll }>;
   playback?: Readonly<{ itemId: string; startSeconds?: number }>;
   /** An episode's air date (YYYY-MM-DD): show workspace pages, and episode rows of a browse page. */
   airDate?: string;
@@ -296,7 +296,9 @@ function entry(v: unknown): ContentEntry {
     const n = v.navigation;
     if (!record(n) || !(views.includes(n.view as string) || n.view === 'item' || n.view === 'playlist' || n.view === 'radio') || (n.entityId !== undefined && !string(n.entityId, 256)) || (n.category !== undefined && !string(n.category, 256))) invalid();
     if (v.kind === 'radio' && (n.view !== 'radio' || n.entityId !== row.radioSeed?.id) || v.kind !== 'radio' && n.view === 'radio') invalid();
-    row.navigation = Object.freeze({ view: n.view as ContentView | 'item' | 'playlist' | 'radio', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }) });
+    const browse = seeAll(n.browse);
+    if (n.browse !== undefined && !browse) invalid();
+    row.navigation = Object.freeze({ view: n.view as ContentView | 'item' | 'playlist' | 'radio', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }), ...(browse ? {browse} : {}) });
   }
   // Playback that cannot be read is left out when the entry still opens something; otherwise the entry is refused.
   if (v.playback !== undefined && v.playback !== null) {
