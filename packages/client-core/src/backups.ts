@@ -35,14 +35,18 @@ export async function deleteBackup(transport:BackupTransport,serverId:string,bac
 /** restoreBackup stages a backup (by list id) or a server path (a backup folder or a `.db` file)
  * and answers `{staged, restartRequired}`. A 4xx refusal carries one of the spec §4 codes
  * (`isRestoreRefusalCode`), which the console maps to catalogue copy. */
-export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal,passphrase?:string):Promise<RestoreStaged>{
+export type RestoreObserver = Readonly<{isCurrent?: () => boolean; onAccepted?: (jobId: string) => void; onProgress?: (document: BackupsDocument) => void}>;
+export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal,passphrase?:string,observer:RestoreObserver={}):Promise<RestoreStaged>{
+ const requireCurrent=()=>{signal?.throwIfAborted();if(observer.isCurrent&&!observer.isCurrent())throw new DOMException('The restore scope ended.','AbortError');};
+ requireCurrent();
  const receipt=parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source,...(passphrase!==undefined?{passphrase}:{})},signal),serverId,v=>{
-  if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string')throw new Error('Invalid restore receipt.');
+  if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string'||!(v as {jobId:string}).jobId||(v as {jobId:string}).jobId.length>128)throw new Error('Invalid restore receipt.');
   return (v as {jobId:string}).jobId;
  }).result;
+ requireCurrent();observer.onAccepted?.(receipt);requireCurrent();
  const started=Date.now();
  for(;;){
-  signal?.throwIfAborted();
+  requireCurrent();
   let doc:BackupsDocument;
   try{doc=await getBackups(transport,serverId,signal);}catch(e){
    const status=(e as {status?:number})?.status;
@@ -51,6 +55,8 @@ export async function restoreBackup(transport:BackupTransport,serverId:string,op
    if(Date.now()-started>600_000)throw Object.assign(new Error('The restore is still running.'),{code:'restore_progress_timeout'});
    await delay(500,signal);continue;
   }
+  requireCurrent();
+  if(doc.lastRestore?.jobId===receipt||doc.restore?.jobId===receipt){observer.onProgress?.(doc);requireCurrent();}
   if(doc.lastRestore?.jobId===receipt){
    if(doc.lastRestore.outcome==='rolled_back')throw Object.assign(new Error('The restore was rolled back.'),{code:'restore_integrity_failed'});
    return {staged:true,restartRequired:true,validation:{schemaVersion:doc.lastRestore.schemaVersion??0,integrity:'ok'}};
