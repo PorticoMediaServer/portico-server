@@ -31,7 +31,7 @@ export class LibraryDeleteProducer {
   private fail(code: string) { this.state = {...this.state, errorCode: code}; this.emit(); }
 
   open(target: readonly Pick<EntryActionTarget, 'itemId' | 'libraryId' | 'kind'>[], ports: EntryActionPorts) {
-    if (!ports.isCurrent() || !target.length || target.length > 200 || new Set(target.map(item => item.itemId)).size !== target.length) { this.close(); return; }
+    if (!ports.isCurrent() || !target.length || target.length > 200 || new Set(target.map(item => item.itemId)).size !== target.length || new Set(target.map(item => item.libraryId)).size !== 1) { this.close(); return; }
     this.attempt++; this.controller?.abort();
     this.target = Object.freeze(target.map(item => Object.freeze({...item}))); this.ports = ports; this.preview = undefined; this.body = undefined;
     this.state = {...idle, phase: 'loading'}; this.emit();

@@ -122,7 +122,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openDelete: (
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
-      ...(props.deletion && summary.count <= 200 && summary.every.delete && current.selection.target?.mode === 'explicit' && queueLease ? {onDelete: props.openDelete} : {}),
+      ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && current.selection.target?.mode === 'explicit' && queueLease ? {onDelete: props.openDelete} : {}),
       ...(props.owner && summary.count > 200 ? {deleteDisabledReason: defaultI18n.t('next.selection.tooMany')} : {}),
       ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && current.selection.target?.mode === 'explicit' && queueLease ? {onEdit: props.openEditor, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
@@ -165,7 +165,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   const deleteStore = {subscribe: (listener: () => void) => {deleteListeners.add(listener); return () => {deleteListeners.delete(listener);};}, getSnapshot: () => deleteSession};
   const openDelete = () => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
-    if (!deletion || deletion.signal.aborted || !deletion.isCurrent() || !selection || !selection.summary.every.delete || selection.summary.count > 200
+    if (!deletion || deletion.signal.aborted || !deletion.isCurrent() || !selection || !selection.summary.every.delete || selection.summary.library.kind !== 'single' || selection.summary.count > 200
       || !operation || operation.target !== selection.target || operation.target.mode !== 'explicit' || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-delete-unavailable');
     closeDelete();
     const lifetime = new AbortController();
