@@ -120,7 +120,7 @@ export class ReaderController<P extends object> {
         },
         onSelection: selection => {
           if (!this.current(session)) return;
-          this.publish({selection: selection ? Object.freeze({...selection, rects: Object.freeze(selection.rects.map(copy))}) : null});
+          this.publish({selection: selection ? Object.freeze({...selection, rects: Object.freeze(selection.rects.map(copy)), ...(selection.pageRects ? {pageRects:Object.freeze(selection.pageRects.map(copy))} : {})}) : null});
         }});
       if (!this.current(session)) { await view.dispose(); return; }
       session.view = view;

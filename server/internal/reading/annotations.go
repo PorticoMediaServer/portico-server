@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -15,7 +16,14 @@ import (
 const annotationLimit = 256
 const annotationPage = 50
 
+type AnnotationRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
 type Annotation struct {
+	Rects                []AnnotationRect
 	ID, Kind             string
 	Location             Location
 	Text, Note, Colour   string
@@ -141,6 +149,32 @@ func (f *Source) Annotations(cursor string, expected *int64) (*AnnotationPage, e
 	if err != nil {
 		return nil, err
 	}
+	for i := range out.Entries {
+		a := &out.Entries[i]
+		a.Rects = []AnnotationRect{}
+		rr, e := g.Tx().QueryContext(ctx, `SELECT ordinal,x,y,width,height FROM reading_annotation_rects WHERE owner_key=? AND item_id=? AND asset_id=? AND source_revision=? AND annotation_id=? ORDER BY ordinal LIMIT 129`, owner, v.Entity, v.Asset, v.Revision, a.ID)
+		if e != nil {
+			return nil, e
+		}
+		for rr.Next() {
+			var ordinal int
+			var r AnnotationRect
+			if e = rr.Scan(&ordinal, &r.X, &r.Y, &r.Width, &r.Height); e != nil {
+				rr.Close()
+				return nil, e
+			}
+			if ordinal != len(a.Rects) || len(a.Rects) >= 128 {
+				rr.Close()
+				return nil, ErrInvalid
+			}
+			a.Rects = append(a.Rects, r)
+		}
+		e = rr.Err()
+		rr.Close()
+		if e != nil {
+			return nil, e
+		}
+	}
 	g.Rollback()
 	if err = f.Validate(); err != nil {
 		return nil, err
@@ -205,6 +239,14 @@ func (f *Source) MutateAnnotation(m AnnotationMutation) (int64, error) {
 		}
 		if a.Kind == "bookmark" && (a.Text != "" || a.Colour != "") || a.Kind == "highlight" && (strings.TrimSpace(a.Text) == "" || a.Colour != "yellow" && a.Colour != "green" && a.Colour != "blue" && a.Colour != "pink") {
 			return 0, ErrInvalid
+		}
+		if len(a.Rects) > 128 || len(a.Rects) > 0 && (a.Kind != "highlight" || a.Location.Format != "pdf") || a.Kind == "highlight" && a.Location.Format == "pdf" && len(a.Rects) == 0 {
+			return 0, ErrInvalid
+		}
+		for _, r := range a.Rects {
+			if math.IsNaN(r.X) || math.IsNaN(r.Y) || math.IsNaN(r.Width) || math.IsNaN(r.Height) || math.IsInf(r.X, 0) || math.IsInf(r.Y, 0) || math.IsInf(r.Width, 0) || math.IsInf(r.Height, 0) || r.X < 0 || r.Y < 0 || r.Width <= 0 || r.Height <= 0 || r.X+r.Width > 1 || r.Y+r.Height > 1 {
+				return 0, ErrInvalid
+			}
 		}
 		if err = f.annotationLocation(a.Location); err != nil {
 			return 0, err
@@ -278,6 +320,14 @@ func (f *Source) MutateAnnotation(m AnnotationMutation) (int64, error) {
 		_, err = tx.ExecContext(ctx, `INSERT INTO reading_annotations(owner_key,item_id,asset_id,source_revision,id,kind,format,cfi,section,page_index,progression,quote,note,colour,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_key,item_id,asset_id,source_revision,id) DO UPDATE SET kind=excluded.kind,format=excluded.format,cfi=excluded.cfi,section=excluded.section,page_index=excluded.page_index,progression=excluded.progression,quote=excluded.quote,note=excluded.note,colour=excluded.colour,updated_at=excluded.updated_at`, owner, v.Entity, v.Asset, v.Revision, a.ID, a.Kind, a.Location.Format, cfi, section, page, a.Location.Progression, a.Text, a.Note, a.Colour, now, now)
 		if err != nil {
 			return 0, err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM reading_annotation_rects WHERE owner_key=? AND item_id=? AND asset_id=? AND source_revision=? AND annotation_id=?`, owner, v.Entity, v.Asset, v.Revision, a.ID); err != nil {
+			return 0, err
+		}
+		for ordinal, r := range a.Rects {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO reading_annotation_rects(owner_key,item_id,asset_id,source_revision,annotation_id,ordinal,x,y,width,height) VALUES(?,?,?,?,?,?,?,?,?,?)`, owner, v.Entity, v.Asset, v.Revision, a.ID, ordinal, r.X, r.Y, r.Width, r.Height); err != nil {
+				return 0, err
+			}
 		}
 	}
 	if _, err = f.annotationSelection(ctx, tx); err != nil {

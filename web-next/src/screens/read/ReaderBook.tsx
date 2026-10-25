@@ -1,3 +1,7 @@
+import type {ReadingAnnotationPort} from '@core/reading-annotations.ts';
+import {randomId} from '@core/random-id.ts';
+import {readingLocationFromReader} from '@portico/reader-core';
+import {ReaderAnnotationActions, ReaderAnnotationList, useReaderAnnotations, useAnnotationLease} from './ReaderAnnotations';
 import {readingSearchStepIndex} from './search-step';
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
@@ -63,16 +67,24 @@ export function readerCurrentContentsId(items: readonly ReaderTocItem[], locatio
   if (flat.filter(item => item.location.progression === start).length === 1) return current.id;
 }
 type ReaderSearchScope = Readonly<{query: string; active: boolean; abort: AbortController}>;
-export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
+export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget; annotations?: ReadingAnnotationPort}>;
 
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, onSearchAll, environment = 'web', crease}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void; onSearchAll?: (query: string) => void; /** Actual vertical book fold for this window, or absent. */ crease?: Readonly<{left: number; right: number}>}) {
   const {controller, publication, authority} = book;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
-  const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
+  const [panel, updatePanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
   const [fixedMenu, setFixedMenu] = useState<'zoom' | 'direction'>();
-  const [fixedPane, setFixedPane] = useState<'contents' | 'pages'>('contents');
+  const [fixedPane, updateFixedPane] = useState<'contents' | 'pages' | 'bookmarks' | 'highlights'>('contents');
+  const annotationPanel=useRef(new AbortController());
+  const setPanel=(next:typeof panel)=>{annotationPanel.current.abort();annotationPanel.current=new AbortController();updatePanel(next);};
+  const setFixedPane=(next:typeof fixedPane)=>{annotationPanel.current.abort();annotationPanel.current=new AbortController();updateFixedPane(next);};
   const zoomAnchor = useRef<HTMLButtonElement>(null), directionAnchor = useRef<HTMLButtonElement>(null);
   const fixed = publication.format !== 'epub';
+  const notes = useReaderAnnotations(book.annotations, controller, authority, active, snapshot.status === 'ready');
+  const annotationLease=useAnnotationLease(notes.service);
+  const listSignal=annotationPanel.current.signal;
+  if(!active)annotationPanel.current.abort();
+  useLayoutEffect(()=>{const original=annotationPanel.current;return()=>original.abort();},[]);
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [searchComplete, setSearchComplete] = useState(false), [currentHit, setCurrentHit] = useState<string>();
   // phone-read 14: taught once per browser, never re-shown after Got it.
   const hintKey = 'portico.reader.tapZonesHint.v1';
@@ -179,15 +191,16 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
       {text: hit.excerpt.slice(match.start, match.start + match.length), match: true}, {text: hit.excerpt.slice(match.start + match.length)}];
     return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => openSearchHit(hit)};
   });
-  const panelContent = !active ? undefined : panel === 'contents' ? (fixed
-    ? <ReaderPanel label={t('next.reader.pagesStrip')} tabs={[...(snapshot.toc.length > 0 ? [{id: 'contents', label: t('next.reader.contents')}] : []), {id: 'pages', label: t('next.reader.pagesStrip')}]}
-      selected={snapshot.toc.length > 0 ? fixedPane : 'pages'} onSelect={selected => setFixedPane(selected === 'pages' ? 'pages' : 'contents')} onClose={() => setPanel(undefined)}>
-      {snapshot.toc.length > 0 && fixedPane === 'contents' ? <ReaderContents entries={contents(snapshot.toc)}/>
-        : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
-          onNavigate={() => {if (presentation === 'phone') setPanel(undefined);}}/>}
-    </ReaderPanel>
-    : <ReaderPanel label={t('next.reader.contents')} tabs={[{id: 'contents', label: t('next.reader.contents')}]}
-      selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>)
+  const annotationPane = notes.service && (fixedPane === 'bookmarks' || fixedPane === 'highlights') ? fixedPane : undefined;
+  const panelContent = !active ? undefined : panel === 'contents' ? <ReaderPanel label={t('next.reader.contents')}
+    tabs={[...(!fixed || snapshot.toc.length > 0 ? [{id:'contents',label:t('next.reader.contents')}] : []), ...(fixed ? [{id:'pages',label:t('next.reader.pagesStrip')}] : []),
+      ...(notes.service ? [{id:'bookmarks',label:t('next.reader.bookmarks')},{id:'highlights',label:t('next.reader.highlights')}] : [])]}
+    selected={annotationPane ?? (fixed && !snapshot.toc.length ? 'pages' : fixedPane === 'pages' ? 'pages' : 'contents')}
+    onSelect={selected => {if (selected === 'bookmarks' || selected === 'highlights' || selected === 'pages' || selected === 'contents') setFixedPane(selected);}} onClose={() => setPanel(undefined)}>
+    {annotationPane && notes.service ? <ReaderAnnotationList key={fixedPane} signal={listSignal} kind={annotationPane === 'bookmarks' ? 'bookmark' : 'highlight'} service={notes.service} state={notes.state} controller={controller} reportError={reportError}/>
+      : !fixed || snapshot.toc.length > 0 && fixedPane === 'contents' ? <ReaderContents entries={contents(snapshot.toc)}/>
+        : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})} onNavigate={() => {if (presentation === 'phone') setPanel(undefined);}}/>}
+  </ReaderPanel>
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={changeQuery} hits={searchHits} current={currentHit} loading={searching}
         resultSummary={hitsQuery === query && query.trim() && !searching
@@ -223,6 +236,10 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
         ? <ReaderMatchNavigation query={query} onStep={stepSearch} onClose={() => changeQuery('')}/> : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
       fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
+        ...(notes.service ? [{id:'bookmark',label:t('next.reader.addBookmark'),icon:'i-bookmark' as const,
+          disabled:notes.state.loading || notes.state.saving || notes.state.revision === undefined || !value.location,
+          onPress:()=>{if (!notes.service?.current() || controller.getSnapshot() !== value || !value.location) return;
+            if(annotationLease&&!annotationLease.retired)void notes.service.write({id:randomId(),kind:'bookmark',location:readingLocationFromReader(value.location),text:'',note:'',colour:''},{revision:notes.state.revision,signal:annotationLease.life.signal,isCurrent:()=>!annotationLease.retired&&authority.isCurrent()&&controller.getSnapshot()===value});}}] : []),
         {id: 'contents', label: t('next.reader.contents'), icon: 'i-chapters', expanded: panel === 'contents', onPress: () => setPanel(panel === 'contents' ? undefined : 'contents')},
         ...(publication.format !== 'cbz' ? [{id: 'search', label: t('next.reader.search'), icon: 'i-search' as const, expanded: panel === 'search', onPress: () => setPanel(panel === 'search' ? undefined : 'search')}] : []),
         ...(publication.format === 'epub' ? [{id: 'display', label: t('next.reader.displayAction'), text: <ReaderDisplayMark sample={t('next.reader.sample')}/>, expanded: panel === 'display', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'display' ? undefined : 'display');}}] : []),
@@ -233,6 +250,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
         ...(layout.fullscreen && document.fullscreenEnabled ? [{id: 'fullscreen', label: t('next.reader.fullscreen'), icon: 'i-fs' as const, separatorBefore: true,
           onPress: (element: HTMLButtonElement) => {const root = element.closest<HTMLElement>('[data-reader-root]'); void (document.fullscreenElement ? document.exitFullscreen() : root?.requestFullscreen())?.catch(reportError);}}] : []),
       ]})}/>
+    {active && <ReaderAnnotationActions service={notes.service} snapshot={snapshot} controller={controller} onSearch={publication.format !== 'cbz' ? text => {changeQuery(text);setPanel('search');} : undefined} reportError={reportError}/>}
     {active && environment === 'web' && snapshot.status === 'ready' && <ReaderBrowserHint visible={presentation === 'phone' && !panel && !fixedMenu && !currentHit && snapshot.selection === null && !hint}/>}
     {active && fixed && <FixedPageMenus controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
       open={fixedMenu} onOpenChange={setFixedMenu} anchorRef={zoomAnchor} directionRef={directionAnchor}/>}

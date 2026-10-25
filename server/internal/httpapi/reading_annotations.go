@@ -3,6 +3,8 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -52,7 +54,40 @@ func (ReadingAnnotationOperation) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"upsert", "delete"}}
 }
 
+type ReadingAnnotationRect reading.AnnotationRect
+
+func (r *ReadingAnnotationRect) UnmarshalJSON(data []byte) error {
+	var value struct {
+		X      *float64 `json:"x"`
+		Y      *float64 `json:"y"`
+		Width  *float64 `json:"width"`
+		Height *float64 `json:"height"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF || value.X == nil || value.Y == nil || value.Width == nil || value.Height == nil {
+		return reading.ErrInvalid
+	}
+	x, y, w, h := *value.X, *value.Y, *value.Width, *value.Height
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsNaN(w) || math.IsNaN(h) || math.IsInf(x, 0) || math.IsInf(y, 0) || math.IsInf(w, 0) || math.IsInf(h, 0) || x < 0 || y < 0 || w <= 0 || h <= 0 || x+w > 1 || y+h > 1 {
+		return reading.ErrInvalid
+	}
+	*r = ReadingAnnotationRect{X: x, Y: y, Width: w, Height: h}
+	return nil
+}
+func annotationRectValues(rects []ReadingAnnotationRect) []reading.AnnotationRect {
+	out := make([]reading.AnnotationRect, len(rects))
+	for i, r := range rects {
+		out[i] = reading.AnnotationRect(r)
+	}
+	return out
+}
+
 type ReadingAnnotation struct {
+	Rects     []ReadingAnnotationRect `json:"rects"`
 	ID        string                  `json:"id"`
 	Kind      ReadingAnnotationKind   `json:"kind"`
 	Location  ReadingLocation         `json:"location"`
@@ -69,7 +104,26 @@ type ReadingAnnotationsResponse struct {
 	Entries        []ReadingAnnotation `json:"entries"`
 	NextCursor     string              `json:"nextCursor"`
 }
+type ReadingAnnotationRects []ReadingAnnotationRect
+
+func (r *ReadingAnnotationRects) UnmarshalJSON(data []byte) error {
+	raw := bytes.TrimSpace(data)
+	if len(raw) == 0 || raw[0] != '[' {
+		return reading.ErrInvalid
+	}
+	var value []ReadingAnnotationRect
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	if len(value) > 128 {
+		return reading.ErrInvalid
+	}
+	*r = value
+	return nil
+}
+
 type ReadingAnnotationRequest struct {
+	Rects            ReadingAnnotationRects     `json:"rects,omitempty"`
 	ExpectedRevision ReadingAnnotationRevision  `json:"expectedRevision"`
 	Operation        ReadingAnnotationOperation `json:"operation"`
 	ID               string                     `json:"id"`
@@ -85,7 +139,11 @@ type ReadingAnnotationSavedResponse struct {
 
 func readingAnnotationProjection(a reading.Annotation) ReadingAnnotation {
 	l := a.Location
-	return ReadingAnnotation{a.ID, ReadingAnnotationKind(a.Kind), ReadingLocation{ReadingFormat(l.Format), l.CFI, l.Section, l.PageIndex, l.Progression}, a.Text, a.Note, ReadingAnnotationColour(a.Colour), a.CreatedAt, a.UpdatedAt}
+	rects := make([]ReadingAnnotationRect, len(a.Rects))
+	for i, r := range a.Rects {
+		rects[i] = ReadingAnnotationRect(r)
+	}
+	return ReadingAnnotation{rects, a.ID, ReadingAnnotationKind(a.Kind), ReadingLocation{ReadingFormat(l.Format), l.CFI, l.Section, l.PageIndex, l.Progression}, a.Text, a.Note, ReadingAnnotationColour(a.Colour), a.CreatedAt, a.UpdatedAt}
 }
 func (d Dependencies) readingAnnotations(w http.ResponseWriter, r *http.Request) {
 	f, ok := d.openReadingBytes(w, r)
@@ -142,7 +200,7 @@ func (d Dependencies) readingMutateAnnotation(w http.ResponseWriter, r *http.Req
 		l := request.Location
 		location = reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}
 	}
-	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: request.ExpectedRevision.value, Operation: string(request.Operation), Annotation: reading.Annotation{ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
+	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: request.ExpectedRevision.value, Operation: string(request.Operation), Annotation: reading.Annotation{Rects: annotationRectValues(request.Rects), ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -179,19 +237,26 @@ func annotationString(min, max int) map[string]any {
 func annotationIDSchema() map[string]any {
 	return map[string]any{"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$"}
 }
+func annotationObject(required []string, properties map[string]any) map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
+}
 func annotationLocationSchema() map[string]any {
-	return map[string]any{
-		"type": "object", "additionalProperties": false, "required": []string{"format", "progression"},
-		"properties": map[string]any{"format": ReadingFormat("").JSONSchema(), "cfi": annotationString(10, 4096), "section": annotationString(0, 1024), "pageIndex": annotationInteger(1000000), "progression": map[string]any{"type": "number", "minimum": 0, "maximum": 1}},
-		"oneOf": []any{
-			map[string]any{"properties": map[string]any{"format": map[string]any{"const": "epub"}}, "required": []string{"cfi"}, "not": map[string]any{"required": []string{"pageIndex"}}},
-			map[string]any{"properties": map[string]any{"format": map[string]any{"enum": []string{"pdf", "cbz"}}}, "required": []string{"pageIndex"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"cfi"}}, map[string]any{"required": []string{"section"}}}}},
-		}}
+	progression := map[string]any{"type": "number", "minimum": 0, "maximum": 1}
+	return map[string]any{"oneOf": []any{
+		annotationObject([]string{"format", "cfi", "progression"}, map[string]any{
+			"format": map[string]any{"type": "string", "enum": []string{"epub"}}, "cfi": annotationString(10, 4096), "section": annotationString(0, 1024), "progression": progression}),
+		annotationObject([]string{"format", "pageIndex", "progression"}, map[string]any{
+			"format": map[string]any{"type": "string", "enum": []string{"pdf", "cbz"}}, "pageIndex": annotationInteger(1000000), "progression": progression}),
+	}}
+}
+func annotationRectsSchema() map[string]any {
+	unit := map[string]any{"type": "number", "minimum": 0, "maximum": 1}
+	return map[string]any{"type": "array", "maxItems": 128, "items": annotationObject([]string{"x", "y", "width", "height"}, map[string]any{"x": unit, "y": unit, "width": unit, "height": unit})}
 }
 func (ReadingAnnotation) JSONSchema() map[string]any {
 	return map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"id", "kind", "location", "text", "note", "colour", "createdAt", "updatedAt"},
-		"properties": map[string]any{"id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema(), "createdAt": annotationInteger(9007199254740991), "updatedAt": annotationInteger(9007199254740991)},
+		"properties": map[string]any{"id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "rects": annotationRectsSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema(), "createdAt": annotationInteger(9007199254740991), "updatedAt": annotationInteger(9007199254740991)},
 	}
 }
 func (ReadingAnnotationsResponse) JSONSchema() map[string]any {
@@ -204,12 +269,10 @@ func (ReadingAnnotationSavedResponse) JSONSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"revision"}, "properties": map[string]any{"revision": map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991}}}
 }
 func (ReadingAnnotationRequest) JSONSchema() map[string]any {
-	return map[string]any{
-		"type": "object", "additionalProperties": false, "required": []string{"expectedRevision", "operation", "id"},
-		"properties": map[string]any{"expectedRevision": annotationInteger(9007199254740990), "operation": ReadingAnnotationOperation("").JSONSchema(), "id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema()},
-		"oneOf": []any{
-			map[string]any{"properties": map[string]any{"operation": map[string]any{"const": "delete"}}},
-			map[string]any{"properties": map[string]any{"operation": map[string]any{"const": "upsert"}}, "required": []string{"kind", "location"}},
-		},
-	}
+	return map[string]any{"oneOf": []any{
+		annotationObject([]string{"expectedRevision", "operation", "id"}, map[string]any{
+			"expectedRevision": annotationInteger(9007199254740990), "operation": map[string]any{"type": "string", "enum": []string{"delete"}}, "id": annotationIDSchema()}),
+		annotationObject([]string{"expectedRevision", "operation", "id", "kind", "location"}, map[string]any{
+			"expectedRevision": annotationInteger(9007199254740990), "operation": map[string]any{"type": "string", "enum": []string{"upsert"}}, "id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "rects": annotationRectsSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema()}),
+	}}
 }

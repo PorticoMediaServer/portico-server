@@ -1,10 +1,11 @@
 import type {ReadingManifest, ReadingProgress, ReadingSavedProgress, ReadingSession, ReadingPage} from './reading.ts';
-import {ReadingError} from './reading.ts';
+import {captureReadingAnnotationMutation, parseReadingAnnotations, parseReadingAnnotationSaved} from './reading-annotations.ts';
+import {ReadingError, parseReadingManifest, validateReadingLocation} from './reading.ts';
 import {parsePreferenceSnapshot, type PreferenceSnapshot} from './preferences.ts';
-import {decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse, decodePutReadingSessionsSessionIdProgressResponse} from '../../contracts/src/index.ts';
+import {decodeGetReadingSessionsSessionIdProgressResponse, decodePutReadingSessionsSessionIdProgressResponse} from '../../contracts/src/index.ts';
 
 /** Local trusted-app bridge only. No HTTP path, origin, credential or fetch port. */
-export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'> & Partial<Pick<ReadingSession, 'openSequential'>>;
+export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'> & Partial<Pick<ReadingSession, 'openSequential' | 'annotations' | 'mutateAnnotation'>>;
 export type ReadingHostTransport = Readonly<{send: (message: string) => void; subscribe: (listener: (message: string) => void) => () => void}>;
 export type ReadingHostContentsTarget = Readonly<{sourceId: string; sourceRevision: string; index: number}>;
 /** Window-local vertical hinge band from the real platform posture, when reported. */
@@ -111,11 +112,17 @@ export function createReadingHost({session, channel, preferences, initialProgres
   };
   const receive = (message: string) => {
     let data: RecordValue;
-    try {data = packet(message, 16384);} catch {return;}
+    try {
+      data = packet(message, 65536);
+      if (data.kind === 'request' && data.method === 'annotation-save') {
+        if (Object.keys(data).some(key => !['v','kind','channel','id','method','args'].includes(key)) || !record(data.args)
+          || new TextEncoder().encode(JSON.stringify(data.args)).byteLength > 32768) fail();
+      } else if (message.length > 16384) fail();
+    } catch {return;}
     if (data.kind === 'ready') {
       if (started || !valid()) return;
       if (capturedContentsTarget && data.contentsTarget !== true) {dispose(); onUnavailable?.(); return;}
-      started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress, active,
+      started = true; post({kind: 'initial', manifest: {...manifest, canAnnotate:manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation ? true : undefined}, preferences: preferences(), progress: initialProgress, active,
         ...(capturedContentsTarget ? {contentsTarget: capturedContentsTarget} : {}), ...(capturedCrease ? {crease: capturedCrease} : {})}); return;
     }
     if (!started || data.channel !== channel || !valid()) return;
@@ -184,7 +191,13 @@ export function createReadingHost({session, channel, preferences, initialProgres
         if (end === transfer.bytes.length) release(); else transfer.timer = setTimeout(release, 30000);
       } else if (method === 'release') {if (transfer?.id === args.transfer) release(); value = null;}
       else if (method === 'progress') value = await session.progress(request.signal);
-      else if (method === 'save') {
+      else if (method === 'annotations') {
+        if (manifest.canAnnotate !== true || !session.annotations || typeof args.cursor !== 'string' || args.cursor.length > 64 || args.revision !== undefined && !integer(args.revision,0,Number.MAX_SAFE_INTEGER)) fail('not_permitted');
+        value = await session.annotations(args.cursor, args.revision as number | undefined, request.signal);
+      } else if (method === 'annotation-save') {
+        if (manifest.canAnnotate !== true || !session.mutateAnnotation) fail('not_permitted');
+        value = await session.mutateAnnotation(captureReadingAnnotationMutation(args, location => validateReadingLocation(location,manifest)), request.signal);
+      } else if (method === 'save') {
         // The canonical facade validates the generated location and CAS request before I/O.
         if (!integer(args.expectedRevision, 0, Number.MAX_SAFE_INTEGER) || !record(args.location)) fail('invalid_location');
         value = await session.saveProgress(args as Parameters<ReadingSession['saveProgress']>[0], request.signal);
@@ -308,7 +321,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
       const data = packet(message, CONTROL);
       if (data.kind === 'initial' && !initialized) {
         if (typeof data.channel !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(data.channel)) fail();
-        const manifest: ReadingManifest = frozen(decodePostReadingSessionsResponse(data.manifest));
+        const manifest: ReadingManifest = parseReadingManifest(data.manifest);
         const initialContentsTarget = contentsTarget(data.contentsTarget, manifest);
         snapshot = parsePreferenceSnapshot(data.preferences);
         const initialProgress = frozen(decodeGetReadingSessionsSessionIdProgressResponse(data.progress));
@@ -332,6 +345,14 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
             if (metadata.index !== index || typeof metadata.name !== 'string' || metadata.name.length > 4096 || !['image/png', 'image/jpeg', 'image/webp'].includes(String(metadata.mime))) fail();
             return {index, name: metadata.name, mime: metadata.mime as ReadingPage['mime'], bytes};
           },
+          ...(manifest.canAnnotate === true ? {
+            annotations: async (cursor = '', revision?: number, signal?: AbortSignal) => parseReadingAnnotations(await call('annotations',{cursor,...revision === undefined ? {} : {revision}},signal),manifest,location=>validateReadingLocation(location,manifest),cursor),
+            mutateAnnotation: async (input: Parameters<ReadingSession['mutateAnnotation']>[0], signal?: AbortSignal) => {
+              const captured=captureReadingAnnotationMutation(input,location=>validateReadingLocation(location,manifest));
+              if (new TextEncoder().encode(JSON.stringify(captured)).byteLength > 32768) fail('annotation_limit');
+              return parseReadingAnnotationSaved(await call('annotation-save',captured,signal),captured.expectedRevision);
+            },
+          } : {}),
           progress: async signal => decodeGetReadingSessionsSessionIdProgressResponse(await call('progress', {}, signal)),
           saveProgress: async (request, signal): Promise<ReadingSavedProgress> => decodePutReadingSessionsSessionIdProgressResponse(await call('save', request, signal)),
         });

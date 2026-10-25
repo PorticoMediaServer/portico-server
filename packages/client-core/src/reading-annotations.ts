@@ -1,7 +1,8 @@
 import type {PutReadingSessionsSessionIdProgressRequest} from '../../contracts/src/types.ts';
 
 export type ReadingAnnotationLocation = Readonly<PutReadingSessionsSessionIdProgressRequest['location']>;
-export type ReadingAnnotationContent = Readonly<{id: string; kind: 'bookmark' | 'highlight'; location: ReadingAnnotationLocation; text: string; note: string; colour: '' | 'yellow' | 'green' | 'blue' | 'pink'}>;
+export type ReadingAnnotationRect = Readonly<{x: number; y: number; width: number; height: number}>;
+export type ReadingAnnotationContent = Readonly<{id: string; kind: 'bookmark' | 'highlight'; location: ReadingAnnotationLocation; text: string; note: string; colour: '' | 'yellow' | 'green' | 'blue' | 'pink'; rects?: readonly ReadingAnnotationRect[]}>;
 export type ReadingAnnotation = ReadingAnnotationContent & Readonly<{createdAt: number; updatedAt: number}>;
 export type ReadingAnnotationsPage = Readonly<{sourceId: string; sourceRevision: string; revision: number; entries: readonly ReadingAnnotation[]; nextCursor: string}>;
 export type ReadingAnnotationMutation = Readonly<{expectedRevision: number; operation: 'delete'; id: string}> | (ReadingAnnotationContent & Readonly<{expectedRevision: number; operation: 'upsert'}>);
@@ -29,11 +30,21 @@ function content(v: Record<string, unknown>, validate: ValidateLocation): Readin
     location = Object.freeze({format: l.format, pageIndex: l.pageIndex, progression: l.progression});
   }
   validate(location);
+  const rects: ReadingAnnotationRect[] = [];
+  if (v.rects !== undefined) {
+    if (!Array.isArray(v.rects) || v.rects.length > 128) invalid();
+    for (const r of v.rects) {
+      if (!record(r) || !['x','y','width','height'].every(key => {const value=r[key];return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;})
+        || (r.width as number) <= 0 || (r.height as number) <= 0 || (r.x as number)+(r.width as number)>1 || (r.y as number)+(r.height as number)>1) invalid();
+      rects.push(Object.freeze({x:r.x as number,y:r.y as number,width:r.width as number,height:r.height as number}));
+    }
+  }
+  if (rects.length && (location.format !== 'pdf' || v.kind !== 'highlight') || v.kind === 'highlight' && location.format === 'pdf' && !rects.length) invalid();
   if (typeof v.colour !== 'string') invalid();
   if (v.kind === 'bookmark' ? v.text !== '' || v.colour !== '' : !v.text.trim() || !['yellow', 'green', 'blue', 'pink'].includes(v.colour)) invalid();
-  return Object.freeze({id: v.id, kind: v.kind, location, text: v.text, note: v.note, colour: v.colour as ReadingAnnotationContent['colour']});
+  return Object.freeze({id: v.id, kind: v.kind, location, text: v.text, note: v.note, colour: v.colour as ReadingAnnotationContent['colour'], ...(rects.length ? {rects:Object.freeze(rects)} : {})});
 }
-export function captureReadingAnnotationMutation(raw: ReadingAnnotationMutation, validate: ValidateLocation): ReadingAnnotationMutation {
+export function captureReadingAnnotationMutation(raw: unknown, validate: ValidateLocation): ReadingAnnotationMutation {
   if (!record(raw) || !integer(raw.expectedRevision) || raw.expectedRevision === Number.MAX_SAFE_INTEGER || !readingAnnotationId(raw.id)) invalid();
   if (raw.operation === 'delete') return Object.freeze({operation: 'delete', expectedRevision: raw.expectedRevision, id: raw.id});
   if (raw.operation !== 'upsert') invalid();
@@ -43,7 +54,7 @@ export function parseReadingAnnotations(raw: unknown, source: Readonly<{sourceId
   if (!record(raw) || raw.sourceId !== source.sourceId || raw.sourceRevision !== source.revision || !integer(raw.revision) || !Array.isArray(raw.entries) || raw.entries.length > 50 || typeof raw.nextCursor !== 'string' || raw.nextCursor !== '' && !readingAnnotationId(raw.nextCursor)) invalid();
   const entries: ReadingAnnotation[] = []; let previous = cursor;
   for (const row of raw.entries) {
-    if (!record(row) || !integer(row.createdAt) || !integer(row.updatedAt) || row.updatedAt < row.createdAt) invalid();
+    if (!record(row) || !integer(row.createdAt) || !integer(row.updatedAt) || row.updatedAt < row.createdAt || !Number.isFinite(new Date(row.createdAt).getTime()) || !Number.isFinite(new Date(row.updatedAt).getTime())) invalid();
     const value = content(row, validate); if (value.id <= previous) invalid(); previous = value.id;
     entries.push(Object.freeze({...value, createdAt: row.createdAt, updatedAt: row.updatedAt}));
   }
