@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"portico.local/server/internal/readingpaths"
 	"reflect"
 	"strconv"
 
@@ -72,6 +73,6 @@ func (d Dependencies) readingPeriodicalGroups(w http.ResponseWriter, r *http.Req
 	write(w, 200, out)
 }
 func registerReadingPeriodicalGroupsHTTPContract(registry *apikit.Registry) error {
-	m := apikit.Metadata{ID: "get_reading_periodical_groups", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/periodicals", Summary: "Read accepted typed and dated Reading periodical groups", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"publicationType", "cursor", "limit"}}
+	m := apikit.Metadata{ID: "get_reading_periodical_groups", Method: "GET", Path: readingpaths.PeriodicalGroups, Summary: "Read accepted typed and dated Reading periodical groups", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"publicationType", "cursor", "limit"}}
 	return apikit.RegisterHTTP[struct{}, ReadingPeriodicalGroupsResponse](registry, m)
 }
