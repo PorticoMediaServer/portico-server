@@ -61,12 +61,13 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     void entry.inspect(origin);
   };
   const reauthenticate = () => {
+    if (!alive.current || entry.getSnapshot() !== state || form.getSnapshot() !== input) return;
     setRecovery(undefined);
     setMemberView(undefined);
     const origin = entry.getSnapshot().origin ?? pageOrigin;
     form.clear(); setError(undefined); void entry.inspect(origin);
   };
-  const cancel = () => {form.clear(); entry.cancel(); if (onCancel) onCancel(); else void router.navigate({to: '/servers'});};
+  const cancel = () => {if (!alive.current || entry.getSnapshot() !== state || form.getSnapshot() !== input) return;form.clear(); entry.cancel(); if (onCancel) onCancel(); else void router.navigate({to: '/servers'});};
   const busy = state.busy || input.busy, failure = state.error ?? error;
   const openRecovery = () => {
     if (!alive.current || busy || joining || initializing || entry.getSnapshot() !== state || form.getSnapshot() !== input
@@ -79,22 +80,22 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   const currentMember = memberView?.target.entry === entry && memberView.target.origin === state.origin && memberView.target.serverId === state.server?.id
     && memberView.target.pin === state.pin && !state.invitation;
   const openMember = (mode: 'old-password' | 'code') => {
-    if (!alive.current || busy || initializing || joining || entry.getSnapshot() !== state || !state.origin || !state.pin || !state.server || state.invitation) return;
+    if (!alive.current || busy || initializing || joining || entry.getSnapshot() !== state || form.getSnapshot() !== input || !state.origin || !state.pin || !state.server || state.invitation) return;
     if (mode === 'old-password' ? state.phase !== 'portico' || state.server.move !== 'to_portico' : state.phase !== 'password' || state.server.move !== 'to_local') return;
     form.clear(); setRecovery(undefined); setError(undefined);
     setMemberView({mode, target: {entry, origin: state.origin, serverId: state.server.id, pin: state.pin}});
   };
   const runMove = (command: () => Promise<unknown>) => {
-    if (!alive.current || busy || entry.getSnapshot() !== state || state.invitation) return;
+    if (!alive.current || busy || entry.getSnapshot() !== state || form.getSnapshot() !== input || state.invitation) return;
     void command().catch(failure => {if (alive.current && entry.getSnapshot().origin === state.origin && entry.getSnapshot().pin === state.pin) setError(failure);});
   };
   const continuePortico = () => {
     const epoch = input.inputEpoch, serverId = state.server?.id, origin = state.origin, pin = state.pin, phase = state.phase;
-    if (!serverId || busy || !alive.current || entry.getSnapshot() !== state || phase !== 'portico' && phase !== 'move-portico') return;
+    if (!serverId || busy || !alive.current || entry.getSnapshot() !== state || form.getSnapshot() !== input || phase !== 'portico' && phase !== 'move-portico') return;
     void entry.preparePorticoSignIn(browserAccountOrigin(import.meta.env, location)).then(url => {
       const current = entry.getSnapshot();
       if (url && alive.current && form.getSnapshot().inputEpoch === epoch && current.phase === phase && current.server?.id === serverId && current.origin === origin && current.pin === pin) location.assign(url);
-    }).catch(failure => {if (alive.current) setError(failure);});
+    }).catch(failure => {if (alive.current && form.getSnapshot().inputEpoch === epoch && entry.getSnapshot().origin === origin && entry.getSnapshot().pin === pin) setError(failure);});
   };
   if (joining) return <ShortInvitationEntry onBack={leaveJoin} onJoined={destination => location.assign(destination.origin)} />;
   if (input.factor) return <RequiredFactorDialogs form={input.factor} error={failure} onCancel={cancel} onDone={() => {form.clear(); void router.navigate({to: '/profiles', replace: true});}} />;
