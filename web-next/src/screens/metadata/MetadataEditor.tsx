@@ -1,6 +1,7 @@
 import type {ReactNode} from 'react';
 import {useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
+import {orderTakesOffset, readTmdbOrder, tmdbAbsoluteOrder} from '@core/screen-metadata.ts';
 import {attentionInProgress} from '@core/server-admin/attention-words.ts';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
 import {EditorHeader} from '../../kit/shell';
@@ -92,12 +93,12 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     void edit(fields);
   };
   const heading = data ? (data.snapshot.fields.title?.value || target.id) : '';
-  const kind = localArtworkOnly ? 'reading' : target.kind === 'item' ? data?.schema.some(field => field.field === 'episodeNumber') ? 'episode' : 'film' : target.kind;
+  const kind = !data ? 'item' : localArtworkOnly ? 'reading' : target.kind === 'item' ? data.schema.some(field => field.field === 'episodeNumber') ? 'episode' : data.schema.some(field => field.field === 'trackNumber') ? 'song' : data.schema.some(field => field.field === 'partNumber') ? 'audiobook_file' : 'film' : target.kind;
   return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
     <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={onClose} className={styles.editorHead}/>
     <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
       {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => setTab(id)}>
-        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : id === 'lyrics' ? 'web.metadata.tabLyrics' : 'web.metadata.tabHistory')}</button>)}
+        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? data && !data.schema.some(field => field.field === 'genres' || field.field === 'genre') ? 'web.metadata.field.tags' : 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : id === 'lyrics' ? 'web.metadata.tabLyrics' : 'web.metadata.tabHistory')}</button>)}
     </nav>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
     {state.error ? <HostedError error={state.error} /> : null}
@@ -329,7 +330,7 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
   data: RepairData; target: RepairTarget; busy: boolean; onSearch: (query: string) => void;
   onUse: (provider: string, candidateId: string, order?: string) => void; onRetry: () => void; onLock: (locked: boolean) => void;
 }) {
-  const [query, setQuery] = useState(''), [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
+  const [query, setQuery] = useState(''), [orders, setOrders] = useState<Readonly<Record<string, Readonly<{order: string; offset: string}>>>>({});
   const identity = data.snapshot.identity;
   const statusKey = `web.metadata.matchStatus.${identity?.status.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()) ?? 'unmatched'}`;
   const status = identity?.status === 'needs_selection' ? t('web.metadata.moreThanOneMatch') : defaultI18n.has(statusKey) ? t(statusKey) : t('web.metadata.matchStatus.unknown');
@@ -352,17 +353,28 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
     </form>
     {data.candidates.map(candidate => {
       const key = `${candidate.provider}:${candidate.id}`;
-      const currentIdentity = identity?.provider === candidate.provider && identity.id === candidate.id;
-      const chosen = candidate.orders?.find(item => item.id === (orders[key] ?? (currentIdentity ? identity?.order : undefined)))?.id ?? candidate.orders?.[0]?.id;
-      const current = currentIdentity && (!candidate.orders?.length || chosen === identity?.order);
+      const candidateIdentity = candidate.identityId ?? (identity?.engine === 'screen' ? undefined : candidate.id);
+      const currentIdentity = identity?.provider === candidate.provider && identity.id === candidateIdentity
+        && (identity.engine !== 'screen' || candidate.identityType !== undefined && identity.type === candidate.identityType);
+      const stored = readTmdbOrder(identity?.order ?? ''), offered = candidate.orders ?? [];
+      const fallback = {order: currentIdentity && offered.some(item => item.id === stored.base) ? stored.base : offered[0]?.id ?? '', offset: String(currentIdentity ? stored.offset : 0)};
+      const draftOrder = orders[key];
+      const chosen = draftOrder && offered.some(item => item.id === draftOrder.order) ? draftOrder : fallback;
+      const takesOffset = target.kind === 'show' && candidate.provider === 'tmdb' && orderTakesOffset(chosen.order);
+      const validOffset = !takesOffset || /^-?\d+$/.test(chosen.offset) && Number.isSafeInteger(Number(chosen.offset)) && Math.abs(Number(chosen.offset)) <= 1000000;
+      const order = takesOffset && validOffset ? tmdbAbsoluteOrder(chosen.order, Number(chosen.offset)) : chosen.order;
+      const current = currentIdentity && validOffset && (!offered.length || order === identity?.order);
+      const setOrder = (patch: Partial<{order: string; offset: string}>) => setOrders(previous => ({...previous, [key]: {...chosen, ...patch}}));
       return <div key={key} className={styles.candidate}>
         {candidate.previewUrl ? <span className={styles.candidatePoster}><img src={candidate.previewUrl} alt="" loading="lazy"/></span> : null}
         <div className={styles.matchDetails}><b>{candidate.title}{candidate.year ? ` (${candidate.year})` : ''}</b><small>{providerName(candidate.provider)}{candidate.subtitle ? ` · ${candidate.subtitle}` : ''}</small>
           {candidate.orders && candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
-            <select value={chosen} onChange={event => {const value = event.currentTarget.value; setOrders(current => ({...current, [key]: value}));}}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}</div>
-        {current ? <span className={styles.matchCurrent}>{t('web.metadata.currentMatch')}</span> : <Button size="small" disabled={busy} onClick={() => onUse(candidate.provider, candidate.id, candidate.orders?.length ? chosen : undefined)}>{t('web.liveSource.useThis')}</Button>}
+            <select value={chosen.order} disabled={busy} onChange={event => setOrder({order: event.currentTarget.value})}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
+          {takesOffset ? <TextField label={t('web.metadata.numberOffset')} description={t('web.metadata.numberOffsetHelp')} type="number" inputMode="numeric" min={-1000000} max={1000000} step={1} value={chosen.offset} disabled={busy} onChange={event => setOrder({offset: event.currentTarget.value})} error={!validOffset ? t('web.metadata.numberRange', {label: t('web.metadata.numberOffset'), min: -1000000, max: 1000000}) : undefined}/> : null}</div>
+        {current ? <span className={styles.matchCurrent}>{t('web.metadata.currentMatch')}</span> : <Button size="small" disabled={busy || !validOffset || order.length > 160} onClick={() => onUse(candidate.provider, candidate.id, offered.length ? order : undefined)}>{t('web.liveSource.useThis')}</Button>}
       </div>;
     })}
+    <p className={styles.lockHelp}>{t('web.metadata.chooseMatchHelp')}</p>
   </div>;
 }
 

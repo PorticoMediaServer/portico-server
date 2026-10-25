@@ -72,6 +72,8 @@ func repairScreenCandidates(ctx context.Context, tx *sql.Tx, t RepairTarget) ([]
 		if err = json.Unmarshal([]byte(raw), &r); err != nil {
 			return out, err
 		}
+		c.IdentityID = r.Identity.ID
+		c.IdentityType = r.Identity.Type
 		c.Title = r.Title
 		c.Year = r.Year
 		c.Subtitle = fmt.Sprintf("%s · %s", r.Identity.Type, r.Identity.ID)
