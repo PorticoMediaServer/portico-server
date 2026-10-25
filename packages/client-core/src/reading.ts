@@ -16,13 +16,14 @@ import type {Viewer} from './index.ts';
 
 export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
 type Immutable<T> = T extends readonly (infer V)[] ? readonly Immutable<V>[] : T extends object ? {readonly [K in keyof T]: Immutable<T[K]>} : T;
-export type ReadingManifest = Immutable<PostReadingSessionsResponse & {canAnnotate?: true; metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts}>;
+export type ReadingManifest = Immutable<PostReadingSessionsResponse & {canAnnotate?: true; canSaveFile?: true; metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts}>;
 /** Optional source capability is withheld unless the actual response says literal true. */
 export function parseReadingManifest(raw: unknown): ReadingManifest {
-  const {canAnnotate: decodedCapability, ...value} = withReadingManifestFacts(raw, decodePostReadingSessionsResponse) as PostReadingSessionsResponse & {metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts; canAnnotate?: unknown};
-  void decodedCapability;
+  const {canAnnotate: decodedCapability, canSaveFile: decodedSaveCapability, ...value} = withReadingManifestFacts(raw, decodePostReadingSessionsResponse) as PostReadingSessionsResponse & {metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts; canAnnotate?: unknown; canSaveFile?: unknown};
+  void decodedCapability; void decodedSaveCapability;
   const offered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canAnnotate === true;
-  return frozen({...value, ...(offered ? {canAnnotate: true as const} : {})});
+  const saveOffered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canSaveFile === true;
+  return frozen({...value, ...(offered ? {canAnnotate: true as const} : {}), ...(saveOffered ? {canSaveFile: true as const} : {})});
 }
 
 /** Derived from the generated official response, never a hand-written mirror. */
@@ -497,6 +498,7 @@ export class ReadingSession {
   #life = new AbortController();
   #activeRanges = 0;
   #activeSequential = false;
+  #savingFile = false;
   #retire: () => void;
   constructor(client: ReadingClient, manifest: ReadingManifest) {
     this.#client = client; this.manifest = frozen(manifest); this.signal = this.#life.signal;
@@ -607,6 +609,30 @@ export class ReadingSession {
       if (mime(r.headers.get('Content-Type')) !== entry.mime.toLowerCase()) fail('invalid_response');
       return bytes(r, entry.size, active, check, entry.size);
     });
+  };
+  /** Authenticated from-start original bytes; no public URL or offline receipt.
+   * The session and caller must remain current until all bytes are received. */
+  saveFile = async (operationId: string, signal?: AbortSignal): Promise<Uint8Array> => {
+    this.#check();
+    if (this.manifest.canSaveFile !== true) fail('not_permitted');
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(operationId)) fail('invalid_request');
+    if (this.manifest.size > 64 << 20) fail('response_size');
+    if (this.#savingFile) fail('request_in_progress');
+    this.#savingFile = true;
+    try {
+      // The canonical session route supplies the captured identity; the new
+      // source-declared subresource descriptor is checkpoint-generated.
+      const path = routePath('delete_reading_sessions_sessionId', {sessionId: this.manifest.sessionId}) + '/file-save';
+      return await this.#binary(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({operationId})}, signal, async (r, active, check) => {
+        if (r.status !== 200) return this.#client.error(r, active, check);
+        this.#etag(r);
+        if (r.headers.get('X-Reading-Item') !== this.manifest.itemId || r.headers.get('X-Reading-Source') !== this.manifest.sourceId
+          || r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.has('Content-Range')
+          || r.headers.get('Accept-Ranges') !== 'none' || mime(r.headers.get('Content-Type')) !== 'application/octet-stream'
+          || r.headers.get('Content-Disposition') !== 'attachment; filename="publication"') fail('source_changed');
+        return bytes(r, 64 << 20, active, check, this.manifest.size);
+      });
+    } finally { this.#savingFile = false; }
   };
   page = async (index: number, options: Readonly<{width: number; signal?: AbortSignal}>): Promise<ReadingPage> => {
     if (this.manifest.format !== 'cbz') fail('invalid_format');

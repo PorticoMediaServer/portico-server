@@ -43,6 +43,12 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[ReadingSessionRequest, ReadingSessionResponse](registry, m); err != nil {
 		return err
 	}
+	m = metadata("post_reading_sessions_sessionId_file_save", "POST", "/v1/reading/sessions/{sessionId}/file-save", "Save the selected original file through its live authenticated Reader session", apikit.ScopePlayback)
+	m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
+	m.Headers, m.BodyLimit, m.ResponseContentType = []string{"If-Match"}, 4096, "application/octet-stream"
+	if err := apikit.RegisterHTTP[ReadingFileSaveRequest, SubtitleBytesContract](registry, m); err != nil {
+		return err
+	}
 	m = metadata("get_reading_sessions_sessionId_progress", "GET", "/v1/reading/sessions/{sessionId}/progress", "Read the selected publication's saved location", apikit.ScopeRead)
 	m.Headers = []string{"If-Match"}
 	if err := apikit.RegisterHTTP[struct{}, ReadingProgressResponse](registry, m); err != nil {

@@ -1381,7 +1381,7 @@ func New(d Dependencies) http.Handler {
 			}
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range, If-Match, If-None-Match, Idempotency-Key, Last-Event-ID, Portico-Client, X-Portico-Transport-Class, X-Portico-Device-Class, X-Portico-App-Language, X-Portico-Device-Name, X-Portico-Device-Platform, X-Portico-Installation-Id, X-Portico-App, X-Portico-App-Version")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Location, Retry-After, ETag, Idempotent-Replayed, RateLimit, RateLimit-Policy, Report-Every-Ms")
+			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Content-Disposition, X-Reading-Item, X-Reading-Source, Location, Retry-After, ETag, Idempotent-Replayed, RateLimit, RateLimit-Policy, Report-Every-Ms")
 			// Without this a browser remembers a preflight for about five seconds, so the hosted web
 			// app (always cross-origin here, always sending Authorization) pays an OPTIONS before
 			// nearly every call. The answer only says which methods and headers this origin may use;
