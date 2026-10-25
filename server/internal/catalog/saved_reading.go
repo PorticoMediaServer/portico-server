@@ -169,6 +169,6 @@ func (s *Service) savedEntries(profile string, ids []string, scope savedReadingS
 // converter domain so an unavailable original cannot conceal a native version.
 func savedReadingPrimaryPublicationSQL(item string) string {
 	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + `
- AND ((json_extract(admitted.value,'$.kind')='book' AND (candidate.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND candidate.format IN('mobi','azw3')))) OR (json_extract(admitted.value,'$.kind')='comic' AND candidate.format IN('cbz','pdf')))
+ AND ((json_extract(admitted.value,'$.kind')='book' AND (candidate.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND candidate.format IN('mobi','azw3')))) OR (json_extract(admitted.value,'$.kind')='comic' AND candidate.format IN('cbz','pdf','image-folder')))
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)`
 }

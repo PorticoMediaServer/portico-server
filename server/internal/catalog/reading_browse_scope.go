@@ -216,7 +216,7 @@ func (s *Service) readingMobiConfigured() bool {
 // single-library SQL never infer format support from member metadata.
 func (r *readingBrowseScope) sourceFormats() []string {
 	if r.kind == "comic" {
-		return []string{"cbz", "pdf"}
+		return []string{"cbz", "pdf", "image-folder"}
 	}
 	if r.mobi {
 		return []string{"epub", "pdf", "mobi", "azw3"}
