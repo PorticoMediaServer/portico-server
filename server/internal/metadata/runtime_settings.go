@@ -14,13 +14,15 @@ const DefaultLocalArtworkLimitBytes int64 = 2 << 30
 // MetadataSettings exposes credential presence only. Submitted keys never return
 // in JSON or provider failures; blank keys restore Portico's application key.
 type MetadataSettings struct {
-	LocalArtworkUsedBytes    int64 `json:"localArtworkUsedBytes"`
-	Revision                 int64 `json:"revision"`
-	LocalArtworkLimitBytes   int64 `json:"localArtworkLimitBytes"`
-	IncludeAdult             bool  `json:"includeAdult"`
-	ArtworkMaxEdge           int   `json:"artworkMaxEdge"`
-	TMDBCredentialConfigured bool  `json:"tmdbCredentialConfigured"`
-	TVDBCredentialConfigured bool  `json:"tvdbCredentialConfigured"`
+	LibrariesComplete        *bool                     `json:"librariesComplete,omitempty"`
+	Libraries                []MetadataLibrarySettings `json:"libraries,omitempty"`
+	LocalArtworkUsedBytes    int64                     `json:"localArtworkUsedBytes"`
+	Revision                 int64                     `json:"revision"`
+	LocalArtworkLimitBytes   int64                     `json:"localArtworkLimitBytes"`
+	IncludeAdult             bool                      `json:"includeAdult"`
+	ArtworkMaxEdge           int                       `json:"artworkMaxEdge"`
+	TMDBCredentialConfigured bool                      `json:"tmdbCredentialConfigured"`
+	TVDBCredentialConfigured bool                      `json:"tvdbCredentialConfigured"`
 	// OpenSubtitles, for subtitles found online: whether the owner saved their
 	// own API key and password (neither is ever sent back), and the account name.
 	OpenSubtitlesKeyConfigured      bool   `json:"openSubtitlesKeyConfigured"`
@@ -72,12 +74,13 @@ func (s *Service) CheckOpenSubtitles(ctx context.Context) (OpenSubtitlesStatus, 
 }
 
 type MetadataSettingsUpdate struct {
-	ExpectedRevision       int64   `json:"expectedRevision"`
-	LocalArtworkLimitBytes int64   `json:"localArtworkLimitBytes"`
-	IncludeAdult           bool    `json:"includeAdult"`
-	ArtworkMaxEdge         *int    `json:"artworkMaxEdge,omitempty"`
-	TMDBReadToken          *string `json:"tmdbReadToken,omitempty"`
-	TVDBProjectKey         *string `json:"tvdbProjectKey,omitempty"`
+	Libraries              []MetadataLibraryChange `json:"libraries,omitempty"`
+	ExpectedRevision       int64                   `json:"expectedRevision"`
+	LocalArtworkLimitBytes int64                   `json:"localArtworkLimitBytes"`
+	IncludeAdult           bool                    `json:"includeAdult"`
+	ArtworkMaxEdge         *int                    `json:"artworkMaxEdge,omitempty"`
+	TMDBReadToken          *string                 `json:"tmdbReadToken,omitempty"`
+	TVDBProjectKey         *string                 `json:"tvdbProjectKey,omitempty"`
 	// Absent: unchanged. Empty: back to the server's own (the environment's).
 	OpenSubtitlesAPIKey   *string `json:"openSubtitlesApiKey,omitempty"`
 	OpenSubtitlesUsername *string `json:"openSubtitlesUsername,omitempty"`
@@ -89,6 +92,11 @@ type subtitleCredentials struct{ key, username, password string }
 
 func readMetadataSettings(ctx context.Context, tx *sql.Tx) (MetadataSettings, string, string, error) {
 	out, tmdb, tvdb, _, err := readMetadataSettingsWithSubtitles(ctx, tx)
+	if err == nil {
+		var complete bool
+		out.Libraries, complete, err = readMetadataLibraries(ctx, tx)
+		out.LibrariesComplete = &complete
+	}
 	return out, tmdb, tvdb, err
 }
 func readMetadataSettingsWithSubtitles(ctx context.Context, tx *sql.Tx) (MetadataSettings, string, string, subtitleCredentials, error) {
@@ -262,6 +270,9 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	}
 	if current.Revision != in.ExpectedRevision {
 		return current, ErrScreenConflict
+	}
+	if e = applyMetadataLibraries(ctx, tx, in.Libraries); e != nil {
+		return current, e
 	}
 	if in.TMDBReadToken != nil {
 		tmdb = strings.TrimSpace(*in.TMDBReadToken)
