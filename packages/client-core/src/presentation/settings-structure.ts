@@ -317,6 +317,18 @@ const accountPages: readonly AuthoredPage[] = [
           {value: '320', label: 'next.settingsSpec.account.music.groups.3.rows.0.control.options.2.label'},
           {value: '96', label: 'next.settingsSpec.account.music.groups.3.rows.0.control.options.3.label'},
         ]}, {scope: 'deviceClass'}),
+        pref('music.qualityMobile', 'next.settingsSpec.account.music.groups.3.rows.1.label', {type: 'choice', choices: [
+          {value: 'original', label: 'next.settingsSpec.account.music.groups.3.rows.1.control.options.0.label'},
+          {value: 'cd-quality', label: 'next.settingsSpec.account.music.groups.3.rows.1.control.options.1.label'},
+          {value: '320', label: 'next.settingsSpec.account.music.groups.3.rows.1.control.options.2.label'},
+          {value: '96', label: 'next.settingsSpec.account.music.groups.3.rows.1.control.options.3.label'},
+        ]}, {scope: 'deviceClass', platforms: ['phone']}),
+        pref('music.qualityDownloads', 'next.settingsSpec.account.music.groups.3.rows.2.label', {type: 'choice', choices: [
+          {value: 'original', label: 'next.settingsSpec.account.music.groups.3.rows.2.control.options.0.label'},
+          {value: 'cd-quality', label: 'next.settingsSpec.account.music.groups.3.rows.2.control.options.1.label'},
+          {value: '320', label: 'next.settingsSpec.account.music.groups.3.rows.2.control.options.2.label'},
+          {value: '96', label: 'next.settingsSpec.account.music.groups.3.rows.2.control.options.3.label'},
+        ]}, {scope: 'deviceClass', platforms: ['phone']}),
       ]},
       {id: 'advancedSound', title: 'next.settingsSpec.account.music.advanced.groups.0.title', advanced: true, rows: [
         // One device-local engine value, never an account preference (23 Oct ruling).
