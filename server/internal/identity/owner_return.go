@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -190,6 +191,28 @@ func (s *Service) CompleteOwnerReturnTx(ctx context.Context, tx *sql.Tx, expecte
 		return none, err
 	}
 	if who.AccountID != approvedAccount || who.Username != approvedUsername {
+		return none, ErrUnauthorized
+	}
+	// Final local CAS before anything is consumed: the stored signed start's mode
+	// must still equal this confirmed move's own start_over. A legacy start has no
+	// mode and is an ordinary switch only.
+	var startPayload []byte
+	if err = tx.QueryRowContext(ctx, `SELECT start_payload FROM identity_owner_completions WHERE operation_id=?`, operation).Scan(&startPayload); err != nil {
+		return none, err
+	}
+	var storedStart claimweb.OwnerStart
+	if json.Unmarshal(startPayload, &storedStart) != nil {
+		return none, ErrUnauthorized
+	}
+	var startOver bool
+	if err = tx.QueryRowContext(ctx, `SELECT start_over FROM identity_moves WHERE id=?`, c.move).Scan(&startOver); err != nil {
+		return none, err
+	}
+	want := "switch"
+	if startOver {
+		want = "start-over"
+	}
+	if storedStart.TransitionMode != want && !(storedStart.TransitionMode == "" && !startOver) {
 		return none, ErrUnauthorized
 	}
 	if err = CheckPorticoReturnTx(ctx, tx, who); err != nil {
