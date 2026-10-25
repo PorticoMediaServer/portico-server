@@ -161,6 +161,10 @@ export class SettingsOwnerSwitch {
     try {operation.check();} catch (error) {await this.claim!.cancel();throw error;}
     this.delivered = true;return url;
   }
+  /** The exact people still waiting, for the codes host; owner-fenced server read. */
+  waiting(signal?:AbortSignal){return this.moves.waiting(signal);}
+  /** One memory-only receipt for the given exact targets; admits nobody. */
+  codes(accountIds:readonly string[],signal?:AbortSignal){return this.moves.codes(accountIds,signal);}
   async cancelPreview() {
     const preview = this.state.preview;
     if (!preview || this.state.confirmed) throw new Error('Only an unconfirmed move preview can be canceled.');
