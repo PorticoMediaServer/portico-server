@@ -35,6 +35,22 @@ export function readerPagePosition(location: ReaderLocation | null, count: numbe
   }
   return location.pageLabel ? t('next.reader.pageLabel', {page: location.pageLabel}) : undefined;
 }
+/** Use actual ordered outline positions and the live location, without inventing read/completion facts. */
+export function readerCurrentContentsId(items: readonly ReaderTocItem[], location: ReaderLocation | null): string | undefined {
+  if (!location || !Number.isFinite(location.progression)) return;
+  const flat: ReaderTocItem[] = [];
+  const visit = (entries: readonly ReaderTocItem[]) => {for (const entry of entries) {flat.push(entry); if (entry.children) visit(entry.children);}};
+  visit(items);
+  let current: ReaderTocItem | undefined;
+  for (const item of flat) {
+    if (item.location.format !== location.format || !Number.isFinite(item.location.progression)) return;
+    if (item.location.progression <= location.progression && (!current || item.location.progression > current.location.progression)) current = item;
+  }
+  // Equal starts are ambiguous (for example a parent and its first child).
+  if (!current) return;
+  const start = current.location.progression;
+  if (flat.filter(item => item.location.progression === start).length === 1) return current.id;
+}
 export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
 
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
@@ -102,8 +118,10 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     const next = index === undefined ? undefined : hits[index];
     if (next) {setCurrentHit(next.id); navigate(next.location);}
   };
+  const currentContentsId = snapshot.status === 'ready' && snapshot.sourceId === publication.source.id && snapshot.sourceRevision === publication.source.revision
+    ? readerCurrentContentsId(snapshot.toc, snapshot.location) : undefined;
   const contents = (items: readonly ReaderTocItem[]): readonly ReaderContentsEntry[] => items.map(item => ({id: item.id, label: item.label,
-    page: item.location.pageLabel, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
+    page: item.location.pageLabel, current: item.id === currentContentsId, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
   const searchHits: ReaderSearchHit[] = hits.map(hit => {
     const start = hit.excerpt.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
     const context = start < 0 ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, start)}, {text: hit.excerpt.slice(start, start + query.length), match: true}, {text: hit.excerpt.slice(start + query.length)}];
@@ -138,7 +156,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
       hint: presentation === 'phone' && hint && !panel && value.status === 'ready' && value.preferences.tapToTurn && value.selection === null ? <ReaderFirstRunHint onDone={dismissHint}/> : undefined,
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined,
-      searchNavigation: active && presentation === 'phone' && currentHit && hits.some(hit => hit.id === currentHit)
+      searchNavigation: active && value.status === 'ready' && value.sourceId === publication.source.id && value.sourceRevision === publication.source.revision && presentation === 'phone' && currentHit && hits.some(hit => hit.id === currentHit)
         ? <ReaderMatchNavigation query={query} onStep={stepSearch} onClose={() => setQuery('')}/> : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
       fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
