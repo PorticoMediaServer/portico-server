@@ -25,7 +25,7 @@ export function ReaderBrowserHint({visible}: Readonly<{visible: boolean}>) {
     if (dismissed || standalone()) return;
     if (safariHomeScreen()) setKind('safari');
     const available = (event: Event) => {
-      if (standalone() || typeof (event as Partial<InstallOffer>).prompt !== 'function') return;
+      if (!event.isTrusted || standalone() || typeof (event as Partial<InstallOffer>).prompt !== 'function') return;
       event.preventDefault(); offer.current = event as InstallOffer; setKind('install');
     };
     const installed = () => {offer.current = undefined; setKind(undefined);};
