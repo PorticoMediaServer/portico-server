@@ -1,0 +1,41 @@
+package playbackv1
+
+import (
+	"context"
+	"testing"
+
+	"portico.local/server/internal/catalogtest"
+)
+
+func TestSkipEvidenceRequiresCurrentViewerVisibility(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, provenance string
+		confidence             float64
+		approved               int
+		want                   int
+	}{
+		{"manual below configured floor", "manual", "season_audio_match:intro:v1", .6, 0, 0},
+		{"manual ambiguous", "manual", "season_audio_match:intro:semantic_ambiguous", 1, 0, 0},
+		{"manual visible", "manual", "visual_credits:v1", .7, 0, 1},
+		{"manual approved bypass", "manual", "visual_credits:semantic_ambiguous", .1, 1, 1},
+		{"automatic below automatic floor", "automatic", "season_audio_match:intro:v1", .9, 0, 0},
+		{"automatic measured", "automatic", "season_audio_match:intro:v1", .95, 0, 1},
+		{"automatic approved bypass", "automatic", "visual_credits:semantic_ambiguous", .1, 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := catalogtest.Open(t)
+			lib := c.Library("movies", "Movies", "movie", "/movies")
+			movie := c.Movie(lib, "/movies/movie.mkv", "Movie", 2026)
+			c.Exec(`INSERT INTO library_sources(id,library_id,configured_root,root) VALUES('source','movies','/movies','/movies')`)
+			c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES('object','source',?,'root','movie.mkv','revision','{}',1,1)`, movie.Token)
+			c.Exec(`INSERT INTO analysis_markers(id,object_id,source_revision,source_binding,kind,start_us,end_us,confidence,provenance,result_id,approved) VALUES('marker','object','revision','binding','intro',0,1000000,?,?,'',?)`, tc.confidence, tc.provenance, tc.approved)
+			c.Exec(`INSERT INTO server_settings(singleton,"segments.viewerConfidencePercent","segments.automaticConfidencePercent") VALUES(1,70,95) ON CONFLICT(singleton) DO UPDATE SET "segments.viewerConfidencePercent"=70,"segments.automaticConfidencePercent"=95`)
+			s := &Service{DB: c.DB}
+			s.recordSkip(context.Background(), row{id: "play", item: movie.Public, generation: 1}, SkipReport{MarkerID: "marker", Mode: tc.mode, PositionMs: 1000})
+			var count int
+			if err := c.DB.QueryRow(`SELECT count(*) FROM playback_marker_skips`).Scan(&count); err != nil || count != tc.want {
+				t.Fatalf("count=%d want=%d: %v", count, tc.want, err)
+			}
+		})
+	}
+}
