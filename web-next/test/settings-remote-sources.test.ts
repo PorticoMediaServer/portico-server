@@ -62,6 +62,13 @@ test('saved Add handlers cannot adopt a reopened form lifetime', async () => {
     useRef(initial: any) {const i = cursor++;return slots[i] ??= {current: initial};},
     useEffect(effect: () => void, deps: any[]) {const i = cursor++, old = slots[i];
       if (!old || deps.some((value, index) => value !== old[index])) {slots[i] = deps;effects.push(effect);}},
+    useMemo(factory: () => any, deps: any[]) {const i = cursor++, old = slots[i];
+      if (!old || deps.some((value, index) => value !== old[index])) slots[i] = {deps, value: factory()};
+      return slots[i].value;},
+    useSyncExternalStore(subscribe: (onChange: () => void) => () => void, getSnapshot: () => any) {
+      const i = cursor++;
+      if (!slots[i]) {slots[i] = {};effects.push(() => {subscribe(() => {dirty = true;});});}
+      return getSnapshot();},
   };
   let io = 0, completions = 0, open = true;
   const service = {testConnection: async () => {io++;return {origin: 'https://a.example', rangeSupport: 'unknown'};},

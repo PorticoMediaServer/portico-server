@@ -160,8 +160,7 @@ export class AccountMoveClient extends MoveTransport {
  cancelPreview(move:AccountMove,signal?:AbortSignal){if(move.stage!=='preview')invalid();return this.call(encodedRoutePath('post_sign_in_move_cancel',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_cancel',{expectedRevision:move.revision}),()=>undefined,signal);}
  finish(move:AccountMove,signal?:AbortSignal){if(!['moving_to_local','moving_to_portico'].includes(move.stage))invalid();return this.call(encodedRoutePath('post_sign_in_move_finish',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_finish',{expectedRevision:move.revision}),()=>undefined,signal);}
  codes(accountIds:readonly string[],signal?:AbortSignal){if(accountIds.length>2000||accountIds.some(id=>!text(id,128))||new Set(accountIds).size!==accountIds.length)invalid();return this.call(routePath('post_sign_in_move_codes'),'POST',routeBody('post_sign_in_move_codes',{accountIds:[...accountIds]}),parseAccountMoveCodes,signal);}
- /** The exact waiting people, for the codes sheet's targets. The generated key
-  * for this read arrives with the next official generation; the literal is the
-  * declared pending path, not a second contract. */
- waiting(signal?:AbortSignal){return this.call('/v1/admin/sign-in/move/waiting','GET',undefined,parseAccountMoveWaiting,signal);}
+ /** The exact waiting people, for the codes sheet's targets. The read is now an
+  * official generated route, like every other client path. */
+ waiting(signal?:AbortSignal){return this.call(routePath('get_sign_in_move_waiting'),'GET',undefined,parseAccountMoveWaiting,signal);}
 }
