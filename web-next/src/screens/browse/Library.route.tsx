@@ -62,9 +62,11 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
   const life = useMemo(() => screenLifetime(context), [context]);
   const [capabilitySnapshot, setCapabilities] = useState<Readonly<{context: ProtectedLibraryScreen['context']; data: BrowseCapabilities}>>();
   const capabilities = capabilitySnapshot?.context === captured.context && capabilitySnapshot.data.library.id === library.id && capabilitySnapshot.data.library.kind === library.kind ? capabilitySnapshot.data : undefined;
-  /** desktop-read 1b/2/2c draw the library's own wash and its classified count line. */
-  const {wash, counts} = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
+  /** desktop-read 1b/2/2c draw the library's own wash and its classified count line, and
+   *  phone-read 1b lists every library in the switcher with its own count. */
+  const {wash, counts, libraryCounts} = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
     api: life.api, signal: life.signal, isCurrent: life.current, reportError: context.effects.reportError, enabled: true});
+  const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: libraryCounts.find(row => row.id === choice.id)?.text}));
   useEffect(() => () => life.dispose(), [life]);
   useEffect(() => {
     let active = true;
@@ -80,7 +82,7 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
   const selected = tabs.find(tab => tab.id === (periodicalPivot ?? search.view ?? 'discover')) ?? tabs[0]!;
   const gridPivot = tabs.find(tab => tab.id === 'browse')?.pivot;
   const navigate = (value: LibraryScreenSearch) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: value}).catch(context.effects.reportError);};
-  const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot={periodicalPivot ?? selected.id}
+  const header = <LibraryIdentity library={library} libraries={libraryChoices} pivot={periodicalPivot ?? selected.id}
     tabs={tabs.map(tab => ({value: tab.id, label: t(tab.label)}))}
     appearance={{view: appearance.libraryView, cardWidth: width < 600 ? 108 : 190, cardSize: 'medium', backdrops: appearance.showBackdrops}}
     preferences={appearance} artwork={context.artwork} libraryMenu={undefined} wash={wash} counts={counts}
@@ -215,7 +217,8 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   /** A Reading library draws the same wash and count line on its Books pivot, which builds its own header. */
   const readingHeader = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
     api: resources.life.api, signal: resources.life.signal, isCurrent: resources.life.current, reportError: context.effects.reportError, enabled: isReadingLibrary(library.kind)});
-  const header = {library, libraries: context.identity?.libraries ?? [], pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
+  const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: readingHeader.libraryCounts.find(row => row.id === choice.id)?.text}));
+  const header = {library, libraries: libraryChoices, pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
     wash: readingHeader.wash, counts: readingHeader.counts,
     appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
     artwork: context.artwork, libraryMenu: context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,

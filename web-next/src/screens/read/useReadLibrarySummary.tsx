@@ -6,6 +6,12 @@ import type {ShellArtwork} from '../../shell/artwork';
 import {ReadLibraryWash} from './ReadLibraryWash';
 
 const publicationPivot: Readonly<Record<string, string>> = {book: 'books', magazine: 'magazines', newspaper: 'newspapers'};
+/** Each library's own first published count, worded as the drawn library list words it. */
+const kindPivot: Readonly<Record<string, string>> = {movie: 'movies', show: 'shows', artist: 'artists', album: 'albums', song: 'songs', ebook: 'books', comic: 'comics', book: 'books'};
+const libraryCountText = (counts: readonly Readonly<{kind: string; count: number; atLeast: boolean}>[]) => {
+  const first = counts.find(row => row.count > 0);
+  return first ? defaultI18n.t(first.atLeast ? 'lib.countAtLeast' : 'lib.count', {count: first.count, pivot: kindPivot[first.kind] ?? first.kind}) : undefined;
+};
 
 export type ReadLibrarySummaryRead = Readonly<{
   /** Identity of the captured screen; a read for another capture is never reused. */
@@ -22,8 +28,8 @@ export type ReadLibrarySummaryRead = Readonly<{
  * both are published: a publication type it does not classify is absent, never derived from the
  * ebook total, and a library with no artwork draws no wash.
  */
-export function useReadLibrarySummary({context, libraryId, artwork, api, signal, isCurrent, reportError, enabled}: ReadLibrarySummaryRead): Readonly<{wash?: ReactNode; counts: readonly FactPart[]}> {
-  const [snapshot, setSnapshot] = useState<Readonly<{context: unknown; libraryId: string; covers: readonly string[]; publicationCounts: readonly LibraryPublicationCount[]}>>();
+export function useReadLibrarySummary({context, libraryId, artwork, api, signal, isCurrent, reportError, enabled}: ReadLibrarySummaryRead): Readonly<{wash?: ReactNode; counts: readonly FactPart[]; libraryCounts: readonly Readonly<{id: string; text: string}>[]}> {
+  const [snapshot, setSnapshot] = useState<Readonly<{context: unknown; libraryId: string; covers: readonly string[]; publicationCounts: readonly LibraryPublicationCount[]; libraryCounts: readonly Readonly<{id: string; text: string}>[]}>>();
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
@@ -31,7 +37,8 @@ export function useReadLibrarySummary({context, libraryId, artwork, api, signal,
     void readLibrarySummaries(api, signal(controller.signal)).then(rows => {
       if (!active || !isCurrent()) return;
       const row = rows.find(candidate => candidate.id === libraryId);
-      setSnapshot({context, libraryId, covers: row?.summary.coverUrls ?? [], publicationCounts: row?.summary.publicationCounts ?? []});
+      setSnapshot({context, libraryId, covers: row?.summary.coverUrls ?? [], publicationCounts: row?.summary.publicationCounts ?? [],
+        libraryCounts: rows.flatMap(candidate => {const text = libraryCountText(candidate.summary.counts); return text ? [{id: candidate.id, text}] : [];})});
     }).catch(error => {if (active && isCurrent()) reportError(error);});
     return () => {active = false; controller.abort();};
   }, [context, libraryId, api, signal, isCurrent, reportError, enabled]);
@@ -41,5 +48,5 @@ export function useReadLibrarySummary({context, libraryId, artwork, api, signal,
     : undefined;
   const counts = (current?.publicationCounts ?? []).filter(row => row.count > 0).map(row => ({id: row.kind, role: 'context' as const,
     text: defaultI18n.t(row.atLeast ? 'lib.countAtLeast' : 'lib.count', {count: row.count, pivot: publicationPivot[row.kind] ?? row.kind})}));
-  return {wash, counts};
+  return {wash, counts, libraryCounts: current?.libraryCounts ?? []};
 }
