@@ -42,11 +42,11 @@ export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:st
 export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;folders:number}>;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
-export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;program?:string;programVersion?:string;programRevision?:number;remote?:string;backgroundSpeed?:string}>;
+export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;program?:string;programVersion?:string;programRevision?:number;programIncluded?:boolean;remote?:string;backgroundSpeed?:string}>;
 /** The drawn Advanced page: how a source's folders are checked, the disk its
  * read cache may use, and which analysis stages run for files found through it. */
 export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean;introsMode:'off'|'inherit'|'sound'|'picture';doubleCheckFolders:boolean;dirCacheSeconds:number;readBufferBytes:number;connectTimeoutSeconds:number;idleTimeoutSeconds:number;retries:number;lowLevelRetries:number}>;
-export type SourceProgram=Readonly<{executable:string;version:string;revision:number}>;
+export type SourceProgram=Readonly<{executable:string;version:string;revision:number;included:boolean}>;
 export type SourceAdvancedSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;cacheSupported:boolean;cacheApplied:boolean;cacheError?:string;scanIntervalObserved:number;values:SourceAdvanced}>;
 const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
  list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
@@ -108,6 +108,7 @@ function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
  return Object.freeze({sourceId:id,generation:raw.generation,state:raw.state,...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as string}),rangeSupport:raw.rangeSupport,lastCheckedAt:raw.lastCheckedAt,connectionsInUse:raw.connectionsInUse,playbackReads:raw.playbackReads,analysisReads:raw.analysisReads,scanIntervalSeconds:raw.scanIntervalSeconds,libraries:Object.freeze(raw.libraries.map(sourceLibraryUse)),librariesTruncated:raw.librariesTruncated,
   ...(text(raw.program,8192)&&raw.program?{program:raw.program}:{}),...(text(raw.programVersion,256)&&raw.programVersion?{programVersion:raw.programVersion}:{}),
   ...(integer(raw.programRevision)&&raw.programRevision>0?{programRevision:raw.programRevision}:{}),
+  ...(typeof raw.programIncluded==='boolean'?{programIncluded:raw.programIncluded}:{}),
   ...(text(raw.remote,8192)&&raw.remote?{remote:raw.remote}:{}),...(text(raw.backgroundSpeed,64)&&raw.backgroundSpeed?{backgroundSpeed:raw.backgroundSpeed}:{})});
 }
 /** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere).
@@ -517,18 +518,22 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
  }
  /** Change the rclone program that serves a mounted source; the mount approves
   * it by running it with version before it is accepted. */
- async setProgram(id:string,expectedRevision:number,executable:string,guard?:()=>boolean):Promise<SourceProgram>{
+ async setProgram(id:string,expectedRevision:number,choice:Readonly<{useIncluded?:boolean;executable?:string}>,guard?:()=>boolean):Promise<SourceProgram>{
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
-  if(!text(id,256)||!id||!text(executable)||!executable||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)throw new Error('Invalid program change.');
+  if(!text(id,256)||!id||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)throw new Error('Invalid program change.');
+  const useIncluded=choice.useIncluded===true;
+  const executable=choice.executable??'';
+  if(!useIncluded&&(!text(executable)||!executable))throw new Error('Invalid program change.');
   const op=await this.operationId();
   if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();
   const epoch=this.epoch;
-  const raw=await this.request(encodedRoutePath('put_storage_source_program',{id:encodeURIComponent(id)}),'PUT',{operationId:op,expectedRevision,executable},guard);
+  const raw=await this.request(encodedRoutePath('put_storage_source_program',{id:encodeURIComponent(id)}),'PUT',{operationId:op,expectedRevision,useIncluded,...(useIncluded?{}:{executable})},guard);
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);
   if(!record(raw)||!record(raw.program)||!text(raw.program.executable)||!raw.program.executable||!text(raw.program.version,256))invalid();
   if(!integer(raw.program.revision)||raw.program.revision<expectedRevision)invalid();
-  return Object.freeze({executable:raw.program.executable,version:raw.program.version,revision:raw.program.revision});
+  if(typeof raw.program.included!=='boolean')invalid();
+  return Object.freeze({executable:raw.program.executable,version:raw.program.version,revision:raw.program.revision,included:raw.program.included});
  }
  /** The Advanced page as saved; unsaved values default from the source's folders. */
  async readAdvanced(id:string,guard?:()=>boolean):Promise<SourceAdvancedSettings>{

@@ -653,11 +653,11 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
   }, [service, source.id, source.generation, isCurrent, libraries]);
   useEffect(() => {if (!attachTo && status?.libraries.length) setAttachTo(status.libraries[0].libraryId);}, [attachTo, status]);
   useEffect(() => {if (!attachTo && librarySnapshot.directory.data?.items.length) setAttachTo(librarySnapshot.directory.data.items[0].id);}, [attachTo, librarySnapshot.directory.data]);
-  const changeProgram = async (executable: string) => {
+  const changeProgram = async (choice: Readonly<{useIncluded?: boolean; executable?: string}>) => {
     if (!status?.programRevision) {setProgramNote(t('next.remoteSources.programUnavailable'));return;}
     setProgramNote('');
     try {
-      await service.setProgram(source.id, status.programRevision, executable, attemptGuard());
+      await service.setProgram(source.id, status.programRevision, choice, attemptGuard());
       const next = await service.readStatus(source.id, attemptGuard());
       if (active.current) {setStatus(next);setProgramNote(t('next.remoteSources.programChanged'));}
     } catch (value) {if (active.current) setProgramNote(attachFailure(value));}
@@ -786,6 +786,9 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
       {advancedNote && <p className={styles.note} role="status">{advancedNote}</p>}
       {status?.program && <div className={styles.programRows}>
         <p className={styles.advTitle}>{t('next.remoteSources.connection')}</p>
+        <label className={styles.switchRow}><span>{t('next.remoteSources.customProgram')}<small className={styles.note}>{t('next.remoteSources.customProgramHelp')}</small></span>
+          <Switch aria-label={t('next.remoteSources.customProgram')} checked={!status.programIncluded} disabled={!status.programRevision}
+            onCheckedChange={value => {if (!value) void changeProgram({useIncluded: true}); else setPickingProgram(true);}}/></label>
         <div className={styles.programRow}><span>{t('next.remoteSources.program')}</span>
           <span className={styles.mono}>{status.program}{status.programVersion ? ` · ${status.programVersion}` : ''}</span>
           <Button size="xs" variant="glass" onClick={() => setPickingProgram(true)}>{t('next.remoteSources.chooseProgram')}</Button></div>
@@ -797,7 +800,7 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
           <Button size="xs" variant="glass" disabled={!openSection} onClick={() => openSection?.('storage')}>{t('next.remoteSources.changeInSchedule')}</Button></div>}
         {programNote && <p className={styles.note} role="status">{programNote}</p>}
       </div>}
-      {pickingProgram && <ProgramPicker open={pickingProgram} api={api} startAt={status?.program ?? ''} onOpenChange={setPickingProgram} onChoose={path => void changeProgram(path)}/>}
+      {pickingProgram && <ProgramPicker open={pickingProgram} api={api} startAt={status?.program ?? ''} onOpenChange={setPickingProgram} onChoose={path => void changeProgram({executable: path})}/>}
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.foldersSection')}</h3>
       <p className={styles.note}>{t('next.remoteSources.foldersNote')}</p>

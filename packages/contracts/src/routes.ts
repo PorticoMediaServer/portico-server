@@ -7376,6 +7376,62 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_reading_periodical_groups",
+    "method": "GET",
+    "path": "/v1/libraries/{libraryId}/reading/periodicals",
+    "summary": "Read accepted typed and dated Reading periodical groups",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "publicationType",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "request_in_progress",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_reading_periodical_issues",
+    "method": "GET",
+    "path": "/v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues",
+    "summary": "Read dated issues in one accepted typed Reading series",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "publicationType",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "request_in_progress",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_reading_series_items",
     "method": "GET",
     "path": "/v1/libraries/{libraryId}/reading/series/{seriesId}",
@@ -19038,6 +19094,8 @@ export const routePaths = {
   "get_reading_continue": "/v1/reading/continue",
   "get_reading_discover": "/v1/reading/discover",
   "get_reading_items": "/v1/reading/items",
+  "get_reading_periodical_groups": "/v1/libraries/{libraryId}/reading/periodicals",
+  "get_reading_periodical_issues": "/v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues",
   "get_reading_series_items": "/v1/libraries/{libraryId}/reading/series/{seriesId}",
   "get_reading_sessions_sessionId_assets": "/v1/reading/sessions/{sessionId}/assets",
   "get_reading_sessions_sessionId_pages_pageIndex": "/v1/reading/sessions/{sessionId}/pages/{pageIndex}",

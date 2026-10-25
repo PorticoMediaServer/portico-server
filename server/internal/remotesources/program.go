@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 )
 
@@ -19,6 +20,7 @@ type SourceProgram struct {
 	Executable string `json:"executable"`
 	Version    string `json:"version"`
 	Revision   int64  `json:"revision"`
+	Included   bool   `json:"included"`
 }
 
 // SetSourceProgram changes the program that serves one mounted source, using
@@ -26,9 +28,19 @@ type SourceProgram struct {
 // and the captured source association. It restarts that source's serve process
 // through the ordinary mount command; nothing about the source's identity,
 // folders, read profile or admission changes here.
-func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Service, owner identity.Principal, source, operationID, executable string, expectedRevision int64) (SourceProgram, error) {
+func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Service, owner identity.Principal, source, operationID, executable string, useIncluded bool, expectedRevision int64) (SourceProgram, error) {
 	if s == nil || s.db == nil || s.mounts == nil || source == "" || expectedRevision < 1 || len(operationID) > 128 || operationID == "" {
 		return SourceProgram{}, storage.ErrRemoteConfig
+	}
+	includedPath := ""
+	if bundled, e := rcloneprogram.Resolve(); e == nil {
+		includedPath = bundled.Path
+	}
+	if useIncluded {
+		if includedPath == "" {
+			return SourceProgram{}, storage.ErrRemoteConfig
+		}
+		executable = includedPath
 	}
 	executable = strings.TrimSpace(executable)
 	if !filepath.IsAbs(executable) || len(executable) > 8192 || strings.IndexFunc(executable, unicode.IsControl) >= 0 || strings.Contains(executable, "\x00") {
@@ -95,5 +107,5 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 	if receipt.Mount == nil {
 		return SourceProgram{}, storage.ErrRemoteConfig
 	}
-	return SourceProgram{Executable: receipt.Mount.Executable, Version: receipt.Mount.ExecutableVersion, Revision: receipt.Mount.ControlRevision}, nil
+	return SourceProgram{Executable: receipt.Mount.Executable, Version: receipt.Mount.ExecutableVersion, Revision: receipt.Mount.ControlRevision, Included: includedPath != "" && receipt.Mount.Executable == includedPath}, nil
 }

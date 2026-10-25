@@ -16,7 +16,8 @@ import (
 type SourceProgramRequest struct {
 	OperationID      string `json:"operationId"`
 	ExpectedRevision int64  `json:"expectedRevision"`
-	Executable       string `json:"executable"`
+	Executable       string `json:"executable,omitempty"`
+	UseIncluded      bool   `json:"useIncluded"`
 }
 
 type SourceProgramResponse struct {
@@ -104,7 +105,7 @@ func registerSourceProgram(registry *apikit.Registry, d Dependencies) {
 		if r.URL.RawQuery != "" {
 			return SourceProgramResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		program, err := d.RemoteSources.SetSourceProgram(ctx, d.Identity, p, r.PathValue("id"), in.OperationID, in.Executable, in.ExpectedRevision)
+		program, err := d.RemoteSources.SetSourceProgram(ctx, d.Identity, p, r.PathValue("id"), in.OperationID, in.Executable, in.UseIncluded, in.ExpectedRevision)
 		if err != nil {
 			return SourceProgramResponse{}, advancedError(err)
 		}

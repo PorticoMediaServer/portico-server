@@ -234,6 +234,8 @@ export const remoteSourcesMessages = {
   'next.remoteSources.changeInSchedule': 'Change in Schedule',
   'next.remoteSources.programChanged': 'The program was approved and the source is restarting with it.',
   'next.remoteSources.programUnavailable': 'This source has no program to change.',
+  'next.remoteSources.customProgram': 'Use a custom rclone program',
+  'next.remoteSources.customProgramHelp': 'Portico uses the rclone that comes with Portico Server. Choose your own only if you need a different build.',
   'next.remoteSources.existingLibraryMissing': 'Choose the library to add these folders to.',
   'next.remoteSources.libraryKind': 'Type',
   'next.remoteSources.on': 'On',

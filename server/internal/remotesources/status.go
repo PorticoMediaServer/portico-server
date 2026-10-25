@@ -9,6 +9,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 )
 
@@ -42,6 +43,7 @@ type SourceStatus struct {
 	Program         string `json:"program,omitempty"`
 	ProgramVersion  string `json:"programVersion,omitempty"`
 	ProgramRevision int64  `json:"programRevision,omitempty"`
+	ProgramIncluded bool   `json:"programIncluded,omitempty"`
 	Remote          string `json:"remote,omitempty"`
 	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
 }
@@ -115,6 +117,9 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 			return SourceStatus{}, err
 		}
 		out.Program, out.ProgramVersion, out.Remote, out.ProgramRevision = executable, version, remote, control
+		if bundled, e := rcloneprogram.Resolve(); e == nil {
+			out.ProgramIncluded = bundled.Path == executable
+		}
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT background_speed FROM maintenance_settings WHERE singleton=1`).Scan(&out.BackgroundSpeed); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return SourceStatus{}, err

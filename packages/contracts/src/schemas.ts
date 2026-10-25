@@ -127608,6 +127608,373 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetReadingPeriodicalGroupsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingPeriodicalGroupsResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "groups": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "pattern": "^[A-Za-z0-9_-]{43}$",
+              "type": "string"
+            },
+            "issueCount": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "latest": {
+              "additionalProperties": false,
+              "properties": {
+                "issueDate": {
+                  "maxLength": 10,
+                  "minLength": 7,
+                  "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+                  "type": "string"
+                },
+                "item": {
+                  "properties": {
+                    "author": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "owner",
+                            "file-metadata",
+                            "file-name",
+                            "folder"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "maxLength": 4096,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "coverUrl": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "enum": [
+                        "epub",
+                        "pdf",
+                        "cbz"
+                      ],
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "inventoryAvailable": {
+                      "type": "boolean"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "publicationType": {
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "owner",
+                            "file-metadata"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "enum": [
+                            "book",
+                            "magazine",
+                            "newspaper"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "series": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 4096,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "number": {
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "source": {
+                          "enum": [
+                            "owner",
+                            "file-metadata",
+                            "file-name",
+                            "folder"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "libraryId",
+                    "title",
+                    "format",
+                    "sourceId",
+                    "inventoryAvailable"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "item",
+                "issueDate"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "issueCount",
+            "latest"
+          ],
+          "type": "object"
+        },
+        "maxItems": 100,
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "pattern": "^[A-Za-z0-9_-]{171}\\.[A-Za-z0-9_-]{43}$",
+        "type": "string"
+      },
+      "publicationType": {
+        "enum": [
+          "magazine",
+          "newspaper"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "libraryId",
+      "publicationType",
+      "groups"
+    ],
+    "type": "object"
+  },
+  "GetReadingPeriodicalIssuesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingPeriodicalIssuesResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "issueDate": {
+              "maxLength": 10,
+              "minLength": 7,
+              "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+              "type": "string"
+            },
+            "item": {
+              "properties": {
+                "author": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata",
+                        "file-name",
+                        "folder"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "source"
+                  ],
+                  "type": "object"
+                },
+                "coverUrl": {
+                  "type": "string"
+                },
+                "format": {
+                  "enum": [
+                    "epub",
+                    "pdf",
+                    "cbz"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "inventoryAvailable": {
+                  "type": "boolean"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "publicationType": {
+                  "properties": {
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "source"
+                  ],
+                  "type": "object"
+                },
+                "series": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "name": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "number": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata",
+                        "file-name",
+                        "folder"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "source"
+                  ],
+                  "type": "object"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "libraryId",
+                "title",
+                "format",
+                "sourceId",
+                "inventoryAvailable"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "item",
+            "issueDate"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "publicationType": {
+        "enum": [
+          "magazine",
+          "newspaper"
+        ],
+        "type": "string"
+      },
+      "seriesId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "libraryId",
+      "seriesId",
+      "publicationType",
+      "items"
+    ],
+    "type": "object"
+  },
   "GetReadingSeriesItemsRequest": {
     "properties": {},
     "required": [],
@@ -150015,6 +150382,9 @@ export const schemas = {
           },
           "program": {
             "type": "string"
+          },
+          "programIncluded": {
+            "type": "boolean"
           },
           "programRevision": {
             "maximum": 9007199254740991,
@@ -197312,12 +197682,15 @@ export const schemas = {
       },
       "operationId": {
         "type": "string"
+      },
+      "useIncluded": {
+        "type": "boolean"
       }
     },
     "required": [
       "operationId",
       "expectedRevision",
-      "executable"
+      "useIncluded"
     ],
     "type": "object"
   },
@@ -197327,6 +197700,9 @@ export const schemas = {
         "properties": {
           "executable": {
             "type": "string"
+          },
+          "included": {
+            "type": "boolean"
           },
           "revision": {
             "maximum": 9007199254740991,
@@ -197340,7 +197716,8 @@ export const schemas = {
         "required": [
           "executable",
           "version",
-          "revision"
+          "revision",
+          "included"
         ],
         "type": "object"
       },
