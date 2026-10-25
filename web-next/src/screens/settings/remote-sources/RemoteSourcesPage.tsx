@@ -19,6 +19,7 @@ import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ReadingChoices, presetHint} from './ReadingChoices';
 import {SourceAdvancedRows} from './SourceAdvancedRows';
 import {ProgramPicker} from './ProgramPicker';
+import {useOwnedResource} from './resources';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
@@ -157,16 +158,24 @@ export type RemoteSourcesPageProps = Readonly<{
 
 /** Server › Remote sources. The drawn page over the source list, the WebDAV add
  * flow and the source's reading profile; only routes the server actually has. */
-export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportError, openSection}: RemoteSourcesPageProps) {
-  const [ids] = useState(stableStorageOperationId);
-  const service = useMemo(() => new RemoteSourceService(api, {serverId, viewerId}, ids.next, isCurrent), [api, serverId, viewerId, ids, isCurrent]);
+export function RemoteSourcesPage(props: RemoteSourcesPageProps) {
+  // The page's reader belongs to this exact API/scope: it is created in a
+  // layout pass and retired by the same pass, so a replay or a scope change
+  // gets a fresh reader rather than a disposed one.
+  const owned = useOwnedResource(
+    () => new RemoteSourceService(props.api, {serverId: props.serverId, viewerId: props.viewerId}, stableStorageOperationId().next, props.isCurrent),
+    value => value.dispose(),
+    [props.api, props.serverId, props.viewerId, props.isCurrent],
+    value => {void value.load();});
+  if (!owned) return <div className={styles.page}><p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p></div>;
+  // The body belongs to that exact reader: a successor scope starts clean.
+  return <RemoteSourcesLoaded key={owned.id} {...props} service={owned.value}/>;
+}
+
+function RemoteSourcesLoaded({api, serverId, viewerId, isCurrent, reportError, openSection, service}: RemoteSourcesPageProps & {service: RemoteSourceService}) {
   const [adding, setAdding] = useState(false);
   const [managing, setManaging] = useState<RemoteSource>();
   const [reading, setReading] = useState<RemoteSource>();
-  useEffect(() => {
-    void service.load();
-    return () => service.dispose();
-  }, [service]);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const sources = snapshot.sources.filter(source => source.kind === 'webdav' || source.kind === 'rclone');
   const [notice, setNotice] = useState('');
@@ -1161,11 +1170,28 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
 }
 
 
-function ManageSourceDialog({service, source, api, serverId, viewerId, openSection, isCurrent, reportError, onClose, onRemoved}: Readonly<{
+type ManageSourceProps = Readonly<{
   service: RemoteSourceService; source: RemoteSource; api: LibraryContentApi; serverId: string; viewerId: string;
   openSection?: (section: string) => void;
   isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onRemoved: () => void;
-}>) {
+}>;
+
+/** The dialog's library reader belongs to this opening: created in a layout
+ * pass, retired with it, and the body is keyed to that exact resource so a
+ * successor opening cannot inherit its state. */
+function ManageSourceDialog(props: ManageSourceProps) {
+  const owned = useOwnedResource(
+    () => new LibraryManagementService({api: props.api, scope: {serverId: props.serverId, viewerId: props.viewerId}}),
+    value => value.dispose(),
+    // The opening is the service, the source row object and the scope: the
+    // parent keys by source id, so a replacement row under the same id must
+    // still be a new resource rather than the previous opened one.
+    [props.api, props.serverId, props.viewerId, props.service, props.source]);
+  if (!owned) return null;
+  return <ManageSourceLoaded key={owned.id} {...props} libraries={owned.value} openingId={owned.id}/>;
+}
+
+function ManageSourceLoaded({service, source, api, serverId, viewerId, openSection, isCurrent, reportError, onClose, onRemoved, libraries, openingId}: ManageSourceProps & Readonly<{libraries: LibraryManagementService; openingId: number}>) {
   const [draft, setDraft] = useState<WebDavDraft>({name: source.name, root: '', username: '', password: '', insecureLocal: source.insecureLocal});
   const [result, setResult] = useState<DAVConnectionResult>();
   const [profile, setProfile] = useState<SourceReadSettings>();
@@ -1209,7 +1235,6 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
   const [pickingProgram, setPickingProgram] = useState(false);
   const [programNote, setProgramNote] = useState('');
   const [pendingValues, setPendingValues] = useState<SourceReadValues>(sourceReadPreset('list'));
-  const libraries = useMemo(() => new LibraryManagementService({api, scope: {serverId, viewerId}}), [api, serverId, viewerId]);
   const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
   const [attachTo, setAttachTo] = useState('');
   const [picking, setPicking] = useState(false);
@@ -1217,8 +1242,12 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
   const [attachNote, setAttachNote] = useState('');
   const testAttempt = useRef(0), active = useRef(true), pending = useRef(false), lifetime = useRef(0);
   const attemptGuard = () => { const captured = lifetime.current; return () => active.current && lifetime.current === captured && isCurrent(); };
-  useEffect(() => () => {active.current=false;lifetime.current++;}, []);
-  useEffect(() => () => libraries.dispose(), [libraries]);
+  // The dialog's admission is layout-owned: a replayed mount admits again, and
+  // the cleanup retires this exact render synchronously.
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => {active.current=false;lifetime.current++;};
+  }, [openingId]);
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {
     // The guard belongs to this rendered dialog, not to a later one.
