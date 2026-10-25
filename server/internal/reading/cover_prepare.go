@@ -217,12 +217,16 @@ func (s *Service) PrepareCover(ctx context.Context, library, item, asset string)
 		return err
 	}
 	defer f.Close()
+	accept := f.ctx
 	document, err := Inspect(f)
 	if err != nil {
 		return err
 	}
 	if document.cover == nil {
-		return s.recordCoverInspection(ctx, v, "absent")
+		if err = f.Validate(); err != nil {
+			return err
+		}
+		return s.recordCoverInspection(accept, v, "absent")
 	}
 	raw, err := document.cover()
 	if err != nil {
@@ -230,20 +234,25 @@ func (s *Service) PrepareCover(ctx context.Context, library, item, asset string)
 			if err = f.Validate(); err != nil {
 				return err
 			}
-			return s.recordCoverInspection(ctx, v, "invalid")
+			return s.recordCoverInspection(accept, v, "invalid")
 		}
 		return err
 	}
 	if err = f.Validate(); err != nil {
 		return err
 	}
-	authorize := func(tx *sql.Tx) error { return s.validateBackgroundTx(ctx, tx, coverWorkerDomain, v) }
-	err = s.AdoptCover(ctx, v.ItemID, v.Revision, raw, authorize)
+	authorize := func(tx *sql.Tx) error {
+		if err := accept.Err(); err != nil {
+			return err
+		}
+		return s.validateBackgroundTx(accept, tx, coverWorkerDomain, v)
+	}
+	err = s.AdoptCover(accept, v.ItemID, v.Revision, raw, authorize)
 	if errors.Is(err, ErrCoverInvalid) {
 		if err = f.Validate(); err != nil {
 			return err
 		}
-		return s.recordCoverInspection(ctx, v, "invalid")
+		return s.recordCoverInspection(accept, v, "invalid")
 	}
 	if err != nil {
 		return err
@@ -251,7 +260,7 @@ func (s *Service) PrepareCover(ctx context.Context, library, item, asset string)
 	if err = f.Validate(); err != nil {
 		return err
 	}
-	return s.recordCoverInspection(ctx, v, "adopted")
+	return s.recordCoverInspection(accept, v, "adopted")
 }
 
 // One determined outcome per item/asset for the exact observation and rule.
@@ -290,6 +299,9 @@ func (s *Service) recordCoverInspection(ctx context.Context, selected Selection,
 	}
 	_, err = gate.Tx().ExecContext(ctx, `INSERT INTO reading_cover_inspections(item_id,asset_id,inventory_object_id,source_revision,rule_version,outcome,attempted_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(item_id,asset_id) DO UPDATE SET inventory_object_id=excluded.inventory_object_id,source_revision=excluded.source_revision,rule_version=excluded.rule_version,outcome=excluded.outcome,attempted_at=excluded.attempted_at WHERE reading_cover_inspections.inventory_object_id<>excluded.inventory_object_id OR reading_cover_inspections.source_revision<>excluded.source_revision OR reading_cover_inspections.rule_version<>excluded.rule_version OR reading_cover_inspections.outcome<>excluded.outcome`, current.Entity, current.Asset, current.inventoryRow, current.inventory, readingCoverRuleVersion, outcome, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
 		return err
 	}
 	return gate.Commit()

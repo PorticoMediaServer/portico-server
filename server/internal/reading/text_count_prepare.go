@@ -492,12 +492,15 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 	if err = f.Validate(); err != nil {
 		return err
 	}
-	gate, err := dbwork.Begin(ctx, s.DB, dbwork.ClassBackgroundMedia)
+	// The accepting writer is bound to the opened source's lifetime. If its
+	// original lease retires while waiting for the writer, the commit is refused.
+	accept := f.ctx
+	gate, err := dbwork.Begin(accept, s.DB, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return err
 	}
 	defer gate.Rollback()
-	current, err := s.resolveBackgroundTx(ctx, gate.Tx(), textCountWorkerDomain, library, item, asset)
+	current, err := s.resolveBackgroundTx(accept, gate.Tx(), textCountWorkerDomain, library, item, asset)
 	if err != nil {
 		return err
 	}
@@ -508,7 +511,7 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 	if v.Format == "pdf" {
 		pageRule = readingPageRuleVersion
 	}
-	if err = adoptTextCountRow(ctx, gate.Tx(), current, count, opening, pageCount, pageRule); err != nil {
+	if err = adoptTextCountRow(accept, gate.Tx(), current, count, opening, pageCount, pageRule); err != nil {
 		return err
 	}
 	if v.Format == "pdf" {
@@ -516,9 +519,12 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 		// observation. The writer rechecks the current object and keeps owner
 		// overrides; an absent or unstorable value publishes nothing instead of
 		// a guess, and no title, outline or filename substitutes for it.
-		if err = adoptFileMetadataTx(ctx, gate.Tx(), current, author, "", nil); err != nil {
+		if err = adoptFileMetadataTx(accept, gate.Tx(), current, author, "", nil); err != nil {
 			return err
 		}
+	}
+	if err = accept.Err(); err != nil {
+		return err
 	}
 	return gate.Commit()
 }
