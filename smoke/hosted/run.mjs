@@ -95,7 +95,12 @@ async function main() {
   const expectedBuild = (process.env.SMOKE_EXPECT_BUILD || '').trim();
   if (expectedBuild && (!report.buildInfo || report.buildInfo.buildId !== expectedBuild)) {
     report.note('build-pin', `STOP: expected ${expectedBuild} but the deployment serves ${report.buildInfo ? report.buildInfo.buildId : 'no build file'}`);
+    await report.check('build-pin-valid', async () => {
+      assert(false, 'Hosted deployment does not match the requested build pin');
+    });
     report.write();
+    await context.close();
+    await browser.close();
     console.log('STOPPED on a build mismatch');
     process.exit(3);
   }
