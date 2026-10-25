@@ -74,6 +74,7 @@ export const ownerConsoleMessages = {
   'server.live.state.failed': 'Not working',
   'server.live.state.waiting': 'Waiting for its first refresh',
   'server.live.settingsSaved': 'Saved. Changes to filters and numbering show after the next guide refresh.',
+  'server.live.changesAfterUpload': 'Changes apply after the next upload.',
   'server.live.sourceKind.playlist': 'Channels (playlist or tuner)',
   'server.live.sourceKind.guide': 'Guide only (XMLTV)',
   'server.live.sourceKind.tuner': 'HDHomeRun tuner',
