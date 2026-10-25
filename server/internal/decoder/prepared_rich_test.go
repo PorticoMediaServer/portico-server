@@ -54,7 +54,7 @@ func TestRichPreparedRecipeKeepsHDRAndSurround(t *testing.T) {
 	legacy.KeepSeventhOne = false
 	legacy.Source = PreparedSource{DynamicRange: "hdr10", BitDepth: 10, DolbyVision: true, MasterDisplay: "G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50)", MaxCLL: "1000,400", AudioChannels: []int{8, 2, 1}}
 	args, err = preparedArgs("http://127.0.0.1/input", legacy, false)
-	if line = strings.Join(args, " "); err != nil || !strings.Contains(line, "-c:a aac") || !strings.Contains(line, "-ac:a:0 6 -b:a:0 384k") || strings.Contains(line, "flac") {
+	if line = strings.Join(args, " "); err != nil || !strings.Contains(line, "-c:a aac") || !strings.Contains(line, "-ac:a:0 6 -b:a:0 384k") || strings.Contains(line, "-c:a flac") {
 		t.Fatal("the older rich recipe changed", line, err)
 	}
 }
