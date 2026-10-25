@@ -100,6 +100,14 @@ function explicitQueueItems(selection: BrowseSelection | undefined): readonly st
   return ids;
 }
 
+function explicitDestinationItems(selection: BrowseSelection | undefined): readonly string[] | undefined {
+  const target = selection?.target;
+  if (!target || target.mode !== 'explicit' || !personalTargetSupportsJob(target)) return undefined;
+  const ids: string[] = [];
+  for (const pick of target.items) {if (!('libraryId' in pick.item) || !('id' in pick.item)) return undefined; ids.push(pick.item.id);}
+  return ids;
+}
+
 type BrowseSelection = SelectionSnapshot<BrowseSelectionContext>;
 
 /** A personal action is offered only when the model says every selected title has
@@ -153,10 +161,11 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
     && current.rows.every((row, index) => row.position === visible.first + index) ? current.rows.length : undefined;
   const selectAll = queryHeld ? {kind: 'clear' as const} : whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
   const offers = personalOffers(current.selection, actions, playSelection), leafItems = explicitLeafItems(current.selection);
+  const pickerItems = props.pickers ? explicitDestinationItems(current.selection) : leafItems;
   const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
     && !actions.signal.aborted && actions.isCurrent();
-  const canQueue = !!explicitQueueItems(current.selection) && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!leafItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
-    canCollection = !!leafItems && (!!destinations?.collection || !!props.pickers) && queueLease && summary.every.collection;
+  const canQueue = !!explicitQueueItems(current.selection) && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!pickerItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
+    canCollection = !!pickerItems && (!!destinations?.collection || !!props.pickers) && queueLease && summary.every.collection;
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
@@ -224,7 +233,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   const openPicker = (kind: EntryDestination, anchor: HTMLElement) => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
     if (!pickers || !pickers.pickerIdentity || pickers.signal.aborted || !pickers.isCurrent() || !selection || !operation || operation.target !== selection.target
-      || operation.target.mode !== 'explicit' || !explicitLeafItems(selection) || !selection.summary.every[kind] || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-picker-unavailable');
+      || operation.target.mode !== 'explicit' || !explicitDestinationItems(selection) || !selection.summary.every[kind] || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-picker-unavailable');
     closePicker();
     const lifetime = new AbortController(), signal = AbortSignal.any([lifetime.signal, pickers.signal]);
     const current = () => !signal.aborted && pickers.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;

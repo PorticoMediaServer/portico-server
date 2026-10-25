@@ -1,3 +1,5 @@
+import {routePath} from '../../../../packages/contracts/src/routes.ts';
+import {parseHomeDestinationPicker} from '@core/home-selection/destination-picker.ts';
 import {DetailService} from '@core/detail.ts';
 import {HomeSelectionDestinations} from '@core/home-selection/destinations.ts';
 import type {HomeSelectionPicker} from '@core/home-selection/types.ts';
@@ -36,9 +38,15 @@ export class LibraryPickerProducer {
     if (!identity) throw new Error('picker-identity-required');
     if (!this.targets.length || this.targets.length > 256 || new Set(this.targets.map(item => item.id)).size !== this.targets.length) throw new Error('picker-target-required');
     const picks: SelectedItem[] = [];
+    let parents = false;
     let captured: {fence: string; catalog: number; viewer: number} | undefined;
     for (const selected of this.targets) {
-      if (!('libraryId' in selected)) throw new Error('picker-leaf-required');
+      if (!('libraryId' in selected) || selected.capabilities[this.kind] !== true) throw new Error('picker-action-not-permitted');
+      if (['show', 'season', 'album', 'artist', 'book', 'collection'].includes(selected.kind)) {
+        parents = true;
+        picks.push(Object.freeze({key: JSON.stringify([selected.libraryId, selected.kind, selected.id]), item: selected}));
+        continue;
+      }
       await this.detail.select({libraryId: selected.libraryId, itemId: selected.id}); this.check();
       const data = this.detail.getSnapshot().data;
       if (this.detail.getSnapshot().phase !== 'ready' || !data || data.item.id !== selected.id || data.scope.libraryId !== selected.libraryId
@@ -50,6 +58,15 @@ export class LibraryPickerProducer {
       if (captured.fence !== data.scope.viewerFence || captured.catalog !== data.revision.catalog || captured.viewer !== data.revision.viewer) throw new Error('picker-selection-changed');
       const item = Object.freeze({...selected, capabilities: Object.freeze({...selected.capabilities, playlist, collection})});
       picks.push(Object.freeze({key: JSON.stringify([item.libraryId, item.kind, item.id]), item}));
+    }
+    if (parents) {
+      // This authenticated read issues the destination domain's own fence. Do
+      // not substitute the Search token, a metadata fence or a descendant read.
+      const request = {kind: this.kind, query: '', limit: 40};
+      const raw = await this.api.request<unknown>(routePath('post_home_destination_picker'), 'POST', request, this.lifetime.signal); this.check();
+      if (!raw || typeof raw !== 'object' || !('viewerFence' in raw) || typeof raw.viewerFence !== 'string' || !/^[a-f0-9]{64}$/.test(raw.viewerFence)) throw new Error('picker-authority-required');
+      const page = parseHomeDestinationPicker(raw, request, this.ports.serverId, raw.viewerFence);
+      captured = {fence: raw.viewerFence, catalog: page.revision.catalog, viewer: page.revision.viewer};
     }
     if (!captured) throw new Error('picker-target-required');
     const viewId = await this.ports.requestId(); this.check();
