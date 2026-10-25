@@ -7,6 +7,8 @@ import {fetchHomeDestinationReceipt} from './destination-receipt.ts';
 import type {Job} from '../bulk-jobs.ts';
 import {runSelectionJobs, selectionExecutionError, selectionJobTasks, type HomeJobTask} from './execution.ts';
 
+export type HomeDestinationOptions = Pick<HomeSelectionOptions, 'api' | 'events' | 'requestId'>;
+
 const info = (error: unknown) => ({code: String((error as {code?: unknown})?.code ?? 'destination-unavailable'), retryable: true});
 /** Each service is private to this dialog; paging a picker never changes Saved's visible route. */
 export class HomeSelectionDestinations {
@@ -27,12 +29,12 @@ export class HomeSelectionDestinations {
   private readController?: AbortController;
   private creating = false;
   private closed = false;
-  private options: HomeSelectionOptions;
+  private options: HomeDestinationOptions;
   private target: SelectionTarget;
   private signal: AbortSignal;
   private current: () => boolean;
   private publish: (value: HomeSelectionPicker) => void;
-  constructor(options: HomeSelectionOptions, target: SelectionTarget, kind: 'playlist' | 'collection', signal: AbortSignal, current: () => boolean, publish: (value: HomeSelectionPicker) => void) {
+  constructor(options: HomeDestinationOptions, target: SelectionTarget, kind: 'playlist' | 'collection', signal: AbortSignal, current: () => boolean, publish: (value: HomeSelectionPicker) => void) {
     this.options = options; this.target = target; this.signal = signal; this.current = current; this.publish = publish;
     const {scope} = target.context;
     const savedScope = {serverId: scope.serverId, viewerId: JSON.stringify([scope.authority, scope.accountId, scope.profileId])};
