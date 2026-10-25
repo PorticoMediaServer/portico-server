@@ -30,10 +30,13 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   const status = (error as {status?: number} | undefined)?.status;
-  const expired = status === 404 || status === 410;
   const code = (error as {code?: string} | undefined)?.code;
-  const factorWrong = code === 'two_factor_invalid' || code === 'mfa_invalid';
-  const passwordWrong = code === 'password_too_short' || code === 'password_invalid';
+  // The reset route names its own closed states: a dead, used, superseded or
+  // exhausted link answers 410 reset_link_unavailable, a refused password
+  // answers password_invalid and a rejected second factor answers mfa_invalid.
+  const expired = status === 410 || code === 'reset_link_unavailable';
+  const factorWrong = code === 'mfa_invalid';
+  const passwordWrong = code === 'password_invalid';
   const submit = async () => {
     if (!token || operation.current) return;
     if (password !== confirm) { setMismatch(true); return; }
@@ -78,11 +81,15 @@ export function VerifyPage({account, token}: {account: ServicesAccount; token?: 
     void verifyEmail(account, token, controller.signal).then(result => { if (!controller.signal.aborted) setOutcome(result); }, value => { if (!controller.signal.aborted) setError(value); });
     return () => controller.abort();
   }, [account, token]);
-  const expired = [404, 409, 410].includes((error as {status?: number} | undefined)?.status ?? 0);
+  const code = (error as {code?: string} | undefined)?.code;
+  // invalid_link means the fragment token did not parse: the drawn cut-off link.
+  // challenge_invalid is the route's only dead-or-used answer on this page.
+  const cutOff = !token || code === 'invalid_link';
+  const expired = code === 'challenge_invalid';
   if (outcome) return <EmailVerified outcome={outcome} />;
   return <ServicesAuthStage variant="reset">
     <ServicesHeading>{t('web.verify.title')}</ServicesHeading>
-    {!token ? <ServicesNotice>{t('web.link.invalid')}</ServicesNotice> : expired ? <ServicesNotice icon="i-clock">{t('web.verify.expired')}</ServicesNotice> : error ? <HostedError error={error} /> : <ServicesNotice tone="info" busy>{t('web.verify.working')}</ServicesNotice>}
+    {cutOff ? <ServicesNotice>{t('web.link.invalid')}</ServicesNotice> : expired ? <ServicesNotice icon="i-clock">{t('web.verify.expired')}</ServicesNotice> : error ? <HostedError error={error} /> : <ServicesNotice tone="info" busy>{t('web.verify.working')}</ServicesNotice>}
     {!token || error ? <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.link.backToPortico')}</Button></ServicesActions> : null}
   </ServicesAuthStage>;
 }
