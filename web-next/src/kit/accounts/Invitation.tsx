@@ -9,12 +9,12 @@ import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
 export type LocalInvitationFormProps = Readonly<{
-  serverName: string; inviter?: string; libraries: readonly string[]; busy?: boolean; error?: unknown;
+  serverName: string; inviter?: string; libraries: readonly string[]; busy?: boolean; error?: unknown; errorContent?: ReactNode;
   initialValues?: Readonly<{name?: string; username?: string; password?: string; confirmation?: string}>;
   onJoin: (username: string, password: string, name: string) => void; onBack: () => void;
 }>;
 /** Auth 12. The plain password fields are deliberate: this frame has no reveal action. */
-export function LocalInvitationForm({serverName, inviter, libraries, busy, error, initialValues, onJoin, onBack}: LocalInvitationFormProps) {
+export function LocalInvitationForm({serverName, inviter, libraries, busy, error, errorContent, initialValues, onJoin, onBack}: LocalInvitationFormProps) {
   const [name, setName] = useState(initialValues?.name ?? ''), [username, setUsername] = useState(initialValues?.username ?? '');
   const [password, setPassword] = useState(initialValues?.password ?? ''), [confirmation, setConfirmation] = useState(initialValues?.confirmation ?? '');
   const [confirmed, setConfirmed] = useState(false);
@@ -36,7 +36,7 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
     {inviter && <div className={styles.invitedBy}><span className={styles.inviterAvatar} aria-hidden="true">{Array.from(inviter)[0]}</span>
       <span><b>{inviter}</b>{' '}{t('accounts.invitation.invitedYou')}{libraries.length > 0 && <><i className={styles.invitationGap} aria-hidden="true" />{sharedLibraries}</>}</span>
     </div>}
-    <AuthError error={usernameTaken ? undefined : error} />
+    {errorContent ?? <AuthError error={usernameTaken ? undefined : error} />}
     <form className={[styles.form, styles.invitationForm].join(' ')} onSubmit={event => {event.preventDefault(); setConfirmed(true); setChangedUsername(false); if (valid && !busy) onJoin(trimmed, password, name.trim());}}>
       <TextField variant="auth" containerClassName={styles.invitationName} label={<>{t('web.directJoin.name')}{' '}<small>{t('field.optional')}</small></>} name="name" autoComplete="name" description={t('web.directJoin.nameHelp')} value={name} onChange={event => setName(event.currentTarget.value)} disabled={busy} />
       <TextField variant="auth" label={t('web.directJoin.username')} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} description={usernameTaken && !changedUsername ? undefined : t('web.directJoin.usernameHelp')} error={usernameTaken && !changedUsername ? t('web.directJoin.error.taken') : undefined} value={username} onChange={event => {setUsername(event.currentTarget.value); setChangedUsername(true);}} disabled={busy} required minLength={3} maxLength={64} pattern={'[^\\s@]{3,64}'} />
@@ -55,9 +55,9 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
 
 /** A kind-specific glyph is supplied only from an actual library kind. A name
  * alone never becomes a movie/TV/category claim. */
-export function PorticoInvitation({serverName, libraries, member, account, signedOutContent, busy, error, onJoin, onDifferentAccount}: {
+export function PorticoInvitation({serverName, libraries, member, account, signedOutContent, busy, error, errorContent, onJoin, onDifferentAccount}: {
   serverName: string; libraries: readonly Readonly<{name: string; icon?: IconName}>[]; member: boolean;
-  account?: Readonly<{username: string}>; signedOutContent: ReactNode; busy?: boolean; error?: unknown;
+  account?: Readonly<{username: string}>; signedOutContent: ReactNode; busy?: boolean; error?: unknown; errorContent?: ReactNode;
   onJoin: () => void; onDifferentAccount: () => void;
 }) {
   return <AuthStage shape="top" legal={false} className={styles.porticoInvitationStage} contentClassName={styles.porticoInvitationContent}
@@ -65,7 +65,7 @@ export function PorticoInvitation({serverName, libraries, member, account, signe
     <p className={styles.eyebrow}>{t('accounts.invitation.to')}</p><h1>{serverName}</h1>
     <p className={styles.lede}>{t('accounts.invitation.porticoBody', {server: serverName})}</p>
     <InvitationLibraries libraries={libraries} member={member} />
-    <AuthError error={error} />
+    {errorContent ?? <AuthError error={error} />}
     {account ? <><div className={styles.invitationAccount}><span className={styles.invitationAccountAvatar} aria-hidden="true">{Array.from(account.username)[0]?.toUpperCase()}</span>
       <span><b>{t('accounts.invitation.joinAs', {username: account.username})}</b><small>{t('accounts.invitation.account')}</small></span>
       <button type="button" onClick={onDifferentAccount} disabled={busy}>{t('accounts.invitation.notYou')}</button>

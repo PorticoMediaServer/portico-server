@@ -1,4 +1,4 @@
-import {PeopleInvitationsClient, type PeopleInvitationQuery, type ServerInvitation} from '@core/direct-account.ts';
+import {PeopleInvitationsClient, type PeopleInvitationQuery, type ServerInvitation, type ServerShortInvitation} from '@core/direct-account.ts';
 import {parseJoinLink} from '@core/join-link.ts';
 import {CodedError} from '@core/server-messages.ts';
 import type {RouteRequest} from '../../../../packages/contracts/src/routes.ts';
@@ -69,6 +69,19 @@ export class SettingsInvitations {
   }
   create(input: RouteRequest<'post_admin_access_invitations'>, capture: InvitationLifetime) {
     return this.perform(capture, async signal => this.checkInvitation(await this.client.create(input, signal)));
+  }
+  /** An explicit New code. The caller supplies a fresh operation ID for a new
+   * issuance and the same one only to retry that exact request. A receipt
+   * without a code is a replay: return the absence and never issue again. */
+  shortCode(invitation: ServerInvitation, operationId: string, capture: InvitationLifetime): Promise<ServerShortInvitation> {
+    if (!operationId) return Promise.reject(new Error('invitation_operation_required'));
+    return this.perform(capture, async signal => {
+      this.checkInvitation(invitation);
+      const result = await this.client.shortCode(invitation, operationId, signal);
+      if (result.serverId !== this.serverId) throw new Error('invitation_server_changed');
+      if (Date.parse(result.expiresAt) <= Date.now()) throw new CodedError('invitation_expired', 'This invitation is no longer usable.');
+      return result;
+    });
   }
   edit(invitation: ServerInvitation, input: RouteRequest<'put_admin_access_invitation'>, capture: InvitationLifetime) {
     if (input.expectedRevision !== invitation.revision) return Promise.reject(new Error('invitation_revision_changed'));
