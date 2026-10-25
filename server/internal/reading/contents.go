@@ -220,31 +220,41 @@ func (e *EPUB) Contents(ctx context.Context) ([]ContentsEntry, error) {
 			return nil, nil
 		}
 	} else {
-		var walk func(*navigationNode, int) error
-		walk = func(n *navigationNode, depth int) error {
-			if n.name.Local == "navPoint" {
-				var label, href string
-				for _, c := range n.children {
-					if c.name.Local == "navLabel" {
-						label = c.label()
-					}
-					if c.name.Local == "content" {
-						href = c.attr("src", "")
-					}
+		var hasNavigation func(*navigationNode) bool
+		hasNavigation = func(n *navigationNode) bool {
+			if n.name.Local=="navPoint" || n.name.Local=="navMap" {return true}
+			for _,c:=range n.children {if hasNavigation(c) {return true}};return false
+		}
+		var navMap *navigationNode
+		if root.name.Local!="ncx" {return nil,nil}
+		for _,c:=range root.children {
+			if c.name.Local=="navMap" {if navMap!=nil {return nil,nil};navMap=c} else if hasNavigation(c) {return nil,nil}
+		}
+		if navMap==nil {return nil,nil}
+		var point func(*navigationNode,int) error
+		point=func(n *navigationNode,depth int) error {
+			var label,href string
+			labels,targets:=0,0
+			for _,c:=range n.children {
+				switch c.name.Local {
+				case "navLabel":labels++;label=c.label();if hasNavigation(c) {return ErrInvalid}
+				case "content":targets++;href=c.attr("src","");if hasNavigation(c) {return ErrInvalid}
+				case "navPoint":
+				default:if hasNavigation(c) {return ErrInvalid}
 				}
-				if err := appendEntry(href, label, depth); err != nil {
-					return err
-				}
-				depth++
 			}
-			for _, c := range n.children {
-				if err := walk(c, depth); err != nil {
-					return err
-				}
-			}
+			if labels!=1||targets!=1 {return ErrInvalid}
+			if err:=appendEntry(href,label,depth);err!=nil{return err}
+			for _,c:=range n.children {if c.name.Local=="navPoint" {if err:=point(c,depth+1);err!=nil{return err}}}
 			return nil
 		}
-		if root.name.Local != "ncx" || walk(root, 0) != nil {
+		for _,c:=range navMap.children {
+			if c.name.Local=="navPoint" {if point(c,0)!=nil {return nil,nil}} else if hasNavigation(c) {return nil,nil}
+		}
+		if ctx.Err()!=nil {
+			return nil,ctx.Err()
+		}
+		if len(out)>maxContents {
 			return nil, nil
 		}
 	}

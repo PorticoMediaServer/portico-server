@@ -94,3 +94,17 @@ func TestEPUBContentsDoesNotInventNavigationFromSpine(t *testing.T) {
 		t.Fatalf("boundary %+v %v", len(entries), err)
 	}
 }
+
+func TestEPUBContentsNCXWithholdsTheWholeAmbiguousHierarchy(t *testing.T) {
+	valid:=`<navPoint><navLabel><text>Real first</text></navLabel><content src="one.xhtml"/></navPoint>`
+	for _,doc:=range []string{
+		`<ncx><navMap>`+valid+`</navMap><navMap>`+valid+`</navMap></ncx>`,
+		`<ncx><navMap>`+valid+`</navMap>`+valid+`</ncx>`,
+		`<ncx><navMap>`+valid+`<navPoint><navLabel><text>Ambiguous</text></navLabel><content src="one.xhtml"/><content src="two.xhtml"/></navPoint></navMap></ncx>`,
+		`<ncx><navMap>`+valid+`<navPoint><navLabel><text>One</text></navLabel><navLabel><text>Two</text></navLabel><content src="two.xhtml"/></navPoint></navMap></ncx>`,
+		`<ncx><navMap>`+valid+`<wrapper>`+valid+`</wrapper></navMap></ncx>`,
+	} {
+		entries,err:=contentsEPUB(t,false,doc).Contents(context.Background())
+		if err!=nil||len(entries)!=0 {t.Fatalf("partial ambiguous NCX leaked: %+v %v",entries,err)}
+	}
+}
