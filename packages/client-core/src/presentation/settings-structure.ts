@@ -579,8 +579,12 @@ const serverPages: readonly AuthoredPage[] = [
       on('connectivity', 'dlnaEnabled', 'settings.server.dlna', 'settings.server.dlnaHelp'),
       custom('server.addresses'),
     ]},
-    {id: 'outside', title: 'web.connectivity.outside', description: 'web.connectivity.outsideLede', rows: [
-      setting('connectivity', 'remoteSignInPolicy', 'web.connectivity.whoMaySignIn', {type: 'choice', choices: choices('settings.server.signIn', ['allow', 'owner-only', 'off'])}),
+    {id: 'outside', title: 'web.connectivity.outside', rows: [
+      setting('connectivity', 'remoteSignInPolicy', 'next.settingsSpec.server.remote.groups.2.rows.0.label', {type: 'choice', choices: [
+        {value: 'allow', label: 'next.settingsSpec.server.remote.groups.2.rows.0.control.options.0.label'},
+        {value: 'owner-only', label: 'next.settingsSpec.server.remote.groups.2.rows.0.control.options.1.label'},
+        {value: 'off', label: 'next.settingsSpec.server.remote.groups.2.rows.0.control.options.2.label'},
+      ]}, {help: 'next.settingsSpec.server.remote.groups.2.rows.0.help'}),
       setting('connectivity', 'advertiseUrl', 'web.connectivity.advertiseUrl', {type: 'text', mono: true, example: 'https://media.example.com', maxLength: 300}, {help: 'settings.server.advertiseUrlHelp'}),
       setting('connectivity', 'accessUrls', 'web.connectivity.extraAddresses', {type: 'lines', example: 'https://media.example.com'}, {help: 'settings.server.extraAddressesHelp'}),
       setting('connectivity', 'trustedProxies', 'web.connectivity.trustedProxies', {type: 'lines', example: '127.0.0.1'}, {help: 'settings.server.trustedProxiesHelp'}),
