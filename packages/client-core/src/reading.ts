@@ -183,6 +183,13 @@ function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSe
   }
   if (spine.some(path => !paths.has(path)) || pages.some(path => !member(path)) || new Set(pages).size !== pages.length) fail('invalid_manifest');
   if (m.format === 'epub' ? resources.length === 0 || spine.length === 0 || pages.length !== 0 : m.format === 'cbz' ? pages.length === 0 || resources.length !== 0 || spine.length !== 0 : resources.length !== 0 || spine.length !== 0 || pages.length !== 0) fail('invalid_manifest');
+  if (m.contents !== undefined) {
+    if (m.format !== 'epub' || m.contents.length > 512) fail('invalid_manifest');
+    for (const entry of m.contents) {
+      if (!entry.title.trim() || entry.title.length > 1024 || /[\p{Cc}]/u.test(entry.title) || !member(entry.section) || !spine.includes(entry.section) || !integer(entry.depth, 0, 16)
+        || entry.fragment !== undefined && (entry.fragment.length > 1024 || /[\p{Cc}]/u.test(entry.fragment))) fail('invalid_manifest');
+    }
+  }
 }
 
 function validateLocation(location: ReadingLocation, manifest: ReadingManifest, stale = false) {

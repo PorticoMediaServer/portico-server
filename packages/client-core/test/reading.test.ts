@@ -39,6 +39,22 @@ function setup(format: 'pdf' | 'epub' | 'cbz' = 'pdf') {
 }
 const coded = (code: string) => (error: unknown) => error instanceof ReadingError && error.code === code;
 
+test('session contents retains only real EPUB spine targets and bounded labels', async () => {
+  const f = setup('epub');
+  f.manifest.contents = [{title: 'Publisher chapter', section: 'EPUB/chapter.xhtml', fragment: 'opening', depth: 0}];
+  const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+  assert.deepEqual(session.manifest.contents, f.manifest.contents);
+  assert.ok(Object.isFrozen(session.manifest.contents));
+  for (const change of [
+    {section: 'EPUB/missing.xhtml'}, {section: '../private.xhtml'}, {title: '\nBad'}, {fragment: 'bad\n'}, {depth: 17},
+  ]) {
+    const bad = setup('epub'); bad.manifest.contents = [{title: 'Chapter', section: 'EPUB/chapter.xhtml', depth: 0, ...change}];
+    await assert.rejects(bad.client.open({itemId: 'book', sourceId: 'asset'}));
+  }
+  const pdf = setup('pdf'); pdf.manifest.contents = [{title: 'Invented EPUB target', section: 'EPUB/chapter.xhtml', depth: 0}];
+  await assert.rejects(pdf.client.open({itemId: 'book', sourceId: 'asset'}), coded('invalid_manifest'));
+});
+
 test('reading capture is lazy, freezes identity and uses generated paths with exact PDF proof', async () => {
   const f = setup(); assert.equal(f.calls.length, 0);
   const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
