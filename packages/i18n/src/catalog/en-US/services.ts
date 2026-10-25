@@ -127,7 +127,7 @@ export const servicesMessages = {
   'services.start.macos': 'macOS',
   'services.start.macosDetail': 'Apple silicon Macs',
   'services.start.linux': 'Linux',
-  'services.start.linuxDetail': 'Packages for x64 and ARM64',
+  'services.start.linuxDetail': 'Packages and archives for x64 and ARM64',
   'services.start.docker': 'Docker',
   'services.start.dockerDetail': 'For NAS boxes, home labs and servers',
   'services.start.apps': 'Get the apps',
