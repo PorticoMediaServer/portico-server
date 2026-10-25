@@ -55,11 +55,23 @@ const runtimeLoaded = (doc: SettingsDocument): Loaded<RuntimeSettings, RuntimeSt
 /** The retention the server accepts: diagnostics and finished tasks 1–30 days, notifications 1–180. */
 export const RETENTION_LIMITS: Readonly<Record<'diagnosticDays' | 'notificationDays' | 'jobDays', number>> = {diagnosticDays: 30, notificationDays: 180, jobDays: 30};
 
+/** The server's own name rules (`operations/settings.go`: `SafeText(name, 100)` then no newline
+ * or tab): nonblank, at most 100 UTF-8 bytes, no control characters and no bidi formatting. */
+function serverNameProblem(name: string): string | undefined {
+  if (!name.trim()) return 'server.form.nameRequired';
+  if (new TextEncoder().encode(name).length > 100) return 'error.invalidInput';
+  for (const character of name) {
+    const code = character.codePointAt(0)!;
+    if (code < 0x20 || code >= 0x7f && code <= 0x9f || code >= 0x202a && code <= 0x202e || code >= 0x2066 && code <= 0x2069) return 'error.invalidInput';
+  }
+  return undefined;
+}
+
 export function runtimeForm(deps: ServerFormDeps): DraftForm<RuntimeSettings, RuntimeStatus> {
   return new DraftForm<RuntimeSettings, RuntimeStatus>({
     load: async () => runtimeLoaded(await deps.console.settings()),
     save: async (draft, saved, status) => runtimeLoaded(await deps.console.applySettings(status?.revision ?? 0, draft, saved)),
-    validate: draft => (draft.name.trim() ? undefined : 'server.form.nameRequired'),
+    validate: draft => serverNameProblem(draft.name),
   });
 }
 
