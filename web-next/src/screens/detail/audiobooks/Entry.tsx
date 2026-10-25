@@ -5,7 +5,7 @@ import {ApiError} from '@core/index.ts';
 import type {ContentEntry, ContentProjection} from '@core/library-content.ts';
 import {Menu, MenuItem} from '../../../kit/overlays';
 import {Artwork, AmbientArt} from '../../../kit/artwork';
-import {Button} from '../../../kit/controls';
+import {Button, Chip} from '../../../kit/controls';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../../platform/freshness';
 import {createAudiobookBindings, type AudiobookBindings, type AudiobookTarget} from './bindings';
@@ -46,11 +46,12 @@ function AudiobookBound({binding, onMore}: {binding: AudiobookBindings; onMore?:
     : <AudiobookBody binding={binding} onMore={onMore}/>;
 }
 
+const CHAPTER_PREVIEW = 11;
 const duration = (value: number | undefined) => value === undefined ? undefined : serviceI18n().duration(value);
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
-  const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>();
+  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>();
   // One captured page operation at a time, claimed synchronously before any I/O.
   const operation = useRef<Operation | undefined>(undefined), [busy, setBusy] = useState<Operation['kind'] | undefined>(undefined);
   const owns = (op: Operation) => {
@@ -89,7 +90,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     };
     reads.current = {token};
     operation.current = undefined; setBusy(undefined);
-    setExpanded(false); setFinished(undefined); setWatchlisted(undefined); setMore(undefined);
+    setExpanded(false); setChaptersExpanded(false); setFinished(undefined); setWatchlisted(undefined); setMore(undefined);
     if (pageAtRender?.scope.view === 'book') {
       void binding.finished(pageAtRender).then(value => {if (live()) setFinished(value.watched);}, error => {if (live()) binding.context.effects.reportError(error);});
       // A server that does not offer the container flag withholds the button; a real failure reports.
@@ -170,9 +171,17 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     {book && entity.overview && <aside className={styles.aside}><p className={styles.about} data-expanded={expanded || undefined}>{entity.overview}</p>{!expanded && <button className={styles.readMore} onClick={() => setExpanded(true)}>{t('web.person.readMore')}</button>}</aside>}
     {state.error && <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/>}
     {rows && <section><div className={styles.sectionHead}><h2>{t(book ? 'next.browse.chapters' : 'library.tab.books')}</h2><span>{rows.totalCount}</span></div>
-      {rows.entries.map((entry, index) => book ? <div key={entry.id}><Chapter entry={entry} index={index} page={page} binding={binding}/>{entry.kind === 'audiobook_file' && hasLeafActions && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => leafMore(entry, event.currentTarget))}/>}</div>
+      {(book && !chaptersExpanded ? rows.entries.slice(0, CHAPTER_PREVIEW) : rows.entries).map((entry, index) => book ? <div key={entry.id}><Chapter entry={entry} index={index} page={page} binding={binding}/>{entry.kind === 'audiobook_file' && hasLeafActions && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => leafMore(entry, event.currentTarget))}/>}</div>
         : <div className={styles.bookRow} key={entry.id}><button onClick={() => open(entry)}><span className={styles.thumb}><Artwork source={binding.context.artwork.foreground(entry.posterUrl, 132, 1)} alt=""/></span><span><b>{entry.displayTitle ?? entry.title}</b>{entry.narrators?.length ? <small>{t('next.kit.readBy', {name: serviceI18n().list(entry.narrators)})}</small> : null}{entry.bookProgress?.remainingMs !== undefined && <small>{t('title.resumeRemaining', {remaining: duration(entry.bookProgress.remainingMs / 1000)!})}</small>}</span></button>{onMore && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => {binding.current(page);onMore(entry, event.currentTarget);})}/>}</div>)}
-      {rows.nextCursor && <Button size="small" onClick={() => run(() => {binding.current(page);return binding.service.next(rows.id);})}>{t('title.nextPage')}</Button>}
+      {book && !chaptersExpanded && (rows.entries.length > CHAPTER_PREVIEW || !!rows.nextCursor) && <Chip variant="toolbar" trailingIcon="i-down" trailingSize={16} className={styles.showAll}
+        onClick={() => run(() => {
+          // The same admitted page and its exact section must still be the drawn ones.
+          binding.current(page);
+          const snapshot = binding.service.getSnapshot(), latest = snapshot.appended.find(value => value.id === rows.id) ?? snapshot.sections.find(value => value.id === rows.id);
+          if (latest !== rows) throw new DOMException('Chapters changed', 'AbortError');
+          setChaptersExpanded(true);
+        })}>{rows.entries.length > CHAPTER_PREVIEW && rows.entries.length >= rows.totalCount ? t('title.showAllChapters', {count: rows.totalCount}) : t('title.showMoreChapters')}</Chip>}
+      {rows.nextCursor && (book ? chaptersExpanded : true) && <Button size="small" onClick={() => run(() => {binding.current(page);return binding.service.next(rows.id);})}>{t('title.nextPage')}</Button>}
     </section>}
     {more?.page === page && <Menu open onOpenChange={value => {if (!value) setMore(undefined);}} title={more.entry.title} anchorRef={{current: more.anchor}}>
       {effects.addToPlaylist && <MenuItem onSelect={() => invoke(effects.addToPlaylist)}>{t('entry.addToPlaylist')}</MenuItem>}

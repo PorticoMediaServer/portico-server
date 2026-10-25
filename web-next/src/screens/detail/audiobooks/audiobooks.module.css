@@ -54,3 +54,5 @@
 .page[data-layout='desktop'] .about { -webkit-line-clamp: unset; }
 .page[data-layout='desktop'][data-audiobook-view='author'] > section,
 .page[data-layout='desktop'][data-audiobook-view='book_series'] > section { grid-column: 1 / -1; }
+/* desktop-listen's book page: the real total names the next chapters page. */
+.showAll { margin-top: 14px; }

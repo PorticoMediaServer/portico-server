@@ -1943,6 +1943,8 @@ export const enUS = {
   'title.resumeChapterNumber': 'Resume chapter {number}',
   'title.bookInSeries': ', book {number}',
   'title.chapterCount': '{count, plural, one {# chapter} other {# chapters}}',
+  'title.showAllChapters': 'Show all {count, plural, one {# chapter} other {# chapters}}',
+  'title.showMoreChapters': 'Show more chapters',
   'title.discs': 'Discs',
   'title.disc': 'Disc {number}',
   'title.previousPage': 'Previous',
