@@ -1,4 +1,5 @@
 import type {HttpLocalApi, PlaybackOptions as ServiceOptions, PlaybackSnapshot} from '@core/index.ts';
+import type {AudiobookPreferences} from '@core/audiobook-preferences.ts';
 import type {ContentEntry, ContentScope} from '@core/library-content.ts';
 import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
 import type {PlayerOffersData} from '@core/player-offers.ts';
@@ -24,9 +25,10 @@ import type {WebLocalQueueSnapshot, WebLocalQueueResource} from './local-queue.t
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
 export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: string; context: SelectionContext; signal: AbortSignal}>;
-export type WebPlaybackScreenTarget = Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string}>;
+export type WebPlaybackScreenTarget = Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean}>;
 export type WebPlaybackScreenLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
 export type WebPlaybackSettings = Readonly<{
+  audiobookPreferences?: () => AudiobookPreferences;
   subtitlePreferences?: () => SubtitlePreferences;
   videoSpeed: () => number;
   audiobookSpeed: () => number;

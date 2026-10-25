@@ -1,11 +1,13 @@
 import type {AudioEffectsSettings} from '../audio-effects.ts';
 import type {QueueHeader,Session,SessionEnd} from '../playback-v1/types.ts';
+import type {AudiobookPreferences} from '../audiobook-preferences.ts';
 /** Absolute user deadlines; neither a render nor a lease renewal restarts them. */
 export type ListeningDeadlines = Readonly<{sleepAtMs:number|null;passoutAtMs:number|null}>;
 export const noListeningDeadlines:ListeningDeadlines=Object.freeze({sleepAtMs:null,passoutAtMs:null});
 /** Non-authorizing policy. The native owner applies it to the session it plays; neither policy
  * revisions nor activity send playback commands. */
 export type ListeningPolicy=Readonly<{
+ audiobook?:AudiobookPreferences;
  preferences:Readonly<{bookRate:number;passoutMinutes:number}>|null;
  activityRevision:number;activityAtMs:number;timerRevision:number;
  timer:Readonly<{choice:string|number;label:string;wallDeadline?:number;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number;libraryId?:string}>|null;

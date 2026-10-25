@@ -18,6 +18,9 @@ import (
 // their saved default for where the request comes from); the owner's ceilings,
 // the member's remote cap and the upload budget always narrow it.
 type V1Choice struct {
+	// UseStoredResume is server-private intent, set only for an initial stored
+	// resume. Replans, transfers and already chosen positions leave it false.
+	UseStoredResume bool
 	// PendingActivation hides a candidate and defers personal state until acceptance.
 	PendingActivation bool
 	// AssetID is the version to play; empty plays the item's first available one.

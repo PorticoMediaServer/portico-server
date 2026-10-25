@@ -187,10 +187,12 @@ func (s *Service) ListeningSelection(r ContentRequest, t ListeningTarget, mode, 
 		var saved BookResume
 		resumeArgs := append([]any{t.ID, r.Profile}, bound...)
 		var resumeMillis int64
-		var lastPlayed string
-		e = s.read().QueryRow(`SELECT pid(i.public_id),r.position,COALESCE((SELECT last_played_at FROM personal_items WHERE profile_id=r.profile_id AND item_id=r.item_id),'') FROM book_resume r JOIN catalog_entities i ON i.id=r.item_id JOIN catalog_book_files f ON f.entity_id=i.id AND f.book_id=r.book_id JOIN catalog_entities book ON book.id=r.book_id WHERE book.public_id=pid_blob(?) AND r.profile_id=? AND `+restriction, resumeArgs...).Scan(&saved.ItemID, &resumeMillis, &lastPlayed)
+		e = s.read().QueryRow(`SELECT pid(i.public_id),r.position FROM book_resume r JOIN catalog_entities i ON i.id=r.item_id JOIN catalog_book_files f ON f.entity_id=i.id AND f.book_id=r.book_id JOIN catalog_entities book ON book.id=r.book_id WHERE book.public_id=pid_blob(?) AND r.profile_id=? AND `+restriction, resumeArgs...).Scan(&saved.ItemID, &resumeMillis)
 		if e == nil {
-			saved.PositionSeconds = listeningrules.Resume(float64(resumeMillis)/1000, lastPlayed, time.Now())
+			saved.PositionSeconds, e = listeningrules.Resume(float64(resumeMillis)/1000, r.ResumeRewindMs)
+			if e != nil {
+				return out, e
+			}
 			out.Resume = &saved
 			var available bool
 			if e = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_item_availability v JOIN catalog_entities i ON i.id=v.entity_id WHERE i.public_id=pid_blob(?) AND v.available=1 AND v.retired=0)`, saved.ItemID).Scan(&available); e != nil {

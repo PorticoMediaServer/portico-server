@@ -1,18 +1,26 @@
 package listeningrules
 
 import (
+	"errors"
 	"testing"
-	"time"
 )
 
-func TestResumeRewindIsBounded(t *testing.T) {
-	now := time.Unix(1800000000, 0)
-	for _, v := range []struct {
-		pause          time.Duration
-		position, want float64
-	}{{time.Minute, 100, 100}, {6 * time.Minute, 100, 85}, {2 * time.Hour, 100, 70}, {2 * time.Hour, 5, 0}} {
-		if got := Resume(v.position, now.Add(-v.pause).Format(time.RFC3339Nano), now); got != v.want {
-			t.Fatalf("%+v: %v", v, got)
+func TestResumeUsesOnlySelectedRewindAndClamps(t *testing.T) {
+	for _, ms := range []int{0, 5000, 15000, 30000} {
+		for _, position := range []float64{0, 2, 100} {
+			want := position - float64(ms)/1000
+			if want < 0 {
+				want = 0
+			}
+			got, err := Resume(position, ms)
+			if err != nil || got != want {
+				t.Fatalf("position=%v choice=%d: got %v, %v; want %v", position, ms, got, err, want)
+			}
+		}
+	}
+	for _, ms := range []int{-1, 5, 10000, 60000} {
+		if _, err := Resume(100, ms); !errors.Is(err, ErrResumeRewind) {
+			t.Fatalf("invalid choice %d admitted: %v", ms, err)
 		}
 	}
 }

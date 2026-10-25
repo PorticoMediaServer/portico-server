@@ -9,6 +9,7 @@ import type {PlaybackService} from './index.ts';
 import type {QueueScope,QueueItemInput} from './queues.ts';
 import {parseQueueItem} from './queues.ts';
 import {PlayerChaptersService} from './player-chapters.ts';
+import {defaultAudiobookPreferences,type AudiobookPreferences} from './audiobook-preferences.ts';
 
 export const listeningRates=[.5,.75,1,1.25,1.5,1.75,2] as const;
 export const audiobookRates=[...listeningRates,2.5,3] as const;
@@ -72,7 +73,8 @@ export class ListeningService {
  private state:ListeningSnapshot=Object.freeze({eqApplied:false,levelingApplied:false,phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
- private pausedBook?:{session:string;at:number};
+ private readonly audiobook:()=>AudiobookPreferences;
+ private pausedBook?:{session:string;generation:number;item:string;intentId:number;run:number;seekRevision:number;at:number};
  /** A speed chosen in the player: for this playback only (`playbackRun`), never saved. */
  private heldRate?:{run:number;kind:string;rate:number};
  private activityRevision=0;private activityAtMs=Date.now();
@@ -80,17 +82,18 @@ export class ListeningService {
  /** PERF-24: whether an item can be a listening item (a song or audiobook file), when the caller
   * knows; video never asks for listening details. */
  private listens?:(itemId:string,sessionId:string)=>boolean;
- constructor(scope:QueueScope,request:ListeningRequest,playback:PlaybackService,now:()=>number=()=>performance.now(),listens?:(itemId:string,sessionId:string)=>boolean){this.scope=scope;this.request=request;this.playback=playback;this.now=now;this.listens=listens;this.lastActivity=this.now();}
+ constructor(scope:QueueScope,request:ListeningRequest,playback:PlaybackService,now:()=>number=()=>performance.now(),listens?:(itemId:string,sessionId:string)=>boolean,audiobook:()=>AudiobookPreferences=()=>defaultAudiobookPreferences){this.scope=scope;this.request=request;this.playback=playback;this.now=now;this.listens=listens;this.audiobook=audiobook;this.lastActivity=this.now();}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
  private syncNativePolicy(){
   const source=this.playback.getSnapshot(),serverSource=!!source.session&&source.session.mode!=='local'&&!source.channel;
   const timer=serverSource?this.state.timer:null;
-  this.playback.setListeningPolicy?.({preferences:serverSource&&this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,
+  this.playback.setListeningPolicy?.({preferences:serverSource&&this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,audiobook:this.audiobook(),
    activityRevision:this.activityRevision,activityAtMs:this.activityAtMs,timerRevision:this.timerGeneration,
    timer:timer?{choice:timer.choice,label:timer.label,...(timer.wallDeadline===undefined?{}:{wallDeadline:timer.wallDeadline}),...(timer.endSeconds===undefined?{}:{endSeconds:timer.endSeconds}),...(timer.itemId?{itemId:timer.itemId}:{}),...(timer.bookId?{bookId:timer.bookId}:{}),...(timer.sessionId?{sessionId:timer.sessionId,generation:timer.generation}:{}),...(timer.libraryId?{libraryId:timer.libraryId}:{})}:null});
  }
+ refreshAudiobookPreferences(){if(!this.disposed)this.syncNativePolicy();}
  retryContext(){if(this.disposed)return;this.itemId='';this.publish({error:null});this.observe();}
  connect(){if(this.connected||this.disposed)return;this.connected=true;this.unsubscribe=this.playback.subscribe(()=>this.observe());this.interval=setInterval(()=>this.tick(),1000);void this.refreshPreferences();this.observe();}
  async refreshPreferences(){const g=++this.prefGeneration;this.publish({phase:'loading',error:null});try{const p=parseListeningPreferences(listeningData(await this.request(routePath("get_listening_preferences"),undefined,'GET',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}catch(e){if(!this.disposed&&g===this.prefGeneration)this.publish({phase:'error',error:'Listening preferences could not be loaded. Retry before changing them.'});}}
@@ -122,9 +125,12 @@ export class ListeningService {
   if(this.state.eqApplied!==eqApplied||this.state.levelingApplied!==levelingApplied)this.publish({eqApplied,levelingApplied});
   // The item ID can precede a local session; never request source policy until its session exists.
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
-  if(item&&this.state.context?.kind==='audiobook_file'&&p.phase==='ready'&&p.session){
-   if(p.intent==='paused'&&this.pausedBook?.session!==p.session.id)this.pausedBook={session:p.session.id,at:this.now()};
-   else if(p.intent==='playing'&&this.pausedBook){const paused=this.pausedBook;this.pausedBook=undefined;if(paused.session===p.session.id){const rewind=audiobookResumeRewind(this.now()-paused.at);if(rewind>0&&!p.pendingSeek&&!p.failedSeek){const toSeconds=Math.max(0,p.positionSeconds-rewind);this.playback.seek(toSeconds);this.publish({rewind:Object.freeze({seconds:p.positionSeconds-toSeconds,fromSeconds:p.positionSeconds,toSeconds,messageKey:'listening.rewound'})});}}}
+  if(item&&this.state.context?.itemId===item&&this.state.context.kind==='audiobook_file'&&p.phase==='ready'&&p.session&&!this.playback.isNativeListening?.()){
+   if(p.intent==='paused'&&this.pausedBook?.session!==p.session.id)this.pausedBook={session:p.session.id,generation:p.session.generation,item,intentId:p.intentId,run:p.playbackRun,seekRevision:p.seekRevision,at:this.now()};
+   else if(p.intent==='playing'&&this.pausedBook){const paused=this.pausedBook;this.pausedBook=undefined;if(paused.session===p.session.id&&paused.generation===p.session.generation&&paused.item===item&&paused.intentId===p.intentId&&paused.run===p.playbackRun&&paused.seekRevision===p.seekRevision){
+    const rewind=audiobookResumeRewind(this.now()-paused.at,this.audiobook().resumeRewindMs);
+    if(!this.disposed&&this.playback.getSnapshot()===p&&rewind>0&&!p.pendingSeek&&!p.failedSeek){const toSeconds=Math.max(0,p.positionSeconds-rewind);if(toSeconds<p.positionSeconds){this.playback.seek(toSeconds);this.publish({rewind:Object.freeze({seconds:p.positionSeconds-toSeconds,fromSeconds:p.positionSeconds,toSeconds,messageKey:'listening.rewound'})});}}
+   }}
   }else this.pausedBook=undefined;
   if(this.sessionKey!==sessionKey){this.sessionKey=sessionKey;const t=this.state.timer;if(t?.sessionId&&(t.sessionId!==p.session?.id||t.generation!==p.session?.generation))this.clearTimer(item?'Chapter timer cleared because the playback source changed.':null);}
   if(item!==this.itemId){const old=this.state.context;this.itemId=item;const generation=++this.contextGeneration;this.publish({context:null,rewind:undefined});
@@ -206,7 +212,7 @@ export async function readListeningContext(request:ListeningRequest,scope:SavedS
  return parseItem(raw.data,itemId);
 }
 
-export function audiobookResumeRewind(pauseMs:number):number{return pauseMs>=3600000?30:pauseMs>=300000?15:0;}
+export function audiobookResumeRewind(pauseMs:number,rewindMs=0):number{if(![0,5000,15000,30000].includes(rewindMs))throw new Error('invalid_audiobook_preference');return pauseMs>=300000?rewindMs/1000:0;}
 
 /** Nested book times stay explicit integer milliseconds. They never pass through
  * the top-level legacy display-duration conversion. */

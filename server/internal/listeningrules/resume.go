@@ -1,22 +1,20 @@
 package listeningrules
 
 import (
+	"errors"
 	"math"
-	"time"
 )
 
-// Resume preserves stored progress and gives the listener a little context.
-func Resume(position float64, lastPlayed string, now time.Time) float64 {
-	at, e := time.Parse(time.RFC3339Nano, lastPlayed)
-	if e != nil {
-		return position
+var ErrResumeRewind = errors.New("invalid audiobook resume rewind")
+
+// Resume applies the profile's sole automatic rewind to an actual stored
+// resume. Callers must not apply it to an explicit position or continuation.
+// Elapsed time never selects a second, hidden amount.
+func Resume(position float64, rewindMS int) (float64, error) {
+	switch rewindMS {
+	case 0, 5000, 15000, 30000:
+		return math.Max(0, position-float64(rewindMS)/1000), nil
+	default:
+		return 0, ErrResumeRewind
 	}
-	elapsed := now.Sub(at)
-	rewind := 0.
-	if elapsed >= time.Hour {
-		rewind = 30
-	} else if elapsed >= 5*time.Minute {
-		rewind = 15
-	}
-	return math.Max(0, position-rewind)
 }

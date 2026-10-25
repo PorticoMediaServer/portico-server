@@ -22,6 +22,9 @@ var preferenceConsumers = func() map[string]string {
 		"playback.introSkip":                  "client.playback.markers",
 		"playback.creditsSkip":                "client.playback.markers",
 		"playback.recapSkip":                  "client.playback.markers",
+		"audiobooks.skipBackMs":               "client.playback.controls",
+		"audiobooks.skipForwardMs":            "client.playback.controls",
+		"audiobooks.resumeRewindMs":           "server.playback.audiobook_resume",
 		"audiobooks.defaultSpeed":             "server.catalog.listening_preferences",
 		"playback.sleepTimerMinutes":          "server.catalog.listening_preferences",
 		"playback.defaultSpeed":               "client.playback.speed",
@@ -76,12 +79,12 @@ var preferenceConsumers = func() map[string]string {
 // only from the effective registry values. Clients apply it to their renderer
 // and save edits with PATCH /v1/preferences rather than a second settings store.
 type AudioEffectPreferences struct {
-	NeverBoost         bool   `json:"neverBoost"`
-	SmoothTransitions  bool   `json:"smoothTransitions"`
-	DSDGainDB          int    `json:"dsdGainDb"`
-	Gapless            bool   `json:"gapless"`
-	CrossfadeMs        int    `json:"crossfadeMs"`
-	Normalization      string `json:"normalization"`
+	NeverBoost        bool   `json:"neverBoost"`
+	SmoothTransitions bool   `json:"smoothTransitions"`
+	DSDGainDB         int    `json:"dsdGainDb"`
+	Gapless           bool   `json:"gapless"`
+	CrossfadeMs       int    `json:"crossfadeMs"`
+	Normalization     string `json:"normalization"`
 }
 
 func (v PreferenceValues) AudioEffects() AudioEffectPreferences {

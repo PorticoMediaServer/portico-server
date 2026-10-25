@@ -225,7 +225,6 @@ const accountPages: readonly AuthoredPage[] = [
       // No music speed: a song plays at the speed it was recorded.
       {id: 'speed', title: 'settings.section.speed', needs: c => c.playbackSpeed !== false, rows: [
         pref('playback.defaultSpeed', 'settings.row.videoSpeed', {type: 'choice', choices: speeds}),
-        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: audiobookSpeeds}),
       ]},
       {id: 'advanced', title: 'settings.section.advanced', advanced: true, rows: [
         pref('playback.playedThresholdPercent', 'settings.row.watchedThreshold', {type: 'choice', choices: [80, 85, 90, 95, 100].map(value => ({value, label: 'pref.unit.percent' as MessageId, labelValues: {value}}))}, {help: 'pref.help.playback.playedThresholdPercent'}),
@@ -280,11 +279,22 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'music', title: 'settings.page.music', icon: 'music', sections: [
-      {id: 'sound', rows: [
+      {id: 'sound', title: 'next.settingsSpec.account.music.groups.0.title', rows: [
         pref('music.audioNormalization', 'settings.row.volumeLeveling', {type: 'choice', choices: (['off', 'track', 'album'] as const).map(value => ({value, label: `pref.value.music.audioNormalization.${value}` as MessageId}))}, {help: 'settings.help.volumeLeveling', needs: c => c.audioEffects !== false}),
         pref('music.crossfadeMs', 'pref.label.music.crossfadeMs', {type: 'choice', choices: [{value: 0, label: 'pref.value.music.crossfadeMs.0'}, ...seconds(2, 4, 6, 8, 10, 12)]}, {help: 'pref.help.music.crossfadeMs', needs: c => c.audioEffects !== false}),
         toggle('music.gapless', 'pref.label.music.gapless', {help: 'settings.help.gapless', needs: c => c.audioEffects !== false}),
+      ]},
+      {id: 'lyrics', title: 'next.settingsSpec.account.music.groups.1.title', rows: [
         toggle('playback.showSyncedLyrics', 'settings.row.lyrics', {help: 'settings.help.lyrics'}),
+      ]},
+      {id: 'audiobooks', title: 'next.settingsSpec.account.music.groups.2.title', rows: [
+        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: audiobookSpeeds}, {needs: c => c.playbackSpeed !== false}),
+        pref('audiobooks.skipBackMs', 'pref.label.playback.skipBackMs', {type: 'choice', choices: seconds(10, 15, 30, 60)}, {scope: 'profile'}),
+        pref('audiobooks.skipForwardMs', 'pref.label.playback.skipForwardMs', {type: 'choice', choices: seconds(15, 30, 60, 90)}, {scope: 'profile'}),
+        pref('audiobooks.resumeRewindMs', 'pref.label.audiobooks.resumeRewindMs', {type: 'choice', choices: [
+          {value: 0, label: 'pref.value.audiobooks.resumeRewindMs.0'},
+          ...[5, 15, 30].map(count => ({value: count * 1000, label: 'pref.value.audiobooks.resumeRewindMs.earlier' as MessageId, labelValues: {count}})),
+        ]}, {scope: 'profile'}),
       ]},
     ],
   },

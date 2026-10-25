@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/listeningrules"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/requestinput"
 	"portico.local/server/internal/segmentmarkers"
@@ -146,6 +147,7 @@ func (s *Service) CreateReplacingContext(ctx context.Context, p identity.Princip
 	if !ok {
 		return Session{}, requestinput.New("requestId and a published quality are required")
 	}
+	choice.UseStoredResume = replacement == nil
 	return s.create(ctx, p, item, request, replacement, &choice)
 }
 
@@ -524,10 +526,15 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		// kind-specific behavior.
 		itemKind = ""
 	}
-	if itemKind == "audiobook_file" {
-		var lastPlayed string
-		_ = tx.QueryRow(`SELECT last_played_at FROM personal_items WHERE profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, identity.PersonalKey(p.Viewer), item).Scan(&lastPlayed)
-		resume = listeningrules.Resume(resume, lastPlayed, time.Now())
+	if itemKind == "audiobook_file" && v1.UseStoredResume {
+		preferences, _, _, err := operations.EffectivePreferences(tx, p.Viewer, "")
+		if err != nil {
+			return Session{}, err
+		}
+		resume, e = listeningrules.Resume(resume, preferences.Int("audiobooks.resumeRewindMs"))
+		if e != nil {
+			return Session{}, e
+		}
 	}
 	if duration > 0 && itemKind != "audiobook_file" && resume >= duration-3 {
 		resume = 0

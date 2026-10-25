@@ -2,6 +2,7 @@ import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {ListeningService,loadListeningSelection,listeningItemInput,parseListeningJourney,parseListeningPreferences,readListeningItem,readListeningContext,type ListeningRequest} from '../src/listening.ts';
 import type {PlaybackService} from '../src/index.ts';
+import {defaultAudiobookPreferences,type AudiobookPreferences} from '../src/audiobook-preferences.ts';
 import {defaultAudioEffects,type AudioEffectsSnapshot} from '../src/audio-effects.ts';
 const scope={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'};
 const prefs={revision:0,bookRate:1.5,passoutMinutes:0};
@@ -19,14 +20,14 @@ class Engine {
  update(patch:unknown){this.state={...this.state,...patch as any};for(const f of this.listeners)f();}
 }
 function chapterData(){return {scope:{serverId:'server',libraryId:'library',itemId:'song',sessionId:'session',generation:1,sourceId:'source',viewerFence:'fence'},revision:'revision',status:'available',reason:null,durationMs:60000,chapters:[{id:'source:1',index:1,title:'One',startMs:0,endMs:30000,action:{id:'seek',positionMs:0}},{id:'source:2',index:2,title:'Two',startMs:30000,endMs:60000,action:{id:'seek',positionMs:30000}}],totalCount:2,nextCursor:''};}
-function setup(t:TestContext,options:{preferences?:Partial<typeof prefs>;context?:(id:string)=>unknown;request?:ListeningRequest}={}) {
+function setup(t:TestContext,options:{preferences?:Partial<typeof prefs>;context?:(id:string)=>unknown;request?:ListeningRequest;audiobook?:()=>AudiobookPreferences}={}) {
  const engine=new Engine();let now=0,p={...prefs,...options.preferences};const writes:unknown[]=[];
  const request:ListeningRequest=options.request??(async(path,body,method)=>{
   if(path==='/v1/listening/preferences'){if(method==='PUT'){writes.push(body);p={...body as typeof p,revision:p.revision+1};}return wrapped(p);}
   if(path.includes('/chapters'))return chapterData();
   const id=path.split('/')[3];return wrapped(options.context?.(id)??{itemId:id,libraryId:'library',kind:'song',albumId:'album',artistId:'artist'});
  });
- const service=new ListeningService(scope,request,engine as unknown as PlaybackService,()=>now);
+ const service=new ListeningService(scope,request,engine as unknown as PlaybackService,()=>now,undefined,options.audiobook);
  t.after(()=>service.dispose());
  service.connect();return {service,engine,writes,setNow:(v:number)=>{now=v;}};
 }
@@ -183,7 +184,7 @@ test('a song advances before the listening preferences are known', async t => {
 });
 
 test('a long audiobook pause rewinds once, while short pauses and music do not',async t=>{
- const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'})});const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);await settle();
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'}),audiobook:()=>({...defaultAudiobookPreferences,resumeRewindMs:15000})});const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);await settle();
  f.engine.update({positionSeconds:300,intent:'paused'});f.setNow(300001);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);assert.deepEqual(f.service.getSnapshot().rewind,{seconds:15,fromSeconds:300,toSeconds:285,messageKey:'listening.rewound'});f.engine.update({positionSeconds:286});assert.deepEqual(seeks,[285]);
  f.engine.update({intent:'paused'});f.setNow(300100);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);
 });
@@ -257,4 +258,21 @@ test('listening exposes actual engine processing facts and clears them when the 
  f.engine.update({phase:'ended',audioEffects:{...f.engine.state.audioEffects,eqApplied:false,levelingApplied:false}});
  assert.equal(f.service.getSnapshot().eqApplied,false);assert.equal(f.service.getSnapshot().levelingApplied,false);
  f.service.dispose();assert.equal(f.engine.listeners.size,0);
+});
+
+for(const elapsed of [300001,3600001]) test(`default zero never rewinds after ${elapsed}ms`,async t=>{
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file'})});const seeks:number[]=[];(f.engine as any).seek=(v:number)=>seeks.push(v);await settle();
+ f.engine.update({positionSeconds:100,intent:'paused'});f.setNow(elapsed);f.engine.update({intent:'playing'});
+ assert.deepEqual(seeks,[]);assert.equal(f.service.getSnapshot().rewind,undefined);
+});
+test('chosen long-pause amount clamps once and is not doubled for the native owner',async t=>{
+ let amount=5000;const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file'}),audiobook:()=>({...defaultAudiobookPreferences,resumeRewindMs:amount})});const seeks:number[]=[];(f.engine as any).seek=(v:number)=>seeks.push(v);await settle();
+ f.engine.update({positionSeconds:2,intent:'paused'});f.setNow(3600001);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[0]);assert.equal(f.service.getSnapshot().rewind?.seconds,2);
+ f.engine.update({positionSeconds:1});assert.deepEqual(seeks,[0]);
+ f.engine.native=true;f.engine.update({positionSeconds:50,intent:'paused'});amount=30000;f.service.refreshAudiobookPreferences();f.setNow(7200002);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[0],'native owner alone applies its own long-pause policy');
+ assert.equal(f.engine.policies.at(-1).audiobook.resumeRewindMs,30000);
+});
+for(const change of [{seekRevision:1},{pendingSeek:{revision:1,positionSeconds:30}},{failedSeek:{revision:1,positionSeconds:30}},{session:{id:'replacement',generation:2}},{playbackRun:2}]) test(`long-pause rewind yields to changed intent ${JSON.stringify(change)}`,async t=>{
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file'}),audiobook:()=>({...defaultAudiobookPreferences,resumeRewindMs:15000})});const seeks:number[]=[];(f.engine as any).seek=(v:number)=>seeks.push(v);await settle();
+ f.engine.update({positionSeconds:50,intent:'paused'});f.setNow(3600001);f.engine.update({...change,intent:'playing'});assert.deepEqual(seeks,[]);
 });

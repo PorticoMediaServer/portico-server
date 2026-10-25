@@ -2597,3 +2597,17 @@ test('Info advertises no VOD report for an audio session or an already canceled 
  before=f.log.length;assert.equal(await f.runtime.readPlaybackInfo(fence,new AbortController().signal),null);assert.equal(f.log.length,before);
  await assert.rejects(f.runtime.readPlaybackInfo(old,new AbortController().signal),/stale_playback_command/);
 });
+
+test('an audiobook stored resume reaches the server as intent while chapter and restart positions stay explicit',async t=>{
+ const f=setup(t),abort=new AbortController(),context={signal:abort.signal,isCurrent:()=>true};
+ await f.runtime.playFromScreen({libraryId:'library',itemId:'book-part',startSeconds:0,storedResume:true},context);
+ const first=f.log.find(request=>request.method==='POST'&&request.path==='/v1/queues')!;
+ assert.ok((first.body as any).startPlayback,'atomic queue start uses the server default stored-resume intent');
+ assert.equal((first.body as any).startPlayback.startPositionMs,undefined);
+ const before=f.log.length;
+ await f.runtime.playFromScreen({libraryId:'library',itemId:'book-part',startSeconds:9},context);
+ const chapter=f.log.slice(before).find(request=>request.method==='POST'&&request.path==='/v1/playback/sessions')!;
+ assert.equal((chapter.body as any).startPositionMs,9000);
+ assert.equal((chapter.body as any).startFrom,undefined);
+ await assert.rejects(f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0,storedResume:true},context),/invalid_playback_target/);
+});

@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 	"strconv"
 )
 
@@ -81,7 +83,20 @@ func (d Dependencies) listeningRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		data, e := d.Catalog.WithContext(r.Context()).ListeningSelection(catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Library: target.LibraryID, Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Cursor: q.Get("cursor"), Limit: limit}, target, q.Get("mode"), q.Get("seed"), q.Get("resume") == "true", q.Get("startItem"))
+		var data catalog.ListeningSelection
+		e = dbwork.WithReadSnapshot(r.Context(), d.DB, func(ctx context.Context) error {
+			resumeRewindMS := 0
+			if q.Get("resume") == "true" && target.Kind == "book" {
+				preferences, _, _, err := operations.EffectivePreferences(dbwork.Snapshot(ctx), p.Viewer, "")
+				if err != nil {
+					return err
+				}
+				resumeRewindMS = preferences.Int("audiobooks.resumeRewindMs")
+			}
+			var err error
+			data, err = d.Catalog.WithContext(ctx).ListeningSelection(catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Library: target.LibraryID, Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Cursor: q.Get("cursor"), Limit: limit, ResumeRewindMs: resumeRewindMS}, target, q.Get("mode"), q.Get("seed"), q.Get("resume") == "true", q.Get("startItem"))
+			return err
+		})
 		if e == nil {
 			e = d.allowedLibrary(r.Context(), p, target.LibraryID)
 		}
