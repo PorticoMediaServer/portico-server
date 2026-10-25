@@ -1,7 +1,7 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
-import type {ReadingDiscover} from '@portico/client-core';
+import type {ReadingDiscover, ReadingShortRead} from '@portico/client-core';
 import type {FactPart} from '@portico/client-core/kit-model';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -58,6 +58,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const state = useSyncExternalStore(resources.books.collection.subscribe, resources.books.collection.getSnapshot, resources.books.collection.getSnapshot), failed = state.status === 'error';
   const reading = useSyncExternalStore(resources.resume.collection.subscribe, resources.resume.collection.getSnapshot, resources.resume.collection.getSnapshot);
   const [recent, setRecent] = useState<readonly RecentReadingItem[]>();
+  const [shortReads, setShortReads] = useState<readonly ReadingShortRead[]>([]);
   const [series, setSeries] = useState<NonNullable<ReadingDiscover['rows'][number]['series']>>([]);
   useLayoutEffect(() => {
     const element = grid.current; if (!element) return;
@@ -72,16 +73,16 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
    *  has no recently-added values (Root §3), and the Reading list stays reachable. */
   useEffect(() => {
     const operation = new AbortController();
-    setSeries([]);
-    resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12}, operation.signal)
-      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []);}})
+    setSeries([]); setShortReads([]);
+    resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12, ...(!comic ? {shortReadsLimit: 12} : {})}, operation.signal)
+      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []);}})
       .catch(error => {
         if (operation.signal.aborted) return;
-        setRecent([]);
+        setRecent([]); setSeries([]); setShortReads([]);
         if (resources.bindings.authority.isCurrent()) resources.reportError(error);
       });
     return () => operation.abort();
-  }, [resources, libraryId]);
+  }, [resources, libraryId, comic]);
   const cardWidth = width < 600 ? 108 : 190;
   /** The same rows at phone width take the handheld scale and gutters (phone-read 1). */
   const platform = width < 600 ? 'phone-web' as const : 'desktop' as const;
@@ -96,6 +97,16 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
       items: recentCards(recent, {kind: comic ? 'comic' : 'book', read: t('next.reader.read'),
         open: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.id}}).catch(resources.reportError);},
         play: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.id, entry.sourceId)).catch(resources.reportError);}}),
+    }] : []),
+    ...(shortReads.length ? [{id: 'short-reads', kind: 'covers' as const, heading: t('next.reader.shortReads'), subtitle: t('next.reader.underThreeHours'),
+      items: shortReads.map(entry => ({id: entry.item.id, card: {
+        kind: 'book' as const, context: 'shelf' as const, density: 'shelf' as const, visible: true,
+        model: {title: entry.item.title, caption: [...authorFacts(entry.item.author), {id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(entry.estimatedSeconds)}), role: 'identity' as const}]},
+        generated: {title: entry.item.title, glyph: Array.from(entry.item.title)[0] ?? '', tint: generatedCoverTint(entry.item.title)},
+        disabled: !entry.item.inventoryAvailable, playLabel: t('next.reader.read'),
+        onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.item.id}}).catch(resources.reportError);},
+        onPlay: entry.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.item.id, entry.item.sourceId)).catch(resources.reportError);} : undefined,
+      }})),
     }] : []),
     ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('library.tab.series'), items: series.map(summary => ({id: summary.id, card: {
       model: {title: summary.name, caption: [{id: 'read', text: t('next.reader.seriesReadCount', {read: defaultI18n.number(summary.readCount), count: defaultI18n.number(summary.count)}), role: 'identity' as const}]},
