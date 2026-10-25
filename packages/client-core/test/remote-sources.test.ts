@@ -522,12 +522,13 @@ test('the account configuration is listed by name and kind, and saved by remote 
  const remotes=[{name:'archive',kind:'s3',supported:true,reason:''},{name:'wrapped',kind:'crypt',supported:false,reason:'encrypted'}];
  const service=new RemoteSourceService(api(async(path,method,body)=>{
   calls.push({path,method,body});
-  if(path.endsWith('/storage/sources/rclone/config')&&method==='GET')return {scope:wire,path:'/home/portico/.config/rclone/rclone.conf',remotes};
+  if(path.endsWith('/storage/sources/rclone/config')&&method==='GET')return {scope:wire,path:'/home/portico/.config/rclone/rclone.conf',remotes,truncated:false};
   if(path.endsWith('/storage/sources/rclone/config')&&method==='POST')return rcloneReceipt();
   return list([rcloneSource()]);
  }),scope,async()=>op);
  const view=await service.rcloneConfig();
  assert.equal(view.path,'/home/portico/.config/rclone/rclone.conf');
+ assert.equal(view.truncated,false);
  assert.deepEqual(view.remotes,remotes);
  const receipt=await service.configureRcloneFromConfig({name:'Archive',remote:'archive'});
  assert.equal(receipt?.sourceId,'rclone');
@@ -540,10 +541,12 @@ test('the account configuration is listed by name and kind, and saved by remote 
 
 test('a malformed account configuration read fails closed',async()=>{
  for(const remotes of [[{name:'archive',kind:'s3',supported:'yes',reason:''}],[{name:'',kind:'s3',supported:true,reason:''}],[{name:'archive',kind:'s3',supported:false,reason:'because'}]]){
-  const service=new RemoteSourceService(api(async()=>({scope:wire,path:'/config',remotes})),scope,async()=>op);
+  const service=new RemoteSourceService(api(async()=>({scope:wire,path:'/config',remotes,truncated:false})),scope,async()=>op);
   await assert.rejects(service.rcloneConfig());service.dispose();
  }
- const absent=new RemoteSourceService(api(async()=>({scope:wire,path:'',remotes:[]})),scope,async()=>op);
- assert.deepEqual(await absent.rcloneConfig(),{path:'',remotes:[]});
+ const absent=new RemoteSourceService(api(async()=>({scope:wire,path:'',remotes:[],truncated:false})),scope,async()=>op);
+ assert.deepEqual(await absent.rcloneConfig(),{path:'',remotes:[],truncated:false});
+ const trimmed=new RemoteSourceService(api(async()=>({scope:wire,path:'/config',remotes,truncated:true})),scope,async()=>op);
+ assert.equal((await trimmed.rcloneConfig()).truncated,true);trimmed.dispose();
  absent.dispose();
 });

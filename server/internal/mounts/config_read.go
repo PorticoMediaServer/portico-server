@@ -69,23 +69,24 @@ func AccountRcloneConfigPath() (string, bool) {
 // ReadAccountRcloneConfig lists the account configuration's remotes. A missing
 // file is an empty list; anything unreadable is an error. A file whose grammar
 // is ambiguous lists nothing rather than guessing at its sections.
-func ReadAccountRcloneConfig() (string, []ConfigRemote, error) {
+func ReadAccountRcloneConfig() (string, []ConfigRemote, bool, error) {
 	path, ok := AccountRcloneConfigPath()
 	if !ok {
-		return "", []ConfigRemote{}, nil
+		return "", []ConfigRemote{}, false, nil
 	}
 	raw, err := readAccountConfig(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", []ConfigRemote{}, nil
+			return "", []ConfigRemote{}, false, nil
 		}
-		return path, nil, err
+		return path, nil, false, err
 	}
 	parsed := parseAccountConfig(string(raw))
 	if parsed.malformed {
-		return path, []ConfigRemote{}, nil
+		return path, []ConfigRemote{}, false, nil
 	}
-	return path, configRemotes(parsed), nil
+	remotes, truncated := configRemotes(parsed)
+	return path, remotes, truncated, nil
 }
 
 // ReadAccountRcloneSection returns the named section in plain rclone INI form,
@@ -134,17 +135,20 @@ func ReadAccountRcloneSection(remote string) (string, error) {
 	return config, nil
 }
 
-func configRemotes(parsed parsedConfig) []ConfigRemote {
+// configRemotes projects every section, then reports whether the drawn list is
+// the whole of it: the first configRemoteLimit names are shown and the rest are
+// never silently dropped.
+func configRemotes(parsed parsedConfig) ([]ConfigRemote, bool) {
 	out := make([]ConfigRemote, 0, len(parsed.sections))
 	for _, section := range parsed.sections {
-		if len(out) >= configRemoteLimit {
-			break
-		}
 		reason := section.reason(parsed.duplicate[section.name] > 1)
 		out = append(out, ConfigRemote{Name: section.name, Kind: section.kind, Supported: reason == "", Reason: reason})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	if len(out) > configRemoteLimit {
+		return out[:configRemoteLimit], true
+	}
+	return out, false
 }
 
 func (s configSection) reason(duplicate bool) string {
@@ -218,27 +222,13 @@ func parseAccountConfig(text string) parsedConfig {
 	return parsed
 }
 
-// readAccountConfig accepts only a regular file (a symlink to one is allowed),
-// so a FIFO or device on that path cannot stall a read. The byte limit bounds
-// what a regular file may contribute.
+// readAccountConfig opens the fixed path without waiting for a writer, then
+// judges the descriptor it actually got: only a regular file is read (a symlink
+// resolves to its target), so a FIFO or device cannot stall this read even if it
+// replaced a regular file just before the open. The byte limit bounds what a
+// regular file may contribute.
 func readAccountConfig(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		if info.Mode()&os.ModeSymlink == 0 {
-			return nil, ErrConfigInvalid
-		}
-		target, err := os.Stat(path)
-		if err != nil {
-			return nil, err
-		}
-		if !target.Mode().IsRegular() {
-			return nil, ErrConfigInvalid
-		}
-	}
-	file, err := os.Open(path)
+	file, err := openConfigFile(path)
 	if err != nil {
 		return nil, err
 	}

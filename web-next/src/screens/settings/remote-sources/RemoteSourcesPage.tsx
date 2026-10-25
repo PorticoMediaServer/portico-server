@@ -491,6 +491,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
                 onValueChange={value => {setConfigRemote(value);setConfigName(current => current || value);}}/>
               <TextField label={t('next.remoteSources.name')} value={configName} maxLength={200} disabled={busy}
                 placeholder={configRemote} onChange={event => setConfigName(event.target.value)}/>
+              {configView.truncated && <p className={styles.note} role="status">{t('next.remoteSources.configTruncated')}</p>}
               <p className={styles.note}>{t('next.remoteSources.configChecksOnSave')}</p>
             </>}
       </> : <>

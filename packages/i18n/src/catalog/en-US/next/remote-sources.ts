@@ -30,6 +30,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.configUnknownKind': 'unknown kind',
   'next.remoteSources.configRemoteLabel': '{name} · {kind}',
   'next.remoteSources.configChecksOnSave': 'Portico tests the remote when you save. Nothing has to be installed.',
+  'next.remoteSources.configTruncated': 'The configuration holds more remotes than this list shows. Only the first 200 are listed.',
   'next.remoteSources.remoteName': 'Remote name',
   'next.remoteSources.remoteNamePlaceholder': 'archive',
   'next.remoteSources.remoteNameHelp': 'The remote’s name in the configuration, without the colon rclone puts after it.',

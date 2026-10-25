@@ -23,7 +23,7 @@ export type RcloneReceipt=Readonly<{operationId:string;sourceId:string;generatio
 /** One remote of the server account's own rclone configuration. `reason` says why
  * an unsupported one is unsupported; no value from its section is here. */
 export type RcloneConfigRemote=Readonly<{name:string;kind:string;supported:boolean;reason:'kind'|'encrypted'|'wrapper'|'duplicate'|'ambiguous'|''}>;
-export type RcloneConfigView=Readonly<{path:string;remotes:readonly RcloneConfigRemote[]}>;
+export type RcloneConfigView=Readonly<{path:string;remotes:readonly RcloneConfigRemote[];truncated:boolean}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 /** What one command was allowed to do, kept beside its operation id so a later
  * receipt (live or recovered) must still match the original target and posture. */
@@ -268,13 +268,13 @@ export class RemoteSourceService{
   const raw=await this.request(routePath('get_storage_source_rclone_config'));
   if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);
-  if(!record(raw)||!text(raw.path)||!Array.isArray(raw.remotes)||raw.remotes.length>200)invalid();
+  if(!record(raw)||!text(raw.path)||!Array.isArray(raw.remotes)||raw.remotes.length>200||typeof raw.truncated!=='boolean')invalid();
   const remotes=raw.remotes.map(value=>{
    if(!record(value)||!text(value.name,64)||!value.name||!text(value.kind,32)||typeof value.supported!=='boolean'||!['','kind','encrypted','wrapper','duplicate','ambiguous'].includes(String(value.reason)))invalid();
    if(value.supported&&(value.reason!==''||!value.kind))invalid();
    return Object.freeze({name:value.name,kind:value.kind,supported:value.supported,reason:value.reason as RcloneConfigRemote['reason']});
   });
-  return Object.freeze({path:raw.path,remotes:Object.freeze(remotes)});
+  return Object.freeze({path:raw.path,remotes:Object.freeze(remotes),truncated:raw.truncated});
  }
  /** Saves a source from one remote of that configuration. The section itself is
   * read on the server and never sent to, or read back by, this client. */

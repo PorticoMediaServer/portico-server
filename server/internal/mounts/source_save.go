@@ -3,6 +3,8 @@ package mounts
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strings"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -85,6 +87,81 @@ func (s *Service) SaveRcloneSource(ctx context.Context, actor string, input Rclo
 	}
 	receipt, err := s.Command(ctx, actor, "", Command{OperationID: input.OperationID, Action: "create", Name: input.Name,
 		Executable: program.Path, Remote: input.Remote, Config: input.Config}, authorize)
+	if err != nil {
+		return RcloneSourceReceipt{}, err
+	}
+	return sourceReceipt(receipt)
+}
+
+// RcloneConfigSourceInput saves one remote of the server account's own rclone
+// configuration. The configuration itself never arrives from a client.
+type RcloneConfigSourceInput struct {
+	OperationID string
+	Name        string
+	Remote      string
+}
+
+// accountConfigReceiptKey marks a receipt whose identity is the posted remote
+// name rather than configuration content, so a retry can be answered from the
+// durable receipt before the mutable configuration is read again.
+const accountConfigReceiptKey = "account-config"
+
+// rcloneConfigSourceReceipt looks up the durable outcome of this exact request
+// without reading the configuration. It reports found=false when the operation
+// has no receipt yet.
+func (s *Service) rcloneConfigSourceReceipt(actor string, input RcloneConfigSourceInput, program rcloneprogram.Program) (RcloneSourceReceipt, bool, error) {
+	if s == nil || actor == "" {
+		return RcloneSourceReceipt{}, false, identity.ErrUnauthorized
+	}
+	if input.OperationID == "" || strings.TrimSpace(input.Name) == "" || !configSectionName(input.Remote) {
+		return RcloneSourceReceipt{}, false, ErrConfigInvalid
+	}
+	identityCommand := Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path, Remote: input.Remote + ":", ReceiptKey: accountConfigReceiptKey}
+	hash := s.fingerprint(actor, "", identityCommand)
+	s.commands.Lock()
+	existing, err := s.receipt(s.db, actor, input.OperationID, hash)
+	s.commands.Unlock()
+	switch {
+	case err == nil:
+		receipt, err := sourceReceipt(existing)
+		return receipt, true, err
+	case errors.Is(err, sql.ErrNoRows):
+		if freshOperation(input.OperationID) != nil {
+			return RcloneSourceReceipt{}, false, ErrCommandExpired
+		}
+		return RcloneSourceReceipt{}, false, nil
+	default:
+		return RcloneSourceReceipt{}, false, err
+	}
+}
+
+// SaveRcloneConfigSource saves one remote of the account configuration. The
+// durable receipt is consulted before the mutable configuration is read, so a
+// retry is answered when the file has changed or disappeared since; a different
+// body for the same operation still conflicts.
+func (s *Service) SaveRcloneConfigSource(ctx context.Context, actor string, input RcloneConfigSourceInput, authorize func(*sql.Tx) error) (RcloneSourceReceipt, error) {
+	if s == nil || authorize == nil {
+		return RcloneSourceReceipt{}, identity.ErrUnauthorized
+	}
+	if err := s.rcloneSourceOwner(ctx, authorize); err != nil {
+		return RcloneSourceReceipt{}, err
+	}
+	program, err := rcloneprogram.Resolve()
+	if err != nil {
+		return RcloneSourceReceipt{}, ErrExecutableInvalid
+	}
+	if receipt, found, err := s.rcloneConfigSourceReceipt(actor, input, program); err != nil || found {
+		return receipt, err
+	}
+	section, err := ReadAccountRcloneSection(input.Remote)
+	if err != nil {
+		return RcloneSourceReceipt{}, err
+	}
+	if err = validateConfig(section, input.Remote+":"); err != nil {
+		return RcloneSourceReceipt{}, ErrConfigInvalid
+	}
+	receipt, err := s.Command(ctx, actor, "", Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path,
+		Remote: input.Remote + ":", Config: section, ReceiptKey: accountConfigReceiptKey}, authorize)
 	if err != nil {
 		return RcloneSourceReceipt{}, err
 	}

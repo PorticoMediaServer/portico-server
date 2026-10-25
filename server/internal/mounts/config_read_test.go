@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -52,12 +54,12 @@ func writeAccountConfig(t *testing.T, body string) string {
 
 func TestAccountConfigRemotesProjectNamesAndReasonsOnly(t *testing.T) {
 	path := writeAccountConfig(t, accountConfigFixture)
-	got, remotes, err := ReadAccountRcloneConfig()
+	got, remotes, truncated, err := ReadAccountRcloneConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != path {
-		t.Fatalf("path %q, want %q", got, path)
+	if got != path || truncated {
+		t.Fatalf("path %q truncated %v, want %q and false", got, truncated, path)
 	}
 	want := []ConfigRemote{
 		{Name: "archive", Kind: "s3", Supported: true},
@@ -80,7 +82,7 @@ func TestAccountConfigRemotesProjectNamesAndReasonsOnly(t *testing.T) {
 func TestAccountConfigRemotesAreEmptyWhenAbsent(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", root)
-	path, remotes, err := ReadAccountRcloneConfig()
+	path, remotes, _, err := ReadAccountRcloneConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +114,43 @@ func TestAccountConfigSectionIsPlainAndValidated(t *testing.T) {
 	}
 }
 
+func TestAccountConfigReportsItsOwnListBound(t *testing.T) {
+	body := strings.Builder{}
+	for index := 0; index < configRemoteLimit+3; index++ {
+		body.WriteString("[remote" + strconv.Itoa(index) + "]\ntype = s3\n")
+	}
+	writeAccountConfig(t, body.String())
+	_, remotes, truncated, err := ReadAccountRcloneConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated || len(remotes) != configRemoteLimit {
+		t.Fatalf("remotes %d truncated %v, want %d and true", len(remotes), truncated, configRemoteLimit)
+	}
+	for index := 1; index < len(remotes); index++ {
+		if remotes[index-1].Name >= remotes[index].Name {
+			t.Fatalf("window is not sorted at %d", index)
+		}
+	}
+}
+
+func TestAccountConfigReceiptIdentityIgnoresMutableContent(t *testing.T) {
+	service := &Service{}
+	one := Command{OperationID: "1788580000000-12345678-1234-1234-1234-123456789012", Action: "create", Name: "Archive", Remote: "archive:", Config: "first", ReceiptKey: accountConfigReceiptKey}
+	two := one
+	two.Config = "second"
+	if service.fingerprint("actor", "", one) != service.fingerprint("actor", "", two) {
+		t.Fatal("a receipt with an identity key must not depend on configuration content")
+	}
+	plain := one
+	plain.ReceiptKey = ""
+	other := plain
+	other.Config = "second"
+	if service.fingerprint("actor", "", plain) == service.fingerprint("actor", "", other) {
+		t.Fatal("an ordinary receipt still binds its configuration content")
+	}
+}
+
 func TestAccountConfigDuplicateNameIsNeverSilentlyFirst(t *testing.T) {
 	writeAccountConfig(t, `[archive]
 type = s3
@@ -121,7 +160,7 @@ secret_access_key = first
 type = s3
 secret_access_key = second
 `)
-	_, remotes, err := ReadAccountRcloneConfig()
+	_, remotes, _, err := ReadAccountRcloneConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +179,7 @@ func TestAccountConfigAmbiguousGrammarIsWithheld(t *testing.T) {
 		"[archive\ntype = s3\n",
 	} {
 		writeAccountConfig(t, body)
-		_, remotes, err := ReadAccountRcloneConfig()
+		_, remotes, _, err := ReadAccountRcloneConfig()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -163,7 +202,7 @@ func TestAccountConfigRejectsNonRegularFiles(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "rclone", "rclone.conf"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := ReadAccountRcloneConfig(); !errors.Is(err, ErrConfigInvalid) {
+	if _, _, _, err := ReadAccountRcloneConfig(); !errors.Is(err, ErrConfigInvalid) {
 		t.Fatalf("directory config error %v, want ErrConfigInvalid", err)
 	}
 	if _, err := ReadAccountRcloneSection("archive"); !errors.Is(err, ErrConfigInvalid) {
