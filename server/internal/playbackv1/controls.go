@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strconv"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/streamlimits"
 )
@@ -210,11 +211,17 @@ func (s *Service) StopAccountSession(ctx context.Context, c Caller, id string) e
 // It is used by the account-cap refusal and the same admitted own-account controls read.
 func (s *Service) AccountStreamLimit(ctx context.Context, c Caller) (StreamLimitDetail, error) {
 	out := StreamLimitDetail{Scope: "account"}
-	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if s.ControlsAuthorityTx == nil || s.DB == nil {
+		return out, identity.ErrUnauthorized
+	}
+	tx, done, err := dbwork.BeginRead(ctx, s.DB)
 	if err != nil {
 		return out, err
 	}
-	defer tx.Rollback()
+	defer done()
+	if err = s.ControlsAuthorityTx(ctx, tx, c); err != nil {
+		return out, err
+	}
 	streams, e := streamlimits.ReadTx(ctx, tx, c.Principal.AccountID)
 	if e != nil {
 		return out, e

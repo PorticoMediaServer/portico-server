@@ -44,6 +44,10 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	if s == nil {
 		return nil
 	}
+	s.ControlsAuthorityTx = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller) error {
+		_, err := d.captureOwnControlsRecipientTx(ctx, tx, c)
+		return err
+	}
 	s.CastQueueAuthority = d.castQueueAuthorityTx
 	s.CastQueueStartAuthority = d.castQueueStartAuthorityTx
 	// Queue sources and windows are authorized like every other catalog read:

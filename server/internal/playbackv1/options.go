@@ -192,7 +192,10 @@ type Service struct {
 	Playback  *playback.Service
 	Subtitles *subtitles.Service
 	Now       func() time.Time
-	durations queueDurationCache
+	// ControlsAuthorityTx revalidates the original live device family inside
+	// the own-account count snapshot. Nil refuses the capacity projection.
+	ControlsAuthorityTx func(context.Context, *sql.Tx, Caller) error
+	durations           queueDurationCache
 	// LeaseDuration and ReportEvery override the spec defaults (tests).
 	LeaseDuration time.Duration
 	ReportEvery   time.Duration

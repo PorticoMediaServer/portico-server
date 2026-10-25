@@ -30,7 +30,16 @@ func registerPlaybackControls(registry *apikit.Registry, d Dependencies) {
 				return playbackv1.RemoteControlsDocument{}, &apierror.Error{Code: "invalid_request"}
 			}
 		}
-		out, err := d.playbackV1().RemoteControls(ctx, playbackv1.Caller{Principal: p, DeviceID: p.DeviceID}, r.URL.Query().Get("cursor"), limit)
+		device := callerFrom(r.Context()).DeviceID
+		if device == "" {
+			device = p.DeviceID
+		}
+		c := playbackv1.Caller{Principal: p, DeviceID: device}
+		original, err := d.captureOwnControlsRecipient(ctx, c)
+		if err != nil {
+			return playbackv1.RemoteControlsDocument{}, err
+		}
+		out, err := d.playbackV1().RemoteControls(ctx, c, r.URL.Query().Get("cursor"), limit)
 		if err != nil {
 			return out, err
 		}
@@ -46,6 +55,9 @@ func registerPlaybackControls(registry *apikit.Registry, d Dependencies) {
 					out.Items[i].PositionMs = 0
 				}
 			}
+		}
+		if err = d.checkOwnControlsRecipient(r.WithContext(ctx), c, original); err != nil {
+			return playbackv1.RemoteControlsDocument{}, err
 		}
 		return out, nil
 	})
