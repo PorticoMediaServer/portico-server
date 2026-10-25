@@ -32,29 +32,8 @@ func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source Li
 	if current.ID != source.ID || current.Generation != source.Generation || current.Incarnation != source.Incarnation || current.RootIdentity != source.RootIdentity {
 		return context.Canceled
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT p.item_id,p.asset_id FROM reading_image_folders f JOIN reading_publications p ON p.asset_id=f.asset_id WHERE f.source_id=? AND f.directory_path=?`, source.ID, directory)
-	if err != nil {
+	if err = retireImageFolderTx(ctx, tx, source.ID, directory); err != nil {
 		return err
-	}
-	type link struct{ item, asset int64 }
-	var old []link
-	for rows.Next() {
-		var v link
-		if err = rows.Scan(&v.item, &v.asset); err != nil {
-			rows.Close()
-			return err
-		}
-		old = append(old, v)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return err
-	}
-	for _, v := range old {
-		if err = compactcatalog.UnlinkAssetTx(ctx, tx, v.item, v.asset); err != nil {
-			return err
-		}
 	}
 	var state, directoryID, directoryRevision string
 	var skipped, entries int
@@ -75,7 +54,7 @@ func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source Li
 	if unsafe {
 		return nil
 	}
-	rows, err = tx.QueryContext(ctx, `SELECT o.id,o.relative_path,o.object_identity,o.revision,o.evidence_json,o.size,o.modified_ns,a.id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.source_id=? AND o.root_incarnation=? AND o.directory_path=? AND o.seen_job=? AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND (lower(substr(o.relative_path,-4)) IN('.jpg','.png') OR lower(substr(o.relative_path,-5)) IN('.jpeg','.webp') OR o.relative_path=?) ORDER BY o.relative_path LIMIT 4098`, source.ID, source.Incarnation, directory, job, filepath.Join(directory, "ComicInfo.xml"))
+	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.relative_path,o.object_identity,o.revision,o.evidence_json,o.size,o.modified_ns,a.id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.source_id=? AND o.root_incarnation=? AND o.directory_path=? AND o.seen_job=? AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND (lower(substr(o.relative_path,-4)) IN('.jpg','.png') OR lower(substr(o.relative_path,-5)) IN('.jpeg','.webp') OR o.relative_path=?) ORDER BY o.relative_path LIMIT 4098`, source.ID, source.Incarnation, directory, job, filepath.Join(directory, "ComicInfo.xml"))
 	if err != nil {
 		return err
 	}
@@ -117,6 +96,10 @@ func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source Li
 	if err != nil {
 		return err
 	}
+	var totalSize int64
+	for _, member := range accepted.Members {
+		totalSize += member.Size
+	}
 	anchor := accepted.Members[0].Asset
 	if err = compactcatalog.LinkAssetTx(ctx, tx, item, anchor, compactcatalog.Link{}); err != nil {
 		return err
@@ -124,7 +107,7 @@ func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source Li
 	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,'image-folder')`, item, anchor); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_image_folders(asset_id,source_id,root_incarnation,root_identity,directory_path,directory_identity,directory_revision,job_id,member_revision,member_count) VALUES(?,?,?,?,?,?,?,?,?,?)`, anchor, source.ID, source.Incarnation, source.RootIdentity, directory, directoryID, directoryRevision, job, revision, len(accepted.Members)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_image_folders(asset_id,source_id,root_incarnation,root_identity,directory_path,directory_identity,directory_revision,job_id,member_revision,member_count,total_size) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, anchor, source.ID, source.Incarnation, source.RootIdentity, directory, directoryID, directoryRevision, job, revision, len(accepted.Members), totalSize); err != nil {
 		return err
 	}
 	for i, m := range accepted.Members {
@@ -133,4 +116,34 @@ func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source Li
 		}
 	}
 	return restoreRetainedTx(ctx, tx, item)
+}
+
+// A member moved after a completed observation invalidates the old directory;
+// it cannot be republished from that now-stale completion.
+func retireImageFolderTx(ctx context.Context, tx *sql.Tx, sourceID, directory string) error {
+	rows, err := tx.QueryContext(ctx, `SELECT p.item_id,p.asset_id FROM reading_image_folders f JOIN reading_publications p ON p.asset_id=f.asset_id WHERE f.source_id=? AND f.directory_path=?`, sourceID, directory)
+	if err != nil {
+		return err
+	}
+	type link struct{ item, asset int64 }
+	var old []link
+	for rows.Next() {
+		var v link
+		if err = rows.Scan(&v.item, &v.asset); err != nil {
+			rows.Close()
+			return err
+		}
+		old = append(old, v)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, v := range old {
+		if err = compactcatalog.UnlinkAssetTx(ctx, tx, v.item, v.asset); err != nil {
+			return err
+		}
+	}
+	return nil
 }

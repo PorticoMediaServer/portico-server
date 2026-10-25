@@ -205,6 +205,7 @@ CREATE TABLE reading_image_folders(
  directory_revision TEXT NOT NULL, job_id TEXT NOT NULL,
  member_revision TEXT NOT NULL CHECK(length(member_revision)=64),
  member_count INTEGER NOT NULL CHECK(member_count BETWEEN 1 AND 4097),
+ total_size INTEGER NOT NULL CHECK(total_size>0 AND total_size<=2147483648),
  UNIQUE(source_id,root_incarnation,directory_path)
 ) STRICT;
 CREATE TABLE reading_image_members(

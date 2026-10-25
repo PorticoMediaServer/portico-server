@@ -304,6 +304,9 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		}
 		sort.Strings(directories)
 		for _, directory := range directories {
+			if err = retireImageFolderTx(ctx, tx, source.ID, directory); err != nil {
+				return false, err
+			}
 			if err = refreshReadingDirectoryTx(ctx, tx, job, source, directory); err != nil {
 				return false, err
 			}

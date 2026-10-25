@@ -44,6 +44,7 @@ type Service struct {
 }
 
 type Selection struct {
+	publicationSize                                                                                                    int64
 	ItemID, SourceID, Format, Title, Language, Revision                                                                string
 	Entity, Asset, Size, ModifiedNS                                                                                    int64
 	library, token, path, root, relative, rootID, rootIdentity, incarnation, object, inventory, evidence, inventoryRow string
@@ -51,7 +52,7 @@ type Selection struct {
 	folderRevision                                                                                                     string
 }
 
-const publicationFields = `e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json,o.id,COALESCE((SELECT member_revision FROM reading_image_folders WHERE asset_id=p.asset_id),'')`
+const publicationFields = `e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json,o.id,COALESCE((SELECT member_revision FROM reading_image_folders WHERE asset_id=p.asset_id),''),COALESCE((SELECT total_size FROM reading_image_folders WHERE asset_id=p.asset_id),a.size)`
 
 const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
  CROSS JOIN catalog_libraries cl ON cl.id=e.library_id CROSS JOIN libraries lib ON lib.id=cl.library_id
@@ -105,7 +106,7 @@ func (s *Service) selectionValid(v Selection) error {
 	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "image-folder" {
 		return ErrInvalid
 	}
-	if v.Format == "image-folder" && v.folderRevision == "" {
+	if v.Format == "image-folder" && (v.folderRevision == "" || v.publicationSize <= 0 || v.publicationSize > MaxSource) {
 		return ErrInvalid
 	}
 	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {
@@ -114,7 +115,16 @@ func (s *Service) selectionValid(v Selection) error {
 	return nil
 }
 func selectionColumns(v *Selection) []any {
-	return []any{&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence, &v.inventoryRow, &v.folderRevision}
+	return []any{&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence, &v.inventoryRow, &v.folderRevision, &v.publicationSize}
+}
+
+// ByteSize is the real complete publication footprint; the anchor's physical
+// Size remains separate for its original descriptor observation checks.
+func (v Selection) ByteSize() int64 {
+	if v.Format == "image-folder" {
+		return v.publicationSize
+	}
+	return v.Size
 }
 
 func (v Selection) fence() string {

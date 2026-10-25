@@ -24,6 +24,7 @@ const imageFolderEligibleSQL = `(p.format<>'image-folder' OR EXISTS(
  AND s.kind='local' AND folder.source_id=s.id AND folder.root_incarnation=s.incarnation
  AND folder.root_identity=s.root_identity AND folder.member_revision<>''
  AND folder.member_count BETWEEN 1 AND 4097
+ AND folder.total_size=(SELECT sum(size) FROM reading_image_members members WHERE members.folder_asset_id=folder.asset_id)
  AND (SELECT count(*) FROM reading_image_members members WHERE members.folder_asset_id=folder.asset_id)=folder.member_count
  AND NOT EXISTS(SELECT 1 FROM reading_image_members member LEFT JOIN inventory_objects actual ON actual.id=member.inventory_object_id
  WHERE member.folder_asset_id=folder.asset_id AND (actual.id IS NULL OR actual.source_id<>s.id OR actual.root_incarnation<>s.incarnation
@@ -35,6 +36,8 @@ func (f *Source) checkImageDirectory(ctx context.Context) error {
 	if f.Format != "image-folder" {
 		return nil
 	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -52,7 +55,7 @@ func (f *Source) checkImageDirectory(ctx context.Context) error {
 	if directory != filepath.Dir(f.relative) {
 		return ErrChanged
 	}
-	// Re-enumerate the bounded complete direct inventory, not only the current
+	// Re-enumerate the ctx complete direct inventory, not only the current
 	// page or directory mtime: modifying a different page also retires handles.
 	rows, err := f.service.DB.QueryContext(ctx, `SELECT relative_path,object_identity,evidence_json,size,modified_ns FROM reading_image_members WHERE folder_asset_id=? ORDER BY position LIMIT 4098`, f.Asset)
 	if err != nil {
@@ -76,16 +79,14 @@ func (f *Source) checkImageDirectory(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
 	cursor := ""
 	total, found := 0, 0
 	seen := make(map[string]bool)
 	for {
-		if err = f.validateCurrent(bounded); err != nil {
+		if err = f.validateCurrent(ctx); err != nil {
 			return err
 		}
-		page, err := f.service.Storage.InventoryPage(bounded, "reading-folder:"+f.rootID, storage.InventoryRequest{Root: f.root, RootIdentity: f.rootIdentity, RelativePath: directory, DirectoryRevision: revision, Cursor: cursor, Limit: 128})
+		page, err := f.service.Storage.InventoryPage(ctx, "reading-folder:"+f.rootID, storage.InventoryRequest{Root: f.root, RootIdentity: f.rootIdentity, RelativePath: directory, DirectoryRevision: revision, Cursor: cursor, Limit: 128})
 		if err != nil {
 			return err
 		}
