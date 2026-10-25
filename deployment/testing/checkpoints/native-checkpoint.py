@@ -73,6 +73,10 @@ def main():
     # auth/protected records, snapshots, another emulator, or CertTest.
     if process is not None:
      if process.poll() is None and avd(serial)==name:
+      # End only this machine's returned CLI session while its exact AVD is
+      # still ours. No shutdown/force flags; the owned process cleanup follows.
+      with contextlib.suppress(Exception):
+       with (private/'session-close.log').open('wb') as close_log:subprocess.run([target['command'],'close',*flags,'--json'],stdout=close_log,stderr=subprocess.STDOUT,timeout=30)
       with contextlib.suppress(Exception):adb(serial,'emu','kill')
      try:process.wait(timeout=12)
      except subprocess.TimeoutExpired:
