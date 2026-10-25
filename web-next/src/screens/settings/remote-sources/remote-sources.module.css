@@ -134,3 +134,7 @@
 .leaveRow[data-picked] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); box-shadow: inset 0 0 0 1.5px var(--color-accent); }
 .leaveRow b { display: block; font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); }
 .leaveRow small { display: block; margin-top: 3px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); line-height: var(--type-troubleshooting-log-line); }
+
+/* How Portico treats a saved source, and Changing it (remote-sources.html#7, #7c). */
+.choiceSummary { display: flex; align-items: center; gap: 10px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.choiceSummary b { flex: 1; min-width: 0; font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text); }

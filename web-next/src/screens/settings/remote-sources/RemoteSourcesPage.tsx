@@ -428,6 +428,8 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
   const [typed, setTyped] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<RemoteSourceStatus>();
+  const [changing, setChanging] = useState(false);
+  const [pendingValues, setPendingValues] = useState<SourceReadValues>(sourceReadPreset('list'));
   const libraries = useMemo(() => new LibraryManagementService({api, scope: {serverId, viewerId}}), [api, serverId, viewerId]);
   const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
   const [attachTo, setAttachTo] = useState('');
@@ -542,7 +544,11 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
       <Button size="compact" variant="primary" disabled={busy || !draft.name.trim() || (!result && !draft.root.trim())} onClick={() => void saveConnection()}>{t('next.remoteSources.save')}</Button>
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>
-      <ReadingChoices values={values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={busy} onChange={setValues}/>
+      <div className={styles.choiceSummary}>
+        <span>{t('next.remoteSources.howTreated')}</span>
+        <b>{t(presetLabel(sourceReadPresetName(values) ?? 'once'))}</b>
+        <Button size="xs" variant="glass" disabled={busy} onClick={() => {setPendingValues(values);setChanging(true);}}>{t('next.remoteSources.change')}</Button>
+      </div>
       <div className={styles.limits}>
         <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
         <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
@@ -573,6 +579,12 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
           <Button size="compact" variant="primary" disabled={busy || typed.trim() !== source.name} onClick={() => void disconnect()}>{t('next.remoteSources.disconnect')}</Button></div>
       </>}
     </section>
+    <Dialog open={changing} width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
+      onOpenChange={setChanging}
+      footer={<><Button size="compact" variant="glass" onClick={() => setChanging(false)}>{t('next.remoteSources.cancel')}</Button>
+        <Button size="compact" variant="primary" onClick={() => {setValues(pendingValues);setChanging(false);}}>{t('next.remoteSources.useChoice')}</Button></>}>
+      <ReadingChoices values={pendingValues} origin={source.origin} rangeSupport={source.rangeSupport} disabled={false} onChange={setPendingValues}/>
+    </Dialog>
     {picking && <RemoteFolderPicker service={service} sourceId={source.id} sourceName={source.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}
   </Dialog>;
