@@ -1,8 +1,8 @@
-import type {JobArgs} from '@core/bulk-jobs.ts';
+import type {JobArgs, JobRequest} from '@core/bulk-jobs.ts';
 import type {HomeApi} from '@core/home.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
-import type {BrowseSelectionContext, SelectionContext, SelectionOperation, SelectionTarget} from '@core/selection-model/index.ts';
-import {runSelectionJobs, selectionJobTasks} from '@core/home-selection/execution.ts';
+import {selectionQuerySelector, type BrowseSelectionContext, type SelectionContext, type SelectionOperation, type SelectionTarget} from '@core/selection-model/index.ts';
+import {runSelectionJobs, selectionJobTasks, type HomeJobTask} from '@core/home-selection/execution.ts';
 
 /** The one place a library selection becomes real work. It hands the model's own
  * target to the existing job planner and runner, so explicit picks stay explicit
@@ -45,29 +45,86 @@ export class SelectionActionError extends Error {
   }
 }
 
+type RetainedAttempt = {
+  tasks: Promise<HomeJobTask[]>;
+  current: () => boolean;
+  status: 'idle' | 'running' | 'uncertain';
+  promise?: Promise<SelectionActionResult>;
+};
+
 export function createSelectionActions({api, events, requestId, isCurrent, reportError, signal: lifetime}: SelectionActionsOptions) {
   const routeSignal = lifetime ?? new AbortController().signal;
-  const run = async (operation: AnyOperation, args: JobArgs, signal: AbortSignal): Promise<SelectionActionResult> => {
+  // One immutable task body per captured target/action. A lost response or a
+  // failed job poll retains the same operation id, selector and args (and any
+  // accepted job id), so a retry resumes that work instead of duplicating it.
+  const retained = new WeakMap<SelectionTarget, Map<string, RetainedAttempt>>();
+  const outcome = (tasks: readonly HomeJobTask[]): SelectionActionResult => Object.freeze({
+    updated: tasks.reduce((sum, task) => sum + (task.job?.done ?? 0), 0),
+    failed: tasks.reduce((sum, task) => sum + (task.job?.failed ?? 0), 0),
+    jobs: Object.freeze(tasks.flatMap(task => task.job ? [task.job.jobId] : []))});
+  const run = async (operation: AnyOperation, args: JobArgs, signal: AbortSignal, guard?: () => boolean): Promise<SelectionActionResult> => {
     const target = operation.target as SelectionTarget;
-    if (!isCurrent() || signal.aborted) throw new SelectionActionError('cancelled');
+    const current = () => !routeSignal.aborted && isCurrent() && (guard?.() ?? true);
+    if (!current() || signal.aborted) throw new SelectionActionError('cancelled');
     if (!personalTargetIsLeaf(target)) throw new SelectionActionError('container-personal-state-unsupported');
-    const tasks = await selectionJobTasks(target, 'personal-state', args, requestId);
-    if (!tasks.length) throw new SelectionActionError('empty-selection');
-    await runSelectionJobs(api, tasks, signal, isCurrent, () => {}, undefined, events);
-    const jobs = tasks.flatMap(task => task.job ? [task.job.jobId] : []);
-    return Object.freeze({updated: tasks.reduce((sum, task) => sum + (task.job?.done ?? 0), 0),
-      failed: tasks.reduce((sum, task) => sum + (task.job?.failed ?? 0), 0), jobs: Object.freeze(jobs)});
+    const grant = args.watched !== undefined ? 'watched' : args.favorite !== undefined ? 'favorite' : args.watchlist !== undefined ? 'myList' : undefined;
+    const offered = grant !== undefined && (target.mode === 'query'
+      ? target.summary.every[grant] === true
+      : target.items.length > 0 && target.items.every(pick => pick.item.capabilities[grant] === true));
+    if (!grant || !offered) throw new SelectionActionError('selection-grant-unavailable');
+    // A whole view dispatches only its unrefined, checked selector with the exact
+    // catalog revision. Exclusions or a kind refinement cannot be dropped silently,
+    // so they are refused before any operation id, request or retained body.
+    const query = target.mode === 'query' ? selectionQuerySelector(target) : undefined;
+    if (query && !query.ok) throw new SelectionActionError(query.reason);
+    const key = JSON.stringify(args);
+    let attempts = retained.get(target);
+    if (!attempts) {attempts = new Map(); retained.set(target, attempts);}
+    let attempt = attempts.get(key);
+    if (attempt && !attempt.current()) throw new SelectionActionError('cancelled');
+    if (attempt?.status === 'running') return attempt.promise!;
+    if (!attempt) {
+      const tasks = query
+        ? requestId().then(id => [{request: Object.freeze({operationId: id.replaceAll('-', ''), command: 'personal-state',
+            selector: query.selector, args, expected: query.expected}) as JobRequest, failures: [], observed: false}])
+        : selectionJobTasks(target, 'personal-state', args, requestId);
+      attempt = {tasks, current: () => current() && !signal.aborted, status: 'idle'};
+      attempts.set(key, attempt);
+    }
+    const captured = attempt;
+    captured.status = 'running';
+    const promise = (async () => {
+      let tasks: HomeJobTask[] = [];
+      try {
+        tasks = await captured.tasks;
+        if (!tasks.length) throw new SelectionActionError('empty-selection');
+        await runSelectionJobs(api, tasks, AbortSignal.any([routeSignal, signal]), captured.current, () => {}, undefined, events);
+        attempts.delete(key);
+        return outcome(tasks);
+      } catch (error) {
+        const rejected = tasks.some(task => task.rejected || task.job?.state === 'failed' && !!task.job.errorCode);
+        if (rejected) attempts.delete(key); else captured.status = 'uncertain';
+        throw error;
+      } finally {
+        captured.promise = undefined;
+      }
+    })();
+    captured.promise = promise;
+    return promise;
+  };
+  const runAction = (operation: AnyOperation, action: PersonalSelectionAction, signal: AbortSignal, guard?: () => boolean) => {
+    if (action.watched !== undefined && action.favorite === undefined && action.watchlist === undefined) return run(operation, {watched: action.watched}, signal, guard);
+    if (action.favorite !== undefined && action.watched === undefined && action.watchlist === undefined) return run(operation, {favorite: action.favorite}, signal, guard);
+    if (action.watchlist !== undefined && action.watched === undefined && action.favorite === undefined) return run(operation, {watchlist: action.watchlist}, signal, guard);
+    // One job command carries one personal fact; a mixed request would need a
+    // server command that does not exist.
+    throw new SelectionActionError('mixed-personal-command');
   };
   return {
     /** The three personal commands the drawn bar offers on a selection. */
-    async personal(operation: AnyOperation, action: PersonalSelectionAction, signal: AbortSignal = routeSignal): Promise<SelectionActionResult> {
+    async personal(operation: AnyOperation, action: PersonalSelectionAction, signal: AbortSignal = routeSignal, guard?: () => boolean): Promise<SelectionActionResult> {
       if (action.watched === undefined && action.favorite === undefined && action.watchlist === undefined) throw new SelectionActionError('empty-command');
-      if (action.watched !== undefined && action.favorite === undefined && action.watchlist === undefined) return run(operation, {watched: action.watched}, signal);
-      if (action.favorite !== undefined && action.watched === undefined && action.watchlist === undefined) return run(operation, {favorite: action.favorite}, signal);
-      if (action.watchlist !== undefined && action.watched === undefined && action.favorite === undefined) return run(operation, {watchlist: action.watchlist}, signal);
-      // One job command carries one personal fact; a mixed request would need a
-      // server command that does not exist.
-      throw new SelectionActionError('mixed-personal-command');
+      return runAction(operation, action, signal, guard);
     },
     reportError,
   };
