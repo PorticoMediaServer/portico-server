@@ -131602,6 +131602,150 @@
                     "type": "object"
                   },
                   "type": "array"
+                },
+                "shortReads": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "estimatedSeconds": {
+                        "maximum": 10800,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "item": {
+                        "properties": {
+                          "author": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "source": {
+                                "enum": [
+                                  "owner",
+                                  "file-metadata",
+                                  "file-name",
+                                  "folder"
+                                ],
+                                "type": "string"
+                              },
+                              "value": {
+                                "maxLength": 4096,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "source"
+                            ],
+                            "type": "object"
+                          },
+                          "coverUrl": {
+                            "type": "string"
+                          },
+                          "format": {
+                            "enum": [
+                              "epub",
+                              "pdf",
+                              "cbz"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "inventoryAvailable": {
+                            "type": "boolean"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "publicationType": {
+                            "properties": {
+                              "source": {
+                                "enum": [
+                                  "owner",
+                                  "file-metadata"
+                                ],
+                                "type": "string"
+                              },
+                              "value": {
+                                "enum": [
+                                  "book",
+                                  "magazine",
+                                  "newspaper"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "source"
+                            ],
+                            "type": "object"
+                          },
+                          "series": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "name": {
+                                "maxLength": 4096,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "number": {
+                                "minimum": 0,
+                                "type": "number"
+                              },
+                              "source": {
+                                "enum": [
+                                  "owner",
+                                  "file-metadata",
+                                  "file-name",
+                                  "folder"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "source"
+                            ],
+                            "type": "object"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "libraryId",
+                          "title",
+                          "format",
+                          "sourceId",
+                          "inventoryAvailable"
+                        ],
+                        "type": "object"
+                      },
+                      "wordCount": {
+                        "maximum": 44999,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "item",
+                      "wordCount",
+                      "estimatedSeconds"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 }
               },
               "required": [
@@ -470465,6 +470609,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "shortReadsLimit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -470762,6 +470914,150 @@
                                 "count",
                                 "readCount",
                                 "preview"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "shortReads": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "estimatedSeconds": {
+                                  "maximum": 10800,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "item": {
+                                  "properties": {
+                                    "author": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "source": {
+                                          "enum": [
+                                            "owner",
+                                            "file-metadata",
+                                            "file-name",
+                                            "folder"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "value": {
+                                          "maxLength": 4096,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "value",
+                                        "source"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "coverUrl": {
+                                      "type": "string"
+                                    },
+                                    "format": {
+                                      "enum": [
+                                        "epub",
+                                        "pdf",
+                                        "cbz"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "inventoryAvailable": {
+                                      "type": "boolean"
+                                    },
+                                    "libraryId": {
+                                      "type": "string"
+                                    },
+                                    "publicationType": {
+                                      "properties": {
+                                        "source": {
+                                          "enum": [
+                                            "owner",
+                                            "file-metadata"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "value": {
+                                          "enum": [
+                                            "book",
+                                            "magazine",
+                                            "newspaper"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "value",
+                                        "source"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "series": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "id": {
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "maxLength": 4096,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "number": {
+                                          "minimum": 0,
+                                          "type": "number"
+                                        },
+                                        "source": {
+                                          "enum": [
+                                            "owner",
+                                            "file-metadata",
+                                            "file-name",
+                                            "folder"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "source"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "libraryId",
+                                    "title",
+                                    "format",
+                                    "sourceId",
+                                    "inventoryAvailable"
+                                  ],
+                                  "type": "object"
+                                },
+                                "wordCount": {
+                                  "maximum": 44999,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "item",
+                                "wordCount",
+                                "estimatedSeconds"
                               ],
                               "type": "object"
                             },
@@ -503440,6 +503736,7 @@
           "request_in_progress",
           "source_credentials_required",
           "source_unavailable",
+          "source_folders_unsupported",
           "administration_unavailable",
           "internal"
         ],
@@ -504805,13 +505102,14 @@
         "summary": "Read one remote source's present state and the libraries that use it",
         "x-access": "owner",
         "x-admission": "admin",
-        "x-cost": "constant",
+        "x-cost": "page_sized",
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
           "not_found",
           "invalid_request",
           "administration_unavailable",
+          "source_folders_unsupported",
           "internal"
         ],
         "x-lane": "default",

@@ -78,6 +78,7 @@ export function remoteErrorText(error: unknown): string {
     case 'unauthorized': return t('next.remoteSources.error.signIn');
     case 'forbidden': case 'not_permitted': return t('next.remoteSources.error.forbidden');
     case 'refresh_failed': return t('next.remoteSources.error.refreshFailed');
+    case 'source_folders_unsupported': return t('next.remoteSources.foldersUnsupported');
     default: return t('next.remoteSources.error.generic');
   }
 }

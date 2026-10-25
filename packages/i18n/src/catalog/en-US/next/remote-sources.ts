@@ -218,6 +218,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.advMegabytesUnit': 'MB',
   'next.remoteSources.advTimesUnit': 'times',
   'next.remoteSources.problemMore': ' {count} more need attention.',
+  'next.remoteSources.foldersUnsupported': 'Folder browsing inside a mounted source is not available on this server.',
   'next.remoteSources.existingLibraryMissing': 'Choose the library to add these folders to.',
   'next.remoteSources.libraryKind': 'Type',
   'next.remoteSources.on': 'On',

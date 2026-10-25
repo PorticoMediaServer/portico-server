@@ -703,6 +703,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "source_folders_unsupported",
+    "status": 422,
+    "message": "Folder browsing inside a mounted source is not available on this server.",
+    "retry": "never"
+  },
+  {
     "code": "source_lan_confirmation_required",
     "status": 422,
     "message": "Confirm the source addresses on your local network to continue.",

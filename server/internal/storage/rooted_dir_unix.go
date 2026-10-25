@@ -13,6 +13,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// ErrRootedUnsupported is declared for platforms that cannot pin by descriptor.
+var ErrRootedUnsupported = errors.New("rooted directory browsing is unavailable on this platform")
+
 // RootedDir is one directory pinned by descriptor, opened from the filesystem
 // root one component at a time with O_NOFOLLOW. Every later lookup is relative
 // to that descriptor, so neither a symlink nor a directory replaced under the

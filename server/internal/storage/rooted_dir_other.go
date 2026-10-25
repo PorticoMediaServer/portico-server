@@ -2,6 +2,11 @@
 
 package storage
 
+import "errors"
+
+// ErrRootedUnsupported is declared for platforms that cannot pin by descriptor.
+var ErrRootedUnsupported = errors.New("rooted directory browsing is unavailable on this platform")
+
 // RootedDir is unavailable where the platform cannot pin a directory by
 // descriptor; callers refuse to browse rather than fall back to a lexical check.
 type RootedDir struct{}

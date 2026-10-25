@@ -2,98 +2,19 @@
 
 package storage
 
-import (
-	"errors"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
-)
+import "errors"
 
-// RootedDir is one directory confined by its own os.Root. Each instance owns
-// that handle, so closing a parent never closes a child a caller still uses.
-// Windows has no openat O_NOFOLLOW here, so every step re-checks that the next
-// component is a real directory and not a reparse point before opening it.
-type RootedDir struct {
-	root *os.Root
-	dir  string
-}
+// ErrRootedUnsupported says this platform cannot pin a directory by descriptor.
+var ErrRootedUnsupported = errors.New("rooted directory browsing is unavailable on this platform")
 
-func OpenRootedDir(path string) (*RootedDir, error) {
-	root, err := os.OpenRoot(path)
-	if err != nil {
-		return nil, err
-	}
-	return &RootedDir{root: root, dir: path}, nil
-}
+// RootedDir is refused on Windows: there is no relative no-follow directory
+// open here, and checking a name and then reopening an absolute path is exactly
+// the race a confined walk must not have. Callers report browsing as
+// unsupported rather than walking with weaker confinement.
+type RootedDir struct{}
 
-func (d *RootedDir) Child(name string) (*RootedDir, error) {
-	if d == nil || d.root == nil || name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") {
-		return nil, ErrRemoteConfig
-	}
-	info, err := d.root.Lstat(name)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, ErrRemoteConfig
-	}
-	child, err := os.OpenRoot(filepath.Join(d.dir, name))
-	if err != nil {
-		return nil, err
-	}
-	return &RootedDir{root: child, dir: filepath.Join(d.dir, name)}, nil
-}
-
-func (d *RootedDir) Close() error {
-	if d == nil || d.root == nil {
-		return nil
-	}
-	return d.root.Close()
-}
-
-func (d *RootedDir) Names(limit int) ([]string, bool, error) {
-	if d == nil || d.root == nil || limit < 1 {
-		return nil, false, ErrRemoteConfig
-	}
-	directory, err := d.root.Open(".")
-	if err != nil {
-		return nil, false, err
-	}
-	defer directory.Close()
-	out := make([]string, 0, 64)
-	for len(out) < limit {
-		batch := 256
-		if remaining := limit - len(out); remaining < batch {
-			batch = remaining
-		}
-		names, err := directory.Readdirnames(batch)
-		out = append(out, names...)
-		if err == nil {
-			continue
-		}
-		if errors.Is(err, io.EOF) {
-			return out, false, nil
-		}
-		return nil, false, err
-	}
-	probe, err := directory.Readdirnames(1)
-	if len(probe) > 0 {
-		return out, true, nil
-	}
-	if err == nil || errors.Is(err, io.EOF) {
-		return out, false, nil
-	}
-	return nil, false, err
-}
-
-func (d *RootedDir) IsDirectoryEntry(name string) bool {
-	if d == nil || d.root == nil || name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") {
-		return false
-	}
-	info, err := d.root.Lstat(name)
-	if err != nil {
-		return false
-	}
-	return info.IsDir() && info.Mode()&os.ModeSymlink == 0
-}
+func OpenRootedDir(string) (*RootedDir, error)         { return nil, ErrRootedUnsupported }
+func (d *RootedDir) Child(string) (*RootedDir, error)  { return nil, ErrRootedUnsupported }
+func (d *RootedDir) Close() error                      { return nil }
+func (d *RootedDir) Names(int) ([]string, bool, error) { return nil, false, ErrRootedUnsupported }
+func (d *RootedDir) IsDirectoryEntry(string) bool      { return false }

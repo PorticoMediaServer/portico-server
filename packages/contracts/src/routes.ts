@@ -7327,7 +7327,8 @@ export const routes = [
     "query": [
       "libraryId",
       "limit",
-      "seriesLimit"
+      "seriesLimit",
+      "shortReadsLimit"
     ],
     "errors": [
       "invalid_request",
@@ -8194,6 +8195,7 @@ export const routes = [
       "request_in_progress",
       "source_credentials_required",
       "source_unavailable",
+      "source_folders_unsupported",
       "administration_unavailable",
       "internal"
     ],
@@ -8316,7 +8318,7 @@ export const routes = [
     "access": "owner",
     "requires": "admin",
     "lane": "default",
-    "cost": "constant",
+    "cost": "page_sized",
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
@@ -8324,6 +8326,7 @@ export const routes = [
       "not_found",
       "invalid_request",
       "administration_unavailable",
+      "source_folders_unsupported",
       "internal"
     ],
     "status": 200,
