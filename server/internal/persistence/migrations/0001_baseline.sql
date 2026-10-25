@@ -2313,17 +2313,19 @@ CREATE TABLE personal_chapter_completions(
  completed_at TEXT NOT NULL,
  PRIMARY KEY(profile_id,file_entity_id,chapter_index)) STRICT;
 -- The last accepted report of one playback, kept as the interval evidence the
--- next report is judged against: state and rate are the session's own, not the
--- viewer's resume point. Privacy or source-revision generations fence it.
+-- next report is judged against: playing, rate and generation are the
+-- session's own, not the viewer's resume point. Privacy or source-revision
+-- generations fence it.
 CREATE TABLE personal_playback_runs(
  profile_id TEXT NOT NULL,
  playback_id TEXT NOT NULL,
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  sequence INTEGER NOT NULL,
  position_ms INTEGER NOT NULL,
- state TEXT NOT NULL,
+ playing INTEGER NOT NULL CHECK(playing IN(0,1)),
  rate_milli INTEGER NOT NULL,
  seeked INTEGER NOT NULL CHECK(seeked IN(0,1)),
+ generation INTEGER NOT NULL,
  preference_revision INTEGER NOT NULL,
  asset_revision INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
