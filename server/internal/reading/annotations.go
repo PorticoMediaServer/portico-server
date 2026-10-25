@@ -47,12 +47,16 @@ func annotationID(id string) bool {
 func annotationText(s string, limit int) bool {
 	return len(s) <= limit && strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r' }) < 0
 }
+
+// CanAnnotate is offering information only; every operation still checks its live principal.
+func CanAnnotate(p identity.Principal) bool {
+	return p.Grant == "" && p.Authority != "" && p.AccountID != "" && p.ProfileID != "" && (p.Role == "owner" || p.Role == "admin" || p.Role == "member")
+}
 func (f *Source) annotationOwner() (string, error) {
-	p := f.p
-	if p.ProfileID == "" || p.Role == "guest" || p.Role == "account" || p.Grant != "" {
+	if !CanAnnotate(f.p) {
 		return "", identity.ErrForbidden
 	}
-	return identity.PersonalKey(p.Viewer), nil
+	return identity.PersonalKey(f.p.Viewer), nil
 }
 
 // Every read/write uses the original acquisition's principal and exact version.
