@@ -443,9 +443,13 @@ export function appendDetailRecommendationPage(current:HomeRow,next:HomeRow):Hom
 }
 
 
+export type FileInfoDiscTitle = Readonly<{number: number; durationMs: number; chapters: number; angles: number}>;
+export type FileInfoDisc = Readonly<{kind: 'bluray' | 'dvd'; titles: readonly FileInfoDiscTitle[]}>;
 export type FileInfoProjection = Readonly<{
  scope: DetailProjection['scope']; revision: DetailProjection['revision']; kind: string;
  files: readonly TitleFile[]; nextCursor?: string;
+ /** The owner-only ordered title list of a disc image's current scan. */
+ disc?: FileInfoDisc;
  manage?: Readonly<{delete: boolean; split: boolean; merge: boolean}>;
 }>;
 /** The lazy read shares the detail scope but grants no mutation authority. */
@@ -455,7 +459,18 @@ export function parseFileInfo(raw: unknown, scope: DetailScope, target: DetailTa
  if(raw.manage !== undefined) { const permissions=raw.manage;if(!obj(permissions) || ['delete','split','merge'].some(key=>typeof permissions[key] !== 'boolean')) invalid(); manage=Object.freeze({delete:permissions.delete as boolean,split:permissions.split as boolean,merge:permissions.merge as boolean}); }
  const files=raw.files.map(value=>titleFile(value));
  if(!manage && files.some(file=>file.path!==undefined)) invalid();
- return Object.freeze({scope:Object.freeze({...raw.scope}) as FileInfoProjection['scope'],revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),kind:raw.kind,files:Object.freeze(files),...(raw.nextCursor?{nextCursor:raw.nextCursor as string}:{}),...(manage?{manage}:{})});
+ let disc: FileInfoDisc|undefined;
+ if(raw.disc!==undefined) {
+  const value=raw.disc;
+  // A disc block is an owner fact only; a viewer response carrying one is refused.
+  if(!manage || !obj(value) || (value.kind!=='bluray' && value.kind!=='dvd') || !Array.isArray(value.titles) || value.titles.length>4096) invalid();
+  const titles=value.titles.map((title,index)=>{
+   if(!obj(title) || title.number!==index+1 || !integer(title.durationMs) || !integer(title.chapters) || !integer(title.angles) || title.angles<1) invalid();
+   return Object.freeze({number:title.number as number,durationMs:title.durationMs as number,chapters:title.chapters as number,angles:title.angles as number});
+  });
+  if(titles.length) disc=Object.freeze({kind:value.kind,titles:Object.freeze(titles)});
+ }
+ return Object.freeze({scope:Object.freeze({...raw.scope}) as FileInfoProjection['scope'],revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),kind:raw.kind,files:Object.freeze(files),...(disc?{disc}:{}),...(raw.nextCursor?{nextCursor:raw.nextCursor as string}:{}),...(manage?{manage}:{})});
 }
 export async function readFileInfo(api: DetailApi, scope: DetailScope, target: DetailTarget, options: {cursor?: string; limit?: number} = {}, signal?: AbortSignal): Promise<FileInfoProjection> {
  const query=new URLSearchParams(); if(options.cursor)query.set('cursor',options.cursor);if(options.limit!==undefined)query.set('limit',String(options.limit));
