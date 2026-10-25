@@ -49,7 +49,10 @@ func (SourceStatus) JSONSchema() map[string]any {
 	shape := statusWireSchema[wire]()
 	properties := shape["properties"].(map[string]any)
 	properties["health"].(map[string]any)["enum"] = statusCodes(sourceHealths)
-	properties["lastCompleteAt"].(map[string]any)["format"] = "date-time"
+	properties["lastErrorCode"].(map[string]any)["enum"] = statusCodes(contactErrorCodes)
+	for _, name := range []string{"lastCompleteAt", "lastConnectedAt", "lastErrorAt"} {
+		properties[name].(map[string]any)["format"] = "date-time"
+	}
 	return shape
 }
 
