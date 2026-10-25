@@ -615,8 +615,9 @@ export class WebShellPlaybackRuntime {
   }
 
   /** Append checked catalogue segments without inventing a Home document context. */
-  catalogueQueue(): CatalogueSelectionQueuePort {
+  catalogueQueue(): CatalogueSelectionQueuePort | undefined {
     this.assertCurrent();
+    if (this.stack.mode !== 'server' || this.stack.local || this.stack.channel || this.group || this.dock.getSnapshot().remote) return undefined;
     return {enqueueSegments: async (segments, placement, lifetime) => {
       const stack = this.stack, serial = this.operation;
       let expectedQueueId = stack.queue.getSnapshot().view?.queue.id;
