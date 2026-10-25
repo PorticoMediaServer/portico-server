@@ -256,7 +256,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [finishBusy, setFinishBusy] = useState(false);
   const [finishError, setFinishError] = useState('');
   const [summary, setSummary] = useState<Readonly<{library?: string; folders: number}>>({folders: 0});
-  const [advancedValues, setAdvancedValues] = useState<SourceAdvanced>({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true, introsMode: 'off', doubleCheckFolders: false, dirCacheSeconds: 60, readBufferBytes: 8 * 1024 * 1024, connectTimeoutSeconds: 10, idleTimeoutSeconds: 30, retries: 1, lowLevelRetries: 2});
+  const initialAdvanced: SourceAdvanced = {scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true, introsMode: 'inherit', doubleCheckFolders: false, dirCacheSeconds: 0, readBufferBytes: 0, connectTimeoutSeconds: 0, idleTimeoutSeconds: 0, retries: 0, lowLevelRetries: 0};
+  const [advancedValues, setAdvancedValues] = useState<SourceAdvanced>(initialAdvanced);
   const [advancedTouched, setAdvancedTouched] = useState(false);
   const [leaving, setLeaving] = useState<'' | 'saved' | 'unsaved'>('');
   const [leaveChoice, setLeaveChoice] = useState<'keep' | 'remove'>('keep');
@@ -274,7 +275,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
-    setAdvancedValues({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true, introsMode: 'off', doubleCheckFolders: false, dirCacheSeconds: 60, readBufferBytes: 8 * 1024 * 1024, connectTimeoutSeconds: 10, idleTimeoutSeconds: 30, retries: 1, lowLevelRetries: 2});
+    setAdvancedValues(initialAdvanced);
     setAdvancedTouched(false);
     testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
   };
@@ -328,7 +329,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
-  const driveReason = (reason: 'json'|'oauth'|'type'|'email'|'key'|'location'|'client'|'token'): MessageId => reason === 'json' ? 'next.remoteSources.driveKeyNotJson'
+  const driveReason = (reason: 'json'|'oauth'|'type'|'email'|'key'|'location'|'client'|'token'): MessageId => reason === 'client' || reason === 'token' ? 'next.remoteSources.driveOAuthInvalid'
+    : reason === 'json' ? 'next.remoteSources.driveKeyNotJson'
     : reason === 'oauth' ? 'next.remoteSources.driveKeyOAuth'
       : reason === 'type' ? 'next.remoteSources.driveKeyWrongType'
         : reason === 'email' ? 'next.remoteSources.driveKeyEmail'
