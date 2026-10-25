@@ -4,18 +4,19 @@ import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
 /** Owner repairs are current-view CAS commands. A lost response is reconciled, never replayed. */
 export type RepairTarget = Readonly<{kind:'item'|'show'|'season'|'album'|'artist'|'book';id:string;libraryId:string}>;
+export type RepairCaller = Readonly<{signal:AbortSignal;current:()=>boolean}>;
 export type RepairScope = Readonly<{serverId:string;viewerId:string}>;
 export type RepairField = Readonly<{value:string;automaticValue:string;locked:boolean;source:string;observedAt?:string;values?:readonly string[]}>;
 /** The server publishes the editable field registry; a client never hard-codes one. */
 export type RepairFieldSpec = Readonly<{field:string;label:string;group:'general'|'numbers'|'text'|'identity';type:'text'|'multiline'|'integer'|'number'|'date'|'enum'|'list';maxLength?:number;min?:number;max?:number;allowed?:readonly string[];bulk:boolean}>;
-export type RepairRelationship = Readonly<{recordId?:string;provider?:string;department?:string;kind:string;targetKind:string;targetId:string;label:string;role?:string;ordinal:number;source:string;locked:boolean;observedAt?:string}>;
+export type RepairRelationship = Readonly<{sourceRowId?:string;ownerEntryId?:string;sourceStatus?:'current'|'missing'|'replaced';recordId?:string;provider?:string;department?:string;kind:string;targetKind:string;targetId:string;label:string;role?:string;ordinal:number;source:string;locked:boolean;observedAt?:string}>;
 export type RepairChoice = Readonly<{role:string;subject:string;candidateId:string;digest:string;thumbnailDigest:string;locked:boolean;revision:number;attribution:string;url:string}>;
 export type RepairData = Readonly<{
  onlineLookups?:boolean;
  artworkFallbackUrl?:string;
  canMakeEpisodeThumbnail?:boolean;
  target:{kind:RepairTarget['kind'];id:string};libraryId:string;serverId:string;viewerFence:string;revision:string;
- snapshot:{relationshipLocks:Readonly<Record<string,boolean>>;fields:Readonly<Record<string,RepairField>>;identity?:{engine?:'screen';type?:string;provider:string;id:string;order?:string;revision:number;status:string;locked:boolean};relationships:readonly RepairRelationship[];artwork:readonly RepairChoice[]};
+ snapshot:{canEditProviderCredits?:true;relationshipLocks:Readonly<Record<string,boolean>>;fields:Readonly<Record<string,RepairField>>;identity?:{engine?:'screen';type?:string;provider:string;id:string;order?:string;revision:number;status:string;locked:boolean};relationships:readonly RepairRelationship[];artwork:readonly RepairChoice[]};
  tabs?:readonly string[];schema:readonly RepairFieldSpec[];artworkRoles:readonly string[];
  candidates:readonly {id:string;identityId?:string;identityType?:string;provider:string;title:string;subtitle:string;observedAt:string;year?:number;previewUrl?:string;orders?:readonly {id:string;name:string}[]}[];
  history:readonly {id:number;trigger:string;observedAt:string}[];
@@ -23,6 +24,7 @@ export type RepairData = Readonly<{
  cascades:readonly {id:string;intent:string;status:string;processed:number;failed:number;completed?:number;skipped?:number;pending?:number}[];
 }>;
 export type RepairCommand = Readonly<{
+ effectiveCredits?:true;
  action:'make_episode_thumbnail'|'retry'|'preview_artwork'|'edit'|'identify'|'search'|'undo'|'lock_all'|'unlock_all'|'select_artwork'|'artwork_lock'|'repair_assets'|'discover_artwork'|'cascade'|'cancel_cascade'|'relationship_lock'|'edit_relationships';
  fields?:Record<string,{value?:string;values?:readonly string[];locked?:boolean;useAutomatic?:boolean}>;
  provider?:string;candidateId?:string;order?:string;historyId?:number;confirm?:boolean;
@@ -76,7 +78,7 @@ export function validateRepair(raw:unknown,scope:RepairScope,target:RepairTarget
  const ident=raw.snapshot.identity;
  if(ident!==undefined&&(!obj(ident)||!str(ident.provider,40)||!str(ident.id,256)||!num(ident.revision)||!str(ident.status,64)||typeof ident.locked!=='boolean'||ident.order!==undefined&&!str(ident.order,160)||ident.engine!==undefined&&ident.engine!=='screen'||ident.type!==undefined&&!str(ident.type,40)))bad();
  // Genres, credits, pictures, candidates, history and progress are lists of rows: each row is read on its own.
- const relationships=readable('relationships',raw.snapshot.relationships,200,r=>(r.recordId===undefined||str(r.recordId,256))&&(r.provider===undefined||str(r.provider,40))&&(r.department===undefined||str(r.department,200))&&id(r.kind)&&id(r.targetKind)&&str(r.targetId,256)&&str(r.label,2048)&&str(r.source,100)&&typeof r.locked==='boolean'&&num(r.ordinal)&&(r.role===undefined||str(r.role,500))&&(r.observedAt===undefined||when(r.observedAt)));
+ const relationships=readable('relationships',raw.snapshot.relationships,1024,r=>(r.sourceRowId===undefined||typeof r.sourceRowId==='string'&&/^[0-9a-f]{32}$/.test(r.sourceRowId))&&(r.ownerEntryId===undefined||typeof r.ownerEntryId==='string'&&/^[0-9a-f]{32}$/.test(r.ownerEntryId))&&(r.sourceStatus===undefined||typeof r.sourceStatus==='string'&&['current','missing','replaced'].includes(r.sourceStatus))&&(r.recordId===undefined||str(r.recordId,256))&&(r.provider===undefined||str(r.provider,40))&&(r.department===undefined||str(r.department,200))&&id(r.kind)&&id(r.targetKind)&&str(r.targetId,256)&&str(r.label,2048)&&str(r.source,100)&&typeof r.locked==='boolean'&&num(r.ordinal)&&(r.role===undefined||str(r.role,500))&&(r.observedAt===undefined||when(r.observedAt)));
  const prefix=encodedRoutePath("get_metadata_kind_id", {"kind": encodeURIComponent(target.kind), "id": encodeURIComponent(target.id)})+'/art/';
  const chosenArtwork=readable('snapshot.artwork',raw.snapshot.artwork,200,a=>roles.includes(String(a.role))&&str(a.subject,256)&&hash(a.candidateId)&&hash(a.digest)&&hash(a.thumbnailDigest)&&typeof a.locked==='boolean'&&num(a.revision)&&str(a.attribution,2048)&&str(a.url,2048)&&a.url.startsWith(prefix)&&!/[\r\n\\]/.test(a.url));
  const candidates=readable('candidates',raw.candidates,50,c=>id(c.id)&&str(c.provider,40)&&str(c.title,2048)&&str(c.subtitle,2048)&&(c.identityId===undefined||str(c.identityId,256)&&c.identityId.length>0)&&(c.identityType===undefined||typeof c.identityType==='string'&&['movie','show','anime','episode'].includes(c.identityType))&&when(c.observedAt)&&(c.year===undefined||num(c.year)&&c.year<=9999)&&(c.previewUrl===undefined||str(c.previewUrl,2048)&&c.previewUrl.startsWith(prefix)&&!/[\r\n\\]/.test(c.previewUrl))&&(c.orders===undefined||arr(c.orders,64,o=>id(o.id)&&str(o.id,160)&&str(o.name,2048)))),history=readable('history',raw.history,30,h=>num(h.id)&&h.id>0&&str(h.trigger,100)&&when(h.observedAt));
@@ -90,7 +92,7 @@ export function validateRepair(raw:unknown,scope:RepairScope,target:RepairTarget
  ...(typeof raw.onlineLookups==='boolean'?{onlineLookups:raw.onlineLookups}:{}),
  ...(raw.canMakeEpisodeThumbnail===true?{canMakeEpisodeThumbnail:true}:{}),
  ...(target.kind==='item'&&validFallbackUrl(raw.artworkFallbackUrl)?{artworkFallbackUrl:raw.artworkFallbackUrl}:{}),
- snapshot:Object.freeze({fields:Object.freeze(Object.fromEntries(Object.entries(raw.snapshot.fields).map(([k,v])=>[k,pick(v,['value','automaticValue','locked','source','observedAt','values'])]))),relationshipLocks:Object.freeze({...raw.snapshot.relationshipLocks}),...(ident===undefined?{}:{identity:pick(ident,['engine','type','provider','id','order','revision','status','locked'])}),relationships:rows(relationships,['recordId','provider','department','kind','targetKind','targetId','label','role','ordinal','source','locked','observedAt']),artwork:rows(chosenArtwork,['role','subject','candidateId','digest','thumbnailDigest','locked','revision','attribution','url'])}),
+ snapshot:Object.freeze({...(raw.snapshot.canEditProviderCredits===true&&Array.isArray(raw.snapshot.relationships)&&relationships.length===raw.snapshot.relationships.length&&relationships.filter(r=>r.kind==='credit').length<=512?{canEditProviderCredits:true as const}:{}),fields:Object.freeze(Object.fromEntries(Object.entries(raw.snapshot.fields).map(([k,v])=>[k,pick(v,['value','automaticValue','locked','source','observedAt','values'])]))),relationshipLocks:Object.freeze({...raw.snapshot.relationshipLocks}),...(ident===undefined?{}:{identity:pick(ident,['engine','type','provider','id','order','revision','status','locked'])}),relationships:rows(relationships,['sourceRowId','ownerEntryId','sourceStatus','recordId','provider','department','kind','targetKind','targetId','label','role','ordinal','source','locked','observedAt']),artwork:rows(chosenArtwork,['role','subject','candidateId','digest','thumbnailDigest','locked','revision','attribution','url'])}),
  candidates:Object.freeze(candidates.map(c=>Object.freeze({...pick(c,['id','identityId','identityType','provider','title','subtitle','observedAt','year','previewUrl']),...(c.orders===undefined?{}:{orders:rows(c.orders,['id','name'])})}))),history:rows(history,['id','trigger','observedAt']),
  artwork:Object.freeze({candidates:rows(artCandidates,['id','role','subject','provider','imageId','locale','rank','votes','attribution','observedAt','current','previewUrl']),jobs:rows(artJobs,['id','role','subject','status','error','attempts','nextAttempt'])}),cascades:rows(cascades,['id','intent','status','processed','failed','completed','skipped','pending'])}) as unknown as RepairData;
 }
@@ -104,13 +106,17 @@ export class MetadataRepairService {
  private publish(state:RepairView){if(this.disposed)return;this.state=Object.freeze(state);for(const fn of this.listeners)fn();}
  cancel(){this.epoch++;this.controller?.abort();this.target=undefined;this.fence=undefined;this.publish({phase:'idle',data:null,error:null,preview:null});}
  dispose(){this.cancel();this.disposed=true;this.listeners.clear();}
- private async request(target:RepairTarget,method:string,body?:unknown,suffix='',upload=false,explicitPath?:string):Promise<unknown>{
+ private async request(target:RepairTarget,method:string,body?:unknown,suffix='',upload=false,explicitPath?:string,caller?:RepairCaller):Promise<unknown>{
+  if(caller&&(caller.signal.aborted||!caller.current()))throw Error('Repair caller retired.');
   const c=new AbortController();this.controller?.abort();this.controller=c;
   let rejectAbort!:(reason:Error)=>void;const cancelled=new Promise<never>((_,reject)=>{rejectAbort=reject;});
+  void cancelled.catch(()=>{});
   const abort=()=>rejectAbort(new Error('Repair request interrupted.'));c.signal.addEventListener('abort',abort,{once:true});
+  const retire=()=>c.abort();caller?.signal.addEventListener('abort',retire,{once:true});
+  if(caller&&(caller.signal.aborted||!caller.current()))c.abort();
   const timer=setTimeout(()=>c.abort(),this.options.timeoutMs??15000);
-  try{return await Promise.race([upload ? this.options.api.requestMetadataUpload!(suffix,body as FormData,c.signal) : this.options.api.request<RouteResponse<"get_metadata_kind_id"> | RouteResponse<"get_metadata_kind_id_preview">>(explicitPath??(suffix.startsWith('/preview')?encodedRoutePath('get_metadata_kind_id_preview',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix.slice(8):encodedRoutePath(method==='GET'?'get_metadata_kind_id':'post_metadata_kind_id',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix),method,body,c.signal),cancelled]);}
-  finally{clearTimeout(timer);c.signal.removeEventListener('abort',abort);}
+  try{if(c.signal.aborted)throw Error('Repair caller retired.');return await Promise.race([upload ? this.options.api.requestMetadataUpload!(suffix,body as FormData,c.signal) : this.options.api.request<RouteResponse<"get_metadata_kind_id"> | RouteResponse<"get_metadata_kind_id_preview">>(explicitPath??(suffix.startsWith('/preview')?encodedRoutePath('get_metadata_kind_id_preview',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix.slice(8):encodedRoutePath(method==='GET'?'get_metadata_kind_id':'post_metadata_kind_id',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix),method,body,c.signal),cancelled]);}
+  finally{clearTimeout(timer);c.signal.removeEventListener('abort',abort);caller?.signal.removeEventListener('abort',retire);}
  }
  async load(target:RepairTarget){
   if(this.disposed)throw Error('Repair view is closed.');if(!id(target.id)||!id(target.libraryId)||!['item','show','season','album','artist','book'].includes(target.kind))throw Error('Select a concrete entity.');
@@ -126,13 +132,16 @@ export class MetadataRepairService {
   catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,false);}
  }
  private accept(raw:unknown,target:RepairTarget){const data=validateRepair(raw,this.options.scope,target);if(this.fence&&this.fence!==data.viewerFence)throw Object.assign(new Error('Owner access changed.'),{status:403});this.fence=data.viewerFence;this.publish({phase:'ready',data,error:null,preview:null});}
- async command(command:RepairCommand,expectedData?:RepairData):Promise<boolean>{
+ async command(command:RepairCommand,expectedData?:RepairData,caller?:RepairCaller):Promise<boolean>{
+  const callerCurrent=()=>!caller||!caller.signal.aborted&&caller.current();
+  if(!callerCurrent())return false;
   const data=this.state.data,target=this.target;if(this.state.phase!=='ready'||!data||!target||expectedData!==undefined&&expectedData!==data)throw Error('Load current metadata before making another change.');
   if(command.action==='make_episode_thumbnail'&&(target.kind!=='item'||data.canMakeEpisodeThumbnail!==true))throw Error('Video thumbnail generation is unavailable.');
   const epoch=++this.epoch;this.publish({...this.state,phase:'saving',error:null});
   const attempt=this.getSnapshot();
   if(this.disposed||epoch!==this.epoch||this.target!==target||attempt.phase!=='saving'||attempt.data!==data)return false;
-  try{const raw=await this.request(target,'POST',{...command,expectedRevision:data.revision});if(epoch!==this.epoch||this.disposed)return false;this.accept(raw,target);return true;}
+  if(!callerCurrent()){this.failure(Error('Repair caller retired before submission.'),false);return false;}
+  try{const raw=await this.request(target,'POST',{...command,expectedRevision:data.revision},'',false,undefined,caller);if(epoch!==this.epoch||this.disposed)return false;if(!callerCurrent()){this.failure(Error('Repair caller retired after submission.'),true);return false;}this.accept(raw,target);return true;}
   catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,true);return false;}
  }
  async uploadArtwork(role:string,file:Blob,subject=''):Promise<boolean>{

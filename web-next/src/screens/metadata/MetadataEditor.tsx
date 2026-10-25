@@ -3,7 +3,7 @@ import {useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useStat
 import {defaultI18n} from '@i18n';
 import {orderTakesOffset, readTmdbOrder, tmdbAbsoluteOrder} from '@core/screen-metadata.ts';
 import {attentionInProgress} from '@core/server-admin/attention-words.ts';
-import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
+import {MetadataRepairService, type RepairCaller, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
 import {EditorHeader} from '../../kit/shell';
 import {Button, TextField} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
@@ -46,10 +46,20 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const tabStrip = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<Tab>(initialTab), [draft, setDraft] = useState<Draft>({}), [error, setError] = useState<unknown>();
-  useEffect(() => {void service.load(target); return () => service.dispose();}, [service, target]);
+  useLayoutEffect(() => {void service.load(target); return () => service.cancel();}, [service, target]);
   const data = state.data;
   const offered = tabsFor(data);
   const shown: Tab = offered.includes(tab) ? tab : 'general';
+  const opening = useMemo(() => ({service, target, shown}), [service, target, shown]);
+  const renderedOpening = useRef(opening); renderedOpening.current = opening;
+  const [openingLease, setOpeningLease] = useState<{opening: typeof opening; live: boolean; controller: AbortController} | null>(null);
+  useLayoutEffect(() => {
+    const lease = {opening, live: true, controller: new AbortController()}; setOpeningLease(lease);
+    return () => {lease.live = false; lease.controller.abort();};
+  }, [opening]);
+  const retireOpening = () => {if (openingLease?.opening === opening) {openingLease.live = false; openingLease.controller.abort();}};
+  const openingCurrent = () => openingLease !== null && openingLease.live && openingLease.opening === opening && renderedOpening.current === opening;
+  const close = () => {if (!openingCurrent()) return; retireOpening(); onClose();};
   useEffect(() => {tabStrip.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({block: 'nearest', inline: 'nearest'});}, [shown]);
   const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value, value.values, target.kind !== 'season')) : false;}) : false;
   const changed = useMemo(() => {
@@ -70,10 +80,12 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     setError(undefined);
     await service.command({action: 'edit', fields}, data);
   };
-  const run = async (command: RepairCommand) => {
+  const run = async (command: RepairCommand, caller?: RepairCaller) => {
+    if (caller && (caller.signal.aborted || !caller.current())) return false;
     if (!data || service.getSnapshot().data !== data || service.getSnapshot().phase !== 'ready') return false;
     setError(undefined);
-    const saved = await service.command(command, data);
+    const saved = await service.command(command, data, caller);
+    if (caller && (caller.signal.aborted || !caller.current())) return false;
     if (!saved) setError(service.getSnapshot().error ?? new Error(t('web.metadata.saveChanges')));
     return saved;
   };
@@ -100,9 +112,9 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
   const heading = data ? (data.snapshot.fields.title?.value || target.id) : '';
   const kind = !data ? 'item' : localArtworkOnly ? 'reading' : target.kind === 'item' ? data.schema.some(field => field.field === 'episodeNumber') ? 'episode' : data.schema.some(field => field.field === 'trackNumber') ? 'song' : data.schema.some(field => field.field === 'partNumber') ? 'audiobook_file' : 'film' : target.kind;
   return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
-    <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={onClose} className={styles.editorHead}/>
+    <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={close} className={styles.editorHead}/>
     <nav ref={tabStrip} className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
-      {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => setTab(id)}>
+      {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => {if (!openingCurrent()) return; if (id !== shown) retireOpening(); setTab(id);}}>
         {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? data && !data.schema.some(field => field.field === 'genres' || field.field === 'genre') ? 'web.metadata.field.tags' : 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : id === 'lyrics' ? 'web.metadata.tabLyrics' : 'web.metadata.tabHistory')}</button>)}
     </nav>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
@@ -113,9 +125,9 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     {data && state.phase !== 'loading' ? <>
       {shown === 'general' ? <General data={data} draft={draft} set={set} requiredTitle={target.kind !== 'season'} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} busy={state.phase !== 'ready'} /> : null}
-      {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'}
-        onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
-        onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked, confirm: true})} /> : null}
+      {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'} opening={openingLease} openingSignal={openingLease?.controller.signal} openingCurrent={openingCurrent}
+        onCommit={(rows, caller) => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows, ...(data.snapshot.canEditProviderCredits === true ? {effectiveCredits: true as const} : {})}, caller)}
+        onLock={(locked, caller) => run({action: 'relationship_lock', role: 'credit', locked, confirm: true}, caller)} /> : null}
       {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase !== 'ready'} onSearch={query => void run({action: 'search', query})}
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked, confirm: true})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, confirm: true, ...(order ? {order} : {})})} /> : null}
@@ -389,19 +401,46 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
 }
 
 
-/** Frame 9: draft edits preserve every existing identity tuple. The current producer only
- * writes manual credits; provider rows stay read-only until its owner override is available. */
-function People({data, target, busy, onCommit, onLock}: {
+/** Frame 9: provider presentation edits retain exact captured source references. */
+function People({data, target, busy, opening, openingSignal, openingCurrent, onCommit, onLock}: {
   data: RepairData; target: RepairTarget; busy: boolean;
-  onCommit: (rows: RepairData['snapshot']['relationships']) => Promise<boolean>; onLock: (locked: boolean) => void;
+  opening: unknown; openingSignal?: AbortSignal; openingCurrent: () => boolean;
+  onCommit: (rows: RepairData['snapshot']['relationships'], caller: RepairCaller) => Promise<boolean>; onLock: (locked: boolean, caller: RepairCaller) => Promise<boolean>;
 }) {
   const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
-  const [draft, setDraft] = useState<RepairData['snapshot']['relationships'] | null>(null);
+  const [ownedDraft, setOwnedDraft] = useState<{owner: RepairData; rows: RepairData['snapshot']['relationships']} | null>(null);
+  const draft = ownedDraft?.owner === data ? ownedDraft.rows : null;
+  const privateDraft = useRef(ownedDraft);
+  const draftGeneration = useRef(0); const renderedGeneration = draftGeneration.current;
+  const [lease, setLease] = useState<{live: boolean; claimed: boolean; controller: AbortController} | null>(null);
+  const renderedDocument = useRef({data, opening}); renderedDocument.current = {data, opening};
+  useLayoutEffect(() => {
+    const attempt = {live: true, claimed: false, controller: new AbortController()}; setLease(attempt);
+    const retire = () => {attempt.live = false; attempt.controller.abort();};
+    openingSignal?.addEventListener('abort', retire, {once: true});
+    if (openingSignal?.aborted) retire();
+    return () => {retire(); openingSignal?.removeEventListener('abort', retire);};
+  }, [data, target, opening, openingSignal]);
+  const currentDraft = () => !!lease && lease.live && !lease.controller.signal.aborted && openingCurrent() &&
+    renderedDocument.current.data === data && renderedDocument.current.opening === opening && privateDraft.current === ownedDraft && draftGeneration.current === renderedGeneration;
+  const setDraft = (next: RepairData['snapshot']['relationships'] | null) => {
+    if (!currentDraft() || lease?.claimed) return;
+    // Retire the rendered draft before notifying React; retained callbacks cannot claim it.
+    const replacement = next === null ? null : {owner: data, rows: next};
+    draftGeneration.current++;
+    privateDraft.current = replacement;
+    setOwnedDraft(replacement);
+  };
+  const claim = (): RepairCaller | null => {
+    if (!currentDraft() || !lease || lease.claimed) return null;
+    lease.claimed = true;
+    return {signal: lease.controller.signal, current: currentDraft};
+  };
   const rows = draft ?? credits;
-  const editable = (row: RepairData['snapshot']['relationships'][number]) => row.provider === 'manual' && (!row.recordId || !row.locked);
+  const editable = (row: RepairData['snapshot']['relationships'][number]) => data.snapshot.canEditProviderCredits === true || row.provider === 'manual' && (!row.recordId || !row.locked);
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
-  const valid = rows.length <= 100 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
-    (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? ''));
+  const valid = rows.length <= 512 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
+    (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? '')) && new TextEncoder().encode(JSON.stringify(rows)).length <= (1 << 20) - 1024;
   const change = (index: number, patch: Partial<Pick<RepairData['snapshot']['relationships'][number], 'label' | 'role' | 'department'>>) => {
     if (busy || !editable(rows[index])) return;
     setDraft(rows.map((row, at) => at === index ? {...row, ...patch} : row));
@@ -411,25 +450,30 @@ function People({data, target, busy, onCommit, onLock}: {
     setDraft(rows.filter((_, at) => at !== index));
   };
   const add = () => {
-    if (busy || target.kind !== 'item' || rows.length >= 100) return;
+    if (busy || target.kind !== 'item' || rows.length >= 512) return;
     setDraft([...rows, {kind: 'credit', provider: 'manual', targetKind: 'scoped_credit', targetId: '', label: '', role: '', department: '',
       ordinal: rows.reduce((top, row) => Math.max(top, row.ordinal), 0) + 1, source: 'manual', locked: true}]);
   };
   const save = async () => {
-    if (busy || !draft || !valid) return;
-    if (await onCommit(rows.map(row => editable(row) ? {...row, label: row.label.trim(), role: row.role?.trim(), department: row.department?.trim()} : row))) setDraft(null);
+    if (!currentDraft() || busy || !draft || !valid) return;
+    const caller = claim(); if (!caller) return;
+    const saved = await onCommit(rows.map(row => editable(row) && !credits.includes(row) ? {...row, label: row.label.trim(), role: row.role?.trim(), department: row.department?.trim()} : row), caller);
+    if (!caller.current() || caller.signal.aborted || !lease) return;
+    lease.claimed = false;
+    if (saved) setDraft(null);
   };
   return <div className={styles.fields}>
     <div className={styles.creditHeader}><h3>{t('web.metadata.tabPeople')}</h3><small>{t('web.metadata.creditCount', {count: rows.length})}</small>
       <button type="button" className={styles.lock} disabled={busy || draft !== null} aria-pressed={data.snapshot.relationshipLocks.credit === true}
-        onClick={() => onLock(data.snapshot.relationshipLocks.credit !== true)}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
-      {target.kind === 'item' ? <Button size="small" disabled={busy || rows.length >= 100} onClick={add}>{t('web.metadata.addPerson')}</Button> : null}
+        onClick={() => {if (busy || draft !== null) return; const caller = claim(); if (caller) void onLock(data.snapshot.relationshipLocks.credit !== true, caller).finally(() => {if (caller.current() && lease) lease.claimed = false;});}}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
+      {target.kind === 'item' ? <Button size="small" disabled={busy || rows.length >= 512} onClick={add}>{t('web.metadata.addPerson')}</Button> : null}
     </div>
     {rows.map((row, index) => <div key={`${row.recordId ?? 'new'}:${row.targetId}:${index}`} className={styles.creditRow} data-new={!row.recordId || undefined}>
       <TextField label={t('web.metadata.field.name')} value={row.label} disabled={busy || !editable(row)} maxLength={300} onChange={event => change(index, {label: event.currentTarget.value})}/>
       <TextField label={t('web.metadata.field.department')} value={row.department ?? ''} disabled={busy || !editable(row)} maxLength={200} onChange={event => change(index, {department: event.currentTarget.value})}/>
       <TextField label={t(row.department?.toLowerCase() === 'acting' ? 'web.metadata.creditCharacter' : 'web.metadata.creditRole')} value={row.role ?? ''} disabled={busy || !editable(row)} maxLength={500} onChange={event => change(index, {role: event.currentTarget.value})}/>
       <Button size="small" disabled={busy || !editable(row)} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
+      {row.sourceStatus === 'missing' || row.sourceStatus === 'replaced' ? <small className={styles.creditStatus}>{t(row.sourceStatus === 'missing' ? 'web.metadata.creditSourceMissing' : 'web.metadata.creditSourceReplaced')}</small> : null}
     </div>)}
     <footer className={styles.editorFooter}>
       <Button size="small" disabled={busy || draft === null} onClick={() => setDraft(null)}>{t('action.discard')}</Button>

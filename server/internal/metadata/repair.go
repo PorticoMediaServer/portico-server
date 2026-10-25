@@ -30,18 +30,21 @@ type RepairField struct {
 	Values    []string `json:"values,omitempty"`
 }
 type RepairRelationship struct {
-	RecordID   string `json:"recordId,omitempty"`
-	Provider   string `json:"provider,omitempty"`
-	Department string `json:"department,omitempty"`
-	Kind       string `json:"kind"`
-	TargetKind string `json:"targetKind"`
-	TargetID   string `json:"targetId"`
-	Label      string `json:"label"`
-	Role       string `json:"role,omitempty"`
-	Ordinal    int    `json:"ordinal"`
-	Source     string `json:"source"`
-	Locked     bool   `json:"locked"`
-	Observed   string `json:"observedAt,omitempty"`
+	SourceRowID  string `json:"sourceRowId,omitempty"`
+	OwnerEntryID string `json:"ownerEntryId,omitempty"`
+	SourceStatus string `json:"sourceStatus,omitempty"`
+	RecordID     string `json:"recordId,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Department   string `json:"department,omitempty"`
+	Kind         string `json:"kind"`
+	TargetKind   string `json:"targetKind"`
+	TargetID     string `json:"targetId"`
+	Label        string `json:"label"`
+	Role         string `json:"role,omitempty"`
+	Ordinal      int    `json:"ordinal"`
+	Source       string `json:"source"`
+	Locked       bool   `json:"locked"`
+	Observed     string `json:"observedAt,omitempty"`
 }
 type RepairIdentity struct {
 	Engine   string `json:"engine,omitempty"`
@@ -71,11 +74,12 @@ type RepairHistory struct {
 	Observed string `json:"observedAt"`
 }
 type RepairSnapshot struct {
-	RelationshipLocks map[string]bool        `json:"relationshipLocks"`
-	Fields            map[string]RepairField `json:"fields"`
-	Identity          *RepairIdentity        `json:"identity,omitempty"`
-	Relationships     []RepairRelationship   `json:"relationships"`
-	Artwork           []ArtworkChoice        `json:"artwork"`
+	CanEditProviderCredits bool                   `json:"canEditProviderCredits,omitempty"`
+	RelationshipLocks      map[string]bool        `json:"relationshipLocks"`
+	Fields                 map[string]RepairField `json:"fields"`
+	Identity               *RepairIdentity        `json:"identity,omitempty"`
+	Relationships          []RepairRelationship   `json:"relationships"`
+	Artwork                []ArtworkChoice        `json:"artwork"`
 }
 type RepairState struct {
 	OnlineLookups           *bool             `json:"onlineLookups,omitempty"`
@@ -103,6 +107,7 @@ type RepairFieldEdit struct {
 	Automatic bool      `json:"useAutomatic,omitempty"`
 }
 type RepairCommand struct {
+	EffectiveCredits bool                       `json:"effectiveCredits,omitempty"`
 	Query            string                     `json:"query,omitempty"`
 	Year             int                        `json:"year,omitempty"`
 	Relationships    []RepairRelationship       `json:"relationships,omitempty"`
@@ -256,6 +261,12 @@ func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (Repair
 			out.Identity.Locked = out.Identity.Locked || locked
 		}
 	}
+	if t.Kind == "item" {
+		out.CanEditProviderCredits, err = creditOverridesAvailable(ctx, tx, entity)
+		if err != nil {
+			return out, ent, err
+		}
+	}
 	out.Relationships, err = readRepairRelationships(ctx, tx, t)
 	if err != nil {
 		return out, ent, err
@@ -273,7 +284,17 @@ func repairRevision(ctx context.Context, tx *sql.Tx, t RepairTarget, snap Repair
 	}
 	var last int64
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),0) FROM metadata_owner_history WHERE kind=? AND entity_id=?`, t.Kind, entity).Scan(&last)
-	return publicationDigest([]any{t, ent.library, ent.stamp, snap, last}), err
+	if err != nil {
+		return "", err
+	}
+	var creditFence []any
+	if t.Kind == "item" {
+		creditFence, err = creditRepairFence(ctx, tx, entity)
+		if err != nil {
+			return "", err
+		}
+	}
+	return publicationDigest([]any{t, ent.library, ent.stamp, snap, last, creditFence}), nil
 }
 func (s *Service) RepairState(ctx context.Context, t RepairTarget, authorize func(*sql.Tx) error) (RepairState, error) {
 	gated, err := dbwork.BeginSnapshot(ctx, s.db)
@@ -424,6 +445,11 @@ func recordRepair(ctx context.Context, tx *sql.Tx, t RepairTarget, before Repair
 	if err != nil {
 		return err
 	}
+	if t.Kind == "item" {
+		if err = attachCreditHistorySources(ctx, tx, entity, &before); err != nil {
+			return err
+		}
+	}
 	a, _ := json.Marshal(before)
 	b, _ := json.Marshal(after)
 	if len(a) > 1<<20 || len(b) > 1<<20 {
@@ -443,6 +469,9 @@ func recordRepair(ctx context.Context, tx *sql.Tx, t RepairTarget, before Repair
 	return err
 }
 func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, actor MBActor, authorize func(*sql.Tx) error) (RepairState, error) {
+	if m.EffectiveCredits && (m.Action != "edit_relationships" || m.Role != "credit") {
+		return RepairState{}, ErrRepairInput
+	}
 	if len(m.ExpectedRevision) != 64 || actor.AccountID == "" || authorize == nil {
 		return RepairState{}, ErrRepairInput
 	}
@@ -524,7 +553,7 @@ func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, a
 		if !m.Confirm {
 			return RepairState{}, ErrRepairInput
 		}
-		err = applyRelationshipSet(ctx, tx, t, m.Role, m.Relationships, true, who, now, false)
+		err = applyRelationshipSetMode(ctx, tx, t, m.Role, m.Relationships, true, who, now, false, m.EffectiveCredits)
 	case "search", "retry":
 		if before.Identity != nil && before.Identity.Engine == "screen" {
 			err = queueScreenRepair(ctx, tx, t, m)

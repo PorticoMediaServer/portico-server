@@ -18,6 +18,15 @@ import (
 // (metadataprovider/screen.go); TVDB extended episodes accept at most 64.
 const CreditSourcePublicationMax = 128
 
+// Accepted local NFO locators are bounded source record references, not person IDs.
+const CreditSourceRecordReferenceMax = 4096
+
+// Existing owner text limits count UTF-16 units; private custody must retain
+// their UTF-8 bytes without rejecting already-valid non-ASCII owner credits.
+const CreditNameMaxBytes = 1200
+const CreditRoleMaxBytes = 2000
+const CreditDepartmentMaxBytes = 800
+
 var ErrCreditSourceStale = errors.New("credit source head changed")
 
 // AcceptedCreditTuple is immutable accepted evidence, not a person lookup or
@@ -137,7 +146,7 @@ func newCreditCustodyID() (string, error) {
 // A savepoint prevents callers that handle an error from committing partial
 // source custody. No name/role/ordinal heuristic can rebind an original row.
 func PublishCreditSourceTx(ctx context.Context, tx *sql.Tx, entity int64, provider, recordReference, observedAt string, expectedRevision int64, tuples []AcceptedCreditTuple) (out CreditSourcePublication, err error) {
-	if entity <= 0 || !creditCustodyText(provider, 64, true) || !creditCustodyText(recordReference, 256, true) || expectedRevision < 0 || !creditCustodyText(observedAt, 64, true) || len(tuples) > CreditSourcePublicationMax {
+	if entity <= 0 || !creditCustodyText(provider, 64, true) || !creditCustodyText(recordReference, CreditSourceRecordReferenceMax, true) || expectedRevision < 0 || !creditCustodyText(observedAt, 64, true) || len(tuples) > CreditSourcePublicationMax {
 		return out, errors.New("invalid credit source publication")
 	}
 	for _, tuple := range tuples {
@@ -290,5 +299,5 @@ func creditCustodyText(value string, maximum int, required bool) bool {
 }
 
 func validAcceptedCreditTuple(t AcceptedCreditTuple) bool {
-	return creditCustodyText(t.RecordReference, 256, true) && creditCustodyText(t.CreditID, 256, false) && creditCustodyText(t.ProviderPersonID, 256, false) && creditCustodyText(t.PersonIdentityKey, 512, false) && creditCustodyText(t.PersonToken, 256, false) && creditCustodyText(t.TargetKind, 64, false) && creditCustodyText(t.TargetID, 256, false) && creditCustodyText(t.CreditedName, 512, false) && creditCustodyText(t.Role, 512, false) && creditCustodyText(t.Department, 200, false) && t.SourceOrdinal >= 0
+	return creditCustodyText(t.RecordReference, CreditSourceRecordReferenceMax, true) && creditCustodyText(t.CreditID, 256, false) && creditCustodyText(t.ProviderPersonID, 256, false) && creditCustodyText(t.PersonIdentityKey, 512, false) && creditCustodyText(t.PersonToken, 256, false) && creditCustodyText(t.TargetKind, 64, false) && creditCustodyText(t.TargetID, 256, false) && creditCustodyText(t.CreditedName, CreditNameMaxBytes, false) && creditCustodyText(t.Role, CreditRoleMaxBytes, false) && creditCustodyText(t.Department, CreditDepartmentMaxBytes, false) && t.SourceOrdinal >= 0
 }
