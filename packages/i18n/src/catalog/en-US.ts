@@ -2024,6 +2024,8 @@ export const enUS = {
   'player.post.sceneAfterSkip': 'There’s a scene after the credits. Skip credits takes you straight to it.',
   'player.post.replay': 'Replay',
   'player.post.backTo': 'Back to {title}',
+  'player.collection.next': 'Next in the {collection} collection',
+  'player.collection.play': 'Play {title}',
   'player.post.close': 'Close',
   'player.post.finished': 'Finished',
   'player.post.nextUnavailable': 'The next item in the queue is unavailable.',
