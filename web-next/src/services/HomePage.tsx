@@ -54,7 +54,7 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
   const name = session.account.displayName || session.account.username;
   return <><ServicesStart header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
     onAccount={() => location.assign('/account')} onJoin={() => scrollToCard('join')} onSetup={() => scrollToCard('setup')} onApps={() => scrollToCard('apps')}
-    onHelp={() => window.open('https://getportico.tv/help', '_blank', 'noopener,noreferrer')}
+    onHelp={() => window.open('https://getportico.tv/docs/', '_blank', 'noopener,noreferrer')}
     onSignOut={() => run(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />} />}
     invitation={invitation} onInvitationChange={value => { setInvitation(value); setInvalid(false); }} onJoin={() => inspect()}
     onInvitationPaste={value => { setInvitation(value); inspect(value); }}
