@@ -42,7 +42,7 @@ export function SetupApprovalPage({account, bootstrap, Review}: {account: Servic
   }, [flow, state.display]);
   const {t}=servicesI18n(), error=active?.error??state.error;
   if(!state.display){
-    if(state.phase==='loading'&&!error)return <ServicesAuthStage><></></ServicesAuthStage>;
+    if(state.phase==='loading'&&!error)return <ServicesAuthStage><p role="status">{t('web.claim.loading')}</p></ServicesAuthStage>;
     return <ServicesAuthStage><ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading>
       {state.phase==='expired'?<ServicesLead>{t('web.claim.expired')}</ServicesLead>:<HostedError error={error}/>}
       <ServicesActions><Button onClick={()=>window.location.assign('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
