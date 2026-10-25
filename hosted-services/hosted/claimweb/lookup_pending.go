@@ -5,4 +5,7 @@ package claimweb
 type LookupPending struct {
 	Pending
 	OtherPeopleCount *int `json:"otherPeopleCount,omitempty"`
+	// TransitionMode is the signed closed mode of a switch claim's start; absent
+	// on legacy ordinary switch.
+	TransitionMode string `json:"transitionMode,omitempty"`
 }

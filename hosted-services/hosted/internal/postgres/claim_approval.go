@@ -5,7 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"portico.local/hosted/claimweb"
 	"portico.local/hosted/internal/claims"
 	"portico.local/hosted/internal/identity"
 	"time"
@@ -158,6 +160,24 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 		return empty, claims.ErrStale
 	}
 
+	// The approval echoes the mode frozen in the stored signed start. A v1 start
+	// has none and stays a version-2 ordinary switch approval.
+	transition := ""
+	if in.Purpose == "switch" {
+		var startPayload []byte
+		if e = tx.QueryRowContext(ctx, `SELECT start_payload FROM owner_claim_starts WHERE operation_id=$1`, in.OperationID).Scan(&startPayload); e != nil {
+			return empty, claims.ErrStale
+		}
+		var start claimweb.OwnerStart
+		if json.Unmarshal(startPayload, &start) != nil {
+			return empty, claims.ErrInvalid
+		}
+		transition = start.TransitionMode
+	}
+	version := "2"
+	if transition != "" {
+		version = "3"
+	}
 	var now time.Time
 	if e = tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
 		return empty, e
@@ -170,7 +190,7 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 		if !sameClaimApproval(old, captured) || !old.expiry.After(now) {
 			return empty, claims.ErrStale
 		}
-		return claims.Approval{TargetUsername: targetUsername, Kind: "portico.claim.approval", Version: "2", Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: old.revision, Purpose: in.Purpose, CurrentOwnerAccountID: in.CurrentOwnerAccountID, PreviousOwnerRole: in.PreviousOwnerRole, ReturnRegistrationID: in.ReturnRegistrationID, IssuedAt: old.issued.UTC().Format(time.RFC3339Nano), ExpiresAt: old.expiry.UTC().Format(time.RFC3339Nano)}, nil
+		return claims.Approval{TargetUsername: targetUsername, Kind: "portico.claim.approval", Version: version, Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: old.revision, Purpose: in.Purpose, CurrentOwnerAccountID: in.CurrentOwnerAccountID, PreviousOwnerRole: in.PreviousOwnerRole, ReturnRegistrationID: in.ReturnRegistrationID, TransitionMode: transition, IssuedAt: old.issued.UTC().Format(time.RFC3339Nano), ExpiresAt: old.expiry.UTC().Format(time.RFC3339Nano)}, nil
 	}
 	expiry := now.Add(5 * time.Minute)
 	for _, bound := range []time.Time{facts.AccessExpiresAt, facts.AbsoluteExpiresAt, facts.IdleExpiresAt} {
@@ -197,7 +217,7 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 	if !facts.UnexpiredAt(decisionTime) || !expiry.After(decisionTime) {
 		return empty, claims.ErrApprovalRequired
 	}
-	return claims.Approval{TargetUsername: targetUsername, Kind: "portico.claim.approval", Version: "2", Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: revision, Purpose: in.Purpose, CurrentOwnerAccountID: in.CurrentOwnerAccountID, PreviousOwnerRole: in.PreviousOwnerRole, ReturnRegistrationID: in.ReturnRegistrationID, IssuedAt: now.UTC().Format(time.RFC3339Nano), ExpiresAt: expiry.UTC().Format(time.RFC3339Nano)}, nil
+	return claims.Approval{TargetUsername: targetUsername, Kind: "portico.claim.approval", Version: version, Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: revision, Purpose: in.Purpose, CurrentOwnerAccountID: in.CurrentOwnerAccountID, PreviousOwnerRole: in.PreviousOwnerRole, ReturnRegistrationID: in.ReturnRegistrationID, TransitionMode: transition, IssuedAt: now.UTC().Format(time.RFC3339Nano), ExpiresAt: expiry.UTC().Format(time.RFC3339Nano)}, nil
 }
 
 // Match the server-operation account lock order before any family/claim locks.

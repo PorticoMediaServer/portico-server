@@ -66,13 +66,14 @@ type Approval struct {
 	CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
 	PreviousOwnerRole     string `json:"previousOwnerRole"`
 	ReturnRegistrationID  string `json:"returnRegistrationId"`
+	TransitionMode        string `json:"transitionMode,omitempty"`
 	IssuedAt              string `json:"issuedAt"`
 	ExpiresAt             string `json:"expiresAt"`
 }
 type Envelope = trust.Envelope
 
 func SignApproval(a Approval, key ed25519.PrivateKey, keyID string, certificate *trust.Certificate) (Envelope, error) {
-	if len(key) != ed25519.PrivateKeySize || keyID == "" || a.Kind != "portico.claim.approval" || a.Version != "2" || !serverreturn.Binding(a.Purpose, a.CurrentOwnerAccountID, a.PreviousOwnerRole) || !validAudience(a.Audience) || !validBinding(a.OperationID, a.ServerID, a.AccountID, a.LocalGeneration) || a.ApprovalRevision < 1 || ((a.Purpose == "change-owner" || a.Purpose == "switch") && !identity.ValidUsername(a.TargetUsername)) || (a.Purpose != "change-owner" && a.Purpose != "switch" && a.TargetUsername != "") {
+	if len(key) != ed25519.PrivateKeySize || keyID == "" || a.Kind != "portico.claim.approval" || (a.Version != "2" && a.Version != "3") || (a.Version == "2" && a.TransitionMode != "") || (a.Version == "3" && a.TransitionMode != "switch" && a.TransitionMode != "start-over") || (a.TransitionMode != "" && a.Purpose != "switch") || !serverreturn.Binding(a.Purpose, a.CurrentOwnerAccountID, a.PreviousOwnerRole) || !validAudience(a.Audience) || !validBinding(a.OperationID, a.ServerID, a.AccountID, a.LocalGeneration) || a.ApprovalRevision < 1 || ((a.Purpose == "change-owner" || a.Purpose == "switch") && !identity.ValidUsername(a.TargetUsername)) || (a.Purpose != "change-owner" && a.Purpose != "switch" && a.TargetUsername != "") {
 		return Envelope{}, ErrInvalid
 	}
 	public, ok := decode(a.PublicKey, 32)

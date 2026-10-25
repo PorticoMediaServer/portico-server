@@ -17,5 +17,10 @@ func (LookupPending) JSONSchema() map[string]any {
 	schema["properties"].(map[string]any)["otherPeopleCount"] = map[string]any{
 		"type": "integer", "minimum": 0, "maximum": 10000,
 	}
+	// The signed transition mode is optional and non-null: omission is the legacy
+	// ordinary switch, and only the closed pair can ever be projected.
+	schema["properties"].(map[string]any)["transitionMode"] = map[string]any{
+		"type": "string", "enum": []string{"switch", "start-over"},
+	}
 	return schema
 }

@@ -226,6 +226,16 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 			return p, claims.ErrStale
 		}
 		p.OwnerTransactionID, p.ExpiresAt = owner.id, owner.expiry
+		// Project only the mode frozen in this claim's own signed start.
+		var startPayload []byte
+		if e = tx.QueryRowContext(ctx, `SELECT start_payload FROM owner_claim_starts WHERE operation_id=$1`, q.OperationID).Scan(&startPayload); e != nil {
+			return p, e
+		}
+		var start claimweb.OwnerStart
+		if json.Unmarshal(startPayload, &start) != nil {
+			return p, claims.ErrInvalid
+		}
+		p.TransitionMode = start.TransitionMode
 		if owner.registration != "" {
 			t, e := ownerTupleTx(ctx, tx, owner)
 			if e != nil || !sameReturnTuple(t, owner.t) {

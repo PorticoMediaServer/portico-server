@@ -19,6 +19,10 @@ import (
 )
 
 const OwnerStartKind = "portico.owner-start.v1"
+
+// OwnerStartKindV2 adds the signed closed transition mode. ClaimHash binds the
+// original claim; the mode is covered by the start signature. v1 is ordinary switch.
+const OwnerStartKindV2 = "portico.owner-start.v2"
 const OwnerStartLifetime = 5 * time.Minute
 
 var ErrOwnerStart = errors.New("invalid owner start")
@@ -43,6 +47,8 @@ type OwnerStart struct {
 	ServerChallenge string    `json:"serverChallenge"`
 	IssuedAt        time.Time `json:"issuedAt"`
 	ExpiresAt       time.Time `json:"expiresAt"`
+	// TransitionMode is the signed closed mode on a v2 start, empty on v1.
+	TransitionMode string `json:"transitionMode,omitempty"`
 }
 
 func (OwnerStart) String() string   { return "[owner start redacted]" }
@@ -92,7 +98,13 @@ func VerifyOwnerStart(original, signed Signed, audience string, now time.Time) (
 	if _, e = ownerStartBase64(start.CodeChallenge, sha256.Size); e != nil {
 		return fail()
 	}
-	if start.Kind != OwnerStartKind || start.Audience != audience || start.Audience != claim.Audience ||
+	if start.Kind != OwnerStartKind && start.Kind != OwnerStartKindV2 {
+		return fail()
+	}
+	if start.Kind == OwnerStartKind && start.TransitionMode != "" || start.Kind == OwnerStartKindV2 && start.TransitionMode != "switch" && start.TransitionMode != "start-over" {
+		return fail()
+	}
+	if start.Audience != audience || start.Audience != claim.Audience ||
 		start.OperationID != claim.OperationID || start.ServerID != claim.ServerID || start.PublicKey != claim.PublicKey ||
 		start.LocalGeneration != claim.LocalGeneration || start.Address != claim.Address || !ownerStartAddress(start.Address) ||
 		start.Purpose != claim.Purpose || !ownerStartSecret.MatchString(start.State) ||
