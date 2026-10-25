@@ -3,7 +3,8 @@ import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentView} from '@core/library-content.ts';
-import {libraryTabs} from '@core/presentation/library-tabs.ts';
+import {libraryTabs, readingTabModel, type LibraryTab} from '@core/presentation/library-tabs.ts';
+import {browseCapabilitiesPath, parseBrowseCapabilities, type BrowseCapabilities} from '@core/browse.ts';
 import type {SavedDefinition} from '@core/personal-saved.ts';
 import {randomId} from '@core/random-id.ts';
 import {defineWebScreen} from '../../route-registry';
@@ -25,30 +26,52 @@ import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-con
 import {useScreenAppearance} from './screen-preferences';
 import {browseConjunction, parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
 import {SaveView} from './SaveView';
-import {ReadLibraryEntry} from '../read';
+import {FacetPage, ReadLibraryEntry, authorPredicate, type FacetRequest} from '../read';
 import {isReadingLibrary} from './reading-library';
 
 const t = defaultI18n.t;
 function ReadingLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  const tabs = libraryTabs(library.kind), selected = tabs.find(tab => tab.id === (search.view ?? 'discover')) ?? tabs[0]!;
+  const life = useMemo(() => screenLifetime(context), [context]);
+  const [capabilities, setCapabilities] = useState<BrowseCapabilities>();
+  useEffect(() => () => life.dispose(), [life]);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const raw = await life.api.request(browseCapabilitiesPath(library.id, library.kind === 'comic' ? 'comics' : 'books'), 'GET');
+      if (active && life.current()) setCapabilities(parseBrowseCapabilities(raw));
+    })().catch(error => {if (active && life.current()) context.effects.reportError(error);});
+    return () => {active = false;};
+  }, [context, life, library.id, library.kind]);
+  /** Root §3: the server's published pivots decide the reading tabs; older servers keep the authored pair. */
+  const tabs = useMemo(() => readingTabModel(capabilities) ?? libraryTabs(library.kind), [capabilities, library.kind]);
+  const selected = tabs.find(tab => tab.id === (search.view ?? 'discover')) ?? tabs[0]!;
+  const gridPivot = tabs.find(tab => tab.id === 'browse')?.pivot;
+  const navigate = (value: LibraryScreenSearch) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: value}).catch(context.effects.reportError);};
   const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot={selected.id}
     tabs={tabs.map(tab => ({value: tab.id, label: t(tab.label)}))}
     appearance={{view: appearance.libraryView, cardWidth: width < 600 ? 108 : 190, cardSize: 'medium', backdrops: appearance.showBackdrops}}
     preferences={appearance} artwork={context.artwork} libraryMenu={undefined}
-    onPivot={id => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {view: id}}).catch(context.effects.reportError);}}
+    onPivot={id => {const tab = tabs.find(tab => tab.id === id); if (!tab) return;
+      if (tab.shows === 'facet') {navigate({view: tab.id === 'authors' ? 'authors' : 'series'}); return;}
+      navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {})});}}
     onLibrary={libraryId => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}).catch(context.effects.reportError);}}
     onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
-  return <ReadLibraryEntry libraryId={library.id} header={header} view={selected.id === 'browse' ? 'books' : 'discover'}/>;
+  const request = useMemo<FacetRequest>(() => (path, method, body, signal) => life.api.request(path, method, body, signal), [life]);
+  if (selected.shows === 'facet') return <>{header}<FacetPage libraryId={library.id} field={selected.facetSource?.field === 'series' ? 'series' : 'author'}
+    pivot={gridPivot ?? (library.kind === 'comic' ? 'comics' : 'books')} request={request}
+    {...(selected.facetSource?.field === 'author' ? {onSelect: value => navigate({view: 'browse', ...(gridPivot ? {pivot: gridPivot} : {}), query: authorPredicate(value.value)})} : {})}/></>;
+  if (search.view === 'browse' || search.query) return <BoundLibrary captured={captured} library={library} search={search} tabs={tabs}/>;
+  return <ReadLibraryEntry libraryId={library.id} header={header} view="discover"/>;
 }
 function LibraryShow({context, libraryId, search}: {context: ScreenContext; libraryId: string; search: LibraryScreenSearch}) {
   const binding = useMemo(() => createShowBindings(context), [context]);
   useEffect(() => () => binding.dispose(), [binding]);
   return <ShowScreen binding={binding} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
 }
-function BoundLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
+function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly LibraryTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  const tabs = libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
+  const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
