@@ -568,6 +568,7 @@ func validateTracks(a *AudioRequest, sub *SubtitleRequest) error {
 // presentationTarget is one media start: what to play and how.
 type presentationTarget struct {
 	pendingActivation bool
+	useStoredResume   bool
 	item, version     string
 	// part is the version's part to play (its part index; 0 is the first).
 	part      int
@@ -687,7 +688,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	if !video && request.Quality.Mode == QualityFixed || video && request.Quality.Mode == QualityCD {
 		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
 	}
-	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation}
+	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume}
 	request.Quality.apply(&base)
 	version := t.version
 	if version == "" && video && t.part == 0 {
@@ -1080,7 +1081,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	if req.StartPositionMs != nil {
 		startMs = *req.StartPositionMs
 	}
-	target := presentationTarget{pendingActivation: true, item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
+	target := presentationTarget{pendingActivation: true, useStoredResume: req.StartPositionMs == nil && (req.StartFrom == "" || req.StartFrom == "resume"), item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
 		throughputKbps: req.ThroughputKbps}
 	media, view, err := s.present(ctx, c, target)
 

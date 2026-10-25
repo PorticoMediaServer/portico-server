@@ -244,6 +244,9 @@ type ContentEnvelope struct {
 	Empty            *ContentHeading   `json:"empty,omitempty"`
 }
 type ContentRequest struct {
+	// ResumeRewindMs is a validated, server-private effective profile value.
+	// The authenticated edge supplies it; no query or body controls this field.
+	ResumeRewindMs                                                                                int
 	Viewer                                                                                        Viewer
 	ServerID, Library, Profile, ViewerFence, View, EntityID, Sort, Direction, Category, Q, Cursor string
 	// Filter is a named server-defined predicate (saved lists: all, unwatched,
