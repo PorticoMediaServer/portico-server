@@ -47,7 +47,7 @@ export function ChannelEditor({source, api, reportError, openPresets, presets, l
   const title = state.templateName ? t('builder.reviewTemplate', {name: state.templateName}) : t('builder.editTitle');
   return <Dialog responsive={false} className={styles.editorDialog} headerClassName={styles.editorHeader} footerClassName={styles.editorFooter} open={state.phase !== 'closed' && isCurrent()} title={title} width={960} onOpenChange={value => {if (!value && !source.getSnapshot().busy) close();}} bodyClassName={styles.editorBody}
     dismissOnBack={!state.busy} dismissOnOutsidePress={!state.busy} showCloseButton={!state.busy}
-    footer={<><Button size="compact" variant="glass" disabled={state.busy} onClick={close}>{t('builder.cancel')}</Button><Button size="compact" variant="primary" disabled={state.busy || !config} onClick={save}>{t(state.pending ? 'action.tryAgain' : 'builder.save')}</Button></>}>
+    footer={<>{preview && <span className={styles.footerCount}>{t(preview.complete ? 'builder.matches' : 'next.browse.countAtLeast', {count})}</span>}<Button size="compact" variant="glass" disabled={state.busy} onClick={close}>{t('builder.cancel')}</Button><Button size="compact" variant="primary" disabled={state.busy || !config} onClick={save}>{t(state.pending ? 'action.tryAgain' : 'builder.save')}</Button></>}>
     {state.phase === 'loading' && !state.error && <p role="status">{t('next.settings.loading')}</p>}
     {config && rule && <div className={styles.editorGrid}>
       <fieldset className={styles.editorFields} disabled={locked}>
