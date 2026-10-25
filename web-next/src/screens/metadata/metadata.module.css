@@ -131,6 +131,7 @@
 .creditHeader small { color: var(--color-text-tertiary); }
 .creditHeader .lock { margin-left: auto; }
 .creditRow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--color-ink) 50%, transparent); }
+.creditStatus { grid-column: 1 / -1; color: var(--color-text-tertiary); }
 .creditRow[data-new] { box-shadow: inset 0 0 0 1px var(--color-accent); }
 @media (max-width: 600px) { .creditRow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .creditRow > :first-child { grid-column: 1 / -1; } }
 
