@@ -180449,6 +180449,40 @@ export const schemas = {
   },
   "PostReadingSessionsResponse": {
     "properties": {
+      "contents": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "depth": {
+              "maximum": 16,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "fragment": {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            "section": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "section",
+            "depth"
+          ],
+          "type": "object"
+        },
+        "maxItems": 512,
+        "type": "array"
+      },
       "format": {
         "enum": [
           "epub",
