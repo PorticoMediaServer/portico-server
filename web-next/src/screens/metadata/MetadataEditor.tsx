@@ -40,7 +40,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
   const data = state.data;
   const offered = tabsFor(data);
   const shown: Tab = offered.includes(tab) ? tab : 'general';
-  const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value, value.values)) : false;}) : false;
+  const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value, value.values, target.kind !== 'season')) : false;}) : false;
   const changed = useMemo(() => {
     if (!data) return [];
     return Object.entries(draft).filter(([field, value]) => {
@@ -86,7 +86,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
     {error ? <HostedError error={error} /> : null}
     {state.phase === 'saving' ? <p className={styles.working}>{t('web.metadata.applying')}</p> : null}
     {data && state.phase !== 'loading' ? <>
-      {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
+      {shown === 'general' ? <General data={data} draft={draft} set={set} requiredTitle={target.kind !== 'season'} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} busy={state.phase !== 'ready'} /> : null}
       {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'}
         onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
@@ -110,8 +110,9 @@ export function MetadataEditor({api, scope, target, onClose}: {
 
 
 /** The server's own bounds, checked beside the field as the frame draws them. */
-function fieldError(spec: RepairFieldSpec, value: string, values: readonly string[] = []): string {
+function fieldError(spec: RepairFieldSpec, value: string, values: readonly string[] = [], requiredTitle = false): string {
   const label = t(spec.label as Parameters<typeof t>[0]);
+  if (requiredTitle && spec.field === 'title' && value.trim() === '') return t('web.metadata.titleRequired');
   if (spec.type === 'list') {
     if (spec.max !== undefined && values.length > spec.max) return t('web.metadata.tooManyEntries', {label, max: spec.max});
     if (spec.maxLength !== undefined && values.some(entry => Array.from(entry).length > spec.maxLength!)) return t('web.metadata.listEntryTooLong', {label, max: spec.maxLength});
@@ -142,8 +143,8 @@ function input(spec: RepairFieldSpec, value: string, set: (value: string) => voi
   return <input type={spec.type === 'date' ? 'date' : 'text'} inputMode={spec.type === 'integer' || spec.type === 'number' ? 'numeric' : undefined} value={value} onChange={event => set(event.currentTarget.value)} />;
 }
 
-function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<MetadataFieldDraft>) => void}) {
-  const value = draft?.value ?? field?.value ?? '', locked = draft?.locked ?? field?.locked ?? false, error = fieldError(spec, value);
+function Field({spec, field, draft, set, requiredTitle = false}: {requiredTitle?: boolean; spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<MetadataFieldDraft>) => void}) {
+  const value = draft?.value ?? field?.value ?? '', locked = draft?.locked ?? field?.locked ?? false, error = fieldError(spec, value, [], requiredTitle);
   const changed = draft !== undefined && (draft.value !== (field?.value ?? '') || draft.locked !== (field?.locked ?? false));
   const numeric = spec.type === 'integer' || spec.type === 'number';
   const hint = numeric ? spec.min !== undefined && spec.max !== undefined ? t('web.metadata.numericBounds', {min: spec.min, max: spec.max}) : spec.min !== undefined ? t('web.metadata.numericMinimum', {min: spec.min}) : spec.max !== undefined ? t('web.metadata.numericMaximum', {max: spec.max}) : '' : spec.maxLength !== undefined ? t('web.metadata.characterCount', {count: Array.from(value).length, max: spec.maxLength}) : '';
@@ -161,9 +162,9 @@ function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value
   </label>;
 }
 
-function General({data, draft, set}: {data: RepairData; draft: Draft; set: (field: string, patch: Partial<MetadataFieldDraft>) => void}) {
+function General({data, draft, set, requiredTitle}: {data: RepairData; draft: Draft; requiredTitle: boolean; set: (field: string, patch: Partial<MetadataFieldDraft>) => void}) {
   return <div className={styles.generalFields}><p className={styles.lockHelp}>{t('web.metadata.editorLockHelp')}</p>{data.schema.filter(spec => spec.type !== 'list' && spec.group !== 'identity').map(spec =>
-    <Field key={spec.field} spec={spec} field={data.snapshot.fields[spec.field]} draft={draft[spec.field]} set={patch => set(spec.field, patch)} />)}</div>;
+    <Field requiredTitle={requiredTitle} key={spec.field} spec={spec} field={data.snapshot.fields[spec.field]} draft={draft[spec.field]} set={patch => set(spec.field, patch)} />)}</div>;
 }
 
 function Tags({data, draft, set, busy}: {data: RepairData; draft: Draft; busy: boolean; set: (field: string, patch: Partial<MetadataFieldDraft>) => void}) {
