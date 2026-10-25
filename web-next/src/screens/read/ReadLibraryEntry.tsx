@@ -13,6 +13,10 @@ import {GeneratedCover} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
 import {Menu, MenuItem} from '../../kit/overlays';
 import {useLibraryScreenContext} from '../browse/screen-context';
+import {SelectionBar} from '../../kit/selection';
+import {ServerMark} from '../../kit/shell';
+import {bulkTargetLimit} from '@core/metadata-bulk.ts';
+import {ReadBulkMetadata} from './ReadBulkMetadata';
 import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {createReadingCollection, createReadingContinueCollection, type ReadingContinueItem, type ReadingLibraryItem} from './library-collection';
@@ -48,7 +52,8 @@ function resumeRows(resources: Resources, items: readonly ReadingContinueItem[])
   }}));
 }
 
-function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry}: {resources: Resources; libraryId: string; name: string; comic: boolean; view: 'discover' | 'books'; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; onRetry: () => void}) {
+function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, selection, onToggle, onExitSelection}: {resources: Resources; libraryId: string; name: string; comic: boolean; view: 'discover' | 'books'; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; onRetry: () => void; selection?: ReadonlyMap<string, ReadingLibraryItem>; onToggle?: (item: ReadingLibraryItem) => void; onExitSelection: () => void}) {
+  const selecting = selection !== undefined;
   const grid = useRef<HTMLDivElement>(null), width = useShellWidth(), reducedMotion = useReducedMotion(), [height, setHeight] = useState(600);
   const state = useSyncExternalStore(resources.books.collection.subscribe, resources.books.collection.getSnapshot, resources.books.collection.getSnapshot), failed = state.status === 'error';
   const reading = useSyncExternalStore(resources.resume.collection.subscribe, resources.resume.collection.getSnapshot, resources.resume.collection.getSnapshot);
@@ -60,7 +65,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry}:
     const observer = new ResizeObserver(read); observer.observe(element); window.addEventListener('resize', read); read();
     return () => {observer.disconnect(); window.removeEventListener('resize', read);};
     // The grid mounts only on Books (or when Discover has no rows); re-measure and observe it then.
-  }, [failed, reading.status, view]);
+  }, [failed, reading.status, view, selecting]);
   useEffect(() => {resources.resume.collection.ensureRange(0, 11);}, [resources]);
   /** phone-read 1: the server's own recently-added row. An empty row draws nothing; a failed
    *  request is reported through the screen's error channel rather than pretending the library
@@ -109,9 +114,10 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry}:
         <WindowedGrid collection={resources.books.collection} label={name}
           height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}
           renderItem={item => <CoverCard kind={comic ? 'comic' : 'book'} model={{title: item.title, caption: authorFacts(item.author)}} context="grid" density="grid" visible
-            generated={{title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}} disabled={!item.inventoryAvailable}
+            generated={{title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}} disabled={!item.inventoryAvailable && !onToggle}
             onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: item.id}}).catch(resources.reportError);}}
             onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(item.id, item.sourceId)).catch(resources.reportError);} : undefined}
+            selection={onToggle ? {active: selecting, checked: selection?.has(item.id) ?? false, onToggle: () => onToggle(item), onExit: onExitSelection} : undefined}
             playLabel={t('next.reader.read')} onMore={onMore ? anchor => {if (resources.bindings.authority.isCurrent()) onMore(item, anchor);} : undefined}/>} />
       </div>}
     </ReadDiscovery>
@@ -129,6 +135,8 @@ export function ReadLibraryEntry({libraryId, header, onMore, view = 'discover'}:
 function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured: Captured; libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; view: 'discover' | 'books'}) {
   const context = useLibraryScreenContext(captured);
   const [menu, setMenu] = useState<Readonly<{item: ReadingLibraryItem; anchor: HTMLButtonElement}>>(), [editor, setEditor] = useState<Readonly<{item: ReadingLibraryItem; anchor: HTMLButtonElement}>>();
+  const [selection, setSelection] = useState<ReadonlyMap<string, ReadingLibraryItem>>(), [bulk, setBulk] = useState<readonly ReadingLibraryItem[]>();
+  const bulkAnchor = useRef<HTMLElement | null>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const library = captured.context.facts.identity.libraries.find(library => library.id === libraryId);
   const isReading = library?.kind === 'book' || library?.kind === 'comic';
@@ -139,24 +147,33 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
     const bindings = createReadBindings(captured.context), books = createReadingCollection(bindings.client, libraryId),
       resume = createReadingContinueCollection(bindings.client, libraryId);
     setRetired(false);
-    setMenu(undefined); setEditor(undefined);
-    const off = bindings.authority.subscribe(() => {setRetired(true); setMenu(undefined); setEditor(undefined);});
+    setMenu(undefined); setEditor(undefined); setSelection(undefined); setBulk(undefined);
+    const off = bindings.authority.subscribe(() => {setRetired(true); setMenu(undefined); setEditor(undefined); setSelection(undefined); setBulk(undefined);});
     setResources({books, resume, bindings, reportError: error => {if (bindings.authority.isCurrent()) errorSink.current(error);}});
     return () => {off();books.dispose();resume.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, isReading, retry]);
   const viewer = context.identity?.viewer, canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
   const editorContext = useMemo(() => ({...context, isCurrent: () => context.isCurrent() && !!editor && resources !== undefined && resources.bindings.authority.isCurrent()
     && editor.item.libraryId === libraryId && resources.books.collection.residentItems().includes(editor.item)}), [context, editor, resources, libraryId]);
+  const bulkContext = useMemo(() => ({...context, isCurrent: () => context.isCurrent() && !!bulk && resources !== undefined && resources.bindings.authority.isCurrent()
+    && bulk.every(item => item.libraryId === libraryId && selection?.get(item.id) === item)}), [context, bulk, resources, libraryId, selection]);
+  const toggle = (item: ReadingLibraryItem) => {
+    if (!canEdit || !context.isCurrent() || !resources?.bindings.authority.isCurrent() || !resources.books.collection.residentItems().includes(item) || item.libraryId !== libraryId) return;
+    setSelection(previous => {const next = new Map(previous); if (next.has(item.id)) next.delete(item.id); else if (next.size < bulkTargetLimit) next.set(item.id, item); return next;});
+  };
   const openMore = onMore ?? (canEdit ? (item: ReadingLibraryItem, anchor: HTMLButtonElement) => {
     if (context.isCurrent() && resources?.bindings.authority.isCurrent() && item.libraryId === libraryId && resources.books.collection.residentItems().includes(item)) setMenu({item, anchor});
   } : undefined);
   if (!isReading || !library) return <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
   const again = () => setRetry(value => value + 1);
-  return <>{header}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
-    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={openMore} onRetry={again}/> : <Skeleton height={320}/>}
+  return <>{header}{selection && canEdit && <SelectionBar selection={{count: selection.size, kind: library.kind === 'comic' ? 'comic' : 'ebook'}} context={t('next.reader.bulkLimit', {count: bulkTargetLimit})} onExit={() => setSelection(undefined)}
+    actions={{...(selection.size ? {onEdit: (anchor: HTMLElement) => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}, ownerMark: <ServerMark size={22}/>} : {})}}/>}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
+    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={openMore} onRetry={again} selection={selection} onToggle={canEdit ? toggle : undefined} onExitSelection={() => setSelection(undefined)}/> : <Skeleton height={320}/>}
     {menu && canEdit && <Menu open title={menu.item.title} anchorRef={{current: menu.anchor}} onOpenChange={open => {if (!open) setMenu(undefined);}}>
+      <MenuItem onSelect={() => toggle(menu.item)}>{t('next.selection.select')}</MenuItem>
       <MenuItem onSelect={() => {if (context.isCurrent() && resources?.bindings.authority.isCurrent() && resources.books.collection.residentItems().includes(menu.item)) setEditor(menu);}}>{t('entry.editMetadata')}</MenuItem>
     </Menu>}
+    {bulk && canEdit && <ReadBulkMetadata context={bulkContext} items={bulk} kind={library.kind === 'comic' ? 'comic' : 'ebook'} anchor={bulkAnchor} onClose={() => {setBulk(undefined); setSelection(undefined); again();}}/>}
     {editor && canEdit && <ReadMetadata context={editorContext} itemId={editor.item.id} libraryId={libraryId} anchor={{current: editor.anchor}} onClose={() => {setEditor(undefined); setMenu(undefined); again();}}/>}
   </>;
 }
