@@ -29,7 +29,7 @@ export class SettingsLibraryChannelsSource {
     this.listRead?.abort();this.healthRead?.abort();const read=new AbortController();this.listRead=read;
     const owns=()=>this.current()&&this.listRead===read&&!read.signal.aborted;
     this.publish({phase:'loading',selected:undefined,health:undefined,healthLoading:false,healthError:false});if(!owns())return;
-    try{const channels=await readLibraryChannels(this.transport(owns),this.serverId,read.signal);if(owns())this.publish({phase:'ready',channels:Object.freeze([...channels].sort((a,b)=>a.config.position-b.config.position))});}
+    try{const channels=await readLibraryChannels(this.transport(owns),this.serverId,read.signal);if(new Set(channels.map(channel=>channel.config.id)).size!==channels.length)throw new Error('duplicate_channel_identity');if(owns())this.publish({phase:'ready',channels:Object.freeze([...channels].sort((a,b)=>a.config.position-b.config.position))});}
     catch(error){if(owns()){this.publish({phase:'error'});this.failure(error);}}
     finally{if(this.listRead===read)this.listRead=undefined;}
   };
