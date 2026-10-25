@@ -18,6 +18,16 @@ export function AddProfileDialog({source, isCurrent, onClose, onFailure, returnF
 }) {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const document = snapshot.document;
+  const finished = useRef(false);
+  useEffect(() => {
+    if (finished.current || !isCurrent()) return;
+    // A failed write clears the document and unmounts the form. Its parent
+    // must still present the terminal failure instead of silently disappearing.
+    if (snapshot.error) {finished.current = true;onClose();onFailure();}
+    else if (document && !snapshot.busy && (!document.canManage || !document.capabilities.manageAccount || document.profiles.length >= 8)) {
+      finished.current = true;onClose();
+    }
+  }, [snapshot, document, isCurrent, onClose, onFailure]);
   if (!isCurrent() || !document?.canManage || !document.capabilities.manageAccount || document.profiles.length >= 8) return null;
   return <AddProfileForm source={source} busy={snapshot.busy} isCurrent={isCurrent} onClose={onClose} onFailure={onFailure} returnFocusRef={returnFocusRef} />;
 }
@@ -37,7 +47,7 @@ function AddProfileForm({source, busy, isCurrent, onClose, onFailure, returnFocu
       await source.create(name.trim(), art);
       if (!closed.current && isCurrent()) close();
     } catch {
-      if (!closed.current && isCurrent()) {close();onFailure();}
+      if (!closed.current && isCurrent() && !source.getSnapshot().error) {close();onFailure();}
     } finally {submitting.current = false;}
   };
   return <Dialog open width={420} title={t('profile.addTitle')} initialFocusRef={input} returnFocusRef={returnFocusRef}
