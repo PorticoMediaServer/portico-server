@@ -5,7 +5,7 @@ import {Button, TextField} from '../../kit/controls';
 import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
-import {metadataDraftValue} from './draft-value';
+import {metadataDraftValue, patchMetadataDraft} from './draft-value';
 
 const t = defaultI18n.t;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
@@ -59,8 +59,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
     return saved;
   };
   const set = (field: string, patch: Partial<{value: string; locked: boolean}>) => {
-    const original = data?.snapshot.fields[field];
-    setDraft(current => ({...current, [field]: {value: patch.value ?? current[field]?.value ?? metadataDraftValue(data, field), locked: patch.locked ?? current[field]?.locked ?? original?.locked ?? false}}));
+    setDraft(current => ({...current, [field]: patchMetadataDraft(data, field, current[field], patch)}));
   };
   const save = () => {
     if (!changed.length) return;
@@ -85,20 +84,20 @@ export function MetadataEditor({api, scope, target, onClose}: {
     {data && state.phase !== 'loading' ? <>
       {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
-      {shown === 'people' ? <People data={data} target={target} busy={state.phase === 'saving'}
+      {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'}
         onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
         onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked})} /> : null}
-      {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
+      {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase !== 'ready'} onSearch={query => void run({action: 'search', query})}
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
-      {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
+      {shown === 'artwork' ? <Artwork data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
-      {shown === 'history' ? <History data={data} busy={state.phase === 'saving'} onUndo={historyId => void run({action: 'undo', historyId})}
+      {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
       {shown === 'general' || shown === 'tags' ? <footer className={styles.editorFooter}>
         <Button size="small" disabled={!changed.length || state.phase === 'saving'} onClick={() => setDraft({})}>{t('action.discard')}</Button>
-        <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length || invalid} onClick={save}>
+        <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length || invalid || state.phase !== 'ready'} onClick={save}>
           {t('web.metadata.saveChanges')}{changed.length ? ` (${changed.length})` : ''}</Button>
       </footer> : null}
     </> : null}
