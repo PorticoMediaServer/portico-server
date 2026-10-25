@@ -763,7 +763,6 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     <Button size="compact" variant="primary" loading={finishBusy} disabled={finishBusy || (!!chosen.length && attachMode === 'new' && !libraryName.trim())} onClick={() => void finish()}>{t('next.remoteSources.finish')}</Button>
   </>;
   const doneFooter = <>
-    <Button size="compact" variant="glass" onClick={() => close()}>{t('next.remoteSources.done')}</Button>
     <Button size="compact" variant="glass" onClick={reset}>{t('next.remoteSources.addAnother')}</Button>
     {sourceNow && <Button size="compact" variant="primary" onClick={() => {active.current=false;onCreated(sourceNow);}}>{t('next.remoteSources.openSource', {name: sourceNow.name})}</Button>}
   </>;
