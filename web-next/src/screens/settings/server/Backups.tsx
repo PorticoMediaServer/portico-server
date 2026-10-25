@@ -1,4 +1,4 @@
-import {useRef, useState, useSyncExternalStore} from 'react';
+import {useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {backupProgressFraction, type BackupSummary} from '@core/administration.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
@@ -49,73 +49,104 @@ export function StorageBackupNow(props: BackupSurfaceProps) {
   </div>;
 }
 
-/** The server's own backup list. Restore and delete ask first, and only a captured row is ever sent. */
+type ProtectedSelection = Readonly<{selection: SettingsRestoreSelection; controller: AbortController}>;
+type RestoreView = {active: boolean; confirmation?: object; picker?: object; choice?: object; request?: AbortController; protected?: ProtectedSelection};
+function useRestoreView(props: BackupSurfaceProps) {
+  const source = props.source;
+  const view = useMemo<RestoreView>(() => ({active: true}), [source, props.scopeKey]);
+  useLayoutEffect(() => {
+    view.active = true;
+    return () => {view.active = false;view.confirmation = undefined;view.picker = undefined;view.choice = undefined;view.request?.abort();view.protected?.controller.abort();if (view.protected) source.cancelRestoreSelection(view.protected.selection);view.protected = undefined;};
+  }, [source, view]);
+  return view;
+}
+function handoff(props: BackupSurfaceProps, view: RestoreView, selection: SettingsRestoreSelection): ProtectedSelection {
+  const controller = new AbortController();
+  if (!view.active || !props.isCurrent()) {controller.abort();throw new DOMException('The restore view ended.', 'AbortError');}
+  props.source.handoffRestoreSelection(selection, controller.signal);
+  const held = {selection, controller};view.protected = held;return held;
+}
+
+/** Restore/delete operate only on the exact current confirmation and listed backup. */
 export function StorageBackups(props: BackupSurfaceProps) {
-  const state = useBackups(props), document = state.document;
-  const [confirm, setConfirm] = useState<Readonly<{mode: 'restore' | 'delete'; backup: BackupSummary}>>();
-  const [protectedBackup, setProtectedBackup] = useState<Readonly<{selection: SettingsRestoreSelection}>>();
-  if (!document) return <p role="status">{t('next.settings.loading')}</p>;
-  if (!document.backups.length) return <p className={styles.backupEmpty}>{t('web.maintenance.noBackups')}</p>;
+  const state = useBackups(props), document = state.document, view = useRestoreView(props);
+  const [confirm, setConfirm] = useState<Readonly<{mode: 'restore' | 'delete'; backup: BackupSummary; view: RestoreView}>>();
+  const [protectedBackup, setProtectedBackup] = useState<ProtectedSelection>();
+  const confirmation = confirm?.view === view && view.active && view.confirmation === confirm ? confirm : undefined;
+  const protectedCurrent = protectedBackup && view.active && view.protected === protectedBackup ? protectedBackup : undefined;
+  const closeConfirmation = () => {if (view.confirmation === confirm) view.confirmation = undefined;setConfirm(undefined);};
+  const closeProtected = () => {if (protectedCurrent) {protectedCurrent.controller.abort();props.source.cancelRestoreSelection(protectedCurrent.selection);view.protected = undefined;}setProtectedBackup(undefined);};
   const submit = async (backup: BackupSummary, signal: AbortSignal) => {
-    if (!confirm) return;
-    if (confirm.mode === 'delete') {await props.source.remove(backup.id, signal);return;}
+    if (!confirmation || view.confirmation !== confirmation || !view.active || !props.isCurrent() || signal.aborted || backup !== confirmation.backup || !props.source.getSnapshot().document?.backups.includes(backup)) throw new DOMException('The backup confirmation ended.', 'AbortError');
+    if (confirmation.mode === 'delete') {await props.source.remove(backup.id, signal);return;}
     const selection = await props.source.prepareRestore({backupId: backup.id}, signal);
-    // A protected backup is opened by its own passphrase step (ruling 17.4), after this confirmation.
-    if (selection.encrypted) {setProtectedBackup({selection});return;}
+    if (!view.active || view.confirmation !== confirmation || signal.aborted || !selection.isCurrent()) {props.source.cancelRestoreSelection(selection);throw new DOMException('The backup confirmation ended.', 'AbortError');}
+    if (selection.encrypted) {setProtectedBackup(handoff(props, view, selection));return;}
     await props.source.restore(selection, undefined, signal);
   };
   const openPassphrase = async (passphrase: string, signal: AbortSignal) => {
-    if (!protectedBackup) return 'done' as const;
-    try {await props.source.restore(protectedBackup.selection, passphrase, signal);setProtectedBackup(undefined);return 'done' as const;}
-    // A wrong passphrase and a damaged archive are one refusal (v2 Root §1), so they say the same thing.
-    catch (error) {if (protectedRestoreResult(error) === 'unopened') return 'unopened' as const;throw error;}
+    const held = protectedCurrent;
+    if (!held || !view.active || view.protected !== held || held.controller.signal.aborted || signal.aborted) throw new DOMException('The passphrase step ended.', 'AbortError');
+    try {const result = await props.source.restore(held.selection, passphrase, signal);if (!result?.staged) throw new Error('restore_not_confirmed');if (view.active && view.protected === held) closeProtected();return 'done' as const;}
+    catch (error) {if (view.active && view.protected === held && !signal.aborted && protectedRestoreResult(error) === 'unopened') return 'unopened' as const;throw error;}
+  };
+  if (!document) return <p role="status">{t('next.settings.loading')}</p>;
+  if (!document.backups.length) return <p className={styles.backupEmpty}>{t('web.maintenance.noBackups')}</p>;
+  const open = (mode: 'restore' | 'delete', backup: BackupSummary) => {
+    if (!view.active || !props.isCurrent() || !props.source.getSnapshot().document?.backups.includes(backup)) return;
+    const next = {mode, backup, view};view.confirmation = next;setConfirm(next);
   };
   return <>
     <BackupList backups={document.backups} busy={state.busy || !!document.running || !!document.restore} scopeKey={props.scopeKey}
       isCurrent={props.isCurrent} subscribeAuthority={props.subscribe} format={defaultI18n}
-      requestRestore={backup => setConfirm({mode: 'restore', backup})} requestDelete={backup => setConfirm({mode: 'delete', backup})} />
-    {confirm && <BackupConfirmationDialog open mode={confirm.mode} backup={confirm.backup} scopeKey={props.scopeKey} isCurrent={props.isCurrent}
-      subscribeAuthority={props.subscribe} format={defaultI18n} submit={submit} onClose={() => setConfirm(undefined)} onFailure={props.reportError} />}
-    <BackupPassphraseDialog open={!!protectedBackup} mode="restore" scopeKey={props.scopeKey} isCurrent={props.isCurrent} subscribeAuthority={props.subscribe}
-      submit={openPassphrase} onDone={() => setProtectedBackup(undefined)} onFailure={() => props.reportError(new Error('backup_passphrase_rejected'))}
-      onClose={() => {props.source.cancelRestoreSelection();setProtectedBackup(undefined);}} />
+      requestRestore={backup => open('restore', backup)} requestDelete={backup => open('delete', backup)} />
+    {confirmation && <BackupConfirmationDialog open mode={confirmation.mode} backup={confirmation.backup} scopeKey={props.scopeKey} isCurrent={props.isCurrent}
+      subscribeAuthority={props.subscribe} format={defaultI18n} submit={submit} onClose={closeConfirmation} onFailure={props.reportError} />}
+    <BackupPassphraseDialog open={!!protectedCurrent} mode="restore" scopeKey={props.scopeKey} isCurrent={props.isCurrent} subscribeAuthority={props.subscribe}
+      submit={openPassphrase} onDone={closeProtected} onFailure={() => props.reportError(new Error('backup_passphrase_rejected'))} onClose={closeProtected} />
   </>;
 }
 
-/** "Restore from a file": the bounded explorer, then the drawn confirmation, then the real restore. */
+/** File selection, confirmation and the passphrase step each own their exact lifetime. */
 export function StorageRestoreFile(props: BackupSurfaceProps & Readonly<{api: LibraryContentApi}>) {
-  const state = useBackups(props), busyNow = state.busy || !!state.document?.running || !!state.document?.restore;
-  const [choosing, setChoosing] = useState(false), [chosen, setChosen] = useState<string>(), [busy, setBusy] = useState(false);
-  const [protectedSelection, setProtectedSelection] = useState<SettingsRestoreSelection>();
-  const request = useRef<AbortController | undefined>(undefined), cancelButton = useRef<HTMLButtonElement>(null), opener = useRef<HTMLButtonElement>(null);
-  const close = () => {request.current?.abort();request.current = undefined;setChosen(undefined);setBusy(false);props.source.cancelRestoreSelection();};
+  const state = useBackups(props), busyNow = state.busy || !!state.document?.running || !!state.document?.restore, view = useRestoreView(props);
+  const [picker, setPicker] = useState<object>(), [chosen, setChosen] = useState<{path: string; view: RestoreView}>(), [busy, setBusy] = useState(false);
+  const [protectedSelection, setProtectedSelection] = useState<ProtectedSelection>();
+  const cancelButton = useRef<HTMLButtonElement>(null), opener = useRef<HTMLButtonElement>(null);
+  const choice = chosen?.view === view && view.active && view.choice === chosen ? chosen : undefined;
+  const protectedCurrent = protectedSelection && view.active && view.protected === protectedSelection ? protectedSelection : undefined;
+  const closePicker = () => {view.picker = undefined;setPicker(undefined);};
+  const close = () => {view.request?.abort();view.request = undefined;view.choice = undefined;setChosen(undefined);setBusy(false);};
+  const closeProtected = () => {if (protectedCurrent) {protectedCurrent.controller.abort();props.source.cancelRestoreSelection(protectedCurrent.selection);view.protected = undefined;}setProtectedSelection(undefined);};
   const restore = async () => {
-    if (!chosen || request.current) return;
-    const controller = request.current = new AbortController();
-    setBusy(true);
+    const captured = choice;
+    if (!captured || !view.active || view.choice !== captured || view.request || !props.isCurrent()) return;
+    const controller = new AbortController();view.request = controller;setBusy(true);
+    const current = () => view.active && view.choice === captured && view.request === controller && !controller.signal.aborted && props.isCurrent();
     try {
-      const selection = await props.source.prepareRestore({path: chosen}, controller.signal);
-      if (selection.encrypted) {setProtectedSelection(selection);setChosen(undefined);return;}
+      const selection = await props.source.prepareRestore({path: captured.path}, controller.signal);
+      if (!current() || !selection.isCurrent()) {props.source.cancelRestoreSelection(selection);return;}
+      if (selection.encrypted) {setProtectedSelection(handoff(props, view, selection));view.choice = undefined;setChosen(undefined);return;}
       await props.source.restore(selection, undefined, controller.signal);
-      if (!controller.signal.aborted) setChosen(undefined);
-    } catch (error) {if (!controller.signal.aborted) props.reportError(error);}
-    finally {if (request.current === controller) request.current = undefined;setBusy(false);}
+      if (current()) close();
+    } catch (error) {if (current()) props.reportError(error);}
+    finally {if (view.request === controller) {view.request = undefined;if (view.active) setBusy(false);}}
   };
   return <>
-    <Button ref={opener} variant="glass" size="small" disabled={busyNow || !props.isCurrent()} onClick={() => setChoosing(true)}>{t('next.settingsSpec.server.storage.groups.1.rows.5.control.label')}</Button>
-    <ServerFolderPicker open={choosing} onClose={() => setChoosing(false)} api={props.api} purpose="backup" returnFocusRef={opener}
-      onChoose={paths => {const path = paths[0];if (path) setChosen(path);}} />
-    <Dialog open={!!chosen} onOpenChange={open => {if (!open) close();}} title={t('web.maintenance.restoreFileTitle')} initialFocusRef={cancelButton} returnFocusRef={opener}
+    <Button ref={opener} variant="glass" size="small" disabled={busyNow || !props.isCurrent()} onClick={() => {if (!view.active || !props.isCurrent()) return;const next = {};view.picker = next;setPicker(next);}}>{t('next.settingsSpec.server.storage.groups.1.rows.5.control.label')}</Button>
+    <ServerFolderPicker open={!!picker && view.active && view.picker === picker} onClose={closePicker} api={props.api} purpose="backup" returnFocusRef={opener}
+      onChoose={paths => {if (!view.active || !picker || view.picker !== picker || !props.isCurrent()) return;const path = paths[0];if (path) {const next = {path, view};view.choice = next;setChosen(next);}closePicker();}} />
+    <Dialog open={!!choice} onOpenChange={open => {if (!open) close();}} title={t('web.maintenance.restoreFileTitle')} initialFocusRef={cancelButton} returnFocusRef={opener}
       footer={<><Button ref={cancelButton} size="small" onClick={close}>{t('next.settings.cancel')}</Button><SettingsAction size="small" appearance="primary" loading={busy} disabled={busy} onClick={() => {void restore();}}>{t('web.maintenance.restoreConfirm')}</SettingsAction></>}>
       <p>{t('web.maintenance.restoreBody')}</p>
     </Dialog>
-    <BackupPassphraseDialog open={!!protectedSelection} mode="restore" scopeKey={props.scopeKey} isCurrent={props.isCurrent} subscribeAuthority={props.subscribe}
+    <BackupPassphraseDialog open={!!protectedCurrent} mode="restore" scopeKey={props.scopeKey} isCurrent={props.isCurrent} subscribeAuthority={props.subscribe}
       submit={async (passphrase, signal) => {
-        if (!protectedSelection) return 'done' as const;
-        try {await props.source.restore(protectedSelection, passphrase, signal);setProtectedSelection(undefined);return 'done' as const;}
-        catch (error) {if (protectedRestoreResult(error) === 'unopened') return 'unopened' as const;throw error;}
+        const held = protectedCurrent;
+        if (!held || !view.active || view.protected !== held || held.controller.signal.aborted || signal.aborted) throw new DOMException('The passphrase step ended.', 'AbortError');
+        try {const result = await props.source.restore(held.selection, passphrase, signal);if (!result?.staged) throw new Error('restore_not_confirmed');if (view.active && view.protected === held) closeProtected();return 'done' as const;}
+        catch (error) {if (view.active && view.protected === held && !signal.aborted && protectedRestoreResult(error) === 'unopened') return 'unopened' as const;throw error;}
       }}
-      onDone={() => setProtectedSelection(undefined)} onFailure={() => props.reportError(new Error('backup_passphrase_rejected'))}
-      onClose={() => {props.source.cancelRestoreSelection();setProtectedSelection(undefined);}} />
+      onDone={closeProtected} onFailure={() => props.reportError(new Error('backup_passphrase_rejected'))} onClose={closeProtected} />
   </>;
 }

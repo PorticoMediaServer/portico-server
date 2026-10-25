@@ -12,7 +12,7 @@ export class SettingsBackupSource {
   private readonly lifetime = new AbortController();
   private loading?: Promise<void>;
   private candidate?: AbortController;
-  private readonly selections = new WeakMap<SettingsRestoreSelection, Readonly<{source: RestoreSource; signal: AbortSignal}>>();
+  private readonly selections = new WeakMap<SettingsRestoreSelection, {source: RestoreSource; signal: AbortSignal; candidate: AbortController; transferred: boolean}>();
   constructor(private readonly api: BackupTransport, private readonly serverId: string, private readonly isCurrent: () => boolean, private readonly notify: () => void) {}
   private current = () => !this.lifetime.signal.aborted && this.isCurrent();
   getSnapshot = () => this.current() ? this.state : empty;
@@ -48,6 +48,7 @@ export class SettingsBackupSource {
     if (!this.current() || this.loading || this.state.busy || !this.state.document || this.state.document.running || this.state.document.restore) return false;
     this.publish({...this.state, busy: true});
     try {
+      this.requireCurrent();
       const jobId = await startBackup(this.api, this.serverId, randomId(), this.lifetime.signal);
       this.requireCurrent();
       const document = await waitForBackupCompletion(() => {
@@ -72,19 +73,28 @@ export class SettingsBackupSource {
   }
   /** Inspection establishes the exact candidate. A later command cannot retarget its path or ID. */
   async prepareRestore(source: RestoreSource, signal: AbortSignal): Promise<SettingsRestoreSelection> {
-    this.requireCurrent();this.cancelRestoreSelection();
+    this.requireCurrent();
+    if (signal.aborted || this.loading || this.state.busy || this.state.document?.running || this.state.document?.restore || this.state.staged) throw new DOMException('Another backup action is active.', 'AbortError');
+    this.cancelRestoreSelection();
     const candidate = new AbortController();this.candidate = candidate;
     const selected = Object.freeze('backupId' in source ? {backupId: source.backupId} : {path: source.path});
     const request = this.linkSignals([signal, candidate.signal]);
     try {
       const inspection = await this.inspect(selected, request.signal);
       request.signal.throwIfAborted();this.requireCurrent();
+      const captured = {source: selected, signal, candidate, transferred: false};
       const selection: SettingsRestoreSelection = Object.freeze({encrypted: inspection.encrypted,
-        isCurrent: () => this.current() && this.candidate === candidate && !candidate.signal.aborted && !signal.aborted &&
+        isCurrent: () => this.current() && this.candidate === candidate && !candidate.signal.aborted && !captured.signal.aborted &&
           (!('backupId' in selected) || !!this.state.document?.backups.some(backup => backup.id === selected.backupId)),
       });
-      this.selections.set(selection, {source: selected, signal});return selection;
-    } finally {request.dispose();}
+      this.selections.set(selection, captured);return selection;
+    } catch (error) {if (this.candidate === candidate) {candidate.abort();this.candidate = undefined;}throw error;} finally {request.dispose();}
+  }
+  /** Transfer an inspected encrypted candidate to its exact parent-owned passphrase step. */
+  handoffRestoreSelection(selection: SettingsRestoreSelection, signal: AbortSignal): void {
+    const captured = this.selections.get(selection);
+    if (!captured || captured.transferred || !selection.encrypted || !selection.isCurrent() || signal.aborted) throw new DOMException('The restore selection ended.', 'AbortError');
+    captured.transferred = true;captured.signal = signal;
   }
   async restore(selection: SettingsRestoreSelection, passphrase: string | undefined, signal: AbortSignal): Promise<RestoreStaged | undefined> {
     this.requireCurrent();
@@ -96,6 +106,7 @@ export class SettingsBackupSource {
     this.publish({...this.state, busy: true});
     try {
       request.signal.throwIfAborted();
+      this.requireCurrent();
       const staged = await restoreBackup(this.api, this.serverId, randomId(), captured.source, request.signal, passphrase);
       this.requireCurrent();request.signal.throwIfAborted();
       if (!selection.isCurrent()) throw new DOMException('The restore selection ended.', 'AbortError');
@@ -112,6 +123,7 @@ export class SettingsBackupSource {
     this.publish({...this.state, busy: true});
     try {
       request.signal.throwIfAborted();
+      this.requireCurrent();
       await deleteBackup(this.api, this.serverId, backupId, request.signal);
       this.requireCurrent();request.signal.throwIfAborted();
       const document = await getBackups(this.api, this.serverId, this.lifetime.signal);
@@ -119,7 +131,7 @@ export class SettingsBackupSource {
       this.publish({...this.state, document});return true;
     } catch (error) {this.refuse(error);} finally {request.dispose();this.publish({...this.state, busy: false});}
   }
-  cancelRestoreSelection() {this.candidate?.abort();this.candidate = undefined;}  private linkSignals(signals: readonly AbortSignal[]) {
+  cancelRestoreSelection(selection?: SettingsRestoreSelection) {if (selection && this.selections.get(selection)?.candidate !== this.candidate) return;this.candidate?.abort();this.candidate = undefined;}  private linkSignals(signals: readonly AbortSignal[]) {
     const request = new AbortController(), abort = () => request.abort(), all = [this.lifetime.signal, ...signals];
     for (const signal of all) {signal.addEventListener('abort', abort, {once: true});if (signal.aborted) request.abort();}
     return {signal: request.signal, dispose: () => {for (const signal of all) signal.removeEventListener('abort', abort);}};
