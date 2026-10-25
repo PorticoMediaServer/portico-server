@@ -7,14 +7,14 @@ import {RecordingStorage as StorageMeter} from '../../../../kit/dvr/RecordingsLa
 import type {RecordingStorageController} from './storage-controller';
 import styles from '../../../live/owner/owner.module.css';
 const t = defaultI18n.t;
-export function RecordingStorage({controller}: {controller: RecordingStorageController}) {
+export function RecordingStorage({controller, embedded = false}: {embedded?: boolean; controller: RecordingStorageController}) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), {storage, draft} = state;
   useEffect(() => {void controller.load();}, [controller]);
   if (!controller.isActive()) return null;
   const dirty = !!storage && !!draft && JSON.stringify(storage.policy) !== JSON.stringify(draft);
   const number = (id: MessageId, help: MessageId, value: number, max: number, set: (value: number) => void, unit?: MessageId) => <SettingsRow label={t(id)} help={t(help)}>
     <TextField type="number" variant="setting" value={value} min={0} max={max} step={1} required disabled={state.saving} aria-label={t(id)} onChange={event => {const value = event.currentTarget.valueAsNumber;if (controller.isActive() && Number.isSafeInteger(value) && value >= 0 && value <= max) set(value);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</SettingsRow>;
-  return <form onSubmit={event => {event.preventDefault();if (controller.isActive() && event.currentTarget.reportValidity()) void controller.save();}}>
+  return <form onSubmit={event => {event.preventDefault();if (!embedded && controller.isActive() && event.currentTarget.reportValidity()) void controller.save();}}>
     <section className={styles.section}><div className={styles.heading}><h3>{t('channels.recordings')}</h3><div className={styles.actions}>
       {storage?.measurement.measuredAt && <span className={styles.fresh}>{t('freshness.measured', {when: defaultI18n.relativeTime(Date.parse(storage.measurement.measuredAt))})}</span>}
       <Button variant="icon" size="small" icon="i-refresh" iconOnly disabled={state.loading || state.saving || dirty} aria-label={t('action.refresh')} onClick={() => void controller.load()}/>
@@ -39,6 +39,6 @@ export function RecordingStorage({controller}: {controller: RecordingStorageCont
       {!storage.measurement.writeHealthy && <p role="alert" className={styles.error}>{t('recordings.unavailableBody')}</p>}
     </>}
     </section>
-    {dirty && <div className={styles.save}><Button variant="text" size="small" disabled={state.saving} onClick={() => controller.discard()}>{t('action.discard')}</Button><Button variant="primary" size="small" type="submit" loading={state.saving}>{t('action.save')}</Button></div>}
+    {!embedded && dirty && <div className={styles.save}><Button variant="text" size="small" disabled={state.saving} onClick={() => controller.discard()}>{t('action.discard')}</Button><Button variant="primary" size="small" type="submit" loading={state.saving}>{t('action.save')}</Button></div>}
   </form>;
 }

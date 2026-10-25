@@ -9,7 +9,7 @@ import styles from '../../../live/owner/owner.module.css';
 const t = defaultI18n.t;
 /** Every fetched current profile is a real server candidate. Permission is
  * explicit or inherited; owner status never manufactures recording access. */
-export function RecordingPermissions({controller}: {controller: RecordingPermissionsController}) {
+export function RecordingPermissions({controller, embedded = false}: {embedded?: boolean; controller: RecordingPermissionsController}) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useEffect(() => {void controller.load();}, [controller]);
   if (!controller.isActive()) return null;
@@ -39,6 +39,6 @@ export function RecordingPermissions({controller}: {controller: RecordingPermiss
       </div>;
     })}</section>)}
     {state.cursor && <Button size="small" loading={state.loading} disabled={state.saving || dirty || state.uncertain} onClick={() => void controller.load(true)}>{t('action.showMore')}</Button>}
-    {dirty && <div className={styles.save}><Button variant="text" size="small" disabled={state.saving || state.uncertain} onClick={() => controller.discard()}>{t('action.discard')}</Button><Button variant="primary" size="small" loading={state.saving} onClick={() => void controller.save()}>{t('action.save')}</Button></div>}
+    {!embedded && dirty && <div className={styles.save}><Button variant="text" size="small" disabled={state.saving || state.uncertain} onClick={() => controller.discard()}>{t('action.discard')}</Button><Button variant="primary" size="small" loading={state.saving} onClick={() => void controller.save()}>{t('action.save')}</Button></div>}
   </section>;
 }

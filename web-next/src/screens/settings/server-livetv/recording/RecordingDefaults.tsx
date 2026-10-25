@@ -8,14 +8,14 @@ import {Button, Select, Switch, TextField} from '../../../../kit/controls';
 import {SettingsRow} from '../../../../kit/shell/SettingsSurfaces';
 import styles from '../../../live/owner/owner.module.css';
 const t = defaultI18n.t;
-export function RecordingDefaults({form, current, reportError}: {form: ReturnType<typeof recordingForm>; current: () => boolean; reportError: (error: unknown) => void}) {
+export function RecordingDefaults({form, current, reportError, embedded = false}: {embedded?: boolean; form: ReturnType<typeof recordingForm>; current: () => boolean; reportError: (error: unknown) => void}) {
   const state = useSyncExternalStore(form.subscribe, form.getSnapshot, form.getSnapshot), draft = state.draft;
   useEffect(() => {if (current()) void form.load();}, [form, current]);
   if (!current()) return null;
   const set = (patch: Partial<DVRDefaults>) => {if (current() && !state.saving) form.set(patch);};
   const number = (id: MessageId, value: number, min: number, max: number, change: (value: number) => void, help?: MessageId, unit?: MessageId) => <SettingsRow label={t(id)} help={help && t(help)}>
     <TextField variant="setting" type="number" aria-label={t(id)} required min={min} max={max} step={1} value={value} disabled={state.saving} onChange={event => {const value = event.currentTarget.valueAsNumber;if (current() && Number.isSafeInteger(value) && value >= min && value <= max) change(value);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</SettingsRow>;
-  return <form onSubmit={event => {event.preventDefault();if (current() && event.currentTarget.reportValidity()) void form.save().catch(error => {if (current()) reportError(error);});}}>
+  return <form onSubmit={event => {event.preventDefault();if (!embedded && current() && event.currentTarget.reportValidity()) void form.save().catch(error => {if (current()) reportError(error);});}}>
     <section className={styles.section}><div className={styles.heading}><h3>{t('web.dvrSettings.defaults')}</h3></div><p className={styles.lede}>{t('web.dvrSettings.defaultsLede')}</p>
       {state.loading && !draft && <p role="status">{t('status.loading')}</p>}
       {!!state.loadError && <p role="alert" className={styles.error}>{errorMessage(state.loadError)}<Button size="small" onClick={() => {if (current()) void form.load();}}>{t('action.tryAgain')}</Button></p>}
@@ -40,6 +40,6 @@ export function RecordingDefaults({form, current, reportError}: {form: ReturnTyp
       </div>}
       {!!state.status?.folderTokens.length && <p className={styles.lede}>{state.status.folderTokens.map(token => `{${token.token}}`).join(', ')}</p>}
     </section>
-    {state.dirty && <div className={styles.save}><Button size="small" variant="text" disabled={state.saving} onClick={() => {if (current()) form.discard();}}>{t('action.discard')}</Button><Button type="submit" size="small" variant="primary" loading={state.saving}>{t('action.save')}</Button></div>}
+    {!embedded && state.dirty && <div className={styles.save}><Button size="small" variant="text" disabled={state.saving} onClick={() => {if (current()) form.discard();}}>{t('action.discard')}</Button><Button type="submit" size="small" variant="primary" loading={state.saving}>{t('action.save')}</Button></div>}
   </form>;
 }
