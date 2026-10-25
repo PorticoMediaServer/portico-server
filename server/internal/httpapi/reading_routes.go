@@ -38,6 +38,8 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 			handler(w, r)
 		})
 	}
+	register("GET /v1/items/{itemId}/reading/my-list", nil, d.readingSaved)
+	register("PUT /v1/items/{itemId}/reading/my-list", nil, d.readingSetSaved(&personalLimiter{}))
 	register("GET /v1/items/{itemId}/reading/mark", nil, d.readingMark)
 	register("PUT /v1/items/{itemId}/reading/mark", nil, d.readingSetMark(&personalLimiter{}))
 	register("GET /v1/reading/items", []string{"libraryId", "cursor", "limit"}, d.listReadingItems)
