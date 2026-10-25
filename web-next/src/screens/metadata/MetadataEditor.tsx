@@ -6,6 +6,7 @@ import {attentionInProgress} from '@core/server-admin/attention-words.ts';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
 import {EditorHeader} from '../../kit/shell';
 import {Button, TextField} from '../../kit/controls';
+import {Dialog} from '../../kit/overlays/Dialog';
 import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
