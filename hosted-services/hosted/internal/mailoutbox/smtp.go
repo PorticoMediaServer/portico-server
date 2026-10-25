@@ -73,6 +73,21 @@ func (c SMTPConfig) Validate() error {
 }
 func (c *SMTPConfig) FromAddress() string    { return c.From }
 func (c *SMTPConfig) ReplyToAddress() string { return c.ReplyTo }
+
+// newClient identifies this sender with its configured domain. Go's default
+// EHLO localhost is not a usable public sending identity; relays may refuse it
+// before advertising STARTTLS. This changes no peer/TLS/authentication policy.
+func (c *SMTPConfig) newClient(conn net.Conn) (*smtp.Client, error) {
+	client, err := smtp.NewClient(conn, c.Host)
+	if err != nil {
+		return nil, err
+	}
+	if err = client.Hello(c.From[strings.LastIndex(c.From, "@")+1:]); err != nil {
+		client.Close()
+		return nil, err
+	}
+	return client, nil
+}
 func (c *SMTPConfig) Send(ctx context.Context, to string, message []byte) error {
 	if e := c.Validate(); e != nil {
 		return e
@@ -102,7 +117,7 @@ func (c *SMTPConfig) Send(ctx context.Context, to string, message []byte) error 
 		}
 		conn = secure
 	}
-	client, e := smtp.NewClient(conn, c.Host)
+	client, e := c.newClient(conn)
 	if e != nil {
 		return e
 	}
