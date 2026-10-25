@@ -49,7 +49,7 @@ export class ReadingError extends Error {
 }
 type Sender = (path: string, init: RequestInit) => Promise<Response>;
 type Capture = Readonly<{send: Sender; isCurrent: () => boolean; subscribe: (retire: () => void) => () => void}>;
-const fail = (code: string): never => { throw new ReadingError(code); };
+function fail(code: string): never { throw new ReadingError(code); }
 const serverCodes = new Set<string>(errors.map(error => error.code));
 const cancellation = (signal: AbortSignal) => signal.reason instanceof ReadingError ? signal.reason : new ReadingError('cancelled');
 const integer = (n: number, low: number, high: number) => Number.isSafeInteger(n) && n >= low && n <= high;
