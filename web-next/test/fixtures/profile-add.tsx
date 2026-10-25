@@ -1,7 +1,8 @@
 // Test-only transport fixture for the real checked source and mounted dialog.
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {AddProfileDialog} from '../../src/screens/settings/account-profile/AddProfileDialog';
+import {ProfileList} from '../../src/screens/settings/account-profile/ProfileList';
+import {observeProfileFailures} from '../../src/screens/settings/account-profile/failures';
 import {ProfileSettingsSource} from '../../src/screens/settings/account-profile/source';
 import {IconSprite} from '../../src/kit/Icon';
 import '../../src/kit/tokens.css';
@@ -30,8 +31,9 @@ const source = new ProfileSettingsSource({request: async <T>(path: string, metho
 await source.load();
 function Fixture() {
   const [open, setOpen] = useState(true), [failure, setFailure] = useState(false);
-  return <><IconSprite />{open && <AddProfileDialog source={source} isCurrent={() => current}
-    onClose={() => {closes++;setOpen(false);}} onFailure={() => {failures++;setFailure(true);}} />}
+  useEffect(() => observeProfileFailures(source, () => current, () => {failures++;closes++;setOpen(false);setFailure(true);}), []);
+  return <><IconSprite />{open && <ProfileList source={source} isCurrent={() => current} onSelect={() => {}}
+    onFailure={() => {failures++;closes++;setOpen(false);setFailure(true);}} />}
     <output data-ready data-failure={failure || undefined} /></>;
 }
 Object.assign(window, {profileTest: {

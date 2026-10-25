@@ -20,7 +20,7 @@ export function ProfileList({source, isCurrent, onFailure, onSelect}: {
   const manage = document.canManage && document.capabilities.manageAccount;
   const move = async (id: string, direction: -1 | 1) => {
     if (!isCurrent() || state.busy) return;
-    try {await source.move(id, direction);} catch {if (isCurrent()) onFailure();}
+    try {await source.move(id, direction);} catch {if (isCurrent() && !source.getSnapshot().error) onFailure();}
   };
   return <>
     <ul className={styles.profiles} aria-label={t('profiles.title')}>
@@ -37,6 +37,6 @@ export function ProfileList({source, isCurrent, onFailure, onSelect}: {
       </li>)}
     </ul>
     {manage && document.profiles.length < 8 && <Button ref={add} className={styles.addProfile} variant="glass" size="small" icon="i-plus" disabled={state.busy} onClick={() => {if (isCurrent()) setAdding(true);}}>{t('next.settingsSpec.account.profile.groups.0.rows.0.control.addLabel')}</Button>}
-    {adding && <AddProfileDialog source={source} isCurrent={isCurrent} returnFocusRef={add} onClose={() => setAdding(false)} onFailure={onFailure} />}
+    {adding && <AddProfileDialog source={source} isCurrent={isCurrent} returnFocusRef={add} onClose={() => setAdding(false)} />}
   </>;
 }
