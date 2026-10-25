@@ -43,8 +43,10 @@ export function WatchEndCardView({card, canReplay, onReplay, reportError, artwor
     {card.collection && <section className={styles.feature} aria-label={t('player.collection.next', {collection: card.collection.collectionName})}>
       <div className={styles.featureArt}><Artwork source={card.collection.posterUrl ? artwork(card.collection.posterUrl) : undefined} alt="" width="100%" height="100%" />
         <span className={styles.featureText}><small>{t('player.collection.next', {collection: card.collection.collectionName})}</small>
-          <b>{card.collection.title}</b>{card.collection.year !== undefined && <span>{card.collection.year}</span>}</span></div>
-      <div className={styles.actions}><Button variant="primary" size="small" icon="i-play" onClick={() => act(() => card.collection!.play())}>{t('player.collection.play', {title: card.collection.title})}</Button></div>
+          <b>{card.collection.title}</b>{(card.collection.year !== undefined || card.collection.genres?.length) && <span>{card.collection.year !== undefined ? card.collection.year : null}{card.collection.year !== undefined && card.collection.genres?.length ? ' · ' : null}{card.collection.genres?.length ? card.collection.genres.join(', ') : null}</span>}</span></div>
+      <div className={styles.actions}><Button variant="primary" size="small" icon="i-play" onClick={() => act(() => card.collection!.play())}>{t('player.collection.play', {title: card.collection.title})}</Button>
+        {card.collection.myList && <Button variant="glass" size="small" icon={card.collection.myList.listed ? 'i-check' : 'i-plus'} aria-pressed={card.collection.myList.listed} disabled={card.collection.myList.pending}
+          onClick={() => {const myList = card.collection!.myList!;void myList.set(!myList.listed);}}>{t('next.controls.myList')}</Button>}</div>
     </section>}
     {card.related.length > 0 && <section className={styles.row} aria-label={t('player.moreLike', {title: card.title})}>
       <h2>{t('player.moreLike', {title: card.title})}</h2>
