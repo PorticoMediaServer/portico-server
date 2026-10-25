@@ -59,8 +59,11 @@ func TestReadingAttributionOwnerEditorUsesRealNonPlayableItems(t *testing.T) {
 			if dbwork.ChangingCommits() != before {
 				t.Fatal("editor read adopted state")
 			}
-			if len(state.ArtworkRoles) != 0 || len(state.Artwork.Candidates) != 0 || len(state.Artwork.Jobs) != 0 {
-				t.Fatal("scalar editor advertised artwork engine")
+			if len(state.ArtworkRoles) != 1 || state.ArtworkRoles[0] != "cover" {
+				t.Fatal("Reading editor must offer exactly its checked owner-cover role", state.ArtworkRoles)
+			}
+			if len(state.Artwork.Candidates) != 0 || len(state.Artwork.Jobs) != 0 {
+				t.Fatal("scalar editor advertised automatic artwork work")
 			}
 			if state.Snapshot.Fields["author"].Value != "" || state.Snapshot.Fields["series"].Value != "" {
 				t.Fatal("invented attribution")

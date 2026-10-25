@@ -260,14 +260,29 @@ func TestArtworkSlowPublicationDoesNotBlockReadsOrPreviews(t *testing.T) {
 		t.Fatal(err)
 	}
 	var candidate string
-	if err := db.QueryRow(`SELECT candidate_id FROM artwork_selections WHERE entity_id=? AND role='poster'`, resolveArtworkTestEntity(t, db, target)).Scan(&candidate); err != nil {
+	var locked bool
+	if err := db.QueryRow(`SELECT candidate_id,locked FROM artwork_selections WHERE entity_id=? AND role='poster'`, resolveArtworkTestEntity(t, db, target)).Scan(&candidate, &locked); err != nil {
 		t.Fatal(err)
 	}
 	integrationExec(t, db, `INSERT INTO artwork_previews SELECT c.id,s.thumbnail_digest,c.source_fence,c.observed_at FROM artwork_candidates c JOIN artwork_selections s ON s.candidate_id=c.id WHERE c.id=?`, candidate)
-	// The job comes round again for an image the server does not hold yet (an
-	// image it already holds from the same address is reused without asking the
-	// provider, and there would be no fetch to wait behind).
-	integrationExec(t, db, `UPDATE artwork_jobs SET status='pending',next_attempt='',origin=origin||'.again' WHERE entity_id=? AND role='poster'`, resolveArtworkTestEntity(t, db, target))
+	// An ordinary automatic retry is correctly refused for an occupied slot.
+	// Queue the real exact-selection size-refresh shape instead: it deliberately
+	// reacquires this candidate while retaining the old readable selection/preview.
+	entity := resolveArtworkTestEntity(t, db, target)
+	queued, err := dbwork.Begin(ctx, db, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queued.Rollback()
+	if err = queueArtworkCandidate(ctx, queued.Tx(), target, candidate, "", s.publicationTime().Format(time.RFC3339Nano), locked, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = queued.Tx().ExecContext(ctx, `UPDATE artwork_jobs SET size_refresh=1 WHERE kind=? AND entity_id=? AND role='poster' AND candidate_id=? AND preview=0`, target.Kind, entity, candidate); err != nil {
+		t.Fatal(err)
+	}
+	if err = queued.Commit(); err != nil {
+		t.Fatal(err)
+	}
 	fetching, resume := make(chan struct{}), make(chan struct{})
 	var release sync.Once
 	defer release.Do(func() { close(resume) })
@@ -284,6 +299,8 @@ func TestArtworkSlowPublicationDoesNotBlockReadsOrPreviews(t *testing.T) {
 	go func() { done <- s.ArtworkStep(ctx) }()
 	select {
 	case <-fetching:
+	case err := <-done:
+		t.Fatalf("admitted refresh did not reach acquisition: %v", err)
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
