@@ -472,14 +472,20 @@ export class ReadingClient {
   async series(libraryId: string, seriesId: string, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingSeriesPage & {overview?: ReadingSeriesOverview}> {
     const cursor = options.cursor;
     if (!id(libraryId) || !/^[A-Za-z0-9_-]{43}$/.test(seriesId) || !integer(options.limit ?? 50, 1, 100) || (cursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(cursor))) fail('invalid_request');
-    const out = await this.json(query(routePath('get_reading_series_items', {libraryId, seriesId}), options), 'GET', undefined, signal, decodeGetReadingSeriesItemsResponse, 2 << 20);
+    const out = await this.json(query(routePath('get_reading_series_items', {libraryId, seriesId}), options), 'GET', undefined, signal, value => {
+      const page = decodeGetReadingSeriesItemsResponse(value);
+      // Older official decoders omit unknown optional fields. Preserve only the
+      // separately checked presenter projection, never an unchecked wire object.
+      const overview = isReadingObject(value) && value.summary !== undefined ? readingSeriesOverview(value.summary, seriesId, page.items.length) : undefined;
+      return {...page, ...(overview ? {overview} : {})};
+    }, 2 << 20);
     if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(out.nextCursor))) fail('invalid_document');
     const seen = new Set<string>();
     for (const item of out.items) {
       if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
-    const overview = 'summary' in out && out.summary !== undefined ? readingSeriesOverview(out.summary, seriesId, out.items.length) : undefined;
+    const overview = out.overview;
     if (overview && out.nextCursor && overview.total <= out.items.length) fail('invalid_document');
     return {...out, ...(overview ? {overview} : {})};
   }
