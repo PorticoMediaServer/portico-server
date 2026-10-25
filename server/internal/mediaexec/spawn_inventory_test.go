@@ -40,7 +40,6 @@ var processSpawns = map[string]string{
 	"internal/storage/playback_stream.go:openPlayback":                        "storage helper (server binary)",
 	"internal/storage/scan_content.go:scanHelperCommand":                      "storage helper (server binary); its tool argv comes from mediaexec",
 	"internal/storage/scan_content.go:DirectoryDiscScanSupported":             "bubblewrap --help, to read the descriptor-mount capability; no media",
-	"internal/storage/scan_content.go:DirectoryDiscScanSupported":             "bubblewrap --help, to read the descriptor-mount capability; no media",
 	"internal/storage/playback_descriptor_unix.go:OpenPlaybackDescriptor":     "storage helper (server binary)",
 	"internal/storage/playback_descriptor_unix.go:ValidatePlaybackDescriptor": "storage helper (server binary)",
 	"internal/storage/versioned_playback.go:runVersion":                       "storage helper (server binary)",
