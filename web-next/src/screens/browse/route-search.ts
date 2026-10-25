@@ -8,7 +8,7 @@ function text(value: unknown, max = 256): string | undefined {
   if (typeof value !== 'string' || !value || value.length > max || /[\x00-\x1f\x7f]/.test(value)) invalid();
   return value;
 }
-export type LibraryScreenSearch = Readonly<{view?: ContentView; entityId?: string; category?: string; pivot?: string; unmatched?: boolean; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
+export type LibraryScreenSearch = Readonly<{view?: ContentView; entityId?: string; category?: string; pivot?: string; section?: 'mixes'; unmatched?: boolean; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
 export type HomeRowScreenSearch = Readonly<{query?: BrowseNode; sort?: readonly BrowseSortSelection[]}>;
 /** A See all page owns only the toolbar's scoped filters and order; its row and
  * vocabulary come from the route's own row, never from the address. */
@@ -43,6 +43,7 @@ export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryS
   const entityId = text(raw.entityId), category = text(raw.category), pivot = text(raw.pivot, 64), q = text(raw.q, 512);
   const {query, sort} = queryAndSort(raw);
   const unmatched = raw.unmatched === true || undefined;
+  const section = raw.section === 'mixes' && view === 'discover' ? 'mixes' as const : undefined;
   return {...(view ? {view} : {}), ...(entityId ? {entityId} : {}), ...(category ? {category} : {}), ...(pivot ? {pivot} : {}), ...(unmatched ? {unmatched: true} : {}),
-    ...(query ? {query} : {}), ...(sort ? {sort} : {}), ...(q ? {q} : {})};
+    ...(section ? {section} : {}), ...(query ? {query} : {}), ...(sort ? {sort} : {}), ...(q ? {q} : {})};
 }

@@ -7,7 +7,7 @@ const bounded = (value: unknown, max = 256): string | undefined => typeof value 
 export function searchQuery(raw: Record<string, unknown>): {q: string} {
   return {q: typeof raw.q === 'string' && raw.q.length <= 2048 ? raw.q : ''};
 }
-export type LibrarySearch = Readonly<{view?: ContentView; entityId?: string; pivot?: string; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
+export type LibrarySearch = Readonly<{view?: ContentView; entityId?: string; pivot?: string; section?: 'mixes'; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
 export function librarySearch(raw: Record<string, unknown>): LibrarySearch {
   const view = views.includes(raw.view as ContentView) ? raw.view as ContentView : undefined;
   const entityId = bounded(raw.entityId), pivot = bounded(raw.pivot, 64), q = bounded(raw.q, 512);
@@ -19,7 +19,7 @@ export function librarySearch(raw: Record<string, unknown>): LibrarySearch {
     if (!field || candidate.direction !== 'asc' && candidate.direction !== 'desc' || candidate.seed !== undefined && (!Number.isSafeInteger(candidate.seed) || Number(candidate.seed) < 0)) return [];
     return [{field, direction: candidate.direction as 'asc' | 'desc', ...(candidate.seed === undefined ? {} : {seed: candidate.seed as number})}];
   }) : undefined;
-  return {...(view ? {view} : {}), ...(entityId ? {entityId} : {}), ...(pivot ? {pivot} : {}), ...(query ? {query} : {}), ...(sort?.length ? {sort} : {}), ...(q ? {q} : {})};
+  return {...(view ? {view} : {}), ...(entityId ? {entityId} : {}), ...(pivot ? {pivot} : {}), ...(raw.section === 'mixes' && view === 'discover' ? {section: 'mixes' as const} : {}), ...(query ? {query} : {}), ...(sort?.length ? {sort} : {}), ...(q ? {q} : {})};
 }
 export type HomeDestination =
   | {to: '/library/$libraryId'; params: {libraryId: string}; search: LibrarySearch}

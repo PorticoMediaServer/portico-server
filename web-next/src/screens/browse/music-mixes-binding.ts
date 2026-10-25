@@ -36,10 +36,10 @@ export function bindMusicMixes(source: MusicMixesController, caller: MusicMixLif
     contains: (row: MusicMixRow) => current() && source.contains(row),
     canPlay: (row: MusicMixRow) => current() && source.contains(row) && !!runtime(),
     async load() {assert();return source.load();},
-    async play(row: MusicMixRow) {
+    async play(row: MusicMixRow, shuffle = false) {
       assert();const owner = runtime();
       if (!owner) return Promise.reject(Object.assign(new Error('music_mix_playback_unavailable'), {code: 'music_mix_playback_unavailable'}));
-      return source.play(row, owner.cataloguePlayback(), {signal, isCurrent: () => current() && runtime() === owner});
+      return source.play(row, owner.cataloguePlayback(), {signal, isCurrent: () => current() && runtime() === owner}, shuffle);
     },
     async save(row: MusicMixRow) {assert();return source.save(row, {signal, isCurrent: current});},
     dispose,

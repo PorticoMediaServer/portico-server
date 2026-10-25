@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
+import {Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {heroSpec} from '@design';
 import {HomeService, type HomeSnapshot} from '@core/home-service.ts';
@@ -27,6 +27,7 @@ import type {HomeCustomizationBindings} from './customization';
 import {HomeCustomizeEntry} from './Customize';
 import type {ReadingContinueBindings} from './reading-continue';
 import type {MusicMixesBinding} from '../browse/music-mixes-binding';
+import {MusicMixesRow} from '../browse/MusicMixesRow';
 
 export type HomeSelection = Readonly<{
   /** The canonical selection owner supplies its real bar and controls. */
@@ -49,7 +50,7 @@ export type HomeEffects = Readonly<{
   reportError: (error: unknown) => void;
   openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings; readingContinue?: ReadingContinueBindings; musicMixes?: MusicMixesBinding}>;
+export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings; readingContinue?: ReadingContinueBindings; musicMixes?: MusicMixesBinding; musicMixesMore?: ReactNode}>;
 type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion' | 'appearance'>;
 const t = defaultI18n.t;
 const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
@@ -152,7 +153,7 @@ export function HomeScreen(bindings: HomeBindings) {
 }
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
-export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion, appearance}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
+export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion, appearance, musicMixes, musicMixesMore}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
   const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
   const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
@@ -163,6 +164,9 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
     return () => { for (const cleanup of cleanups) cleanup?.(); };
   }, [document.spotlight, hero.visible, selection]);
   const rows = document.rows.filter(row => !row.platforms || row.platforms.includes('web'));
+  const mixesAfter = rows.findIndex(row => row.id === 'listen_next');
+  const mixes = musicMixes ? <MusicMixesRow binding={musicMixes} artwork={artwork} more={musicMixesMore}
+    reducedMotion={appearance?.reducedMotion ?? reducedMotion} reportError={effects.reportError}/> : null;
   const play = (entry: ContentEntry, resume: ContentEntry) => {
     const target = homePlaybackTarget(entry, resume);
     if (target) void effects.play(entry, resume).catch(effects.reportError);
@@ -181,8 +185,9 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
       </>} /></div>}
     {selection.toolbar}
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
-      {rows.map((row, index) => <HomeRowView key={row.id} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
-        artwork={artwork} effects={effects} selection={selection} time={time} appearance={appearance} reducedMotion={appearance?.reducedMotion ?? reducedMotion} />)}
+      {rows.map((row, index) => <Fragment key={row.id}><HomeRowView row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
+        artwork={artwork} effects={effects} selection={selection} time={time} appearance={appearance} reducedMotion={appearance?.reducedMotion ?? reducedMotion} />{index === mixesAfter && mixes}</Fragment>)}
+      {mixesAfter < 0 && mixes}
       {customization && <HomeCustomizeEntry service={service} binding={customization}/>}
     </div>
   </div>;

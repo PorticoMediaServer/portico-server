@@ -9,6 +9,7 @@ import {FirstLibraryState} from './first-library-state';
 import {MemberEmptyState} from './member-empty-state';
 import {createReadingContinueBindings, type ReadingContinueBindings} from './reading-continue';
 import {useMusicMixes} from '../browse/music-mixes-hook';
+import {MusicDiscoverMore} from '../browse/music-discover-navigation';
 
 function HomeRouteScreen() {
   const captured = useProtectedWebScreenContext();
@@ -31,7 +32,8 @@ function HomeRouteScreen() {
     && identity.capabilities?.manageServer === true && identity.libraries.length === 0 && !identity.liveAvailable) return <FirstLibraryState captured={captured}/>;
   if (captured && context?.isCurrent() && context.session().viewer.role !== 'owner'
     && identity?.libraries.length === 0 && !identity.liveAvailable) return <MemberEmptyState captured={captured}/>;
-  return captured ? <HomeScreen {...captured.binding.home} appearance={appearance} musicMixes={musicMixes} readingContinue={reading && reading.context === context && supported ? reading.binding : undefined}/> : null;
+  return captured ? <HomeScreen {...captured.binding.home} appearance={appearance} musicMixes={musicMixes} musicMixesMore={<MusicDiscoverMore captured={captured}/>}
+    readingContinue={reading && reading.context === context && supported ? reading.binding : undefined}/> : null;
 }
 
 export default defineWebScreen({id: 'home', component: HomeRouteScreen});

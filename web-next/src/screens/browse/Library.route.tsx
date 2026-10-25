@@ -31,6 +31,7 @@ import {BrowseController} from './controller';
 import {createLibraryPlaySelection} from './play-selection';
 import {createLibrarySelection} from './selection';
 import {useMusicMixes} from './music-mixes-hook';
+import {useMusicLibrarySummary} from './music-discover-navigation';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
 import {LibraryMenu} from '../../kit/browse';
 import {NeedsAttention} from '../metadata/NeedsAttention';
@@ -137,7 +138,7 @@ function readingLibraryMenu(resources: {life: {current: () => boolean}; controll
   return <LibraryMenu owner={!!owner} read {...(canSave ? {onSaveView: save} : {})} {...(unmatched ? {onUnmatched: unmatched} : {})}
     {...(settings ? {onLibrarySettings: settings} : {})} {...(scan ? {onScan: scan} : {})}/>;
 }
-function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]}) {
+function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]; musicLookup?: ReturnType<typeof useMusicLibrarySummary>}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   // The offer needs this exact library's own online metadata agent. The fact is keyed to the
   // library and screen scope that produced it, so a stale read can never enable another library
@@ -153,6 +154,8 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   const requested = selectedTab?.shows === 'periodicals' ? undefined : selectedTab;
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
+  const musicRead = useMusicLibrarySummary(captured, library.id, library.kind === 'music' && !musicLookup);
+  const musicSummary = musicLookup?.library ?? musicRead.library, musicLibraries = musicLookup?.libraries ?? musicRead.libraries;
   const pivot = search.pivot ?? requested?.pivot;
   const browse = !!pivot && !search.entityId && !search.category && !search.q && view !== 'discover';
   const sourceKey = JSON.stringify({libraryId: library.id, pivot: pivot ?? '', predicates: search.query ? browseConjunction(search.query) : undefined,
@@ -298,8 +301,11 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     setSaving({libraryId: library.id, pivot: resources.controller.source.pivot, query: query.query ?? null,
       sort: query.sort ?? [], presentation: shownView});
   };
-  const header = {library, libraries: libraryChoices, pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
-    wash: readingHeader.wash, counts: readingHeader.counts,
+  const musicCounts = musicSummary?.summary.counts.map(count => ({id: count.kind, role: 'context' as const,
+    text: t(count.atLeast ? 'lib.countAtLeast' : 'lib.count', {count: count.count, pivot: ({album: 'albums', song: 'songs', artist: 'artists'} as Record<string, string>)[count.kind] ?? count.kind})}));
+  const header = {library: musicSummary ? {...library, name: musicSummary.name, latestArtwork: musicSummary.summary.latestArtwork} : library,
+    libraries: musicLibraries?.map(value => ({id: value.id, name: value.name})) ?? libraryChoices, pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
+    wash: readingHeader.wash, counts: library.kind === 'music' ? musicCounts : readingHeader.counts,
     appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
     artwork: context.artwork,
     // A Reading library's ⋯ draws only the rows this surface can really perform: saving the
@@ -354,7 +360,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     : view === 'show' || view === 'season' ? <LibraryShow context={context} captured={captured} libraryId={library.id} search={search}/>
     : view === 'album' && search.entityId ? <AlbumScreen context={context} libraryId={library.id} albumId={search.entityId} actions={actions}
       onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
-    : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
+    : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} mixesTarget={search.section === 'mixes'} reportError={context.effects.reportError} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
       actions={(_section, entry) => actions(entry)} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
     {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
@@ -362,9 +368,13 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
 function LibraryRouteScreen() {
   const captured = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
   const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
-  const library = captured?.context.facts.identity.libraries.find(library => library.id === libraryId);
+  const destination = useMusicLibrarySummary(captured, libraryId, search.section === 'mixes');
+  const library = search.section === 'mixes' ? destination.library : captured?.context.facts.identity.libraries.find(library => library.id === libraryId);
+  if (captured && search.section === 'mixes' && destination.phase === 'loading') return <Skeleton height={320}/>;
+  if (captured && search.section === 'mixes' && destination.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: destination.retry}}/>;
   return !captured ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={libraryId} captured={captured} library={library} search={search}/>
-    : <BoundLibrary key={libraryId} captured={captured} library={library} search={search}/>
+    : <BoundLibrary key={libraryId} captured={captured} library={library} search={search} musicLookup={search.section === 'mixes' ? destination : undefined}/>
     : <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
 }
 export default defineWebScreen({id: 'library', component: LibraryRouteScreen, validateSearch: parseLibraryScreenSearch});
