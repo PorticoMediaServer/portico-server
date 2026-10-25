@@ -43,7 +43,7 @@ export function OwnerSignInSwitch({source, isCurrent, onError, startOver = false
   const preview = state.preview;
   const busy = state.busy || pending.current;
   return <>
-    <Button variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed} onClick={start}>{t(startOver ? 'next.settingsSpec.server.signin.groups.1.rows.3.control.label' : 'next.settingsSpec.server.signin.groups.1.rows.2.control.label')}</Button>
+    <Button className={startOver ? styles.destructive : undefined} variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed} onClick={start}>{t(startOver ? 'next.settingsSpec.server.signin.groups.1.rows.3.control.label' : 'next.settingsSpec.server.signin.groups.1.rows.2.control.label')}</Button>
     <Dialog children={null} open={secure} onOpenChange={value => {if (!value) setSecure(false);}} title={t('accounts.ownerSwitch.secureTitle')}
       description={t('accounts.ownerSwitch.secureBody', {localUrl: 'http://localhost:32500'})}
       footer={<Button variant="glass" onClick={() => setSecure(false)}>{t('action.cancel')}</Button>}/>
@@ -51,7 +51,7 @@ export function OwnerSignInSwitch({source, isCurrent, onError, startOver = false
       title={t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.title' : 'next.settingsSpec.server.signin.panels.switchToPortico.title')} dismissOnBack={!busy && !state.confirmed}
       dismissOnOutsidePress={!busy && !state.confirmed} showCloseButton={!busy && !state.confirmed}
       footer={<><Button variant="glass" disabled={busy || state.confirmed} onClick={close}>{t('action.cancel')}</Button>
-        <Button disabled={busy || startOver && confirmation !== preview?.serverName} onClick={proceed}>{t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.footer.primary' : 'next.settingsSpec.server.signin.panels.switchToPortico.footer.primary')}</Button></>}>
+        <Button className={startOver ? styles.destructive : undefined} disabled={busy || startOver && confirmation !== preview?.serverName} onClick={proceed}>{t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.footer.primary' : 'next.settingsSpec.server.signin.panels.switchToPortico.footer.primary')}</Button></>}>
       {preview && startOver ? <div className={styles.preview}>
         <p>{preview.serverName}</p>
         <h3>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.0.title')}</h3>
