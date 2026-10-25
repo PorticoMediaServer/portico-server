@@ -10,7 +10,7 @@ type Attempt = {owner: Lease; life: AbortController; url?: string};
 export function ReaderHighlightsExport({service, signal, title, author, reportError, nativeSave}: {service: ReadingAnnotationService; signal: AbortSignal; title?: string; author?: string; reportError: (error: unknown) => void; nativeSave?: (revision: number, signal: AbortSignal) => Promise<'saved' | 'cancelled'>}) {
   const [lease, setLease] = useState<Lease>();
   const [running, setRunning] = useState<Attempt>();
-  const request = useRef<Attempt>();
+  const request = useRef<Attempt | undefined>(undefined);
   const owner = useRef({service, signal}); owner.current = {service, signal};
   const retire = (attempt: Attempt) => {attempt.life.abort(); if (attempt.url) URL.revokeObjectURL(attempt.url); attempt.url = undefined; if (request.current === attempt) request.current = undefined;};
   useLayoutEffect(() => {
