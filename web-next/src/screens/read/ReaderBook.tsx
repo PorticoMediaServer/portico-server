@@ -10,16 +10,22 @@ import {ReaderDisplayMark} from '../../kit/reader/ReaderDisplayMark';
 import {ReaderSearch, type ReaderSearchHit} from '../../kit/reader/ReaderSearch';
 import {ReadReader} from './ReadReader';
 import {ReadingDisplay} from './ReadingDisplay';
+import {FixedPageMenus, FixedPageStrip, fixedPageZoomLabel} from './fixed-page';
 import {readingDisplayCopy} from './display-copy';
 import {readerBookPresentation, type ReaderEnvironment} from './native/tablet-presentation';
 import type {ReaderMountAuthority} from './mount';
+import fixedStyles from './fixed-page.module.css';
 const {t} = defaultI18n;
+const directionIcon = (rtl: boolean): 'i-rtl' | 'i-ltr' => rtl ? 'i-rtl' : 'i-ltr';
 export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
 
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
   const {controller, publication, authority} = book;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
   const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
+  const [fixedMenu, setFixedMenu] = useState<'zoom' | 'direction'>();
+  const zoomAnchor = useRef<HTMLButtonElement>(null), directionAnchor = useRef<HTMLButtonElement>(null);
+  const fixed = publication.format !== 'epub';
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [currentHit, setCurrentHit] = useState<string>();
   const anchor = useRef<HTMLButtonElement>(null);
   const contentsError = useRef(reportError); contentsError.current = reportError;
@@ -81,7 +87,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
         scale={{min: 1, max: 7, step: 1, ticks: [1, 2, 3, 4, 5, 6, 7]}} presentation={presentation} popover={layout.displayPopover} label={t('next.reader.display')}
         open onOpenChange={open => {if (!open) setPanel(undefined);}} anchorRef={anchor} reportError={code => reportError({code})}
         onOpenSettings={() => {setPanel(undefined); onOpenSettings();}}/> : undefined;
-  return <ReadReader<ReadingPreferences> controller={controller} source={publication.source} format={publication.format} initialLocation={book.location}
+  return <><ReadReader<ReadingPreferences> controller={controller} source={publication.source} format={publication.format} initialLocation={book.location}
     metadata={publication.metadata} signal={publication.signal} authority={authority} reportError={engineError} onBack={onBack}
     state={state => state.status === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}/> : <Skeleton height="100%"/>}
     presentation={value => ({copy: {back: t('next.reader.back'), previous: t('next.reader.previous'), next: t('next.reader.next'), progress: t('next.reader.position')},
@@ -90,12 +96,20 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       chapter: value.location?.chapter, pages: value.location?.pageLabel ? t('next.reader.pageLabel', {page: value.location.pageLabel}) : undefined,
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
+      fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
         {id: 'contents', label: t('next.reader.contents'), icon: 'i-chapters', expanded: panel === 'contents', onPress: () => setPanel(panel === 'contents' ? undefined : 'contents')},
         {id: 'search', label: t('next.reader.search'), icon: 'i-search', expanded: panel === 'search', onPress: () => setPanel(panel === 'search' ? undefined : 'search')},
         ...(publication.format === 'epub' ? [{id: 'display', label: t('next.reader.displayAction'), text: <ReaderDisplayMark sample={t('next.reader.sample')}/>, expanded: panel === 'display', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'display' ? undefined : 'display');}}] : []),
+        ...(fixed ? [{id: 'zoom', label: t('next.reader.zoom'), text: <span className={fixedStyles.zoomLabel}>{fixedPageZoomLabel(value.zoom)}</span>,
+          expanded: fixedMenu === 'zoom', onPress: (element: HTMLButtonElement) => {zoomAnchor.current = element; setFixedMenu(fixedMenu === 'zoom' ? undefined : 'zoom');}},
+          ...(publication.format === 'cbz' ? [{id: 'direction', label: t('next.reader.direction'), icon: directionIcon(value.preferences.comicDirection === 'rtl' || publication.metadata.direction === 'rtl'),
+            expanded: fixedMenu === 'direction', onPress: (element: HTMLButtonElement) => {directionAnchor.current = element; setFixedMenu(fixedMenu === 'direction' ? undefined : 'direction');}}] : [])] : []),
         ...(layout.fullscreen && document.fullscreenEnabled ? [{id: 'fullscreen', label: t('next.reader.fullscreen'), icon: 'i-fs' as const, separatorBefore: true,
           onPress: (element: HTMLButtonElement) => {const root = element.closest<HTMLElement>('[data-reader-root]'); void (document.fullscreenElement ? document.exitFullscreen() : root?.requestFullscreen())?.catch(reportError);}}] : []),
-      ]})}/>;
+      ]})}/>
+    {fixed && <FixedPageMenus controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
+      open={fixedMenu} onOpenChange={setFixedMenu} anchorRef={zoomAnchor} directionRef={directionAnchor}/>}
+  </>;
 }
 

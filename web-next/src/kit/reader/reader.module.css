@@ -53,3 +53,10 @@
 
 /* Fixed-page assembly supplies its own drawn rows, inside the existing chrome lifecycle/backdrop. */
 .bottom.fixedPageFooter { display: block; }
+.fixedStrip { position: absolute; inset: auto 0 88px; padding: 8px 28px 10px; background: linear-gradient(rgba(7,16,24,0), rgba(7,16,24,.9) 55%); pointer-events: auto;
+  opacity: 1; transition: opacity var(--motion-standard) var(--ease-out), transform var(--motion-standard) var(--ease-out); }
+.reader[data-chrome="hidden"] .fixedStrip { opacity: 0; pointer-events: none; transform: translateY(8px); transition-duration: var(--motion-quick); }
+.reader[data-reduced-motion] .fixedStrip { transform: none; transition-property: opacity; transition-duration: 160ms; }
+@media (prefers-reduced-motion: reduce) { .fixedStrip { transform: none !important; transition-property: opacity; transition-duration: 160ms; } }
+@media (max-width: 1023px) { .fixedStrip { bottom: 100px; padding-inline: 28px; } }
+@media (max-width: 599px) { .fixedStrip { padding-inline: 20px; } }

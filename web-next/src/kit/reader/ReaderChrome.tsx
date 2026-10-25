@@ -26,6 +26,8 @@ export type ReaderChromeProps = Readonly<{
   panelReflows?: boolean; showPageArrows: boolean;
   /** Optional localized assembly content for fixed pages; prose always keeps the generic footer. */
   fixedPageFooter?: ReactNode;
+  /** Optional drawn strip (page thumbnails) that sits above the footer on fixed pages. */
+  fixedPageStrip?: ReactNode;
   /** The same page tap closes a docked panel without also navigating the book. */
   onPanelDismiss?: (reason: 'outside' | 'escape') => void;
   /** A panel/menu or a live text selection pins chrome until it closes. */
@@ -35,7 +37,7 @@ export type ReaderChromeProps = Readonly<{
 }>;
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, subscribeSurfaceInput}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, fixedPageStrip, subscribeSurfaceInput}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
@@ -115,6 +117,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
         <div className={styles.remaining}>{remainingInSection && <b>{remainingInSection}</b>}{(percent || remainingInBook) && <small>{percent && <span>{percent}</span>}{remainingInBook && <span>{remainingInBook}</span>}</small>}</div>
         </>}
       </footer>
+      {fixedPageStrip && <div className={styles.fixedStrip}>{fixedPageStrip}</div>}
     </div>
     {panel}
   </div>;
