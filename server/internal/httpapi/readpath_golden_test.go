@@ -607,6 +607,12 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 						// Not-interested is a supported personal command for a movie.
 						actions.NotInterested = true
 					case "show":
+						// The restricted page-two fixture returns show-000000 itself,
+						// not a season/episode redirect. Its existing personal command
+						// supports Not interested on that exact displayed show.
+						if navigation, ok := entry["navigation"].(map[string]any); ok && navigation["entityId"] == entry["id"] {
+							actions.NotInterested = true
+						}
 						actions.Selection.Favorite, actions.Selection.Watched = true, true
 					default:
 						t.Fatalf("%s: specify the member offers for golden kind %v", actual.Name, entry["kind"])
