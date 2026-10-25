@@ -18,11 +18,19 @@ export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer
     if (!fallback) return undefined;
     return musicSignal({source: {}, output: {platform: 'browser', device: 'browser'}, eqOn, eqApplied: false, normalization: 'off', levelingApplied: false, fallback});
   }
-  const source: MusicSignalInput['source'] = {codec: sourceAudio.codec, bitDepth: sourceAudio.bitDepth, sampleRate: sourceAudio.sampleRate,
-    channels: sourceAudio.channels, layout: sourceAudio.layout, lossless: sourceAudio.lossless, atmos: sourceAudio.objectAudio === 'atmos'};
+  // The committed comparison names this exact selected track: its numbers and its own measured
+  // losslessness. Nothing is inferred from a codec or a channel count, and an absent fact stays
+  // absent (a WavPack source cannot prove losslessness).
+  const source: MusicSignalInput['source'] = {codec: sourceAudio.codec,
+    ...(sourceAudio.bitDepth === undefined ? {} : {bitDepth: sourceAudio.bitDepth}),
+    ...(sourceAudio.sampleRate === undefined ? {} : {sampleRate: sourceAudio.sampleRate}),
+    ...(sourceAudio.channels === undefined ? {} : {channels: sourceAudio.channels}),
+    ...(sourceAudio.layout === undefined ? {} : {layout: sourceAudio.layout}),
+    ...(sourceAudio.lossless === undefined ? {} : {lossless: sourceAudio.lossless}),
+    ...(sourceAudio.objectAudio === 'atmos' ? {atmos: true} : {})};
   const delivered = info.delivered.audio;
   const server: MusicSignalInput['server'] = {route: info.route,
-    ...(delivered ? {delivered: {codec: delivered.codec, bitDepth: delivered.bitDepth, sampleRate: delivered.sampleRate, channels: delivered.channels, layout: delivered.layout, lossless: delivered.lossless}} : {}),
+    ...(delivered ? {delivered: {codec: delivered.codec, bitDepth: delivered.bitDepth, sampleRate: delivered.sampleRate, channels: delivered.channels, layout: delivered.layout, ...(delivered.lossless === undefined ? {} : {lossless: delivered.lossless})}} : {}),
     ...(info.losses.some(loss => loss.feature === 'atmos' || loss.feature === 'dtsx') ? {atmosLost: true} : {}),
     ...(session.presentation.audio && typeof session.presentation.audio.loudnessAppliedDb === 'number' ? {loudnessAppliedDb: session.presentation.audio.loudnessAppliedDb} : {})};
   const resampled = !!(observed?.sampleRate && sourceAudio.sampleRate && observed.sampleRate !== sourceAudio.sampleRate);

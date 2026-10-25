@@ -49,6 +49,9 @@ type PlaybackSoundFacts struct {
 	Layout      string `json:"layout,omitempty"`
 	SampleRate  int    `json:"sampleRate,omitempty"`
 	BitDepth    int    `json:"bitDepth,omitempty"`
+	// Lossless is the measured classification of this exact track. Absent when the
+	// codec cannot prove it (WavPack is hybrid); never a client-side inference.
+	Lossless *bool `json:"lossless,omitempty"`
 	// Delivery is how the sink receives the delivered track: handed over
 	// undecoded ("passthrough") or decoded to PCM ("decoded"). It is never
 	// stated for the source, which is a file, not an output.
@@ -243,7 +246,7 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 		}
 	}
 	if a := p.Trace.Audio; a != nil {
-		src := PlaybackSoundFacts{Codec: a.Codec, Profile: a.Profile, Variant: a.Variant, ObjectAudio: a.ObjectAudio, Channels: a.Channels, Layout: a.Layout, SampleRate: a.SampleRate, BitDepth: a.BitDepth}
+		src := PlaybackSoundFacts{Codec: a.Codec, Profile: a.Profile, Variant: a.Variant, ObjectAudio: a.ObjectAudio, Channels: a.Channels, Layout: a.Layout, SampleRate: a.SampleRate, BitDepth: a.BitDepth, Lossless: assets.KnownLosslessAudio(a.Codec)}
 		out.Source.Audio = &src
 		dst := src
 		if p.OutputAudioCodec != "" {
@@ -264,6 +267,8 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 				out.Losses = append(out.Losses, PlaybackLoss{Feature: src.ObjectAudio, Replacement: PlaybackReplacement{AudioCodec: dst.Codec, Channels: dst.Channels, Layout: dst.Layout}})
 			}
 		}
+		// The delivered classification follows the codec actually sent, after any conversion.
+		dst.Lossless = assets.KnownLosslessAudio(dst.Codec)
 		if out.Routes.Sound != "" {
 			// Objects the engine decodes without are not on the delivered
 			// track, whatever the codec still carries.

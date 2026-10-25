@@ -9,7 +9,7 @@ export type PlaybackPictureFacts = Readonly<{
   dolbyVisionCmVersion?:string; dolbyVisionRpu?:boolean; dolbyVisionBaseLayer?:boolean; hdr10Plus?:boolean; masterDisplay?:string; maxCll?:string;
   conversion?:Readonly<{kind:'profile7_to_81';sourceDolbyVisionProfile:number;sourceEnhancementType?:string;enhancementDiscarded:boolean;felResidualDiscarded:boolean}>;
 }>;
-export type PlaybackSoundFacts = Readonly<{codec:string;profile?:string;variant?:string;objectAudio?:string;channels?:number;layout?:string;sampleRate?:number;bitDepth?:number;lossless?:boolean}>;
+export type PlaybackSoundFacts = Readonly<{codec:string;profile?:string;variant?:string;objectAudio?:string;channels?:number;layout?:string;sampleRate?:number;bitDepth?:number;/** Measured classification of this exact track; absent when the codec cannot prove it (WavPack). */lossless?:boolean}>;
 export type PlaybackSubtitleFacts = Readonly<{format?:string;language?:string;title?:string;origin?:string;rendering?:'drawnByDevice'|'externalText'|'burnedIn'|'off'}>;
 export type PlaybackMediaFacts = Readonly<{video?:PlaybackPictureFacts;audio?:PlaybackSoundFacts;subtitles?:PlaybackSubtitleFacts}>;
 export type PlaybackReplacement = Readonly<{dynamicRange?:string;audioCodec?:string;channels?:number;layout?:string}>;
