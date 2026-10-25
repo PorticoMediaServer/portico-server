@@ -36,6 +36,107 @@ const serverId = 'specimen-server', fence = 'a'.repeat(64);
 const envelope = (result: unknown) => ({protocolVersion: '1.0', serverId, result});
 const report = (id: string, platform: string, deviceClass: string, appVersion: string, receivedAt: string, bytes: number) =>
   ({id, accountId: 'account', profileId: 'profile', deviceId: `device-${id}`, platform, deviceClass, appVersion, receivedAt, bytes});
+// Messages are the redacted sample lines drawn in owner-server frame 1.
+const messageRecords = [
+  {
+    "sequence": "1",
+    "at": "2026-10-22T18:58:02Z",
+    "level": "info",
+    "category": "server",
+    "message": "Backup finished. 18 MB written, 7 backups kept."
+  },
+  {
+    "sequence": "2",
+    "at": "2026-10-22T18:58:40Z",
+    "level": "info",
+    "category": "scan",
+    "message": "Scan of Movies started."
+  },
+  {
+    "sequence": "3",
+    "at": "2026-10-22T19:01:17Z",
+    "level": "info",
+    "category": "scan",
+    "message": "Scan of Movies finished: 80 titles checked, 0 added, 0 changed."
+  },
+  {
+    "sequence": "4",
+    "at": "2026-10-22T19:03:05Z",
+    "level": "info",
+    "category": "playback",
+    "message": "Started The Last of Us on Living room TV as the original file."
+  },
+  {
+    "sequence": "5",
+    "at": "2026-10-22T19:03:22Z",
+    "level": "warn",
+    "category": "network",
+    "message": "The router didn’t answer the port mapping request. Trying again in 5 minutes."
+  },
+  {
+    "sequence": "6",
+    "at": "2026-10-22T19:05:48Z",
+    "level": "info",
+    "category": "playback",
+    "message": "Started converting Spirited Away to 1080p for an iPhone away from home."
+  },
+  {
+    "sequence": "7",
+    "at": "2026-10-22T19:07:31Z",
+    "level": "error",
+    "category": "playback",
+    "message": "The video encoder stopped while converting Spirited Away. Playback went on with the processor."
+  },
+  {
+    "sequence": "8",
+    "at": "2026-10-22T19:07:32Z",
+    "level": "info",
+    "category": "playback",
+    "message": "Converting Spirited Away again, this time with the processor."
+  },
+  {
+    "sequence": "9",
+    "at": "2026-10-22T19:09:10Z",
+    "level": "info",
+    "category": "client",
+    "message": "A report came in from an iPhone running 1.4.2."
+  },
+  {
+    "sequence": "10",
+    "at": "2026-10-22T19:11:02Z",
+    "level": "warn",
+    "category": "server",
+    "message": "Free space on the disk that holds backups is below 15 percent."
+  },
+  {
+    "sequence": "11",
+    "at": "2026-10-22T19:12:40Z",
+    "level": "info",
+    "category": "playback",
+    "message": "Playback of The Last of Us ended after 41 minutes."
+  },
+  {
+    "sequence": "12",
+    "at": "2026-10-22T19:14:03Z",
+    "level": "info",
+    "category": "network",
+    "message": "Certificate check passed. The certificate is valid until Jan 19, 2027."
+  },
+  {
+    "sequence": "13",
+    "at": "2026-10-22T19:14:55Z",
+    "level": "info",
+    "category": "scan",
+    "message": "Watching TV Shows: 1 new file found."
+  },
+  {
+    "sequence": "14",
+    "at": "2026-10-22T19:15:00Z",
+    "level": "info",
+    "category": "scan",
+    "message": "Scan of TV Shows started."
+  }
+];
 const records = [
   {sequence: 1842, at: '2026-10-22T18:58:02Z', lane: 'runtime', severity: 'info', component: 'backups', code: 'backup_finished', fields: {kept: 7}},
   {sequence: 1841, at: '2026-10-22T19:03:00Z', lane: 'runtime', severity: 'warn', component: 'remote_access', code: 'port_mapping_failed'},
@@ -68,7 +169,7 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
   if (path.includes('/catalogue/failures')) return setAside;
   if (method === 'DELETE') return undefined;
   if (path.includes('/logs/settings')) return {revision: 1, logLevel: 'info', effectiveLevel: 'info', retention: [], levels: ['error','warn','info','debug'], categories: ['server','playback','scan','network','client']};
-  if (path.includes('/admin/logs')) return {items: [{sequence: '1', at: '2026-10-22T19:58:02Z', level: 'info', category: 'server', message: 'Backup finished. 18 MB written, 7 backups kept.'}], limit: 200, nextCursor: '', level: 'info', effectiveLevel: 'info'};
+  if (path.includes('/admin/logs')) return {items: [...messageRecords].reverse(), limit: 200, nextCursor: '', level: 'info', effectiveLevel: 'info'};
   if (path.includes('/diagnostics/capabilities')) return capabilities;
   if (path.includes('/console/alerts')) return {scope: {serverId, viewerFence: fence}, data: alerts};
   if (path.includes('/admin/feedback/')) {
@@ -85,6 +186,7 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
 };
 const transport = {request: <T,>(path: string, method?: string) => request(path, method) as Promise<T>};
 const messages = new SettingsMessagesSource(transport, undefined, () => true);
+if (params.get('live') === '1') messages.setLive(true);
 const reports = new SettingsReportsSource(transport, serverId, 'specimen-viewer', () => true);
 const feedbackSource = new SettingsFeedbackSource(transport, serverId, 'specimen-viewer', () => true);
 const supportSource = new SettingsSupportSource(transport, serverId, 'specimen-viewer', () => true);
