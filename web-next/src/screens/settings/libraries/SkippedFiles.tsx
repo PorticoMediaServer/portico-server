@@ -63,7 +63,7 @@ export function SkippedFiles({libraryId, api, service, isCurrent, label}: Readon
         <b>{t('next.ownerLibraries.skippedEmptyTitle')}</b>
         <p>{t('next.ownerLibraries.skippedEmptyBody', {library: libraryName})}</p>
       </div> : null}
-      <ul className={styles.skippedList}>{page?.items.map(file => <li key={file.sequence}><code>{file.path}</code><small>{t(file.reason)}</small></li>)}</ul>
+      {page && page.items.length > 0 && <ul className={styles.skippedList}>{page.items.map(file => <li key={file.sequence}><code>{file.path}</code><small>{t(file.reason)}</small></li>)}</ul>}
       {page?.hasMore && <Button disabled={busy} onClick={() => {const capture = lifetime.current;if (capture) void load(capture, page.next);}}>{t('next.ownerLibraries.showMore')}</Button>}
     </Dialog>
   </>;
