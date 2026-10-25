@@ -57,7 +57,7 @@ adb shell wm size 393x852 >/dev/null 2>&1
 adb shell wm density 160 >/dev/null 2>&1
 say PASS "booted at 393x852, density 160"
 
-SHELL_DIR="$(dirname "$0")/.."
+SHELL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cleanup() {
   adb shell wm size reset >/dev/null 2>&1 || true
   adb shell wm density reset >/dev/null 2>&1 || true
