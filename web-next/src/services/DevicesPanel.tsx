@@ -9,6 +9,7 @@ import type {IconName} from '../kit/Icon';
 import {servicesI18n} from './i18n';
 import type {WorkspaceApi, WorkspaceDevices} from './workspace-api';
 import {servicesRelativeTime, servicesSignInDate} from './time';
+import styles from './services.module.css';
 
 /** A family is revoked only from a current canonical review; logout-all would end this browser. */
 export async function signOutOtherDevices(service: AccountSessionReviewService) {
@@ -62,7 +63,7 @@ export function DevicesPanel({api, frame}: Props) {
         {!item.current && <Button size="small" loading={state.pending === item.id} disabled={busy} onClick={() => setEnding(item.id)}>{t('action.signOut')}</Button>}
       </ServicesWorkspaceRow>;
     })}</ServicesGroup>}
-    {(state.hasPrevious || state.nextCursor) && <div><Button variant="text" size="small" disabled={busy || !state.hasPrevious} onClick={() => void service.previous()}>{t('web.hostedAccount.newer')}</Button><Button variant="text" size="small" disabled={busy || !state.nextCursor} onClick={() => void service.next()}>{t('web.hostedAccount.older')}</Button></div>}
+    {(state.hasPrevious || state.nextCursor) && <div className={styles.pager}><Button size="small" disabled={busy || !state.hasPrevious} onClick={() => void service.previous()}>{t('web.hostedAccount.newer')}</Button><Button size="small" disabled={busy || !state.nextCursor} onClick={() => void service.next()}>{t('web.hostedAccount.older')}</Button></div>}
     <Dialog open={Boolean(ending)} onOpenChange={open => { if (!open) setEnding(undefined); }} title={t('confirm.signOutDevice.title', {device: ending ? name(ending) : ''})} description={t('web.hostedAccount.signOutBody')}
       footer={<><Button size="small" onClick={() => setEnding(undefined)}>{t('action.cancel')}</Button><Button size="small" variant="primary" onClick={() => { const id = ending!; setEnding(undefined); void service.revoke(id); }}>{t('action.signOut')}</Button></>}><></></Dialog>
     <Dialog open={all} onOpenChange={open => { if (!open) setAll(false); }} title={t('web.hostedAccount.signOutOthersTitle')} description={t('web.hostedAccount.signOutOthersBody')}

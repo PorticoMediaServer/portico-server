@@ -1,4 +1,5 @@
 .form { display: flex; flex-direction: column; gap: 16px; }
+.pager { display: flex; justify-content: center; gap: 12px; margin-top: 18px; }
 .phoneOnly { display: none; }
 @media (max-width: 640px) {
   .form { gap: 12px; }
