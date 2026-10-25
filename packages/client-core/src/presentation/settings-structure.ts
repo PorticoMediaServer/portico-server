@@ -349,6 +349,82 @@ const accountPages: readonly AuthoredPage[] = [
       ]},
     ],
   },
+  // The reader's own defaults: the real `reading.*` and `comics.*` preferences the reader
+  // already applies. Drawn from the current Settings specification; the page appears only
+  // where the server publishes those keys.
+  {
+    id: 'reading', title: 'next.settingsSpec.account.reading.title', icon: 'book', platforms: ['web', 'phone'], sections: [
+      {id: 'type', title: 'next.settingsSpec.account.reading.groups.0.title', rows: [
+        pref('reading.theme', 'next.settingsSpec.account.reading.groups.0.rows.0.label', {type: 'choice', choices: [
+          {value: 'dark', label: 'next.settingsSpec.account.reading.groups.0.rows.0.control.options.0.label'},
+          {value: 'black', label: 'next.settingsSpec.account.reading.groups.0.rows.0.control.options.1.label'},
+          {value: 'sepia', label: 'next.settingsSpec.account.reading.groups.0.rows.0.control.options.2.label'},
+          {value: 'light', label: 'next.settingsSpec.account.reading.groups.0.rows.0.control.options.3.label'},
+        ]}),
+        pref('reading.font', 'next.settingsSpec.account.reading.groups.0.rows.1.label', {type: 'choice', choices: [
+          {value: 'publisher', label: 'next.settingsSpec.account.reading.groups.0.rows.1.control.options.0.label'},
+          {value: 'literata', label: 'next.settingsSpec.account.reading.groups.0.rows.1.control.options.1.label'},
+          {value: 'manrope', label: 'next.settingsSpec.account.reading.groups.0.rows.1.control.options.2.label'},
+        ]}),
+        pref('reading.textSize', 'next.settingsSpec.account.reading.groups.0.rows.2.label', {type: 'choice', choices: [1, 2, 3, 4, 5, 6, 7].map(value => ({
+          value, label: `next.settingsSpec.account.reading.groups.0.rows.2.control.options.${value - 1}.label` as MessageId,
+        }))}),
+      ]},
+      {id: 'page', title: 'next.settingsSpec.account.reading.groups.1.title', rows: [
+        pref('reading.lineSpacing', 'next.settingsSpec.account.reading.groups.1.rows.0.label', {type: 'choice', choices: [
+          {value: 'tight', label: 'next.settingsSpec.account.reading.groups.1.rows.0.control.options.0.label'},
+          {value: 'normal', label: 'next.settingsSpec.account.reading.groups.1.rows.0.control.options.1.label'},
+          {value: 'loose', label: 'next.settingsSpec.account.reading.groups.1.rows.0.control.options.2.label'},
+        ]}),
+        pref('reading.margins', 'next.settingsSpec.account.reading.groups.1.rows.1.label', {type: 'choice', choices: [
+          {value: 'narrow', label: 'next.settingsSpec.account.reading.groups.1.rows.1.control.options.0.label'},
+          {value: 'normal', label: 'next.settingsSpec.account.reading.groups.1.rows.1.control.options.1.label'},
+          {value: 'wide', label: 'next.settingsSpec.account.reading.groups.1.rows.1.control.options.2.label'},
+        ]}),
+        pref('reading.alignment', 'next.settingsSpec.account.reading.groups.1.rows.2.label', {type: 'choice', choices: [
+          {value: 'left', label: 'next.settingsSpec.account.reading.groups.1.rows.2.control.options.0.label'},
+          {value: 'justified', label: 'next.settingsSpec.account.reading.groups.1.rows.2.control.options.1.label'},
+        ]}),
+        pref('reading.layout', 'next.settingsSpec.account.reading.groups.1.rows.3.label', {type: 'choice', choices: [
+          {value: 'pages', label: 'next.settingsSpec.account.reading.groups.1.rows.3.control.options.0.label'},
+          {value: 'scroll', label: 'next.settingsSpec.account.reading.groups.1.rows.3.control.options.1.label'},
+        ]}),
+        toggle('reading.twoPages', 'next.settingsSpec.account.reading.groups.1.rows.4.label', {help: 'next.settingsSpec.account.reading.groups.1.rows.4.help'}),
+      ]},
+      {id: 'comics', title: 'next.settingsSpec.account.reading.groups.2.title', rows: [
+        pref('comics.fit', 'next.settingsSpec.account.reading.groups.2.rows.0.label', {type: 'choice', choices: [
+          {value: 'auto', label: 'next.settingsSpec.account.reading.groups.2.rows.0.control.options.0.label'},
+          {value: 'width', label: 'next.settingsSpec.account.reading.groups.2.rows.0.control.options.1.label'},
+          {value: 'height', label: 'next.settingsSpec.account.reading.groups.2.rows.0.control.options.2.label'},
+        ]}),
+        pref('comics.direction', 'next.settingsSpec.account.reading.groups.2.rows.1.label', {type: 'choice', choices: [
+          {value: 'file', label: 'next.settingsSpec.account.reading.groups.2.rows.1.control.options.0.label'},
+          {value: 'ltr', label: 'next.settingsSpec.account.reading.groups.2.rows.1.control.options.1.label'},
+          {value: 'rtl', label: 'next.settingsSpec.account.reading.groups.2.rows.1.control.options.2.label'},
+          {value: 'vertical', label: 'next.settingsSpec.account.reading.groups.2.rows.1.control.options.3.label'},
+        ]}),
+      ]},
+      {id: 'advanced', title: 'next.settingsSpec.account.reading.advanced.groups.0.title', advanced: true, rows: [
+        toggle('reading.tapToTurn', 'next.settingsSpec.account.reading.advanced.groups.0.rows.0.label', {help: 'next.settingsSpec.account.reading.advanced.groups.0.rows.0.help', platforms: ['phone']}),
+        toggle('reading.hyphenation', 'next.settingsSpec.account.reading.advanced.groups.0.rows.1.label', {help: 'next.settingsSpec.account.reading.advanced.groups.0.rows.1.help'}),
+        pref('reading.highlightColour', 'next.settingsSpec.account.reading.advanced.groups.0.rows.2.label', {type: 'choice', choices: [
+          {value: 'yellow', label: 'next.settingsSpec.account.reading.advanced.groups.0.rows.2.control.options.0.label'},
+          {value: 'green', label: 'next.settingsSpec.account.reading.advanced.groups.0.rows.2.control.options.1.label'},
+          {value: 'blue', label: 'next.settingsSpec.account.reading.advanced.groups.0.rows.2.control.options.2.label'},
+          {value: 'pink', label: 'next.settingsSpec.account.reading.advanced.groups.0.rows.2.control.options.3.label'},
+        ]}),
+      ]},
+      {id: 'advancedComics', title: 'next.settingsSpec.account.reading.advanced.groups.1.title', advanced: true, rows: [
+        toggle('comics.firstPageAlone', 'next.settingsSpec.account.reading.advanced.groups.1.rows.0.label', {help: 'next.settingsSpec.account.reading.advanced.groups.1.rows.0.help', enableWhen: {key: 'reading.twoPages', in: [true]}}),
+        pref('reading.pdfView', 'next.settingsSpec.account.reading.advanced.groups.1.rows.1.label', {type: 'choice', choices: [
+          {value: 'automatic', label: 'next.settingsSpec.account.reading.advanced.groups.1.rows.1.control.options.0.label'},
+          {value: 'spread', label: 'next.settingsSpec.account.reading.advanced.groups.1.rows.1.control.options.1.label'},
+          {value: 'width', label: 'next.settingsSpec.account.reading.advanced.groups.1.rows.1.control.options.2.label'},
+          {value: 'page', label: 'next.settingsSpec.account.reading.advanced.groups.1.rows.1.control.options.3.label'},
+        ]}),
+      ]},
+    ],
+  },
   {
     id: 'appearance', title: 'settings.page.appearance', icon: 'sliders', sections: [
       {id: 'look', rows: [
