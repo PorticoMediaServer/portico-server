@@ -43,9 +43,17 @@ export type RemoteFolder=Readonly<{name:string;path:string;relative:string;hidde
 export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:string;relative:string;entries:readonly RemoteFolder[];nextCursor:string;truncated:boolean}>;
 /** One library that uses folders from a source, and how many of its folders do. */
 export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;folders:number}>;
+/** One source folder's real active scan: closed state/mode/phase codes and
+ * stored counters/timestamps. sourceGeneration/runPolicyRevision are the values
+ * the run captured, not proof of the current source or policy. No percentage,
+ * job error, path or guess. */
+export type RemoteScanStateCode='queued'|'running'|'paused';
+export type RemoteScanMode='first-import'|'incremental'|'integrity'|'full';
+export type RemoteScanPhase='inventory'|'basic_pending'|'basic_running'|'analysis_enqueue'|'reconciling'|'verifying'|'extras';
+export type RemoteScanState=Readonly<{state:RemoteScanStateCode;mode?:RemoteScanMode;phase?:RemoteScanPhase;sourceGeneration:number;runPolicyRevision:number;processed:number;discovered:number;analyzed:number;warnings:number;startedAt?:string;completedAt?:string;finishedAt?:string}>;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
-export type RemoteSourceStatus=Readonly<{assignmentFenceSupported?:boolean;sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;program?:string;programVersion?:string;programRevision?:number;programIncluded?:boolean;remote?:string;backgroundSpeed?:string}>;
+export type RemoteSourceStatus=Readonly<{assignmentFenceSupported?:boolean;sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;scan?:RemoteScanState;program?:string;programVersion?:string;programRevision?:number;programIncluded?:boolean;remote?:string;backgroundSpeed?:string}>;
 /** The drawn Advanced page: how a source's folders are checked, the disk its
  * read cache may use, and which analysis stages run for files found through it. */
 export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean;introsMode:'off'|'inherit'|'sound'|'picture';doubleCheckFolders:boolean;dirCacheSeconds:number;readBufferBytes:number;connectTimeoutSeconds:number;idleTimeoutSeconds:number;retries:number;lowLevelRetries:number}>;
@@ -218,13 +226,27 @@ function sourceAdvancedSettings(raw:unknown,id:string):SourceAdvancedSettings{
  if(raw.cacheError!==undefined&&!['source_changed','mount_unavailable','cache_refused','cache_record_failed'].includes(String(raw.cacheError)))invalid();
  return Object.freeze({sourceId:id,generation:raw.generation,revision:raw.revision,saved:raw.saved,cacheSupported:raw.cacheSupported,cacheApplied:raw.cacheApplied,...(raw.cacheError===undefined?{}:{cacheError:raw.cacheError as string}),cacheUsedBytes:raw.cacheUsedBytes,scanIntervalObserved:raw.scanIntervalObserved,values:sourceAdvanced(raw.values)});
 }
+const scanStates:readonly RemoteScanStateCode[]=['queued','running','paused'];
+const scanModes:readonly RemoteScanMode[]=['first-import','incremental','integrity','full'];
+const scanPhases:readonly RemoteScanPhase[]=['inventory','basic_pending','basic_running','analysis_enqueue','reconciling','verifying','extras'];
+function scanTimestamp(value:unknown):string|undefined{
+ return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value))?value:undefined;
+}
+const scanBounded=(value:unknown):value is number=>integer(value)&&value<=2**40;
+function remoteScan(raw:unknown):RemoteScanState|undefined{
+ if(!record(raw)||!scanStates.includes(raw.state as RemoteScanStateCode)||!scanBounded(raw.sourceGeneration)||!scanBounded(raw.runPolicyRevision)||!scanBounded(raw.processed)||!scanBounded(raw.discovered)||!scanBounded(raw.analyzed)||!scanBounded(raw.warnings))return undefined;
+ const started=scanTimestamp(raw.startedAt),completed=scanTimestamp(raw.completedAt),finished=scanTimestamp(raw.finishedAt);
+ return Object.freeze({state:raw.state as RemoteScanStateCode,...(scanModes.includes(raw.mode as RemoteScanMode)?{mode:raw.mode as RemoteScanMode}:{}),...(scanPhases.includes(raw.phase as RemoteScanPhase)?{phase:raw.phase as RemoteScanPhase}:{}),sourceGeneration:raw.sourceGeneration,runPolicyRevision:raw.runPolicyRevision,processed:raw.processed,discovered:raw.discovered,analyzed:raw.analyzed,warnings:raw.warnings,...(started?{startedAt:started}:{}),...(completed?{completedAt:completed}:{}),...(finished?{finishedAt:finished}:{})});
+}
 function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>10||typeof raw.librariesTruncated!=='boolean')invalid();
  if(raw.errorCode!==undefined&&!text(raw.errorCode,100))invalid();
+ const scan=remoteScan(raw.scan);
  return Object.freeze({sourceId:id,generation:raw.generation,state:raw.state,...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as string}),rangeSupport:raw.rangeSupport,lastCheckedAt:raw.lastCheckedAt,connectionsInUse:raw.connectionsInUse,playbackReads:raw.playbackReads,analysisReads:raw.analysisReads,scanIntervalSeconds:raw.scanIntervalSeconds,libraries:Object.freeze(raw.libraries.map(sourceLibraryUse)),librariesTruncated:raw.librariesTruncated,
   ...(text(raw.program,8192)&&raw.program?{program:raw.program}:{}),...(text(raw.programVersion,256)&&raw.programVersion?{programVersion:raw.programVersion}:{}),
   ...(integer(raw.programRevision)&&raw.programRevision>0?{programRevision:raw.programRevision}:{}),
   ...(typeof raw.programIncluded==='boolean'?{programIncluded:raw.programIncluded}:{}),
+  ...(scan?{scan}:{}),
   ...(text(raw.remote,8192)&&raw.remote?{remote:raw.remote}:{}),...(text(raw.backgroundSpeed,64)&&raw.backgroundSpeed?{backgroundSpeed:raw.backgroundSpeed}:{})});
 }
 /** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere).

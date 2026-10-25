@@ -22,6 +22,30 @@ type SourceLibraryUse struct {
 	Folders   int    `json:"folders"`
 }
 
+// SourceScanState is one source folder's active scan as the scanner records it.
+// State, mode and phase are closed codes; counters and timestamps are the real
+// stored values. SourceGeneration and RunPolicyRevision are the values the run
+// captured, not proof they equal the current source/policy. It never carries a
+// job error, path, locator or derived percent.
+type SourceScanState struct {
+	State             string `json:"state"`
+	Mode              string `json:"mode,omitempty"`
+	Phase             string `json:"phase,omitempty"`
+	SourceGeneration  int64  `json:"sourceGeneration"`
+	RunPolicyRevision int64  `json:"runPolicyRevision"`
+	Processed         int64  `json:"processed"`
+	Discovered        int64  `json:"discovered"`
+	Analyzed          int64  `json:"analyzed"`
+	Warnings          int64  `json:"warnings"`
+	StartedAt         string `json:"startedAt,omitempty"`
+	CompletedAt       string `json:"completedAt,omitempty"`
+	FinishedAt        string `json:"finishedAt,omitempty"`
+}
+
+var scanStates = map[string]bool{"queued": true, "running": true, "paused": true}
+var scanModes = map[string]bool{"first-import": true, "incremental": true, "integrity": true, "full": true}
+var scanPhases = map[string]bool{"inventory": true, "basic_pending": true, "basic_running": true, "analysis_enqueue": true, "reconciling": true, "verifying": true, "extras": true}
+
 type SourceStatus struct {
 	SourceID         string             `json:"sourceId"`
 	Generation       string             `json:"generation"`
@@ -46,6 +70,11 @@ type SourceStatus struct {
 	CacheUsedBytes  int64  `json:"cacheUsedBytes"`
 	Remote          string `json:"remote,omitempty"`
 	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
+	// Scan is a real active scan when this server can prove one: the active row
+	// still matches its folder's current generation/incarnation/identity, its
+	// library and run. Absence can mean unsupported, invalid or unobserved, so it
+	// is not proof that no scan is running; it is never a guess or a percentage.
+	Scan *SourceScanState `json:"scan,omitempty"`
 	// ServeOperationsInUse samples the saved source's shared operation budget
 	// through its current live serve process. Despite the historical field name,
 	// this includes direct WebDAV requests and saved-source listings on the same
@@ -130,6 +159,20 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE remote_source_id=?`, row.ID).Scan(&out.ScanIntervalSecs); err != nil {
 		return SourceStatus{}, err
 	}
+	var scanState, scanMode, scanPhase, scanStarted, scanCompleted, scanFinished string
+	var scanGeneration, scanPolicy, scanProcessed, scanDiscovered, scanAnalyzed, scanWarnings int64
+	scanErr := snapshot.Tx().QueryRowContext(ctx, `SELECT j.status,r.scan_mode,r.phase,r.source_generation,r.policy_revision,j.processed,r.discovered,r.analyzed,r.warnings,j.created_at,r.inventory_completed_at,r.finished_at FROM library_sources s JOIN inventory_source_active a ON a.source_id=s.id JOIN jobs j ON j.id=a.job_id JOIN inventory_runs r ON r.job_id=j.id WHERE s.remote_source_id=? AND s.enabled=1 AND r.source_id=s.id AND j.library_id=s.library_id AND r.source_generation=s.generation AND r.root_incarnation=s.incarnation AND r.root_identity=s.root_identity AND j.status IN('queued','running','paused') ORDER BY j.created_at DESC,j.id DESC LIMIT 1`, row.ID).Scan(&scanState, &scanMode, &scanPhase, &scanGeneration, &scanPolicy, &scanProcessed, &scanDiscovered, &scanAnalyzed, &scanWarnings, &scanStarted, &scanCompleted, &scanFinished)
+	if scanErr == nil && scanStates[scanState] && scanFactsBounded(scanGeneration, scanPolicy, scanProcessed, scanDiscovered, scanAnalyzed, scanWarnings) {
+		out.Scan = &SourceScanState{State: scanState, SourceGeneration: scanGeneration, RunPolicyRevision: scanPolicy, Processed: scanProcessed, Discovered: scanDiscovered, Analyzed: scanAnalyzed, Warnings: scanWarnings, StartedAt: scanTime(scanStarted), CompletedAt: scanTime(scanCompleted), FinishedAt: scanTime(scanFinished)}
+		if scanModes[scanMode] {
+			out.Scan.Mode = scanMode
+		}
+		if scanPhases[scanPhase] {
+			out.Scan.Phase = scanPhase
+		}
+	} else if scanErr != nil && !errors.Is(scanErr, sql.ErrNoRows) {
+		return SourceStatus{}, scanErr
+	}
 	if row.MountID != "" {
 		var executable, version, remote string
 		var control int64
@@ -145,6 +188,26 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		return SourceStatus{}, err
 	}
 	return out, nil
+}
+
+// scanFactsBounded keeps stored counters and identifiers inside the ranges the
+// scanner can actually produce; a corrupt or negative value omits the fact.
+func scanFactsBounded(generation, policy, processed, discovered, analyzed, warnings int64) bool {
+	const maxCount = int64(1) << 40
+	return generation >= 0 && generation <= maxCount && policy >= 0 && policy <= maxCount &&
+		processed >= 0 && processed <= maxCount && discovered >= 0 && discovered <= maxCount &&
+		analyzed >= 0 && analyzed <= maxCount && warnings >= 0 && warnings <= maxCount
+}
+
+// scanTime keeps only a valid stored timestamp; anything else reads as absent.
+func scanTime(value string) string {
+	if value == "" {
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+		return ""
+	}
+	return value
 }
 
 // liveReads counts the provider reads this server holds for one source now.
