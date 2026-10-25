@@ -5,6 +5,6 @@ import type {SettingsHolder, SettingsSection} from '@core/presentation/settings-
  * its independent bounded reads and receives no retention state. */
 export function HistoryRetention({section, renderRows}: {section: SettingsSection; renderRows: (holder: SettingsHolder) => ReactNode}) {
   if (!section.advanced) return null;
-  const groups = section.advanced.groups.map(group => ({...group, rows: group.rows.filter(row => row.id === 'history.keepHistory')})).filter(group => group.rows.length);
+  const groups = (section.advanced.groups ?? []).map(group => ({...group, rows: group.rows.filter(row => row.id === 'history.keepHistory')})).filter(group => group.rows.length);
   return renderRows({advanced: {...section.advanced, groups}});
 }
