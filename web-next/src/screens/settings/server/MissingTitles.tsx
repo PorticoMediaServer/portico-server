@@ -24,14 +24,14 @@ export function MissingTitles({source, isCurrent, artwork}: Readonly<{source: Se
     try {await source.load(cursor);if (isCurrent() && held === generation.current && source.getSnapshot().phase === 'ready') setCursors(next);}
     finally {paging.current = false;}
   };
-  const retire = useCallback((attempt: Removal | undefined, force = false) => {
-    if (!attempt || removal.current !== attempt || attempt.claimed && !force) return;
+  const retire = useCallback((attempt: Removal | undefined) => {
+    if (!attempt || removal.current !== attempt) return;
     attempt.live = false; removal.current = undefined;
     setConfirmation(value => value === attempt ? undefined : value); setTyped('');
   }, []);
   useLayoutEffect(() => {
     const attempt = removal.current;
-    if (attempt && (attempt.source !== source || attempt.page !== page)) retire(attempt, true);
+    if (attempt && (attempt.source !== source || attempt.page !== page)) retire(attempt);
   }, [source, page, retire]);
   useLayoutEffect(() => () => {const attempt = removal.current; if (attempt) {attempt.live = false; removal.current = undefined;}}, [source]);
   const remove = async (attempt: Removal, capturedTyped: string) => {
@@ -39,7 +39,7 @@ export function MissingTitles({source, isCurrent, artwork}: Readonly<{source: Se
     if (!current() || attempt.claimed || source.getSnapshot().page !== attempt.page || attempt.typed !== capturedTyped || capturedTyped !== String(attempt.page.total)) return;
     attempt.claimed = true;
     await source.remove(attempt.page, capturedTyped, current);
-    if (current() && source.getSnapshot().page !== attempt.page) retire(attempt, true);
+    if (current() && source.getSnapshot().page !== attempt.page) retire(attempt);
     if (isCurrent() && source.getSnapshot().removed) setCursors(['']);
   };
   return <div className={styles.section}>
