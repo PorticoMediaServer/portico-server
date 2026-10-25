@@ -6,3 +6,9 @@
 .facts dd { margin: 0; font-size: var(--type-caption-size); color: var(--color-text-secondary); line-height: var(--type-troubleshooting-log-line); }
 .mono { font-family: var(--font-mono); }
 @media (max-width: 720px) { .facts > div { grid-template-columns: 1fr; gap: 2px; } }
+.controls { display: grid; gap: 10px; padding: 14px; border-radius: 12px; background: var(--color-raised); }
+.switchRow { display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: var(--type-row-subtitle-size); color: var(--color-text-secondary); }
+.numberRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.note { display: block; margin-top: 2px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.error { margin: 0; color: var(--color-danger-text); font-size: var(--type-caption-size); }
+@media (max-width: 720px) { .numberRow { grid-template-columns: 1fr; } }

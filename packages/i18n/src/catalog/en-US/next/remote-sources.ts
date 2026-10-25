@@ -17,6 +17,7 @@ export const remoteSourcesMessages = {
   'next.remoteStatus.away': 'from outside',
   'next.remoteStatus.reading': 'Reading…',
   'next.remoteStatus.failed': 'The server did not answer.',
+  'next.remoteStatus.save': 'Save remote access',
   'next.remoteSources.add': 'Add remote source',
   'next.remoteSources.manage': 'Manage',
   'next.remoteSources.refresh': 'Refresh',
