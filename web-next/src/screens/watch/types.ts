@@ -7,6 +7,7 @@ import type {QueuePlaybackFence} from '../../../../packages/player-core/src/inde
 import type {TrickplayFrame} from '@core/trickplay.ts';
 import type {ArtworkSource} from '../../kit/artwork/types';
 import type {LiveChromePort} from '../live/live-chrome-types';
+import type {WatchEndCard} from './end-card';
 
 /** Structurally matches the parent's binding. The screen never creates or mounts media. */
 export type WatchBindings = Readonly<{
@@ -50,6 +51,8 @@ export type WatchSurfaces = Readonly<{
   /** Actual title/authority identity; layout and source generation never enter this key. */
   bodyIdentity?: string;
   myList?: Readonly<{selected: boolean; pending?: boolean; toggle: () => void | Promise<void>}>;
+  /** desktop-player f4b: a real film-end card from the retained title read. */
+  end?: WatchEndCard;
   more?: readonly Readonly<{id: string; label: string; action: () => void | Promise<void>}>[];
 }>;
 export type WatchWindowPort = Readonly<{

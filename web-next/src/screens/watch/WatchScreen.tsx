@@ -15,6 +15,7 @@ import {watchPreviewFrame} from './preview';
 import {useCoarsePointer} from '../../kit/theme';
 import {WatchPictureInput} from './picture';
 import {watchQueueNeighbours} from './queue-neighbours';
+import {WatchEndCardView} from './EndCard';
 import {LiveChrome} from '../live/LiveChrome';
 import type {LiveChromePort} from '../live/live-chrome-types';
 
@@ -226,6 +227,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     <Control icon="i-next" label={neighbourLabel('next')} disabled={!can('next')} action={() => send({kind: 'next'})} />
   </div>;
   const quality = surfaces?.quality && fence && sameFence(surfaces.quality.fence, fence) ? surfaces.quality : undefined;
+  // desktop-player f4b: the film-end card stands in for the transport once nothing follows.
+  const endCard = surfaces?.end && !mobile && presentation?.finished && snapshot.queueView?.next.available !== true ? surfaces.end : undefined;
   const tracks = surfaces?.tracks && fence && sameFence(surfaces.tracks.fence, fence) ? surfaces.tracks : undefined;
   const namedTrack = (section: 'audio' | 'subtitles', label: string | undefined) => tracks && label !== undefined && surfaces?.available.includes(section) ? <button type="button" className={styles.trackPill} onClick={event => showPanel(section, event.currentTarget)}>
     <Icon name={section === 'subtitles' ? 'i-cc' : 'i-audio'} size={17} />{t(section === 'subtitles' ? 'player.opt.subtitles' : 'player.opt.audio')}<span>{label}</span>
@@ -293,14 +296,15 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
           <div className={styles.identity}><h2>{identity?.title}</h2><p>{identity && <Facts parts={identity.subtitle} />}</p></div>
           <div className={styles.together}>{surfaces?.together}</div>
           <div className={styles.tools}>
-            {panelButton('play-on', 'i-cast', t('player.playOn'), true)}
+            {!endCard && panelButton('play-on', 'i-cast', t('player.playOn'), true)}
             {mobile && windowPort?.pictureInPicture && <Control large icon="i-pip" label={t('player.pictureInPicture')} action={() => effect(windowPort.pictureInPicture!.toggle)} active={windowPort.pictureInPicture.active} />}
             {portrait && panelButton('subtitles-audio', 'i-cc', t('next.dock.subtitlesAudio'))}
             {mobile && panelButton('options', 'i-gear', t('next.dock.options'))}
-            {!mobile && <Control large buttonRef={moreAnchor} icon="i-more" label={t('player.more')} active={more} action={() => { setPanel(null); setMore(value => !value); }} />}
+            {!mobile && !endCard && <Control large buttonRef={moreAnchor} icon="i-more" label={t('player.more')} active={more} action={() => { setPanel(null); setMore(value => !value); }} />}
             {!mobile && <Control large icon="i-close" label={t('player.close')} action={() => send({kind: 'stop'})} />}
           </div>
         </div>
+        {endCard ? <WatchEndCardView card={endCard} canReplay={can('replay')} onReplay={() => send({kind: 'replay'})} reportError={binding.reportError} /> : <>
         <div className={styles.center}>{transport}</div>
         <div className={styles.bottom}>
           <div className={styles.seek}>
@@ -358,6 +362,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
             </div>
           </div>
         </div>
+        </>}
       </>}
     </div>
     <div className={styles.notices}>{open && surfaces?.notices}</div>

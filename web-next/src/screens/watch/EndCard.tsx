@@ -1,0 +1,52 @@
+import {useState} from 'react';
+import {defaultI18n} from '@i18n';
+import {Artwork} from '../../kit/artwork';
+import {Button} from '../../kit/controls';
+import {Icon} from '../../kit/Icon';
+import type {WatchEndCard} from './end-card';
+import styles from './end-card.module.css';
+
+const t = defaultI18n.t;
+
+/** desktop-player f4b. Drawn parts only: Finished, the title, the viewer's rating, Replay,
+ * a way back to the title page and the server's related titles as a full row. */
+export function WatchEndCardView({card, canReplay, onReplay, reportError}: {
+  card: WatchEndCard; canReplay: boolean; onReplay: () => void; reportError: (error: unknown) => void;
+}) {
+  const [hover, setHover] = useState<number | null>(null), [pending, setPending] = useState(false);
+  const stored = card.rating?.value == null ? null : card.rating.value / 2, shown = hover ?? stored ?? 0;
+  const rate = (stars: number) => {
+    if (!card.rating || pending) return;
+    setPending(true);
+    void card.rating.set(stars * 2).catch(reportError).finally(() => setPending(false));
+  };
+  const act = (action: () => void | Promise<void>) => { try { void Promise.resolve(action()).catch(reportError); } catch (error) { reportError(error); } };
+  return <div className={styles.card} data-watch-end-card>
+    <div className={styles.left}>
+      <p className={styles.kicker}>{t('player.post.finished')}</p>
+      <h2 className={styles.title}>{card.title}</h2>
+      {card.rating && <div className={styles.rate}>
+        <span>{stored == null ? t('player.rateThis') : t('player.rated', {stars: t('title.stars', {count: stored})})}</span>
+        <div className={styles.stars} role="radiogroup" aria-label={t('player.rateThis')} onMouseLeave={() => setHover(null)}>
+          {[1, 2, 3, 4, 5].map(star => <button key={star} type="button" role="radio" aria-checked={stored === star} aria-label={t('title.stars', {count: star})}
+            disabled={pending} data-lit={shown >= star || undefined} onMouseEnter={() => setHover(star)} onFocus={() => setHover(star)} onBlur={() => setHover(null)}
+            onClick={() => rate(star)}><Icon name={shown >= star ? 'i-star-f' : 'i-star'} size={28} /></button>)}
+        </div>
+      </div>}
+      <div className={styles.actions}>
+        {canReplay && <Button size="small" icon="i-back" onClick={onReplay}>{t('player.post.replay')}</Button>}
+        <Button size="small" onClick={() => act(card.back)}>{t('player.post.backTo', {title: card.title})}</Button>
+      </div>
+    </div>
+    {card.related.length > 0 && <section className={styles.row} aria-label={t('player.moreLike', {title: card.title})}>
+      <h2>{t('player.moreLike', {title: card.title})}</h2>
+      <div className={styles.track}>
+        {card.related.map(entry => <button key={entry.id} type="button" className={styles.related} onClick={() => act(() => card.openRelated(entry.id))} aria-label={entry.title}>
+          <span className={styles.art}><Artwork source={entry.poster} alt="" width="100%" height="100%" /></span>
+          <span className={styles.name}>{entry.title}</span>
+          {entry.year !== undefined && <span className={styles.year}>{entry.year}</span>}
+        </button>)}
+      </div>
+    </section>}
+  </div>;
+}
