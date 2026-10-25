@@ -27,7 +27,7 @@ export function LibraryScanAction({rowId, label, libraryId, service, onError}: R
   if (!mode) return null;
   const run = async () => {
     const capture = lifetime.current;
-    if (!capture || capture.libraryId !== libraryId || capture.running) return;
+    if (!capture || capture.libraryId !== libraryId || capture.running || service.getSnapshot().mutation.phase === 'pending' || service.getSnapshot().selected.phase === 'loading') return;
     capture.running = true;
     const current = () => lifetime.current === capture;
     setBusy(true);
@@ -60,5 +60,5 @@ export function LibraryScanAction({rowId, label, libraryId, service, onError}: R
       {lastScan.actions.includes('cancel') && <Button variant="glass" size="small" disabled={busy} loading={busy} onClick={() => {void cancel();}}>{defaultI18n.t('web.libraries.cancelScan')}</Button>}
     </>}
   </>;
-  return <Button variant="glass" size="small" loading={busy} disabled={busy} onClick={() => { void run(); }}>{label}</Button>;
+  return <Button variant="glass" size="small" loading={busy} disabled={busy || snapshot.mutation.phase === 'pending' || snapshot.selected.phase === 'loading'} onClick={() => { void run(); }}>{label}</Button>;
 }
