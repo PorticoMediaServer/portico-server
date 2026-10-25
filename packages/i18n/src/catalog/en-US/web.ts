@@ -2360,6 +2360,8 @@ export const webMessages = {
   'api.webhooks.nextAttempt': 'trying again at {when}',
   'api.webhooks.groupAll': 'All',
   'api.webhooks.groupNone': 'None',
+  'api.webhooks.groupNoneOf': 'Choose none of {group}',
+  'api.webhooks.groupNone': 'None',
   'api.webhooks.groupAllOf': 'Choose all of {group}',
   'api.webhooks.groupNoneOf': 'Choose none of {group}',
   'api.webhooks.group.titles': 'Titles',
