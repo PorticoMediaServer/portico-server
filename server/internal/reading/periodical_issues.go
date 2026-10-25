@@ -16,11 +16,20 @@ import (
 // names an indexed member, then verifies the full ordering tuple digest in this
 // same authorized snapshot. The cursor never carries a truncated sort key.
 func (s *Service) PeriodicalIssues(ctx context.Context, p identity.Principal, library, series, publicationType, cursor string, limit int) (SeriesPage, error) {
+	return s.PeriodicalIssuesAt(ctx, p, library, series, publicationType, "", cursor, limit)
+}
+
+// PeriodicalIssuesAt optionally restricts membership to one actual accepted date.
+// A month value is exact month precision, never an inferred day or date range.
+func (s *Service) PeriodicalIssuesAt(ctx context.Context, p identity.Principal, library, series, publicationType, issueDate, cursor string, limit int) (SeriesPage, error) {
 	out := SeriesPage{Items: []LibraryRow{}}
 	if s == nil || s.DB == nil || s.Visible == nil || s.SeriesScope == nil {
 		return out, identity.ErrForbidden
 	}
 	if publicationType != "magazine" && publicationType != "newspaper" {
+		return out, ErrInvalid
+	}
+	if issueDate != "" && (!compactcatalog.ValidReadingIssueDate(issueDate) || publicationType == "newspaper" && len(issueDate) != 10) {
 		return out, ErrInvalid
 	}
 	if library == "" || len(library) > 128 || len(series) != 43 || limit < 1 || limit > 100 || len(cursor) > 4096 {
@@ -55,7 +64,11 @@ func (s *Service) PeriodicalIssues(ctx context.Context, p identity.Principal, li
 	if filter == "" {
 		return out, identity.ErrForbidden
 	}
-	digest, err := seriesScopeDigest(library, series, "periodical-issues-v1:"+publicationType, scope, limit)
+	cursorDomain := "periodical-issues-v1:" + publicationType
+	if issueDate != "" {
+		cursorDomain += ":date:" + issueDate
+	}
+	digest, err := seriesScopeDigest(library, series, cursorDomain, scope, limit)
 	if err != nil {
 		return out, err
 	}
@@ -77,6 +90,10 @@ func (s *Service) PeriodicalIssues(ctx context.Context, p identity.Principal, li
  AND m.publication_type=? AND m.issue_date IS NOT NULL AND (?='magazine' OR length(m.issue_date)=10)
  AND (` + filter + `)`
 	args := append([]any{handle, generation.Ready, series, publicationType, publicationType}, visibleArgs...)
+	if issueDate != "" {
+		base += ` AND m.issue_date=?`
+		args = append(args, issueDate)
+	}
 	var after *seriesTuple
 	if cursor != "" {
 		captured, e := decodeSeriesCursor(cursor, key, time.Now())
@@ -140,7 +157,7 @@ func (s *Service) PeriodicalIssues(ctx context.Context, p identity.Principal, li
 	if err != nil {
 		return out, err
 	}
-	if len(out.Items) == 0 && cursor == "" {
+	if len(out.Items) == 0 && cursor == "" && issueDate == "" {
 		return out, ErrUnavailable
 	}
 	if len(out.Items) > limit {
