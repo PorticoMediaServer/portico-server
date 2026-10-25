@@ -307,6 +307,10 @@ const accountPages: readonly AuthoredPage[] = [
           {value: '96', label: 'next.settingsSpec.account.music.groups.3.rows.0.control.options.3.label'},
         ]}, {scope: 'deviceClass'}),
       ]},
+      {id: 'advancedSound', title: 'next.settingsSpec.account.music.advanced.groups.0.title', advanced: true, rows: [
+        toggle('music.neverBoost', 'next.settingsSpec.account.music.advanced.groups.0.rows.1.label', {help: 'next.settingsSpec.account.music.advanced.groups.0.rows.1.help', needs: c => c.audioEffects !== false}),
+        pref('music.dsdGainDb', 'next.settingsSpec.account.music.advanced.groups.0.rows.2.label', {type: 'choice', choices: [0, -3, -6, -9, -12].map((value, index) => ({value, label: `next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.${index}.label` as MessageId}))}, {help: 'next.settingsSpec.account.music.advanced.groups.0.rows.2.help'}),
+      ]},
     ],
   },
   {
