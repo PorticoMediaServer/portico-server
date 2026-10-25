@@ -18,8 +18,9 @@ type ReadingGeneration struct {
 
 func ReadingProjectionReadyTx(ctx context.Context, tx *sql.Tx, library int64) (ReadingGeneration, error) {
 	var out ReadingGeneration
-	err := tx.QueryRowContext(ctx, `SELECT namespace,input_generation,ready_generation FROM reading_attribution_state WHERE library_id=?`, library).Scan(&out.Namespace, &out.Input, &out.Ready)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.Input != out.Ready || out.Ready == 0) {
+	var rule int
+	err := tx.QueryRowContext(ctx, `SELECT namespace,input_generation,ready_generation,publication_rule_version FROM reading_attribution_state WHERE library_id=?`, library).Scan(&out.Namespace, &out.Input, &out.Ready, &rule)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.Input != out.Ready || out.Ready == 0 || rule != ReadingPublicationTypeRuleVersion) {
 		return ReadingGeneration{}, ErrBuilding
 	}
 	return out, err
@@ -32,6 +33,17 @@ func ReadingProjectionReadyTx(ctx context.Context, tx *sql.Tx, library int64) (R
 // Scan and cleanup are separate commits. No ready member is maintained in place.
 func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, error) {
 	limit = max(1, min(limit, 100))
+	// Rule changes retire readiness before any reader can consume a stale type.
+	// Invalidate one indexed library per step, then use the normal bounded rebuild.
+	var stale int64
+	ruleErr := tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version<>? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingPublicationTypeRuleVersion).Scan(&stale)
+	if ruleErr == nil {
+		_, err := tx.ExecContext(ctx, `UPDATE reading_attribution_state SET publication_rule_version=?,input_generation=input_generation+1,phase='scan' WHERE library_id=?`, ReadingPublicationTypeRuleVersion, stale)
+		return 1, err
+	}
+	if !errors.Is(ruleErr, sql.ErrNoRows) {
+		return 0, ruleErr
+	}
 	var library, input, build, after int64
 	var phase string
 	// Seek the pending prefix and take its oldest served scope directly from
@@ -115,7 +127,10 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
 			return 0, ErrReadingValue
 		}
 		v := values[title.id]
-		var author, authorKey, authorSource, series, seriesKey, seriesID, seriesSource any
+		var author, authorKey, authorSource, series, seriesKey, seriesID, seriesSource, publicationType, publicationTypeSource any
+		if v.PublicationType != nil {
+			publicationType, publicationTypeSource = v.PublicationType.Value, v.PublicationType.Source
+		}
 		if v.Author != nil {
 			author, authorKey, authorSource = v.Author.Value, ReadingValueKey(v.Author.Value), v.Author.Source
 		}
@@ -132,7 +147,7 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
 				number = 0 // Canonical positive zero, including a stored -0.
 			}
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO reading_attribution_members(library_id,generation,item_id,author_value,author_key,author_source,series_value,series_key,series_id,series_source,numbered_order,number_value,sort_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, library, input, title.id, author, authorKey, authorSource, series, seriesKey, seriesID, seriesSource, numbered, number, title.sort); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO reading_attribution_members(library_id,generation,item_id,author_value,author_key,author_source,series_value,series_key,series_id,series_source,numbered_order,number_value,sort_key,publication_type,publication_type_source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, library, input, title.id, author, authorKey, authorSource, series, seriesKey, seriesID, seriesSource, numbered, number, title.sort, publicationType, publicationTypeSource); err != nil {
 			return 0, err
 		}
 	}
