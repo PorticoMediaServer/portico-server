@@ -11,6 +11,7 @@ import (
 )
 
 type Publication struct {
+	Conversion      *MobiProvenance
 	Sequential      bool
 	Selection       Selection
 	Metadata        Metadata
@@ -24,8 +25,8 @@ type Publication struct {
 // Inspect returns only actual, bounded package/archival facts. PDF page count
 // and outline belong to the real client PDF parser, never a server estimate.
 func Inspect(f *Source) (Publication, error) {
-	out := Publication{Sequential: f.Format == "pdf" && f.Sequential(), Selection: f.Selection, Metadata: Metadata{Title: f.Title, Language: f.Language}}
-	switch f.Format {
+	out := Publication{Sequential: f.Format == "pdf" && f.Sequential(), Selection: f.PublicationSelection(), Conversion: f.ConversionProvenance(), Metadata: Metadata{Title: f.Title, Language: f.Language}}
+	switch out.Selection.Format {
 	case "epub":
 		e, err := f.epub()
 		if err != nil {

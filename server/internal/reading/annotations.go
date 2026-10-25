@@ -81,7 +81,7 @@ func (f *Source) annotationSelection(ctx context.Context, tx *sql.Tx) (Selection
 			return v, err
 		}
 	}
-	return v, nil
+	return f.PublicationSelection(), nil
 }
 func annotationRevision(ctx context.Context, tx *sql.Tx, owner string, v Selection) (int64, error) {
 	var revision int64
@@ -185,10 +185,10 @@ func (f *Source) annotationLocation(l Location) error {
 	if err := l.Validate(); err != nil {
 		return err
 	}
-	if l.Format != f.Format {
+	if l.Format != f.PublicationSelection().Format {
 		return ErrInvalid
 	}
-	switch f.Format {
+	switch f.PublicationSelection().Format {
 	case "epub":
 		e, err := f.epub()
 		if err != nil {

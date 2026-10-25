@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/storage"
@@ -44,6 +45,7 @@ type MobiConverter struct {
 	bundle     MobiBundle
 	supervisor *storage.Supervisor
 	slot       chan struct{}
+	retained   chan struct{}
 }
 
 func NewMobiConverter(bundle MobiBundle, supervisor *storage.Supervisor) (*MobiConverter, error) {
@@ -64,23 +66,62 @@ func NewMobiConverter(bundle MobiBundle, supervisor *storage.Supervisor) (*MobiC
 			return nil, ErrUnavailable
 		}
 	}
-	return &MobiConverter{bundle: bundle, supervisor: supervisor, slot: make(chan struct{}, 1)}, nil
+	return &MobiConverter{bundle: bundle, supervisor: supervisor, slot: make(chan struct{}, 1), retained: make(chan struct{}, 2)}, nil
 }
 
 // DerivedMobi is request/session-owned, not an independently authorized file.
 // Its reader keeps every parser extent behind the original physical-source fence.
-type DerivedMobi struct {
-	source     *Source
+type mobiCache struct {
+	mu         sync.RWMutex
 	raw        []byte
 	provenance MobiProvenance
+	closed     bool
+	release    func()
 }
 
-func (d *DerivedMobi) Provenance() MobiProvenance { return d.provenance }
+func (cache *mobiCache) close() {
+	cache.mu.Lock()
+	if cache.closed {
+		cache.mu.Unlock()
+		return
+	}
+	cache.closed = true
+	clear(cache.raw)
+	cache.raw = nil
+	release := cache.release
+	cache.release = nil
+	cache.mu.Unlock()
+	if release != nil {
+		release()
+	}
+}
+func (cache *mobiCache) size() int {
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	if cache.closed {
+		return 0
+	}
+	return len(cache.raw)
+}
+
+type DerivedMobi struct {
+	source *Source
+	cache  *mobiCache
+}
+
+func (d *DerivedMobi) Provenance() MobiProvenance { return d.cache.provenance }
+func (d *DerivedMobi) Close()                     { d.cache.close() }
 func (d *DerivedMobi) ReadAt(p []byte, offset int64) (int, error) {
 	if err := d.source.Validate(); err != nil {
 		return 0, err
 	}
-	n, err := bytes.NewReader(d.raw).ReadAt(p, offset)
+	d.cache.mu.RLock()
+	if d.cache.closed {
+		d.cache.mu.RUnlock()
+		return 0, ErrUnavailable
+	}
+	n, err := bytes.NewReader(d.cache.raw).ReadAt(p, offset)
+	d.cache.mu.RUnlock()
 	if check := d.source.Validate(); check != nil {
 		clear(p[:n])
 		return 0, check
@@ -91,7 +132,11 @@ func (d *DerivedMobi) EPUB() (*EPUB, error) {
 	if err := d.source.Validate(); err != nil {
 		return nil, err
 	}
-	publication, err := OpenEPUB(d.source.Context(), d, int64(len(d.raw)))
+	size := d.cache.size()
+	if size == 0 {
+		return nil, ErrUnavailable
+	}
+	publication, err := OpenEPUB(d.source.Context(), d, int64(size))
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +144,25 @@ func (d *DerivedMobi) EPUB() (*EPUB, error) {
 		return nil, err
 	}
 	return publication, nil
+}
+
+// PublicationSelection preserves the original acquisition's physical identity;
+// only the presentation format, output size and derived coordinate revision differ.
+func (f *Source) PublicationSelection() Selection {
+	out := f.Selection
+	if f.derived != nil {
+		out.Format = "epub"
+		out.Revision = f.derived.cache.provenance.Revision
+		out.Size = int64(f.derived.cache.size())
+	}
+	return out
+}
+func (f *Source) ConversionProvenance() *MobiProvenance {
+	if f.derived == nil {
+		return nil
+	}
+	out := f.derived.Provenance()
+	return &out
 }
 
 // Convert refuses sequential-only transport rather than silently staging a
@@ -119,6 +183,17 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 	default:
 		return nil, storage.ErrBusy
 	}
+	select {
+	case c.retained <- struct{}{}:
+	default:
+		return nil, storage.ErrBusy
+	}
+	retained := false
+	defer func() {
+		if !retained {
+			<-c.retained
+		}
+	}()
 	ctx, cancel := context.WithTimeout(source.Context(), 45*time.Second)
 	defer cancel()
 	if err := source.Validate(); err != nil {
@@ -171,7 +246,8 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 	encoded, _ := json.Marshal(provenance)
 	revision := sha256.Sum256(append([]byte("portico.reading.derived-epub.v1\x00"), encoded...))
 	provenance.Revision = hex.EncodeToString(revision[:])
-	derived := &DerivedMobi{source: source, raw: raw, provenance: provenance}
+	cache := &mobiCache{raw: raw, provenance: provenance, release: func() { <-c.retained }}
+	derived := &DerivedMobi{source: source, cache: cache}
 	// The genuine output must pass the ordinary bounded EPUB package parser.
 	// Assets are subsequently served through EPUB.Asset's existing sanitizer.
 	if _, err = OpenEPUB(ctx, derived, int64(len(raw))); err != nil {
@@ -181,5 +257,18 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
+	retained = true
 	return derived, nil
+}
+
+func (f *Source) prepareMobi() error {
+	if f.Format != "mobi" && f.Format != "azw3" {
+		return nil
+	}
+	derived, err := f.service.Mobi.Convert(f)
+	if err != nil {
+		return err
+	}
+	f.derived = derived
+	return f.Validate()
 }

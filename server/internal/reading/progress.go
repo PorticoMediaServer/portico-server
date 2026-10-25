@@ -110,6 +110,7 @@ func (f *Source) Progress() (*Progress, error) {
 			return nil, err
 		}
 	}
+	v = f.PublicationSelection()
 	progress, err := progressTx(ctx, g.Tx(), identity.PersonalKey(p.Viewer), v)
 	g.Rollback()
 	if err == nil {
@@ -147,10 +148,10 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 		return nil, false, err
 	}
 	var err error
-	if location.Format != f.Format {
+	if location.Format != f.PublicationSelection().Format {
 		return nil, false, ErrInvalid
 	}
-	switch f.Format {
+	switch f.PublicationSelection().Format {
 	case "epub":
 		e, err := f.epub()
 		if err != nil {
@@ -202,6 +203,7 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 			return nil, false, err
 		}
 	}
+	v = f.PublicationSelection()
 	owner := identity.PersonalKey(p.Viewer)
 	current, err := progressTx(ctx, tx, owner, v)
 	if err != nil {
