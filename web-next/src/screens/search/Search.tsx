@@ -133,7 +133,6 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     </section>}
   </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
-    {selection?.toolbar}
     <div className={styles.wash} aria-hidden="true" />
     <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
       <TextField ref={input} variant="large-search" type="search" autoComplete="off" spellCheck={false} value={text}
@@ -143,7 +142,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
         trailing={text ? <Button variant="icon" icon="i-x" iconOnly aria-label={t('web.search.clear')} onClick={() => { setText(''); setChip('all'); input.current?.focus(); }} />
           : <span className={styles.hint}><kbd>{t('next.controls.searchShortcut')}</kbd>{t('next.controls.searchFromAnywhere')}</span>} />
     </form>
-    {text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
+    {selection?.isActive() ? selection.toolbar : text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
       const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id) ?? binding.summary().find(item => item.id === value.id);
       if (value.id !== 'all' && capability?.available === false) return null;
       const off = value.id !== 'all' && result?.status === 'success' && result.totalCountExact && result.totalCount === 0;
