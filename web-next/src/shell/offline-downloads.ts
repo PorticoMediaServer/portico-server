@@ -24,6 +24,10 @@ export type OfflineDownloadsPort = Readonly<{
   openFolder: () => Promise<void>;
   /** Absent until the host's offline player surface is installed; the row then offers Play. */
   play?: (id: string) => Promise<void>;
+  /** The page's one visible media surface. Null releases it and retires the local engine. */
+  attachSurface?: (element: HTMLVideoElement | null) => void;
+  /** What the launch page's local player is doing now. */
+  playback?: () => Readonly<{phase: 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'; itemId?: string}>;
   /** Retires the installed port and clears its snapshot (selection, family or horizon end). */
   retire?: () => void;
 }>;

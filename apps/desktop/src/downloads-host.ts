@@ -88,16 +88,29 @@ export function createDesktopDownloadsHost(options:Readonly<{
     const active=AbortSignal.any([signal,life.signal]);
     const store=await DesktopDownloadStore.bind(localPlaybackScope(scope),()=>!active.aborted,options.bridge??nativeDownloadsBridge,active);
     offlineStores.add(store);
-    const done=()=>{offlineStores.delete(store);store.dispose();};
+    // Only the rows this launch page last offered may be played; a row's exact revision
+    // is rechecked by the native store when its preparation is committed.
+    const playable=new Map<string,Readonly<{revision:number}>>();
+    const done=()=>{playable.clear();offlineStores.delete(store);store.dispose();};
     return Object.freeze({
       /** Completed downloads that play without a check-in; a row needing one is left out. */
       async list(actionSignal:AbortSignal){
+        playable.clear();
         const combined=AbortSignal.any([active,actionSignal]);
         const page=await store.list(null,combined);
-        return Object.freeze(page.items.filter(row=>row.state==='ready'&&row.offlineAccess==='valid').map(row=>Object.freeze({
+        const rows=page.items.filter(row=>row.state==='ready'&&row.offlineAccess==='valid').map(row=>Object.freeze({
           id:row.id,itemId:row.itemId,revision:row.revision,quality:row.quality,bytes:row.bytes,
           title:row.title.title,artist:row.title.artist,kind:row.title.kind,onServer:row.title.onServer,
-        })));
+        }));
+        for(const row of rows)playable.set(row.id,{revision:row.revision});
+        return Object.freeze(rows);
+      },
+      /** Prepare exactly the offered row through the one app-owned broker. Ownership of
+       * the returned resource passes to the caller, including on a later failure. */
+      async prepare(id:string,actionSignal:AbortSignal,isCurrent:()=>boolean){
+        const combined=AbortSignal.any([active,actionSignal]),offered=playable.get(id);
+        if(!offered||combined.aborted||!isCurrent())throw new Error('download_not_ready');
+        return broker.prepare(store,{kind:'entry',entryId:id,expectedRevision:offered.revision},{signal:combined,isCurrent:()=>!combined.aborted&&isCurrent()});
       },
       openFolder:(actionSignal:AbortSignal)=>store.openFolder(AbortSignal.any([active,actionSignal])),
       dispose:done,

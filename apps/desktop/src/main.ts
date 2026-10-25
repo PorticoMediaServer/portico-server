@@ -16,6 +16,9 @@ import {createDesktopAppLifetime} from './app-lifetime.ts';
 import {installDesktopCloseHost} from './close-host.ts';
 import {browserViewerStorage} from '../../../web-next/src/platform/viewer-selection-storage.ts';
 import {installOfflineDownloads, watchSelectionReplaced} from '../../../web-next/src/shell/offline-downloads.ts';
+import {OfflineMediaHost} from '../../../web-next/src/shell/offline-media.ts';
+import type {VideoLike, WebMediaPlayerOptions} from '../../../web-next/src/platform/playback/index.ts';
+import {DesktopMediaExclusivity} from './media-exclusivity.ts';
 import {offlineDownloadScope} from './offline-scope.ts';
 
 const lifetime=createDesktopAppLifetime();
@@ -34,9 +37,15 @@ async function startDesktop(){
   lifetime.retain(()=>{windowChrome?.dispose();return windowHost.dispose();});
   const downloads=createDesktopDownloadsHost({reportFailure:()=>console.warn('downloads_unavailable')});
   lifetime.retain(installSavedDownloadsBinder(downloads.bindSaved));
+  // One native media engine. The launch page's local-only player owns it while visible;
+  // the online adapter's first command waits for that owner's actual retirement.
+  const exclusivity=new DesktopMediaExclusivity();
+  let offlineMedia:OfflineMediaHost|undefined;
+  const createPlayer=(video:VideoLike,options:WebMediaPlayerOptions)=>new DesktopMediaPlayer(video,options,nativeBridge,true,downloads.broker,
+    offlineMedia&&video===offlineMedia.element()?undefined:exclusivity);
   lifetime.retain(installPlaybackEnvironment({
     capabilities:()=>facts?.appVersion?nativeCapabilities(native.os,facts.appVersion):Promise.reject(new Error('engine_unavailable')),
-    createPlayer:(video,options)=>new DesktopMediaPlayer(video,options,nativeBridge,true,downloads.broker),
+    createPlayer,
     attachLocalQueue:downloads.attachLocalQueue,
     createRender:null,subtitleSurface:false,equalizerPort:desktopEqualizerPort,
   }));
@@ -54,13 +63,38 @@ async function startDesktop(){
     if(port){
       lifetime.retain(()=>port.dispose());
       const listeners=new Set<()=>void>();
-      let retired=false,timer:ReturnType<typeof setTimeout>|undefined;
+      let stopped=false,disposing:Promise<void>|undefined,timer:ReturnType<typeof setTimeout>|undefined;
       let snapshot:{phase:'loading'|'ready'|'unavailable';items:readonly {id:string;itemId:string;revision:number;quality:string;bytes:number;title:string;artist:string;kind:string;onServer:boolean}[]}={phase:'loading',items:[]};
       const unavailable=Object.freeze({phase:'unavailable' as const,items:Object.freeze([]) as readonly never[]});
-      const publish=(next:typeof snapshot)=>{if(retired)return;snapshot=next;for(const listener of [...listeners])listener();};
+      const publish=(next:typeof snapshot)=>{if(stopped)return;snapshot=next;for(const listener of [...listeners])listener();};
       const same=(record:Awaited<ReturnType<typeof browserViewerStorage.read>>)=>{const next=record&&offlineDownloadScope(record.session,Date.now());return !!next&&JSON.stringify([next.authority,next.serverId,next.accountId,next.profileId,record!.session.sessionFamilyId,record!.session.tokenGeneration])===lease;};
-      const live=()=>!retired&&!lifetime.signal.aborted&&Number.isFinite(deadline)&&deadline>Date.now();
-      const retire=()=>{if(retired)return;retired=true;if(timer){clearTimeout(timer);timer=undefined;}snapshot=unavailable;for(const listener of [...listeners])listener();port.dispose();};
+      const live=()=>!stopped&&!lifetime.signal.aborted&&Number.isFinite(deadline)&&deadline>Date.now();
+      // The page's one visible surface. The local-only runtime is its only player and its
+      // retirement is what the online adapter awaits before its first native command.
+      const mediaLife=new AbortController();
+      const media=new OfflineMediaHost({
+        scope:offlineScope,
+        environment:{createPlayer},
+        isCurrent:live,
+        reportError:error=>console.warn('offline_playback_unavailable',error),
+        onRetire:task=>{mediaLife.abort();exclusivity.hold(task);},
+      });
+      offlineMedia=media;
+      lifetime.retain(async()=>{await media.retire();});
+      lifetime.retain(media.subscribe(()=>{for(const listener of [...listeners])listener();}));
+      /** Stop offering rows at once, then retire the local player before releasing the
+       * native store it uses. A failed retirement keeps that custody for a later retry. */
+      const retire=():Promise<void>|undefined=>{
+        if(disposing)return disposing;
+        if(!stopped){stopped=true;if(timer){clearTimeout(timer);timer=undefined;}snapshot=unavailable;for(const listener of [...listeners])listener();}
+        disposing=(async()=>{
+          try{await media.retire();}
+          catch(error){disposing=undefined;throw error;}
+          port.dispose();
+        })();
+        void disposing.catch(()=>{});
+        return disposing;
+      };
       // One captured deadline clears the visible list even if nothing else renders or reads.
       if(Number.isFinite(deadline))timer=setTimeout(retire,Math.max(0,deadline-Date.now()));
       const leased=async()=>live()&&same(await browserViewerStorage.read().catch(()=>null));
@@ -78,6 +112,25 @@ async function startDesktop(){
       lifetime.retain(installOfflineDownloads({
         subscribe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},
         snapshot:()=>{if(!live()){void Promise.resolve().then(retire);return unavailable;}return snapshot;},
+        // The page hands its one visible element here; releasing it retires the local engine.
+        attachSurface:element=>{
+          media.attach(element);
+          if(element&&media.mounted)exclusivity.claim();
+        },
+        playback:()=>media.snapshot(),
+        /** Prepare the offered row and play it in the local-only runtime. The runtime owns
+         * the preparation from a successful start; a failed start releases it here. */
+        play:async id=>{
+          if(!media.mounted||!await leased()){retire();throw new DOMException('Aborted','AbortError');}
+          const action=new AbortController(),abort=()=>action.abort();
+          mediaLife.signal.addEventListener('abort',abort,{once:true});
+          try{
+            const resource=await port.prepare(id,action.signal,()=>live());
+            try{await media.play(resource,{signal:action.signal,isCurrent:()=>live()&&!mediaLife.signal.aborted});}
+            catch(error){await resource.release().catch(()=>{});throw error;}
+            if(!await leased())retire();
+          }finally{mediaLife.signal.removeEventListener('abort',abort);}
+        },
         openFolder:async()=>{
           if(!await leased()){retire();throw new DOMException('Aborted','AbortError');}
           await port.openFolder(new AbortController().signal);

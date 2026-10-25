@@ -24,11 +24,12 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   initialDetailsOpen?: boolean;
 }) {
   const width = useShellWidth(), [tick, setTick] = useState(() => Date.now()), [detailsOpen, setDetailsOpen] = useState(initialDetailsOpen), [copied, setCopied] = useState(false);
-  const offlinePort = useOfflineDownloads(), [offline, setOffline] = useState(() => offlinePort?.snapshot());
+  const offlinePort = useOfflineDownloads(), [offline, setOffline] = useState(() => offlinePort?.snapshot()), [playing, setPlaying] = useState(() => offlinePort?.playback?.());
   useEffect(() => {
-    if (!offlinePort) { setOffline(undefined); return; }
-    setOffline(offlinePort.snapshot());
-    return offlinePort.subscribe(() => setOffline(offlinePort.snapshot()));
+    if (!offlinePort) { setOffline(undefined); setPlaying(undefined); return; }
+    const sync = () => { setOffline(offlinePort.snapshot()); setPlaying(offlinePort.playback?.()); };
+    sync();
+    return offlinePort.subscribe(sync);
   }, [offlinePort]);
   const now = fixedNow ?? tick, waiting = !facts.retrying;
   const computerOffline = facts.category === 'offline' || globalThis.navigator?.onLine === false;
@@ -61,10 +62,13 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
     </div>}
     {offline && offline.items.length > 0 && <section className={styles.offlineDownloads} data-offline-downloads aria-label={t('next.shell.downloads')}>
       <h2>{t('next.shell.downloads')}</h2>
-      <ul>{offline.items.map(row => <li key={row.id}><b>{row.title}</b>{row.artist ? <span>{row.artist}</span> : null}
+      <ul>{offline.items.map(row => <li key={row.id} data-playing={playing?.phase === 'playing' && playing.itemId === row.itemId || undefined}><b>{row.title}</b>{row.artist ? <span>{row.artist}</span> : null}
         {offlinePort?.play ? <button type="button" onClick={() => { void offlinePort.play?.(row.id).catch(() => {}); }}>{t('next.controls.play')}</button> : null}</li>)}</ul>
       <button type="button" onClick={() => { void offlinePort?.openFolder().catch(() => {}); }}>{t('next.saved.folder')}</button>
     </section>}
+    {offlinePort?.attachSurface && <div className={styles.offlinePlayer} data-offline-playback data-offline-playing={playing?.phase === 'playing' || undefined} data-media-surface data-native-video-active="true">
+      <video ref={element => offlinePort.attachSurface?.(element)} playsInline preload="none" aria-label={t('next.dock.nowPlaying')} />
+    </div>}
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="warning" icon="i-srvoff"
       contentStyle={{top: width >= 1024 ? 500 : 250}}
       title={computerOffline ? t('next.states.thisComputerOffline') : facts.serverName ? t('next.states.cantReach', {server: facts.serverName}) : t('next.states.cantReachServer')}
