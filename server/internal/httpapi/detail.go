@@ -100,6 +100,17 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 				return markerErr
 			}
 			out.Markers = markers.Markers
+			// Queue admission is resolved independently in this same read snapshot.
+			// A readable/playable title does not itself grant device commands.
+			authority, authorityErr := d.homeActionAuthority(cat.Context(), p)
+			if authorityErr != nil {
+				return authorityErr
+			}
+			if authority.Queue && out.Item.Available && (out.Item.Kind == "movie" || out.Item.Kind == "episode" || out.Item.Kind == "song" || out.Item.Kind == "audiobook_file") {
+				zero := float64(0)
+				out.Actions = append(out.Actions, catalog.DetailAction{ID: "enqueue", LabelKey: "entry.addToQueue", Enabled: true,
+					Playback: &catalog.ContentPlayback{ItemID: out.Item.ID, StartSeconds: &zero}})
+			}
 			return nil
 		})
 		if e != nil {
