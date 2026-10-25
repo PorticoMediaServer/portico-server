@@ -69,11 +69,11 @@ func seedScreenArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, r metada
 		if origin == "" || artworkProvider(origin) != r.Identity.Provider {
 			continue
 		}
-		id, err := insertArtworkCandidate(ctx, tx, t, role, "", r.Identity.Provider, publicationDigest(origin), origin, "", artworkAttribution(r.Identity.Provider), fence, now, 0)
+		id, err := insertArtworkCandidate(ctx, tx, t, role, "", r.Identity.Provider, publicationDigest(origin), origin, "und", artworkAttribution(r.Identity.Provider), fence, now, 0)
 		if err != nil {
 			return err
 		}
-		occupied, err := automaticArtworkOccupied(ctx, tx, t, entity, role, "", r.Identity.Provider, fence, true)
+		occupied, err := automaticArtworkOccupied(ctx, tx, t, entity, role, "", r.Identity.Provider, id, fence, true)
 		if err != nil {
 			return err
 		}
