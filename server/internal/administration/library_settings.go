@@ -741,8 +741,28 @@ func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (L
 	out.LibraryName, out.LibraryKind = name, kind
 	out.Defaults = DefaultLibrarySettings()
 	defaultProvider := metadata.DefaultAdministrationPolicy(kind)
+	// A screen library is created with the server's own metadata language and
+	// region, so the defaults this page offers for Reset must be those values: the
+	// kind's factory pair would restore a language and region the owner never
+	// configured for new libraries.
+	defaultLanguage, defaultRegion := defaultProvider.Language, defaultProvider.Region
+	if kind == "movie" || kind == "tv" || kind == "anime" {
+		var language, region string
+		err = tx.QueryRowContext(ctx, `SELECT default_language,default_region FROM metadata_runtime_settings WHERE singleton=1`).Scan(&language, &region)
+		switch {
+		case err == nil:
+			if language != "" {
+				defaultLanguage = language
+			}
+			if region != "" {
+				defaultRegion = region
+			}
+		case !errors.Is(err, sql.ErrNoRows):
+			return out, err
+		}
+	}
 	for _, provider := range defaultProvider.Providers {
-		out.Defaults.Providers = append(out.Defaults.Providers, ProviderSelection{MediaKind: libraryMediaKind(kind), Provider: provider, Language: defaultProvider.Language, Region: defaultProvider.Region})
+		out.Defaults.Providers = append(out.Defaults.Providers, ProviderSelection{MediaKind: libraryMediaKind(kind), Provider: provider, Language: defaultLanguage, Region: defaultRegion})
 	}
 	if len(out.Defaults.Providers) == 0 {
 		out.Defaults.Providers = []ProviderSelection{{MediaKind: libraryMediaKind(kind), Provider: "local"}}
