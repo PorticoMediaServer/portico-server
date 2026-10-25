@@ -92,3 +92,16 @@ test('workspace order resets cursor histories, retains selected season/filter, a
  const wrong=setup(async()=>dto());await wrong.select({...route,episodeDirection:'desc'});assert.equal(wrong.getSnapshot().phase,'error');assert.equal(wrong.getSnapshot().data,null);wrong.dispose();
  assert.throws(()=>validateShowWorkspaceRoute({...route,episodeDirection:'sideways'} as any));
 });
+
+
+test('descending filtered workspace restoration retains order, selection and server page anchor',async()=>{
+ const calls:string[]=[];
+ const s=setup(async p=>{calls.push(p);const q=new URL(p,'https://test').searchParams;const d=dto({season:'season1',episode:q.get('episodeId')??undefined,entries:q.has('cursor')||q.has('episodeId')?['ep7','ep6']:['ep9','ep8'],next:q.has('cursor')||q.has('episodeId')?'':'next-desc'});d.episodes.query.direction='desc';d.episodes.sorts[0].directions=['asc','desc'];return d;});
+ await s.select({...route,selectedSeasonId:'season1',playState:'unplayed',episodeDirection:'desc'});await s.nextEpisodes();
+ s.updateAnchor({expandedEpisodeId:'ep6',focusedEpisodeId:'ep6',scrollOffset:220});
+ const saved=s.captureRestore()!;assert.equal(saved.route.episodeDirection,'desc');assert.equal(saved.route.playState,'unplayed');assert.equal(saved.cursor,'next-desc');
+ await s.restoreAfterPlayback(saved);
+ const q=new URL(calls.at(-1)!,'https://test').searchParams;
+ assert.equal(q.get('episodeDirection'),'desc');assert.equal(q.get('playState'),'unplayed');assert.equal(q.get('selectedSeasonId'),'season1');assert.equal(q.get('episodeId'),'ep7');assert.equal(q.has('cursor'),false);
+ assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().anchor.expandedEpisodeId,'ep6');assert.equal(s.getSnapshot().anchor.scrollOffset,220);assert.equal(s.getSnapshot().data!.episodes.query.direction,'desc');s.dispose();
+});
