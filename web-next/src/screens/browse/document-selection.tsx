@@ -98,7 +98,7 @@ export function createCatalogueDocumentSelection(context: ScreenContext, sourceD
       });
       for (const row of selected) {
         if (active !== owned || sourceKey() !== owned.key || !admitted.has(row.entry) || !mounted.has(row.entry)) throw new DOMException('Selection changed', 'AbortError');
-        if (!owned.play.selected(row)) owned.play.toggle(row);
+        if (!owned.play.selected(row) && !owned.play.toggle(row).ok) throw new DOMException('Selection changed', 'AbortError');
       }
     },
     register(entry: ContentEntry, order: number) {
