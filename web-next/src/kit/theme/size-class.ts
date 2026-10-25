@@ -12,6 +12,11 @@ const startupWidth = () => 0;
 export function useWindowWidth(): number {
   return useSyncExternalStore(subscribeWidth, readWidth, startupWidth);
 }
+const readHeight = () => window.innerHeight;
+/** Live layout height, for the short-side rule a turned phone needs. */
+export function useWindowHeight(): number {
+  return useSyncExternalStore(subscribeWidth, readHeight, startupWidth);
+}
 export function useSizeClass(): SizeClass {
   return sizeClassForWidth(useWindowWidth());
 }

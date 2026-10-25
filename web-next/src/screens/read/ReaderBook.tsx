@@ -9,6 +9,7 @@ import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
 import type {ReadingController, ReadingPublication, ReaderErrorCode, ReaderLocation, ReaderContentsTarget, ReaderSearchResult, ReaderTocItem} from '@portico/reader-core';
 import {useShellWidth} from '../../shell/viewport';
+import {useWindowHeight} from '../../kit/theme';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReaderContents, ReaderPanel, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
 import {ReaderDisplayMark} from '../../kit/reader/ReaderDisplayMark';
@@ -72,7 +73,7 @@ export type ReaderBookState = Readonly<{publication: ReadingPublication; control
 
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, onSearchAll, environment = 'web', crease, saveHighlights}: {saveHighlights?: (revision: number, signal: AbortSignal) => Promise<'saved' | 'cancelled'>; environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void; onSearchAll?: (query: string) => void; /** Actual vertical book fold for this window, or absent. */ crease?: Readonly<{left: number; right: number}>}) {
   const {controller, publication, authority} = book;
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth(), height = useWindowHeight();
   const [panel, updatePanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
   const [fixedMenu, setFixedMenu] = useState<'zoom' | 'direction'>();
   const [fixedPane, updateFixedPane] = useState<'contents' | 'pages' | 'bookmarks' | 'highlights'>('contents');
@@ -131,7 +132,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
     return () => {operation.abort(); off();};
   }, [book.contentsTarget, publication, authority, controller]);
   const engineError = useCallback((code: ReaderErrorCode) => reportError({code}), [reportError]);
-  const layout = readerBookPresentation(width, environment), {presentation} = layout;
+  const layout = readerBookPresentation(width, environment, height), {presentation} = layout;
   useEffect(() => {if (!active) {setPanel(undefined); setFixedMenu(undefined);}}, [active]);
   const navigate = (location: ReaderLocation) => {
     const current = controller.getSnapshot();
