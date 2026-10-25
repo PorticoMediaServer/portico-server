@@ -1,0 +1,7 @@
+.section { margin-top: 28px; }
+.section h3 { margin: 0 0 6px; font-size: 20px; font-weight: 700; letter-spacing: -.015em; }
+.lede { max-width: 660px; margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--color-text-tertiary); }
+.box { position: relative; background: var(--color-raised); border-radius: 14px; }
+.address { display: flex; align-items: center; justify-content: flex-start; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.address code { font-family: var(--font-mono); font-size: 13px; overflow-wrap: anywhere; min-width: 0; }
+.copied { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--color-healthy); }
