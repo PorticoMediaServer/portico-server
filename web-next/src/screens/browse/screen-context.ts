@@ -1,3 +1,4 @@
+import {createBrowserDownloadPort} from '../../platform/browser-download';
 import {useEffect, useMemo, useRef} from 'react';
 import type {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -19,6 +20,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
     const session = context.session(), viewer = session.viewer;
     if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
     let active = true;
+    const downloadLifetime = new AbortController();
     const current = () => {
       if (!active || !context.isCurrent() || binding.current.scopeKey !== scopeKey) return false;
       const value = context.session();
@@ -34,6 +36,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
       preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences,
         subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {})},
       effects: {
+        download: createBrowserDownloadPort(context.api, current, downloadLifetime.signal),
         reportError,
         openEntry(entry) {
           assert();
@@ -53,7 +56,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         },
       },
     };
-    return {value, dispose: () => {active = false;}};
+    return {value, dispose: () => {active = false; downloadLifetime.abort();}};
   }, [context, scopeKey]);
   useEffect(() => () => owner.dispose(), [owner]);
   return owner.value;

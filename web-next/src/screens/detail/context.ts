@@ -1,3 +1,4 @@
+import type {BrowserDownloadPort} from '../../platform/browser-download';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {ContentScope} from '@core/library-content.ts';
 import type {SearchEntry} from '@core/search.ts';
@@ -27,6 +28,7 @@ export type ScreenContext = Readonly<{
     play: (target: Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean}>, signal: AbortSignal, isCurrent?: () => boolean) => Promise<void>;
     playSeason?: (seasonId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
     chooseVersion?: (request: WatchVersionRequest) => Promise<void>;
+    download?: BrowserDownloadPort;
     reportError: (error: unknown) => void;
   }>;
 }>;
