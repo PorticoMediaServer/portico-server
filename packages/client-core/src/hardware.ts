@@ -30,14 +30,14 @@ export function parseHardwareInventory(value: unknown): HardwareInventory {
   const platform = decoded.platform;
   const targets: HardwareTarget[] = [];
   for (const target of decoded.targets.slice(0, 12)) {
-    if (!text(target.id, 40) || !text(target.label, 120)) continue;
+    if (!text(target.id, 40) || !target.id || !text(target.label, 120)) continue;
     targets.push(Object.freeze({id: target.id, label: target.label, decode: textList(target.decode), encode: textList(target.encode),
       toneMapping: textList(target.toneMapping), notes: textList(target.notes)}));
   }
   const formats: HardwareFormat[] = [];
-  for (const format of decoded.formats.slice(0, 16)) if (text(format.id, 32) && text(format.label, 80)) formats.push(Object.freeze({id: format.id, label: format.label}));
+  for (const format of decoded.formats.slice(0, 16)) if (text(format.id, 32) && format.id && text(format.label, 80)) formats.push(Object.freeze({id: format.id, label: format.label}));
   const later: HardwareDeferred[] = [];
-  for (const item of decoded.later.slice(0, 8)) if (text(item.id, 40) && text(item.label, 120) && text(item.detail, 300)) later.push(Object.freeze({id: item.id, label: item.label, detail: item.detail}));
+  for (const item of decoded.later.slice(0, 8)) if (text(item.id, 40) && item.id && text(item.label, 120) && text(item.detail, 300)) later.push(Object.freeze({id: item.id, label: item.label, detail: item.detail}));
   return Object.freeze({platform: Object.freeze({kind: platform.kind, label: platform.label, container: platform.container,
     ...(text(platform.remedy, 300) && platform.remedy ? {remedy: platform.remedy} : {})}), targets: Object.freeze(targets), formats: Object.freeze(formats), later: Object.freeze(later)});
 }

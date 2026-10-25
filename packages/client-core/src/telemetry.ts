@@ -139,5 +139,5 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  for(const [name,dependency] of Object.entries(published)){if(obj(dependency)&&text(dependency.path,1024)&&text(dependency.version,512)&&typeof dependency.ok==='boolean')dependencies[name]=dependency as RuntimeDependency;else noteSkipped('transcode-capacity','dependencies');}
  if(!Array.isArray(c.warnings)||c.warnings.length>20)invalid();
  const warnings=keepReadable('transcode-capacity','warnings',c.warnings,(w:unknown)=>text(w,512)?w:undefined);
- return {...c,hardware:{...hardware,probes,devices,formats,...(lastError?{lastError}:{}),lastTest},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
+ return {...c,hardware:{...hardware,probes,devices,formats,lastError,lastTest},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
 }
