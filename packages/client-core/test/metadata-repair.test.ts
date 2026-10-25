@@ -112,3 +112,14 @@ test('Part 2.1: artwork candidate votes decode when present and stay absent when
  assert.equal('votes' in validateRepair({...raw,artwork:{candidates:[base],jobs:[]}},scope,target).artwork.candidates[0],false);
  assert.deepEqual(validateRepair({...raw,artwork:{candidates:[{...base,votes:-1}],jobs:[]}},scope,target).artwork.candidates,[]);
 });
+
+test('candidate command keys and typed provider identities remain distinct', () => {
+ const candidate={id:'d'.repeat(64),identityId:'12',identityType:'movie',provider:'tmdb',title:'Movie',subtitle:'',observedAt:''};
+ const raw={...response(),candidates:[candidate]};
+ const parsed=validateRepair(raw,scope,target);
+ assert.equal(parsed.candidates[0]?.id,candidate.id);
+ assert.equal(parsed.candidates[0]?.identityId,'12');
+ assert.equal(parsed.candidates[0]?.identityType,'movie');
+ const malformed=validateRepair({...raw,candidates:[{...candidate,identityType:['movie']}]},scope,target);
+ assert.equal(malformed.candidates.length,0);
+});

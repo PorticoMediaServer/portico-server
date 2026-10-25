@@ -7,6 +7,9 @@ import {Dialog} from '../../kit/overlays';
 import {Icon, type IconName} from '../../kit/Icon';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
+import {Artwork, GeneratedCover} from '../../kit/artwork';
+import {generatedCoverTint} from '@design';
+import type {ShellArtwork} from '../../shell/artwork';
 
 const t = defaultI18n.t, has = (id: string) => defaultI18n.has(id);
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown) => Promise<T>}>;
@@ -17,7 +20,7 @@ const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
  * why, up to three closest matches, and only the actions the server names for it. The list is
  * the library's own; the server stays the authority on what each row offers.
  */
-export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void; onEdit?: (entry: AttentionEntry, anchor: HTMLElement, matching?: boolean) => void}) {
+export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit, artwork}: {artwork?: ShellArtwork; libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void; onEdit?: (entry: AttentionEntry, anchor: HTMLElement, matching?: boolean) => void}) {
   const service = useMemo(() => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId), [api, libraryId]);
   const [page, setPage] = useState<AttentionPage>(), [cursors, setCursors] = useState<readonly string[]>([]), [cursor, setCursor] = useState('');
   const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>();
@@ -60,7 +63,7 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {l
   return <section className={styles.attention}>
     {error ? <HostedError error={error} /> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
-    <div className={styles.listBox}>{page?.entries.map(entry => <Row key={entry.entityId} entry={entry} busy={busy === entry.entityId}
+    <div className={styles.listBox}>{page?.entries.map(entry => <Row key={entry.entityId} entry={entry} artwork={artwork} busy={busy === entry.entityId}
       onUse={(candidateKey, order) => void send(entry, {action: 'accept', candidateKey, ...(order ? {order} : {})}, t('server.attention.matched', {title: entry.candidates.find(value => value.key === candidateKey)?.title ?? entry.title}))}
       onSearch={() => {setQuery(entry.title); setSearching(entry);}}
       onIdentify={() => {setTyped(''); setProvider('tmdb'); setIdentifying(entry);}}
@@ -96,8 +99,8 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {l
   </section>;
 }
 
-function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen, onEdit}: {
-  entry: AttentionEntry; busy: boolean; onUse: (candidateKey: string, order?: string) => void;
+function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen, onEdit, artwork}: {
+  artwork?: ShellArtwork; entry: AttentionEntry; busy: boolean; onUse: (candidateKey: string, order?: string) => void;
   onSearch: () => void; onIdentify: () => void; onRetry: () => void; onKeep: () => void; onOpen?: () => void; onEdit?: (anchor: HTMLElement, matching?: boolean) => void;
 }) {
   const [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
@@ -108,9 +111,12 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen,
   const kind = entry.kind === 'item' ? (entry.itemKind === 'episode' ? 'episode' : 'film') : entry.kind;
   const kindIcon: IconName = kind === 'show' ? 'i-tv' : kind === 'book' ? 'i-book' : kind === 'album' || kind === 'song' ? 'i-music' : 'i-film';
   const working = busy || attentionInProgress(entry.reason);
+  const hasCover = entry.kind === 'album' || entry.kind === 'song';
+  const coverTitle = entry.kind === 'song' ? entry.parentTitle ?? entry.title : entry.title;
+  const fallbackCover = <GeneratedCover title={coverTitle} author={entry.parentArtist} glyph={Array.from(coverTitle.trim())[0] ?? ''} tint={generatedCoverTint(coverTitle)}/>;
   return <article className={styles.row} data-busy={working || undefined}>
     <header className={styles.rowHead}>
-      <span className={styles.kindTile}><Icon name={kindIcon} size={24} /></span>
+      <span className={styles.kindTile} aria-hidden="true" data-cover={hasCover || undefined}>{hasCover ? <Artwork source={artwork?.foreground(entry.artworkUrl, 120, 1)} alt="" fallback={fallbackCover}/> : <Icon name={kindIcon} size={24} />}</span>
       <div><h3>{onEdit ? <button type="button" disabled={busy} onClick={event => onEdit(event.currentTarget)}>{entry.title || t('server.attention.untitled')}</button> : onOpen ? <button type="button" onClick={onOpen}>{entry.title || t('server.attention.untitled')}</button> : entry.title || t('server.attention.untitled')}<span className={styles.kindChip}>{t(`metadata.attention.kind.${kind}`)}</span></h3>
       {subtitle ? <small>{subtitle}</small> : null}
       <p>{attentionReason(t, has, entry.reason, entry.kind)}</p>

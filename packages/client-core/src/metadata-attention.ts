@@ -5,7 +5,7 @@ export type AttentionIdentity=Readonly<{provider:'tmdb'|'tvdb'|'anilist';type:'m
 export type AttentionCandidate=Readonly<{posterUrl?:string;key:string;identity:AttentionIdentity;title:string;year:number;confidence:number;reasons:readonly string[];orders:readonly Readonly<{id:string;name:string}>[]}>;
 /** Film and TV titles are 'item' or 'show'; music and audiobooks are 'album', 'song' or 'book'. */
 export type AttentionKind='item'|'show'|'album'|'song'|'book';
-export type AttentionEntry=Readonly<{parentTitle?:string;parentArtist?:string;libraryId:string;entityId:string;kind:AttentionKind;itemKind:string;parentId:string;actions:readonly string[];title:string;revision:number;reason:string;confidence:number;candidates:readonly AttentionCandidate[]}>;
+export type AttentionEntry=Readonly<{artworkUrl?:string;parentTitle?:string;parentArtist?:string;libraryId:string;entityId:string;kind:AttentionKind;itemKind:string;parentId:string;actions:readonly string[];title:string;revision:number;reason:string;confidence:number;candidates:readonly AttentionCandidate[]}>;
 export type AttentionPage=Readonly<{libraryId:string;total:number;entries:readonly AttentionEntry[];nextCursor:string}>;
 export type AttentionCommand=Readonly<{kind:AttentionKind;entityId:string;expectedRevision:number;action:'accept'|'search'|'id'|'dismiss'|'retry';candidateKey?:string;provider?:AttentionIdentity['provider'];providerId?:string;query?:string;order?:string}>;
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
@@ -34,7 +34,10 @@ export function parseMetadataAttention(raw:unknown,libraryId:string):AttentionPa
    const posterUrl=text(c.posterUrl,4096)&&/^\/v1\/metadata\/(?:item|show)\/[^/]+\/art\/poster\?/.test(c.posterUrl)?c.posterUrl:undefined;
    return Object.freeze({...(posterUrl?{posterUrl}:{}),key:c.key,identity:Object.freeze({...c.identity}) as AttentionIdentity,title:c.title,year:c.year,confidence:c.confidence,reasons:Object.freeze(reasons),orders:Object.freeze(orders)});
   }),c=>c.key);
-  return Object.freeze({...(text(e.parentTitle,2048)&&e.parentTitle?{parentTitle:e.parentTitle}:{}),...(text(e.parentArtist,2048)&&e.parentArtist?{parentArtist:e.parentArtist}:{}),libraryId:text(e.libraryId,128)?e.libraryId:libraryId,entityId:e.entityId,kind:e.kind as AttentionKind,itemKind:e.itemKind as string,parentId:e.parentId as string,actions:Object.freeze(actions),title:e.title,revision:e.revision,reason:e.reason,confidence:e.confidence,candidates:Object.freeze(candidates)});
+  const albumId=e.kind==='album'?e.entityId:e.kind==='song'?e.parentId:'';
+  const coverPrefix=encodedRoutePath('get_metadata_kind_id_art_role',{kind:'album',id:encodeURIComponent(String(albumId)),role:'cover'})+'?v=';
+  const artworkUrl=albumId&&text(e.artworkUrl,4096)&&e.artworkUrl.startsWith(coverPrefix)&&/^[a-f0-9]{64}$/.test(e.artworkUrl.slice(coverPrefix.length))?e.artworkUrl:undefined;
+  return Object.freeze({...(artworkUrl?{artworkUrl}:{}),...(text(e.parentTitle,2048)&&e.parentTitle?{parentTitle:e.parentTitle}:{}),...(text(e.parentArtist,2048)&&e.parentArtist?{parentArtist:e.parentArtist}:{}),libraryId:text(e.libraryId,128)?e.libraryId:libraryId,entityId:e.entityId,kind:e.kind as AttentionKind,itemKind:e.itemKind as string,parentId:e.parentId as string,actions:Object.freeze(actions),title:e.title,revision:e.revision,reason:e.reason,confidence:e.confidence,candidates:Object.freeze(candidates)});
  }),e=>e.entityId);
  return Object.freeze({libraryId,total:raw.total as number,entries:Object.freeze(entries),nextCursor:raw.nextCursor});
 }
