@@ -17,9 +17,10 @@ export function withReadingManifestFacts<T extends {metadata: object; format: st
   const base = decode(record(raw) && plain ? {...raw, metadata: plain} : raw);
   const facts: { -readonly [K in keyof ReadingManifestFacts]: ReadingManifestFacts[K] } = {};
   if (supplied) {
-    if (base.format === 'epub' && integer(supplied.wordCount, 0, 67108864)) facts.wordCount = supplied.wordCount;
+    if ((base.format === 'epub' || base.format === 'pdf') && integer(supplied.wordCount, 0, 67108864)) facts.wordCount = supplied.wordCount;
     if (facts.wordCount !== undefined && integer(supplied.estimatedSeconds, 0, 16106128) && supplied.estimatedSeconds === Math.ceil(facts.wordCount * 60 / 250)) facts.estimatedSeconds = supplied.estimatedSeconds;
     if (base.format === 'cbz' && integer(supplied.pageCount, 1, 4096) && base.pageNames?.length === supplied.pageCount) facts.pageCount = supplied.pageCount;
+    else if (base.format === 'pdf' && integer(supplied.pageCount, 1, 4096)) facts.pageCount = supplied.pageCount;
     if (base.format === 'epub' && text(supplied.openingLines, 4096) && supplied.openingLines.trim()) facts.openingLines = supplied.openingLines;
     const series = supplied.series;
     if (record(series) && typeof series.id === 'string' && /^[A-Za-z0-9_-]{43}$/.test(series.id) && text(series.name, 4096) && text(series.libraryId, 256)

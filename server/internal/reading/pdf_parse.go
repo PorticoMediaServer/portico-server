@@ -11,53 +11,144 @@ import (
 	"rsc.io/pdf"
 )
 
-// parsePDFText runs only in the isolated helper process. It reads the page
-// content streams of the pinned parser; it does not read the Info dictionary,
-// render pages, run OCR, execute actions, load external resources or resolve
-// host files. The helper's RLIMIT_AS/RLIMIT_CPU bound every allocation and CPU
-// path the parser can reach, so a decoded-work explosion kills only the child.
-func parsePDFText(ctx context.Context, r io.ReaderAt, size int64) (count *int64, opening string, err error) {
+// parsePDFText runs only in the isolated helper process. It first walks the
+// complete page tree itself and counts every Page leaf; the declared /Count is
+// never consulted. Then it reads the page content streams of the pinned parser;
+// it does not read the Info dictionary, render pages, run OCR, execute actions,
+// load external resources or resolve host files. The helper's RLIMIT_AS/RLIMIT_CPU
+// bound every allocation and CPU path the parser can reach, so a decoded-work
+// explosion kills only the child.
+func parsePDFText(ctx context.Context, r io.ReaderAt, size int64) (count *int64, opening string, pages *int64, err error) {
 	if size <= 0 || size > maxCountPDFSource {
-		return nil, "", nil
+		return nil, "", nil, nil
 	}
 	reader := &pdfReader{ctx: ctx, source: r, size: size}
+	defer func() {
+		if recover() != nil {
+			count, opening, pages = nil, "", nil
+			err = reader.err
+		}
+	}()
+	if err = ctx.Err(); err != nil {
+		return nil, "", nil, err
+	}
+	document, e := pdf.NewReader(reader, size)
+	if reader.err != nil {
+		return nil, "", nil, reader.err
+	}
+	if e != nil {
+		return nil, "", nil, nil
+	}
+	// Encrypted documents are not counted even when an empty user password would
+	// let the parser decrypt them: no DRM/password path is part of this rule.
+	if !document.Trailer().Key("Encrypt").IsNull() {
+		return nil, "", nil, nil
+	}
+	leaves, ok := pdfStructuralPages(document)
+	if reader.err != nil {
+		return nil, "", nil, reader.err
+	}
+	if !ok {
+		return nil, "", nil, nil
+	}
+	total := int64(len(leaves))
+	pages = &total
+	// A structurally complete page tree is a real fact even when the text layer
+	// is image-only or unsupported. Only the text count becomes unknown then.
+	count, opening, err = pdfTextLeaves(ctx, reader, leaves)
+	if err != nil {
+		return nil, "", pages, err
+	}
+	return count, opening, pages, nil
+}
+
+// pdfStructuralPages validates the complete bounded page tree. Every child must
+// be a Pages or Page dictionary; every Page leaf is counted, including a blank
+// one. A missing/foreign node, excessive depth/nodes/pages, or a cycle makes the
+// whole structural fact unknown; the declared /Count is never used as a sample.
+func pdfStructuralPages(document *pdf.Reader) ([]pdf.Value, bool) {
+	root := document.Trailer().Key("Root")
+	if root.Kind() != pdf.Dict {
+		return nil, false
+	}
+	top := root.Key("Pages")
+	if top.Kind() != pdf.Dict {
+		return nil, false
+	}
+	const maxDepth, maxNodes = 64, 2*maxCountPDFPages + 64
+	leaves := []pdf.Value{}
+	nodes := 0
+	var walk func(pdf.Value, int) bool
+	walk = func(node pdf.Value, depth int) bool {
+		if depth > maxDepth || node.Kind() != pdf.Dict {
+			return false
+		}
+		nodes++
+		if nodes > maxNodes {
+			return false
+		}
+		switch node.Key("Type").Name() {
+		case "Page":
+			if len(leaves) >= maxCountPDFPages {
+				return false
+			}
+			leaves = append(leaves, node)
+			return true
+		case "Pages":
+			kids := node.Key("Kids")
+			if kids.Kind() != pdf.Array {
+				return false
+			}
+			count := kids.Len()
+			if count < 0 || count > maxNodes || nodes+count > maxNodes {
+				return false
+			}
+			for index := 0; index < count; index++ {
+				if !walk(kids.Index(index), depth+1) {
+					return false
+				}
+			}
+			return true
+		default:
+			return false
+		}
+	}
+	if !walk(top, 0) || len(leaves) == 0 {
+		return nil, false
+	}
+	return leaves, true
+}
+
+// pdfTextLeaves applies the word rule to the complete validated page sequence.
+// Unsupported text, an image-only page or a malformed content stream leaves the
+// count unknown while the structural page fact survives. A real file/context
+// failure is returned so the caller retries and does not adopt a fact.
+func pdfTextLeaves(ctx context.Context, reader *pdfReader, leaves []pdf.Value) (count *int64, opening string, err error) {
 	defer func() {
 		if recover() != nil {
 			count, opening = nil, ""
 			err = reader.err
 		}
 	}()
-	if err = ctx.Err(); err != nil {
-		return nil, "", err
-	}
-	document, e := pdf.NewReader(reader, size)
-	if reader.err != nil {
-		return nil, "", reader.err
-	}
-	if e != nil {
-		return nil, "", nil
-	}
-	// Encrypted documents are not counted even when an empty user password would
-	// let the parser decrypt them: no DRM/password path is part of this rule.
-	if !document.Trailer().Key("Encrypt").IsNull() {
-		return nil, "", nil
-	}
-	pages := document.NumPage()
-	if pages <= 0 || pages > maxCountPDFPages {
-		return nil, "", nil
-	}
 	var words int64
 	var excerpt openingText
 	inWord := false
 	var previous pdf.Text
 	havePrevious := false
 	textBytes := 0
-	for pageNumber := 1; pageNumber <= pages; pageNumber++ {
+	for _, leaf := range leaves {
 		if err = ctx.Err(); err != nil {
 			return nil, "", err
 		}
-		page := document.Page(pageNumber)
-		if page.V.IsNull() || !pdfPageSupported(page) {
+		page := pdf.Page{V: leaf}
+		// A page with no content stream is a real blank page: it counts
+		// structurally but contributes no text, so it must not make the text
+		// determination fail.
+		contents := leaf.Key("Contents")
+		if contents.IsNull() || contents.Kind() == pdf.Array && contents.Len() == 0 {
+			continue
+		}
+		if !pdfPageSupported(page) {
 			return nil, "", nil
 		}
 		content := page.Content()

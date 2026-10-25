@@ -32,8 +32,10 @@ func (ReadingWordCount) JSONSchema() map[string]any {
 	return map[string]any{"type": "integer", "minimum": 0, "maximum": 67108864}
 }
 
-// Only actual admitted comic-page names establish this server-side page count.
-// PDF and EPUB screen-page counts remain the real client renderer's facts.
+// Actual admitted comic-page names establish the CBZ count. A PDF count is the
+// prepared complete structural page tree from the pinned isolated extractor
+// (blank pages included; never the declared /Count or a sample). EPUB screen-page
+// counts remain the real client renderer's fact.
 type ReadingPageCount int64
 
 func (ReadingPageCount) JSONSchema() map[string]any {

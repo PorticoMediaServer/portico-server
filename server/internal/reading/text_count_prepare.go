@@ -59,7 +59,7 @@ const textCountPendingSQL = `SELECT e.id,pid(e.public_id),cl.library_id,a.token
  CROSS JOIN inventory_objects o ON o.asset_id=a.token
  CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
  CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
- LEFT JOIN reading_text_counts c ON c.item_id=p.item_id AND c.asset_id=p.asset_id AND c.inventory_object_id=o.id AND c.source_revision=o.revision AND c.rule_version=? AND c.opening_rule_version=1
+ LEFT JOIN reading_text_counts c ON c.item_id=p.item_id AND c.asset_id=p.asset_id AND c.inventory_object_id=o.id AND c.source_revision=o.revision AND c.rule_version=? AND c.opening_rule_version=1 AND (p.format<>'pdf' OR (c.page_rule_version=1 AND c.page_count BETWEEN 1 AND 4096))
  WHERE e.retired=0 AND cl.retired=0 AND ` + textCountWorkerDomain + ` AND ` + publicationEligible + `
  AND ` + textCountCanonicalObject + `
  AND c.item_id IS NULL AND e.id>? ORDER BY e.id LIMIT ?`
@@ -292,6 +292,7 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 	defer f.Close()
 	var count *int64
 	var opening string
+	var pageCount *int64
 	switch v.Format {
 	case "epub":
 		e, epubErr := f.epub()
@@ -300,10 +301,15 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 		}
 		count, opening, err = inspectEPUBText(ctx, e)
 	case "pdf":
-		count, opening, err = countPDFText(ctx, f, v.Size)
+		count, opening, pageCount, err = countPDFText(ctx, f, v.Size)
 	}
 	if err != nil {
 		return err
+	}
+	if v.Format == "pdf" && count == nil && pageCount == nil {
+		// Neither the text nor the structural page tree is a determination.
+		// Write no row so a later pass can retry instead of caching absence.
+		return nil
 	}
 	if err = f.Validate(); err != nil {
 		return err
@@ -320,7 +326,11 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 	if current.Revision != v.Revision || current.inventoryRow != v.inventoryRow || current.object != v.object || current.inventory != v.inventory {
 		return ErrChanged
 	}
-	if err = adoptTextCountRow(ctx, gate.Tx(), current, count, opening); err != nil {
+	pageRule := 0
+	if v.Format == "pdf" {
+		pageRule = readingPageRuleVersion
+	}
+	if err = adoptTextCountRow(ctx, gate.Tx(), current, count, opening, pageCount, pageRule); err != nil {
 		return err
 	}
 	return gate.Commit()

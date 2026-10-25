@@ -41,7 +41,19 @@ cancellation. A malformed-structure panic inside the bounded child is an unknown
 determination; a real read, child-limit, crash, cancellation or source-change
 failure is retryable and is never cached as an unsupported document.
 
+The same helper also returns the exact structural PDF page count. It walks the
+complete page tree itself, requires every child to be a Pages or Page dictionary,
+counts every Page leaf (a blank page counts), and rejects cycles, foreign nodes,
+a missing tree or an over-depth/over-node/over-page tree. The declared `/Count`
+is never read, so a wrong declared count cannot become a sample or a partial
+fact. A structurally complete tree is published even when the text is image-only
+or unsupported; only the word count is then unknown. Encrypted, malformed or
+over-budget structure leaves both facts unknown. The page fact is stored in the
+same `reading_text_counts` row/custody with its own `page_rule_version`, and is
+never used to derive reading time or Short reads membership.
+
 The EPUB viewer-open path is unchanged and remains EPUB-only; PDFs are prepared
 only by the registered background worker, so opening a fixed-layout file does
 not synchronously parse it. Short reads/About estimates consume a PDF only when
-the accepted count exists (`0 < W < 45000`, 250 words per minute).
+the accepted count exists (`0 < W < 45000`, 250 words per minute); the detail
+Pages fact may appear independently.
