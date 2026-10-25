@@ -5,6 +5,7 @@ import type {LibraryContentApi} from '@core/library-content.ts';
 import {presentError} from '@core/presentation/errors.ts';
 import {Button, Select, Switch, TextField} from '../../../kit/controls';
 import {SettingsGroup} from '../../../kit/settings';
+import {Skeleton} from '../../../kit/states';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 
 const t = defaultI18n.t;
@@ -50,7 +51,8 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
   const current = () => !denied && !!owned?.current();
   if (!isCurrent() || denied) return <p role="alert">{t('next.remoteSources.error.forbidden')}</p>;
   const problem = error && <p role="alert">{error}</p>;
-  if (!document || !draft || !owned || !owned.current()) return <>{problem}<Button size="small" disabled={busy} onClick={() => setReload(value => value + 1)}>{t('action.tryAgain')}</Button></>;
+  if (!document || !draft || !owned || !owned.current()) return busy ? <div aria-busy="true"><Skeleton height={72}/><Skeleton height={96}/><Skeleton height={96}/></div>
+    : <>{problem}<Button size="small" onClick={() => setReload(value => value + 1)}>{t('action.tryAgain')}</Button></>;
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {if (!flight.current && current()) {setDraft({...draft, [key]: value}); setError(undefined);}};
   const bytes = artworkLimitBytes(draft.limit);
   const subtitleChanges = {
