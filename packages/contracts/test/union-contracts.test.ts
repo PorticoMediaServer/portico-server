@@ -63,12 +63,22 @@ test('oneOf decoding refuses overlapping and absent response branches',async()=>
 
 test('invitation acceptance contracts describe local and Portico methods without administrator notes',async()=>{
  const {decode}=await import('../src/runtime.ts');
- assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptRequest',{code:'fixture-code',username:'fixture_user',password:'Fixture1!'}));
- assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptRequest',{code:'fixture-code',porticoIdentity:{keyId:'fixture-key',payload:'fixture-payload',signature:'fixture-signature'}}));
+ const code='fixture-invitation-capability-00000000000001';
+ const shortCode='0123-4567-89AB-CDEF';
+ const localMethod={username:'fixture_user',password:'Fixture1!'};
+ const porticoMethod={porticoIdentity:{keyId:'fixture-key',payload:'fixture-payload',signature:'fixture-signature'}};
+ for(const capability of [{code},{shortCode}]){
+  assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptRequest',{...capability,...localMethod}));
+  assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptRequest',{...capability,...porticoMethod}));
+ }
  const local={accountId:'fixture_account',username:'fixture_user',profileId:'fixture_profile',role:'member',allowedLibraries:[]};
  assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptResponse',local));
  const {schemas}=await import('../src/schemas.ts');
  const localBranch=(schemas.PostAccessInvitationsAcceptResponse as any).anyOf[0];
  assert.equal('notes' in localBranch.properties,false);assert.equal('email' in localBranch.properties,false);
- for(const bad of [{},null,{code:'fixture-code'},{code:'fixture-code',porticoIdentity:{}}])assert.throws(()=>decode('PostAccessInvitationsAcceptRequest',bad));
+ for(const bad of [{},null,{code},{code,porticoIdentity:{}},
+  {code:'fixture-code',...localMethod},{code:'x'.repeat(129),...localMethod},
+  {shortCode:'0123 4567 89AB CDEF',...localMethod},
+  {code,shortCode,...localMethod},{code,...localMethod,...porticoMethod},
+ ])assert.throws(()=>decode('PostAccessInvitationsAcceptRequest',bad));
 });
