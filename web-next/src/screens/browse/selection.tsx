@@ -1,3 +1,6 @@
+import {LibraryPickerSurface, type LibraryPickerOptions} from './LibraryPickerSurface';
+import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions';
+import type {SelectionItem} from '@core/selection-model/index.ts';
 import {LibraryDeleteSurface, type LibraryDeleteOptions} from './LibraryDeleteSurface';
 import {SelectionEditorSurface, type LibraryEditorSession} from './SelectionEditorSurface';
 import type {SelectionEditorOptions} from './selection-editor';
@@ -50,6 +53,7 @@ export type LibrarySelectionOptions = Readonly<{
   actions?: SelectionActionsOptions;
   editor?: SelectionEditorOptions;
   deletion?: LibraryDeleteOptions;
+  pickers?: LibraryPickerOptions;
   enqueue?: (input: LibraryEnqueueInput) => Promise<unknown>;
   destinations?: LibraryDestinations;
   reportError: (error: unknown) => void;
@@ -117,8 +121,8 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openDelete: (
   const offers = personalOffers(current.selection, actions, playSelection), leafItems = explicitLeafItems(current.selection);
   const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
     && !actions.signal.aborted && actions.isCurrent();
-  const canQueue = !!leafItems && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!leafItems && !!destinations?.playlist && summary.every.playlist,
-    canCollection = !!leafItems && !!destinations?.collection && summary.every.collection;
+  const canQueue = !!leafItems && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!leafItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
+    canCollection = !!leafItems && (!!destinations?.collection || !!props.pickers) && queueLease && summary.every.collection;
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
@@ -129,9 +133,9 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openDelete: (
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
       ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
       ...(offers.favorite ? {onFavorite: () => { void personal({favorite: true}); }} : {}),
-      ...(canQueue ? {onQueue: (placement: 'next' | 'end') => { void queue(placement); }} : {}),
-      ...(canPlaylist ? {onPlaylist: (anchor: HTMLElement) => { void addToPlaylist(anchor); }} : {}),
-      ...(canCollection ? {onCollection: (anchor: HTMLElement) => { void addToCollection(anchor); }} : {}),
+      ...(canQueue ? {onQueue: (placement: 'next' | 'end') => { void queue(placement).catch(reportError); }} : {}),
+      ...(canPlaylist ? {onPlaylist: (anchor: HTMLElement) => { void addToPlaylist(anchor).catch(reportError); }} : {}),
+      ...(canCollection ? {onCollection: (anchor: HTMLElement) => { void addToCollection(anchor).catch(reportError); }} : {}),
     }}
     context={progress && actions?.isCurrent() && !actions.signal?.aborted && playSelection.isOperationCurrent?.(progress.operation)
       ? defaultI18n.t(progress.value.totalKnown ? 'next.selection.jobProgress' : 'next.selection.jobPreparing', {done: progress.value.done, total: progress.value.total}) : undefined}
@@ -144,7 +148,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openDelete: (
     sticky />;
 }
 
-export function createLibrarySelection({playSelection, owner, descriptor, actions, editor, deletion, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
+export function createLibrarySelection({playSelection, owner, descriptor, actions, editor, deletion, pickers, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
   const editorListeners = new Set<() => void>();
   let editorSession: LibraryEditorSession | undefined;
   const closeEditor = () => {editorSession?.lifetime.abort(); editorSession = undefined; for (const listener of editorListeners) listener();};
@@ -174,6 +178,24 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     deleteSession = Object.freeze({operation, anchor, lifetime, current});
     for (const listener of deleteListeners) listener();
   };
+  const pickerListeners = new Set<() => void>();
+  let pickerSession: LibraryPickerSession | undefined;
+  const closePicker = () => {pickerSession?.lifetime.abort(); pickerSession = undefined; for (const listener of pickerListeners) listener();};
+  const pickerStore = {subscribe: (listener: () => void) => {pickerListeners.add(listener); return () => {pickerListeners.delete(listener);};}, getSnapshot: () => pickerSession};
+  const openPicker = (kind: EntryDestination, anchor: HTMLElement) => {
+    const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
+    if (!pickers || !pickers.pickerIdentity || pickers.signal.aborted || !pickers.isCurrent() || !selection || !operation || operation.target !== selection.target
+      || operation.target.mode !== 'explicit' || !explicitLeafItems(selection) || !selection.summary.every[kind] || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-picker-unavailable');
+    closePicker();
+    const lifetime = new AbortController(), signal = AbortSignal.any([lifetime.signal, pickers.signal]);
+    const current = () => !signal.aborted && pickers.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;
+    const check = () => {if (!current()) throw new DOMException('Selection retired', 'AbortError');};
+    const ports: EntryActionPorts = {...pickers, isCurrent: current, api: {request: async<T>(path: string, method?: string, body?: unknown, caller?: AbortSignal): Promise<T> => {
+      check(); const value = await pickers.api.request<T>(path, method, body, caller ? AbortSignal.any([signal, caller]) : signal); check(); return value;
+    }}};
+    pickerSession = Object.freeze({operation, anchor, lifetime, current, kind, ports, items: Object.freeze(operation.target.items.map(pick => pick.item))});
+    for (const listener of pickerListeners) listener();
+  };
   const leafItems = () => {
     const items = explicitLeafItems(playSelection.getSnapshot().selection);
     if (!items) throw new Error('leaf-explicit-selection-required');
@@ -193,10 +215,12 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     await enqueue({items, placement, signal, isCurrent});
   };
   const addToPlaylist = async (anchor: HTMLElement) => {
+    if (pickers) {openPicker('playlist', anchor); return;}
     if (!destinations?.playlist) throw new Error('selection-playlist-unavailable');
     await destinations.playlist(leafItems(), anchor);
   };
   const addToCollection = async (anchor: HTMLElement) => {
+    if (pickers) {openPicker('collection', anchor); return;}
     if (!destinations?.collection) throw new Error('selection-collection-unavailable');
     await destinations.collection(leafItems(), anchor);
   };
@@ -237,7 +261,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     }
   };
   return {
-    toolbar: <><LibrarySelectionToolbar deletion={deletion} openDelete={openDelete} editor={editor} openEditor={openEditor} progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>} {deletion && <LibraryDeleteHost playSelection={playSelection} store={deleteStore} options={deletion} close={closeDelete}/>}</>,
+    toolbar: <><LibrarySelectionToolbar pickers={pickers} deletion={deletion} openDelete={openDelete} editor={editor} openEditor={openEditor} progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>} {deletion && <LibraryDeleteHost playSelection={playSelection} store={deleteStore} options={deletion} close={closeDelete}/>} {pickers && <LibraryPickerHost playSelection={playSelection} store={pickerStore} options={pickers} close={closePicker}/>}</>,
     entry: (member, index) => {
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
@@ -272,4 +296,14 @@ function LibraryDeleteHost({playSelection, store, options, close}: {playSelectio
   useEffect(() => {if (session && !valid) close();}, [session, valid, close]);
   useEffect(() => {const abort = () => close(); options.signal.addEventListener('abort', abort, {once: true}); return () => {options.signal.removeEventListener('abort', abort); close();};}, [options, close]);
   return session && valid ? <LibraryDeleteSurface session={session} options={options} onClose={close}/> : null;
+}
+
+type LibraryPickerSession = LibraryEditorSession & Readonly<{kind: EntryDestination; ports: EntryActionPorts; items: readonly SelectionItem[]}>;
+function LibraryPickerHost({playSelection, store, options, close}: {playSelection: LibrarySelectionHost; store: Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => LibraryPickerSession | undefined}>; options: LibraryPickerOptions; close: () => void}) {
+  const session = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
+  const valid = !!session?.current();
+  useEffect(() => {if (session && !valid) close();}, [session, valid, close]);
+  useEffect(() => {const abort = () => close(); options.signal.addEventListener('abort', abort, {once: true}); return () => {options.signal.removeEventListener('abort', abort); close();};}, [options, close]);
+  return session && valid ? <LibraryPickerSurface destination={session.kind} target={session.items} ports={session.ports} anchor={session.anchor} canCreate={options.canCreateCollection} onClose={close}/> : null;
 }

@@ -33,6 +33,7 @@ export type LibraryPlaySelectionOptions = Readonly<{
    * the title's own Detail actions; absent means the capability is not offered. */
   editor?: boolean;
   deletion?: boolean;
+  destinations?: boolean;
   queue?: CatalogueSelectionQueuePort;
   personal?: Readonly<{myList?: boolean; favorite?: boolean; watched?: boolean}>;
 }>;
@@ -56,10 +57,10 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   const playback = input.playback && Object.freeze({playSegments: input.playback.playSegments.bind(input.playback)});
   const queue = input.queue && Object.freeze({enqueueSegments: input.queue.enqueueSegments.bind(input.queue)});
   const personal = Object.freeze({...(input.personal ?? {})});
-  const ports = Object.freeze({...(input.deletion ? {delete: true as const} : {}), ...(input.editor ? {edit: true as const} : {}),...(playback ? {play: true as const} : {}), ...(queue ? {queue: true as const} : {}),
+  const ports = Object.freeze({...(input.destinations ? {playlist: true as const, collection: true as const} : {}), ...(input.deletion ? {delete: true as const} : {}), ...(input.editor ? {edit: true as const} : {}),...(playback ? {play: true as const} : {}), ...(queue ? {queue: true as const} : {}),
     ...(personal.myList ? {myList: true as const} : {}), ...(personal.favorite ? {favorite: true as const} : {}),
     ...(personal.watched ? {watched: true as const} : {})});
-  const executable = !!(input.deletion || input.editor || queue || playback || personal.myList || personal.favorite || personal.watched);
+  const executable = !!(input.destinations || input.deletion || input.editor || queue || playback || personal.myList || personal.favorite || personal.watched);
   const life = new AbortController(), listeners = new Set<() => void>(), grants = new Map<ContentEntry, Grant>(), queued: Grant[] = [];
   let active = 0, closed = false, started = false, model: BrowseSelectionModel | undefined, modelOff: (() => void) | undefined;
   let sourceOff = () => {}, collectionOff = () => {}, expected: Readonly<{queryRevision: number; revision: string}> | undefined;
