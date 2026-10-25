@@ -165,7 +165,7 @@ export function AddSourceDialog({service, open, isCurrent, reportError, onClose,
       await service.configure(null, davConfiguration(null, draft), undefined, guard);
       if (!guard()) return;
       const state = service.getSnapshot();
-      if (state.error || !state.receipt) {if (guard()) setError(state.error || 'The source was not confirmed.');return;}
+      if (state.error || !state.receipt) {if (guard()) setError(state.error || t('next.remoteSources.unconfirmed'));return;}
       const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);setDraft(current => ({...current, password: ''}));
       try {const next = await service.readProfile(source.id, String(source.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}

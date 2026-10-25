@@ -7,6 +7,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.refresh': 'Refresh',
   'next.remoteSources.empty': 'No remote sources yet.',
   'next.remoteSources.emptyHelp': 'Add a WebDAV source to give Portico a folder on another computer or a cloud drive.',
+  'next.remoteSources.unconfirmed': 'The source was not confirmed.',
   'next.remoteSources.loading': 'Reading remote sources…',
   'next.remoteSources.kindWebdav': 'WebDAV source',
   'next.remoteSources.connection': 'Connection',
