@@ -99,7 +99,7 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
       <p className={styles.footnote}>{t('api.tokens.lifetime')}</p>
     </section>},
       {value: 'webhooks', label: t('api.webhooks.title'), panel: <WebhooksPanel source={webhooks} isCurrent={isCurrent} />},
-      {value: 'assistants', label: t('api.mcp.tab'), panel: <div id="integrations.assistantAddress"><div id="integrations.assistantKey"><AssistantsPanel baseUrl={baseUrl} isCurrent={isCurrent} openCreateKey={start} reportError={reportError} /></div></div>},
+      {value: 'assistants', label: t('api.mcp.tab'), panel: <div id="integrations.assistantAddress"><div id="integrations.assistantKey"><AssistantsPanel baseUrl={baseUrl} isCurrent={isCurrent} openKeys={() => {if (isCurrent()) setTab('keys');}} reportError={reportError} /></div></div>},
     ]} />
     {otherRows}
     {advancedRows}

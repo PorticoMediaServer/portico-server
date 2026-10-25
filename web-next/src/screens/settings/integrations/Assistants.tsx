@@ -8,12 +8,13 @@ import styles from './assistants.module.css';
 
 const t = defaultI18n.t;
 
-/** The current server's MCP address and the existing scoped-key creator.
- * No credential is created, cached or inferred by this presentation. */
-export function AssistantsPanel({baseUrl, isCurrent, openCreateKey, reportError}: Readonly<{
+/** The current server's MCP address and the way to the existing keys surface.
+ * The drawn row is a link, never a second Create key button; no credential is
+ * created, cached or inferred by this presentation. */
+export function AssistantsPanel({baseUrl, isCurrent, openKeys, reportError}: Readonly<{
   baseUrl: string;
   isCurrent: () => boolean;
-  openCreateKey: () => void | Promise<void>;
+  openKeys: () => void | Promise<void>;
   reportError: (error: unknown) => void;
 }>) {
   const address = assistantAddress(baseUrl), [copied, setCopied] = useState(false), generation = useRef({active: false});
@@ -29,9 +30,9 @@ export function AssistantsPanel({baseUrl, isCurrent, openCreateKey, reportError}
       if (isCurrent() && held.active && held === generation.current) setCopied(true);
     } catch (error) { if (isCurrent() && held.active && held === generation.current) reportError(error); }
   };
-  const create = () => {
+  const showKeys = () => {
     if (!isCurrent()) return;
-    try { void Promise.resolve(openCreateKey()).catch(error => { if (isCurrent()) reportError(error); }); }
+    try { void Promise.resolve(openKeys()).catch(error => { if (isCurrent()) reportError(error); }); }
     catch (error) { if (isCurrent()) reportError(error); }
   };
   return <section className={styles.section} aria-labelledby="assistants-title">
@@ -42,7 +43,7 @@ export function AssistantsPanel({baseUrl, isCurrent, openCreateKey, reportError}
         <div className={styles.address}><code>{address}</code><Button size="xs" icon="i-copy" iconSize={17} onClick={() => { void copy(); }}>{t('web.twoStep.copy')}</Button>
           <span className={styles.copied} role="status">{copied && <><Icon name="i-check" size={16} />{t('api.credential.copied')}</>}</span></div>
       </SettingsRow>
-      <SettingsRow label={t('api.mcp.key')} help={t('api.mcp.keyHelp')}><Button size="xs" onClick={create}>{t('web.access.createKey')}</Button></SettingsRow>
+      <SettingsRow label={t('api.mcp.key')} help={t('api.mcp.keyHelp')}><Button size="xs" variant="text" onClick={showKeys}>{t('next.settingsSpec.server.integrations.groups.2.rows.1.control.label')}</Button></SettingsRow>
     </div>
   </section>;
 }
