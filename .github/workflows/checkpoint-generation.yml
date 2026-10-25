@@ -1,0 +1,54 @@
+name: Checkpoint generation
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact composed source commit for this checkpoint
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: checkpoint-generation
+  cancel-in-progress: false
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Verify immutable source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p "$RUNNER_TEMP/checkpoint-generation"
+          git rev-parse HEAD > "$RUNNER_TEMP/checkpoint-generation/source-sha.log"
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Official API generation
+        working-directory: server
+        run: go run ./cmd/apigen -root .. 2>&1 | tee "$RUNNER_TEMP/checkpoint-generation/apigen.log"
+      - name: Official schema metadata generation
+        run: python3 scripts/schema-sync.py 2>&1 | tee "$RUNNER_TEMP/checkpoint-generation/schema-sync.log"
+      - name: Preserve exact generated changes
+        if: ${{ always() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/checkpoint-generation"
+          git add -N .
+          git diff --binary > "$RUNNER_TEMP/checkpoint-generation/generation.patch"
+          git diff --name-only > "$RUNNER_TEMP/checkpoint-generation/changed-paths.log"
+          git diff --stat > "$RUNNER_TEMP/checkpoint-generation/summary.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: checkpoint-generation-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/checkpoint-generation/
+          if-no-files-found: error
+          retention-days: 14
