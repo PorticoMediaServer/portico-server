@@ -17,7 +17,7 @@ export function AudiobookEntry({context, target, onMore}: Props) {
   const {libraryId, view, entityId} = target;
   const binding = useMemo(() => createAudiobookBindings(context, {libraryId, view, entityId}), [context, libraryId, view, entityId]);
   const [failure, setFailure] = useState<unknown>();
-  useEffect(() => {void binding.load().catch(setFailure);return () => binding.dispose();}, [binding]);
+  useEffect(() => {setFailure(undefined);void binding.load().catch(setFailure);return () => binding.dispose();}, [binding]);
   return failure ? <ScreenProblem context={context} error={failure} retry={() => {setFailure(undefined);void binding.load().catch(setFailure);}}/>
     : <AudiobookBody binding={binding} onMore={onMore}/>;
 }

@@ -3,7 +3,8 @@ import {getContainerState, setContainerState} from '@core/container-state.ts';
 import {screenLifetime, type ScreenContext} from '../context';
 
 export type AudiobookTarget = Readonly<{libraryId: string; view: 'book' | 'author' | 'book_series'; entityId: string}>;
-export function createAudiobookBindings(context: ScreenContext, target: AudiobookTarget) {
+export function createAudiobookBindings(context: ScreenContext, input: AudiobookTarget) {
+  const target = Object.freeze({...input});
   const life = screenLifetime(context);
   const service = new LibraryContentService({api: life.api, scope: context.scope, pageSize: 40});
   const current = (page: ContentProjection) => {
@@ -19,11 +20,12 @@ export function createAudiobookBindings(context: ScreenContext, target: Audioboo
     if (!entries().includes(entry) || !entry.playback || entry.available === false || entry.missing) throw new DOMException('Audiobook target unavailable', 'AbortError');
     await context.effects.play({libraryId: target.libraryId, itemId: entry.playback.itemId, startSeconds}, life.signal(),
       () => {try {current(page);return entries().includes(entry);} catch {return false;}});
+    current(page);
   };
   return {
     context, service, current,
     async load() {await service.select(target); const page = service.getSnapshot().projection; if (page) current(page);},
-    async finished(page: ContentProjection) {current(page);const state = await getContainerState(life.api, 'book', target.entityId, life.signal());current(page);return state;},
+    async finished(page: ContentProjection) {current(page);if (target.view !== 'book') throw new DOMException('Not a book', 'AbortError');const state = await getContainerState(life.api, 'book', target.entityId, life.signal());current(page);return state;},
     async markFinished(page: ContentProjection) {
       current(page);
       if (target.view !== 'book') throw new DOMException('Not a book', 'AbortError');
