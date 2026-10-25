@@ -55,6 +55,7 @@ import (
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackruntime"
 	"portico.local/server/internal/preparedmedia"
+	"portico.local/server/internal/reading"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/recordingmedia"
 	"portico.local/server/internal/remotemedia"
@@ -1223,6 +1224,17 @@ func run() (runErr error) {
 	readingService := httpapi.NewReadingService(apiDependencies)
 	defer readingService.Close()
 	apiDependencies.Reading = readingService
+	// Unopened EPUB coverage: the same complete counter and text-count custody
+	// as an open, run by the registered background worker under the existing
+	// metadata admission and source/scene fences. Bounded indexed passes resume
+	// from the adopted rows; failures stay unknown and are retried after a rest.
+	textCounts := &reading.TextCountPreparation{DB: db, Prepare: readingService.PrepareTextCount, Admission: workAdmission.Admit}
+	supervise.Supervise(ctx, "cmd.reading-text-counts", func(life context.Context) {
+		wake := worker.NewSignal()
+		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
+		defer unregister()
+		worker.Run(life, "cmd.reading-text-counts", wake, textCounts.Step)
+	})
 	previousFamilyRevoked := ident.OnFamilyRevokedTx
 	ident.OnFamilyRevokedTx = func(ctx context.Context, tx *sql.Tx, family identity.FamilyState) error {
 		if previousFamilyRevoked != nil {

@@ -89,7 +89,7 @@ func (s *Service) openRemote(ctx context.Context, p identity.Principal, v Select
 	request, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(session.life, cancel)
 	good = true
-	return &Source{Selection: v, ctx: request, p: p, service: s, remoteSession: session, remoteRetained: !provisional, remoteCancel: func() { stop(); cancel() }}, nil
+	return &Source{Selection: v, ctx: request, p: p, service: s, remoteSession: session, remoteRetained: !provisional, validateCurrent: func(ctx context.Context) error { return s.validate(ctx, p, v) }, remoteCancel: func() { stop(); cancel() }}, nil
 }
 
 // CheckTx is pure current DB/session authority. The Remote controller supplies
