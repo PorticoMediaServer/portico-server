@@ -13,6 +13,7 @@ import type {LibraryChannelsPageProps} from './types';
 import styles from './channels.module.css';
 
 const t = defaultI18n.t;
+let editorSequence = 0;
 function createSources(ports: Pick<LibraryChannelsPageProps, 'api' | 'serverId' | 'isCurrent' | 'reportError' | 'uploadLogo'>) {
   const lifetime = new AbortController();
   const current = () => !lifetime.signal.aborted && ports.isCurrent();
@@ -43,7 +44,7 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
   const editor = useSyncExternalStore(sources.editor.subscribe, sources.editor.getSnapshot, sources.editor.getSnapshot);
   const action = useSyncExternalStore(sources.actions.subscribe, sources.actions.getSnapshot, sources.actions.getSnapshot);
   const logo = useSyncExternalStore(sources.logos.subscribe, sources.logos.getSnapshot, sources.logos.getSnapshot);
-  const [modal, setModal] = useState<Modal>(), [editorToken, setEditorToken] = useState<object>();
+  const [modal, setModal] = useState<Modal>(), [editorToken, setEditorToken] = useState<{id: number}>();
   const view = useMemo<{active: boolean; modal?: Modal; editor?: object}>(() => ({active: true}), [sources]);
   useLayoutEffect(() => {view.active = true;return () => {view.active = false;view.modal = undefined;view.editor = undefined;};}, [view]);
   const current = useCallback(() => view.active && sources.current(), [view, sources]);
@@ -51,14 +52,14 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
   const blocked = editor.busy || action.busy || logo.busy || !!editor.pending || !!action.pending || !!logo.pending || editor.phase !== 'closed';
   const create = (template?: LibraryChannelTemplate) => {
     if (!current() || blocked) return;
-    const token = {};view.editor = token;setEditorToken(token);
+    const token = {id: ++editorSequence};view.editor = token;setEditorToken(token);
     if (template) sources.editor.template(template, ports.timeZone);else void sources.editor.blank(ports.timeZone);
   };
   const closeEditor = () => {if (!editorCurrent() || sources.editor.getSnapshot().busy) return;sources.editor.close();view.editor = undefined;setEditorToken(undefined);};
   const close = () => {if (!current() || view.modal !== modal || sources.actions.getSnapshot().busy || sources.logos.getSnapshot().busy) return;view.modal = undefined;setModal(undefined);};
   const actionOn = (channel: LibraryChannel, kind: ChannelAction) => {
     if (!current() || blocked || !sources.reader.getSnapshot().channels?.includes(channel)) return;
-    if (kind === 'edit') {const token = {};view.editor = token;setEditorToken(token);sources.editor.edit(channel);}
+    if (kind === 'edit') {const token = {id: ++editorSequence};view.editor = token;setEditorToken(token);sources.editor.edit(channel);}
     else if (kind === 'logo' || kind === 'delete') {const next = {kind, channel};view.modal = next;setModal(next);}
     else void sources.actions.perform(channel, kind === 'up' || kind === 'down' ? 'move' : kind, kind === 'up' ? -1 : kind === 'down' ? 1 : undefined);
   };
@@ -68,11 +69,11 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
   const chooseLogo = async (file: File | undefined) => {const captured = held;if (!captured || captured.kind !== 'logo' || !file || !selected()) return;const done = await sources.logos.choose(captured.channel, file);if (done && current() && view.modal === captured) close();};
   if (!current()) return null;
   return <>
-    {editor.pending && editor.phase === 'closed' && <div className={styles.warning} role="alert"><p>{t('error.unconfirmedChange')}</p><Button size="small" onClick={() => {if (!current() || sources.editor.getSnapshot().busy) return;const token = {};view.editor = token;setEditorToken(token);sources.editor.resume();}}>{t('action.tryAgain')}</Button></div>}
+    {editor.pending && editor.phase === 'closed' && <div className={styles.warning} role="alert"><p>{t('error.unconfirmedChange')}</p><Button size="small" onClick={() => {if (!current() || sources.editor.getSnapshot().busy) return;const token = {id: ++editorSequence};view.editor = token;setEditorToken(token);sources.editor.resume();}}>{t('action.tryAgain')}</Button></div>}
     {action.error && <div className={styles.warning} role="alert"><p>{t(action.pending ? 'error.unconfirmedChange' : 'error.unavailable')}</p>{action.pending && <Button size="small" disabled={action.busy} onClick={() => {if (current()) void sources.actions.retry();}}>{t('action.tryAgain')}</Button>}</div>}
     {logo.error && <div className={styles.warning} role="alert"><p>{t(logo.pending ? 'error.unconfirmedChange' : 'web.libraryChannels.logoSaveFailed')}</p>{logo.pending && <Button size="small" disabled={logo.busy} onClick={() => {if (current()) void sources.logos.retry();}}>{t('action.tryAgain')}</Button>}</div>}
     <LibraryChannels source={sources.reader} isCurrent={current} busy={blocked} logo={channel => ports.logo(channel, sources.logos.revision(channel.config.id))} create={create} action={actionOn}/>
-    {editorToken && <ChannelEditor key={editorToken === view.editor ? 'current' : 'retired'} source={sources.editor} libraries={ports.libraries} isCurrent={editorCurrent} close={closeEditor}/>}
+    {editorToken && <ChannelEditor key={editorToken.id} source={sources.editor} libraries={ports.libraries} isCurrent={editorCurrent} close={closeEditor}/>}
     <Dialog open={held?.kind === 'delete'} title={t('web.libraryChannels.deleteTitle', {name: held?.channel.config.name ?? ''})} description={t('web.libraryChannels.deleteBody')} onOpenChange={value => {if (!value) close();}} dismissOnBack={!action.busy} dismissOnOutsidePress={!action.busy} showCloseButton={!action.busy}
       footer={<><Button size="compact" variant="glass" disabled={action.busy} onClick={close}>{t('action.cancel')}</Button><Button size="compact" variant="glass" className={styles.danger} disabled={action.busy} onClick={() => {void remove();}}>{t('web.libraryChannels.delete')}</Button></>}><></></Dialog>
     <Dialog open={held?.kind === 'logo'} title={t('web.libraryChannels.uploadLogo')} onOpenChange={value => {if (!value) close();}} dismissOnBack={!logo.busy} dismissOnOutsidePress={!logo.busy} showCloseButton={!logo.busy}

@@ -8,6 +8,7 @@ import type {SettingsChannelEditorSource} from './channel-editor-source';
 import styles from './channels.module.css';
 
 const t = defaultI18n.t;
+function channelClock(at: number, timeZone: string): string {try {return new Intl.DateTimeFormat(undefined, {timeZone, hour: 'numeric', minute: '2-digit'}).format(at);} catch {return '—';}}
 const modes = ['sequential', 'shuffle-bag', 'weighted-random', 'sequential-then-shuffle'] as const;
 const modeWords: readonly MessageId[] = ['builder.order.inOrder', 'builder.order.shuffle', 'builder.order.random', 'builder.order.thenShuffle'];
 const orders = ['title', 'recent', 'oldest', 'year', 'episode', 'release', 'rating'] as const;
@@ -39,7 +40,7 @@ export function ChannelEditor({source, libraries, isCurrent, close}: Readonly<{s
   return <Dialog open={state.phase !== 'closed' && isCurrent()} title={title} width={960} onOpenChange={value => {if (!value && !source.getSnapshot().busy) close();}} bodyClassName={styles.editorBody}
     dismissOnBack={!state.busy} dismissOnOutsidePress={!state.busy} showCloseButton={!state.busy}
     footer={<><Button size="compact" variant="glass" disabled={state.busy} onClick={close}>{t('builder.cancel')}</Button><Button size="compact" variant="primary" disabled={state.busy || !config} onClick={save}>{t(state.pending ? 'action.tryAgain' : 'builder.save')}</Button></>}>
-    {state.phase === 'loading' && <p role="status">{t('next.settings.loading')}</p>}
+    {state.phase === 'loading' && !state.error && <p role="status">{t('next.settings.loading')}</p>}
     {config && rule && <div className={styles.editorGrid}>
       <fieldset className={styles.editorFields} disabled={locked}>
         <TextField label={t('builder.name')} value={config.name} maxLength={120} disabled={locked} error={tried && !config.name.trim() ? t('builder.error.name') : undefined} onChange={event => {const name = event.target.value;change(value => ({...value, name}));}}/>
@@ -69,9 +70,9 @@ export function ChannelEditor({source, libraries, isCurrent, close}: Readonly<{s
       <aside className={styles.preview} aria-busy={state.previewLoading}><h3>{t('builder.preview')}</h3>
         {state.previewLoading && <p role="status">{t('builder.previewing')}</p>}
         {!preview && !state.previewLoading && <p className={styles.help}>{t('builder.previewEmpty')}</p>}
-        {preview && <><b>{t(preview.complete ? 'builder.matches' : 'builder.matchesAtLeast', {count})}</b>{preview.durationMs > 0 && <p>{t('builder.hours', {hours: Number((preview.durationMs / 3600000).toFixed(1))})}</p>}{unresolved > 0 && <p>{t('builder.unresolved', {count: unresolved})}</p>}
+        {preview && <><b>{t(preview.complete ? 'builder.matches' : 'next.browse.countAtLeast', {count})}</b>{preview.durationMs > 0 && <p>{t('builder.hours', {hours: Number((preview.durationMs / 3600000).toFixed(1))})}</p>}{unresolved > 0 && <p>{t('builder.unresolved', {count: unresolved})}</p>}
           <h4>{t('builder.samples')}</h4><ul>{preview.rules.flatMap(item => item.sample.map(sample => <li key={`${item.ruleId}/${sample.itemId}`}>{librarySampleLabel(sample)}</li>))}</ul>
-          {!!preview.firstDay.length && <><h4>{t('builder.firstDay')}</h4><ul>{preview.firstDay.map(entry => <li key={entry.id}>{defaultI18n.dateTime(entry.startMs)} · {entry.itemId ? entry.title : t('builder.nothingScheduled')}</li>)}</ul></>}
+          {!!preview.firstDay.length && <><h4>{t('builder.firstDay')}</h4><ul>{preview.firstDay.map(entry => <li key={entry.id}>{channelClock(entry.startMs, config.timezone)} · {entry.itemId ? entry.title : t('builder.nothingScheduled')}</li>)}</ul></>}
         </>}
       </aside>
     </div>}
