@@ -233,7 +233,8 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
           return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
         }
         if (!media) return <StateView title={t('card.unavailable')} />;
-        return <CatalogueSelectionEntry selection={bindings.catalogueSelection} entry={media} position={bindings.catalogueSelection?.position(media) ?? context.index}>{documentSelection => {
+        const selectable = bindings.catalogueSelection?.member(media);
+        return <CatalogueSelectionEntry selection={selectable ? bindings.catalogueSelection : undefined} entry={selectable ?? media} position={selectable ? bindings.catalogueSelection!.position(selectable) : context.index}>{documentSelection => {
         const common = {model: homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), artwork: artwork.foreground(media.posterUrl, presentation.cardWidth * devicePixelRatio, ratio),
           selection: documentSelection ?? cardSelection, context: 'grid' as const, watched: media.watched, onNavigate: () => effects.openEntry(media),
           onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(signal => effects.playEntry(media, signal)).catch(effects.reportError); } : undefined,

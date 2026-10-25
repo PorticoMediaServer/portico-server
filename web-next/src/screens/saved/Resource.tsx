@@ -130,7 +130,8 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
     if (!media || entry.hidden) return <div className={styles.hiddenRow}>{t('card.unavailable')}</div>;
     const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), shape = shapeFor(media.kind, grid ? 'grid' : 'list');
     const artwork = bindings.artwork.foreground(media.posterUrl, (grid ? cardWidth : 64) * devicePixelRatio, shapeAspect(shape));
-    return <CatalogueSelectionEntry selection={bindings.catalogueSelection} entry={media} position={bindings.catalogueSelection?.position(media) ?? context.index}>{documentSelection => {
+    const selectable = bindings.catalogueSelection?.member(media);
+    return <CatalogueSelectionEntry selection={selectable ? bindings.catalogueSelection : undefined} entry={selectable ?? media} position={selectable ? bindings.catalogueSelection!.position(selectable) : context.index}>{documentSelection => {
     const common = {model, context: grid ? 'grid' as const : 'detail' as const, selection: documentSelection ?? bindings.selection?.personalCard(bindings.runtime.personal, entry), watched: media.watched,
       onNavigate: () => bindings.effects.openEntry(media), onMore: (anchor: HTMLButtonElement) => onMore(entry, anchor),
       onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(signal => bindings.effects.playEntry(media, signal)).catch(bindings.effects.reportError); } : undefined};
