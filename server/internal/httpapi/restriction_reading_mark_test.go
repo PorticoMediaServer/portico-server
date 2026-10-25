@@ -61,13 +61,13 @@ func TestReadingMarkRequiresNormalSelectedProfile(t *testing.T) {
 // Both registry entries retain non-vacuous real-target reads/writes, then
 // compare concealed title/library refusals with a truly absent target.
 func readingMarkRestrictionCheck(t *testing.T) {
-	for _, format := range []string{"pdf", "cbz"} {
-		t.Run(format, func(t *testing.T) {
+	for _, format := range []ReadingFormat{"pdf", "cbz"} {
+		t.Run(string(format), func(t *testing.T) {
 			kind := "book"
 			if format == "cbz" {
 				kind = "comic"
 			}
-			r := newReadingFixture(t, kind, format)
+			r := newReadingFixture(t, kind, string(format))
 			h := New(r.d)
 			ctx := context.Background()
 			owner := readingOwnerLogin(t, r)
