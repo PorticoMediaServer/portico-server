@@ -19,6 +19,7 @@ Every step screenshots first and asserts second, so a failure still leaves evide
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -69,23 +70,57 @@ def main():
     note("launch", shot("launch"))
 
     text = device.text()
-    if "Sign in" in text or "Username" in text:
-        tap("server chooser", "Use a local server", "Server address", "Add server")
-        field = device.tap_contains("Server address", "Address", "URL")
-        if field:
+    if "Sign in" in text or "Username" in text or "Use a local server" in text:
+        if not (device.tap_id("accounts-welcome-local") or device.tap_contains("use a local server")):
+            note("signin", shot("signin"), False, "no local-server option on the entry screen")
+            return 1
+        time.sleep(2)
+        address_fields = device.fields()
+        if address_fields:
+            point = device.center(address_fields[0]["bounds"])
+            device.shell("input", "tap", str(point[0]), str(point[1]))
             device.type_text(args.server)
-            tap("connect", "Continue", "Connect")
+            device.tap_contains("continue", "connect")
             time.sleep(6)
-        device.tap_contains("Username", "User name")
-        device.type_text(creds["username"])
-        device.tap_contains("Password")
-        device.type_text(creds["password"])
-        tap("sign in", "Sign in", "Continue")
-        time.sleep(8)
-        if "Who" in device.text() or "profile" in device.text().lower():
-            device.tap_contains(creds["username"], "Main profile")
-            time.sleep(6)
-    note("signed-in", shot("signed-in"))
+        if device.wait_text(r"Username|Password", 30) is None:
+            note("signin", shot("signin"), False, f"no local form: {device.text()[:120]}")
+            return 1
+        # Each field is addressed by its own bounds, so the password cannot land in the username.
+        fields = device.fields()
+        if len(fields) < 2:
+            note("signin", shot("signin"), False, f"only {len(fields)} fields drawn")
+            return 1
+        for index, value in ((0, creds["username"]), (1, creds["password"])):
+            point = device.center(fields[index]["bounds"])
+            device.shell("input", "tap", str(point[0]), str(point[1]))
+            device.type_text(value)
+            time.sleep(1)
+        boxes = []
+        tree = device.dump()
+        if tree is not None:
+            for node in tree.iter("node"):
+                if (node.get("class") or "").endswith("Button"):
+                    match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds") or "")
+                    if match:
+                        boxes.append((int(match.group(2)), node.get("bounds")))
+        password_y = device.center(fields[1]["bounds"])[1]
+        below = [box for top, box in sorted(boxes) if top > password_y]
+        if not below:
+            note("signin", shot("signin"), False, "no primary button below the password field")
+            return 1
+        point = device.center(below[0])
+        device.shell("input", "tap", str(point[0]), str(point[1]))
+        device.wait_text(r"Who|Main profile|Home|Your servers", 40)
+        if re.search(r"Who|Main profile", device.text(), re.I):
+            device.tap_contains(creds["username"], "main profile")
+            time.sleep(5)
+        device.tap_contains("portico demo")
+        time.sleep(4)
+    home_text = device.text()
+    signed_in = any(word in home_text for word in ("Home", "Continue Watching", "New on", "Your servers"))
+    note("signed-in", shot("signed-in"), signed_in, home_text[:100].replace("\n", " | "))
+    if not signed_in:
+        return 1
 
     # 2. Settings -> Server group
     opened = tap("settings", "Settings")

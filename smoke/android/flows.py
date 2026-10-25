@@ -257,7 +257,19 @@ def main():
                 if (node.get("class") or "").endswith("Button") and text:
                     buttons.append((text, node.get("bounds") or ""))
         submit = next((box for text, box in buttons if re.search(r"sign in|continue", text, re.I)), None)
-        assert submit, f"no sign-in button drawn; saw {[text for text, _ in buttons][:6]}"
+        if not submit:
+            boxes = []
+            tree = device.dump()
+            if tree is not None:
+                for node in tree.iter("node"):
+                    if (node.get("class") or "").endswith("Button"):
+                        match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds") or "")
+                        if match:
+                            boxes.append((int(match.group(2)), node.get("bounds")))
+            password_y = device.center(fields[1]["bounds"])[1]
+            below = [box for top, box in sorted(boxes) if top > password_y]
+            assert below, "no sign-in button below the password field"
+            submit = below[0]
         point = device.center(submit)
         device.shell("input", "tap", str(point[0]), str(point[1]))
         assert device.wait_text(r"Who|Main profile|Home", 40) is not None, "sign-in did not reach the app"
