@@ -49,14 +49,15 @@ export function ReaderAnnotationActions({service, snapshot, controller, onSearch
   const current = () => !!service?.current() && controller.getSnapshot().sourceId === snapshot.sourceId && controller.getSnapshot().sourceRevision === snapshot.sourceRevision;
   if (!service?.current()) return null;
   const busy = state.loading || state.saving || state.revision === undefined;
+  const selectionSupported = !!selection?.text.trim() && new TextEncoder().encode(selection.text).length <= 8192 && selection.location.format !== 'cbz' && (selection.location.format !== 'pdf' || !!selection.pageRects?.length);
   const capture = () => current() && controller.getSnapshot().selection === selection && selection ? selectedContent(selection, colour) : undefined;
   return <>
     {selection && <div className={styles.selection} role="toolbar" aria-label={t('next.reader.selectionActions')}>
-      {colours.map(value => <button key={value} type="button" data-colour={value} aria-label={t(colourLabels[value])} aria-pressed={value === colour} onMouseDown={event => event.preventDefault()} onClick={() => setColour(value)}/>)}
-      <Button disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) void service.write(content);}}>{t('next.reader.addHighlight')}</Button>
-      <Button disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) {setDraft({owner:service,content});setNote('');}}}>{t('next.reader.addNote')}</Button>
-      {navigator.clipboard && <Button onMouseDown={event => event.preventDefault()} onClick={() => {if (current() && controller.getSnapshot().selection === selection) void navigator.clipboard.writeText(selection.text).catch(reportError);}}>{t('next.reader.copySelection')}</Button>}
-      {onSearch && <Button onMouseDown={event => event.preventDefault()} onClick={() => {if (current() && controller.getSnapshot().selection === selection) onSearch(selection.text);}}>{t('next.reader.searchSelection')}</Button>}
+      {colours.map(value => <button key={value} type="button" data-colour={value} aria-label={t(colourLabels[value])} aria-pressed={value === colour} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => setColour(value)}/>)}
+      <Button disabled={busy || !selectionSupported} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) void service.write(content);}}>{t('next.reader.addHighlight')}</Button>
+      <Button disabled={busy || !selectionSupported} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) {setDraft({owner:service,content});setNote('');}}}>{t('next.reader.addNote')}</Button>
+      {navigator.clipboard && <Button onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {if (current() && controller.getSnapshot().selection === selection) void navigator.clipboard.writeText(selection.text).catch(reportError);}}>{t('next.reader.copySelection')}</Button>}
+      {onSearch && selection.text.length <= 1024 && <Button onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {if (current() && controller.getSnapshot().selection === selection) onSearch(selection.text);}}>{t('next.reader.searchSelection')}</Button>}
     </div>}
     <Dialog open={!!shownDraft && current()} onOpenChange={open => {if (!open && !state.saving) setDraft(undefined);}} title={t('next.reader.addNote')} size="sm"
       footer={<><Button disabled={state.saving} onClick={() => setDraft(undefined)}>{t('action.cancel')}</Button><Button disabled={busy || !shownDraft} onClick={() => {const captured = shownDraft;if (captured && current()) void service.write({...captured.content,note}).then(saved => {if (saved && current()) setDraft(value => value === captured ? undefined : value);});}}>{t('next.reader.annotationSave')}</Button></>}>
