@@ -17,7 +17,10 @@ function diagnostics(raw: unknown) {
 }
 export function source(raw: unknown): OwnerLiveSource {
   const v = record(raw), revision = count(v.revision);if (revision < 1) bad();
-  return Object.freeze({id: id(v.id), name: text(v.name, 120), revision, state: choice(v.state, ['active', 'disabled', 'failed', 'pending', 'new'] as const),
+  // The server states how it keeps this source current. Absent (an older
+  // server) stays unknown; it is never inferred from a refresh row.
+  const acquisition = v.acquisition === 'upload' || v.acquisition === 'remote' ? v.acquisition : undefined;
+  return Object.freeze({id: id(v.id), name: text(v.name, 120), revision, state: choice(v.state, ['active', 'disabled', 'failed', 'pending', 'new'] as const), ...(acquisition ? {acquisition} : {}),
     tunerCount: count(v.tunerCount, 256), tunerCountMode: choice(v.tunerCountMode, ['', 'defaulted', 'configured', 'discovered', 'unlimited'] as const), generation: id(v.generation),
     publishedAt: instant(v.publishedAt, true), channels: count(v.channels, 100000), programmes: count(v.programmes, 10000000), ...(v.diagnostics === undefined ? {} : {diagnostics: diagnostics(v.diagnostics)})});
 }

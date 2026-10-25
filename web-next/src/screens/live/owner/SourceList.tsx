@@ -41,7 +41,9 @@ export function SourceList({snapshot, refresh, add, configure, channels, act}: S
       const status = snapshot.document!.refresh.find(value => value.sourceId === source.id);
       const state = liveSourceState(source, status);
       const notice = importSkipped(t, defaultI18n.has, source.diagnostics);
-      const refreshable = canRefreshSource(source, snapshot.document!.refresh);
+      // An upload is a saved manual import with no refresh loop, so it has no
+      // refresh command even if a stale status entry named it.
+      const refreshable = source.acquisition !== 'upload' && canRefreshSource(source, snapshot.document!.refresh);
       const facts = [t('server.live.channelCount', {count: source.channels}),
         source.programmes ? t('server.live.programCount', {count: source.programmes}) : '',
         source.tunerCount ? t(source.tunerCountMode === 'discovered' ? 'web.liveTv.tunersDetected' : 'server.live.tunerCount', {count: source.tunerCount}) : '',

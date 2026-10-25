@@ -14,7 +14,7 @@ import styles from './source-settings.module.css';
 const t = defaultI18n.t;
 const kinds: Record<LiveSourceKind, MessageId> = {playlist: 'server.live.sourceKind.playlist', 'xmltv-guide': 'server.live.sourceKind.guide', hdhomerun: 'server.live.sourceKind.tuner'};
 const filters = {categories: 'server.live.filter.categories', countries: 'server.live.filter.countries', keywords: 'server.live.filter.keywords'} as const;
-export function SourceSettingsDialog({controller, choices, name, guides, close, changed}: {controller: SourceSettingsController; choices: {groups: SourceChoicesController; channels: SourceChoicesController}; name: string; guides: readonly {id: string; name: string}[]; close: () => void; changed: () => void}) {
+export function SourceSettingsDialog({controller, choices, name, guides, acquisition, close, changed}: {controller: SourceSettingsController; choices: {groups: SourceChoicesController; channels: SourceChoicesController}; name: string; guides: readonly {id: string; name: string}[]; acquisition?: 'upload' | 'remote'; close: () => void; changed: () => void}) {
   const owner = useRef(controller);owner.current = controller;
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), {draft, document: doc} = state;
   useEffect(() => {void controller.load();return () => {controller.dispose();choices.groups.dispose();choices.channels.dispose();};}, [controller, choices]);
@@ -27,7 +27,7 @@ export function SourceSettingsDialog({controller, choices, name, guides, close, 
     footer={<><Button size="small" variant="text" onClick={closeCurrent}>{t('action.close')}</Button><Button size="small" variant="primary" loading={state.saving} disabled={!dirty || busy}
       onClick={act(() => void controller.save().then(saved => {if (saved && owner.current === controller && controller.isActive()) changed();}))}>{t('action.save')}</Button></>}>
     <div className={styles.fields}>
-      {state.saved && <p role="status">{t('server.live.settingsSaved')}</p>}
+      {state.saved && <p role="status">{t(acquisition === 'upload' ? 'server.live.changesAfterUpload' : acquisition === 'remote' ? 'server.live.settingsSaved' : 'settings.saved')}</p>}
       {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
       {!draft && state.loading && <p role="status">{t('web.librarySettings.loading')}</p>}
       {draft && doc && <>

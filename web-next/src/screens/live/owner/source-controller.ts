@@ -6,7 +6,7 @@ import {OwnerStore, errorFacts} from './lifetime';
 import {sourceDocument, actionReceipt} from './checked';
 
 export type OwnerLiveSource = Readonly<{
-  id: string; name: string; revision: number; state: string; tunerCount: number;
+  id: string; name: string; revision: number; state: string; acquisition?: 'upload' | 'remote'; tunerCount: number;
   tunerCountMode: string; generation: string; publishedAt: string; channels: number;
   programmes: number; diagnostics?: unknown;
 }>;
