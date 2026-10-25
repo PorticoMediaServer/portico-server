@@ -31,14 +31,17 @@ export class SettingsBackupSource {
     }).catch(error => this.refuse(error)).finally(() => {if (this.loading === task) this.loading = undefined;});
     this.loading = task;return task;
   };
-  async save(patch: BackupSettingsPatch): Promise<boolean> {
-    if (!this.current() || this.loading || this.state.busy || !this.state.settings) return false;
+  async save(patch: BackupSettingsPatch, signal?: AbortSignal): Promise<boolean> {
+    const requestSignal = signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal;
+    if (!this.current() || requestSignal.aborted || this.loading || this.state.busy || !this.state.settings) return false;
     this.publish({...this.state, busy: true});
     try {
-      const settings = await updateBackupSettings(this.api, this.serverId, patch, this.lifetime.signal);
-      if (!this.current()) return false;
+      requestSignal.throwIfAborted();
+      const settings = await updateBackupSettings(this.api, this.serverId, patch, requestSignal);
+      if (!this.current() || requestSignal.aborted) return false;
       this.publish({...this.state, settings});return true;
-    } catch (error) {this.refuse(error);} finally {this.publish({...this.state, busy: false});}
+    } catch (error) {if (isAuthenticationFailure(error) || !requestSignal.aborted) this.refuse(error);} finally {this.publish({...this.state, busy: false});}
+    return false;
   }
   async backupNow(options: Readonly<{intervalMs?: number; timeoutMs?: number}> = {}): Promise<boolean> {
     if (!this.current() || this.loading || this.state.busy || !this.state.document || this.state.document.running || this.state.document.restore) return false;
