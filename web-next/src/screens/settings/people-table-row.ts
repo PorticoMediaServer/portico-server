@@ -10,8 +10,8 @@ export function peopleTableRow(row: SettingsPersonRow, actor: Readonly<{accountI
   return {id: row.accountId, label: row.username, selectable: row.accountId !== actor.accountId && managesTier(actor.role, row.role), cells: {
     person: {title: row.username, meta: row.email, avatar: Array.from(row.username)[0]?.toLocaleUpperCase(), avatarKey: row.username},
     role: {title: t(row.role === 'owner' ? 'next.shell.owner' : row.role === 'admin' ? 'next.shell.administrator' : 'next.settings.member'), tone: row.role === 'owner' ? 'ok' : row.role === 'admin' ? 'accent' : 'quiet'},
-    access: {title: row.libraryNames.length ? row.libraryNames.join(', ') : t('next.settings.allLibraries'), meta: row.effectiveMaxStreams === null ? t('next.settings.unlimitedStreams') : t('next.settings.streams', {count: row.effectiveMaxStreams})},
-    profiles: row.profileNames.join(', '),
+    access: {title: row.libraryNames.length ? defaultI18n.list(row.libraryNames) : t('next.settings.allLibraries'), meta: row.effectiveMaxStreams === null ? t('next.settings.unlimitedStreams') : t('next.settings.streams', {count: row.effectiveMaxStreams})},
+    profiles: defaultI18n.list(row.profileNames),
     active: {title: row.liveState === 'watching' ? t('next.settings.watchingNow') : row.liveState === 'listening' ? t('next.settings.listeningNow') : row.status !== 'active' ? t(`next.settings.personStatus.${row.status}` as 'next.settings.personStatus.off') : row.lastActiveAt ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}).format(new Date(row.lastActiveAt)) : ''},
   }};
 }
