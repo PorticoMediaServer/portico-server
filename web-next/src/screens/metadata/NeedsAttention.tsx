@@ -106,7 +106,7 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
   const subtitle = entry.parentTitle ?? entry.parentArtist;
   const kind = entry.kind === 'item' ? (entry.itemKind === 'episode' ? 'episode' : 'film') : entry.kind;
   const kindIcon: IconName = kind === 'show' ? 'i-tv' : kind === 'book' ? 'i-book' : kind === 'album' || kind === 'song' ? 'i-music' : 'i-film';
-  const working = busy || (attentionInProgress(entry.reason) && !attentionOffers(entry, 'parent'));
+  const working = busy || attentionInProgress(entry.reason);
   return <article className={styles.row} data-busy={working || undefined}>
     <header className={styles.rowHead}>
       <span className={styles.kindTile}><Icon name={kindIcon} size={24} /></span>
