@@ -37,6 +37,8 @@ grep -q 'locks=' "$ROOT/smoke/android/m0-pass.sh" \
   && ok "the pass proves the wipe with device and lock counts" || bad "the wipe has no proof"
 grep -q -- '--drawn-size' "$ROOT/smoke/android/m0-pass.sh" \
   && ok "the display override is opt-in" || bad "the display override is not selectable"
+grep -q 'failure_evidence' "$ROOT/smoke/android/flows.py" \
+  && ok "a failed check keeps its own screenshot" || bad "a failed check keeps no screenshot"
 grep -q 'home_wait_stages' "$ROOT/smoke/android/flows.py" \
   && ok "a Home stall keeps staged evidence" || bad "a Home stall keeps no evidence"
 grep -q 'def actual_viewport' "$ROOT/smoke/android/settings-capture.py" \

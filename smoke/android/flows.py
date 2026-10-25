@@ -166,13 +166,23 @@ class Device:
 
 
 class Checks:
-    def __init__(self, out):
+    def __init__(self, out, device=None):
         self.out = out
+        self.device = device
         self.items = []
 
     def record(self, name, status, detail="", evidence=None):
         self.items.append({"id": name, "status": status, "detail": detail, "evidence": evidence or {}})
         print(f"{status.upper():7} {name}" + (f" | {detail}" if detail else ""))
+
+    def failure_evidence(self, name):
+        """Keep the screen a failure actually left behind, so it can be classified later."""
+        if self.device is None:
+            return {}
+        try:
+            return {"screenshot": self.device.screenshot("fail-" + name)}
+        except Exception:  # noqa: BLE001 - evidence must never mask the real failure
+            return {}
 
     def run(self, name, fn):
         started = time.time()
@@ -180,9 +190,11 @@ class Checks:
             detail, evidence = fn()
             self.record(name, "pass", detail or "", {**(evidence or {}), "seconds": round(time.time() - started, 2)})
         except AssertionError as error:
-            self.record(name, "fail", str(error)[:600], {"seconds": round(time.time() - started, 2)})
+            self.record(name, "fail", str(error)[:600],
+                        {"seconds": round(time.time() - started, 2), **self.failure_evidence(name)})
         except Exception as error:  # noqa: BLE001 - every failure must reach the report
-            self.record(name, "fail", f"{type(error).__name__}: {error}"[:600], {"seconds": round(time.time() - started, 2)})
+            self.record(name, "fail", f"{type(error).__name__}: {error}"[:600],
+                        {"seconds": round(time.time() - started, 2), **self.failure_evidence(name)})
 
     def blocked(self, name, reason):
         self.record(name, "blocked", reason)
@@ -217,7 +229,7 @@ def main():
     with open(args.creds) as handle:
         creds = json.load(handle)
     device = Device(args.serial, args.out)
-    checks = Checks(args.out)
+    checks = Checks(args.out, device)
     meta = {"surface": f"android-{args.mode}", "build": args.build, "serial": args.serial,
             "server": args.server, "display": args.display}
 
