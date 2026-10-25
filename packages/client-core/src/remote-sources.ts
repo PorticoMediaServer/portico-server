@@ -33,12 +33,12 @@ export type SourceReadPreset='list'|'once'|'everything'|'ask';
 /** One folder inside a saved source during browsing: its display name, the
  * absolute path the catalog uses for it, and the path inside the source. */
 export type RemoteFolder=Readonly<{name:string;path:string;relative:string;hidden:boolean}>;
-export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:string;relative:string;entries:readonly RemoteFolder[];nextCursor:string}>;
+export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:string;relative:string;entries:readonly RemoteFolder[];nextCursor:string;truncated:boolean}>;
 /** One library that uses folders from a source, and how many of its folders do. */
 export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;folders:number}>;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
-export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[]}>;
+export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean}>;
 /** The drawn Advanced page: how a source's folders are checked, the disk its
  * read cache may use, and which analysis stages run for files found through it. */
 export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean}>;
@@ -72,8 +72,8 @@ function remoteFolder(raw:unknown):RemoteFolder{
  return Object.freeze({name:raw.name,path:raw.path,relative:raw.relative,hidden:raw.hidden});
 }
 function remoteFolderPage(raw:unknown,id:string):RemoteFolderPage{
- if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.path)||!text(raw.relative)||!Array.isArray(raw.entries)||!text(raw.nextCursor,255))invalid();
- return Object.freeze({sourceId:id,generation:raw.generation,path:raw.path,relative:raw.relative,entries:Object.freeze(raw.entries.map(remoteFolder)),nextCursor:raw.nextCursor});
+ if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.path)||!text(raw.relative)||!Array.isArray(raw.entries)||!text(raw.nextCursor,255)||typeof raw.truncated!=='boolean')invalid();
+ return Object.freeze({sourceId:id,generation:raw.generation,path:raw.path,relative:raw.relative,entries:Object.freeze(raw.entries.map(remoteFolder)),nextCursor:raw.nextCursor,truncated:raw.truncated});
 }
 function sourceLibraryUse(raw:unknown):SourceLibraryUse{
  if(!record(raw)||!text(raw.libraryId,256)||!raw.libraryId||!text(raw.name,512)||!text(raw.kind,32)||!integer(raw.folders)||raw.folders<1)invalid();
@@ -94,9 +94,9 @@ function sourceAdvancedSettings(raw:unknown,id:string):SourceAdvancedSettings{
  return Object.freeze({sourceId:id,generation:raw.generation,revision:raw.revision,saved:raw.saved,cacheSupported:raw.cacheSupported,values:sourceAdvanced(raw.values)});
 }
 function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
- if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>200)invalid();
+ if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>10||typeof raw.librariesTruncated!=='boolean')invalid();
  if(raw.errorCode!==undefined&&!text(raw.errorCode,100))invalid();
- return Object.freeze({sourceId:id,generation:raw.generation,state:raw.state,...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as string}),rangeSupport:raw.rangeSupport,lastCheckedAt:raw.lastCheckedAt,connectionsInUse:raw.connectionsInUse,playbackReads:raw.playbackReads,analysisReads:raw.analysisReads,scanIntervalSeconds:raw.scanIntervalSeconds,libraries:Object.freeze(raw.libraries.map(sourceLibraryUse))});
+ return Object.freeze({sourceId:id,generation:raw.generation,state:raw.state,...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as string}),rangeSupport:raw.rangeSupport,lastCheckedAt:raw.lastCheckedAt,connectionsInUse:raw.connectionsInUse,playbackReads:raw.playbackReads,analysisReads:raw.analysisReads,scanIntervalSeconds:raw.scanIntervalSeconds,libraries:Object.freeze(raw.libraries.map(sourceLibraryUse)),librariesTruncated:raw.librariesTruncated});
 }
 /** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere).
  * `operationKind` picks the receipt route that command's outcome is recovered from. */

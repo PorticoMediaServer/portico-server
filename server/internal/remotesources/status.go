@@ -34,6 +34,9 @@ type SourceStatus struct {
 	AnalysisReads    int                `json:"analysisReads"`
 	ScanIntervalSecs int                `json:"scanIntervalSeconds"`
 	Libraries        []SourceLibraryUse `json:"libraries"`
+	// LibrariesTruncated says the source is used by more libraries than the
+	// bounded list returns; the page shows the first ones and says so.
+	LibrariesTruncated bool `json:"librariesTruncated"`
 }
 
 // ReadSourceStatus is a bounded read of one source's present state. It lists
@@ -70,7 +73,9 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	if observed > 0 {
 		out.LastCheckedAt = time.UnixMilli(observed).UTC().Format(time.RFC3339)
 	}
-	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT l.id,l.name,l.kind,COUNT(*) FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.configured_root=? OR substr(s.configured_root,1,length(?)+1)=?||'/' GROUP BY l.id,l.name,l.kind ORDER BY l.name,l.id`, row.RootPath, row.RootPath, row.RootPath)
+	// Ten drawn libraries are plenty for the page; the count stays bounded so a
+	// constant-cost read never grows with the owner's library list.
+	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT l.id,l.name,l.kind,COUNT(*) FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.configured_root=? OR substr(s.configured_root,1,length(?)+1)=?||'/' GROUP BY l.id,l.name,l.kind ORDER BY l.name,l.id LIMIT 11`, row.RootPath, row.RootPath, row.RootPath)
 	if err != nil {
 		return SourceStatus{}, err
 	}
@@ -88,6 +93,10 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	}
 	if readErr != nil {
 		return SourceStatus{}, readErr
+	}
+	if len(out.Libraries) > 10 {
+		out.Libraries = out.Libraries[:10]
+		out.LibrariesTruncated = true
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE configured_root=? OR substr(configured_root,1,length(?)+1)=?||'/'`, row.RootPath, row.RootPath, row.RootPath).Scan(&out.ScanIntervalSecs); err != nil {
 		return SourceStatus{}, err

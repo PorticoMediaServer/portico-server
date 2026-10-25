@@ -139,6 +139,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
       {page && !busy && !failed && listed && listed.length === 0 && <div className={styles.folderEmpty}>
         <Icon name="i-folder" size={26}/><b>{t('next.remoteSources.noFoldersHere')}</b><p>{t('next.remoteSources.noFoldersHereHelp')}</p>
       </div>}
+      {page?.truncated && <p className={styles.explorerNote} role="status"><Icon name="i-info" size={18}/>{t('next.remoteSources.folderTruncated')}</p>}
       {page?.nextCursor && <div className={styles.moreRow}>
         <Button size="xs" variant="glass" disabled={busy} onClick={() => void read(page.relative || undefined, showHidden, page.nextCursor)}>{t('next.remoteSources.showMoreFolders')}</Button>
       </div>}

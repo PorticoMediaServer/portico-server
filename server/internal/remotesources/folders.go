@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -38,6 +39,9 @@ type SourceFolderPage struct {
 	Relative   string         `json:"relative"`
 	Entries    []SourceFolder `json:"entries"`
 	NextCursor string         `json:"nextCursor"`
+	// Truncated says this folder holds more folders than one bounded listing
+	// examines. The page then stops honestly instead of guessing a next page.
+	Truncated bool `json:"truncated"`
 }
 
 const (
@@ -46,6 +50,9 @@ const (
 	folderPageMax     = 500
 	folderPageDefault = 200
 	folderNameMax     = 255
+	// One listing examines at most this many names. A folder holding more is
+	// reported as truncated rather than read without bound.
+	folderScanCap = 4096
 )
 
 func validFolderCursor(after string) bool {
@@ -69,9 +76,10 @@ func folderRelative(directory string) (string, error) {
 	return directory, nil
 }
 
-// ListSourceFolders reads one folder of a saved WebDAV source from the storage
-// itself. Only folders are returned: the explorer chooses libraries' folders,
-// and listing files is what a scan does, not what opening a folder does.
+// ListSourceFolders reads one folder of a saved source. Only folders are
+// returned: the explorer chooses libraries' folders, and listing files is what
+// a scan does, not what opening a folder does. One request examines a bounded
+// number of names, and a folder that holds more is reported as truncated.
 func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Service, owner identity.Principal, source, directory string, showHidden bool, after string, limit int) (SourceFolderPage, error) {
 	empty := SourceFolderPage{Entries: []SourceFolder{}}
 	if s == nil || s.db == nil || s.mounts == nil || source == "" {
@@ -104,73 +112,116 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	}
 	b := binding{ID: row.ID, Kind: string(row.Kind), Root: row.RootPath}
 	generation := strconv.FormatInt(row.Generation, 10)
-	entries := make([]SourceFolder, 0, 32)
+	var listing folderListing
 	switch row.Kind {
 	case SourceWebDAV:
-		d, current, err := s.dav(ctx, row.ID)
-		if err != nil {
-			s.health(b, generation, err)
-			return empty, mapError(err)
-		}
-		if current != generation {
-			return empty, storage.ErrRemoteChanged
-		}
-		deadline, cancel := context.WithTimeout(ctx, 35*time.Second)
-		defer cancel()
-		page, err := d.List(deadline, relative)
-		if err != nil {
-			s.health(b, generation, err)
-			return empty, mapError(err)
-		}
-		s.health(b, generation, nil)
-		for _, entry := range page.Entries {
-			if !entry.Directory || entry.Relative == relative || entry.Relative == "" && relative == "" {
-				continue
-			}
-			// Depth:1 should only answer direct children; a deeper href is not one.
-			if path.Dir(entry.Relative) != relative && !(relative == "" && !strings.Contains(entry.Relative, "/")) {
-				continue
-			}
-			name := path.Base(entry.Relative)
-			if !validFolderName(name) || !showHidden && strings.HasPrefix(name, ".") {
-				continue
-			}
-			entries = append(entries, SourceFolder{
-				Name:     name,
-				Path:     filepath.Join(row.RootPath, filepath.FromSlash(entry.Relative)),
-				Relative: entry.Relative,
-				Hidden:   strings.HasPrefix(name, "."),
-			})
-		}
+		listing, err = s.listDAVFolders(ctx, row, b, generation, relative, showHidden)
 	default:
 		// A mounted remote is a normalized mount on this server; its folders are
-		// read here exactly as the scanner will read them, never through the
-		// network from this request.
-		folders, err := mountedFolders(row.RootPath, relative, showHidden)
-		if err != nil {
-			return empty, err
-		}
-		entries = folders
+		// read through a root that cannot leave the source or follow a symlink.
+		listing, err = mountedFolders(row.RootPath, relative, showHidden)
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
-	out := SourceFolderPage{SourceID: row.ID, Generation: generation, Path: filepath.Join(row.RootPath, filepath.FromSlash(relative)), Relative: relative, Entries: entries, NextCursor: ""}
+	if err != nil {
+		return empty, err
+	}
+	// The provider read is the slow part. A source removed, regranted or changed
+	// while it ran must not publish what that read found.
+	if err = s.reconfirmOwnerSource(ctx, identities, owner, source, generation); err != nil {
+		return empty, err
+	}
+	sort.Slice(listing.entries, func(i, j int) bool { return listing.entries[i].Name < listing.entries[j].Name })
+	kept := listing.entries
 	if after != "" {
-		kept := entries[:0]
-		for _, entry := range entries {
+		kept = make([]SourceFolder, 0, len(listing.entries))
+		for _, entry := range listing.entries {
 			if entry.Name > after {
 				kept = append(kept, entry)
 			}
 		}
-		out.Entries = kept
 	}
-	if len(out.Entries) > limit {
-		out.Entries = out.Entries[:limit]
+	out := SourceFolderPage{SourceID: row.ID, Generation: generation, Path: filepath.Join(row.RootPath, filepath.FromSlash(relative)), Relative: relative, Entries: kept, NextCursor: "", Truncated: listing.truncated}
+	total := len(kept)
+	if total > limit {
+		out.Entries = kept[:limit]
+		// More really remain after the last name, so the next page is real.
+		if !listing.truncated {
+			out.NextCursor = out.Entries[len(out.Entries)-1].Name
+		}
 	}
-	if len(out.Entries) == limit && len(entries) > limit {
-		out.NextCursor = out.Entries[len(out.Entries)-1].Name
+	if out.Entries == nil {
+		out.Entries = []SourceFolder{}
 	}
-	entries = nil
 	return out, nil
+}
+
+// listDAVFolders reads one folder through the saved source's DAV client and
+// stops after a bounded number of candidate entries.
+func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, generation, relative string, showHidden bool) (folderListing, error) {
+	d, current, err := s.dav(ctx, row.ID)
+	if err != nil {
+		s.health(b, generation, err)
+		return folderListing{}, mapError(err)
+	}
+	if current != generation {
+		return folderListing{}, storage.ErrRemoteChanged
+	}
+	deadline, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+	page, err := d.List(deadline, relative)
+	if err != nil {
+		s.health(b, generation, err)
+		return folderListing{}, mapError(err)
+	}
+	s.health(b, generation, nil)
+	out := folderListing{entries: make([]SourceFolder, 0, 32)}
+	for _, entry := range page.Entries {
+		if !entry.Directory || entry.Relative == relative || entry.Relative == "" && relative == "" {
+			continue
+		}
+		// Depth:1 should only answer direct children; a deeper href is not one.
+		if path.Dir(entry.Relative) != relative && !(relative == "" && !strings.Contains(entry.Relative, "/")) {
+			continue
+		}
+		name := path.Base(entry.Relative)
+		if !validFolderName(name) || !showHidden && strings.HasPrefix(name, ".") {
+			continue
+		}
+		if len(out.entries) >= folderScanCap {
+			out.truncated = true
+			break
+		}
+		out.entries = append(out.entries, SourceFolder{
+			Name:     name,
+			Path:     filepath.Join(row.RootPath, filepath.FromSlash(entry.Relative)),
+			Relative: entry.Relative,
+			Hidden:   strings.HasPrefix(name, "."),
+		})
+	}
+	return out, nil
+}
+
+// reconfirmOwnerSource is the post-read fence: the same owner and the same
+// source generation that admitted the request must still hold.
+func (s *Service) reconfirmOwnerSource(ctx context.Context, identities *identity.Service, owner identity.Principal, source, generation string) error {
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer snapshot.Rollback()
+	if err = currentLocalOwnerTx(ctx, snapshot.Tx(), identities, owner); err != nil {
+		return err
+	}
+	row, err := sourceRowTx(ctx, snapshot.Tx(), source)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return storage.ErrRemoteOffline
+		}
+		return err
+	}
+	if strconv.FormatInt(row.Generation, 10) != generation {
+		return storage.ErrRemoteChanged
+	}
+	return nil
 }
 
 func sourceRowTx(ctx context.Context, tx *sql.Tx, id string) (Source, error) {
@@ -183,30 +234,32 @@ func validFolderName(name string) bool {
 	return name != "" && name != "." && name != "/" && len(name) <= folderNameMax && utf8.ValidString(name) && strings.IndexFunc(name, unicode.IsControl) < 0
 }
 
+type folderListing struct {
+	entries   []SourceFolder
+	truncated bool
+}
+
 // mountedFolders lists the folders of a mounted remote from the mount the
-// scanner itself will read. Symlinks are never followed: a folder offered here
-// must stay inside the source the owner configured.
-func mountedFolders(root, relative string, showHidden bool) ([]SourceFolder, error) {
-	directory := root
-	if relative != "" {
-		directory = filepath.Join(root, filepath.FromSlash(relative))
-		if !filepath.IsLocal(filepath.FromSlash(relative)) {
-			return nil, storage.ErrRemoteConfig
-		}
-	}
-	items, err := os.ReadDir(directory)
+// scanner itself will read. os.Root confines every step to the source, each
+// path component is refused if it is a symlink, and the directory is read in
+// bounded batches rather than loaded whole.
+func mountedFolders(root, relative string, showHidden bool) (folderListing, error) {
+	handle, err := os.OpenRoot(root)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-			return nil, storage.ErrRemoteOffline
-		}
-		return nil, storage.ErrRemoteOffline
+		return folderListing{}, mountedError(err)
 	}
-	out := make([]SourceFolder, 0, len(items))
-	for _, item := range items {
-		if !item.IsDir() || item.Type()&os.ModeSymlink != 0 {
-			continue
-		}
-		name := item.Name()
+	defer handle.Close()
+	directory, err := openNoSymlink(handle, relative)
+	if err != nil {
+		return folderListing{}, err
+	}
+	defer directory.Close()
+	names, more, err := boundedNames(directory, folderScanCap)
+	if err != nil {
+		return folderListing{}, mountedError(err)
+	}
+	out := folderListing{entries: make([]SourceFolder, 0, 32), truncated: more}
+	for _, name := range names {
 		if !validFolderName(name) || !showHidden && strings.HasPrefix(name, ".") {
 			continue
 		}
@@ -214,7 +267,11 @@ func mountedFolders(root, relative string, showHidden bool) ([]SourceFolder, err
 		if relative != "" {
 			inner = relative + "/" + name
 		}
-		out = append(out, SourceFolder{
+		info, err := handle.Lstat(filepath.FromSlash(inner))
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		out.entries = append(out.entries, SourceFolder{
 			Name:     name,
 			Path:     filepath.Join(root, filepath.FromSlash(inner)),
 			Relative: inner,
@@ -222,4 +279,69 @@ func mountedFolders(root, relative string, showHidden bool) ([]SourceFolder, err
 		})
 	}
 	return out, nil
+}
+
+// openNoSymlink opens a folder inside the source, refusing a symlink at any
+// component of the path the owner typed or opened.
+func openNoSymlink(handle *os.Root, relative string) (*os.File, error) {
+	if relative == "" {
+		return handle.Open(".")
+	}
+	walked := ""
+	for _, part := range strings.Split(relative, "/") {
+		if !validFolderName(part) {
+			return nil, storage.ErrRemoteConfig
+		}
+		if walked == "" {
+			walked = part
+		} else {
+			walked = walked + "/" + part
+		}
+		info, err := handle.Lstat(walked)
+		if err != nil {
+			return nil, mountedError(err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, storage.ErrRemoteOffline
+		}
+		if !info.IsDir() {
+			return nil, storage.ErrRemoteConfig
+		}
+	}
+	return handle.Open(relative)
+}
+
+// boundedNames reads at most limit names, then probes once for another, so a
+// huge folder costs bounded memory and truthful truncation.
+func boundedNames(directory *os.File, limit int) ([]string, bool, error) {
+	out := make([]string, 0, 64)
+	for len(out) < limit {
+		batch := 256
+		if remaining := limit - len(out); remaining < batch {
+			batch = remaining
+		}
+		names, err := directory.Readdirnames(batch)
+		out = append(out, names...)
+		if errors.Is(err, io.EOF) {
+			return out, false, nil
+		}
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	probe, err := directory.Readdirnames(1)
+	if len(probe) > 0 {
+		return out, true, nil
+	}
+	if err == nil || errors.Is(err, io.EOF) {
+		return out, false, nil
+	}
+	return nil, false, err
+}
+
+func mountedError(err error) error {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		return storage.ErrRemoteOffline
+	}
+	return storage.ErrRemoteOffline
 }

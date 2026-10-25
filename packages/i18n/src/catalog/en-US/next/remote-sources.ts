@@ -184,6 +184,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.advStartHint': 'Checks this source once each time the server starts.',
   'next.remoteSources.advWholeFileHint': 'These read complete files, and only run when whole-file reads are allowed.',
   'next.remoteSources.problemHeading': 'A remote source needs attention.',
+  'next.remoteSources.folderTruncated': 'This folder holds more folders than Portico lists at once. Open a subfolder to narrow it down.',
   'next.remoteSources.existingLibraryMissing': 'Choose the library to add these folders to.',
   'next.remoteSources.libraryKind': 'Type',
   'next.remoteSources.on': 'On',

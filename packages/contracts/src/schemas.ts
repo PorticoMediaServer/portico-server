@@ -32354,6 +32354,9 @@ export const schemas = {
           "stateDirectory": {
             "type": "string"
           },
+          "stateDirectoryOnNetwork": {
+            "type": "boolean"
+          },
           "totalBytes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -74708,6 +74711,139 @@ export const schemas = {
     "properties": {
       "canShare": {
         "type": "boolean"
+      },
+      "librarySelection": {
+        "properties": {
+          "resource": {
+            "nullable": true,
+            "properties": {
+              "canManage": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "boolean"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "document": {
+                "properties": {
+                  "embeddedOffsetMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "lines": {
+                    "items": {
+                      "properties": {
+                        "atMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "atMs",
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "format",
+                  "text",
+                  "lines",
+                  "embeddedOffsetMs"
+                ],
+                "type": "object"
+              },
+              "format": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "language": {
+                "type": "string"
+              },
+              "offsetMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "provenance": {
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "providerId": {
+                    "type": "string"
+                  },
+                  "rights": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "origin",
+                  "providerId",
+                  "label",
+                  "rights"
+                ],
+                "type": "object"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scope": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "scope",
+              "canManage",
+              "deleted",
+              "language",
+              "offsetMs",
+              "format",
+              "digest",
+              "provenance",
+              "createdAt"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "resource"
+        ],
+        "type": "object"
       },
       "providers": {
         "properties": {
@@ -148773,6 +148909,9 @@ export const schemas = {
           },
           "sourceId": {
             "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -148781,7 +148920,8 @@ export const schemas = {
           "path",
           "relative",
           "entries",
-          "nextCursor"
+          "nextCursor",
+          "truncated"
         ],
         "type": "object"
       },
@@ -149262,6 +149402,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "librariesTruncated": {
+            "type": "boolean"
+          },
           "playbackReads": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -149292,7 +149435,8 @@ export const schemas = {
           "playbackReads",
           "analysisReads",
           "scanIntervalSeconds",
-          "libraries"
+          "libraries",
+          "librariesTruncated"
         ],
         "type": "object"
       }
@@ -192706,6 +192850,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "scope": {
+        "type": "string"
       },
       "sessionId": {
         "type": "string"

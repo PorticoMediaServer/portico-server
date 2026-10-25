@@ -666,7 +666,7 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
           : t('next.remoteSources.neverChecked')}</dd></div>
         <div><dt>{t('next.remoteSources.usedBy')}</dt><dd>{!status ? '—'
           : status.libraries.length
-            ? status.libraries.map(use => `${use.name} · ${use.folders}`).join(', ')
+            ? status.libraries.map(use => `${use.name} · ${use.folders}`).join(', ') + (status.librariesTruncated ? ' …' : '')
             : t('next.remoteSources.noLibraryUses')}</dd></div>
         {!!status?.scanIntervalSeconds && <div><dt>{t('next.remoteSources.scanning')}</dt>
           <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
