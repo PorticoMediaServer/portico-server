@@ -76,7 +76,7 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
     </div> : null}
     <Dialog open={Boolean(searching)} onOpenChange={open => {if (!open && !busy) setSearching(undefined);}} title={t('server.attention.searchTitle')} description={t('server.attention.searchBody')}
       footer={<><Button size="small" disabled={Boolean(busy)} onClick={() => setSearching(undefined)}>{t('action.cancel')}</Button>
-        <Button size="small" variant="primary" loading={Boolean(busy)} disabled={query.trim().length < 2} onClick={() => {if (searching) void send(searching, {action: 'search', query: query.trim()}, t('server.attention.searchStarted'));}}>{t('web.search.title')}</Button></>}>
+        <Button size="small" variant="primary" loading={Boolean(busy)} disabled={query.trim().length < 2} onClick={() => {if (searching) void send(searching, {action: 'search', query: query.trim()}, t('server.attention.searchStarted'));}}><Icon name="i-search" size={18} />{t('web.search.title')}</Button></>}>
       <form onSubmit={(event: FormEvent) => {event.preventDefault(); if (searching && query.trim().length >= 2 && !busy) void send(searching, {action: 'search', query: query.trim()}, t('server.attention.searchStarted'));}}>
         <TextField label={t('server.attention.searchFor')} value={query} onChange={event => setQuery(event.currentTarget.value)} maxLength={200} />
       </form>
@@ -85,10 +85,12 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
       footer={<><Button size="small" disabled={Boolean(busy)} onClick={() => setIdentifying(undefined)}>{t('action.cancel')}</Button>
         <Button size="small" variant="primary" loading={Boolean(busy)} disabled={!id} onClick={() => {if (identifying && id) void send(identifying, {action: 'id', providerId: id, ...(bare ? {provider} : {})}, t('server.attention.idSaved'));}}>{t('server.attention.useId')}</Button></>}>
       <TextField label={t('server.attention.idLabel')} description={t('server.attention.idHelp')} value={typed} onChange={event => setTyped(event.currentTarget.value)} maxLength={2048} />
-      {bare ? <div className={styles.picker} role="group" aria-label={t('server.attention.idProvider')}>
+      {bare ? <label className={styles.picker}>
         <span>{t('server.attention.idProvider')}</span>
-        {PROVIDERS.map(item => <Button key={item} size="small" aria-pressed={provider === item} variant={provider === item ? 'primary' : 'glass'} onClick={() => setProvider(item)}>{providerName(item)}</Button>)}
-      </div> : null}
+        <select value={provider} onChange={event => setProvider(event.currentTarget.value as (typeof PROVIDERS)[number])}>
+          {PROVIDERS.map(item => <option key={item} value={item}>{providerName(item)}</option>)}
+        </select>
+      </label> : null}
     </Dialog>
   </section>;
 }
