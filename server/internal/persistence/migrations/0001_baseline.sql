@@ -8347,7 +8347,10 @@ CREATE TABLE inventory_disc_facts(
  kind TEXT NOT NULL CHECK(kind IN('bluray','dvd')),
  packaging TEXT NOT NULL CHECK(packaging IN('iso','folder')),
  encryption TEXT NOT NULL CHECK(encryption IN('none','aacs','bdplus','css')),
- fingerprint TEXT NOT NULL CHECK(length(fingerprint)=64)
+ fingerprint TEXT NOT NULL CHECK(length(fingerprint)=64),
+ media_title_key TEXT NOT NULL DEFAULT '',
+ media_stream_revision INTEGER NOT NULL DEFAULT 0 CHECK(media_stream_revision>=0),
+ media_chapter_revision INTEGER NOT NULL DEFAULT 0 CHECK(media_chapter_revision>=0)
 ) STRICT;
 CREATE INDEX inventory_disc_facts_asset ON inventory_disc_facts(asset_id,object_id);
 CREATE TABLE inventory_disc_titles(

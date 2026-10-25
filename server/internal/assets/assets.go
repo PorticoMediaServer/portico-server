@@ -27,6 +27,7 @@ type Chapter struct {
 	End   float64 `json:"endSeconds"`
 }
 type Facts struct {
+	DiscSelection       *DiscMediaSelection  `json:"-"`
 	MusicCueTracks      []Chapter            `json:"-"`
 	VideoName           naming.Embedded      `json:"-"`
 	VideoNameSkipped    bool                 `json:"-"`
@@ -67,6 +68,12 @@ type Facts struct {
 	BitRate                   int64                   `json:"-"`
 	AudioEvidence             []AudioTagEvidence      `json:"-"`
 	AnalysisSourceEvidence    string                  `json:"-"`
+}
+
+// DiscMediaSelection identifies the exact title input whose timed media was
+// read. Both values are private scan evidence, never client display/selection IDs.
+type DiscMediaSelection struct {
+	TitleKey, StructureFingerprint string
 }
 type Source struct {
 	ID string `json:"id"`

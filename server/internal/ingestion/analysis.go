@@ -2,7 +2,9 @@ package ingestion
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -570,7 +572,7 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 	if err != nil {
 		return assets.Facts{}, err
 	}
-	if structure.Encryption != "" {
+	if structure.Encryption != "none" {
 		return assets.Facts{}, disc.ErrEncrypted
 	}
 	title, ok := structure.MainTitle()
@@ -632,6 +634,12 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 	if err = s.catalog.CommitInventoryDiscProbe(ctx, job, object, revision, policyRevision, again); err != nil {
 		return assets.Facts{}, err
 	}
+	raw, err := json.Marshal(again)
+	if err != nil {
+		return assets.Facts{}, err
+	}
+	digest := sha256.Sum256(append([]byte("disc_structure_v1\x00"), raw...))
+	facts.DiscSelection = &assets.DiscMediaSelection{TitleKey: title.Key(again.Kind), StructureFingerprint: hex.EncodeToString(digest[:])}
 	return facts, nil
 }
 

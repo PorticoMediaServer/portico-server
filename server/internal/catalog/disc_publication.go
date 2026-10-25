@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
@@ -72,7 +74,11 @@ func (s *Service) CommitInventoryDiscProbe(ctx context.Context, job, object, rev
 		oldFingerprint = ""
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_disc_facts(object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint)
- VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(object_id) DO UPDATE SET asset_id=excluded.asset_id,source_revision=excluded.source_revision,source_generation=excluded.source_generation,root_incarnation=excluded.root_incarnation,kind=excluded.kind,packaging=excluded.packaging,encryption=excluded.encryption,fingerprint=excluded.fingerprint`,
+ VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(object_id) DO UPDATE SET
+ media_title_key=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.source_generation=excluded.source_generation AND inventory_disc_facts.root_incarnation=excluded.root_incarnation AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.media_title_key ELSE '' END,
+ media_stream_revision=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.source_generation=excluded.source_generation AND inventory_disc_facts.root_incarnation=excluded.root_incarnation AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.media_stream_revision ELSE 0 END,
+ media_chapter_revision=CASE WHEN inventory_disc_facts.source_revision=excluded.source_revision AND inventory_disc_facts.source_generation=excluded.source_generation AND inventory_disc_facts.root_incarnation=excluded.root_incarnation AND inventory_disc_facts.fingerprint=excluded.fingerprint THEN inventory_disc_facts.media_chapter_revision ELSE 0 END,
+ asset_id=excluded.asset_id,source_revision=excluded.source_revision,source_generation=excluded.source_generation,root_incarnation=excluded.root_incarnation,kind=excluded.kind,packaging=excluded.packaging,encryption=excluded.encryption,fingerprint=excluded.fingerprint`,
 		object, asset, revision, source.Generation, source.Incarnation, validated.Kind, validated.Packaging, validated.Encryption, fingerprint)
 	if err != nil {
 		return err
@@ -86,6 +92,38 @@ func (s *Service) CommitInventoryDiscProbe(ctx context.Context, job, object, rev
 		return err
 	}
 	return gated.Commit()
+}
+
+// persistDiscMediaSelectionTx runs only in the accepting timed-media writer,
+// after its stream/chapter facts. Structure alone never says which title those
+// facts describe, and a later metadata write must not silently inherit the link.
+func persistDiscMediaSelectionTx(ctx context.Context, tx *sql.Tx, source LibrarySource, object, revision, asset string, size, modified int64, facts assets.Facts) error {
+	if facts.DiscSelection == nil {
+		_, err := tx.ExecContext(ctx, `UPDATE inventory_disc_facts SET media_title_key='',media_stream_revision=0,media_chapter_revision=0 WHERE object_id=?`, object)
+		return err
+	}
+	if source.Kind != "local" {
+		return disc.ErrRemoteUnqualified
+	}
+	var streams, chapters int64
+	err := tx.QueryRowContext(ctx, `SELECT st.revision,ch.revision FROM asset_stream_facts st JOIN asset_chapter_facts ch ON ch.asset_id=st.asset_id
+ WHERE st.asset_id=? AND st.size=? AND st.modified_ns=? AND ch.size=st.size AND ch.modified_ns=st.modified_ns AND ch.status='known'`, asset, size, modified).Scan(&streams, &chapters)
+	if err != nil {
+		return err
+	}
+	selection := facts.DiscSelection
+	result, err := tx.ExecContext(ctx, `UPDATE inventory_disc_facts SET media_title_key=?,media_stream_revision=?,media_chapter_revision=?
+ WHERE object_id=? AND asset_id=? AND source_revision=? AND source_generation=? AND root_incarnation=? AND fingerprint=? AND encryption='none'
+ AND EXISTS(SELECT 1 FROM inventory_disc_titles t WHERE t.object_id=inventory_disc_facts.object_id AND t.title_key=?
+ AND t.duration_ms=? AND (SELECT COUNT(*) FROM inventory_disc_chapters c WHERE c.object_id=t.object_id AND c.title_key=t.title_key)=?)`,
+		selection.TitleKey, streams, chapters, object, asset, revision, source.Generation, source.Incarnation, selection.StructureFingerprint, selection.TitleKey, int64(math.Round(facts.Duration*1000)), len(facts.Chapters))
+	if err != nil {
+		return err
+	}
+	if n, _ := result.RowsAffected(); n != 1 {
+		return errors.New("disc media selection changed during analysis")
+	}
+	return nil
 }
 
 func writeDiscTitlesTx(ctx context.Context, tx *sql.Tx, object string, probe disc.Probe) error {

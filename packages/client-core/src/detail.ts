@@ -1,3 +1,4 @@
+import {parseDiscMediaFacts, type DiscMediaFacts} from './disc-media-facts.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations,wireDisplayDurations,durationIntent} from './wire-units.ts';
@@ -44,6 +45,7 @@ export type TitleFacts = Readonly<{ contentRating?: string; studio?: string; net
 export type TitleFileTrack = Readonly<{ language?: string; codec: string; title?: string; channels?: number; channelLayout?: string; objectAudio?: string; bitRate?: number; default?: boolean; forced?: boolean; external?: boolean }>;
 /** One file returned by lazy File info. `path` is sent to owners only. */
 export type TitleFile = Readonly<{
+  disc?: DiscMediaFacts;
   id: string; itemId?:string; path?: string; size: number; container: string; duration: number; bitRate?: number; available: boolean;
   /** 0 for a whole title. Files with the same part are versions of one another; the first listed is played when none is chosen. */
   partIndex?: number;
@@ -125,12 +127,13 @@ function fileTrack(value: unknown): TitleFileTrack {
 function titleFile(value: unknown): TitleFile {
  value=wireDisplayDurations(value,{duration:"durationMs"},left);
   if (!obj(value) || !id(value.id) || !str(value.container ?? '', 64)) invalid();
+  const disc = parseDiscMediaFacts(value.disc);
   const path = str(value.path, 4096) && value.path ? value.path : undefined;
   const video = part('file.video', value.video, (v): TitleFile['video'] => {
     if (!obj(v) || !str(v.codec, 64) || !integer(v.width) || !integer(v.height)) invalid();
     return Object.freeze({ codec: v.codec, width: v.width, height: v.height, ...(str(v.dynamicRange, 32) && v.dynamicRange ? { dynamicRange: v.dynamicRange } : {}), ...(v.hdr10Plus === true ? { hdr10Plus: true } : {}), ...(finite(v.frameRate) && v.frameRate > 0 ? { frameRate: v.frameRate } : {}), ...(integer(v.bitDepth) && v.bitDepth > 0 ? { bitDepth: v.bitDepth } : {}), ...(integer(v.bitRate) && v.bitRate > 0 ? { bitRate: v.bitRate } : {}) });
   });
-  return Object.freeze({ id: value.id, ...(id(value.itemId)?{itemId:value.itemId}:{}),...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(integer(value.partIndex) ? { partIndex: value.partIndex } : {}), ...(str(value.edition, 512) && value.edition ? { edition: value.edition } : {}), ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
+  return Object.freeze({ id: value.id, ...(disc ? {disc} : {}), ...(id(value.itemId)?{itemId:value.itemId}:{}),...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(integer(value.partIndex) ? { partIndex: value.partIndex } : {}), ...(str(value.edition, 512) && value.edition ? { edition: value.edition } : {}), ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
 }
 function checkScope(value: DetailScope): DetailScope {
   if (!obj(value) || !id(value.serverId) || !str(value.viewerId, 1024) || !value.viewerId) throw new Error('A bound detail viewer/server scope is required.');

@@ -800,6 +800,9 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 	if err = assets.PersistChapters(tx, asset, size, modified, f); err != nil {
 		return err
 	}
+	if err = persistDiscMediaSelectionTx(ctx, tx, source, object, revision, asset, size, modified, f); err != nil {
+		return err
+	}
 	if policy.Allows("subtitles") && f.SubtitleInventory != nil {
 		if err = subtitles.Persist(tx, asset, size, modified, f.SubtitleInventory); err != nil {
 			return err

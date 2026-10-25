@@ -14,6 +14,15 @@ subtitles and display/audio limits; do not claim capabilities the player lacks.
 server's decision for this device. Use the selected `presentation.engine`.
 Original is the default quality; Automatic is an explicit viewer option.
 
+A physical version may include `disc: {kind, packaging, titleNumber, chapterCount}`.
+`kind` is `bluray` or `dvd`; `packaging` is `iso` or `folder`. The title number
+is the stored public Title N number for the exact disc title whose timed media
+was measured. Chapter count may be zero. File info carries the same optional
+block on its corresponding file. Missing facts mean unknown: old scans, changed
+source or technical revisions, and multi-part versions do not invent a title.
+This display block does not turn disc titles into playable versions, identify
+the current owner-selected main title, or grant a title-change/play command.
+
 ## Start, change and report
 
 ```text

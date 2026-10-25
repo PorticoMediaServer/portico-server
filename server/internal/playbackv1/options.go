@@ -49,17 +49,18 @@ type OptionsResume struct {
 	UpdatedAt  string `json:"updatedAt,omitempty"`
 }
 type Version struct {
-	ID          string        `json:"id"`
-	Label       string        `json:"label"`
-	Edition     string        `json:"edition,omitempty"`
-	Container   string        `json:"container,omitempty"`
-	SizeBytes   int64         `json:"sizeBytes"`
-	DurationMs  int64         `json:"durationMs"`
-	BitrateKbps int           `json:"bitrateKbps,omitempty"`
-	Parts       []Part        `json:"parts"`
-	Video       []VideoStream `json:"video"`
-	Audio       []AudioStream `json:"audio"`
-	Subtitles   []SubStream   `json:"subtitles"`
+	Disc        *catalog.DiscMediaFacts `json:"disc,omitempty"`
+	ID          string                  `json:"id"`
+	Label       string                  `json:"label"`
+	Edition     string                  `json:"edition,omitempty"`
+	Container   string                  `json:"container,omitempty"`
+	SizeBytes   int64                   `json:"sizeBytes"`
+	DurationMs  int64                   `json:"durationMs"`
+	BitrateKbps int                     `json:"bitrateKbps,omitempty"`
+	Parts       []Part                  `json:"parts"`
+	Video       []VideoStream           `json:"video"`
+	Audio       []AudioStream           `json:"audio"`
+	Subtitles   []SubStream             `json:"subtitles"`
 }
 type Part struct {
 	ID         string `json:"id"`
@@ -551,6 +552,11 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			versionEdition = edition
 		}
 		v := Version{ID: first.id, Edition: versionEdition, Container: first.container, Parts: []Part{}, Video: []VideoStream{}, Audio: []AudioStream{}, Subtitles: []SubStream{}}
+		if !audioOnly && len(group) == 1 {
+			if v.Disc, err = catalog.ReadDiscMediaFacts(ctx, tx, first.id); err != nil {
+				return Options{}, err
+			}
+		}
 		for _, a := range group {
 			v.Parts = append(v.Parts, Part{ID: a.id, Index: a.part, DurationMs: int64(a.duration * 1000), SizeBytes: a.size})
 			v.SizeBytes += a.size

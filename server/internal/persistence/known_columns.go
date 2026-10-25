@@ -2400,6 +2400,9 @@ inventory_disc_facts.asset_id
 inventory_disc_facts.encryption
 inventory_disc_facts.fingerprint
 inventory_disc_facts.kind
+inventory_disc_facts.media_chapter_revision
+inventory_disc_facts.media_stream_revision
+inventory_disc_facts.media_title_key
 inventory_disc_facts.object_id
 inventory_disc_facts.packaging
 inventory_disc_facts.root_incarnation

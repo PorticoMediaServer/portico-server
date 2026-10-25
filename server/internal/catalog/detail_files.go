@@ -11,14 +11,15 @@ import (
 // TitleFile is one file of a title as its Files list reads: where it is (owners only), how big
 // it is and every track in it. Only the lazy File info read carries it.
 type TitleFile struct {
-	ItemID    string  `json:"itemId,omitempty"`
-	ID        string  `json:"id"`
-	Path      string  `json:"path,omitempty"`
-	Size      int64   `json:"size"`
-	Container string  `json:"container"`
-	Duration  float64 `json:"duration"`
-	BitRate   int64   `json:"bitRate,omitempty"`
-	Available bool    `json:"available"`
+	Disc      *DiscMediaFacts `json:"disc,omitempty"`
+	ItemID    string          `json:"itemId,omitempty"`
+	ID        string          `json:"id"`
+	Path      string          `json:"path,omitempty"`
+	Size      int64           `json:"size"`
+	Container string          `json:"container"`
+	Duration  float64         `json:"duration"`
+	BitRate   int64           `json:"bitRate,omitempty"`
+	Available bool            `json:"available"`
 	// PartIndex is 0 for a whole title. Files with the same part index are
 	// versions of one another; the first listed is the one played by default.
 	PartIndex int `json:"partIndex"`
@@ -92,6 +93,11 @@ func (s *Service) titleFiles(item string, owner bool) ([]TitleFile, error) {
 	}
 	for i := range out {
 		f := &out[i]
+		if f.Video != nil {
+			if f.Disc, err = ReadDiscMediaFacts(s.Context(), s.read(), f.ID); err != nil {
+				return nil, err
+			}
+		}
 		streams, err := s.read().Query(`SELECT type,codec,language,title,channels,channel_layout,is_default,is_forced,color_transfer,detail_json FROM asset_streams WHERE asset_id=? AND type IN('video','audio') ORDER BY stream_index`, f.ID)
 		if err != nil {
 			return nil, err
@@ -162,10 +168,10 @@ type FileInfoManage struct {
 }
 
 type FileInfo struct {
-	Scope      DetailScope     `json:"scope"`
-	Revision   ContentRevision `json:"revision"`
-	Kind       string          `json:"kind"`
-	Files      []TitleFile     `json:"files"`
+	Scope    DetailScope     `json:"scope"`
+	Revision ContentRevision `json:"revision"`
+	Kind     string          `json:"kind"`
+	Files    []TitleFile     `json:"files"`
 	// Disc is the owner-only ordered title list of a disc image's current scan.
 	// Viewer reads never carry it; the block is absent when no probe is stored.
 	Disc       *FileInfoDisc   `json:"disc,omitempty"`
@@ -178,8 +184,8 @@ type FileInfo struct {
 // binds the block to the file that was actually scanned. Positions are the stored
 // stable Title N order; chapters and angles are the probe's own counts.
 type FileInfoDisc struct {
-	FileID string             `json:"fileId"`
-	Kind   FileInfoDiscKind   `json:"kind"`
+	FileID string              `json:"fileId"`
+	Kind   FileInfoDiscKind    `json:"kind"`
 	Titles []FileInfoDiscTitle `json:"titles"`
 }
 

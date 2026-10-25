@@ -5,6 +5,7 @@ import {validateSubtitleDelivery} from '../subtitles.ts';
 import {apiRoot} from '../../../contracts/src/routes.ts';
 import {parseObservedPlayback, type ObservedPlayback} from './observed-playback.ts';
 import {parsePlaybackInfo, type PlaybackInfo} from './playback-info.ts';
+import {parseDiscMediaFacts, type DiscMediaFacts} from '../disc-media-facts.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -51,7 +52,7 @@ export type VideoStream = Readonly<{
 export type AudioStream = Readonly<{profile?: string; variant?: string; objectAudio?: string; dtsx?: boolean; sampleRate?: number; bitDepth?: number; id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
 export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;
-export type MediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; sizeBytes?: number; durationMs: number; bitrateKbps?: number; parts: readonly VersionPart[]; video: readonly VideoStream[]; audio: readonly AudioStream[]; subtitles: readonly SubtitleStream[]}>;
+export type MediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; disc?: DiscMediaFacts; sizeBytes?: number; durationMs: number; bitrateKbps?: number; parts: readonly VersionPart[]; video: readonly VideoStream[]; audio: readonly AudioStream[]; subtitles: readonly SubtitleStream[]}>;
 /** A skippable segment (spec §4.2). `id` is what a skip report names; the viewer's `auto`
  * preference applies only when `automaticSafe`. */
 export type Marker = Readonly<{id: string; type: 'intro' | 'recap' | 'credits' | 'preview' | 'commercial' | 'other'; startMs: number; endMs: number; confidence: 'detected' | 'manual' | 'embedded' | 'other'; automaticSafe: boolean}>;
@@ -114,8 +115,10 @@ export function parseOptions(v: unknown): PlaybackOptions {
   if (!obj(v)) throw new ContractError('playback options');
   const versions = arr(v.versions).map((x, i): MediaVersion => {
     if (!obj(x)) throw new ContractError(`version ${i}`);
+    const disc = parseDiscMediaFacts(x.disc);
     return Object.freeze({
       id: id(x.id, 'version id'), label: str(x.label), edition: typeof x.edition === 'string' ? x.edition : undefined, container: typeof x.container === 'string' ? x.container : undefined,
+      ...(disc ? {disc} : {}),
       sizeBytes: optNum(x.sizeBytes), durationMs: num(x.durationMs), bitrateKbps: optNum(x.bitrateKbps),
       parts: Object.freeze(arr(x.parts).filter(obj).map(p => Object.freeze({id: id(p.id, 'part id'), index: num(p.index), durationMs: num(p.durationMs), sizeBytes: optNum(p.sizeBytes)}))),
       video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({...videoSourceFacts(s), id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, ...(typeof s.interlaced === 'boolean' ? {interlaced: s.interlaced} : {}), ...(typeof s.hdr10Plus === 'boolean' ? {hdr10Plus: s.hdr10Plus} : {}), bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
