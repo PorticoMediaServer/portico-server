@@ -49,6 +49,8 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
  const root=useRef<HTMLDivElement>(null),rowRefs=useRef(new Map<string,HTMLButtonElement>()),lastSection=useRef<Section|null>(null),t=i18n.t;
  const sleepRoot=useRef<HTMLDivElement>(null);
  const [sleepOpen,setSleepOpen]=useState(false),sleepAnchor=useRef<HTMLButtonElement|null>(null);
+ // desktop-player f3b: a switch that failed keeps the playing track and offers Try again here.
+ const [audioFailed,setAudioFailed]=useState<string|undefined>(undefined);
  useLayoutEffect(()=>{
   if(context.layout!=='phone')return;
   if(sleepOpen)sleepRoot.current?.querySelector<HTMLButtonElement>('[aria-checked="true"], button')?.focus({preventScroll:true});
@@ -81,7 +83,9 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
  const sectionRows=(id:Section):readonly WatchRadioChoice[] => id==='subtitles'?model.subtitles.map(row=>({id:row.id,label:row.primary,detail:row.secondary,selected:row.selected,enabled:!row.unavailable}))
   :id==='audio'?model.audio.map(row=>({id:row.id,label:row.primary,detail:row.secondary,selected:row.selected,enabled:!row.unavailable}))
   :id==='quality'?model.quality:[];
- const sectionSelect=(id:Section,value:string)=>id==='subtitles'?model.selectSubtitle(value):id==='audio'?model.selectAudio(value):id==='quality'?model.selectQuality(value):model.selectSpeed(value);
+ const chooseAudio=(id:string)=>{setAudioFailed(undefined);return Promise.resolve(model.selectAudio(id)).catch(()=>{if(model.isCurrent())setAudioFailed(id);});};
+ const audioFailure=audioFailed?<div className={styles.audioRetry} role="status"><span>{t('player.opt.audioChangeFailed')}</span><button type="button" onClick={()=>chooseAudio(audioFailed)}>{t('action.tryAgain')}</button></div>:null;
+ const sectionSelect=(id:Section,value:string)=>id==='subtitles'?model.selectSubtitle(value):id==='audio'?chooseAudio(value):id==='quality'?model.selectQuality(value):model.selectSpeed(value);
  const sectionTitle=(id:Section)=>id==='subtitles'?t('player.opt.subtitles'):id==='audio'?t('player.opt.audio'):id==='quality'?t('player.opt.quality'):t('player.opt.speed');
  const subPanel=section?<div ref={root} data-section={section} className={styles.subBody} onKeyDown={event=>{
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.show('options');}
@@ -89,7 +93,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
    <Segmented className={styles.speeds} aria-label={sectionTitle('speed')} value={model.speed.find(row=>row.selected)?.id??''}
     items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
     onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
-   </div>:<><RadioRows rows={sectionRows(section)} select={id=>sectionSelect(section,id)} reportError={reportError} label={sectionTitle(section)}/>{section==='quality'&&model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}{section==='audio'&&model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</>}</div>:null;
+   </div>:<><RadioRows rows={sectionRows(section)} select={id=>sectionSelect(section,id)} reportError={reportError} label={sectionTitle(section)}/>{section==='quality'&&model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}{section==='audio'&&<>{audioFailure}{model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</>}</>}</div>:null;
  // desktop-player f7: the sheet's own "Up next" row carries the queue's real remaining count.
  const remaining=context.snapshot.queueView?.remainingCount,upNext=typeof remaining==='number'&&Number.isInteger(remaining)&&remaining>0?i18n.number(remaining):undefined;
  const titleActions:readonly Readonly<{id:string;label:string;icon:IconName;action:()=>void|Promise<void>;value?:string}>[]=[
@@ -130,7 +134,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
  }}>
   {model.subtitles.length>0&&<div data-section="subtitles"><TrackChoices title={t('player.opt.subtitles')} choices={model.subtitles} layout={context.layout} onSelect={model.selectSubtitle} reportError={reportError} t={t}/>{model.subtitleTiming&&<TimingRow timing={model.subtitleTiming} reportError={reportError} t={t}/>}{model.subtitleAdditions.length>0&&<div className={styles.additions}><TrackChoices title={t('player.opt.notAdded')} choices={model.subtitleAdditions} layout={context.layout} onSelect={model.selectSubtitle} onAdd={id=>model.selectSubtitle(id)} reportError={reportError} t={t}/></div>}{model.subtitleForced&&<label className={styles.forcedRow}><Switch checked={model.subtitleForced.only} onCheckedChange={value=>{try{model.subtitleForced?.set(value);}catch(error){reportError(error);}}}/><span><b>{t('player.subtitles.forcedOnly')}</b><small>{t('player.subtitles.forcedOnlyHelp')}</small></span></label>}{model.subtitleSearch&&<div className={styles.searchRow} aria-disabled="true"><span className={styles.searchLabel}><Icon name="i-dl" size={18}/>{t('player.opt.findSubtitles')}</span><p className={styles.searchWhy}>{model.subtitleSearch.reason}</p></div>}</div>}
   {(model.audio.length>0||model.quality.length>0)&&<div>
-   {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={model.selectAudio} reportError={reportError} t={t}/>{model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
+   {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={chooseAudio} reportError={reportError} t={t}/>{audioFailure}{model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
    {model.quality.length>0&&<div data-section="quality"><RadioColumn title={t('player.opt.quality')} rows={model.quality} select={model.selectQuality} reportError={reportError}/>{model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
   </div>}
   {(model.speed.length>0||model.subtitleStyle||model.sleepTimer)&&<div>

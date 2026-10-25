@@ -67,3 +67,8 @@
 .searchWhy { margin: 4px 0 0 28px; font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }
 
 .phoneGroup { margin:20px 20px 6px; color:var(--color-text-tertiary); font-size:var(--type-caption-size); font-weight:var(--type-body-strong-weight); }
+
+/* f3b: a switch that failed keeps the playing track and says so, with Try again. */
+.audioRetry { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-text); font-size: var(--type-caption-size); line-height: var(--type-caption-line); }
+.audioRetry span { flex: 1; min-width: 0; }
+.audioRetry button { flex: none; padding: 0; border: 0; background: none; font: inherit; font-weight: var(--type-caption-strong-weight); color: var(--color-text); text-decoration: underline; cursor: pointer; }
