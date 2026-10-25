@@ -37,7 +37,8 @@ export function LocalPasswordRecoveryFlow({entry, form, onBack}: LocalPasswordRe
   }, [entry]);
   const available = () => alive.current && sameEntry() && !pending.current && !entry.getSnapshot().busy && !form.getSnapshot().busy;
   const back = () => {
-    if (sameEntry()) entry.cancelLocalOwnerReset();
+    if (!alive.current || !sameEntry()) return;
+    entry.cancelLocalOwnerReset();
     form.clear(); onBack();
   };
   const requestFile = async (username: string) => {
@@ -92,9 +93,9 @@ function OwnerFile({serverName, location, busy, error, onVerify, onRewrite, onBa
 }) {
   const [code, setCode] = useState(''), [remaining, setRemaining] = useState(location.retryAfterSeconds);
   useEffect(() => {
-    const until = Date.now() + location.retryAfterSeconds * 1000;
-    const timer = setInterval(() => setRemaining(Math.max(0, Math.ceil((until - Date.now()) / 1000))), 1000);
-    return () => clearInterval(timer);
+    setRemaining(location.retryAfterSeconds);
+    const timer = setTimeout(() => setRemaining(0), location.retryAfterSeconds * 1000);
+    return () => clearTimeout(timer);
   }, [location]);
   const separator = location.systemKind === 'windows' ? '\\' : '/';
   const path = `${location.fileDirectory}${/[\\/]$/.test(location.fileDirectory) ? '' : separator}${location.fileName}`;
