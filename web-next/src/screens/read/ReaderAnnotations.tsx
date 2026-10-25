@@ -25,7 +25,7 @@ export function useReaderAnnotations(port: ReadingAnnotationPort | undefined, co
     setOwned({port, service});
     return () => service.dispose();
   }, [port, controller, authority, active]);
-  const service = owned?.port === port && active ? owned.service : undefined;
+  const service = owned && owned.port === port && active ? owned.service : undefined;
   const state = useSyncExternalStore(service?.subscribe ?? noSubscribe, service?.getSnapshot ?? noSnapshot, noSnapshot);
   useEffect(() => {if (service && ready) void service.load();}, [service, ready]);
   return {service, state};
@@ -48,13 +48,13 @@ export function useAnnotationLease(owner: object | undefined) {
     const next={owner,life:new AbortController(),retired:false};setLease(next);
     return ()=>retire(next);
   },[owner]);
-  return lease?.owner===owner&&!lease.retired?lease:undefined;
+  return lease&&lease.owner===owner&&!lease.retired?lease:undefined;
 }
 const live = (lease: AnnotationLease | undefined) => !!lease&&!lease.retired&&!lease.life.signal.aborted;
 type NoteOpening = Readonly<{id:string; owner:ReadingAnnotationService; life:AbortController; content:ReadingAnnotationContent; revision:number; member?:ReadingAnnotation}>;
 function useNoteOpening() {
   const [opening,setOpening]=useState<NoteOpening>();
-  const current=useRef<NoteOpening>();
+  const current=useRef<NoteOpening | undefined>(undefined);
   const open=(next:NoteOpening)=>{current.current?.life.abort();current.current=next;setOpening(next);};
   const close=(original:NoteOpening)=>{original.life.abort();if(current.current===original){current.current=undefined;setOpening(undefined);}};
   return {opening,open,close};
@@ -80,7 +80,7 @@ function AnnotationNoteEditor({opening,service,state,signal,onClose}: {opening:N
       draft.retired=true;draft.life.abort();
       const next={note:event.currentTarget.value,life:new AbortController(),retired:false,claimed:false};offered.current=next;setDraft(next);
     }}/></label>
-    {state.error&&<><p role="alert">{t('next.reader.annotationFailed')}</p><p>{t('next.reader.annotationReopen')}</p><Button disabled={state.loading||state.saving} onClick={()=>{if(live(lease)&&!signal.aborted&&!opening.life.signal.aborted)void service.load();}}>{t('next.reader.annotationReload')}</Button></>}
+    {!!state.error&&<><p role="alert">{t('next.reader.annotationFailed')}</p><p>{t('next.reader.annotationReopen')}</p><Button disabled={state.loading||state.saving} onClick={()=>{if(live(lease)&&!signal.aborted&&!opening.life.signal.aborted)void service.load();}}>{t('next.reader.annotationReload')}</Button></>}
   </Dialog>;
 }
 export function ReaderAnnotationActions({service, snapshot, controller, onSearch, reportError}: {
@@ -115,8 +115,8 @@ export function ReaderAnnotationList({kind,service,state,controller,reportError,
   const entries=state.entries.filter(entry=>entry.kind===kind),busy=state.loading||state.saving||state.revision===undefined;
   const owns=(entry:ReadingAnnotation)=>live(lease)&&!signal.aborted&&service.current()&&service.getSnapshot().entries.includes(entry);
   return <div className={styles.list}>
-    {state.error&&<p role="alert">{t('next.reader.annotationFailed')}</p>}
-    {state.error&&<Button disabled={state.loading||state.saving} onClick={()=>{if(live(lease)&&!signal.aborted)void service.load();}}>{t('next.reader.annotationReload')}</Button>}
+    {!!state.error&&<p role="alert">{t('next.reader.annotationFailed')}</p>}
+    {!!state.error&&<Button disabled={state.loading||state.saving} onClick={()=>{if(live(lease)&&!signal.aborted)void service.load();}}>{t('next.reader.annotationReload')}</Button>}
     {state.loading&&<p role="status">{t('status.loading')}</p>}
     {!state.loading&&!state.error&&state.revision!==undefined&&!entries.length&&<p>{t('next.reader.annotationEmpty')}</p>}
     {entries.map(entry=><article key={entry.id} data-colour={entry.colour}>
