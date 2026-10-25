@@ -213,3 +213,115 @@ test('late unsaved test results cannot cross a disposed owner scope',async()=>{
  const tested=service.testConnection(input);service.dispose();pending.resolve({scope:wire,result:{origin:'https://private.example',rangeSupport:'conditional'}});
  await assert.rejects(tested,/Scope changed/);assert.equal(service.getSnapshot().sources.length,0);
 });
+
+test('read-profile reads the server values and the four drawn presets match its SourceReadPreset',async()=>{
+ const {sourceReadPreset,sourceReadPresetName}=await import('../src/remote-sources.ts');
+ assert.deepEqual(sourceReadPreset('list'),{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0});
+ assert.deepEqual(sourceReadPreset('once'),{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0});
+ assert.deepEqual(sourceReadPreset('everything'),{scanDepth:'complete',wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0});
+ assert.deepEqual(sourceReadPreset('ask'),{scanDepth:'basic',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0});
+ assert.equal(sourceReadPresetName(sourceReadPreset('once')),'once');assert.equal(sourceReadPresetName({...sourceReadPreset('once'),connections:5}),undefined);
+ const settings={sourceId:'dav',generation:'1',revision:2,saved:true,values:sourceReadPreset('everything')};
+ const service=new RemoteSourceService(api(async(path,method)=>{assert.equal(path,'/v1/storage/sources/dav/settings/read-profile');assert.equal(method,'GET');return {scope:wire,settings};}),scope,async()=>op);
+ assert.deepEqual(await service.readProfile('dav'),settings);service.dispose();
+ for(const raw of [{...settings,values:{...settings.values,connections:0}},{...settings,values:{...settings.values,scanDepth:'custom'}},{...settings,revision:-1},{...settings,saved:'yes'}]){
+  const bad=new RemoteSourceService(api(async()=>({scope:wire,settings:raw})),scope,async()=>op);await assert.rejects(bad.readProfile('dav'));bad.dispose();
+ }
+ const other=new RemoteSourceService(api(async()=>({scope:{...wire,serverId:'other'},settings})),scope,async()=>op);await assert.rejects(other.readProfile('dav'));other.dispose();
+});
+
+test('saving a read profile sends the exact revisioned body and returns the receipt settings',async()=>{
+ const settings={sourceId:'dav',generation:'7',revision:3,saved:true,values:{scanDepth:'complete' as const,wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0}};
+ let body:any;
+ const service=new RemoteSourceService(api(async(path,method,raw)=>{if(method==='GET')return list();assert.equal(path,'/v1/storage/sources/dav/settings/read-profile');assert.equal(method,'PUT');body=raw;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source({generation:7}),readSettings:settings}};}),scope,async()=>op);
+ await service.load();const value=await service.saveProfile({sourceId:'dav',generation:'7',revision:2,saved:true,values:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}},settings.values);
+ assert.deepEqual(body,{operationId:op,expectedGeneration:'7',expectedRevision:2,values:settings.values});assert.deepEqual(value,settings);assert.equal(service.getSnapshot().receipt?.operationId,op);assert.equal(service.getSnapshot().busy,false);service.dispose();
+});
+
+test('read-profile binds the returned source and a refresh failure never becomes an ambiguous write',async()=>{
+ const {sourceReadPreset}=await import('../src/remote-sources.ts');
+ const foreign={sourceId:'other',generation:'1',revision:1,saved:true,values:sourceReadPreset('once')};
+ const read=new RemoteSourceService(api(async()=>({scope:wire,settings:foreign})),scope,async()=>op);
+ await assert.rejects(read.readProfile('dav'));read.dispose();
+ const before={sourceId:'dav',generation:'1',revision:1,saved:true,values:sourceReadPreset('once')};
+ const wrongReceipt=new RemoteSourceService(api(async()=>({scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source({id:'other'}),readSettings:{...foreign,sourceId:'other'}}})),scope,async()=>op);
+ await assert.rejects(wrongReceipt.saveProfile(before,sourceReadPreset('once')));wrongReceipt.dispose();
+ const wrongSettings=new RemoteSourceService(api(async()=>({scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source(),readSettings:{...foreign,sourceId:'other'}}})),scope,async()=>op);
+ await assert.rejects(wrongSettings.saveProfile(before,sourceReadPreset('once')));wrongSettings.dispose();
+ let puts=0,gets=0;
+ const refresh=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}gets++;throw new Error('refresh failed');}),scope,async()=>op);
+ await assert.rejects(refresh.saveProfile(before,sourceReadPreset('once')),/refreshed values could not be read/);
+ assert.equal(puts,1);assert.equal(gets,1);assert.equal(refresh.getSnapshot().ambiguous,false);assert.equal(refresh.getSnapshot().errorCode,'refresh_failed');assert.equal(refresh.getSnapshot().receipt?.operationId,op);refresh.dispose();
+});
+
+test('read-profile and save transport failures never retain a hostile message',async()=>{
+ const secret='https://private-user:private-password@private.example/media/';
+ const read=new RemoteSourceService(api(async()=>{throw Object.assign(new Error(secret),{code:'remote_offline'});}),scope,async()=>op);
+ await assert.rejects(read.readProfile('dav'),error=>{const text=String(error);return !text.includes('private-user')&&!text.includes('private-password')&&!text.includes('private.example');});
+ assert(!JSON.stringify(read.getSnapshot()).includes('private-password'));read.dispose();
+ const save=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT')throw Object.assign(new Error(secret),{code:'remote_offline'});return list();}),scope,async()=>op);
+ const before={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ await assert.rejects(save.saveProfile(before,before.values),error=>!String(error).includes('private-password'));
+ assert(!JSON.stringify(save.getSnapshot()).includes('private-password'));save.dispose();
+});
+
+test('retiring the captured scope during a held operation id sends zero mutations',async()=>{
+ const held=deferred();let current=true,writes=0;
+ const service=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')writes++;return list();}),scope,()=>held.promise,()=>current);
+ const configure=service.configure(null,input);current=false;held.resolve(op);
+ await configure;assert.equal(writes,0);service.dispose();
+ current=true;const heldAgain=deferred();
+ const profile={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ const saveService=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')writes++;return list();}),scope,()=>heldAgain.promise,()=>current);
+ const save=saveService.saveProfile(profile,profile.values);current=false;heldAgain.resolve(op);
+ await assert.rejects(save);assert.equal(writes,0);saveService.dispose();
+});
+
+test('a confirmed save whose fallback read refuses auth keeps the receipt and reports the refusal',async()=>{
+ const before={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ for(const code of ['unauthorized','forbidden']){
+  let puts=0;
+  const service=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}throw Object.assign(new Error('secret https://private-user:private-password@private.example/'),{code});}),scope,async()=>op);
+  await assert.rejects(service.saveProfile(before,before.values),error=>(error as {code?:string}).code===code);
+  assert.equal(puts,1);assert.equal(service.getSnapshot().ambiguous,false);assert.equal(service.getSnapshot().errorCode,code);assert.equal(service.getSnapshot().receipt?.operationId,op);
+  assert(!JSON.stringify(service.getSnapshot()).includes('private-password'));service.dispose();
+ }
+ const foreign={sourceId:'dav',generation:'9',revision:2,saved:true,values:before.values};
+ let puts=0;
+ const mismatch=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}return {scope:wire,settings:foreign};}),scope,async()=>op);
+ await assert.rejects(mismatch.saveProfile(before,before.values),error=>(error as {code?:string}).code==='refresh_failed');
+ assert.equal(puts,1);assert.equal(mismatch.getSnapshot().ambiguous,false);assert.equal(mismatch.getSnapshot().receipt?.operationId,op);mismatch.dispose();
+});
+
+test('an arbitrary backend code is normalized and never retained',async()=>{
+ const hostile='https://private-user:private-password@private.example/media/';
+ const service=new RemoteSourceService(api(async()=>{throw Object.assign(new Error('transport'),{code:hostile});}),scope,async()=>op);
+ await assert.rejects(service.readProfile('dav'),error=>{const code=(error as {code?:string}).code;return code==='internal'&&!String(error).includes('private-password');});
+ const snapshot=JSON.stringify(service.getSnapshot());assert(!snapshot.includes('private-password'));assert(!snapshot.includes('private.example'));service.dispose();
+});
+
+test('a dialog attempt guard retiring under a held operation id sends zero mutation',async()=>{
+ const held=deferred();let writes=0,open=true;
+ const service=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')writes++;return list();}),scope,()=>held.promise,()=>true);
+ const guard=()=>open;
+ const configure=service.configure(null,input,undefined,guard);open=false;held.resolve(op);
+ await configure;assert.equal(writes,0);service.dispose();
+ open=true;const saveHeld=deferred();let saveWrites=0;
+ const profile={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ const saveService=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')saveWrites++;return list();}),scope,()=>saveHeld.promise,()=>true);
+ const saveGuard=()=>open;const save=saveService.saveProfile(profile,profile.values,saveGuard);open=false;saveHeld.resolve(op);
+ await assert.rejects(save);assert.equal(saveWrites,0);saveService.dispose();
+});
+
+test('a retired dialog conflict read cannot publish sources or retry a mutation',async()=>{
+ const held=deferred();let open=true,reads=0,writes=0;
+ const service=new RemoteSourceService(api(async(_path,method)=>{
+  if(method==='GET'){reads++;if(reads===1)return list();return held.promise;}
+  writes++;throw Object.assign(new Error('conflict'),{code:'storage_command_conflict'});
+ }),scope,async()=>op,()=>true);
+ await service.load();const before=service.getSnapshot().sources;
+ const pending=service.configure('dav',input,source(),()=>open);
+ while(reads<2)await new Promise(resolve=>setImmediate(resolve));
+ open=false;held.resolve(list([source({name:'Stale dialog read'})]));await pending;
+ assert.equal(writes,1);assert.equal(service.getSnapshot().sources,before);service.dispose();
+});
