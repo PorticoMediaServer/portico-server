@@ -24,6 +24,13 @@ function parseRule(raw: unknown): OwnerRule {
       keepPolicy: keep ? Object.freeze({mode: keep.mode as Keep['mode'], keepCount: num(keep.keepCount, 0, 1000), keepDays: num(keep.keepDays, 0, 3650), keepUntilWatched: flag(keep.keepUntilWatched)}) : null,
       newEpisodesOnly: flag(o.newEpisodesOnly), priority: num(o.priority, -100, 100), folderTemplate: text(o.folderTemplate, 400)})});
 }
+/** Null padding/keep asks the producer to snapshot defaults, so its receipt
+ * contains resolved values. Explicit choices must still match exactly. */
+const matchesOptions = (saved: RuleOptions, draft: RuleOptions) =>
+  (draft.prePaddingMs === null || saved.prePaddingMs === draft.prePaddingMs) &&
+  (draft.postPaddingMs === null || saved.postPaddingMs === draft.postPaddingMs) &&
+  (draft.keepPolicy === null || JSON.stringify(saved.keepPolicy) === JSON.stringify(draft.keepPolicy)) &&
+  saved.newEpisodesOnly === draft.newEpisodesOnly && saved.priority === draft.priority && saved.folderTemplate === draft.folderTemplate;
 export const needsRuleOwner = (rule: OwnerRule) => rule.status === 'needs-owner-and-guide-selection' || !rule.owner.accountId || !rule.owner.profileId || !['series', 'title'].includes(rule.kind);
 const empty: State = Object.freeze({loading: false, saving: false, guideLoading: false, rules: Object.freeze([]), cursor: '', series: Object.freeze([]), guideCursor: '', day: '', sourceId: ''});
 export class RecordingRulesController extends OwnerStore<State> {
@@ -81,7 +88,7 @@ export class RecordingRulesController extends OwnerStore<State> {
       if (!this.valid(attempt)) return false;
       const raw = await this.api.request(request.path, request.method, request.body, attempt.abort.signal);if (!this.valid(attempt)) return false;
       const saved = parseRule(envelope(raw, this.serverId).result);
-      if (draft.id && saved.id !== draft.id || recordingOwnerKey(saved.owner) !== recordingOwnerKey(draft.owner) || saved.match !== draft.match || saved.sourceId !== draft.sourceId || saved.name !== draft.name.trim() || saved.enabled !== draft.enabled || saved.kind !== draft.kind || saved.revision <= (draft.revision ?? 0) || JSON.stringify(saved.options) !== JSON.stringify(draft.options)) throw {code: 'invalid_response'};
+      if (draft.id && saved.id !== draft.id || recordingOwnerKey(saved.owner) !== recordingOwnerKey(draft.owner) || saved.match !== draft.match || saved.sourceId !== draft.sourceId || saved.name !== draft.name.trim() || saved.enabled !== draft.enabled || saved.kind !== draft.kind || saved.revision <= (draft.revision ?? 0) || !matchesOptions(saved.options, draft.options)) throw {code: 'invalid_response'};
       this.pending = undefined;this.publish({...this.snapshot, saving: false, draft: undefined, uncertain: false, series: [], rules: [saved, ...this.snapshot.rules.filter(row => row.id !== saved.id)]});return this.valid(attempt);
     } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, saving: false, uncertain: !!this.pending, error: errorFacts(error)});return false;}
   }
