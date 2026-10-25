@@ -630,6 +630,7 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		if strings.HasPrefix(actual.Name, "browse:") {
 			want.Response = goldenHomeCoverDecoration(t, f, actual, want.Response)
 		}
+		want.Response = goldenSearchOffers(t, f, actual, want.Response)
 		want.Response = goldenUnselectedDetailArtwork(t, f, actual, want.Response)
 		want.Response = goldenBrowseExtension(t, f, actual, want.Response)
 		want.Response = goldenListeningExtension(t, f, actual, want.Response)
