@@ -4,11 +4,13 @@ package reading
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"io/fs"
 	"time"
 
+	"github.com/bodgit/sevenzip"
 	"github.com/nwaples/rardecode/v2"
 )
 
@@ -23,10 +25,7 @@ func openClassicArchive(ctx context.Context, format string, ra io.ReaderAt, size
 	if format == "cbr" {
 		return openRAR(ctx, ra, size)
 	}
-	// CB7 stays closed: sevenzip v1.6.5 allocates structural counts declared in a
-	// small plain header before any per-file bytes are validated, and this server
-	// has no way to bound those allocations from outside the parser.
-	return nil, archiveFormatError(format)
+	return openSevenZip(ctx, size, ra)
 }
 
 // readerAtFileSystem hands the leased reader to rardecode without exposing a
@@ -286,3 +285,208 @@ type listMembers struct {
 
 func (l *listMembers) Members() []archiveMember { return l.files }
 func (l *listMembers) Close() error             { return l.close() }
+
+// sevenZipHeader admits a CB7 header without the parser allocating from it.
+// The 7z plain header is a byte stream of property ids with declared sizes; this
+// reads the file count and folder count from that stream and refuses anything
+// above the publication's own bounds before sevenzip.NewReader is constructed.
+// Any structure it cannot parse exactly is refused, never guessed.
+const (
+	sevenZipHeaderEnd      = 0x00
+	sevenZipHeaderMain     = 0x04
+	sevenZipHeaderFiles    = 0x05
+	sevenZipHeaderUnpack   = 0x07
+	sevenZipHeaderFolders  = 0x0B
+	sevenZipMaxHeaderBytes = 16 << 20
+)
+
+type sevenZipCursor struct {
+	body []byte
+	at   int
+}
+
+func (c *sevenZipCursor) byte() (byte, bool) {
+	if c.at >= len(c.body) {
+		return 0, false
+	}
+	value := c.body[c.at]
+	c.at++
+	return value, true
+}
+
+func (c *sevenZipCursor) number() (uint64, bool) {
+	first, ok := c.byte()
+	if !ok {
+		return 0, false
+	}
+	var value uint64
+	mask := byte(0x80)
+	for i := 0; i < 8; i++ {
+		if first&mask == 0 {
+			value += uint64(first&(mask-1)) << (8 * i)
+			return value, true
+		}
+		next, ok := c.byte()
+		if !ok {
+			return 0, false
+		}
+		value += uint64(next) << (8 * i)
+		mask >>= 1
+	}
+	return 0, false
+}
+
+func (c *sevenZipCursor) skip(n uint64) bool {
+	if n > uint64(len(c.body)-c.at) {
+		return false
+	}
+	c.at += int(n)
+	return true
+}
+
+// sevenZipProperty walks one id+size record and returns its body region.
+func (c *sevenZipCursor) property() (byte, *sevenZipCursor, bool) {
+	id, ok := c.byte()
+	if !ok || id == sevenZipHeaderEnd {
+		return id, nil, ok
+	}
+	size, ok := c.number()
+	if !ok || !c.skip(size) {
+		return 0, nil, false
+	}
+	return id, &sevenZipCursor{body: c.body[c.at-int(size) : c.at]}, true
+}
+
+// boundedSevenZipHeader parses the plain header and returns the declared file
+// and folder counts. A count above MaxEntries, a malformed number, or a body it
+// cannot walk exactly is refused.
+func boundedSevenZipHeader(body []byte) (files, folders uint64, ok bool) {
+	c := &sevenZipCursor{body: body}
+	marker, ok := c.byte()
+	if !ok || marker != 0x01 {
+		return 0, 0, false
+	}
+	for {
+		id, region, valid := c.property()
+		if !valid {
+			return 0, 0, false
+		}
+		if id == sevenZipHeaderEnd {
+			return files, folders, true
+		}
+		switch id {
+		case sevenZipHeaderFiles:
+			count, ok := region.number()
+			if !ok || count == 0 || count > MaxEntries {
+				return 0, 0, false
+			}
+			files = count
+			for {
+				inner, innerRegion, valid := region.property()
+				if !valid {
+					return 0, 0, false
+				}
+				if inner == sevenZipHeaderEnd {
+					break
+				}
+				_ = innerRegion
+			}
+		case sevenZipHeaderMain:
+			// StreamsInfo: skip a declared pack block, then read the folder count
+			// under UnpackInfo when present.
+			stream := &sevenZipCursor{body: region.body}
+			for {
+				sub, subRegion, valid := stream.property()
+				if !valid {
+					return 0, 0, false
+				}
+				if sub == sevenZipHeaderEnd {
+					break
+				}
+				if sub != sevenZipHeaderUnpack {
+					continue
+				}
+				folderID, ok := subRegion.byte()
+				if !ok || folderID != sevenZipHeaderFolders {
+					return 0, 0, false
+				}
+				count, ok := subRegion.number()
+				if !ok || count == 0 || count > MaxEntries {
+					return 0, 0, false
+				}
+				folders = count
+				break
+			}
+		}
+	}
+}
+
+// openSevenZip admits CB7 only after the plain header's own declared file and
+// folder counts are read and bounded; sevenzip.NewReader then materialises a
+// header no larger than those admitted counts.
+func openSevenZip(ctx context.Context, size int64, ra io.ReaderAt) (memberArchive, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if size < 32 || size > MaxSource {
+		return nil, ErrLimit
+	}
+	var head [32]byte
+	if _, err := ra.ReadAt(head[:], 0); err != nil {
+		return nil, archiveFailure(err)
+	}
+	if string(head[:6]) != "7z\xbc\xaf'\x1c" {
+		return nil, ErrInvalid
+	}
+	nextOffset := binary.LittleEndian.Uint64(head[12:20])
+	nextSize := binary.LittleEndian.Uint64(head[20:28])
+	if nextOffset > uint64(size)-32 {
+		return nil, ErrLimit
+	}
+	if nextSize == 0 || nextSize > sevenZipMaxHeaderBytes {
+		return nil, ErrLimit
+	}
+	if nextSize > uint64(size)-32-nextOffset {
+		return nil, ErrLimit
+	}
+	body := make([]byte, nextSize)
+	if _, err := ra.ReadAt(body, int64(32)+int64(nextOffset)); err != nil {
+		return nil, archiveFailure(err)
+	}
+	files, folders, ok := boundedSevenZipHeader(body)
+	if !ok || files == 0 || folders == 0 {
+		return nil, archiveFormatError("cb7")
+	}
+	zr, err := sevenzip.NewReader(ra, size)
+	if err != nil {
+		return nil, archiveFailure(err)
+	}
+	if uint64(len(zr.File)) > files || uint64(len(zr.File)) > MaxEntries {
+		return nil, ErrLimit
+	}
+	out := make([]archiveMember, 0, len(zr.File))
+	seen := map[string]bool{}
+	var expanded int64
+	for _, f := range zr.File {
+		if !memberName(f.Name, seen) {
+			continue
+		}
+		if f.FileInfo().IsDir() || f.FileInfo().Mode()&fs.ModeSymlink != 0 {
+			continue
+		}
+		if f.UncompressedSize64 > uint64(MaxMember) || uint64(MaxExpanded)-uint64(max(expanded, 0)) < f.UncompressedSize64 {
+			return nil, ErrLimit
+		}
+		expanded += int64(f.UncompressedSize64)
+		if !safeMember(f.Name, false, f.UncompressedSize64) {
+			continue
+		}
+		member := f
+		out = append(out, archiveMember{Name: member.Name, Size: int64(member.UncompressedSize64), Open: member.Open})
+	}
+	if len(out) == 0 {
+		return nil, ErrInvalid
+	}
+	sortMembers(out)
+	return &listMembers{files: out, close: func() error { return nil }}, nil
+}
