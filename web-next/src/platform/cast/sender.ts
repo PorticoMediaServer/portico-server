@@ -73,7 +73,8 @@ export class WebCastSender {
     if (this.disposed) return;
     const state = this.controller?.getSnapshot() ?? unavailable;
     if(state.disclosureRefused){this.receiver=undefined;this.device=undefined;}
-    else if(state.phase==='casting'&&state.reported)this.receiver=state.reported;
+    else if((state.phase==='casting'||state.remoteStopped)&&state.reported)this.receiver=state.reported;
+    else if(state.remoteStopped)this.receiver=undefined;
     else if(state.phase!=='off'&&state.phase!=='replaced')this.receiver=undefined;
     const receiver = this.receiver;
     const samePlayback = receiver && (state.phase === 'off' || state.phase === 'replaced' || state.itemId === receiver.itemId);
@@ -203,7 +204,7 @@ export class WebCastSender {
   seek(positionSeconds: number): void { this.controller?.seek(positionSeconds); }
   setAudioTrack(trackId: number): void { this.controller?.setAudioTrack(trackId); }
   setSubtitleTrack(trackId: number | null): void { this.controller?.setSubtitleTrack(trackId); }
-  answerTakeover(allow: boolean): void { this.controller?.answerTakeover(allow); }
+  answerTakeover(allow:boolean,expected?:CastSnapshot['takeover']):void {if(expected)this.controller?.answerTakeover(allow,expected);}
   stop(): void {
     this.operation++;
     this.cancelStart?.();

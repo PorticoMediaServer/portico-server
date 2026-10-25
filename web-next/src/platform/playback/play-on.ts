@@ -125,6 +125,13 @@ export class PlayOnController {
       if(!cast.transferPending&&(!attempt||attempt.handedOff))this.attempt=undefined;
       this.publish({cast,remote:undefined,panel:null});return;
     }
+    // SDK detach/off is not proof that the receiver stopped. Continuation may
+    // use only the actual private Stop receipt, not the last playing clock.
+    if(cast.phase==='off'&&!cast.remoteStopped&&!cast.transferPending){
+      this.descriptionGeneration++;this.describedItem=undefined;this.clearExpiry();
+      if(!attempt||attempt.handedOff)this.attempt=undefined;
+      this.publish({cast,remote:undefined,panel:null});return;
+    }
     const active = cast.phase !== 'off';
     if (!active && !previous && !acceptedAttempt && !cast.transferPending) { this.publish({cast}); return; }
     if (!active && previous && !previous.confirmed && !acceptedAttempt && !cast.transferPending) {
@@ -233,7 +240,7 @@ export class PlayOnController {
     this.dismiss(token);
     await this.options.runtime.play(itemId, position);
   }
-  answerTakeover(allow: boolean): void { this.assertCurrent(); this.options.sender.answerTakeover(allow); }
+  answerTakeover(allow:boolean,expected?:PlayOnSnapshot['cast']['takeover']):void {this.assertCurrent();if(expected&&expected===this.state.cast.takeover)this.options.sender.answerTakeover(allow,expected);}
   dispose(): void {
     if (this.disposed) return;
     this.clearExpiry(); ++this.serial; this.attempt = undefined; this.describedItem = undefined;

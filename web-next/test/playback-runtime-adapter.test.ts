@@ -523,7 +523,7 @@ class ControlledCastSender implements WebCastPort {
   prepareOnIdle() { return () => {}; }
   async prepareForPlayer() { return true; }
   publish(patch: Partial<typeof this.state>) { this.state = {...this.state, ...patch}; for (const listener of [...this.listeners]) listener(); }
-  start(...args: Parameters<WebCastPort['start']>) { this.starts.push(args); this.publish({phase: 'connecting', itemId: args[0], title: args[1].title}); return new Promise<boolean>(resolve => { this.finish = resolve; }); }
+  start(...args: Parameters<WebCastPort['start']>) { this.starts.push(args); this.publish({phase:'connecting',remoteStopped:false,itemId:args[0], title: args[1].title}); return new Promise<boolean>(resolve => { this.finish = resolve; }); }
   acknowledge(ok: boolean) { this.finish?.(ok); this.finish = undefined; }
   cancelConnecting() { this.commands.push(['cancel']); this.publish({phase: 'off'}); this.acknowledge(false); }
   play() { this.commands.push(['play']); }
@@ -533,8 +533,8 @@ class ControlledCastSender implements WebCastPort {
   setAudioTrack(id: number) { this.commands.push(['audio', id]); }
   setSubtitleTrack(id: number | null) { this.commands.push(['subtitles', id]); }
   answerTakeover(allow: boolean) { this.commands.push(['takeover', allow]); }
-  stop() { this.commands.push(['stop']); this.publish({phase: 'off'}); }
-  dismiss() { this.commands.push(['dismiss']); this.publish({phase: 'off'}); }
+  stop() { this.commands.push(['stop']); this.publish({phase:'off',remoteStopped:true}); }
+  dismiss() { this.commands.push(['dismiss']); this.publish({phase:'off',remoteStopped:false}); }
   dispose() { this.disposed = true; this.listeners.clear(); }
 }
 function castController(t: TestContext, f: ReturnType<typeof setup>) {
@@ -583,10 +583,12 @@ test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK a
   assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
   reply({type: 'loaded', itemId: 'movie', requestId: load.requestId}); assert.equal(await started, true); await settle();
   assert.equal(f.runtime.getSnapshot().session, undefined); assert.equal(local.destroyed, true);
-  reply({type: 'status', itemId: 'movie', positionSeconds: 57, durationSeconds: 3186, paused: false, audioTracks: [], textTracks: []});
+  reply({type:'status',controller:{bindingId:'binding',controllerGeneration:1,connectionGeneration:1},occurrence:{sessionId:'receiver',generation:1,itemId:'movie'},itemId:'movie',positionSeconds:57, durationSeconds: 3186, paused: false, audioTracks: [], textTracks: []});
   assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
   controller.seek(controller.getSnapshot().remote!, 100); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
   controller.stop(controller.getSnapshot().remote!);
+  const stop=messages.find(message=>message.type==='stop')!;assert.ok(stop.target);
+  reply({type:'stopped',requestId:stop.requestId,target:stop.target,positionSeconds:57,durationSeconds:3186});
   assert.equal(controller.getSnapshot().remote!.phase, 'stopped'); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
   assert.equal(messages.some(message => 'mediaUrl' in message || 'grant' in message || 'sessionId' in message), false);
   assert.deepEqual(errors, []);
@@ -2644,4 +2646,13 @@ test('Root50 disclosure refusal clears Web remote caches and ignores a late meta
  assert.equal(controller.getSnapshot().remote?.itemId,'movie');
  sender.publish({phase:'off',controlRevision:1,disclosureRefused:true,itemId:undefined,title:undefined,receiver:undefined});
  resolve({title:'Late title'});await settle();assert.equal(controller.getSnapshot().remote,undefined);assert.equal(controller.getSnapshot().panel,null);assert.equal(sender.commands.some(command=>command[0]==='stop'),false);
+});
+
+
+test('Cast transport loss clears the remote instead of offering a false stopped continuation',async t=>{
+ const f=setup(t),{controller,sender}=castController(t,f);
+ sender.publish({phase:'casting',itemId:'movie',title:'Actual title',receiver:{itemId:'movie',positionSeconds:57,durationSeconds:3186,paused:false}});
+ const token=controller.getSnapshot().remote!;assert.equal(token.phase,'playing');
+ sender.publish({phase:'off',remoteStopped:false,itemId:undefined,reported:undefined});
+ assert.equal(controller.getSnapshot().remote,undefined);await controller.continueHere(token);assert.equal(f.runtime.getSnapshot().session,undefined);
 });
