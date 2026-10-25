@@ -1963,6 +1963,8 @@ export const webMessages = {
   'web.metadata.department': 'Department',
   'web.metadata.departmentExample': 'Acting, Directing…',
   'web.metadata.noCredits': 'No credits.',
+  'web.metadata.creditCharacter': 'Character',
+  'web.metadata.creditRole': 'Role',
   'web.metadata.saveCredits': 'Save credits',
   'web.metadata.moreThanOneMatch': 'More than one match',
   'web.metadata.currentMatch': 'Current match',
