@@ -61,7 +61,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
   const tint = generatedCoverTint(title);
   const saved = detail.progress?.progress;
-  const progression = saved && !saved.stale && saved.sourceRevision === manifest.revision ? saved.location.progression : undefined;
+  const progression = saved && !saved.stale && saved.sourceId === manifest.sourceId && saved.sourceRevision === manifest.revision && saved.location.format === manifest.format ? saved.location.progression : undefined;
   const open = (index?: number) => {
     if (!captured.context.isCurrent() || !publicationReady.current) return;
     let target: ReaderContentsTarget | undefined;
@@ -85,7 +85,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   ]}/>;
   return <><ReadBookHero title={title} author={author ? {name: author} : undefined} facts={[]}
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
-    actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
+    actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
       : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}
     under={<>{canEdit && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem></Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
