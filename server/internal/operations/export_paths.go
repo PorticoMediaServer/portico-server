@@ -39,43 +39,78 @@ type ExportPathFact struct {
 	Value     string             `json:"value"`
 }
 type ExportPathFacts struct {
-	Limit   int              `json:"limit"`
-	HasMore bool             `json:"hasMore"`
-	Omitted int              `json:"omitted"`
-	Items   []ExportPathFact `json:"items"`
+	Limit int `json:"limit"`
+	// HasMore means a 129th qualifying fact was actually examined.
+	HasMore    bool `json:"hasMore"`
+	ScanBudget int  `json:"scanBudget"`
+	Examined   int  `json:"examined"`
+	// ScanTruncated means the candidate budget ended; remaining qualifying facts are unknown.
+	ScanTruncated bool `json:"scanTruncated"`
+	// InvalidAmongExamined counts only invalid local path values we actually examined.
+	InvalidAmongExamined int              `json:"invalidAmongExamined"`
+	Items                []ExportPathFact `json:"items"`
 }
 
 const exportPathLimit = 128
+const exportPathScanBudget = 512
 
-// Only model-classified local source roots and recorded managed mount points.
-// No filesystem calls, remote locators, labels, identifiers or free text enter
-// the result. The caller invokes this only after authorized receipt lookup.
+// Each read walks the existing primary-key id index with a hard LIMIT. Source
+// kind is classified inside CASE, so remote locators are never selected. The
+// shared candidate budget bounds all three categories, including invalid rows.
+// The caller invokes this only after authorized receipt lookup.
 func readExportPathFacts(ctx context.Context, tx *sql.Tx) (*ExportPathFacts, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT category,substr(value,1,4097) FROM (
- SELECT 1 AS rank,id AS ordering,'library-configured-root' AS category,configured_root AS value FROM library_sources WHERE kind='local'
- UNION ALL SELECT 2,id,'library-resolved-root',root FROM library_sources WHERE kind='local'
- UNION ALL SELECT 3,id,'managed-mount-point',mount_path FROM managed_mounts
- ) ORDER BY rank,ordering`)
-	if err != nil {
-		return nil, err
+	out := &ExportPathFacts{Limit: exportPathLimit, ScanBudget: exportPathScanBudget, Items: []ExportPathFact{}}
+	queries := []struct {
+		category ExportPathCategory
+		sql      string
+	}{
+		{"library-configured-root", `SELECT CASE WHEN kind='local' THEN substr(configured_root,1,4097) ELSE NULL END FROM library_sources ORDER BY id LIMIT ?`},
+		{"library-resolved-root", `SELECT CASE WHEN kind='local' THEN substr(root,1,4097) ELSE NULL END FROM library_sources ORDER BY id LIMIT ?`},
+		{"managed-mount-point", `SELECT substr(mount_path,1,4097) FROM managed_mounts ORDER BY id LIMIT ?`},
 	}
-	defer rows.Close()
-	out := &ExportPathFacts{Limit: exportPathLimit, Items: []ExportPathFact{}}
-	for rows.Next() {
-		var category ExportPathCategory
-		var value string
-		if err = rows.Scan(&category, &value); err != nil {
+	for _, query := range queries {
+		remaining := exportPathScanBudget - out.Examined
+		if remaining == 0 {
+			out.ScanTruncated = true
+			return out, nil
+		}
+		rows, err := tx.QueryContext(ctx, query.sql, remaining)
+		if err != nil {
 			return nil, err
 		}
-		if len(value) > 4096 || !utf8.ValidString(value) || !filepath.IsAbs(value) || strings.IndexFunc(value, unicode.IsControl) >= 0 {
-			out.Omitted++
-			continue
+		for rows.Next() {
+			var candidate sql.NullString
+			if err = rows.Scan(&candidate); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out.Examined++
+			if !candidate.Valid {
+				continue
+			}
+			value := candidate.String
+			if len(value) > 4096 || !utf8.ValidString(value) || !filepath.IsAbs(value) || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+				out.InvalidAmongExamined++
+				continue
+			}
+			if len(out.Items) == exportPathLimit {
+				out.HasMore = true
+				rows.Close()
+				return out, nil
+			}
+			out.Items = append(out.Items, ExportPathFact{query.category, "path-" + strconv.Itoa(len(out.Items)+1), value})
 		}
-		if len(out.Items) == exportPathLimit {
-			out.HasMore = true
-			break
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
 		}
-		out.Items = append(out.Items, ExportPathFact{category, "path-" + strconv.Itoa(len(out.Items)+1), value})
+		if out.Examined == exportPathScanBudget {
+			// We deliberately do not issue an unbudgeted look-ahead. The budget's
+			// exact exhaustion conservatively leaves the remainder unknown.
+			out.ScanTruncated = true
+			return out, nil
+		}
 	}
-	return out, rows.Err()
+	return out, nil
 }

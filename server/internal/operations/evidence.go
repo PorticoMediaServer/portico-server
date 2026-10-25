@@ -246,17 +246,18 @@ type Export struct {
 	AuditAnchor   *AuditAnchor        `json:"auditAnchor,omitempty"`
 }
 type ExportManifest struct {
-	IncludePaths   bool                 `json:"includePaths,omitempty"`
-	PathCategories []ExportPathCategory `json:"pathCategories,omitempty"`
-	PathsTruncated bool                 `json:"pathsTruncated,omitempty"`
-	PathsOmitted   int                  `json:"pathsOmitted,omitempty"`
-	Version        string               `json:"version"`
-	From           apiwire.Instant      `json:"from"`
-	To             apiwire.Instant      `json:"to"`
-	Included       []string             `json:"included"`
-	Excluded       []string             `json:"excluded"`
-	Redaction      string               `json:"redaction"`
-	MaxBytes       int                  `json:"maxBytes"`
+	IncludePaths              bool                 `json:"includePaths,omitempty"`
+	PathCategories            []ExportPathCategory `json:"pathCategories,omitempty"`
+	PathsTruncated            bool                 `json:"pathsTruncated,omitempty"`
+	PathsInvalidAmongExamined int                  `json:"pathsInvalidAmongExamined,omitempty"`
+	PathsScanTruncated        bool                 `json:"pathsScanTruncated,omitempty"`
+	Version                   string               `json:"version"`
+	From                      apiwire.Instant      `json:"from"`
+	To                        apiwire.Instant      `json:"to"`
+	Included                  []string             `json:"included"`
+	Excluded                  []string             `json:"excluded"`
+	Redaction                 string               `json:"redaction"`
+	MaxBytes                  int                  `json:"maxBytes"`
 }
 
 func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Authorize, hosted bool, c ExportRequest) (out Export, e error) {
@@ -313,7 +314,8 @@ func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Aut
 			}
 			out.SnapshotPaths = facts
 			out.Manifest.PathsTruncated = facts.HasMore
-			out.Manifest.PathsOmitted = facts.Omitted
+			out.Manifest.PathsInvalidAmongExamined = facts.InvalidAmongExamined
+			out.Manifest.PathsScanTruncated = facts.ScanTruncated
 			categories := map[ExportPathCategory]bool{}
 			for _, fact := range facts.Items {
 				if !categories[fact.Category] {
