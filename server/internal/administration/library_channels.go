@@ -214,6 +214,9 @@ type BlockPresetChange struct {
 }
 
 func validatePreset(c *BlockPresetChange) error {
+	if c.Body.Criteria == nil {
+		c.Body.Criteria = []BlockCriterion{}
+	}
 	fields := []string{}
 	if c.Name == "" || !safeText(c.Name, 120) {
 		fields = append(fields, "name")
@@ -269,7 +272,7 @@ func presetKey(name string) string { return strings.ToLower(strings.Join(strings
 
 // BlockPresets pages the presets by name.
 func (s *Service) BlockPresets(ctx context.Context, auth Authorize, token string, limit int) (BlockPresetPage, error) {
-	out := BlockPresetPage{Items: []BlockPreset{}, Enumerations: map[string][]string{"order": BlockOrders, "operator": BlockOperators, "days": Days}}
+	out := BlockPresetPage{Items: []BlockPreset{}, Enumerations: map[string][]string{"order": BlockOrders, "operator": BlockOperators, "days": Days, "applicationOrder": BlockOrders}}
 	size, err := pageSize(limit)
 	if err != nil {
 		return out, err
@@ -293,6 +296,12 @@ func (s *Service) BlockPresets(ctx context.Context, auth Authorize, token string
 				return err
 			}
 			_ = json.Unmarshal([]byte(body), &p.Body)
+			if p.Body.Criteria == nil {
+				p.Body.Criteria = []BlockCriterion{}
+			}
+			if p.Body.Days == nil {
+				p.Body.Days = []string{}
+			}
 			p.CreatedAt, p.UpdatedAt = timeFromMilliseconds(created), timeFromMilliseconds(updated)
 			out.Items = append(out.Items, p)
 			keys = append(keys, key)
