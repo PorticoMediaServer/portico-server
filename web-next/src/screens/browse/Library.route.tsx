@@ -176,12 +176,22 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
   const unmatched = requested?.shows === 'unmatched';
-  const editAttention = (entry: AttentionEntry, anchor: HTMLElement) => {
-    if (!resources.life.current() || entry.libraryId !== library.id || entry.kind !== 'item') return;
-    const kind = entry.itemKind;
-    if (kind !== 'movie' && kind !== 'episode' && kind !== 'song' && kind !== 'audiobook_file') return;
+  const editAttention = (entry: AttentionEntry, anchor: HTMLElement, matching = false) => {
+    if (!resources.life.current() || entry.libraryId !== library.id) return;
     const edit = context.effects.editMetadata;
-    if (edit) void edit({libraryId: library.id, itemId: entry.entityId, kind, title: entry.title}, anchor).catch(context.effects.reportError);
+    if (!edit) return;
+    if (matching && entry.kind === 'song' && entry.parentId) {
+      void edit({libraryId: library.id, entityId: entry.parentId, entityKind: 'album', title: entry.parentTitle ?? entry.title, initialTab: 'matching'}, anchor).catch(context.effects.reportError);
+      return;
+    }
+    if (entry.kind === 'show' || entry.kind === 'album' || entry.kind === 'book') {
+      void edit({libraryId: library.id, entityId: entry.entityId, entityKind: entry.kind, title: entry.title, initialTab: matching ? 'matching' : 'general'}, anchor).catch(context.effects.reportError);
+      return;
+    }
+    if (entry.kind !== 'item' && entry.kind !== 'song') return;
+    const kind = entry.kind === 'song' ? 'song' : entry.itemKind;
+    if (kind !== 'movie' && kind !== 'episode' && kind !== 'song' && kind !== 'audiobook_file') return;
+    void edit({libraryId: library.id, itemId: entry.entityId, kind, title: entry.title}, anchor).catch(context.effects.reportError);
   };
   const openAttention = (entry: {kind: string; itemKind: string; entityId: string; parentId: string}) => {
     if (entry.kind === 'show' || entry.itemKind === 'episode') navigate({view: 'show', entityId: entry.kind === 'show' ? entry.entityId : entry.parentId});
