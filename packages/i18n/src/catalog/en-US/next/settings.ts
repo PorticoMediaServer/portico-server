@@ -135,6 +135,8 @@ export const settingsMessages = {
   'next.settings.streaming.spaceFree': 'Converting in {path}, with {free} free.',
   'next.settings.streaming.spaceNotWritable': 'Portico can’t write to {path}, so conversions will fail.',
   'next.settings.streaming.spaceMap': 'Map /transcode to a fast disk or to memory.',
+  'next.settings.hardware.limitNext': 'Up to {count} conversions at once on {device}. More go to {next}.',
+  'next.settings.hardware.limitProcessor': 'Up to {count} conversions at once on {device}. More go to the processor.',
   'next.settings.hardware.device.inUse': 'In use',
   'next.settings.hardware.device.ready': 'Ready',
   'next.settings.hardware.method.quick_sync': 'Quick Sync',

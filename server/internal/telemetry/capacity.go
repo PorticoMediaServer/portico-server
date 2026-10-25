@@ -240,7 +240,7 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 		if measured.Formats != nil {
 			hardware.Formats = measured.Formats
 		}
-		hardware.LastError, hardware.LastTest = measured.Fault, measured.LastTest
+		hardware.LastError, hardware.LastTest, hardware.SessionLimit = measured.Fault, measured.LastTest, measured.SessionLimit
 	}
 	out := Report{
 		Toolchain:          decoder.CurrentToolchain(),

@@ -96,6 +96,18 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, stor
       ];
       return {present: true, value, defaultValue: 'separate', choices: options};
     }
+    case 'streaming.hwLimit': {
+      // Only a measured ceiling is drawn: the driver refused a session at this
+      // level, so the number is the maximum, not a count of open sessions.
+      const limit = hardware.sessionLimit;
+      if (!limit) return {present: false};
+      const device = hardware.devices.find(device => device.id === limit.device)?.name
+        ?? hardware.devices.find(device => device.method && device.method === limit.backend)?.name
+        ?? limit.device;
+      const next = hardware.devices.find(device => device.method && device.method !== limit.backend)?.name;
+      return {present: true, statusTone: 'quiet', displayValue: t(next ? 'next.settings.hardware.limitNext' : 'next.settings.hardware.limitProcessor',
+        {count: limit.sessions, device, next})};
+    }
     case 'streaming.hwError': {
       const text = faultText(snapshot);
       return text ? {present: true, displayValue: text, statusTone: 'warn'} : {present: false};

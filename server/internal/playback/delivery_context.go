@@ -94,6 +94,27 @@ func (s *Service) HardwareSelection() decoder.HardwareProbe {
 	return s.hardware.SelectCached(s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
 }
 
+// HardwareSessionLimit measures the concurrent-session ceiling on every NVIDIA
+// adapter by opening real sessions until the driver refuses one. It is an
+// explicit owner action (Test hardware) only: a page read must never start
+// encoder processes. A card that never refuses keeps no ceiling.
+func (s *Service) HardwareSessionLimit(ctx context.Context) {
+	if s.hardware == nil || s.hardwareFFmpeg == "" {
+		return
+	}
+	for _, device := range s.HardwareDevices(ctx) {
+		for _, backend := range device.Backends {
+			if ctx.Err() != nil {
+				return
+			}
+			if backend != decoder.BackendNVENC {
+				continue
+			}
+			s.hardware.ProbeSessionLimit(ctx, s.hardwareFFmpeg, backend, device.Path)
+		}
+	}
+}
+
 // HardwareDevices names the adapters this host exposes, by the name their
 // drivers give them. Discovery only: an adapter is not a capability until a
 // probe has run on it.

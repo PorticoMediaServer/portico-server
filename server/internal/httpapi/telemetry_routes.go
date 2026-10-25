@@ -373,6 +373,9 @@ func (s *telemetryService) registerHardwareTest(mux *http.ServeMux) {
 		auth := d.consoleAuthority(p, true)
 		if d.Playback != nil {
 			d.Playback.HardwareTest(ctx)
+			// The measured concurrent-session ceiling belongs to the same explicit
+			// action: it opens real sessions and must never happen on a read.
+			d.Playback.HardwareSessionLimit(ctx)
 		}
 		s.capacity.Invalidate()
 		report, e := s.capacityReport(ctx, auth)

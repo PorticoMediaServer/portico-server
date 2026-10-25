@@ -43,12 +43,28 @@ type HardwareFactFault struct {
 // what a server with no graphics card passed in has to say.
 const HardwareFactReasonNoDevice = "no_graphics_device"
 
+// HardwareFactSessionLimit is the ceiling this process measured for concurrent
+// hardware conversions on one adapter. It exists only when the driver refused a
+// session at a probed level; an open-session count or a utilisation figure is
+// not a maximum and is never published here.
+type HardwareFactSessionLimit struct {
+	Device     string `json:"device"`
+	Backend    string `json:"backend"`
+	Sessions   int    `json:"sessions"`
+	Codec      string `json:"codec"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	MeasuredAt int64  `json:"measuredAt"`
+}
+
 // HardwareFacts is the measured half of Server › Streaming › Hardware. The
 // install's remedy and the frame's format order come from hardwarefacts; every
 // value here comes from a probe that ran on this host.
 type HardwareFacts struct {
 	Devices []HardwareFactDevice
 	Formats []HardwareFactFormat
+	// SessionLimit is present only after a probe saw the driver refuse a session.
+	SessionLimit *HardwareFactSessionLimit
 	// Fault is nil while at least one hardware backend works.
 	Fault *HardwareFactFault
 	// LastTest is when the newest probe finished, in Unix seconds; zero means
@@ -159,6 +175,18 @@ func ComposeHardwareFacts(devices []HardwareDevice, probes []HardwareProbe, conf
 			out.Fault = hardwareFactFault(nil)
 		case selected.Backend != BackendSoftware && !selected.Available && selected.Reason != ProbeWarming:
 			out.Fault = hardwareFactFault(selected)
+		}
+	}
+	// A measured ceiling belongs to the adapter the probe opened sessions on, so
+	// it is named by that adapter's own ID and shown even while the owner's
+	// selection points elsewhere.
+	for _, device := range devices {
+		if out.SessionLimit != nil {
+			break
+		}
+		if observed, ok := LastSessionLimit(BackendNVENC, device.Path); ok {
+			out.SessionLimit = &HardwareFactSessionLimit{Device: device.ID, Backend: string(observed.Backend), Sessions: observed.Sessions,
+				Codec: observed.Codec, Width: observed.Width, Height: observed.Height, MeasuredAt: observed.MeasuredAt.Unix()}
 		}
 	}
 	out.LastTest = newestProbeTime()

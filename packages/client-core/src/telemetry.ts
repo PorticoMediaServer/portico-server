@@ -25,11 +25,14 @@ export type HardwareProbe={backend:string;supported:boolean;detail:string;device
 export type HardwareDeviceFact={id:string;name:string;method?:string;inUse:boolean};
 /** Whether the backend playback selected is qualified to do one format's job. */
 export type HardwareFormatFact={format:string;decode:boolean;encode:boolean};
+/** The measured ceiling for concurrent sessions on one adapter, present only
+ * after a probe saw the driver refuse one. */
+export type HardwareSessionLimit={device:string;backend:string;sessions:number;codec:string;width:number;height:number;measuredAt:number};
 /** The one failure worth reporting: shown only when no hardware backend works. */
 export type HardwareFault={backend?:string;device?:string;reason:string;detail?:string};
 export type HardwareStatus={configured:string;effective:string;device:string;probes:HardwareProbe[];
  /** Adapters and the measured grid; empty when the server publishes no inventory. */
- devices:HardwareDeviceFact[];formats:HardwareFormatFact[];lastError?:HardwareFault;
+ devices:HardwareDeviceFact[];formats:HardwareFormatFact[];lastError?:HardwareFault;sessionLimit?:HardwareSessionLimit;
  /** When the newest probe finished, in Unix seconds; zero means nothing has been probed yet. */
  lastTest:number};
 export type SessionLimits={concurrent:number;hardware:number;software:number;background:number};
@@ -125,6 +128,15 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
   else noteSkipped('transcode-capacity','hardware.lastError');
  }
  const lastTest=integer(hardware.lastTest)?hardware.lastTest:0;
+ // A ceiling this app cannot read is left out: the row then stays absent rather
+ // than naming a number the server did not measure.
+ let sessionLimit:HardwareSessionLimit|undefined;
+ if(obj(hardware.sessionLimit)){
+  const l=hardware.sessionLimit;
+  if(text(l.device,200)&&l.device&&text(l.backend,40)&&l.backend&&integer(l.sessions)&&l.sessions>1&&text(l.codec,40)&&integer(l.width)&&integer(l.height)&&integer(l.measuredAt))
+   sessionLimit={device:l.device as string,backend:l.backend as string,sessions:l.sessions as number,codec:l.codec as string,width:l.width as number,height:l.height as number,measuredAt:l.measuredAt as number};
+  else noteSkipped('transcode-capacity','hardware.sessionLimit');
+ }
  const sessions=base(c.sessions);
  for(const key of ['active','hardware','software','background'])if(sessions[key]!==null&&!integer(sessions[key]))invalid();
  const limits=base(sessions.limits);
@@ -146,5 +158,5 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  for(const [name,dependency] of Object.entries(published)){if(obj(dependency)&&text(dependency.path,1024)&&text(dependency.version,512)&&typeof dependency.ok==='boolean')dependencies[name]=dependency as RuntimeDependency;else noteSkipped('transcode-capacity','dependencies');}
  if(!Array.isArray(c.warnings)||c.warnings.length>20)invalid();
  const warnings=keepReadable('transcode-capacity','warnings',c.warnings,(w:unknown)=>text(w,512)?w:undefined);
- return {...c,hardware:{...hardware,probes,devices,formats,lastError,lastTest},temporaryDirectory:{...directory,...directoryFacts},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
+ return {...c,hardware:{...hardware,probes,devices,formats,lastError,lastTest,...(sessionLimit?{sessionLimit}:{})},temporaryDirectory:{...directory,...directoryFacts},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
 }
