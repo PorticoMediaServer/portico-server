@@ -1246,7 +1246,7 @@ func run() (runErr error) {
 	// as an open, run by the registered background worker under the existing
 	// metadata admission and source/scene fences. Bounded indexed passes resume
 	// from the adopted rows; failures stay unknown and are retried after a rest.
-	textCounts := &reading.TextCountPreparation{DB: db, Prepare: readingService.PrepareTextCount, Admission: workAdmission.Admit}
+	textCounts := &reading.TextCountPreparation{DB: db, Prepare: readingService.PrepareTextCount, PrimaryPublicationSQL: readingService.PrimaryPublicationSQL, Admission: workAdmission.Admit}
 	supervise.Supervise(ctx, "cmd.reading-text-counts", func(life context.Context) {
 		wake := worker.NewSignal()
 		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")

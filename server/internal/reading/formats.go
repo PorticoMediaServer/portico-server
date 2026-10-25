@@ -17,6 +17,10 @@ func (s *Service) sourceFormatsSQL() string {
 
 // Apply conversion readiness BEFORE choosing a primary version and LIMIT, so an
 // unsupported conversion cannot conceal an otherwise eligible native version.
+// PrimaryPublicationSQL exposes the canonical primary-version rule to the
+// registered preparation worker without duplicating the MOBI-aware SQL.
+func (s *Service) PrimaryPublicationSQL() string { return s.primaryPublicationSQL() }
+
 func (s *Service) primaryPublicationSQL() string {
 	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=e.id AND candidate.format IN(` + s.sourceFormatsSQL() + `)
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=candidate.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND eligible.available=1) DESC,candidate.asset_id LIMIT 1)`
