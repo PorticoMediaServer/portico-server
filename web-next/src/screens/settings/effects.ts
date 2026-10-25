@@ -28,9 +28,9 @@ const preferenceEffects = new Set([
      values to its own cue surface (preference-effects.ts -> subtitle-surface.ts). */
   'playback.preferredAudioLanguages', 'playback.preferredSubtitleLanguages', 'playback.subtitleMode',
   'playback.subtitleSize', 'playback.subtitleColor', 'playback.subtitleBackground', 'playback.subtitlePosition',
-  // The server's delivery policy reads both saved quality defaults for the network class it
-  // decided (preference lane home/remote); the client sends no quality on a plain start.
-  'quality.home', 'quality.remote',
+  // The server selects home/remote by reach and mobile by actual cellular transport.
+  // These are saved defaults; a plain start supplies no client quality authority.
+  'quality.home', 'quality.remote', 'quality.mobile',
   /* Account Privacy: the server applies all four in the profile's own session. personal_activity.go
      pauses watch history and decides what counts in Popular; recommendation_engine.go and
      rec_title.go gate activity sharing; social/privacy.go hides Watch Together membership; and
