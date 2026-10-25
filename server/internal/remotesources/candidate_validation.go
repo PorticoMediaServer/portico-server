@@ -62,10 +62,18 @@ func (s *Service) beginCandidateTestAt(ctx context.Context, source, generation s
 		s.serveMu.Unlock()
 		return nil, nil, storage.ErrBusy
 	}
+	slot := s.serveLeases[source]
+	if slot != nil && (slot.retiring || slot.process == nil) {
+		// The idle cut holds serveMu for its decision and keeps the slot
+		// registered until the physical Wait, so test admission observes it
+		// under the same lock and never names a process that is already
+		// stopping.
+		s.serveMu.Unlock()
+		return nil, nil, storage.ErrBusy
+	}
 	life, cancel := context.WithCancel(ctx)
 	scope := &sourceTestScope{done: make(chan struct{}), life: life, cancel: cancel}
 	s.sourceTests[source] = scope
-	slot := s.serveLeases[source]
 	var process *rcloneprogram.ServeProcess
 	if slot != nil {
 		process = slot.process
@@ -82,10 +90,6 @@ func (s *Service) beginCandidateTestAt(ctx context.Context, source, generation s
 			close(scope.done)
 			s.serveMu.Unlock()
 		})
-	}
-	if slot != nil && process == nil {
-		finish()
-		return nil, nil, storage.ErrBusy
 	}
 	var gate *sourceOpsGate
 	var budget *remotemedia.OperationBudget

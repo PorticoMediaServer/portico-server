@@ -245,10 +245,17 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	}
 	slot := s.serveLeases[binding.Observation.SourceID]
 	if slot != nil {
+		if slot.retiring {
+			// The idle cut already chose this slot and keeps it registered until
+			// its supervisor finishes the physical Wait. A new caller waits for
+			// the next published start instead of sharing a dying process.
+			s.serveMu.Unlock()
+			return nil, storage.ErrBusy
+		}
 		process := slot.process
 		same := slot.generation == binding.Observation.Generation && slot.profile == binding.Profile && slot.root == binding.Root
-		s.serveMu.Unlock()
 		if !same {
+			s.serveMu.Unlock()
 			slot.cancel()
 			if expectedEpoch == "" {
 				return nil, storage.ErrBusy
@@ -256,11 +263,18 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 			return nil, storage.ErrRemoteChanged
 		}
 		if process == nil {
+			s.serveMu.Unlock()
 			return nil, storage.ErrBusy
 		}
 		if expectedEpoch != "" && process.Generation() != expectedEpoch {
+			s.serveMu.Unlock()
 			return nil, storage.ErrRemoteOffline
 		}
+		// Admission is registered under serveMu before the lock is dropped. The
+		// idle cut decides under the same lock, so it either observes this use
+		// or wins first and the recheck below refuses the retired slot.
+		slot.touch()
+		s.serveMu.Unlock()
 		if err := process.Check(ctx); err != nil {
 			// A new metadata/reader admission has not consumed this physical
 			// epoch. A committed policy/root/profile change must retire the old
@@ -270,6 +284,12 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 				return nil, storage.ErrBusy
 			}
 			return nil, err
+		}
+		s.serveMu.Lock()
+		admitted := s.serveLeases[binding.Observation.SourceID] == slot && !slot.retiring && slot.life.Err() == nil
+		s.serveMu.Unlock()
+		if !admitted {
+			return nil, storage.ErrBusy
 		}
 		return process, nil
 	}
@@ -416,6 +436,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 		return nil, storage.ErrRemoteOffline
 	}
 	slot.process = process
+	slot.touch()
 	s.serveMu.Unlock()
 	// Publish the custom program's observed version for the source page, fenced
 	// to this exact mount generation. A best-effort projection; it never changes

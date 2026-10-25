@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 
 	"os"
 	"portico.local/server/internal/dbwork"
@@ -31,6 +32,70 @@ type sourceProcessLease struct {
 	sequential         bool
 	networkFingerprint string
 	capabilities       backendCapabilities
+	lastUsed           atomic.Int64
+	// retiring is set under serveMu with the cancellation, so an admission
+	// either happened before the cut (and touched lastUsed) or observes it.
+	retiring bool
+}
+
+// serveIdleRetire stops an idle serve process after a bounded quiet period, so
+// an unused remote costs nothing. It never cancels an active reader or an
+// operation in flight; the next start re-creates the process from the saved
+// generation/profile under the same shared budget.
+const serveIdleRetire = 10 * time.Minute
+
+func (l *sourceProcessLease) touch() {
+	if l != nil {
+		l.lastUsed.Store(time.Now().UnixNano())
+	}
+}
+
+func (l *sourceProcessLease) idleFor(now time.Time) time.Duration {
+	if l == nil {
+		return 0
+	}
+	last := l.lastUsed.Load()
+	if last == 0 {
+		return serveIdleRetire
+	}
+	return now.Sub(time.Unix(0, last))
+}
+
+// retireIdleServes stops the current serve process of a source that has had no
+// admitted work or reader for the quiet period. The decision and the
+// cancellation share serveMu, and retiring keeps the slot registered until its
+// supervisor releases it after the physical Wait, so an admission either
+// registers its use under the same lock first or observes retiring and gets
+// Busy. A registered reader, inventory listing, test, removal, admitted shared
+// budget operation or live process all keep it.
+func (s *Service) retireIdleServes(now time.Time) {
+	busy := map[string]bool{}
+	s.mu.Lock()
+	for source, reads := range s.active {
+		if len(reads) > 0 {
+			busy[source] = true
+		}
+	}
+	s.mu.Unlock()
+	// The decision and the cancellation both happen under serveMu, and the
+	// retiring flag keeps the slot registered until its supervisor releases it
+	// after the physical Wait. An admission either wins the same lock first
+	// (touching lastUsed) or observes retiring and returns Busy.
+	s.serveMu.Lock()
+	for source, slot := range s.serveLeases {
+		if slot == nil || slot.retiring || slot.process == nil || slot.CheckLocal() != nil || busy[source] || s.sourceRemovals[source] || s.sourceTests[source] != nil {
+			continue
+		}
+		if len(s.readLeases[source]) > 0 || slot.idleFor(now) < serveIdleRetire {
+			continue
+		}
+		if slot.process.OperationCounts().Active > 0 {
+			continue
+		}
+		slot.retiring = true
+		slot.cancel()
+	}
+	s.serveMu.Unlock()
 }
 
 func (s *Service) reserveSourceProcess(ctx context.Context, source, generation string, profileRevision int64) (*sourceProcessLease, error) {
@@ -80,6 +145,7 @@ func (s *Service) reserveSourceProcess(ctx context.Context, source, generation s
 	}
 	life, cancel := context.WithCancel(ctx)
 	lease := &sourceProcessLease{service: s, source: source, generation: generation, root: root, profile: profile, transport: transport, life: life, cancel: cancel}
+	lease.touch()
 	s.serveLeases[source] = lease
 	return lease, nil
 }

@@ -692,6 +692,9 @@ func (s *Service) Run(ctx context.Context) {
 	defer stopWake()
 	worker.Run(ctx, "remotesources", wake, func(ctx context.Context) time.Duration {
 		_ = s.RefreshMounts(ctx)
+		// Idle serve processes are retired from the same bounded wake; active
+		// readers, permits and tests keep their process.
+		s.retireIdleServes(time.Now())
 		// One bounded page per wake, resumable until every row has been checked.
 		s.reconcileSourceCachePage(ctx)
 		// Completed/failed old scan listings are disposable adapter cache; current
