@@ -120,7 +120,7 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 	}
 	claims, validate, err := d.Downloads.PublicationReceiptValidator(r.Context(), p, d.Identity.ID(), body.Receipt)
 	if err != nil {
-		readingFailure(w, err)
+		readingFailure(w, downloadError(err))
 		return
 	}
 	issued, err := time.Parse(time.RFC3339Nano, claims.IssuedAt)
@@ -141,7 +141,7 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 	defer f.Close()
 	progress, saved, outcome, err := f.SaveOfflineProgress(*body.ExpectedRevision, parsedLocation, body.ObservedAt, body.StartedAt, validate)
 	if err != nil {
-		readingFailure(w, err)
+		readingFailure(w, downloadError(err))
 		return
 	}
 	if err = f.Validate(); err != nil {
