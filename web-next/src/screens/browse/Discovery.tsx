@@ -5,6 +5,7 @@ import {serverTextLabel} from '@core/presentation/server-text.ts';
 import type {TextEnvironment} from '@portico/client-core/kit-model';
 import type {ShellArtwork} from '../../shell/artwork';
 import {HomeSkeleton, StateView} from '../../kit/states';
+import {useLoadingClock} from '../detail/Loading';
 import {Artwork} from '../../kit/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
@@ -28,6 +29,9 @@ export type DiscoveryBindings = Readonly<{
 /** Sections and cursors are the authorized library projection, never a client-composed library scan. */
 export function LibraryDiscoveryScreen({service, route, header, empty, artwork, env, appearance: base, preferences, reducedMotion, actions, registerWindow, selectionToolbar, onSeeAll, nowPlayingAlbumId}: DiscoveryBindings) {
   const appearance = browsePresentation(base, preferences);
+  // The frame's library waits a quiet 300ms before its grid shapes, then keeps the real
+  // elapsed clock so only a genuinely slow answer moves on at eight seconds.
+  const elapsed = useLoadingClock();
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), width = useShellWidth();
   const routeKey = JSON.stringify(route);
   const selected = useRef<Readonly<{service: LibraryContentService; key: string}> | undefined>(undefined);
@@ -37,7 +41,7 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
   }, [service, route, routeKey]);
   if (!snapshot.projection && snapshot.phase === 'error') return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => {void service.retry();}}}/>;
-  return <>{header}{selectionToolbar}{!snapshot.projection ? <HomeSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}/> :
+  return <>{header}{selectionToolbar}{!snapshot.projection ? <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}/> :
     snapshot.appended.length === 0 ? empty : snapshot.appended.map(section => {
       // Phone-web frame 7: the Music library's Recently played row is the app's quick grid,
       // and the album the runtime is actually playing carries the level mark.

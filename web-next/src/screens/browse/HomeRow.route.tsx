@@ -8,6 +8,7 @@ import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {GridSkeleton} from '../../kit/states';
+import {useLoadingClock} from '../detail/Loading';
 import type {AmbientArtSource} from '../../kit/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {screenLifetime, type ScreenContext} from '../detail/context';
@@ -160,7 +161,7 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
     onPlay={play ? () => play(false) : undefined} onShuffle={play ? () => play(true) : undefined}/>;
 }
 function BoundHomeRow({captured, rowId}: {captured: ProtectedLibraryScreen; rowId: string}) {
-  const context = useLibraryScreenContext(captured), width = useShellWidth();
+  const context = useLibraryScreenContext(captured), width = useShellWidth(), elapsed = useLoadingClock();
   const [row, setRow] = useState<HomeRow>(), [failure, setFailure] = useState<unknown>(), [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const life = screenLifetime(context);setFailure(undefined);
@@ -170,7 +171,7 @@ function BoundHomeRow({captured, rowId}: {captured: ProtectedLibraryScreen; rowI
   }, [context, rowId, attempt]);
   return failure ? <ScreenProblem context={context} error={failure} retry={() => setAttempt(value => value + 1)}/>
     : row ? <LoadedHomeRow captured={captured} context={context} row={row}/>
-      : <GridSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: 0}} itemCount={1}/>;
+      : <GridSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: 0}} itemCount={1}/>;
 }
 function HomeRowRouteScreen() {
   const captured = useProtectedWebScreenContext(), {rowId} = useParams({from: '/home/rows/$rowId'});
