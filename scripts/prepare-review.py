@@ -33,6 +33,7 @@ def main():
     p.add_argument('commit')
     p.add_argument('--cycle', required=True)
     p.add_argument('--private-review', required=True, type=Path)
+    p.add_argument('--credentials', type=Path, help='current protected JSON credentials; private review remains publication metadata')
     p.add_argument('--smoke-output', required=True, type=Path)
     p.add_argument('--resume', action='store_true')
     p.add_argument('--conversion-mode', choices=('all', 'sound', 'never'), default='never',
@@ -43,7 +44,7 @@ def main():
     spec = importlib.util.spec_from_file_location('review_smoke', Path(__file__).with_name('smoke-review.py'))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    credentials = module.read_credentials(a.private_review)
+    credentials = module.read_credentials(a.credentials or a.private_review)
     oldtext = a.private_review.read_text()
     old = json.loads(oldtext.split('```json\n', 1)[1].split('\n```', 1)[0])
     state = dict(cycle=a.cycle, origin='https://demo.getportico.tv', serverCommit=a.commit, webCommit=a.commit,

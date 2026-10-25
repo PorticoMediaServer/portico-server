@@ -115,6 +115,8 @@ class ReviewDeployment(unittest.TestCase):
                 smoke.read_credentials(path)
             path.chmod(0o600)
             self.assertEqual(smoke.read_credentials(path)['username'], 'fixture')
+            path.write_text(json.dumps({'username': 'fixture', 'password': 'synthetic-test-value', 'url': 'https://demo.getportico.tv'}))
+            self.assertEqual(smoke.read_credentials(path), {'username': 'fixture', 'password': 'synthetic-test-value'})
             link = Path(temp) / 'link'
             link.symlink_to(path)
             with self.assertRaises(OSError):

@@ -55,7 +55,7 @@ def read_credentials(path):
         if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600 or info.st_uid != os.getuid():
             raise ValueError('private review credentials require an owned regular file with mode0600')
         document = stream.read()
-    state = json.loads(document.split('```json\n', 1)[1].split('\n```', 1)[0])
+    state = json.loads(document if document.lstrip().startswith('{') else document.split('```json\n', 1)[1].split('\n```', 1)[0])
     return {'username': state['username'], 'password': state['password']}
 
 
