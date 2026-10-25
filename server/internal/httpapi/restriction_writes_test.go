@@ -473,6 +473,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"DELETE /v1/saved-resources/{id}/shares":           writeExempt(reasonOwnObject),
 		"DELETE /v1/storage/mounts/{id}":                   writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
 		"DELETE /v1/storage/sources/webdav/{id}":           writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
+		"DELETE /v1/storage/sources/rclone/{id}":           {check: TestRcloneSourceRouteKeepsOwnerFirstAndNoSubsystemFacts},
 		"PATCH /v1/items/{id}/lyrics/{resource}/offset":    perHidden("PATCH", "/v1/items/ID/lyrics/unknown/offset", `{}`, "item"),
 		"PATCH /v1/items/{id}/metadata/manual":             writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
 		"PATCH /v1/playlists/{id}":                         writeExempt(reasonOwnObject),

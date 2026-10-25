@@ -30,6 +30,8 @@ func rcloneSourceErrorDefinitions() []apierror.Definition {
 func rcloneSourceFailure(err error) error {
 	code := ""
 	switch {
+	case errors.Is(err, mounts.ErrSourceInUse):
+		code = "request_in_progress"
 	case errors.Is(err, sql.ErrNoRows):
 		code = "not_found"
 	case errors.Is(err, mounts.ErrCommandConflict):
@@ -49,6 +51,7 @@ func rcloneSourceFailure(err error) error {
 
 func registerRcloneSourceSave(registry *apikit.Registry, d Dependencies) {
 	registerRcloneSourceEdit(registry, d)
+	registerRcloneSourceRemoval(registry, d)
 	v1Route(registry, apikit.Metadata{ID: "get_storage_source_rclone_operation", Method: "GET", Path: "/v1/storage/sources/rclone/operations/{id}", Summary: "Recover an imported rclone source save receipt", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "internal"}}, func(ctx context.Context, r *http.Request, _ struct{}) (RcloneSourceResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {

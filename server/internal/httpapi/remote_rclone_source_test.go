@@ -24,10 +24,14 @@ func TestRcloneSourceRouteKeepsOwnerFirstAndNoSubsystemFacts(t *testing.T) {
 		token  string
 		status int
 	}{{"POST", "/v1/storage/sources/rclone", "", 401}, {"POST", "/v1/storage/sources/rclone", owner.AccessToken, 503},
-		{"PUT", "/v1/storage/sources/rclone/source", "", 401}, {"PUT", "/v1/storage/sources/rclone/source", owner.AccessToken, 503}} {
+		{"PUT", "/v1/storage/sources/rclone/source", "", 401}, {"PUT", "/v1/storage/sources/rclone/source", owner.AccessToken, 503},
+		{"DELETE", "/v1/storage/sources/rclone/source", "", 401}, {"DELETE", "/v1/storage/sources/rclone/source", owner.AccessToken, 503}} {
 		body := `{"operationId":"invalid","name":"Cloud","remote":"cloud:","config":"[cloud]\ntype=s3\nsecret_access_key=private-secret\n"}`
 		if test.method == "PUT" {
 			body = `{"expectedGeneration":1,` + body[1:]
+		}
+		if test.method == "DELETE" {
+			body = `{"operationId":"invalid","expectedGeneration":1}`
 		}
 		r := httptest.NewRequest(test.method, test.path, bytes.NewBufferString(body))
 		r.Header.Set("Content-Type", "application/json")
@@ -51,6 +55,7 @@ func TestRcloneSourceFailureRetainsSafeReceiptCodes(t *testing.T) {
 		{mounts.ErrCommandExpired, "storage_operation_expired"},
 		{mounts.ErrCommandCapacity, "storage_command_capacity"},
 		{mounts.ErrAllocationCapacity, "storage_allocation_recovery_required"},
+		{mounts.ErrSourceInUse, "request_in_progress"},
 		{fmt.Errorf("https://owner:private-secret@private.example/: failed"), "internal"},
 	} {
 		var failure *apierror.Error
