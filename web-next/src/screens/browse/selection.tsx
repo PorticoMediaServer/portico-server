@@ -238,7 +238,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     const lifetime = new AbortController(), signal = AbortSignal.any([lifetime.signal, pickers.signal]);
     const current = () => !signal.aborted && pickers.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;
     const check = () => {if (!current()) throw new DOMException('Selection retired', 'AbortError');};
-    const ports: EntryActionPorts = {...pickers, isCurrent: current, api: {request: async<T>(path: string, method?: string, body?: unknown, caller?: AbortSignal): Promise<T> => {
+    const ports: EntryActionPorts = {...pickers, isCurrent: current, api: {request: async <T,>(path: string, method?: string, body?: unknown, caller?: AbortSignal): Promise<T> => {
       check(); const value = await pickers.api.request<T>(path, method, body, caller ? AbortSignal.any([signal, caller]) : signal); check(); return value;
     }}};
     pickerSession = Object.freeze({operation, anchor, lifetime, current, kind, ports, items: Object.freeze(operation.target.items.map(pick => pick.item))});

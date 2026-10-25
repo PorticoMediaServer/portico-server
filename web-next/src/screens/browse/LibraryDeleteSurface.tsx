@@ -26,7 +26,7 @@ export function LibraryDeleteSurface({session, options, onClose}: {session: Libr
     const signal = AbortSignal.any([session.lifetime.signal, options.signal]);
     const check = () => {if (signal.aborted || !session.current() || !options.isCurrent()) throw new DOMException('Selection retired', 'AbortError');};
     producer.open(targets, {...options, isCurrent: () => !signal.aborted && session.current() && options.isCurrent(), api: {
-      request: async<T>(path: string, method?: string, body?: unknown, caller?: AbortSignal): Promise<T> => {
+      request: async <T,>(path: string, method?: string, body?: unknown, caller?: AbortSignal): Promise<T> => {
         check(); const value = await options.api.request<T>(path, method, body, caller ? AbortSignal.any([signal, caller]) : signal); check(); return value;
       },
     }});
