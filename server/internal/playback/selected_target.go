@@ -70,7 +70,9 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 		if p.VideoAction == "copy" {
 			t.BitDepth = video.BitDepth
 			t.DynamicRange = effectiveRange(video, client.videoCodec(video.Codec), client)
-			if video.DolbyVisionProfile == 7 {
+			if video.DolbyVisionProfile == 7 && !profile7CopyThrough(video, client, p.OutputContainer) {
+				// Without a declared profile 7 the repackage keeps the HDR10
+				// base picture, or the checked 8.1 rewrite below.
 				t.DynamicRange = assets.RangeHDR10
 			}
 			t.DolbyVisionProfile, t.DolbyVisionCompatibility = video.DolbyVisionProfile, video.DolbyVisionCompatibility
@@ -244,6 +246,9 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, codec *ClientVideoCo
 }
 
 func baseCopyRejections(video *SourceVideo, client ClientProfile, facts *decoder.ToolchainFacts) []RouteRejection {
+	// A device that declares this Dolby Vision profile receives the stream as
+	// it is. Profile 7 is the exception handled by the caller: an untouched
+	// stream needs fMP4, so this general route is the HDR10 fallback.
 	if video == nil || video.DynamicRange != assets.RangeDolbyVision || video.DolbyVisionProfile != 7 && nativeDolbyVision(video, client.videoCodec(video.Codec), client) {
 		return nil
 	}

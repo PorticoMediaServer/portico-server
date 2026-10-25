@@ -495,8 +495,9 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		if fragmented {
 			args = append(args, "-map_metadata", "-1", "-fflags", "+bitexact")
 			if plan.OutputVideoCodec == "hevc" {
-				args = append(args, "-tag:v", hevcSampleEntry(plan))
-				if hevcSampleEntry(plan) == "dvh1" {
+				entry := hevcSampleEntry(plan)
+				args = append(args, "-tag:v", entry)
+				if entry == "dvh1" || entry == "dvhe" {
 					args = append(args, "-strict", "unofficial")
 				}
 			}

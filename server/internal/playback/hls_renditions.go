@@ -202,12 +202,12 @@ func videoCodecString(p *DeliveryPlan) string {
 		}
 		return fmt.Sprintf("avc1.%02x00%02x", profile, level)
 	case "hevc":
-		if hevcSampleEntry(p) == "dvh1" {
+		if entry := hevcSampleEntry(p); entry == "dvh1" || entry == "dvhe" {
 			if p.Trace.Video.DolbyVisionLevel <= 0 {
 				return ""
 			}
 			profile, _ := deliveredDolbyVision(p)
-			return fmt.Sprintf("dvh1.%02d.%02d", profile, p.Trace.Video.DolbyVisionLevel)
+			return fmt.Sprintf("%s.%02d.%02d", entry, profile, p.Trace.Video.DolbyVisionLevel)
 		}
 		level := 120
 		if p.VideoAction == "convert" {
@@ -763,8 +763,15 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 
 func hevcSampleEntry(p *DeliveryPlan) string {
 	profile, _ := deliveredDolbyVision(p)
-	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" && (profile == 5 || profile == 8) {
-		return "dvh1"
+	// A repackaged stream keeps the sample entry its profile requires: dvh1
+	// for Apple's single-layer profiles 5 and 8, dvhe for untouched profile 7.
+	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" {
+		switch profile {
+		case 5, 8:
+			return "dvh1"
+		case 7:
+			return "dvhe"
+		}
 	}
 	return "hvc1"
 }

@@ -342,7 +342,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			if p.Trace != nil && p.Trace.Video != nil && source.Video != nil {
 				v := source.Video
 				p.Trace.Video.OutputRange = effectiveRange(v, client.videoCodec(v.Codec), client)
-				if p.VideoAction == "copy" && v.DolbyVisionProfile == 7 {
+				if p.VideoAction == "copy" && v.DolbyVisionProfile == 7 && !profile7CopyThrough(v, client, p.OutputContainer) {
 					p.Trace.Video.OutputRange = assets.RangeHDR10
 				}
 				if p.VideoAction == "convert" {
