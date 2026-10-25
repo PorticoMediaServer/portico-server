@@ -10,15 +10,20 @@ import {encodedRoutePath, routePath} from "../../../contracts/src/routes.ts";
 import type {CapabilityDocument, StoredCapabilities} from '../client-profile.ts';
 import {capabilityDocumentProblem} from '../client-profile.ts';
 import {PlaybackApiError, call, enc, type V1Http} from './http.ts';
-import {parseOptions, type AudioStream, type MediaVersion, type PlaybackOptions, type PlaybackPlan, type SubtitleStream} from './types.ts';
+import {ContractError, parseDiscTitleRef, parseOptions, type DiscTitleRef, type AudioStream, type MediaVersion, type PlaybackOptions, type PlaybackPlan, type SubtitleStream} from './types.ts';
 import type {QualityRequest} from './quality.ts';
 
-export type OptionsPreview = Readonly<{versionId?: string; partId?: string; quality?: QualityRequest; audioId?: string; subtitleId?: string | null; throughputKbps?: number}>;
+export type OptionsPreview = Readonly<{versionId?: string; discTitle?: DiscTitleRef; partId?: string; quality?: QualityRequest; audioId?: string; subtitleId?: string | null; throughputKbps?: number}>;
 
 function query(p: OptionsPreview): string {
   const q = new URLSearchParams();
   if (p.throughputKbps && Number.isSafeInteger(p.throughputKbps) && p.throughputKbps>0) q.set('throughputKbps',String(p.throughputKbps));
   if (p.versionId) q.set('versionId', p.versionId);
+  if (p.discTitle !== undefined) {
+    const title = parseDiscTitleRef(p.discTitle);
+    if (!title || !p.versionId || p.partId !== undefined) throw new ContractError('disc title preview');
+    q.set('discTitleId', title.id); q.set('discTitleRevision', title.revision);
+  }
   if (p.partId) q.set('partId', p.partId);
   if (p.audioId) q.set('audioId', p.audioId);
   if (p.subtitleId !== undefined) q.set('subtitleId', p.subtitleId ?? 'none');
@@ -40,8 +45,15 @@ export class PlaybackOptionsClient {
   constructor(http: V1Http) { this.http = http; }
 
   async options(itemId: string, preview: OptionsPreview = {}, signal?: AbortSignal): Promise<PlaybackOptions> {
-    const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_options", {"itemId": enc(itemId)}) + (query(preview)), signal});
-    return parseOptions(r.body);
+    const title = parseDiscTitleRef(preview.discTitle), versionId = preview.versionId;
+    const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_options", {"itemId": enc(itemId)}) + (query({...preview, discTitle: title})), signal});
+    const options = parseOptions(r.body);
+    if (title) {
+      const versions = options.versions.filter(version => version.id === versionId);
+      if (options.itemId !== itemId || versions.length !== 1 || versions[0].discTitle?.id !== title.id
+        || versions[0].discTitle.revision !== title.revision) throw new ContractError('disc title preview response');
+    }
+    return options;
   }
 }
 

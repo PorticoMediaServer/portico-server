@@ -19,7 +19,7 @@ import type {MediaPlayer, PlayerEvent, PlayerObservation} from './port.ts';
 import type {QualityRequest} from './quality.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
 import {TimelineReporter, type TimelineReport, type TimelineReporterOptions} from './timeline.ts';
-import {parseSession, parseSessionEnd, type Session, type SessionEnd} from './types.ts';
+import {ContractError, parseDiscTitleRef, parseSession, parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
 import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 export type {SessionChangeContext} from './change-context.ts';
 
@@ -31,6 +31,8 @@ export type StartTarget =
 
 export type StartOptions = Readonly<{
   versionId?: string;
+  /** Exact measured title; never substituted by a later main-title choice. */
+  discTitle?: DiscTitleRef;
   partIndex?: number;
   startPositionMs?: number;
   startFrom?: 'resume' | 'beginning' | 'live' | 'startOver';
@@ -84,7 +86,10 @@ export class SessionsClient {
 
   /** Start (or replay a start). `onPreparing` reports each 202 so the UI can say "Getting it ready". */
   async start(target: StartTarget, options: StartOptions, key: string, extra: {signal?: AbortSignal; onPreparing?: (retryAfterMs: number) => void} = {}): Promise<Session> {
-    const body = {...target, ...options};
+    const discTitle = parseDiscTitleRef(options.discTitle);
+    if (discTitle && (!options.versionId || options.partIndex !== undefined && options.partIndex !== 0
+      || !('itemId' in target) && !('queue' in target))) throw new ContractError('disc title start');
+    const body = {...target, ...options, ...(discTitle ? {discTitle} : {})};
     let waited = 0;
     for (;;) {
       const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': key}, body, signal: extra.signal}, [201, 200, 202]);

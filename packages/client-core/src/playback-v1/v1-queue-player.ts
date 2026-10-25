@@ -53,7 +53,7 @@ import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, t
 import {audioTransitionsEnabled} from '../audio-effects.ts';
 import type {NativeListeningV1Control, NativeListeningV1Event} from '../playback/native-listening.ts';
 import {playableAudio} from './audio-render.ts';
-import {ContractError, consecutiveOnAlbum, id, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
+import {ContractError, consecutiveOnAlbum, id, parseDiscTitleRef, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
 
 /** Items per `items` selector segment, and segments per create (spec §8). */
 const SEGMENT_ITEMS = 500, MAX_SEGMENTS = 16;
@@ -349,7 +349,8 @@ export class V1QueuePlayer implements QueueController {
   playItem(itemId: string, startSeconds?: number, _prepared?: PreparedChoice, _quality?: string, audioStream?: number, choices?: PlaybackChoices, context?: V1PlayItemContext): Promise<void> {
     if (this.disposed || context?.signal?.aborted || context?.isCurrent?.() === false) return Promise.reject(Object.assign(new Error('cancelled'), {name: 'AbortError'}));
     const track = choices?.audioTrackId ?? audioTrackId(audioStream);
-    const chosen: PlaybackChoices = {...choices, ...(track ? {audioTrackId: track} : {})};
+    const chosen: PlaybackChoices = {...choices, ...(track ? {audioTrackId: track} : {}),
+      ...(choices?.discTitle === undefined ? {} : {discTitle: parseDiscTitleRef(choices.discTitle)})};
     // Replay, a retry on another route: the title is the queue's current entry, which starts again
     // in place. The rest of the queue is untouched.
     const current = this.currentEntry();
@@ -398,9 +399,11 @@ export class V1QueuePlayer implements QueueController {
 
   /** What a start asks for: the choices for this title, the quality chosen in the player for this
    * viewing, else the viewer's saved default. */
-  private startChoices(choices?: PlaybackChoices): Pick<StartOptions, 'quality' | 'versionId' | 'audio'> {
+  private startChoices(choices?: PlaybackChoices): Pick<StartOptions, 'quality' | 'versionId' | 'discTitle' | 'audio'> {
     const quality = choices?.quality ?? this.qualityOverride ?? this.defaultQuality?.();
-    return {...(quality ? {quality} : {}), ...(choices?.versionId ? {versionId: choices.versionId} : {}), ...(choices?.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {})};
+    const discTitle = parseDiscTitleRef(choices?.discTitle);
+    if (discTitle && !choices?.versionId) throw new ContractError('disc title version');
+    return {...(quality ? {quality} : {}), ...(choices?.versionId ? {versionId: choices.versionId} : {}), ...(discTitle ? {discTitle} : {}), ...(choices?.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {})};
   }
 
   /** A session whose request was overtaken (the viewer moved on while it was in flight) is ended
@@ -446,6 +449,7 @@ export class V1QueuePlayer implements QueueController {
   changePlayback(choices: PlaybackChoices, context: SessionChangeContext): Promise<Session | undefined>;
   async changePlayback(choices: PlaybackChoices, context?: SessionChangeContext): Promise<Session | void> {
     requireSessionChangeCurrent(context);
+    if (choices.discTitle !== undefined) throw new ContractError('disc title requires a session start');
     const session = this.session;
     if (this.disposed || !session || this.nativeOwns()) {
       if (context) throw new PlaybackApiError(410, 'session_ended', 'never');
@@ -483,7 +487,8 @@ export class V1QueuePlayer implements QueueController {
       if (!live()) {if (context) check();return;}
       if (context?.recoverEnded !== false && e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended') && this.header?.current) {
         const p = this.playback.getSnapshot();
-        await this.restartCurrent(p.pendingSeek?.positionSeconds ?? (p.phase === 'idle' ? undefined : p.positionSeconds), {...this.playback.playbackChoices(), ...choices}, p.intent === 'paused' ? 'paused' : 'playing', true, context);
+        const retained = session.discTitle && choices.versionId === undefined ? {versionId: session.versionId, discTitle: session.discTitle} : {};
+        await this.restartCurrent(p.pendingSeek?.positionSeconds ?? (p.phase === 'idle' ? undefined : p.positionSeconds), {...this.playback.playbackChoices(), ...choices, ...retained}, p.intent === 'paused' ? 'paused' : 'playing', true, context);
         requireSessionChangeCurrent(context);
         if (context && (this.disposed || sequence !== this.changeSequence || this.generation !== generation + 1
           || this.header?.id !== session.queue?.queueId || this.header?.current?.entryId !== session.queue?.entryId)) throw new DOMException('Playback change retired', 'AbortError');
@@ -501,7 +506,8 @@ export class V1QueuePlayer implements QueueController {
   async recoverLease(sessionId: string, positionSeconds: number): Promise<boolean> {
     const p = this.playback.getSnapshot();
     if (this.disposed || this.session?.id !== sessionId || !this.header?.current || this.nativeOwns() || p.session?.id !== sessionId || p.channel || !['starting', 'ready'].includes(p.phase)) return false;
-    await this.restartCurrent(p.pendingSeek?.positionSeconds ?? positionSeconds, this.playback.playbackChoices(), p.intent === 'paused' ? 'paused' : 'playing', true);
+    const choices = {...this.playback.playbackChoices(), ...(this.session.discTitle ? {versionId: this.session.versionId, discTitle: this.session.discTitle} : {})};
+    await this.restartCurrent(p.pendingSeek?.positionSeconds ?? positionSeconds, choices, p.intent === 'paused' ? 'paused' : 'playing', true);
     return this.session?.id !== sessionId && !!this.session;
   }
 
@@ -667,6 +673,10 @@ export class V1QueuePlayer implements QueueController {
     if (!current()) { this.api.forget(r.session.id); this.abandon(r.session); return; }
     if (isCurrent && (r.session.queue?.queueId !== queueId || r.session.queue.entryId !== entryId || !entry?.available || r.session.itemId !== entry.itemId)) {
       this.api.forget(r.session.id); this.abandon(r.session); throw new ContractError('queue playback session');
+    }
+    if (choices?.discTitle && (r.session.versionId !== choices.versionId || r.session.discTitle?.id !== choices.discTitle.id
+      || r.session.discTitle.revision !== choices.discTitle.revision)) {
+      this.api.forget(r.session.id); this.abandon(r.session); throw new ContractError('disc title playback selection');
     }
     if (subtitles && (r.session.versionId !== choices?.versionId || r.session.state !== state
       || r.session.presentation.startPositionMs !== Math.round(startSeconds! * 1000)
@@ -1079,7 +1089,7 @@ export class V1QueuePlayer implements QueueController {
     // The native listening owner already has its own bound retry command.
     if (this.nativeOwns() || session.presentation.subtitle?.delivery === 'other') return;
     const at = this.playback.recoveryTarget() ?? p.positionSeconds, state = this.playback.recoveryIntent();
-    const choices: PlaybackChoices = {...this.playback.playbackChoices(), versionId: expected.versionId,
+    const choices: PlaybackChoices = {...this.playback.playbackChoices(), versionId: expected.versionId, discTitle: session.discTitle,
       quality: this.playback.playbackChoices().quality ?? requestInForce(session.presentation.quality),
       ...(session.presentation.audioTrackId ? {audioTrackId: session.presentation.audioTrackId} : {}),
     };
@@ -1121,7 +1131,8 @@ export class V1QueuePlayer implements QueueController {
     // The position and the choices belong to the title that failed. When the queue has since
     // moved to another entry, that entry starts where its own progress says.
     const same = !item || !p.itemId || p.itemId === item;
-    const at = same ? this.playback.recoveryTarget() : undefined, choices = same ? this.playback.playbackChoices() : undefined;
+    const at = same ? this.playback.recoveryTarget() : undefined, choices = same ? {...this.playback.playbackChoices(),
+      ...(this.session?.discTitle && this.session.itemId === item ? {versionId: this.session.versionId, discTitle: this.session.discTitle} : {})} : undefined;
     const generation = ++this.generation;
     const intent = this.playback.beginQueueIntent(item);
     try { await this.startEntry(h.id, h.current.entryId, intent, at, generation, choices); } catch (e) { if (generation === this.generation) this.fail('', e, serviceText('queuePlayer.startFailed')); }

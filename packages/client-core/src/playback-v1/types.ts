@@ -1,4 +1,4 @@
-import type {ListAdminSessionsResponse} from '../../../contracts/src/types.ts';
+import type {ListAdminSessionsResponse, StartPlaybackSessionRequest} from '../../../contracts/src/types.ts';
 import {parseDashboardSessionFacts} from '../admin/activity-summary/parser.ts';
 import type {BrowseNode, BrowseSortSelection} from '../browse.ts';
 import {validateSubtitleDelivery} from '../subtitles.ts';
@@ -27,6 +27,14 @@ const idRe = /^[A-Za-z0-9_.-]{1,128}$/;
 export function id(v: unknown, what: string): string { if (typeof v !== 'string' || !idRe.test(v)) throw new ContractError(what); return v; }
 const optId = (v: unknown, what: string) => (v === undefined ? undefined : id(v, what));
 export function revision(v: unknown, what = 'revision'): string { if (typeof v !== 'string' || !v || v.length > 256) throw new ContractError(what); return v; }
+/** Public identity of one measured title inside its separately named physical version. */
+export type DiscTitleRef = Readonly<NonNullable<StartPlaybackSessionRequest['discTitle']>>;
+export function parseDiscTitleRef(value: unknown): DiscTitleRef | undefined {
+  if (value === undefined) return undefined;
+  if (!obj(value) || typeof value.id !== 'string' || !/^[a-f0-9]{64}$/.test(value.id)
+    || typeof value.revision !== 'string' || !/^[a-f0-9]{64}$/.test(value.revision)) throw new ContractError('disc title');
+  return Object.freeze({id: value.id, revision: value.revision});
+}
 const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback);
 const num = (v: unknown, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 const optNum = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
@@ -53,7 +61,7 @@ export type VideoStream = Readonly<{
 export type AudioStream = Readonly<{profile?: string; variant?: string; objectAudio?: string; dtsx?: boolean; sampleRate?: number; bitDepth?: number; id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
 export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;
-export type MediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; disc?: DiscMediaFacts; sizeBytes?: number; durationMs: number; bitrateKbps?: number; parts: readonly VersionPart[]; video: readonly VideoStream[]; audio: readonly AudioStream[]; subtitles: readonly SubtitleStream[]}>;
+export type MediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; disc?: DiscMediaFacts; discTitle?: DiscTitleRef; sizeBytes?: number; durationMs: number; bitrateKbps?: number; parts: readonly VersionPart[]; video: readonly VideoStream[]; audio: readonly AudioStream[]; subtitles: readonly SubtitleStream[]}>;
 /** A skippable segment (spec §4.2). `id` is what a skip report names; the viewer's `auto`
  * preference applies only when `automaticSafe`. */
 export type Marker = Readonly<{id: string; type: 'intro' | 'recap' | 'credits' | 'preview' | 'commercial' | 'other'; startMs: number; endMs: number; confidence: 'detected' | 'manual' | 'embedded' | 'other'; automaticSafe: boolean}>;
@@ -117,9 +125,11 @@ export function parseOptions(v: unknown): PlaybackOptions {
   const versions = arr(v.versions).map((x, i): MediaVersion => {
     if (!obj(x)) throw new ContractError(`version ${i}`);
     const disc = parseDiscMediaFacts(x.disc);
+    const discTitle = parseDiscTitleRef(x.discTitle);
     return Object.freeze({
       id: id(x.id, 'version id'), label: str(x.label), edition: typeof x.edition === 'string' ? x.edition : undefined, container: typeof x.container === 'string' ? x.container : undefined,
       ...(disc ? {disc} : {}),
+      ...(discTitle ? {discTitle} : {}),
       sizeBytes: optNum(x.sizeBytes), durationMs: num(x.durationMs), bitrateKbps: optNum(x.bitrateKbps),
       parts: Object.freeze(arr(x.parts).filter(obj).map(p => Object.freeze({id: id(p.id, 'part id'), index: num(p.index), durationMs: num(p.durationMs), sizeBytes: optNum(p.sizeBytes)}))),
       video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({...videoSourceFacts(s), id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, ...(typeof s.interlaced === 'boolean' ? {interlaced: s.interlaced} : {}), ...(typeof s.hdr10Plus === 'boolean' ? {hdr10Plus: s.hdr10Plus} : {}), bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
@@ -181,6 +191,7 @@ export type SessionKind = 'vod' | 'audio' | 'live' | 'channel' | 'other';
 export type Session = Readonly<{
   id: string; revision: string; kind: SessionKind; role: 'local' | 'receiver' | 'group_member' | 'other';
   state: 'playing' | 'paused' | 'ended' | 'other'; itemId?: string; versionId?: string;
+  discTitle?: DiscTitleRef;
   queue?: Readonly<{queueId: string; entryId: string}>;
   lease: Readonly<{expiresAt?: string; reportEveryMs: number}>;
   presentation: Presentation;
@@ -208,6 +219,8 @@ function decision(v: unknown): Decision | undefined {
 
 export function parseSession(v: unknown): Session {
   if (!obj(v) || !obj(v.presentation)) throw new ContractError('session');
+  const discTitle = parseDiscTitleRef(v.discTitle);
+  if (discTitle && (v.kind !== 'vod' || v.itemId === undefined || v.versionId === undefined)) throw new ContractError('disc title session');
   const presentation = parsePresentation(v.presentation);
   let observed: ObservedPlayback | undefined;
   let playbackInfo: PlaybackInfo | undefined;
@@ -221,6 +234,7 @@ export function parseSession(v: unknown): Session {
     id: id(v.id, 'session id'), revision: revision(v.revision), kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never),
     role: oneOf(v.role, ['local', 'receiver', 'group_member'] as const, 'other' as never), state: oneOf(v.state, ['playing', 'paused', 'ended'] as const, 'other' as never),
     itemId: optId(v.itemId, 'item id'), versionId: optId(v.versionId, 'version id'),
+    ...(discTitle ? {discTitle} : {}),
     queue: obj(v.queue) ? Object.freeze({queueId: id(v.queue.queueId, 'queue id'), entryId: id(v.queue.entryId, 'entry id')}) : undefined,
     lease: Object.freeze({expiresAt: obj(v.lease) && typeof v.lease.expiresAt === 'string' ? v.lease.expiresAt : undefined, reportEveryMs: obj(v.lease) ? num(v.lease.reportEveryMs, 10_000) : 10_000}),
     presentation,

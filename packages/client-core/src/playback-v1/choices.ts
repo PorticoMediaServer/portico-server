@@ -8,6 +8,7 @@
  * requires; see `AutomaticQuality`), then all seven canonical fixed ceilings.
  */
 import {qualityLadder, type QualityId, type QualityInForce, type QualityRequest} from './quality.ts';
+import type {DiscTitleRef} from './types.ts';
 
 /** Choices that travel with a start or a change of the live session. Absent fields are left as they are. */
 export type PlaybackChoices = Readonly<{
@@ -16,6 +17,8 @@ export type PlaybackChoices = Readonly<{
   quality?: QualityRequest;
   /** The version of the title to play (an edition, another copy). */
   versionId?: string;
+  /** One measured title in that physical version; used only by a new session start. */
+  discTitle?: DiscTitleRef;
   /** The audio track, by its playback-options id (`a1`, `a2`…). */
   audioTrackId?: string;
   /** The subtitle track, by its playback-options id; `null` turns subtitles off. Sent with a change only. */
