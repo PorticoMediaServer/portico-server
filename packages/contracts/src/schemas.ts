@@ -825,6 +825,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -1095,6 +1098,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {
@@ -2330,6 +2336,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -2600,6 +2609,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {
@@ -4082,6 +4094,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -4352,6 +4367,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {
@@ -11030,6 +11048,9 @@ export const schemas = {
                   "codec": {
                     "type": "string"
                   },
+                  "delivery": {
+                    "type": "string"
+                  },
                   "layout": {
                     "type": "string"
                   },
@@ -11300,6 +11321,9 @@ export const schemas = {
                     "type": "integer"
                   },
                   "codec": {
+                    "type": "string"
+                  },
+                  "delivery": {
                     "type": "string"
                   },
                   "layout": {
@@ -12483,6 +12507,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -12753,6 +12780,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {
@@ -16194,6 +16224,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -16464,6 +16497,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {
@@ -18678,6 +18714,9 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
       },
       "candidates": {
         "items": {
@@ -114321,6 +114360,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
+      },
       "candidates": {
         "items": {
           "properties": {
@@ -121294,6 +121336,9 @@ export const schemas = {
                   "codec": {
                     "type": "string"
                   },
+                  "delivery": {
+                    "type": "string"
+                  },
                   "layout": {
                     "type": "string"
                   },
@@ -121564,6 +121609,9 @@ export const schemas = {
                     "type": "integer"
                   },
                   "codec": {
+                    "type": "string"
+                  },
+                  "delivery": {
                     "type": "string"
                   },
                   "layout": {
@@ -148558,6 +148606,124 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetStorageSourceAdvancedRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceAdvancedResponse": {
+    "properties": {
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "settings": {
+        "properties": {
+          "cacheSupported": {
+            "type": "boolean"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "saved": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "values": {
+            "properties": {
+              "cacheBytes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "cacheFloorBytes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "chapterImages": {
+                "type": "boolean"
+              },
+              "checksums": {
+                "type": "boolean"
+              },
+              "fullRecheckDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "loudness": {
+                "type": "boolean"
+              },
+              "scanIntervalSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scanOnStart": {
+                "type": "boolean"
+              },
+              "seekPreviews": {
+                "type": "boolean"
+              },
+              "watchForChanges": {
+                "type": "boolean"
+              },
+              "waveforms": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "scanIntervalSeconds",
+              "watchForChanges",
+              "scanOnStart",
+              "fullRecheckDays",
+              "cacheBytes",
+              "cacheFloorBytes",
+              "seekPreviews",
+              "chapterImages",
+              "waveforms",
+              "loudness",
+              "checksums"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation",
+          "revision",
+          "saved",
+          "cacheSupported",
+          "values"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "settings"
+    ],
+    "type": "object"
+  },
   "GetStorageSourceFoldersRequest": {
     "properties": {},
     "required": [],
@@ -154553,6 +154719,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -154823,6 +154992,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {
@@ -177685,6 +177857,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
+      },
       "candidates": {
         "items": {
           "properties": {
@@ -178362,6 +178537,9 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
       },
       "candidates": {
         "items": {
@@ -195906,6 +196084,196 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutStorageSourceAdvancedRequest": {
+    "properties": {
+      "expectedGeneration": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "values": {
+        "properties": {
+          "cacheBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheFloorBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "chapterImages": {
+            "type": "boolean"
+          },
+          "checksums": {
+            "type": "boolean"
+          },
+          "fullRecheckDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "loudness": {
+            "type": "boolean"
+          },
+          "scanIntervalSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "scanOnStart": {
+            "type": "boolean"
+          },
+          "seekPreviews": {
+            "type": "boolean"
+          },
+          "watchForChanges": {
+            "type": "boolean"
+          },
+          "waveforms": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scanIntervalSeconds",
+          "watchForChanges",
+          "scanOnStart",
+          "fullRecheckDays",
+          "cacheBytes",
+          "cacheFloorBytes",
+          "seekPreviews",
+          "chapterImages",
+          "waveforms",
+          "loudness",
+          "checksums"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedGeneration",
+      "expectedRevision",
+      "values"
+    ],
+    "type": "object"
+  },
+  "PutStorageSourceAdvancedResponse": {
+    "properties": {
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "settings": {
+        "properties": {
+          "cacheSupported": {
+            "type": "boolean"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "saved": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "values": {
+            "properties": {
+              "cacheBytes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "cacheFloorBytes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "chapterImages": {
+                "type": "boolean"
+              },
+              "checksums": {
+                "type": "boolean"
+              },
+              "fullRecheckDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "loudness": {
+                "type": "boolean"
+              },
+              "scanIntervalSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scanOnStart": {
+                "type": "boolean"
+              },
+              "seekPreviews": {
+                "type": "boolean"
+              },
+              "watchForChanges": {
+                "type": "boolean"
+              },
+              "waveforms": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "scanIntervalSeconds",
+              "watchForChanges",
+              "scanOnStart",
+              "fullRecheckDays",
+              "cacheBytes",
+              "cacheFloorBytes",
+              "seekPreviews",
+              "chapterImages",
+              "waveforms",
+              "loudness",
+              "checksums"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation",
+          "revision",
+          "saved",
+          "cacheSupported",
+          "values"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "settings"
+    ],
+    "type": "object"
+  },
   "PutStorageSourceReadProfileRequest": {
     "additionalProperties": false,
     "properties": {
@@ -196970,6 +197338,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -197240,6 +197611,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {
@@ -209517,6 +209891,9 @@ export const schemas = {
                   "codec": {
                     "type": "string"
                   },
+                  "delivery": {
+                    "type": "string"
+                  },
                   "layout": {
                     "type": "string"
                   },
@@ -209787,6 +210164,9 @@ export const schemas = {
                     "type": "integer"
                   },
                   "codec": {
+                    "type": "string"
+                  },
+                  "delivery": {
                     "type": "string"
                   },
                   "layout": {
@@ -211728,6 +212108,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "delivery": {
+                        "type": "string"
+                      },
                       "layout": {
                         "type": "string"
                       },
@@ -211998,6 +212381,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "delivery": {
                         "type": "string"
                       },
                       "layout": {

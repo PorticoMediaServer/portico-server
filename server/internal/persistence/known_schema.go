@@ -1284,6 +1284,7 @@ table remote_scan_observation_hashes
 table remote_scan_observations
 table remote_source_operations
 table remote_source_read_profiles
+table remote_source_settings
 table remote_source_webdav_tests
 table remote_sources
 table reset_file_sessions

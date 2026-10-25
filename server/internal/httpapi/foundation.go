@@ -660,6 +660,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerSourceReadSettings(registry, d)
 	registerSourceFolders(registry, d)
 	registerSourceStatus(registry, d)
+	registerSourceAdvanced(registry, d)
 	registerDAVConnectionTest(registry, d)
 	registerRcloneConnectionTest(registry, d)
 	registerRcloneConfigurationProviders(registry, d)

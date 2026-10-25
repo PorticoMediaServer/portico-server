@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediaanalysis"
+	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/supervise"
@@ -68,6 +69,13 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	}
 	if policy.Allows("probe") {
 		required = append(required, assets.PlaybackAnalysisRevision)
+	}
+	// A remote source's own page can switch whole-file analysis stages off for
+	// the files found through it. Local folders keep the library's policy.
+	if switches, ok, e := remotesources.AnalysisSwitchesTx(ctx, tx, source.ResolvedPath); e != nil {
+		return e
+	} else if ok {
+		required = switches.Filter(required)
 	}
 	requiredJSON, _ := json.Marshal(required)
 	// Bound evidence evaluation even when the entire source is already complete.

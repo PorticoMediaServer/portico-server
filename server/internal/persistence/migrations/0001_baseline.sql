@@ -3532,6 +3532,23 @@ CREATE TABLE remote_source_read_profiles(
  whole_file_reads INTEGER NOT NULL CHECK(whole_file_reads IN(0,1)),connections INTEGER NOT NULL CHECK(connections BETWEEN 1 AND 32),
  requests_per_second INTEGER NOT NULL CHECK(requests_per_second BETWEEN 1 AND 50),
  bytes_per_second INTEGER NOT NULL CHECK(bytes_per_second=0 OR (bytes_per_second BETWEEN 1000000 AND 1000000000 AND bytes_per_second%1000000=0))) STRICT;
+CREATE TABLE remote_source_settings(
+ source_id TEXT PRIMARY KEY REFERENCES remote_sources(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL CHECK(revision>0),
+ scan_interval_seconds INTEGER NOT NULL CHECK(scan_interval_seconds IN(0,900,3600,21600,86400,604800)),
+ watch_for_changes INTEGER NOT NULL CHECK(watch_for_changes IN(0,1)),
+ scan_on_start INTEGER NOT NULL CHECK(scan_on_start IN(0,1)),
+ full_recheck_days INTEGER NOT NULL CHECK(full_recheck_days IN(0,7,14,30)),
+ last_full_recheck_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_full_recheck_ms>=0),
+ last_watch_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_watch_ms>=0),
+ cache_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_bytes>=0 AND cache_bytes<=68719476736),
+ cache_floor_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_floor_bytes>=0 AND cache_floor_bytes<=1099511627776),
+ seek_previews INTEGER NOT NULL CHECK(seek_previews IN(0,1)),
+ chapter_images INTEGER NOT NULL CHECK(chapter_images IN(0,1)),
+ waveforms INTEGER NOT NULL CHECK(waveforms IN(0,1)),
+ loudness INTEGER NOT NULL CHECK(loudness IN(0,1)),
+ checksums INTEGER NOT NULL CHECK(checksums IN(0,1)))
+ STRICT;
 CREATE TABLE remote_scan_observations(
  source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
  relative_path TEXT NOT NULL,source_generation TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),

@@ -8121,6 +8121,29 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_storage_source_advanced",
+    "method": "GET",
+    "path": "/v1/storage/sources/{id}/settings/advanced",
+    "summary": "Read one remote source's scan, cache and analysis settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "request_in_progress",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_storage_source_folders",
     "method": "GET",
     "path": "/v1/storage/sources/{id}/folders",
@@ -15360,6 +15383,30 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "put_storage_source_advanced",
+    "method": "PUT",
+    "path": "/v1/storage/sources/{id}/settings/advanced",
+    "summary": "Save one remote source's scan, cache and analysis settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "request_in_progress",
+      "administration_unavailable",
+      "internal",
+      "revision_required"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "put_storage_source_read_profile",
     "method": "PUT",
     "path": "/v1/storage/sources/{id}/settings/read-profile",
@@ -18947,6 +18994,7 @@ export const routePaths = {
   "get_storage_mounts": "/v1/storage/mounts",
   "get_storage_operations_id": "/v1/storage/operations/{id}",
   "get_storage_rclone_bundled": "/v1/storage/rclone/bundled",
+  "get_storage_source_advanced": "/v1/storage/sources/{id}/settings/advanced",
   "get_storage_source_folders": "/v1/storage/sources/{id}/folders",
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
   "get_storage_source_rclone_operation": "/v1/storage/sources/rclone/operations/{id}",
@@ -19254,6 +19302,7 @@ export const routePaths = {
   "put_shows_id_metadata_screen": "/v1/shows/{id}/metadata/screen",
   "put_shows_id_metadata_screen_season": "/v1/shows/{id}/metadata/screen/season",
   "put_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
+  "put_storage_source_advanced": "/v1/storage/sources/{id}/settings/advanced",
   "put_storage_source_read_profile": "/v1/storage/sources/{id}/settings/read-profile",
   "put_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
   "put_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",

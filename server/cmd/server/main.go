@@ -874,6 +874,7 @@ func run() (runErr error) {
 	// Generation remains closed until its retained source runtime is composed.
 	scanner.EpisodeThumbnails = meta.ScanEpisodeThumbnails
 	supervise.Supervise(ctx, "cmd.remote-sources", sources.Run)
+	supervise.Supervise(ctx, "cmd.source-scans", func(life context.Context) { runSourceAdvancedScans(life, scanner, sources) })
 	supervise.Supervise(ctx, "cmd.library-channels", generatedChannels.Run)
 	supervise.Supervise(ctx, "cmd.live-refresh", func(life context.Context) { liveSources.RunRefresh(life, livechannels.SourceFetcher{}) })
 	supervise.Supervise(ctx, "cmd.live-logo-import", adminOperations.RunLogoImports)
