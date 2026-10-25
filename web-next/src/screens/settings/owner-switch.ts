@@ -1,5 +1,7 @@
-import {AccountMoveClient, type AccountMove, type MoveClientOptions} from '@core/account-move.ts';
+import {AccountMoveClient, type AccountMove, type AccountMoveConfirmation, type MoveClientOptions} from '@core/account-move.ts';
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
+import type {DirectSignIn} from '@core/profile-management.ts';
+import type {SignInKind} from '@core/app-sessions.ts';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {RouteError, routeOrigin} from '@core/route-identity.ts';
 import {createBrowserOwnerClaim, type BrowserOwnerClaim} from '../../platform/owner-claim';
@@ -56,13 +58,35 @@ export class SettingsOwnerSwitch {
     return {signal: request.signal, check: () => {this.guard();if (request.signal.aborted || epoch !== this.epoch) throw ended();},
       finish: () => {if (this.current() && epoch === this.epoch) this.publish({...this.state, busy: false});}};
   }
-  async preview(startOver: boolean): Promise<AccountMove> {
+  /** The drawn Change group has both directions. The target is the viewer's choice,
+   * never assumed: local and Portico moves use the same captured preview/confirm
+   * controller and the same currentness guards. */
+  async previewDirection(to: SignInKind, startOver: boolean): Promise<AccountMove> {
     if (this.state.preview || this.state.confirmed) throw new Error('Close the current owner switch first.');
+    if (to !== 'local' && to !== 'portico') throw new Error('Invalid sign-in direction.');
     const operation = this.operation();
     try {
-      const preview = await this.moves.preview('portico', startOver, operation.signal);operation.check();
-      if (preview.from !== 'local' || preview.to !== 'portico' || preview.stage !== 'preview' || preview.startOver !== startOver) throw new Error('The owner move changed.');
+      const preview = await this.moves.preview(to, startOver, operation.signal);operation.check();
+      if (preview.to !== to || preview.from === to || preview.stage !== 'preview' || preview.startOver !== startOver) throw new Error('The owner move changed.');
       this.publish({busy: true, confirmed: false, preview});return preview;
+    } finally {operation.finish();}
+  }
+  async preview(startOver: boolean): Promise<AccountMove> { return this.previewDirection('portico', startOver); }
+  /** A move to local ends in the server's own signed-in grant. This returns it to
+   * the caller for the app's real admission path; it never stores or adopts a
+   * session here, and it never skips the revision, PIN or remembered-server rules
+   * that admission already applies. */
+  async confirmLocal(confirmation: string): Promise<Extract<DirectSignIn, {kind: 'signed-in'}>> {
+    const preview = this.state.preview;
+    if (!preview || preview.to !== 'local' || this.state.confirmed) throw new Error('A fresh local move preview is required.');
+    const operation = this.operation();
+    try {
+      const result: AccountMoveConfirmation = await this.moves.confirm({moveId: preview.id, expectedRevision: preview.revision, confirmation, username: '', password: ''}, operation.signal);
+      operation.check();
+      if (result.kind !== 'local' || result.signIn.kind !== 'signed-in') throw new Error('Unexpected owner move continuation.');
+      if (result.signIn.snapshot.serverId !== preview.serverId) throw new Error('The owner move changed.');
+      this.publish({busy: false, confirmed: false});
+      return result.signIn;
     } finally {operation.finish();}
   }
   async confirmAndPrepare(confirmation: string): Promise<string> {
