@@ -1,14 +1,14 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {calendarDate, defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
-import type {ReadingDiscover, ReadingShortRead, ReadingPeriodicalIssue} from '@portico/client-core';
+import type {ReadingDiscover, ReadingShortRead, ReadingPeriodicalIssue, ReadingPeriodicalGroup} from '@portico/client-core';
 import type {FactPart} from '@portico/client-core/kit-model';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {useShellWidth} from '../../shell/viewport';
 import {useReducedMotion} from '../../kit/overlays/shared';
-import {WindowedGrid} from '../../kit/layout';
-import {CoverCard} from '../../kit/cards';
+import {Row, WindowedGrid} from '../../kit/layout';
+import {CoverCard, ReadResumeCard} from '../../kit/cards';
 import {GeneratedCover} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
 import {Menu, MenuItem} from '../../kit/overlays';
@@ -60,6 +60,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const state = useSyncExternalStore(resources.books.collection.subscribe, resources.books.collection.getSnapshot, resources.books.collection.getSnapshot), failed = state.status === 'error';
   const reading = useSyncExternalStore(resources.resume.collection.subscribe, resources.resume.collection.getSnapshot, resources.resume.collection.getSnapshot);
   const [recent, setRecent] = useState<readonly RecentReadingItem[]>();
+  const [newspaper, setNewspaper] = useState<ReadingPeriodicalGroup>();
   const [newIssues, setNewIssues] = useState<readonly ReadingPeriodicalIssue[]>([]);
   const [shortReads, setShortReads] = useState<readonly ReadingShortRead[]>([]);
   const [series, setSeries] = useState<NonNullable<ReadingDiscover['rows'][number]['series']>>([]);
@@ -76,12 +77,12 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
    *  has no recently-added values (Root §3), and the Reading list stays reachable. */
   useEffect(() => {
     const operation = new AbortController();
-    setSeries([]); setShortReads([]); setNewIssues([]);
-    resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12, ...(!comic ? {shortReadsLimit: 12, newIssuesLimit: 12} : {})}, operation.signal)
-      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []); setNewIssues(response.newIssueCards);}})
+    setSeries([]); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
+    resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12, ...(!comic ? {shortReadsLimit: 12, newIssuesLimit: 12, newspaperLimit: 1} : {})}, operation.signal)
+      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []); setNewIssues(response.newIssueCards); setNewspaper(response.newspaperCard);}})
       .catch(error => {
         if (operation.signal.aborted) return;
-        setRecent([]); setSeries([]); setShortReads([]); setNewIssues([]);
+        setRecent([]); setSeries([]); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
         if (resources.bindings.authority.isCurrent()) resources.reportError(error);
       });
     return () => operation.abort();
@@ -131,9 +132,15 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   ];
   /** Root §3: Discover draws the server's rows; Books draws the bounded Reading list. When no
    *  authorized row exists there is nothing to draw on Discover, so the list stays reachable. */
-  const showGrid = view === 'books' || rows.length === 0;
+  const showGrid = view === 'books' || rows.length === 0 && !newspaper;
   return <div className={styles.library}>
     <ReadDiscovery rows={view === 'books' ? [] : rows} platform={platform} reducedMotion={reducedMotion}
+      newspaper={view !== 'books' && newspaper ? <Row heading={t('library.tab.newspapers')} subtitle={t('next.reader.yourArchive')} platform={platform}>
+        <ReadResumeCard kind="newspaper" visible model={{title: newspaper.name, caption: [{id: 'date', text: calendarDate(defaultI18n, newspaper.latest.issueDate), role: 'identity'}, {id: 'issues', text: t('next.reader.issueCount', {count: newspaper.issueCount}), role: 'identity'}]}}
+          artwork={resources.artwork.foreground(newspaper.latest.item.coverUrl, 1000, 3 / 4)} fallback={generated(newspaper.latest.item)}
+          playLabel={t('next.reader.read')} onPlay={newspaper.latest.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(newspaper.latest.item.id, newspaper.latest.item.sourceId)).catch(resources.reportError);} : undefined}
+          onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', pivot: 'newspapers', entityId: newspaper.id}}).catch(resources.reportError);}}/>
+      </Row> : undefined}
       onVisibleRange={(row, range) => {if (row.kind === 'resume') resources.resume.collection.ensureRange(Math.max(0, range.first), Math.max(0, range.last));}}>
       {state.total === 0 || !showGrid ? null : <div ref={grid} className={styles.books} data-view="grid">
         <WindowedGrid collection={resources.books.collection} label={name}
