@@ -46,10 +46,31 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
     onOpenChange(next);
   };
   const go = (path: string) => { void read(path, showHidden); };
+  const breadcrumbs: {path: string; label: string}[] = [];
+  if (page?.path) {
+    const separator = page.separator;
+    const root = [...page.roots].sort((a, b) => b.path.length - a.path.length).find(value =>
+      page.path === value.path || page.path.startsWith(value.path.endsWith(separator) ? value.path : value.path + separator));
+    if (root) {
+      breadcrumbs.push({path: root.path, label: root.name});
+      let path = root.path;
+      for (const part of page.path.slice(root.path.length).split(separator).filter(Boolean)) {
+        path = path.endsWith(separator) ? path + part : path + separator + part;
+        breadcrumbs.push({path, label: part});
+      }
+    }
+  }
   return <Dialog open={open} onOpenChange={changeOpen} size="md" title={t('next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
     footer={<><Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
       <Button variant="primary" disabled={!page?.path || busy || failed} onClick={() => { if (page?.path) { onChoose(page.path); changeOpen(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
     <div className={styles.picker}>
+      {breadcrumbs.length > 0 && <nav aria-label={t('next.settings.folderPath')}>
+        {breadcrumbs.map((crumb, index) => <span key={crumb.path}>
+          {index > 0 && <span aria-hidden="true"> {page?.separator} </span>}
+          <Button variant="text" size="small" disabled={busy} aria-current={index === breadcrumbs.length - 1 ? 'location' : undefined}
+            onClick={() => go(crumb.path)}>{crumb.label}</Button>
+        </span>)}
+      </nav>}
       <div className={styles.pickerPath}>
         <TextField label={t('next.settings.folderPath')} value={typed} onChange={event => setTyped(event.currentTarget.value)} onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) { event.preventDefault(); go(typed); }
