@@ -359,3 +359,20 @@ test('Saved summary, shape paths and removed-title reads use typed routes and va
  await dismissRemovedTitle(api,'gone');
  assert.deepEqual(calls,['GET /v1/me/saved/summary','GET /v1/me/saved/summary','GET /v1/me/removed-titles/gone','DELETE /v1/me/removed-titles/gone']);
 });
+
+test('a Reading Saved row with AV playback or duration is refused by the canonical reader',async()=>{
+ for(const extra of [{playback:{itemId:'book'}},{durationMs:1000}]){
+  const book={id:'book',libraryId:'library',kind:'ebook',title:'Book',available:true,author:'Author',pageCount:320,posterUrl:'/art/cover',navigation:{view:'item',entityId:'book'},...extra};
+  const s=setup(async()=>projection('watchlist',0,[book]));await s.select({view:'watchlist'});
+  assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,[]);
+  s.dispose();
+ }
+});
+test('Reading Saved facts survive without AV progress or playback',async()=>{
+ const book={id:'book',libraryId:'library',kind:'comic',title:'Book',available:true,author:'Author',series:[{name:'Series',position:'1'}],pageCount:120,posterUrl:'/art/cover',progressSeconds:.25,navigation:{view:'item',entityId:'book'}};
+ const s=setup(async()=>projection('watchlist',0,[book]));await s.select({view:'watchlist'});
+ const entry=s.getSnapshot().projection!.sections[0].entries[0] as any;
+ assert.equal(entry.kind,'comic');assert.equal(entry.author,'Author');assert.equal(entry.pageCount,120);assert.deepEqual(entry.series,[{name:'Series',position:'1'}]);
+ assert.equal(entry.posterUrl,'/art/cover');assert.equal(entry.navigation.view,'item');assert.equal('progressSeconds' in entry,false);assert.equal('playback' in entry,false);
+ s.dispose();
+});

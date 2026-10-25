@@ -137,15 +137,21 @@ function media(v: unknown): ContentEntry {
  if (!record(v) || !id(v.id) || !id(v.libraryId) || !['movie','show','season','episode','artist','album','song','ebook','comic','book','audiobook_file','chapter','collection','category','extra','author','book_series','disc'].includes(v.kind as string) || !text(v.title, 2048)) invalid();
  // All shared catalogue facts use the canonical ContentEntry reader. Saved keeps
  // its existing destination/play-action policy below, including hidden occurrences.
- const out: Record<string, unknown> = {...validateHomeEntry({...wire as Record<string, unknown>, navigation: undefined, playback: undefined})};
+ const reading = v.kind === 'ebook' || v.kind === 'comic';
+ // Reading leaves keep the canonical reader's own playback/duration refusal; AV keeps the
+ // existing strip-and-revalidate policy below.
+ const out: Record<string, unknown> = {...validateHomeEntry({...wire as Record<string, unknown>, navigation: undefined, ...(reading ? {} : {playback: undefined})})};
+ // A Reading title has pages, not media duration; the canonical reader refuses duration, and a
+ // retained progress fact is never an AV playback position.
+ if (reading) delete out.progressSeconds;
  for (const key of ['subtitle','posterUrl','backdropUrl','overview']) if (v[key] !== undefined) { if (key === 'overview' ? !prose(v[key], 16384, true) : !text(v[key], 4096)) invalid(); out[key] = v[key]; }
- for (const key of ['duration','progressSeconds']) if (v[key] !== undefined) { if (!number(v[key])) invalid(); out[key] = v[key]; }
+ for (const key of ['duration','progressSeconds']) if (!reading && v[key] !== undefined) { if (!number(v[key])) invalid(); out[key] = v[key]; }
  if (v.available !== undefined) { if (typeof v.available !== 'boolean') invalid(); out.available = v.available; }
  if (v.count !== undefined) { if (!int(v.count)) invalid(); out.count = v.count; }
  if (v.addedAt !== undefined) { if (v.addedAt !== null && !text(v.addedAt, 128)) invalid(); out.addedAt = v.addedAt; }
  // A destination or a play action this app cannot read is left off; the entry is still shown.
  if (v.navigation !== undefined) { const n = v.navigation; if (!record(n) || !['item','show','season','artist','album','book','collection','browse','categories','author','book_series','disc'].includes(n.view as string) || n.entityId !== undefined && !id(n.entityId) || n.category !== undefined && !text(n.category, 256)) noteSkipped('saved', 'entry.navigation'); else out.navigation = { view: n.view, ...(n.entityId === undefined ? {} : { entityId: n.entityId }), ...(n.category === undefined ? {} : { category: n.category }) }; }
- if (v.playback !== undefined) { try { const p = wireDurations(v.playback,{startSeconds:"startMs"}); if (!record(p) || !id(p.itemId) || p.startSeconds !== undefined && !number(p.startSeconds) || v.available === false) noteSkipped('saved', 'entry.playback'); else out.playback = { itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds }) }; } catch { noteSkipped('saved', 'entry.playback'); } }
+ if (!reading && v.playback !== undefined) { try { const p = wireDurations(v.playback,{startSeconds:"startMs"}); if (!record(p) || !id(p.itemId) || p.startSeconds !== undefined && !number(p.startSeconds) || v.available === false) noteSkipped('saved', 'entry.playback'); else out.playback = { itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds }) }; } catch { noteSkipped('saved', 'entry.playback'); } }
  return out as ContentEntry;
 }
 function entry(v: unknown, view: SavedRoute['view']): SavedEntry {
