@@ -41,11 +41,13 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
 }) {
   const service = useMemo(() => new MetadataRepairService({api, scope}), [api, scope]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
+  const tabStrip = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<Tab>(initialTab), [draft, setDraft] = useState<Draft>({}), [error, setError] = useState<unknown>();
   useEffect(() => {void service.load(target); return () => service.dispose();}, [service, target]);
   const data = state.data;
   const offered = tabsFor(data);
   const shown: Tab = offered.includes(tab) ? tab : 'general';
+  useEffect(() => {tabStrip.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({block: 'nearest', inline: 'nearest'});}, [shown]);
   const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value, value.values, target.kind !== 'season')) : false;}) : false;
   const changed = useMemo(() => {
     if (!data) return [];
@@ -96,7 +98,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
   const kind = !data ? 'item' : localArtworkOnly ? 'reading' : target.kind === 'item' ? data.schema.some(field => field.field === 'episodeNumber') ? 'episode' : data.schema.some(field => field.field === 'trackNumber') ? 'song' : data.schema.some(field => field.field === 'partNumber') ? 'audiobook_file' : 'film' : target.kind;
   return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
     <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={onClose} className={styles.editorHead}/>
-    <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
+    <nav ref={tabStrip} className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
       {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => setTab(id)}>
         {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? data && !data.schema.some(field => field.field === 'genres' || field.field === 'genre') ? 'web.metadata.field.tags' : 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : id === 'lyrics' ? 'web.metadata.tabLyrics' : 'web.metadata.tabHistory')}</button>)}
     </nav>
@@ -365,7 +367,7 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
       const order = takesOffset && validOffset ? tmdbAbsoluteOrder(chosen.order, Number(chosen.offset)) : chosen.order;
       const current = currentIdentity && validOffset && (!offered.length || order === identity?.order);
       const setOrder = (patch: Partial<{order: string; offset: string}>) => setOrders(previous => ({...previous, [key]: {...chosen, ...patch}}));
-      return <div key={key} className={styles.candidate}>
+      return <div key={key} className={`${styles.candidate} ${styles.matchCandidate}`}>
         {candidate.previewUrl ? <span className={styles.candidatePoster}><img src={candidate.previewUrl} alt="" loading="lazy"/></span> : null}
         <div className={styles.matchDetails}><b>{candidate.title}{candidate.year ? ` (${candidate.year})` : ''}</b><small>{providerName(candidate.provider)}{candidate.subtitle ? ` · ${candidate.subtitle}` : ''}</small>
           {candidate.orders && candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}

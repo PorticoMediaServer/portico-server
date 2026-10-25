@@ -168,3 +168,17 @@
 
 .kindTile[data-cover] { display: block; overflow: hidden; padding: 0; }
 .kindTile[data-cover] > * { width: 100%; height: 100%; }
+
+@media (max-width: 599px) {
+  .choices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .choices figure { min-width: 0; padding: 6px; overflow-wrap: anywhere; }
+  .choices figure button { min-width: 0; white-space: normal; padding-inline: 6px; }
+  .role header { flex-wrap: wrap; }
+  .matchSearch { flex-direction: column; align-items: stretch; }
+  .matchCandidate { flex-wrap: wrap; }
+  .matchCandidate > .matchDetails { min-width: calc(100% - 62px); }
+  .matchCandidate > button { width: 100%; flex-basis: 100%; }
+  .order { flex-direction: column; align-items: stretch; }
+  .creditRow > button { grid-column: 1 / -1; justify-self: end; }
+  .editorTabs button { flex: none; }
+}
