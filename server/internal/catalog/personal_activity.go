@@ -27,17 +27,18 @@ import (
 // watched state and resume point that go with it) stops while they have paused
 // it.
 func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool) error {
-	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, time.Now().UTC())
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, false, time.Now().UTC())
 }
 
-// AcceptPlaybackProgressReported is AcceptPlaybackProgress with the player's
-// own reported rate, the only form that can prove a played interval. Callers
-// that cannot report a rate keep the plain form and record no chapter mark.
-func (s *Service) AcceptPlaybackProgressReported(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64) error {
-	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, time.Now().UTC())
+// AcceptPlaybackProgressEvidence is AcceptPlaybackProgress with the player's
+// own reported rate and whether this report follows a seek. Both are needed to
+// prove a played interval; callers that cannot report them keep the plain form
+// and record no chapter mark.
+func (s *Service) AcceptPlaybackProgressEvidence(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked bool) error {
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, seeked, time.Now().UTC())
 }
 
-func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, clock time.Time) error {
+func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked bool, clock time.Time) error {
 	// Match the timeline's millisecond bound even when no runtime is known.
 	const maximumSeconds = float64(int64(1)<<40) / 1000
 	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || position > maximumSeconds || math.IsNaN(duration) || math.IsInf(duration, 0) || duration < 0 || duration > maximumSeconds || sequence < 0 || sequence > 9007199254740991 || (state != "playing" && state != "paused" && state != "ended") {
@@ -184,7 +185,7 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 				return e
 			}
 		} else if canonical || completed {
-			currentRun := chapterRunEvidence{sequence: sequence, position: positionMs, state: state, rateMilli: rateMilli(rate), preferenceRevision: preferenceRevision, assetRevision: source.assetRevision, assetID: source.assetID, assetSize: source.assetSize, assetModified: source.assetModified, item: entityID, at: clock, valid: true}
+			currentRun := chapterRunEvidence{sequence: sequence, position: positionMs, state: state, rateMilli: rateMilli(rate), seeked: seeked, preferenceRevision: preferenceRevision, assetRevision: source.assetRevision, assetID: source.assetID, assetSize: source.assetSize, assetModified: source.assetModified, item: entityID, at: clock, valid: true}
 			if source.assetID != 0 && source.assetRevision != 0 {
 				if e = recordChapterCompletions(tx, profile, entityID, previousRun, currentRun, clock); e != nil {
 					return e
@@ -268,6 +269,7 @@ type chapterRunEvidence struct {
 	position           int64
 	state              string
 	rateMilli          int64
+	seeked             bool
 	preferenceRevision int64
 	assetRevision      int64
 	assetID            int64
@@ -290,7 +292,7 @@ type chapterSource struct {
 func readChapterRun(tx *sql.Tx, profile, playbackID string) (chapterRunEvidence, error) {
 	var out chapterRunEvidence
 	var stamp string
-	err := tx.QueryRow(`SELECT sequence,position_ms,state,rate_milli,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,item_id,reported_at FROM personal_playback_runs WHERE profile_id=? AND playback_id=?`, profile, playbackID).Scan(&out.sequence, &out.position, &out.state, &out.rateMilli, &out.preferenceRevision, &out.assetRevision, &out.assetID, &out.assetSize, &out.assetModified, &out.item, &stamp)
+	err := tx.QueryRow(`SELECT sequence,position_ms,state,rate_milli,seeked,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,item_id,reported_at FROM personal_playback_runs WHERE profile_id=? AND playback_id=?`, profile, playbackID).Scan(&out.sequence, &out.position, &out.state, &out.rateMilli, &out.seeked, &out.preferenceRevision, &out.assetRevision, &out.assetID, &out.assetSize, &out.assetModified, &out.item, &stamp)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, nil
 	}
@@ -306,8 +308,8 @@ func readChapterRun(tx *sql.Tx, profile, playbackID string) (chapterRunEvidence,
 }
 
 func storeChapterRun(tx *sql.Tx, profile, playbackID string, run chapterRunEvidence, now string) error {
-	_, err := tx.Exec(`INSERT INTO personal_playback_runs(profile_id,playback_id,item_id,sequence,position_ms,state,rate_milli,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,reported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
- ON CONFLICT(profile_id,playback_id) DO UPDATE SET item_id=excluded.item_id,sequence=excluded.sequence,position_ms=excluded.position_ms,state=excluded.state,rate_milli=excluded.rate_milli,preference_revision=excluded.preference_revision,asset_revision=excluded.asset_revision,asset_id=excluded.asset_id,asset_size=excluded.asset_size,asset_modified_ns=excluded.asset_modified_ns,reported_at=excluded.reported_at`, profile, playbackID, run.item, run.sequence, run.position, run.state, run.rateMilli, run.preferenceRevision, run.assetRevision, run.assetID, run.assetSize, run.assetModified, now)
+	_, err := tx.Exec(`INSERT INTO personal_playback_runs(profile_id,playback_id,item_id,sequence,position_ms,state,rate_milli,seeked,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,reported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(profile_id,playback_id) DO UPDATE SET item_id=excluded.item_id,sequence=excluded.sequence,position_ms=excluded.position_ms,state=excluded.state,rate_milli=excluded.rate_milli,seeked=excluded.seeked,preference_revision=excluded.preference_revision,asset_revision=excluded.asset_revision,asset_id=excluded.asset_id,asset_size=excluded.asset_size,asset_modified_ns=excluded.asset_modified_ns,reported_at=excluded.reported_at`, profile, playbackID, run.item, run.sequence, run.position, run.state, run.rateMilli, run.seeked, run.preferenceRevision, run.assetRevision, run.assetID, run.assetSize, run.assetModified, now)
 	return err
 }
 
@@ -371,7 +373,7 @@ func chapterRunContinues(previous, current chapterRunEvidence) bool {
 	if !previous.valid || !current.valid || previous.item != current.item || current.sequence != previous.sequence+1 {
 		return false
 	}
-	if previous.state != "playing" || current.state != "playing" || current.rateMilli <= 0 || previous.rateMilli != current.rateMilli {
+	if previous.state != "playing" || current.state != "playing" || current.seeked || current.rateMilli <= 0 || previous.rateMilli != current.rateMilli {
 		return false
 	}
 	if previous.preferenceRevision != current.preferenceRevision || previous.assetRevision != current.assetRevision {

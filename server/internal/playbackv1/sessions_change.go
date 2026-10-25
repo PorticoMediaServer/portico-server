@@ -395,12 +395,16 @@ func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int
 type Report struct {
 	ObservedPlayback *playback.ObservedPlayback `json:"observedPlayback,omitempty"`
 
-	Seq             int64          `json:"seq"`
-	Generation      int            `json:"generation"`
-	State           string         `json:"state"`
-	PositionMs      int64          `json:"positionMs"`
-	PartIndex       *int           `json:"partIndex,omitempty"`
-	Rate            float64        `json:"rate,omitempty"`
+	Seq        int64   `json:"seq"`
+	Generation int     `json:"generation"`
+	State      string  `json:"state"`
+	PositionMs int64   `json:"positionMs"`
+	PartIndex  *int    `json:"partIndex,omitempty"`
+	Rate       float64 `json:"rate,omitempty"`
+	// Seeked marks a report whose position follows a seek, skip or other jump
+	// since the previous report. Progress readers use it to end a played run;
+	// it is evidence about the report, never a transport command.
+	Seeked          bool           `json:"seeked,omitempty"`
 	BufferedMs      int64          `json:"bufferedMs,omitempty"`
 	BandwidthKbps   int64          `json:"bandwidthKbps,omitempty"`
 	DroppedFrames   int64          `json:"droppedFrames,omitempty"`
@@ -516,7 +520,7 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 	if r.media != "" {
 		// Resume, played threshold, watch history (respecting pause-history) and
 		// Continue Watching are written by the existing evidence path.
-		if err = s.Playback.ProgressReportedContext(ctx, c.Principal, r.media, r.mediaGeneration, report.Seq, float64(report.PositionMs)/1000, legacy, report.Rate); err != nil && !errors.Is(err, identity.ErrUnauthorized) {
+		if err = s.Playback.ProgressEvidenceContext(ctx, c.Principal, r.media, r.mediaGeneration, report.Seq, float64(report.PositionMs)/1000, legacy, report.Rate, report.Seeked); err != nil && !errors.Is(err, identity.ErrUnauthorized) {
 			return 0, err
 		}
 	}

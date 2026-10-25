@@ -2323,6 +2323,7 @@ CREATE TABLE personal_playback_runs(
  position_ms INTEGER NOT NULL,
  state TEXT NOT NULL,
  rate_milli INTEGER NOT NULL,
+ seeked INTEGER NOT NULL CHECK(seeked IN(0,1)),
  preference_revision INTEGER NOT NULL,
  asset_revision INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,

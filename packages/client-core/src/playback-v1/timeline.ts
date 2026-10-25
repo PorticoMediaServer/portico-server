@@ -27,6 +27,9 @@ export type TimelineReport = Readonly<{
   positionMs: number;
   partIndex?: number;
   rate: number;
+  /** This report's position follows a seek or other jump since the previous
+   * report, so no played interval may be counted across it. */
+  seeked?: true;
   bufferedMs?: number;
   bandwidthKbps?: number;
   droppedFrames?: number;
@@ -117,11 +120,13 @@ export class TimelineReporter {
     if (this.started === undefined) this.started = this.now();
     this.latest = undefined;
     this.pendingError = undefined;
+    this.pendingSeek = false;
   }
 
   /** A player reading. `cause` says whether it must be reported now. */
   observe(observation: PlayerObservation, cause: 'time' | 'state' | 'seeked' = 'time'): void {
     if (this.stopped || !this.gate.accepts(observation.generation) || !reportable[observation.state]) return;
+    if (cause === 'seeked') { this.seekSeq++; this.pendingSeek = true; }
     const previous = this.latest;
     // Capture a whitelisted immutable snapshot now; later bridge mutations
     // cannot change an already observed generation or add private fields.
@@ -164,6 +169,9 @@ export class TimelineReporter {
     this.release();
   }
 
+  /** Set by a seek; cleared only when the report that carried it was accepted. */
+  private seekSeq = 0;
+  private pendingSeek = false;
   private idleWaiters: (() => void)[] = [];
   private idle(): Promise<void> {
     if (!this.inFlight && !this.dirty) return Promise.resolve();
@@ -209,12 +217,14 @@ export class TimelineReporter {
       ...(o.muted !== undefined ? {muted: o.muted} : {}),
       ...(o.audioTrackId !== undefined ? {audioTrackId: o.audioTrackId} : {}),
       ...(o.subtitleTrackId !== undefined ? {subtitleTrackId: o.subtitleTrackId} : {}),
+      ...(this.pendingSeek ? {seeked: true as const} : {}),
       ...(this.pendingSkip ? {skipped: this.pendingSkip} : {}),
       ...(this.pendingError ? {error: this.pendingError} : {}),
     });
   }
 
   private async send() {
+    const seekSeq = this.seekSeq;
     const report = this.build();
     if (!report) { this.settle(); return; }
     this.inFlight = true;
@@ -228,6 +238,7 @@ export class TimelineReporter {
       this.failures = 0;
       this.offline = false;
       this.leaseWarned = false;
+      if (this.seekSeq === seekSeq) this.pendingSeek = false;
       if (this.pendingSkip === skip) this.pendingSkip = undefined;
       if (this.pendingError === error) this.pendingError = undefined;
       const every = answer && typeof answer.reportEveryMs === 'number' && answer.reportEveryMs > 0 ? answer.reportEveryMs : undefined;
