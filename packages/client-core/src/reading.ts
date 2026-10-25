@@ -1,3 +1,4 @@
+import {withReadingConversion, type ReadingConversion} from './reading-conversion.ts';
 import {readingMarkPath, parseReadingMark, validReadingMarkCommand, type ReadingReadMarkCommand} from './reading-mark.ts';
 export type {ReadingReadMark, ReadingReadMarkCommand} from './reading-mark.ts';
 import {withReadingManifestFacts, type ReadingManifestFacts} from './reading-manifest-facts.ts';
@@ -18,10 +19,10 @@ import type {Viewer} from './index.ts';
 
 export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
 type Immutable<T> = T extends readonly (infer V)[] ? readonly Immutable<V>[] : T extends object ? {readonly [K in keyof T]: Immutable<T[K]>} : T;
-export type ReadingManifest = Immutable<PostReadingSessionsResponse & {canAnnotate?: true; canSaveFile?: true; metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts}>;
+export type ReadingManifest = Immutable<PostReadingSessionsResponse & {canAnnotate?: true; canSaveFile?: true; conversion?:ReadingConversion; metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts}>;
 /** Optional source capability is withheld unless the actual response says literal true. */
 export function parseReadingManifest(raw: unknown): ReadingManifest {
-  const {canAnnotate: decodedCapability, canSaveFile: decodedSaveCapability, ...value} = withReadingManifestFacts(raw, decodePostReadingSessionsResponse) as PostReadingSessionsResponse & {metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts; canAnnotate?: unknown; canSaveFile?: unknown};
+  const {canAnnotate: decodedCapability, canSaveFile: decodedSaveCapability, ...value} = withReadingConversion(raw,value=>withReadingManifestFacts(value, decodePostReadingSessionsResponse)) as PostReadingSessionsResponse & {metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts; canAnnotate?: unknown; canSaveFile?: unknown; conversion?:ReadingConversion};
   void decodedCapability; void decodedSaveCapability;
   const offered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canAnnotate === true;
   const saveOffered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canSaveFile === true;

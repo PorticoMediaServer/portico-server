@@ -26,6 +26,8 @@ type MobiProvenance struct {
 	OriginalRevision string
 	OriginalSourceID string
 	OriginalFormat   string
+	OriginalSize     int64
+	OutputSize       int64
 	InputSHA256      string
 	Converter        string
 	WorkerSHA256     string
@@ -242,7 +244,7 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 		return nil, err
 	}
 	outputHash := sha256.Sum256(raw)
-	provenance := MobiProvenance{OriginalRevision: source.Revision, OriginalSourceID: source.SourceID, OriginalFormat: source.Format, InputSHA256: hex.EncodeToString(inputHash.Sum(nil)), Converter: mobiDependency, WorkerSHA256: c.bundle.WorkerSHA256, Options: mobiOptions, OutputSHA256: hex.EncodeToString(outputHash[:])}
+	provenance := MobiProvenance{OriginalRevision: source.Revision, OriginalSourceID: source.SourceID, OriginalFormat: source.Format, OriginalSize: source.Size, OutputSize: int64(len(raw)), InputSHA256: hex.EncodeToString(inputHash.Sum(nil)), Converter: mobiDependency, WorkerSHA256: c.bundle.WorkerSHA256, Options: mobiOptions, OutputSHA256: hex.EncodeToString(outputHash[:])}
 	encoded, _ := json.Marshal(provenance)
 	revision := sha256.Sum256(append([]byte("portico.reading.derived-epub.v1\x00"), encoded...))
 	provenance.Revision = hex.EncodeToString(revision[:])
