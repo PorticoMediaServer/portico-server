@@ -27,7 +27,7 @@ func Valid(mode Mode, value int) bool {
 }
 
 type Facts struct {
-	AwayQuality AwayQuality
+	AwayQuality    AwayQuality
 	Mode           Mode `json:"mode"`
 	Limit          *int `json:"limit"`
 	ServerCeiling  *int `json:"serverCeiling"`
@@ -49,6 +49,7 @@ func Effective(person, ceiling *int) *int {
 	}
 	return &v
 }
+
 // AwayQuality is a person's own away-from-home quality ceiling: "server" follows
 // the server's, otherwise it names one published quality-ladder id. It can only
 // narrow what the server already allows.
@@ -141,12 +142,21 @@ func WriteAwayQualityTx(ctx context.Context, tx *sql.Tx, account string, value A
 // media row and private presentations sharing another live slot do not add one.
 func CountTx(ctx context.Context, tx *sql.Tx, authority, account string, scoped bool, now time.Time, replacingV1, replacingMedia string) (int64, error) {
 	stamp := now.UTC().Format(time.RFC3339)
+	// Keep scope predicates explicit so own-account reads can use the existing
+	// active-account/owner indexes. Only these fixed SQL fragments are composed;
+	// authority/account values remain bound and profiles remain included.
+	vScope, mediaScope := "", ""
+	args := []any{now.UnixMilli(), replacingV1, replacingMedia, stamp}
+	if scoped {
+		vScope = " AND v.authority=?5 AND v.account_id=?6"
+		mediaScope = " AND auth.authority=?5 AND ps.account_id=?6"
+		args = append(args, authority, account)
+	}
 	var count int64
 	e := tx.QueryRowContext(ctx, `SELECT
- (SELECT count(*) FROM playback_v1_sessions v WHERE v.ended_ms=0 AND v.lease_expires_ms>?1 AND v.id<>?2 AND (?3='' OR v.media_session_id<>?3) AND (?4=0 OR (v.authority=?5 AND v.account_id=?6)))
- + (SELECT count(*) FROM playback_sessions ps JOIN authorization_access auth ON auth.hash=ps.session_hash WHERE ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>?7 AND auth.expires_at>?7 AND auth.revoked=0 AND ps.id<>?3
- AND (?4=0 OR (auth.authority=?5 AND ps.account_id=?6))
+ (SELECT count(*) FROM playback_v1_sessions v WHERE v.ended_ms=0 AND v.lease_expires_ms>?1 AND v.id<>?2 AND (?3='' OR v.media_session_id<>?3)`+vScope+`)
+ + (SELECT count(*) FROM playback_sessions ps JOIN authorization_access auth ON auth.hash=ps.session_hash WHERE ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>?4 AND auth.expires_at>?4 AND auth.revoked=0 AND ps.id<>?3`+mediaScope+`
  AND NOT EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.media_session_id=ps.id AND v.ended_ms=0 AND v.lease_expires_ms>?1)
- AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id WHERE pp.session_id=ps.id AND owner.state NOT IN('stopped','ended','failed') AND owner.expires_at>?7))`, now.UnixMilli(), replacingV1, replacingMedia, scoped, authority, account, stamp).Scan(&count)
+ AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id WHERE pp.session_id=ps.id AND owner.state NOT IN('stopped','ended','failed') AND owner.expires_at>?4))`, args...).Scan(&count)
 	return count, e
 }
