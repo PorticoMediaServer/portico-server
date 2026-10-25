@@ -142,7 +142,11 @@ func v1Error(err error) error {
 		code = "not_found"
 	case errors.Is(err, errFeatureRestricted):
 		code = "feature_restricted"
-	case errors.Is(err, access.ErrStreamLimit), errors.Is(err, access.ErrSchedule), errors.Is(err, playback.ErrOwnerAccountCap), errors.Is(err, playback.ErrOwnerServerCap):
+	case errors.Is(err, playback.ErrOwnerAccountCap):
+		return &apierror.Error{Code: "stream_limit_reached", Reason: "owner_account_cap", Cause: err}
+	case errors.Is(err, playback.ErrOwnerServerCap):
+		return &apierror.Error{Code: "stream_limit_reached", Reason: "owner_server_cap", Cause: err}
+	case errors.Is(err, access.ErrStreamLimit), errors.Is(err, access.ErrSchedule):
 		code = "stream_limit_reached"
 	case errors.Is(err, playback.ErrConversionCapacity):
 		return &apierror.Error{Code: "conversion_capacity", RetryAfterSeconds: 2, Cause: err}

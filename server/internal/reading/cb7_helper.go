@@ -177,15 +177,12 @@ func cb7Members(ctx context.Context, ra io.ReaderAt, size int64) ([]archiveMembe
 	seen := map[string]bool{}
 	var expanded int64
 	for _, member := range reply.Members {
-		metadata := member.Name == "ComicInfo.xml"
-		if !safePath(member.Name) || member.Size <= 0 ||
-			(metadata && member.Size > archive7z.MaxComicInfo) ||
-			(!metadata && (!isImageMember(member.Name) || member.Size > MaxMember)) {
+		if !safePath(member.Name) || !isImageMember(member.Name) || member.Size <= 0 || member.Size > MaxMember {
 			return nil, ErrArchiveFormat
 		}
 		// The parent repeats the identity and whole-publication budget checks:
 		// a duplicate name is not two pages, and admitted members must fit
-		// MaxExpanded together. The metadata member is inside that same budget.
+		// MaxExpanded together.
 		if seen[member.Name] || int64(MaxExpanded)-expanded < member.Size {
 			return nil, ErrArchiveFormat
 		}
@@ -203,28 +200,20 @@ func cb7Members(ctx context.Context, ra io.ReaderAt, size int64) ([]archiveMembe
 	return out, nil
 }
 
-// cb7MemberBytes reads one image page or the bounded root ComicInfo.xml through
-// the helper under the same deadline.
+// cb7MemberBytes reads one page through the helper under the same deadline.
 func cb7MemberBytes(ctx context.Context, ra io.ReaderAt, size int64, name string) ([]byte, error) {
-	metadata := name == "ComicInfo.xml"
-	if !safePath(name) || (!metadata && !isImageMember(name)) {
+	if !safePath(name) || !isImageMember(name) {
 		return nil, ErrInvalid
 	}
 	body, err := runCB7Helper(ctx, ra, size, "page", name)
 	if err != nil {
 		return nil, err
 	}
-	limit := int64(MaxMember)
-	if metadata {
-		limit = archive7z.MaxComicInfo
-	}
-	if len(body) == 0 || int64(len(body)) > limit {
+	if len(body) == 0 || len(body) > MaxMember {
 		return nil, ErrLimit
 	}
-	if !metadata {
-		if _, err = inspectImage(body); err != nil {
-			return nil, ErrInvalid
-		}
+	if _, err = inspectImage(body); err != nil {
+		return nil, ErrInvalid
 	}
 	return body, nil
 }
