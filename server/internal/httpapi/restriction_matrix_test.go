@@ -402,6 +402,8 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/artists/{id}/albums":                               perEntity("/v1/artists/", "artist", "/albums"),
 		"GET /v1/books/{id}/chapters":                               perEntity("/v1/books/", "book", "/chapters"),
 		"GET /v1/books/{id}/files":                                  perEntity("/v1/books/", "book", "/files"),
+		"GET /v1/app-reports":                                       exempt("current owner-only receipts of explicitly submitted closed coded app journals; no catalogue identifiers, titles, paths or assets"),
+		"GET /v1/app-reports/recipient":                             exempt("current session and verified device read only the owner's display name and opaque recipient revision; no catalogue lookup or content"),
 		"GET /v1/feedback/capabilities":                             exempt("caller-authored feedback and reports; no catalogue lookup, scoped to the caller (notifications_routes_test)"),
 		"GET /v1/items/{id}/analysis":                               perItem("/analysis"),
 		"GET /v1/items/{id}/analysis/artifacts/{artifact}":          perItem("/analysis/artifacts/unknown"),
@@ -761,6 +763,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 }
 
 // restrictionReadPOSTs are the POST routes whose answer is catalogue content.
+// POST /v1/app-reports is intentionally absent: it accepts only a closed coded
+// journal and returns its receipt, never catalogue IDs or content. This does not
+// classify or exempt any other route.
 func restrictionReadPOSTs(m *restrictionEnv) map[string][]postProbe {
 	browse := []postProbe{}
 	if m != nil {
