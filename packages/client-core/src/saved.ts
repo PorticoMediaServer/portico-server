@@ -134,7 +134,7 @@ function route(v: SavedRoute): SavedRoute {
 function media(v: unknown): ContentEntry {
  const wire = v;
  v=wireDurations(v,{duration:"durationMs",progressSeconds:"progressMs"});
- if (!record(v) || !id(v.id) || !id(v.libraryId) || !['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','extra','author','book_series','disc'].includes(v.kind as string) || !text(v.title, 2048)) invalid();
+ if (!record(v) || !id(v.id) || !id(v.libraryId) || !['movie','show','season','episode','artist','album','song','ebook','comic','book','audiobook_file','chapter','collection','category','extra','author','book_series','disc'].includes(v.kind as string) || !text(v.title, 2048)) invalid();
  // All shared catalogue facts use the canonical ContentEntry reader. Saved keeps
  // its existing destination/play-action policy below, including hidden occurrences.
  const out: Record<string, unknown> = {...validateHomeEntry({...wire as Record<string, unknown>, navigation: undefined, playback: undefined})};
