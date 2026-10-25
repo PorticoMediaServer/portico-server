@@ -92,7 +92,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
         selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => setSourceId(candidate.sourceId)} description={defaultI18n.bytes(candidate.size)}>
         {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
-    {editing && canEdit && <ReadMetadata context={context} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {setEditing(false); setRetry(value => value + 1);}}/>}
+    {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {setEditing(false); setRetry(value => value + 1);}}/>}
     <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
 }
 

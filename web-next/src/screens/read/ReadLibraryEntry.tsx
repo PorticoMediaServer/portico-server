@@ -174,6 +174,6 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
       <MenuItem onSelect={() => {if (context.isCurrent() && resources?.bindings.authority.isCurrent() && resources.books.collection.residentItems().includes(menu.item)) setEditor(menu);}}>{t('entry.editMetadata')}</MenuItem>
     </Menu>}
     {bulk && canEdit && <ReadBulkMetadata context={bulkContext} items={bulk} kind={library.kind === 'comic' ? 'comic' : 'ebook'} anchor={bulkAnchor} onClose={() => {setBulk(undefined); setSelection(undefined); again();}}/>}
-    {editor && canEdit && <ReadMetadata context={editorContext} itemId={editor.item.id} libraryId={libraryId} anchor={{current: editor.anchor}} onClose={() => {setEditor(undefined); setMenu(undefined); again();}}/>}
+    {editor && canEdit && <ReadMetadata context={editorContext} reading={captured.context} sourceId={editor.item.sourceId} format={editor.item.format} itemId={editor.item.id} libraryId={libraryId} anchor={{current: editor.anchor}} onClose={() => {setEditor(undefined); setMenu(undefined); again();}}/>}
   </>;
 }
