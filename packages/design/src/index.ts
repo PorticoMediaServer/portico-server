@@ -25,6 +25,8 @@ export const colors = {
   raisedSoft: "#0c1a25",
   /** Player notices; the approved Undo and Up next contexts apply their own alpha. */
   playerNotice: "#0c1923",
+  /** Live-player top and bottom scrim colour, with per-stop alpha supplied by chrome. */
+  livePlayerScrim: "#04090d",
   /** The dark player-side panel used by the live programme and DVR sheets. */
   panel: "#0b1822",
   /**
@@ -120,6 +122,9 @@ const handheldType = {
   initials: type(30, 'normal', 800), fallbackLockup: type(46, 43.24, 800, -.045), generatedGlyph: type(300, 300, 800, -.06),
   activityCount: type(14, 14, 800), activityTitle: type(17, 'normal', 800, -.01), activityDetail: type(13.5, 20, 400),
   rowSubtitle: type(14, 'normal', 400), seeAll: type(14, 'normal', 600), thumbnailLabel: type(12, 'normal', 600),
+  liveChromeTitle: type(34, 36.72, 800, -.035), liveChromeTabletTitle: type(24, 25.92, 800, -.035),
+  liveChromePhoneTitle: type(18, 19.44, 800, -.035), liveChromeNumber: type(11, 'normal', 800, -.01),
+  liveMiniTitle: type(15.5, 'normal', 700),
   liveMonogram: type(13, 'normal', 800), bannerKind: type(14, 'normal', 600), fallbackLabel: type(12, 'normal', 700),
   personTitle: type(14, 'normal', 700), detailHeading: type(17, 'normal', 700), starring: type(14, 'normal', 400),
   reportSection: type(20, 'normal', 700, -.015), reportTitle: type(17, 21.25, 700, -.015),
@@ -209,7 +214,7 @@ export const layout = {
   breakpoint: {phone: 600, desktop: 1024}, designWidth: {desktop: 1440, phone: 390, tv: 1920}, designHeight: {phone: 844, tv: 1080},
   gutter: {desktop: 64, desktopNarrow: 32, phone: 20, tablet: 20, tv: 200, tvRight: 96, tvAuth: 120, tvPlayer: 96},
 } as const;
-export const layers = {base: 0, content: 2, artLabel: 3, rowArrow: 4, heroNavigation: 5, phoneTabBar: 6, tvFocus: 8, sticky: 10, navigation: 20, player: 30, menu: 40, dialog: 50, notice: 60} as const;
+export const layers = {liveChrome: 3, liveGuide: 4, liveNotice: 5, base: 0, content: 2, artLabel: 3, rowArrow: 4, heroNavigation: 5, phoneTabBar: 6, tvFocus: 8, sticky: 10, navigation: 20, player: 30, menu: 40, dialog: 50, notice: 60} as const;
 /** Visual sizes may be smaller; renderers extend touch/focus hit areas to these minima. */
 export const targets = {touch: 44, pointer: 32, primaryTouch: 48, tenFoot: 64, menuRowPointer: 40} as const;
 
