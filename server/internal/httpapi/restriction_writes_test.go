@@ -690,6 +690,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/cast/controllers/register":                writeExempt(reasonOwnSession + " (exact receiver controller binding, no catalogue ids)"),
 		"POST /v1/cast/controllers/validate":                writeExempt(reasonOwnSession + " (original sender and current receiver family validation, no catalogue ids)"),
 		"POST /v1/cast/controllers/check":                   writeExempt(reasonOwnSession + " (exact receiver authority check, no catalogue ids)"),
+		"POST /v1/app-reports":                              writeExempt("current original session and verified device submit only the explicitly consented closed coded journal and receive its receipt; no catalogue identifiers or content"),
 		"POST /v1/cast/bootstrap":                           writeExempt(reasonOwnSession + " (a pairing code)"),
 		"POST /v1/cast/reconnect":                           writeExempt(reasonOwnSession),
 		"POST /v1/cast/redeem":                              writeExempt(reasonOwnSession),
