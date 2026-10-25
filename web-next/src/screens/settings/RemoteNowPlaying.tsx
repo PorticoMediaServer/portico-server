@@ -6,8 +6,8 @@ import {Button} from '../../kit/controls';
 const t = defaultI18n.t;
 
 /** account-device group 2: what this profile is playing on its other devices, from the
- * server's own account-scoped control list. The drawn Pause is the account stop control:
- * it ends that device's session there, never a local guess. */
+ * server's own account-scoped control list. The only account-scoped control the contract
+ * offers is stop, which ends that device's session; the button says Stop, never Pause. */
 export function RemoteNowPlaying({api, isCurrent, onFailure}: {
   api: Readonly<{request<T>(path: string, method?: string, body?: unknown): Promise<T>}>;
   isCurrent(): boolean;
@@ -34,7 +34,7 @@ export function RemoteNowPlaying({api, isCurrent, onFailure}: {
     {items.map(entry => <li key={entry.sessionId} style={{display: 'flex', alignItems: 'center', gap: 12}}>
       <span style={{minWidth: 0, flex: 1}}><b>{entry.device.name}</b>{entry.item && <small style={{display: 'block'}}>{entry.item.title}</small>}</span>
       <Button size="small" variant="glass" disabled={busy === entry.sessionId || !entry.actions.includes('stop')} onClick={() => pause(entry)}>
-        {t('next.settingsSpec.account.device.groups.2.rows.0.control.itemAction.label')}</Button>
+        {t('next.dock.stop')}</Button>
     </li>)}
   </ul>;
 }
