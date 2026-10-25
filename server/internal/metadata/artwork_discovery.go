@@ -118,8 +118,8 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 				if e != nil {
 					return e
 				}
-				var selected bool
-				if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND (a.locked=1 OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND (actor<>'' OR provider='local') AND status IN('pending','retry','running'))`, t.Kind, entity, role, fence, t.Kind, entity, role).Scan(&selected); e != nil {
+				selected, e := automaticArtworkOccupied(ctx, tx, t, entity, role, "", provider, fence, true)
+				if e != nil {
 					return e
 				}
 				if !selected {
@@ -161,8 +161,8 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 				if e != nil {
 					return e
 				}
-				var occupied bool
-				if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role='cover' AND (a.locked=1 OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role='cover' AND (actor<>'' OR provider='local') AND status IN('pending','retry','running'))`, t.Kind, entity, fence, t.Kind, entity).Scan(&occupied); e != nil {
+				occupied, e := automaticArtworkOccupied(ctx, tx, t, entity, "cover", "", "local", fence, true)
+				if e != nil {
 					return e
 				}
 				if !occupied {
@@ -405,20 +405,11 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 			if queued[key] {
 				continue
 			}
-			var exists bool
-			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR c.provider='local' OR c.source_fence=?))`, t.Kind, entity, im.role, im.subject, fence).Scan(&exists); e != nil {
+			exists, e := automaticArtworkOccupied(ctx, tx, t, entity, im.role, im.subject, provider, fence, true)
+			if e != nil {
 				return e
 			}
-			// Fill missing roles or replace unlocked art from a superseded identity.
-			// Ranking changes alone never displace a current selection.
 			if !exists {
-				var ownerPending bool
-				if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND (actor<>'' OR provider='local') AND status IN('pending','running','retry'))`, t.Kind, entity, im.role, im.subject).Scan(&ownerPending); e != nil {
-					return e
-				}
-				if ownerPending {
-					continue
-				}
 				if e = queueArtworkCandidate(ctx, tx, t, candidate, "", stamp, false, false); e != nil {
 					return e
 				}
@@ -444,6 +435,7 @@ func (s *Service) discoverArtwork(ctx context.Context, provider, id string) ([]d
 	return s.discoverArtworkFor(ctx, provider, id, "item", "en")
 }
 func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, locale string) ([]discoveredArtwork, error) {
+	ctx = s.lookupContext(ctx)
 	if provider == "coverartarchive" {
 		return s.discoverCAA(ctx, id)
 	}

@@ -600,12 +600,9 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	return commit()
 }
 
-// artworkSlotHeld reports whether a job must give way to what its slot already
-// holds. Every seeder declines to queue an automatic provider image for a slot
-// whose selection is locked or is the library's own local image; this is the
-// same rule at the point of publication, for a job that was queued before the
-// slot was taken or by a seeder that did not check. A job the owner asked for,
-// a local image and a preview are not automatic provider art and are never held.
+// artworkSlotHeld repeats automatic source preference and owner protection at
+// publication, so a queued automatic local or online image cannot replace a
+// later owner choice. Explicit owner requests and previews keep their authority.
 func artworkSlotHeld(ctx context.Context, tx *sql.Tx, j artworkWork, entity int64) (bool, error) {
 	if j.sizeRefresh {
 		if j.actor != "" || j.preview || j.provider == "generated" {
@@ -615,12 +612,10 @@ func artworkSlotHeld(ctx context.Context, tx *sql.Tx, j artworkWork, entity int6
 		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections WHERE kind=? AND entity_id=? AND role=? AND subject=? AND candidate_id=? AND revision=? AND locked=?)`, j.target.Kind, entity, j.role, j.subject, j.candidate, j.revision, j.locked).Scan(&exact)
 		return !exact, err
 	}
-	if j.actor != "" || j.provider == "local" || j.preview {
+	if j.actor != "" || j.preview {
 		return false, nil
 	}
-	var held bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR c.provider='local'))`, j.target.Kind, entity, j.role, j.subject).Scan(&held)
-	return held, err
+	return automaticArtworkOccupied(ctx, tx, j.target, entity, j.role, j.subject, j.provider, j.fence, false)
 }
 
 func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error) error {

@@ -24,8 +24,7 @@ type seasonImageTarget struct {
 }
 
 // seedArtworkCandidate records one image as a candidate for a slot and queues
-// it, unless the slot is already held: an owner's lock, local art, a choice
-// made under the current fence, or a pending owner job.
+// it unless the shared source preference or an explicit owner choice holds the slot.
 func seedArtworkCandidate(ctx context.Context, tx *sql.Tx, t RepairTarget, role, subject, provider, imageID, origin, attribution, fence, now string, rank float64) error {
 	entity, err := resolveEntity(ctx, tx, t.ID)
 	if err != nil {
@@ -35,8 +34,8 @@ func seedArtworkCandidate(ctx context.Context, tx *sql.Tx, t RepairTarget, role,
 	if err != nil {
 		return err
 	}
-	var occupied bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR a.actor<>'' OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND (actor<>'' OR provider='local') AND status IN('pending','running','retry'))`, t.Kind, entity, role, subject, fence, t.Kind, entity, role, subject).Scan(&occupied); err != nil {
+	occupied, err := automaticArtworkOccupied(ctx, tx, t, entity, role, subject, provider, fence, true)
+	if err != nil {
 		return err
 	}
 	if occupied {
