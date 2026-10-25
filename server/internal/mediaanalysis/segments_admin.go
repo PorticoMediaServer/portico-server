@@ -95,6 +95,9 @@ func countFiles(ctx context.Context, tx *sql.Tx, where string, args ...any) (Seg
 
 // segmentTrust sorts a stored marker into the owner's counts.
 func segmentTrust(approved, edited, deleted bool, confidence float64, provenance string) string {
+	return segmentTrustWithPolicy(segmentmarkers.DefaultConfidencePolicy(), approved, edited, deleted, confidence, provenance)
+}
+func segmentTrustWithPolicy(policy segmentmarkers.ConfidencePolicy, approved, edited, deleted bool, confidence float64, provenance string) string {
 	switch {
 	case deleted && edited:
 		return "dismissed"
@@ -102,9 +105,9 @@ func segmentTrust(approved, edited, deleted bool, confidence float64, provenance
 		return ""
 	case approved:
 		return "approved"
-	case segmentmarkers.AutomaticSafe(false, confidence, provenance):
+	case policy.AutomaticSafe(false, confidence, provenance):
 		return "automatic"
-	case segmentmarkers.ViewerVisible(false, confidence, provenance):
+	case policy.ViewerVisible(false, confidence, provenance):
 		return "suggested"
 	}
 	return ""
@@ -211,7 +214,7 @@ func decodeTitleCursor(v string) (string, int64, error) {
 const titleObjectsSQL = `SELECT f.object_id,f.source_revision,f.state FROM segment_files f WHERE f.show_id=?1 AND ?1>0
  UNION ALL SELECT f.object_id,f.source_revision,f.state FROM segment_files f JOIN inventory_objects o ON o.id=f.object_id JOIN catalog_assets a ON a.token=o.asset_id JOIN catalog_asset_links ia ON ia.asset_id=a.id WHERE ia.entity_id=?1 AND f.show_id=0`
 
-func titleSummaryTx(ctx context.Context, tx *sql.Tx, entity int64) (SegmentCounts, SegmentMarkerCounts, error) {
+func titleSummaryTx(ctx context.Context, tx *sql.Tx, entity int64, policy segmentmarkers.ConfidencePolicy) (SegmentCounts, SegmentMarkerCounts, error) {
 	var files SegmentCounts
 	var markers SegmentMarkerCounts
 	rows, err := tx.QueryContext(ctx, `SELECT t.state,m.approved,m.edited,m.deleted,m.confidence,m.provenance FROM (`+titleObjectsSQL+`) t LEFT JOIN analysis_markers m ON m.object_id=t.object_id AND m.source_revision=t.source_revision ORDER BY t.object_id LIMIT 65536`, entity)
@@ -230,7 +233,7 @@ func titleSummaryTx(ctx context.Context, tx *sql.Tx, entity int64) (SegmentCount
 		if !provenance.Valid || strings.HasPrefix(provenance.String, "owner:") {
 			continue
 		}
-		switch segmentTrust(approved.Bool, edited.Bool, deleted.Bool, confidence.Float64, provenance.String) {
+		switch segmentTrustWithPolicy(policy, approved.Bool, edited.Bool, deleted.Bool, confidence.Float64, provenance.String) {
 		case "automatic":
 			markers.Automatic++
 		case "suggested":
@@ -291,6 +294,10 @@ func (s *Service) SegmentTitles(ctx context.Context, authorize func(*sql.Tx) err
 			return out, err
 		}
 	}
+	policy, err := segmentmarkers.ReadConfidencePolicy(ctx, tx)
+	if err != nil {
+		return out, err
+	}
 	var exists bool
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=? AND kind IN('tv','anime','movie'))`, library).Scan(&exists); err != nil {
 		return out, err
@@ -327,7 +334,7 @@ func (s *Service) SegmentTitles(ctx context.Context, authorize func(*sql.Tx) err
 		out.NextCursor = encodeTitleCursor(last.key, last.id)
 	}
 	for _, r := range page {
-		if r.sum.Files, r.sum.Markers, err = titleSummaryTx(ctx, tx, r.id); err != nil {
+		if r.sum.Files, r.sum.Markers, err = titleSummaryTx(ctx, tx, r.id, policy); err != nil {
 			return out, err
 		}
 		out.Titles = append(out.Titles, r.sum)
@@ -473,6 +480,10 @@ func (s *Service) SegmentTitle(ctx context.Context, authorize func(*sql.Tx) erro
 	if out.Mode, err = SegmentLibraryModeTx(ctx, tx, library); err != nil {
 		return out, err
 	}
+	policy, err := segmentmarkers.ReadConfidencePolicy(ctx, tx)
+	if err != nil {
+		return out, err
+	}
 	files, err := reviewFilesTx(ctx, tx, entity, kind)
 	if err != nil {
 		return out, err
@@ -501,8 +512,8 @@ func (s *Service) SegmentTitle(ctx context.Context, authorize func(*sql.Tx) erro
 				}
 				m.StartUS, m.EndUS = fmt.Sprint(max(start, v.Start)-v.Start), fmt.Sprint(min(end, v.End)-v.Start)
 				m.Basis = markerBasis(m.Provenance)
-				m.AutomaticSafe = segmentmarkers.AutomaticSafe(m.Approved, m.Confidence, m.Provenance)
-				m.ViewerVisible = segmentmarkers.ViewerKind(m.Kind) && segmentmarkers.ViewerVisible(m.Approved, m.Confidence, m.Provenance) && (out.Mode != SegmentModeOff || m.Approved)
+				m.AutomaticSafe = policy.AutomaticSafe(m.Approved, m.Confidence, m.Provenance)
+				m.ViewerVisible = segmentmarkers.ViewerKind(m.Kind) && policy.ViewerVisible(m.Approved, m.Confidence, m.Provenance) && (out.Mode != SegmentModeOff || m.Approved)
 				entry.Markers = append(entry.Markers, m)
 			}
 			rows.Close()
@@ -550,6 +561,10 @@ func (s *Service) SegmentApprove(ctx context.Context, authorize func(*sql.Tx) er
 	entity, _, kind, library, err := titleTx(ctx, tx, id)
 	if err != nil {
 		return 0, err
+	}
+	policy, err := segmentmarkers.ReadConfidencePolicy(ctx, tx)
+	if err != nil {
+		return out, err
 	}
 	files, err := reviewFilesTx(ctx, tx, entity, kind)
 	if err != nil {

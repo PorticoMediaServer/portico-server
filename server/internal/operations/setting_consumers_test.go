@@ -24,6 +24,8 @@ type settingConsumer struct{ file, witness, effect string }
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+	"operations.Settings.segments.viewerConfidencePercent":                   {"internal/segmentmarkers/policy.go", "literal:segments.viewerConfidencePercent", "Choose the confidence floor of unapproved viewer markers"},
+	"operations.Settings.segments.automaticConfidencePercent":                {"internal/segmentmarkers/policy.go", "literal:segments.automaticConfidencePercent", "Choose the confidence floor of measured automatic markers"},
 	"administration.DVRDefaults.keepPolicy.keepCount":                        {"internal/administration/dvr_runtime.go", "KeepCount", "Set padding or retained recording count/days"},
 	"administration.DVRDefaults.keepPolicy.keepDays":                         {"internal/administration/dvr_runtime.go", "KeepDays", "Set padding or retained recording count/days"},
 	"administration.DVRDefaults.keepPolicy.mode":                             {"internal/administration/dvr_runtime.go", "Mode", "Set padding or retained recording count/days"},

@@ -8234,6 +8234,8 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "library.missingTitles" TEXT,
  "library.missingTitlesDays" INTEGER,
  "library.segmentDetection" TEXT,
+ "segments.viewerConfidencePercent" INTEGER CHECK("segments.viewerConfidencePercent" IN(30,50,70)),
+ "segments.automaticConfidencePercent" INTEGER CHECK("segments.automaticConfidencePercent" IN(70,85,95)),
  "remoteSignInPolicy" TEXT,
  "remoteBitrateLimitKbps" INTEGER,
  "connectionLimit" INTEGER,

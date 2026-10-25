@@ -11,57 +11,59 @@ import (
 // All required names are qualified: damaged schema must never become a value.
 func readStoredSettings(tx *sql.Tx, v *Settings) error {
 	var stored struct {
-		AnalysisStorageGiB          sql.NullInt64
-		AnalysisStageStorageMiB     sql.NullInt64
-		SubtitleTrackLimit          sql.NullInt64
-		SubtitleFileLimitMiB        sql.NullInt64
-		HardwareBackend             sql.NullString
-		HardwareDevice              sql.NullString
-		HDRToneMapping              sql.NullBool
-		HDRToneMappingAlgorithm     sql.NullString
-		X264Preset                  sql.NullString
-		DirectStreamRemux           sql.NullBool
-		PlanningPolicy              sql.NullString
-		ThrottleBufferMs            sql.NullInt64
-		PlayedRetentionMs           sql.NullInt64
-		TemporaryDirectory          sql.NullString
-		FFmpegPath                  sql.NullString
-		SessionStorageMiB           sql.NullInt64
-		MaxConcurrentSessions       sql.NullInt64
-		MaxHardwareSessions         sql.NullInt64
-		MaxSoftwareSessions         sql.NullInt64
-		MaxBackgroundSessions       sql.NullInt64
-		DiagnosticDays              sql.NullInt64
-		NotificationDays            sql.NullInt64
-		JobDays                     sql.NullInt64
-		PlayHistoryDays             sql.NullInt64
-		APIRequestsPerMinute        sql.NullInt64
-		CommunityActivityEnabled    sql.NullBool
-		UpdateChannel               sql.NullString
-		UpdateFeedURL               sql.NullString
-		MissingTitles               sql.NullString
-		MissingTitlesDays           sql.NullInt64
-		SegmentDetection            sql.NullString
-		RemoteSignInPolicy          sql.NullString
-		RemoteBitrateLimitKbps      sql.NullInt64
-		ConnectionLimit             sql.NullInt64
-		AdvertiseURL                sql.NullString
-		LANDiscoveryEnabled         sql.NullBool
-		DLNAEnabled                 sql.NullBool
-		UploadCapacityKbps          sql.NullInt64
-		PausedSessionTimeoutMinutes sql.NullInt64
-		AdvertisedInterface         sql.NullString
-		OwnAddressEnabled           sql.NullBool
-		CustomCertificatePath       sql.NullString
-		CustomCertificateKeyPath    sql.NullString
-		CustomCertificateDomain     sql.NullString
-		LogLevel                    sql.NullString
-		ConversionMode              sql.NullString
-		OutputFormat                sql.NullString
-		DownloadMaxQuality          sql.NullString
-		MusicAwayQuality            sql.NullString
+		SegmentViewerConfidencePercent    sql.NullInt64
+		SegmentAutomaticConfidencePercent sql.NullInt64
+		AnalysisStorageGiB                sql.NullInt64
+		AnalysisStageStorageMiB           sql.NullInt64
+		SubtitleTrackLimit                sql.NullInt64
+		SubtitleFileLimitMiB              sql.NullInt64
+		HardwareBackend                   sql.NullString
+		HardwareDevice                    sql.NullString
+		HDRToneMapping                    sql.NullBool
+		HDRToneMappingAlgorithm           sql.NullString
+		X264Preset                        sql.NullString
+		DirectStreamRemux                 sql.NullBool
+		PlanningPolicy                    sql.NullString
+		ThrottleBufferMs                  sql.NullInt64
+		PlayedRetentionMs                 sql.NullInt64
+		TemporaryDirectory                sql.NullString
+		FFmpegPath                        sql.NullString
+		SessionStorageMiB                 sql.NullInt64
+		MaxConcurrentSessions             sql.NullInt64
+		MaxHardwareSessions               sql.NullInt64
+		MaxSoftwareSessions               sql.NullInt64
+		MaxBackgroundSessions             sql.NullInt64
+		DiagnosticDays                    sql.NullInt64
+		NotificationDays                  sql.NullInt64
+		JobDays                           sql.NullInt64
+		PlayHistoryDays                   sql.NullInt64
+		APIRequestsPerMinute              sql.NullInt64
+		CommunityActivityEnabled          sql.NullBool
+		UpdateChannel                     sql.NullString
+		UpdateFeedURL                     sql.NullString
+		MissingTitles                     sql.NullString
+		MissingTitlesDays                 sql.NullInt64
+		SegmentDetection                  sql.NullString
+		RemoteSignInPolicy                sql.NullString
+		RemoteBitrateLimitKbps            sql.NullInt64
+		ConnectionLimit                   sql.NullInt64
+		AdvertiseURL                      sql.NullString
+		LANDiscoveryEnabled               sql.NullBool
+		DLNAEnabled                       sql.NullBool
+		UploadCapacityKbps                sql.NullInt64
+		PausedSessionTimeoutMinutes       sql.NullInt64
+		AdvertisedInterface               sql.NullString
+		OwnAddressEnabled                 sql.NullBool
+		CustomCertificatePath             sql.NullString
+		CustomCertificateKeyPath          sql.NullString
+		CustomCertificateDomain           sql.NullString
+		LogLevel                          sql.NullString
+		ConversionMode                    sql.NullString
+		OutputFormat                      sql.NullString
+		DownloadMaxQuality                sql.NullString
+		MusicAwayQuality                  sql.NullString
 	}
-	err := tx.QueryRow(`SELECT s."analysisStorageGiB", s."analysisStageStorageMiB", s."subtitleTrackLimit", s."subtitleFileLimitMiB", s."hardwareBackend", s."hardwareDevice", s."hdrToneMapping", s."hdrToneMappingAlgorithm", s."x264Preset", s."directStreamRemux", s."planningPolicy", s."throttleBufferMs", s."playedRetentionMs", s."temporaryDirectory", s."ffmpegPath", s."sessionStorageMiB", s."maxConcurrentSessions", s."maxHardwareSessions", s."maxSoftwareSessions", s."maxBackgroundSessions", s."diagnosticDays", s."notificationDays", s."jobDays", s."playHistoryDays", s."apiRequestsPerMinute", s."home.communityActivityEnabled", s."updates.releaseChannel", s."updates.feedUrl", s."library.missingTitles", s."library.missingTitlesDays", s."library.segmentDetection", s."remoteSignInPolicy", s."remoteBitrateLimitKbps", s."connectionLimit", s."advertiseUrl", s."lanDiscoveryEnabled", s."dlnaEnabled", s."uploadCapacityKbps", s."pausedSessionTimeoutMinutes", s."advertisedInterface", s."ownAddressEnabled", s."customCertificatePath", s."customCertificateKeyPath", s."customCertificateDomain", s."logLevel", s."conversionMode", s."outputFormat", s."downloadMaxQuality", s."musicAwayQuality" FROM server_settings AS s WHERE s.singleton=1`).Scan(&stored.AnalysisStorageGiB, &stored.AnalysisStageStorageMiB, &stored.SubtitleTrackLimit, &stored.SubtitleFileLimitMiB, &stored.HardwareBackend, &stored.HardwareDevice, &stored.HDRToneMapping, &stored.HDRToneMappingAlgorithm, &stored.X264Preset, &stored.DirectStreamRemux, &stored.PlanningPolicy, &stored.ThrottleBufferMs, &stored.PlayedRetentionMs, &stored.TemporaryDirectory, &stored.FFmpegPath, &stored.SessionStorageMiB, &stored.MaxConcurrentSessions, &stored.MaxHardwareSessions, &stored.MaxSoftwareSessions, &stored.MaxBackgroundSessions, &stored.DiagnosticDays, &stored.NotificationDays, &stored.JobDays, &stored.PlayHistoryDays, &stored.APIRequestsPerMinute, &stored.CommunityActivityEnabled, &stored.UpdateChannel, &stored.UpdateFeedURL, &stored.MissingTitles, &stored.MissingTitlesDays, &stored.SegmentDetection, &stored.RemoteSignInPolicy, &stored.RemoteBitrateLimitKbps, &stored.ConnectionLimit, &stored.AdvertiseURL, &stored.LANDiscoveryEnabled, &stored.DLNAEnabled, &stored.UploadCapacityKbps, &stored.PausedSessionTimeoutMinutes, &stored.AdvertisedInterface, &stored.OwnAddressEnabled, &stored.CustomCertificatePath, &stored.CustomCertificateKeyPath, &stored.CustomCertificateDomain, &stored.LogLevel, &stored.ConversionMode, &stored.OutputFormat, &stored.DownloadMaxQuality, &stored.MusicAwayQuality)
+	err := tx.QueryRow(`SELECT s."segments.viewerConfidencePercent", s."segments.automaticConfidencePercent", s."analysisStorageGiB", s."analysisStageStorageMiB", s."subtitleTrackLimit", s."subtitleFileLimitMiB", s."hardwareBackend", s."hardwareDevice", s."hdrToneMapping", s."hdrToneMappingAlgorithm", s."x264Preset", s."directStreamRemux", s."planningPolicy", s."throttleBufferMs", s."playedRetentionMs", s."temporaryDirectory", s."ffmpegPath", s."sessionStorageMiB", s."maxConcurrentSessions", s."maxHardwareSessions", s."maxSoftwareSessions", s."maxBackgroundSessions", s."diagnosticDays", s."notificationDays", s."jobDays", s."playHistoryDays", s."apiRequestsPerMinute", s."home.communityActivityEnabled", s."updates.releaseChannel", s."updates.feedUrl", s."library.missingTitles", s."library.missingTitlesDays", s."library.segmentDetection", s."remoteSignInPolicy", s."remoteBitrateLimitKbps", s."connectionLimit", s."advertiseUrl", s."lanDiscoveryEnabled", s."dlnaEnabled", s."uploadCapacityKbps", s."pausedSessionTimeoutMinutes", s."advertisedInterface", s."ownAddressEnabled", s."customCertificatePath", s."customCertificateKeyPath", s."customCertificateDomain", s."logLevel", s."conversionMode", s."outputFormat", s."downloadMaxQuality", s."musicAwayQuality" FROM server_settings AS s WHERE s.singleton=1`).Scan(&stored.SegmentViewerConfidencePercent, &stored.SegmentAutomaticConfidencePercent, &stored.AnalysisStorageGiB, &stored.AnalysisStageStorageMiB, &stored.SubtitleTrackLimit, &stored.SubtitleFileLimitMiB, &stored.HardwareBackend, &stored.HardwareDevice, &stored.HDRToneMapping, &stored.HDRToneMappingAlgorithm, &stored.X264Preset, &stored.DirectStreamRemux, &stored.PlanningPolicy, &stored.ThrottleBufferMs, &stored.PlayedRetentionMs, &stored.TemporaryDirectory, &stored.FFmpegPath, &stored.SessionStorageMiB, &stored.MaxConcurrentSessions, &stored.MaxHardwareSessions, &stored.MaxSoftwareSessions, &stored.MaxBackgroundSessions, &stored.DiagnosticDays, &stored.NotificationDays, &stored.JobDays, &stored.PlayHistoryDays, &stored.APIRequestsPerMinute, &stored.CommunityActivityEnabled, &stored.UpdateChannel, &stored.UpdateFeedURL, &stored.MissingTitles, &stored.MissingTitlesDays, &stored.SegmentDetection, &stored.RemoteSignInPolicy, &stored.RemoteBitrateLimitKbps, &stored.ConnectionLimit, &stored.AdvertiseURL, &stored.LANDiscoveryEnabled, &stored.DLNAEnabled, &stored.UploadCapacityKbps, &stored.PausedSessionTimeoutMinutes, &stored.AdvertisedInterface, &stored.OwnAddressEnabled, &stored.CustomCertificatePath, &stored.CustomCertificateKeyPath, &stored.CustomCertificateDomain, &stored.LogLevel, &stored.ConversionMode, &stored.OutputFormat, &stored.DownloadMaxQuality, &stored.MusicAwayQuality)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -69,6 +71,12 @@ func readStoredSettings(tx *sql.Tx, v *Settings) error {
 		return err
 	}
 	next := *v
+	if stored.SegmentViewerConfidencePercent.Valid {
+		next.SegmentViewerConfidencePercent = int(stored.SegmentViewerConfidencePercent.Int64)
+	}
+	if stored.SegmentAutomaticConfidencePercent.Valid {
+		next.SegmentAutomaticConfidencePercent = int(stored.SegmentAutomaticConfidencePercent.Int64)
+	}
 	if stored.AnalysisStorageGiB.Valid {
 		next.AnalysisStorageGiB = int(stored.AnalysisStorageGiB.Int64)
 	}
@@ -264,7 +272,7 @@ func readStoredSettings(tx *sql.Tx, v *Settings) error {
 }
 
 func writeStoredSettings(tx *sql.Tx, v Settings, now int64) error {
-	_, err := tx.Exec(`INSERT INTO server_settings(singleton,updated_ms,"analysisStorageGiB","analysisStageStorageMiB","subtitleTrackLimit","subtitleFileLimitMiB","hardwareBackend","hardwareDevice","hdrToneMapping","hdrToneMappingAlgorithm","x264Preset","directStreamRemux","planningPolicy","throttleBufferMs","playedRetentionMs","temporaryDirectory","ffmpegPath","sessionStorageMiB","maxConcurrentSessions","maxHardwareSessions","maxSoftwareSessions","maxBackgroundSessions","diagnosticDays","notificationDays","jobDays","playHistoryDays","apiRequestsPerMinute","home.communityActivityEnabled","updates.releaseChannel","updates.feedUrl","library.missingTitles","library.missingTitlesDays","library.segmentDetection","remoteSignInPolicy","remoteBitrateLimitKbps","connectionLimit","advertiseUrl","lanDiscoveryEnabled","dlnaEnabled","uploadCapacityKbps","pausedSessionTimeoutMinutes","advertisedInterface","ownAddressEnabled","customCertificatePath","customCertificateKeyPath","customCertificateDomain","logLevel","conversionMode","outputFormat","downloadMaxQuality","musicAwayQuality") VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET updated_ms=excluded.updated_ms,"analysisStorageGiB"=excluded."analysisStorageGiB","analysisStageStorageMiB"=excluded."analysisStageStorageMiB","subtitleTrackLimit"=excluded."subtitleTrackLimit","subtitleFileLimitMiB"=excluded."subtitleFileLimitMiB","hardwareBackend"=excluded."hardwareBackend","hardwareDevice"=excluded."hardwareDevice","hdrToneMapping"=excluded."hdrToneMapping","hdrToneMappingAlgorithm"=excluded."hdrToneMappingAlgorithm","x264Preset"=excluded."x264Preset","directStreamRemux"=excluded."directStreamRemux","planningPolicy"=excluded."planningPolicy","throttleBufferMs"=excluded."throttleBufferMs","playedRetentionMs"=excluded."playedRetentionMs","temporaryDirectory"=excluded."temporaryDirectory","ffmpegPath"=excluded."ffmpegPath","sessionStorageMiB"=excluded."sessionStorageMiB","maxConcurrentSessions"=excluded."maxConcurrentSessions","maxHardwareSessions"=excluded."maxHardwareSessions","maxSoftwareSessions"=excluded."maxSoftwareSessions","maxBackgroundSessions"=excluded."maxBackgroundSessions","diagnosticDays"=excluded."diagnosticDays","notificationDays"=excluded."notificationDays","jobDays"=excluded."jobDays","playHistoryDays"=excluded."playHistoryDays","apiRequestsPerMinute"=excluded."apiRequestsPerMinute","home.communityActivityEnabled"=excluded."home.communityActivityEnabled","updates.releaseChannel"=excluded."updates.releaseChannel","updates.feedUrl"=excluded."updates.feedUrl","library.missingTitles"=excluded."library.missingTitles","library.missingTitlesDays"=excluded."library.missingTitlesDays","library.segmentDetection"=excluded."library.segmentDetection","remoteSignInPolicy"=excluded."remoteSignInPolicy","remoteBitrateLimitKbps"=excluded."remoteBitrateLimitKbps","connectionLimit"=excluded."connectionLimit","advertiseUrl"=excluded."advertiseUrl","lanDiscoveryEnabled"=excluded."lanDiscoveryEnabled","dlnaEnabled"=excluded."dlnaEnabled","uploadCapacityKbps"=excluded."uploadCapacityKbps","pausedSessionTimeoutMinutes"=excluded."pausedSessionTimeoutMinutes","advertisedInterface"=excluded."advertisedInterface","ownAddressEnabled"=excluded."ownAddressEnabled","customCertificatePath"=excluded."customCertificatePath","customCertificateKeyPath"=excluded."customCertificateKeyPath","customCertificateDomain"=excluded."customCertificateDomain","logLevel"=excluded."logLevel","conversionMode"=excluded."conversionMode","outputFormat"=excluded."outputFormat","downloadMaxQuality"=excluded."downloadMaxQuality","musicAwayQuality"=excluded."musicAwayQuality"`, now, v.AnalysisStorageGiB, v.AnalysisStageStorageMiB, v.SubtitleTrackLimit, v.SubtitleFileLimitMiB, v.HardwareBackend, v.HardwareDevice, v.HDRToneMapping, v.HDRToneMappingAlgorithm, v.X264Preset, v.DirectStreamRemux, v.PlanningPolicy, v.ThrottleBufferMs, v.PlayedRetentionMs, v.TemporaryDirectory, v.FFmpegPath, v.SessionStorageMiB, v.MaxConcurrentSessions, v.MaxHardwareSessions, v.MaxSoftwareSessions, v.MaxBackgroundSessions, v.DiagnosticDays, v.NotificationDays, v.JobDays, v.PlayHistoryDays, v.APIRequestsPerMinute, v.CommunityActivityEnabled, v.UpdateChannel, v.UpdateFeedURL, v.MissingTitles, v.MissingTitlesDays, v.SegmentDetection, v.RemoteSignInPolicy, v.RemoteBitrateLimitKbps, v.ConnectionLimit, v.AdvertiseURL, v.LANDiscoveryEnabled, v.DLNAEnabled, v.UploadCapacityKbps, v.PausedSessionTimeoutMinutes, v.AdvertisedInterface, v.OwnAddressEnabled, v.CustomCertificatePath, v.CustomCertificateKeyPath, v.CustomCertificateDomain, v.LogLevel, v.ConversionMode, v.OutputFormat, v.DownloadMaxQuality, v.MusicAwayQuality)
+	_, err := tx.Exec(`INSERT INTO server_settings(singleton,updated_ms,"segments.viewerConfidencePercent","segments.automaticConfidencePercent","analysisStorageGiB","analysisStageStorageMiB","subtitleTrackLimit","subtitleFileLimitMiB","hardwareBackend","hardwareDevice","hdrToneMapping","hdrToneMappingAlgorithm","x264Preset","directStreamRemux","planningPolicy","throttleBufferMs","playedRetentionMs","temporaryDirectory","ffmpegPath","sessionStorageMiB","maxConcurrentSessions","maxHardwareSessions","maxSoftwareSessions","maxBackgroundSessions","diagnosticDays","notificationDays","jobDays","playHistoryDays","apiRequestsPerMinute","home.communityActivityEnabled","updates.releaseChannel","updates.feedUrl","library.missingTitles","library.missingTitlesDays","library.segmentDetection","remoteSignInPolicy","remoteBitrateLimitKbps","connectionLimit","advertiseUrl","lanDiscoveryEnabled","dlnaEnabled","uploadCapacityKbps","pausedSessionTimeoutMinutes","advertisedInterface","ownAddressEnabled","customCertificatePath","customCertificateKeyPath","customCertificateDomain","logLevel","conversionMode","outputFormat","downloadMaxQuality","musicAwayQuality") VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET updated_ms=excluded.updated_ms,"segments.viewerConfidencePercent"=excluded."segments.viewerConfidencePercent","segments.automaticConfidencePercent"=excluded."segments.automaticConfidencePercent","analysisStorageGiB"=excluded."analysisStorageGiB","analysisStageStorageMiB"=excluded."analysisStageStorageMiB","subtitleTrackLimit"=excluded."subtitleTrackLimit","subtitleFileLimitMiB"=excluded."subtitleFileLimitMiB","hardwareBackend"=excluded."hardwareBackend","hardwareDevice"=excluded."hardwareDevice","hdrToneMapping"=excluded."hdrToneMapping","hdrToneMappingAlgorithm"=excluded."hdrToneMappingAlgorithm","x264Preset"=excluded."x264Preset","directStreamRemux"=excluded."directStreamRemux","planningPolicy"=excluded."planningPolicy","throttleBufferMs"=excluded."throttleBufferMs","playedRetentionMs"=excluded."playedRetentionMs","temporaryDirectory"=excluded."temporaryDirectory","ffmpegPath"=excluded."ffmpegPath","sessionStorageMiB"=excluded."sessionStorageMiB","maxConcurrentSessions"=excluded."maxConcurrentSessions","maxHardwareSessions"=excluded."maxHardwareSessions","maxSoftwareSessions"=excluded."maxSoftwareSessions","maxBackgroundSessions"=excluded."maxBackgroundSessions","diagnosticDays"=excluded."diagnosticDays","notificationDays"=excluded."notificationDays","jobDays"=excluded."jobDays","playHistoryDays"=excluded."playHistoryDays","apiRequestsPerMinute"=excluded."apiRequestsPerMinute","home.communityActivityEnabled"=excluded."home.communityActivityEnabled","updates.releaseChannel"=excluded."updates.releaseChannel","updates.feedUrl"=excluded."updates.feedUrl","library.missingTitles"=excluded."library.missingTitles","library.missingTitlesDays"=excluded."library.missingTitlesDays","library.segmentDetection"=excluded."library.segmentDetection","remoteSignInPolicy"=excluded."remoteSignInPolicy","remoteBitrateLimitKbps"=excluded."remoteBitrateLimitKbps","connectionLimit"=excluded."connectionLimit","advertiseUrl"=excluded."advertiseUrl","lanDiscoveryEnabled"=excluded."lanDiscoveryEnabled","dlnaEnabled"=excluded."dlnaEnabled","uploadCapacityKbps"=excluded."uploadCapacityKbps","pausedSessionTimeoutMinutes"=excluded."pausedSessionTimeoutMinutes","advertisedInterface"=excluded."advertisedInterface","ownAddressEnabled"=excluded."ownAddressEnabled","customCertificatePath"=excluded."customCertificatePath","customCertificateKeyPath"=excluded."customCertificateKeyPath","customCertificateDomain"=excluded."customCertificateDomain","logLevel"=excluded."logLevel","conversionMode"=excluded."conversionMode","outputFormat"=excluded."outputFormat","downloadMaxQuality"=excluded."downloadMaxQuality","musicAwayQuality"=excluded."musicAwayQuality"`, now, v.SegmentViewerConfidencePercent, v.SegmentAutomaticConfidencePercent, v.AnalysisStorageGiB, v.AnalysisStageStorageMiB, v.SubtitleTrackLimit, v.SubtitleFileLimitMiB, v.HardwareBackend, v.HardwareDevice, v.HDRToneMapping, v.HDRToneMappingAlgorithm, v.X264Preset, v.DirectStreamRemux, v.PlanningPolicy, v.ThrottleBufferMs, v.PlayedRetentionMs, v.TemporaryDirectory, v.FFmpegPath, v.SessionStorageMiB, v.MaxConcurrentSessions, v.MaxHardwareSessions, v.MaxSoftwareSessions, v.MaxBackgroundSessions, v.DiagnosticDays, v.NotificationDays, v.JobDays, v.PlayHistoryDays, v.APIRequestsPerMinute, v.CommunityActivityEnabled, v.UpdateChannel, v.UpdateFeedURL, v.MissingTitles, v.MissingTitlesDays, v.SegmentDetection, v.RemoteSignInPolicy, v.RemoteBitrateLimitKbps, v.ConnectionLimit, v.AdvertiseURL, v.LANDiscoveryEnabled, v.DLNAEnabled, v.UploadCapacityKbps, v.PausedSessionTimeoutMinutes, v.AdvertisedInterface, v.OwnAddressEnabled, v.CustomCertificatePath, v.CustomCertificateKeyPath, v.CustomCertificateDomain, v.LogLevel, v.ConversionMode, v.OutputFormat, v.DownloadMaxQuality, v.MusicAwayQuality)
 	if err != nil {
 		return err
 	}

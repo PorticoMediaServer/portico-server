@@ -92,9 +92,13 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 	if e != nil {
 		return out, e
 	}
+	policy, e := segmentmarkers.ReadConfidencePolicy(ctx, tx)
+	if e != nil {
+		return out, e
+	}
 	// The fence is the played source, the marker revision (detection and
 	// owner edits both move it) and whether the library's detection is on.
-	out.Revision = token(v.ID, v.Revision, v.MappingRevision, strconv.FormatInt(revision, 10), strconv.FormatBool(mode == SegmentModeOff))
+	out.Revision = token(v.ID, v.Revision, v.MappingRevision, strconv.FormatInt(revision, 10), strconv.FormatBool(mode == SegmentModeOff), strconv.Itoa(policy.ViewerPercent), strconv.Itoa(policy.AutomaticPercent))
 	rows, e := tx.QueryContext(ctx, `SELECT id,kind,start_us,end_us,confidence,provenance,approved FROM analysis_markers WHERE object_id=? AND source_revision=? AND source_binding=? AND deleted=0 AND end_us>? AND start_us<? ORDER BY start_us,id LIMIT 513`, v.ObjectID, v.Revision, v.SourceBinding, v.Start, v.End)
 	if e != nil {
 		return out, e
@@ -107,7 +111,7 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 		if e = rows.Scan(&c.ID, &c.Kind, &start, &end, &c.Confidence, &provenance, &c.Approved); e != nil {
 			break
 		}
-		if !segmentmarkers.ViewerKind(c.Kind) || !segmentmarkers.ViewerVisible(c.Approved, c.Confidence, provenance) {
+		if !segmentmarkers.ViewerKind(c.Kind) || !policy.ViewerVisible(c.Approved, c.Confidence, provenance) {
 			continue
 		}
 		// Turning a library's detection off takes its detections away from
@@ -117,7 +121,7 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 		}
 		c.StartSeconds = float64(max(start, v.Start)-v.Start) / 1e6
 		c.EndSeconds = float64(min(end, v.End)-v.Start) / 1e6
-		c.AutomaticSafe = segmentmarkers.AutomaticSafe(c.Approved, c.Confidence, provenance)
+		c.AutomaticSafe = policy.AutomaticSafe(c.Approved, c.Confidence, provenance)
 		candidates = append(candidates, c)
 	}
 	if e == nil {
