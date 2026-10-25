@@ -55,8 +55,12 @@ jobs:
       - name: Build server playback helper
         if: matrix.module == 'server'
         run: |
-          cd server
-          go build -o ../.scratch/portico-server ./cmd/server
+          mkdir -p "$RUNNER_TEMP/checkpoint-go"
+          status=0
+          (cd server && go build -o ../.scratch/portico-server ./cmd/server) > "$RUNNER_TEMP/checkpoint-go/build.log" 2>&1 || status=$?
+          echo "exit=$status"
+          tail -n 20 "$RUNNER_TEMP/checkpoint-go/build.log"
+          test "$status" = 0
           echo "PORTICO_PLAYBACK_TEST_HELPER=$GITHUB_WORKSPACE/.scratch/portico-server" >> "$GITHUB_ENV"
       - name: Go test capacity
         run: |
@@ -84,13 +88,21 @@ jobs:
       - name: Check generated contracts
         if: matrix.module == 'server'
         run: |
-          cd server
-          go run ./cmd/apigen
-          git diff --exit-code -- api/portico.openapi.json ../packages/contracts/src
+          mkdir -p "$RUNNER_TEMP/checkpoint-go"
+          status=0
+          (cd server && go run ./cmd/apigen && git diff --exit-code -- api/portico.openapi.json ../packages/contracts/src) > "$RUNNER_TEMP/checkpoint-go/generation.log" 2>&1 || status=$?
+          echo "exit=$status"
+          tail -n 20 "$RUNNER_TEMP/checkpoint-go/generation.log"
+          exit "$status"
       - name: Vet application and maintained SQLite driver
         working-directory: ${{ matrix.module }}
         run: |
-          ../scripts/vet-go.sh
+          mkdir -p "$RUNNER_TEMP/checkpoint-go"
+          status=0
+          ../scripts/vet-go.sh > "$RUNNER_TEMP/checkpoint-go/vet.log" 2>&1 || status=$?
+          echo "exit=$status"
+          tail -n 20 "$RUNNER_TEMP/checkpoint-go/vet.log"
+          exit "$status"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ always() }}
