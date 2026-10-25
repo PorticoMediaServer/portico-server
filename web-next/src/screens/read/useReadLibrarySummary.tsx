@@ -35,7 +35,7 @@ export function useReadLibrarySummary({context, libraryId, artwork, api, signal,
     }).catch(error => {if (active && isCurrent()) reportError(error);});
     return () => {active = false; controller.abort();};
   }, [context, libraryId, api, signal, isCurrent, reportError, enabled]);
-  const current = enabled && snapshot?.context === context && snapshot.libraryId === libraryId ? snapshot : undefined;
+  const current = enabled && snapshot && snapshot.context === context && snapshot.libraryId === libraryId ? snapshot : undefined;
   const wash = current && current.covers.length > 0
     ? <ReadLibraryWash covers={current.covers.flatMap((path, index) => {const cover = artwork.foreground(path, 760, 2 / 3, {group: libraryId, order: index});return cover ? [cover] : [];})}/>
     : undefined;
