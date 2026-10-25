@@ -154233,15 +154233,7 @@
                   "chapterImages",
                   "waveforms",
                   "loudness",
-                  "checksums",
-                  "introsMode",
-                  "doubleCheckFolders",
-                  "dirCacheSeconds",
-                  "readBufferBytes",
-                  "connectTimeoutSeconds",
-                  "idleTimeoutSeconds",
-                  "retries",
-                  "lowLevelRetries"
+                  "checksums"
                 ],
                 "type": "object"
               }
@@ -215906,15 +215898,7 @@
               "chapterImages",
               "waveforms",
               "loudness",
-              "checksums",
-              "introsMode",
-              "doubleCheckFolders",
-              "dirCacheSeconds",
-              "readBufferBytes",
-              "connectTimeoutSeconds",
-              "idleTimeoutSeconds",
-              "retries",
-              "lowLevelRetries"
+              "checksums"
             ],
             "type": "object"
           }
@@ -216093,15 +216077,7 @@
                   "chapterImages",
                   "waveforms",
                   "loudness",
-                  "checksums",
-                  "introsMode",
-                  "doubleCheckFolders",
-                  "dirCacheSeconds",
-                  "readBufferBytes",
-                  "connectTimeoutSeconds",
-                  "idleTimeoutSeconds",
-                  "retries",
-                  "lowLevelRetries"
+                  "checksums"
                 ],
                 "type": "object"
               }
@@ -504000,15 +503976,7 @@
                             "chapterImages",
                             "waveforms",
                             "loudness",
-                            "checksums",
-                            "introsMode",
-                            "doubleCheckFolders",
-                            "dirCacheSeconds",
-                            "readBufferBytes",
-                            "connectTimeoutSeconds",
-                            "idleTimeoutSeconds",
-                            "retries",
-                            "lowLevelRetries"
+                            "checksums"
                           ],
                           "type": "object"
                         }
@@ -504222,15 +504190,7 @@
                       "chapterImages",
                       "waveforms",
                       "loudness",
-                      "checksums",
-                      "introsMode",
-                      "doubleCheckFolders",
-                      "dirCacheSeconds",
-                      "readBufferBytes",
-                      "connectTimeoutSeconds",
-                      "idleTimeoutSeconds",
-                      "retries",
-                      "lowLevelRetries"
+                      "checksums"
                     ],
                     "type": "object"
                   }
@@ -504417,15 +504377,7 @@
                             "chapterImages",
                             "waveforms",
                             "loudness",
-                            "checksums",
-                            "introsMode",
-                            "doubleCheckFolders",
-                            "dirCacheSeconds",
-                            "readBufferBytes",
-                            "connectTimeoutSeconds",
-                            "idleTimeoutSeconds",
-                            "retries",
-                            "lowLevelRetries"
+                            "checksums"
                           ],
                           "type": "object"
                         }

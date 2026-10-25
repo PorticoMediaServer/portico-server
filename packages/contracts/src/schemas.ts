@@ -149327,15 +149327,7 @@ export const schemas = {
               "chapterImages",
               "waveforms",
               "loudness",
-              "checksums",
-              "introsMode",
-              "doubleCheckFolders",
-              "dirCacheSeconds",
-              "readBufferBytes",
-              "connectTimeoutSeconds",
-              "idleTimeoutSeconds",
-              "retries",
-              "lowLevelRetries"
+              "checksums"
             ],
             "type": "object"
           }
@@ -197050,15 +197042,7 @@ export const schemas = {
           "chapterImages",
           "waveforms",
           "loudness",
-          "checksums",
-          "introsMode",
-          "doubleCheckFolders",
-          "dirCacheSeconds",
-          "readBufferBytes",
-          "connectTimeoutSeconds",
-          "idleTimeoutSeconds",
-          "retries",
-          "lowLevelRetries"
+          "checksums"
         ],
         "type": "object"
       }
@@ -197237,15 +197221,7 @@ export const schemas = {
               "chapterImages",
               "waveforms",
               "loudness",
-              "checksums",
-              "introsMode",
-              "doubleCheckFolders",
-              "dirCacheSeconds",
-              "readBufferBytes",
-              "connectTimeoutSeconds",
-              "idleTimeoutSeconds",
-              "retries",
-              "lowLevelRetries"
+              "checksums"
             ],
             "type": "object"
           }

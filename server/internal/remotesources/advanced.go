@@ -51,6 +51,10 @@ type SourceAdvanced struct {
 	IdleTimeoutSeconds    int   `json:"idleTimeoutSeconds"`
 	Retries               int   `json:"retries"`
 	LowLevelRetries       int   `json:"lowLevelRetries"`
+	// present records which optional wire fields a command actually sent, so
+	// an older client that omits them keeps the saved values instead of
+	// resetting them to zero.
+	present map[string]bool
 }
 
 // SourceTransport is the mounted program's transport subset, applied to the
@@ -116,6 +120,85 @@ type SourceAdvancedChange struct {
 	Values             SourceAdvanced `json:"values"`
 }
 
+var advancedRequiredFields = []string{"scanIntervalSeconds", "watchForChanges", "scanOnStart", "fullRecheckDays", "cacheBytes", "cacheFloorBytes", "seekPreviews", "chapterImages", "waveforms", "loudness", "checksums"}
+
+var advancedOptionalFields = []string{"introsMode", "doubleCheckFolders", "dirCacheSeconds", "readBufferBytes", "connectTimeoutSeconds", "idleTimeoutSeconds", "retries", "lowLevelRetries"}
+
+// A settings value always carries the original eleven fields, complete and
+// non-null. The later fields are optional on the wire: an older client that
+// omits them keeps what is saved, and an explicit zero, false or "inherit" is
+// still a real choice.
+func (v *SourceAdvanced) UnmarshalJSON(raw []byte) error {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return storage.ErrRemoteConfig
+	}
+	if len(fields) < len(advancedRequiredFields) || len(fields) > len(advancedRequiredFields)+len(advancedOptionalFields) {
+		return storage.ErrRemoteConfig
+	}
+	known := map[string]bool{}
+	for _, name := range advancedRequiredFields {
+		known[name] = true
+	}
+	for _, name := range advancedOptionalFields {
+		known[name] = true
+	}
+	for name, value := range fields {
+		if !known[name] || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return storage.ErrRemoteConfig
+		}
+	}
+	for _, name := range advancedRequiredFields {
+		if _, ok := fields[name]; !ok {
+			return storage.ErrRemoteConfig
+		}
+	}
+	type plain SourceAdvanced
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return storage.ErrRemoteConfig
+	}
+	*v = SourceAdvanced(decoded)
+	v.present = make(map[string]bool, len(advancedOptionalFields))
+	for _, name := range advancedOptionalFields {
+		_, v.present[name] = fields[name]
+	}
+	return nil
+}
+
+// withOmitted fills fields an older command did not send from the saved values,
+// inside the same authorized CAS transaction that saves the result.
+func (v SourceAdvanced) withOmitted(current SourceAdvanced) SourceAdvanced {
+	if v.present == nil {
+		return v
+	}
+	if !v.present["introsMode"] {
+		v.IntrosMode = current.IntrosMode
+	}
+	if !v.present["doubleCheckFolders"] {
+		v.DoubleCheckFolders = current.DoubleCheckFolders
+	}
+	if !v.present["dirCacheSeconds"] {
+		v.DirCacheSeconds = current.DirCacheSeconds
+	}
+	if !v.present["readBufferBytes"] {
+		v.ReadBufferBytes = current.ReadBufferBytes
+	}
+	if !v.present["connectTimeoutSeconds"] {
+		v.ConnectTimeoutSeconds = current.ConnectTimeoutSeconds
+	}
+	if !v.present["idleTimeoutSeconds"] {
+		v.IdleTimeoutSeconds = current.IdleTimeoutSeconds
+	}
+	if !v.present["retries"] {
+		v.Retries = current.Retries
+	}
+	if !v.present["lowLevelRetries"] {
+		v.LowLevelRetries = current.LowLevelRetries
+	}
+	return v
+}
+
 // JSONSchema publishes the closed reason codes and the projection distinction
 // on the page response, so the official schema carries them too.
 func (SourceAdvancedSettings) JSONSchema() map[string]any {
@@ -132,30 +215,6 @@ func (SourceAdvancedSettings) JSONSchema() map[string]any {
 		field["description"] = "Observed projection of the cache the mount has actually applied, not the desired configuration."
 	}
 	return shape
-}
-
-var advancedFieldNames = []string{"scanIntervalSeconds", "watchForChanges", "scanOnStart", "fullRecheckDays", "cacheBytes", "cacheFloorBytes", "seekPreviews", "chapterImages", "waveforms", "loudness", "checksums", "introsMode", "doubleCheckFolders", "dirCacheSeconds", "readBufferBytes", "connectTimeoutSeconds", "idleTimeoutSeconds", "retries", "lowLevelRetries"}
-
-// A settings value is complete by construction: omitted, null or extra fields
-// are refused, so a partial document can never silently switch analysis off.
-func (v *SourceAdvanced) UnmarshalJSON(raw []byte) error {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || len(fields) != len(advancedFieldNames) {
-		return storage.ErrRemoteConfig
-	}
-	for _, name := range advancedFieldNames {
-		value, ok := fields[name]
-		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-			return storage.ErrRemoteConfig
-		}
-	}
-	type plain SourceAdvanced
-	var decoded plain
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return storage.ErrRemoteConfig
-	}
-	*v = SourceAdvanced(decoded)
-	return nil
 }
 
 func (c *SourceAdvancedChange) UnmarshalJSON(raw []byte) error {
@@ -202,6 +261,8 @@ func (SourceAdvanced) JSONSchema() map[string]any {
 	if field, ok := props["introsMode"].(map[string]any); ok {
 		field["enum"] = []string{"off", "inherit", "sound", "picture"}
 	}
+	// Only the original eleven fields are required; the later ones are additive.
+	shape["required"] = append([]string(nil), advancedRequiredFields...)
 	return shape
 }
 
@@ -333,7 +394,7 @@ func advancedSettings(row Source, settings advancedRow, cacheError string) Sourc
 // interval and next check, and the mount's real read cache. The folder update
 // is what the scanner already reads; no second scheduler is invented.
 func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.Service, owner identity.Principal, source string, change SourceAdvancedChange) (SourceAdvancedSettings, error) {
-	if s == nil || s.db == nil || source == "" || !change.Values.valid() {
+	if s == nil || s.db == nil || source == "" {
 		return SourceAdvancedSettings{}, storage.ErrRemoteConfig
 	}
 	s.commands.Lock()
@@ -367,6 +428,12 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 		return SourceAdvancedSettings{}, storage.ErrRemoteChanged
 	}
 	v := change.Values
+	if v.present != nil {
+		v = v.withOmitted(current.values)
+	}
+	if !v.valid() {
+		return SourceAdvancedSettings{}, storage.ErrRemoteConfig
+	}
 	if v.CacheBytes != 0 || v.CacheFloorBytes != 0 {
 		if row.MountID == "" {
 			return SourceAdvancedSettings{}, storage.ErrRemoteConfig
