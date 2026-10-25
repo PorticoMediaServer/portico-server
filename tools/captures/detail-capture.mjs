@@ -64,6 +64,9 @@ try {
     await settle();
     await page.screenshot({path: `${output}/${prefix}-build.jpg`, type: 'jpeg', quality: 90});
     await page.goto(`${origin}/__detail_reference__?only=${state}`);
+    // The gallery zooms designs to its padded page. Capture the actual drawn
+    // 1440x900 canvas, rather than stretching a scaled gallery image into it.
+    await page.addStyleTag({content: 'html.standalone body {padding:0;margin:0}.frame {width:1440px;border-radius:0}.screen {zoom:1!important;width:1440px;height:900px;min-height:900px;overflow:hidden}'});
     await settle();
     await page.locator(`#f${state}`).screenshot({path: `${output}/${prefix}-frame.jpg`, type: 'jpeg', quality: 90});
     const frame = await readFile(`${output}/${prefix}-frame.jpg`), build = await readFile(`${output}/${prefix}-build.jpg`);
