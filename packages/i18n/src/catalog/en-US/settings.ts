@@ -136,6 +136,7 @@ export const settingsMessages = {
   'settings.libraryView.list': 'List',
   'settings.row.unreadBadge': 'Show a dot for new notifications',
   'settings.help.unreadBadge': 'On the bell.',
+  'settings.help.unreadBadgeTV': 'On the profile item in the rail.',
 
   'settings.row.language': 'Language',
   'settings.row.showActivity': 'Show my activity',

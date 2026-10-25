@@ -329,7 +329,8 @@ const accountPages: readonly AuthoredPage[] = [
         // the way the person says: Automatic decides from what the device reports.
         {kind: 'composite', id: 'layout', storage: 'device', label: 'settings.row.layout', help: 'settings.help.layout', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.layoutChoice, control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.layout.automatic'}, {value: 'television', label: 'settings.layout.television'}, {value: 'touch', label: 'settings.layout.touch'}]}},
         {kind: 'composite', id: 'libraryView', storage: 'device', label: 'settings.row.libraryView', help: 'settings.help.libraryView', scope: 'device', platforms: ['web'], control: {type: 'choice', choices: [{value: 'grid', label: 'settings.libraryView.grid'}, {value: 'list', label: 'settings.libraryView.list'}]}},
-        toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadge'}),
+        toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadge', platforms: ['web', 'phone']}),
+        toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadgeTV', platforms: ['tv']}),
       ]},
     ],
   },
