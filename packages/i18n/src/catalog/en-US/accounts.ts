@@ -1,6 +1,9 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.setup.title': 'Set up your server',
+  'accounts.setup.at': 'New Portico server at {address}. It takes about a minute.',
+  'accounts.setup.waiting': 'Approve this server in your browser, then return here to continue.',
   'accounts.move.sheetTitle': 'Codes for everyone waiting',
   'accounts.move.sheetHeading': 'Sign-in codes',
   'accounts.move.sheetHelp': 'Open {address}, choose I have a code, then type yours. Each code works once.',
