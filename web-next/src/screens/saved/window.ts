@@ -1,3 +1,4 @@
+import {savedEntryKey} from '@core/saved.ts';
 import type {WindowedCollection, CollectionSnapshot} from '@core/collections/windowed.ts';
 import type {SavedEntry, SavedService, SavedSnapshot} from '@core/saved.ts';
 import type {PersonalResourceEntry, PersonalSavedService, PersonalSavedSnapshot} from '@core/personal-saved.ts';
@@ -31,10 +32,10 @@ export function savedSectionWindow(service: SavedService, sectionId: string): Wi
     getPageVersion: () => { getSnapshot(); return String(version); },
     pageOf: index => Math.floor(index / 40),
     itemAt: index => section()?.entries[index],
-    keyAt: index => section()?.entries[index]?.id ?? `placeholder:${index}`,
+    keyAt: index => {const entry = section()?.entries[index]; return entry ? savedEntryKey(entry) : `placeholder:${index}`;},
     slotAt: index => {
       const item = section()?.entries[index];
-      return item ? {kind: 'item', index, key: item.id, item} : {kind: 'placeholder', index, key: `placeholder:${index}`};
+      return item ? {kind: 'item', index, key: savedEntryKey(item), item} : {kind: 'placeholder', index, key: `placeholder:${index}`};
     },
     ensureRange: () => {},
     indexOfLetter: () => undefined,
