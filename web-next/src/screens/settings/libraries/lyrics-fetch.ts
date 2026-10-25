@@ -3,13 +3,15 @@ import {encodedRoutePath} from '../../../../../packages/contracts/src/routes.ts'
 
 type Receipt = Readonly<{id: string; state: string}>;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-const states = new Set(['queued', 'running', 'paused', 'complete', 'failed', 'cancelled']);
+const states = new Set(['queued', 'running', 'cancellation-requested', 'reconciling', 'paused', 'succeeded', 'failed', 'cancelled']);
 /** One explicit library command. An uncertain result keeps its key for a manual retry. */
 export class LibraryLyricsFetch {
   private key: string | undefined;
   private pending: Promise<Receipt | undefined> | undefined;
   private readonly lifetime = new AbortController();
-  constructor(private readonly options: Readonly<{api: LibraryContentApi; libraryId: string; isCurrent: () => boolean; randomId: () => string}>) {}
+  constructor(private readonly options: Readonly<{api: LibraryContentApi; libraryId: string; isCurrent: () => boolean; randomId: () => string}>) {
+    if (!options.libraryId || options.libraryId.length > 256 || /[\x00-\x1f\x7f]/.test(options.libraryId)) throw new Error('invalid_library_id');
+  }
   dispose() {this.lifetime.abort(); this.key = undefined;}
   run(): Promise<Receipt | undefined> {
     if (this.lifetime.signal.aborted || !this.options.isCurrent()) return Promise.resolve(undefined);

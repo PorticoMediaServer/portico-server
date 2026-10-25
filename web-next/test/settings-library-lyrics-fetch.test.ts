@@ -31,3 +31,9 @@ test('failed key generation never sends the command', async () => {
   const source = new LibraryLyricsFetch({api: {request: async () => {calls++;return receipt;}} as LibraryContentApi, libraryId: 'music', isCurrent: () => true, randomId: () => {throw new Error('no entropy');}});
   await assert.rejects(source.run()); assert.equal(calls, 0); source.dispose();
 });
+
+test('definite refusal allows a new operation while a valid existing job is accepted', async () => {
+  let calls = 0, generated = 0;
+  const source = new LibraryLyricsFetch({api: {request: async () => {if (++calls === 1) throw {status: 403};return {...receipt, state: 'succeeded'};}} as LibraryContentApi, libraryId: 'music', isCurrent: () => true, randomId: () => {generated++;return key;}});
+  await assert.rejects(source.run()); assert.deepEqual(await source.run(), {id: 'job', state: 'succeeded'}); assert.equal(generated, 2); source.dispose();
+});
