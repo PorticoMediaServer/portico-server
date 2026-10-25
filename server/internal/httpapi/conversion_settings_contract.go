@@ -25,10 +25,14 @@ type ConsoleReplyScope struct {
 	ServerID    string `json:"serverId"`
 	ViewerFence string `json:"viewerFence"`
 }
+type ConsoleExportOptions struct {
+	IncludePaths bool `json:"includePaths"`
+}
 type ConsoleRegistryDocument struct {
-	Revision       string             `json:"revision"`
-	Fields         []operations.Field `json:"fields"`
-	ExternalScopes map[string]string  `json:"externalScopes"`
+	ExportOptions  *ConsoleExportOptions `json:"exportOptions,omitempty"`
+	Revision       string                `json:"revision"`
+	Fields         []operations.Field    `json:"fields"`
+	ExternalScopes map[string]string     `json:"externalScopes"`
 }
 type ConsoleSettingsChange operations.SettingsChange
 
@@ -183,7 +187,7 @@ func registerConversionSettings(registry *apikit.Registry, d Dependencies) error
 		if err := d.ConsoleCheck(ctx, auth); err != nil {
 			return ConsoleReply[ConsoleRegistryDocument]{}, conversionSettingsError(err)
 		}
-		return consoleTypedReply(d, p, ConsoleRegistryDocument{operations.RegistryRevision, fields, map[string]string{"account": "existing account and security surface", "library": "existing library configuration surface", "installation": "local platform preferences; never authorization"}}), nil
+		return consoleTypedReply(d, p, ConsoleRegistryDocument{Revision: operations.RegistryRevision, Fields: fields, ExternalScopes: map[string]string{"account": "existing account and security surface", "library": "existing library configuration surface", "installation": "local platform preferences; never authorization"}, ExportOptions: &ConsoleExportOptions{IncludePaths: true}}), nil
 	}}); err != nil {
 		return err
 	}
