@@ -28,9 +28,10 @@ export function ReadReader<P extends object>({controller, source, format, initia
   }, [controller, navigate]);
   const seek = useCallback((value: number) => navigate({kind: 'progression', value}), [navigate]);
   const currentPublication = !signal?.aborted && snapshot.sourceId === source.id && snapshot.sourceRevision === source.revision;
+  const publicationReady = currentPublication && snapshot.status === 'ready';
   return <ReaderChrome {...chrome} title={metadata ? metadata.title : snapshot.metadata?.title} subtitle={metadata ? metadata.author : snapshot.metadata?.author}
-    progression={snapshot.location?.progression} pageTurnsEnabled={currentPublication && snapshot.status === 'ready' && snapshot.canTurnAtFit}
-    fixedPage={format !== 'epub'} holdOpen={chrome.holdOpen || snapshot.selection !== null}
+    progression={snapshot.location?.progression} pageTurnsEnabled={publicationReady && snapshot.canTurnAtFit}
+    fixedPage={format !== 'epub'} holdOpen={chrome.holdOpen || !publicationReady || snapshot.selection !== null}
     textSelectionActive={snapshot.selection !== null}
     subscribeSurfaceInput={controller.subscribeSurfaceInput} onTurn={turn} onSeek={seek} onBack={onBack}>
     <ReaderSurface controller={controller} source={source} format={format} initialLocation={initialLocation} metadata={metadata} signal={signal} authority={authority} reportError={reportError} />
