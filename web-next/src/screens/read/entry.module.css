@@ -8,4 +8,10 @@
 .books { position: relative; margin: 0 var(--shell-gutter, var(--gutter-desktop)); }
 @media (max-width: 1023px) { .books { margin-inline: 20px; } }
 
+/* phone-read 4/4c: the series' own name and count head its volume grid. */
+.seriesHeading { display: flex; align-items: baseline; gap: 10px; margin: 24px var(--shell-gutter, var(--gutter-desktop)) 8px; }
+.seriesHeading h2 { margin: 0; font-size: 20px; font-weight: 700; color: var(--color-text); }
+.seriesHeading span { font-size: 14px; font-weight: 600; color: var(--color-text-tertiary); }
+@media (max-width: 1023px) { .seriesHeading { margin-inline: 20px; } }
+
 .dateFilter { display: flex; align-items: center; gap: 12px; margin: 20px var(--shell-gutter, var(--gutter-desktop)); }
