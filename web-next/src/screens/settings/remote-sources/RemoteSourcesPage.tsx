@@ -2,7 +2,7 @@ import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useS
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, cloudTokenDraft, driveOAuthDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
-  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type RemoteScanMode, type RemoteScanPhase, type RemoteSourceHealth, type RemoteScanStateCode, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type RemoteContactErrorCode, type RemoteScanMode, type RemoteScanPhase, type RemoteSourceHealth, type RemoteScanStateCode, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -58,6 +58,10 @@ const scanModeWord = (mode: RemoteScanMode | undefined): MessageId | undefined =
   : mode === 'incremental' ? 'next.remoteSources.scanModeIncremental' : mode === 'integrity' ? 'next.remoteSources.scanModeIntegrity'
     : mode === 'full' ? 'next.remoteSources.scanModeFull' : undefined;
 /** The drawn words for the all-agree folder health; absent stays absent. */
+/** The closed words for a real provider failure; never prose from the server. */
+const contactWord = (code: RemoteContactErrorCode): MessageId => code === 'offline' ? 'next.remoteSources.contactOffline'
+  : code === 'credentials_required' ? 'next.remoteSources.contactCredentials' : code === 'rate_limited' ? 'next.remoteSources.contactRateLimited'
+    : 'next.remoteSources.contactQuota';
 const healthWord = (health: RemoteSourceHealth): MessageId => health === 'ready' ? 'next.remoteSources.healthReady'
   : health === 'healthy' ? 'next.remoteSources.healthHealthy' : health === 'degraded' ? 'next.remoteSources.healthDegraded'
   : health === 'inventory_running' ? 'next.remoteSources.healthInventoryRunning' : health === 'cancelled' ? 'next.remoteSources.healthCancelled'
@@ -1294,6 +1298,8 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
             : t('next.remoteSources.noLibraryUses')}</dd></div>
         {!!status?.scanIntervalSeconds && <div><dt>{t('next.remoteSources.scanning')}</dt>
           <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
+        {status?.lastConnectedAt && <div><dt>{t('next.remoteSources.lastConnected')}</dt><dd>{checkedWhen(status.lastConnectedAt)}</dd></div>}
+        {status?.lastErrorAt && status.lastErrorCode && <div><dt>{t('next.remoteSources.lastError')}</dt><dd>{checkedWhen(status.lastErrorAt)} · {t(contactWord(status.lastErrorCode))}</dd></div>}
         {status?.health && <div><dt>{t('next.remoteSources.health')}</dt><dd>{t(healthWord(status.health))}</dd></div>}
         {status?.lastCompleteAt && <div><dt>{t('next.remoteSources.lastComplete')}</dt><dd>{checkedWhen(status.lastCompleteAt)}</dd></div>}
         {status?.scan && <>
