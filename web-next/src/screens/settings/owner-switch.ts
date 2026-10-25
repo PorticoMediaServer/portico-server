@@ -117,7 +117,7 @@ export class SettingsOwnerSwitch {
       // publication failure still has custody to retire.
       if (result.kind === 'local' && result.signIn.kind === 'signed-in') {
         const grant = result.signIn;
-        custody = new LocalMoveCustody({grant, issuer: Object.freeze({origin: this.api.baseUrl, pin}), serverId: preview.serverId, selectionRevision: revision},
+        custody = new LocalMoveCustody({grant, issuer: Object.freeze({origin: this.api.baseUrl, pin}), serverId: this.options.serverId, selectionRevision: revision},
           () => this.retire(grant.session));
       }
       operation.check();
