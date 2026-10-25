@@ -65,17 +65,21 @@ export function parseAccountMoveCodes(raw:unknown,now=Date.now()):readonly Accou
   return Object.freeze({accountId:row.accountId,username:row.username,code:row.code,expiresAt:expiry(row.expiresAt,7*86400000,now),...(row.serverId===undefined?{}:{serverId:row.serverId as string})});
  }));
 }
-export type AccountMoveWaiting=Readonly<{accountId:string;username:string}>;
+export type AccountMoveWaiting=Readonly<{accountId:string;username:string;expiresAt?:string}>;
 /** The waiting people for the active move: exact ids the codes route accepts,
  * bounded and unique, with the usernames the owner recognises. No code, hash or
  * password material is part of this read. */
 export function parseAccountMoveWaiting(raw:unknown):Readonly<{items:readonly AccountMoveWaiting[];truncated:boolean}>{
  if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>2000||typeof raw.truncated!=='boolean')invalid();
  const seen=new Set<string>();
+ const now=Date.now();
  const items=Object.freeze(raw.items.map(row=>{
   if(!obj(row)||!text(row.accountId,128)||seen.has(row.accountId)||!text(row.username,64)||!row.username)invalid();
   seen.add(row.accountId);
-  return Object.freeze({accountId:row.accountId,username:row.username});
+  // The existing code's own expiry, bounded to today's seven-day lifetime; an
+  // absent field means no working code, never a substituted date.
+  const expiresAt=row.expiresAt===undefined?undefined:expiry(row.expiresAt,7*86400000,now);
+  return Object.freeze({accountId:row.accountId,username:row.username,...(expiresAt===undefined?{}:{expiresAt})});
  }));
  return Object.freeze({items,truncated:raw.truncated});
 }
