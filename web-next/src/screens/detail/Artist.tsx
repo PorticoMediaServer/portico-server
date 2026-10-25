@@ -54,7 +54,7 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
     return () => { active = false; };
   }, [service, lease, libraryId, artistId, context]);
   // The admitted page re-reads when the library or its titles change; never a client-side ranking.
-  useFreshDocument(() => [dependsOn.libraries], refresh => { if (lease.isCurrent()) return service.revalidate(refresh); }, () => lease.isCurrent() && service.getSnapshot().phase === 'ready');
+  useFreshDocument(() => [dependsOn.libraries], async refresh => { if (lease.isCurrent()) await service.revalidate(refresh); }, () => lease.isCurrent() && service.getSnapshot().phase === 'ready');
   const projection: ContentProjection | undefined = content.phase === 'ready' ? content.projection ?? undefined : undefined;
   const artist = projection?.entity;
   // Gate the drawn page on this exact admitted artist and view before anything is announced.
