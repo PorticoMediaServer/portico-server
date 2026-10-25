@@ -1103,6 +1103,8 @@ export const webMessages = {
   'web.chooser.unreachableBodyNever': 'It hasn’t been online yet.',
   'web.chooser.refusedTitle': 'You no longer have access to {server}',
   'web.chooser.refusedBody': 'The owner removed you or ended your invitation. They can invite you again.',
+  'web.chooser.clockTitle': 'The clock on {server} is off',
+  'web.chooser.clockBody': 'Its date and time are too far from Portico’s to sign in. Ask its owner to check the server’s date and time.',
   'web.chooser.unconfirmedTitle': 'Portico couldn’t confirm this is {server}',
   'web.chooser.unconfirmedBody': 'Nothing was sent to it. Try again, or ask its owner to check the server.',
   'web.chooser.signInDirectly': 'Sign in directly to this server',
