@@ -8,8 +8,6 @@ import {errorMessage} from '@core/presentation/errors.ts';
 import {Button, Tabs} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {LiveSourceController, type OwnerLiveSource} from './source-controller';
-import {RemoteSourceController} from './remote-source-controller';
-import {UploadSourceController} from './upload-source-controller';
 import {RemoteSourceDialog} from './RemoteSourceDialog';
 import {UploadSourceDialog} from './UploadSourceDialog';
 import {DiscoverTuners} from './DiscoverTuners';
@@ -29,7 +27,7 @@ import {RecordingRootController} from '../../settings/server-livetv/recording/ro
 import {RecordingPage} from '../../settings/server-livetv/recording/RecordingPage';
 import styles from './owner.module.css';
 const t = defaultI18n.t;
-type Modal = {kind: 'remote'; controller: RemoteSourceController} | {kind: 'upload'; controller: UploadSourceController} | {kind: 'discover'} |
+type Modal = {kind: 'remote'; tuner?: string} | {kind: 'upload'} | {kind: 'discover'} |
   {kind: 'settings'; source: OwnerLiveSource; controller: SourceSettingsController; choices: {groups: SourceChoicesController; channels: SourceChoicesController}} |
   {kind: 'channels'; source: OwnerLiveSource; controller: ChannelMapController} | {kind: 'remove'; source: OwnerLiveSource};
 export type OwnerSourcesOptions = Readonly<{api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean; reportError: (error: unknown) => void}>;
@@ -71,10 +69,13 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
     const timer = setTimeout(() => {if (source.current() && document.visibilityState !== 'hidden') void source.sources.load();}, 5000);
     return () => clearTimeout(timer);
   }, [source, snapshot.document]);
-  useEffect(() => () => {if (modal && 'controller' in modal) source.release(modal.controller);if (modal?.kind === 'settings') {source.release(modal.choices.groups);source.release(modal.choices.channels);}}, [modal, source]);
+  useEffect(() => () => {
+    if (modal?.kind === 'settings') {source.release(modal.controller);source.release(modal.choices.groups);source.release(modal.choices.channels);}
+    else if (modal?.kind === 'channels') source.release(modal.controller);
+  }, [modal, source]);
   if (!active || !source.current()) return null;
   const close = () => {if (source.current()) setModal(undefined);};
-  const remote = (tuner?: string) => {if (source.current()) setModal({kind: 'remote', controller: source.track(new RemoteSourceController(source.api, source.serverId, source.current, source.reportError, channelRequestID, tuner))});};
+  const remote = (tuner?: string) => {if (source.current()) setModal({kind: 'remote', ...(tuner ? {tuner} : {})});};
   const saved = () => {if (source.current()) {setModal(undefined);void source.sources.load();}};
   return <>
     <Tabs value={tab} onValueChange={value => {if (source.current()) {setModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
@@ -84,7 +85,7 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
     <SourceList snapshot={snapshot} refresh={() => void source.sources.load()} add={kind => {
       if (!source.current()) return;
-      if (kind === 'remote') remote();else if (kind === 'discover') setModal({kind});else setModal({kind, controller: source.track(new UploadSourceController(source.api, source.serverId, source.current, source.reportError))});
+      if (kind === 'remote') remote();else if (kind === 'discover') setModal({kind});else setModal({kind: 'upload'});
     }} configure={selected => {
       if (!source.current()) return;
       setModal({kind: 'settings', source: selected, controller: source.track(new SourceSettingsController(source.api, source.serverId, selected.id, source.current, source.reportError)), choices: {
@@ -96,8 +97,8 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
     {!!defaults.saveError && <p role="alert" className={styles.error}>{errorMessage(defaults.saveError)}</p>}
     <LiveDefaults form={source.defaults} isCurrent={source.current} failure={source.reportError}/>
     </>}
-    {modal?.kind === 'remote' && <RemoteSourceDialog controller={modal.controller} close={close} saved={saved}/>}
-    {modal?.kind === 'upload' && <UploadSourceDialog controller={modal.controller} close={close} saved={saved}/>}
+    {modal?.kind === 'remote' && <RemoteSourceDialog api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} tuner={modal.tuner} close={close} saved={saved}/>}
+    {modal?.kind === 'upload' && <UploadSourceDialog api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={close} saved={saved}/>}
     {modal?.kind === 'discover' && <DiscoverTuners api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={close} onUseTuner={remote}/>}
     {modal?.kind === 'settings' && <SourceSettingsDialog controller={modal.controller} choices={modal.choices} name={modal.source.name} guides={snapshot.document?.sources ?? []} acquisition={modal.source.acquisition} close={close} changed={() => {if (source.current()) void source.sources.load();}}/>}
     {modal?.kind === 'channels' && <ChannelMapDialog controller={modal.controller} name={modal.source.name} close={close}/>}
