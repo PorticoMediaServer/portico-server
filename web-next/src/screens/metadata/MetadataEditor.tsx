@@ -82,6 +82,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
     </nav>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
     {state.error ? <HostedError error={state.error} /> : null}
+    {state.phase === 'uncertain' || state.phase === 'conflict' || state.phase === 'error' ? <Button size="small" onClick={() => {setError(undefined); void service.load(target);}}>{t('next.states.tryAgain')}</Button> : null}
     {error ? <HostedError error={error} /> : null}
     {state.phase === 'saving' ? <p className={styles.working}>{t('web.metadata.applying')}</p> : null}
     {data && state.phase !== 'loading' ? <>
