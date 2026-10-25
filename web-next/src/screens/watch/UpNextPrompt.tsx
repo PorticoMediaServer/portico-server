@@ -19,7 +19,8 @@ export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expa
   // A missing still stays unknown. No backdrop, trickplay or fixture image stands in for it.
   const still = next?.stillUrl;
   const source = useMemo(() => artwork.foreground(still, 176, 16 / 9, {group: 'playback', priority: 'high'}), [artwork, still]);
-  if (!expanded || layout !== 'desktop' || !offer) return null;
+  // desktop-player f4/f4s and phone-player f6: the same offer, compact on a phone.
+  if (!expanded || layout === 'tablet' || !offer) return null;
   const {prompt, countdown} = offer, marker = prompt.offer.marker, t = defaultI18n.t;
   const duration = durationText(next!.durationMs === undefined ? undefined : next!.durationMs / 1000, environment.t);
   const episode = next!.episode ? environment.t('next.kit.episodeCode', {season: next!.episode.seasonNumber, episode: next!.episode.number}) : undefined;
@@ -27,7 +28,7 @@ export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expa
     : t(prompt.sceneAfterCredits ? 'player.upNext.startsAfterScene' : 'player.upNext.startsIn', {time: watchClock(countdown.seconds)}) : undefined;
   const act = (kind: 'play-now' | 'watch-credits') => {void dispatchWatchNext(binding, snapshot, kind).catch(binding.reportError);};
   const skip = () => {if (marker) void dispatchWatchMarker(binding, snapshot, {kind: 'skip', markerId: marker.id}).catch(binding.reportError);};
-  return <div role="group" aria-label={t('player.upNext.duringCredits')} className={styles.card} data-watch-up-next data-scene-after={prompt.sceneAfterCredits}>
+  return <div role="group" aria-label={t('player.upNext.duringCredits')} className={styles.card} data-layout={layout} data-watch-up-next data-scene-after={prompt.sceneAfterCredits}>
     <div className={styles.row}>
       <div className={styles.still}><Artwork source={source} alt="" /></div>
       <div className={styles.content}><small>{t('player.upNext.duringCredits')}</small><b>{next!.title}</b>
