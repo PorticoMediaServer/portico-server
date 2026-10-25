@@ -21,5 +21,12 @@ test('editing locks the value and explicit unlock retains that edited value', ()
 
 test('a list lock toggle retains saved list values', () => {
   const data = {schema: [{field: 'tags', type: 'list'}], snapshot: {fields: {tags: {value: '', values: ['Space', 'Desert'], locked: false}}}} as unknown as RepairData;
-  assert.deepEqual(patchMetadataDraft(data, 'tags', undefined, {locked: true}), {value: 'Space, Desert', locked: true});
+  assert.deepEqual(patchMetadataDraft(data, 'tags', undefined, {locked: true}), {value: 'Space, Desert', values: ['Space', 'Desert'], locked: true});
+});
+
+test('list values containing commas survive lock-only and chip edits intact', () => {
+  const data = {schema: [{field: 'tags', type: 'list'}], snapshot: {fields: {tags: {value: '', values: ['Rock, classic'], locked: false}}}} as unknown as RepairData;
+  const locked = patchMetadataDraft(data, 'tags', undefined, {locked: true});
+  assert.deepEqual(locked.values, ['Rock, classic']);
+  assert.deepEqual(patchMetadataDraft(data, 'tags', locked, {values: ['Rock, classic', 'Road trip']}).values, ['Rock, classic', 'Road trip']);
 });

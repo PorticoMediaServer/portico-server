@@ -8,9 +8,12 @@ export function metadataDraftValue(data: RepairData | null | undefined, field: s
     : original?.value ?? '';
 }
 
-export type MetadataFieldDraft = Readonly<{value: string; locked: boolean}>;
+export type MetadataFieldDraft = Readonly<{value: string; locked: boolean; values?: readonly string[]}>;
 /** Editing protects the new value; a deliberate lock toggle keeps the existing draft value. */
 export function patchMetadataDraft(data: RepairData | null | undefined, field: string, current: MetadataFieldDraft | undefined, patch: Partial<MetadataFieldDraft>): MetadataFieldDraft {
-  return {value: patch.value ?? current?.value ?? metadataDraftValue(data, field),
-    locked: patch.locked ?? (patch.value !== undefined ? true : current?.locked ?? data?.snapshot.fields[field]?.locked ?? false)};
+  const list = data?.schema.find(spec => spec.field === field)?.type === 'list';
+  const values = list ? patch.values ?? current?.values ?? data?.snapshot.fields[field]?.values ?? [] : undefined;
+  return {value: values ? values.join(', ') : patch.value ?? current?.value ?? metadataDraftValue(data, field),
+    ...(values ? {values: [...values]} : {}),
+    locked: patch.locked ?? (patch.value !== undefined || patch.values !== undefined ? true : current?.locked ?? data?.snapshot.fields[field]?.locked ?? false)};
 }

@@ -6,11 +6,11 @@ import {Button, TextField} from '../../kit/controls';
 import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
-import {metadataDraftValue, patchMetadataDraft} from './draft-value';
+import {metadataDraftValue, patchMetadataDraft, type MetadataFieldDraft} from './draft-value';
 
 const t = defaultI18n.t;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
-type Draft = Readonly<Record<string, {value: string; locked: boolean}>>;
+type Draft = Readonly<Record<string, MetadataFieldDraft>>;
 type Tab = 'general' | 'artwork' | 'tags' | 'people' | 'matching' | 'history';
 
 /** Only the tabs this type really has: no list fields means no Tags tab, no roles means no Artwork. */
@@ -40,15 +40,16 @@ export function MetadataEditor({api, scope, target, onClose}: {
   const data = state.data;
   const offered = tabsFor(data);
   const shown: Tab = offered.includes(tab) ? tab : 'general';
-  const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value)) : false;}) : false;
+  const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value, value.values)) : false;}) : false;
   const changed = useMemo(() => {
     if (!data) return [];
     return Object.entries(draft).filter(([field, value]) => {
       const original = data.snapshot.fields[field];
-      return value.locked !== (original?.locked ?? false) || value.value !== metadataDraftValue(data, field);
+      const list = data.schema.find(spec => spec.field === field)?.type === 'list';
+      return value.locked !== (original?.locked ?? false) || (list ? JSON.stringify(value.values ?? original?.values ?? []) !== JSON.stringify(original?.values ?? []) : value.value !== metadataDraftValue(data, field));
     }).map(([field, value]) => ({field, ...value}));
   }, [data, draft]);
-  const edit = async (fields: Record<string, {value?: string; locked?: boolean}>) => {
+  const edit = async (fields: NonNullable<RepairCommand['fields']>) => {
     if (!data) return;
     setError(undefined);
     await service.command({action: 'edit', fields});
@@ -59,15 +60,15 @@ export function MetadataEditor({api, scope, target, onClose}: {
     if (!saved) setError(service.getSnapshot().error ?? new Error(t('web.metadata.saveChanges')));
     return saved;
   };
-  const set = (field: string, patch: Partial<{value: string; locked: boolean}>) => {
+  const set = (field: string, patch: Partial<MetadataFieldDraft>) => {
     setDraft(current => ({...current, [field]: patchMetadataDraft(data, field, current[field], patch)}));
   };
   const save = () => {
     if (!changed.length) return;
-    const fields: Record<string, {value?: string; locked?: boolean}> = {};
+    const fields: NonNullable<RepairCommand['fields']> = {};
     for (const item of changed) {
       const spec = data?.schema.find(row => row.field === item.field);
-      fields[item.field] = {...(spec?.type === 'list' ? {values: item.value.split(',').map(value => value.trim()).filter(Boolean)} : {value: item.value}), locked: item.locked};
+      fields[item.field] = {...(spec?.type === 'list' ? {values: item.values ?? data?.snapshot.fields[item.field]?.values ?? []} : {value: item.value}), locked: item.locked};
     }
     void edit(fields);
   };
@@ -85,7 +86,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
     {state.phase === 'saving' ? <p className={styles.working}>{t('web.metadata.applying')}</p> : null}
     {data && state.phase !== 'loading' ? <>
       {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
-      {shown === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
+      {shown === 'tags' ? <Tags data={data} draft={draft} set={set} busy={state.phase !== 'ready'} /> : null}
       {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'}
         onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
         onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked})} /> : null}
@@ -108,8 +109,13 @@ export function MetadataEditor({api, scope, target, onClose}: {
 
 
 /** The server's own bounds, checked beside the field as the frame draws them. */
-function fieldError(spec: RepairFieldSpec, value: string): string {
+function fieldError(spec: RepairFieldSpec, value: string, values: readonly string[] = []): string {
   const label = t(spec.label as Parameters<typeof t>[0]);
+  if (spec.type === 'list') {
+    if (spec.max !== undefined && values.length > spec.max) return t('web.metadata.tooManyEntries', {label, max: spec.max});
+    if (spec.maxLength !== undefined && values.some(entry => Array.from(entry).length > spec.maxLength!)) return t('web.metadata.listEntryTooLong', {label, max: spec.maxLength});
+    return '';
+  }
   if (spec.type === 'integer' || spec.type === 'number') {
     if (value.trim() === '') return '';
     const number = Number(value);
@@ -133,7 +139,7 @@ function input(spec: RepairFieldSpec, value: string, set: (value: string) => voi
   return <input type={spec.type === 'date' ? 'date' : 'text'} inputMode={spec.type === 'integer' || spec.type === 'number' ? 'numeric' : undefined} maxLength={spec.maxLength} value={value} onChange={event => set(event.currentTarget.value)} />;
 }
 
-function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<{value: string; locked: boolean}>) => void}) {
+function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<MetadataFieldDraft>) => void}) {
   const value = draft?.value ?? field?.value ?? '', locked = draft?.locked ?? field?.locked ?? false, error = fieldError(spec, value);
   const changed = draft !== undefined && (draft.value !== (field?.value ?? '') || draft.locked !== (field?.locked ?? false));
   return <label className={styles.field} data-wide={spec.type === 'multiline' || spec.field === 'tagline' || undefined} data-changed={changed || undefined}>
@@ -148,22 +154,41 @@ function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value
   </label>;
 }
 
-function General({data, draft, set}: {data: RepairData; draft: Draft; set: (field: string, patch: Partial<{value: string; locked: boolean}>) => void}) {
+function General({data, draft, set}: {data: RepairData; draft: Draft; set: (field: string, patch: Partial<MetadataFieldDraft>) => void}) {
   return <div className={styles.generalFields}><p className={styles.lockHelp}>{t('web.metadata.editorLockHelp')}</p>{data.schema.filter(spec => spec.type !== 'list' && spec.group !== 'identity').map(spec =>
     <Field key={spec.field} spec={spec} field={data.snapshot.fields[spec.field]} draft={draft[spec.field]} set={patch => set(spec.field, patch)} />)}</div>;
 }
 
-function Tags({data, draft, set}: {data: RepairData; draft: Draft; set: (field: string, patch: Partial<{value: string; locked: boolean}>) => void}) {
-  const list = data.schema.filter(spec => spec.type === 'list');
-  return <div className={styles.fields}>
-    {list.length ? list.map(spec => {
-      const original = data.snapshot.fields[spec.field];
-      const value = draft[spec.field]?.value ?? (original?.values ?? []).join(', ');
-      return <Field key={spec.field} spec={{...spec, type: 'text'}}
-        field={original ? {...original, value, automaticValue: (original.values ?? []).join(', ')} : undefined}
-        draft={draft[spec.field]} set={patch => set(spec.field, patch)} />;
-    }) : <p className={styles.working}>{t('web.metadata.genresOnlyItems')}</p>}
-  </div>;
+function Tags({data, draft, set, busy}: {data: RepairData; draft: Draft; busy: boolean; set: (field: string, patch: Partial<MetadataFieldDraft>) => void}) {
+  return <div className={styles.fields}>{data.schema.filter(spec => spec.type === 'list').map(spec => {
+    const original = data.snapshot.fields[spec.field], current = draft[spec.field];
+    return <TagList key={spec.field} spec={spec} busy={busy} values={current?.values ?? original?.values ?? []} locked={current?.locked ?? original?.locked ?? false}
+      onValues={values => set(spec.field, {values})} onLock={locked => set(spec.field, {locked})}/>;
+  })}</div>;
+}
+
+function TagList({spec, values, locked, onValues, onLock, busy}: {spec: RepairFieldSpec; values: readonly string[]; locked: boolean; busy: boolean;
+  onValues: (values: readonly string[]) => void; onLock: (locked: boolean) => void;
+}) {
+  const [text, setText] = useState(''), [error, setError] = useState('');
+  const label = t(spec.label as Parameters<typeof t>[0]), genre = spec.field === 'genres' || spec.field === 'genre';
+  const placeholder = genre ? t('web.metadata.addGenreHelp') : spec.field === 'tags' ? t('web.metadata.addTagChip') : spec.field === 'labels' ? t(values.length ? 'web.metadata.addLabelChip' : 'web.metadata.emptyLabelsChip') : t('web.metadata.addListChip', {label});
+  const add = () => {
+    if (busy) return;
+    const value = text.trim();
+    if (!value || values.includes(value)) {setText(''); return;}
+    const next = [...values, value], problem = fieldError(spec, '', next);
+    if (problem) {setError(problem); return;}
+    onValues(next); setText(''); setError('');
+  };
+  return <section className={styles.tagGroup} aria-label={label}>
+    <header><h3>{label}</h3>{genre ? <small>{t(locked ? 'web.metadata.genresLocked' : 'web.metadata.genresUnlocked')}</small> : spec.field === 'tags' ? <small>{t('web.metadata.tagsFiling')}</small> : null}
+      <button type="button" className={styles.lock} disabled={busy} aria-pressed={locked} onClick={() => onLock(!locked)}>{t(locked ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button></header>
+    <div className={styles.tagChips}>{values.map((value, index) => <span className={styles.tagChip} key={index}>
+      {value}<button type="button" disabled={busy} aria-label={t('web.metadata.removeLabel', {label: value})} onClick={() => onValues(values.filter((_, at) => at !== index))}>×</button>
+    </span>)}<input disabled={busy} value={text} aria-label={placeholder} placeholder={placeholder} onChange={event => {setText(event.currentTarget.value); setError('');}} onKeyDown={event => {if (event.key === 'Enter' && !event.nativeEvent.isComposing) {event.preventDefault(); add();}}} onBlur={add}/></div>
+    {error ? <small className={styles.fieldError} role="alert">{error}</small> : null}
+  </section>;
 }
 
 function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch}: {
