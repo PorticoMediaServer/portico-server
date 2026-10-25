@@ -140,6 +140,9 @@ func (s *Service) retireAndClean(ctx context.Context, id string, held bool) erro
 // Collect is bounded and retryable. Physical custody, not an expired row or a
 // PID, proves that a crashed producer/helper can no longer write/read bytes.
 func (s *Service) Collect(ctx context.Context) error {
+	if dbwork.Snapshot(ctx) != nil {
+		return ErrInput
+	}
 	s.collectMu.Lock()
 	defer s.collectMu.Unlock()
 	if e := ctx.Err(); e != nil {

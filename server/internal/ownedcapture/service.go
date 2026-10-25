@@ -124,6 +124,11 @@ func bindLife(parent, other context.Context) (context.Context, func()) {
 // Capture never probes/reopens/resumes a provider. Producer.Admit must return
 // one already admitted from-start sequential body; only complete EOF bytes seal.
 func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt, err error) {
+	// Acquisition and immutable sealing must never join an outer transaction;
+	// publication here must be committed before any usable receipt is returned.
+	if dbwork.Snapshot(ctx) != nil {
+		return receipt, ErrInput
+	}
 	if !s.enter() {
 		return receipt, ErrCurrent
 	}

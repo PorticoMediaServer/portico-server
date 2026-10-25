@@ -418,3 +418,33 @@ func TestDestinationRejectsAReplacedOwnedDirectoryWithoutDeletingReplacement(t *
 		t.Fatal("cleanup modified replacement content", e)
 	}
 }
+
+func TestCaptureAndOpenRefuseAnOuterTransactionBeforeSourceOrByteWork(t *testing.T) {
+	s, p := fixture(t)
+	outer, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassInteractive)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Capture(outer.Context(), Request{AssetID: "physical-asset"}); e == nil {
+		outer.Rollback()
+		t.Fatal("source IO joined outer accepting transaction")
+	}
+	if len(p.records) != 0 || p.reads != 0 {
+		outer.Rollback()
+		t.Fatal("source admission ran before outer-transaction refusal")
+	}
+	outer.Rollback()
+	receipt := capture(t, s)
+	outer, e = dbwork.Begin(context.Background(), s.db, dbwork.ClassInteractive)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer outer.Rollback()
+	if reader, e := s.Open(outer.Context(), receipt); e == nil {
+		reader.Close()
+		t.Fatal("descriptor escaped before its reader pin transaction committed")
+	}
+	if e = s.Collect(outer.Context()); e == nil {
+		t.Fatal("physical cleanup joined outer transaction")
+	}
+}

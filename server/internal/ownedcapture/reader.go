@@ -135,6 +135,9 @@ func (r *Reader) CheckTx(ctx context.Context, tx *sql.Tx) error {
 	return fail(r.checkFile(ctx))
 }
 func (r *Reader) Check(ctx context.Context) error {
+	if tx := dbwork.Snapshot(ctx); tx != nil {
+		return r.CheckTx(ctx, tx)
+	}
 	if e := r.source.Check(ctx); e != nil {
 		r.cancel()
 		return e
@@ -173,6 +176,11 @@ func (r *Reader) Close() error {
 // Open requires an exact previously accepted receipt value. No ID-only/latest
 // artifact lookup, path, provider reopen or digest-based sharing is available.
 func (s *Service) Open(ctx context.Context, expected Receipt) (*Reader, error) {
+	// Read pins must commit before opening/hash-verifying bytes, never remain
+	// pending in a caller transaction while a descriptor is already usable.
+	if dbwork.Snapshot(ctx) != nil {
+		return nil, ErrInput
+	}
 	if !s.enter() {
 		return nil, ErrCurrent
 	}
