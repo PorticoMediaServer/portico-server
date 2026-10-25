@@ -87,7 +87,7 @@ func (d Dependencies) readingSavedGroupResolve(ctx context.Context, tx *sql.Tx, 
 		return catalog.ReadingSavedGroupProof{}, err
 	}
 	viewer := catalog.Viewer{Profile: identity.PersonalKey(live.Viewer), Fence: scope.Fence, Libraries: []string{target.LibraryID}, Restrictions: restrictions}
-	group, err := catalog.ResolveReadingSavedGroupTx(ctx, tx, viewer, target)
+	group, err := d.Catalog.ResolveReadingSavedGroupTx(ctx, tx, viewer, target)
 	return group.Proof, err
 }
 
