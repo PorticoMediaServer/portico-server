@@ -56,7 +56,7 @@ export function AccountProfilesView({binding, onSwitchServer}: {binding: Profile
   const profiles = snapshot?.profiles.map(profile => ({...profile, eligible: true}));
   const selected = profiles?.find(profile => profile.id === selectedId);
   const closeRecovery = () => {activeRecovery.current?.dispose(); activeRecovery.current = undefined; setRecovery(undefined);};
-  if (!snapshot || !server) return <AuthStage legal={false}><AuthError error={state.error} />{Boolean(state.error) && <Button onClick={() => void binding.loadProfiles()}>{defaultI18n.t('action.tryAgain')}</Button>}</AuthStage>;
+  if (!snapshot || !server) return <AuthStage legal={false}>{!state.error && <p role="status">{defaultI18n.t('auth.loadingProfiles')}</p>}<AuthError error={state.error} />{Boolean(state.error) && <Button onClick={() => void binding.loadProfiles()}>{defaultI18n.t('action.tryAgain')}</Button>}</AuthStage>;
   // Required password/two-step pages are a different account-only continuation.
   // This picker cannot offer profiles until the actual controller clears it.
   if (state.phase !== 'profiles' || snapshot.twoStepSetupRequired) return null;
