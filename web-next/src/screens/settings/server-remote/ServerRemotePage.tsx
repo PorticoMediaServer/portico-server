@@ -39,7 +39,7 @@ export function ServerRemotePage({api, isCurrent, account, openSection, groups, 
   return <div className={styles.page}>
     <h2 className={styles.title}>{t('next.settingsSpec.server.remote.title')}</h2>
     <dl className={styles.facts}>
-      <div><dt>{t('next.remoteStatus.reachability')}</dt><dd>{remote ? remoteAccessSummary(remote) : t('next.remoteStatus.reading')}</dd></div>
+      <div><dt>{t('next.remoteStatus.reachability')}</dt><dd>{remote ? remoteAccessSummary(remote, t) : t('next.remoteStatus.reading')}</dd></div>
       {publicAddresses.length > 0 && <div><dt>{t('next.remoteStatus.addresses')}</dt><dd className={styles.mono}>{publicAddresses.join(', ')}</dd></div>}
       <div><dt>{t('next.remoteStatus.secure')}</dt><dd>{tls ? (tls.publiclyTrusted ? t('next.remoteStatus.trusted') : tls.configured ? t('next.remoteStatus.localOnly') : t('next.remoteStatus.off')) : t('next.remoteStatus.reading')}
         {tls?.notAfter ? ` · ${t('next.remoteStatus.expires', {when: tls.notAfter})}` : ''}</dd></div>
