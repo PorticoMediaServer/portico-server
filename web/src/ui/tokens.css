@@ -11,6 +11,7 @@
   --color-raised-bright: #1d3848;
   --color-raised-soft: #0c1a25;
   --color-player-notice: #0c1923;
+  --color-message-log: #050d14;
   --color-live-player-scrim: #04090d;
   --color-panel: #0b1822;
   --color-overlay-surface: #132634;
@@ -401,6 +402,18 @@
   --type-troubleshooting-permission-lede-line: 1.17813rem;
   --type-troubleshooting-permission-lede-weight: 400;
   --type-troubleshooting-permission-lede-tracking: 0em;
+  --type-troubleshooting-messages-lede-size: 0.875rem;
+  --type-troubleshooting-messages-lede-line: 1.3125rem;
+  --type-troubleshooting-messages-lede-weight: 400;
+  --type-troubleshooting-messages-lede-tracking: 0em;
+  --type-troubleshooting-messages-log-size: 0.78125rem;
+  --type-troubleshooting-messages-log-line: 1.17188rem;
+  --type-troubleshooting-messages-log-weight: 400;
+  --type-troubleshooting-messages-log-tracking: 0em;
+  --type-troubleshooting-messages-text-size: 0.84375rem;
+  --type-troubleshooting-messages-text-line: 1.22344rem;
+  --type-troubleshooting-messages-text-weight: 500;
+  --type-troubleshooting-messages-text-tracking: 0em;
   --type-troubleshooting-log-size: 0.8125rem;
   --type-troubleshooting-log-line: 1.21875rem;
   --type-troubleshooting-log-weight: 400;
