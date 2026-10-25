@@ -79,7 +79,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     setRecoveryChoice(true);
   };
   const openRecoveryFromFile = () => {
-    if (!alive.current || busy || entry.getSnapshot() !== state || form.getSnapshot() !== input || state.phase !== 'password' || !state.origin || !state.pin) return;
+    if (!alive.current || busy || entry.getSnapshot() !== state || form.getSnapshot() !== input || state.phase !== 'password' || !state.origin || !state.pin || !state.server) return;
     form.clear(); setError(undefined); setRecoveryChoice(false);
     setRecovery({entry, origin: state.origin, serverId: state.server.id, pin: state.pin});
   };
