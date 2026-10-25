@@ -342,37 +342,48 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 // failure is returned as itself and never retried as a miss.
 func (o *object) fromRangeCache(ctx context.Context, offset, length int64, release func()) (io.ReadCloser, error) {
 	cache := o.rangeCache
-	if cache == nil || offset < 0 || offset > cache.cached {
+	if cache == nil || offset < 0 {
+		return nil, nil
+	}
+	var configured, floor int64
+	if err := cache.service.db.QueryRowContext(ctx, `SELECT cache_bytes,cache_floor_bytes FROM remote_source_settings WHERE source_id=?`, cache.source).Scan(&configured, &floor); err != nil || configured <= 0 {
+		// The source's cache was switched off after this acquisition opened.
 		return nil, nil
 	}
 	end := offset + length
-	if end > cache.guard.cached {
-		cache.guard.mu.Lock()
-		// Re-check under the writer lock: another acquisition may have grown it.
-		if end > cache.guard.cached {
-			response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.guard.cached, end-1))
-			if err != nil {
-				cache.guard.mu.Unlock()
-				return nil, mapError(err)
-			}
-			appendErr := cache.append(ctx, response.Body, end)
-			closeErr := response.Body.Close()
-			if appendErr != nil {
-				cache.guard.mu.Unlock()
-				return nil, appendErr
-			}
-			if closeErr != nil {
-				cache.guard.mu.Unlock()
-				return nil, mapError(closeErr)
-			}
-			if end > cache.guard.cached {
-				cache.guard.mu.Unlock()
-				return nil, storage.ErrRemoteChanged
-			}
-		}
-		cache.guard.mu.Unlock()
+	if end > configured {
+		// A read larger than the cache's whole size is a legitimate miss.
+		return nil, nil
 	}
-	return cache.holdReader(ctx, offset, length, release), nil
+	cache.guard.mu.Lock()
+	if offset > cache.guard.cached {
+		cache.guard.mu.Unlock()
+		return nil, nil
+	}
+	if end > cache.guard.cached {
+		response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.guard.cached, end-1))
+		if err != nil {
+			cache.guard.mu.Unlock()
+			return nil, mapError(err)
+		}
+		appendErr := cache.append(ctx, response.Body, end)
+		closeErr := response.Body.Close()
+		if appendErr != nil {
+			cache.guard.mu.Unlock()
+			return nil, appendErr
+		}
+		if closeErr != nil {
+			cache.guard.mu.Unlock()
+			return nil, mapError(closeErr)
+		}
+		if end > cache.guard.cached {
+			cache.guard.mu.Unlock()
+			return nil, storage.ErrRemoteChanged
+		}
+	}
+	reader := cache.holdReaderLocked(ctx, offset, length, release)
+	cache.guard.mu.Unlock()
+	return reader, nil
 }
 
 func (o *object) Close() error {
@@ -394,6 +405,7 @@ func (o *object) Close() error {
 			commit, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = o.rangeCache.commit(commit)
 			cancel()
+			o.rangeCache.unpin()
 			o.rangeCache = nil
 		}
 		o.mu.Unlock()

@@ -123,6 +123,7 @@ func (s *Service) openRangeCache(ctx context.Context, b binding, generation stri
 		}
 		guard.cached = 0
 	}
+	guard.pins++
 	return &rangeCache{service: s, source: b.ID, key: key, file: handle, size: snapshot.Size, configured: bytes, floor: floor, guard: guard, generation: generation, binding: b}, nil
 }
 
@@ -325,8 +326,13 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 	budget := s.budgetFor(source)
 	for _, v := range victims {
 		g := s.guardFor(source, v.key)
-		g.mu.Lock()
-		if g.readers > 0 {
+		// Never block while another key's guard is held by this caller: a pair
+		// of growths would otherwise wait on each other. Skipping is safe; the
+		// next attempt reclaims.
+		if !g.mu.TryLock() {
+			continue
+		}
+		if g.readers > 0 || g.pins > 0 {
 			g.mu.Unlock()
 			continue
 		}
@@ -337,6 +343,8 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 		if dirErr == nil && filepath.Base(v.file) == v.file {
 			_ = os.Remove(filepath.Join(directory, v.file))
 		}
+		// The inode is gone; the shared prefix for that key restarts empty.
+		g.cached, g.loaded = 0, false
 		g.mu.Unlock()
 		budget.subtract(v.bytes)
 	}
@@ -351,8 +359,13 @@ func (s *Service) clearSourceCache(ctx context.Context, source string) error {
 	}
 	s.retireSourceCacheGuards(source)
 	s.cacheMu.Lock()
-	delete(s.cacheBudgets, source)
+	budget := s.cacheBudgets[source]
 	s.cacheMu.Unlock()
+	if budget != nil {
+		budget.mu.Lock()
+		budget.used, budget.reserved, budget.loaded = 0, 0, false
+		budget.mu.Unlock()
+	}
 	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=?`, source); err != nil {
 		return err
 	}
@@ -457,6 +470,9 @@ type cacheGuard struct {
 	// source+key; it only moves under mu.
 	cached int64
 	loaded bool
+	// pins counts acquisitions holding this entry open, so eviction never
+	// unlinks a file an acquisition may still publish from.
+	pins int
 }
 
 // guardFor returns the per source+key ownership record, creating it lazily.
@@ -597,9 +613,28 @@ func (r *cacheReadCloser) Close() error {
 
 func (c *rangeCache) holdReader(ctx context.Context, offset, length int64, release func()) io.ReadCloser {
 	c.guard.mu.Lock()
+	defer c.guard.mu.Unlock()
+	return c.holdReaderLocked(ctx, offset, length, release)
+}
+
+// holdReaderLocked is the atomic form for a caller already holding the guard:
+// lookup and reader pin cannot be separated from the fill decision.
+func (c *rangeCache) holdReaderLocked(ctx context.Context, offset, length int64, release func()) io.ReadCloser {
 	c.guard.readers++
-	c.guard.mu.Unlock()
 	return &cacheReadCloser{reader: io.NewSectionReader(c.file, offset, length), ctx: ctx, release: release, guard: c.guard}
+}
+
+// unpin releases the acquisition's hold on this entry after its cache has been
+// committed or discarded.
+func (c *rangeCache) unpin() {
+	if c == nil || c.guard == nil {
+		return
+	}
+	c.guard.mu.Lock()
+	if c.guard.pins > 0 {
+		c.guard.pins--
+	}
+	c.guard.mu.Unlock()
 }
 
 func (s *Service) cacheUsed(ctx context.Context, source string) (int64, error) {
