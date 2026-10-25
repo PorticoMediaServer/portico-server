@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {encodedRoutePath, routeBody} from '../../../packages/contracts/src/hosted/routes.ts';
-import {ServicesBadge, ServicesEmpty, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
+import {ServicesBadge, ServicesDangerAction, ServicesEmpty, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {Button} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import {HostedError, ServicesQuiet} from '../kit/accounts/ServicesAuth';
@@ -86,6 +86,6 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
       </ServicesWorkspaceRow>
     </ServicesGroup> : null}
     <Dialog open={Boolean(leaving)} onOpenChange={open => { if (!open && !busy) setLeaving(undefined); }} title={t('web.hostedAccount.leaveTitle', {server: leaving?.name ?? ''})}
-      description={t('web.hostedAccount.leaveBody', {server: leaving?.name ?? ''})} footer={<><Button size="small" disabled={busy} onClick={() => setLeaving(undefined)}>{t('action.cancel')}</Button><Button size="small" loading={busy} onClick={() => void leave()}>{t('web.hostedAccount.leaveServer')}</Button></>}><></></Dialog>
+      description={t('web.hostedAccount.leaveBody', {server: leaving?.name ?? ''})} footer={<><Button size="small" disabled={busy} onClick={() => setLeaving(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction loading={busy} onClick={() => void leave()}>{t('web.hostedAccount.leaveServer')}</ServicesDangerAction></>}><></></Dialog>
   </>;
 }
