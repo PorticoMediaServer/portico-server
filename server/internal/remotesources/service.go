@@ -68,6 +68,7 @@ type Service struct {
 	cacheMu             sync.Mutex
 	cacheBudgets        map[string]*sourceCacheBudget
 	cacheGuards         map[string]*cacheGuard
+	cacheReconcile      struct{ source, key string }
 	nativeListings      map[string]*nativeListing
 	nativeClosed        bool
 	inventory, playback chan struct{}
@@ -398,27 +399,6 @@ func (s *Service) invalidate(id string) {
 // writes — a source added, a scan finished, a job cancelled — so the loop is
 // woken by commits rather than by a thirty-second clock that issued three delete
 // transactions on an idle server forever. The safety tick is the backstop.
-func (s *Service) reconcileSourceCaches(ctx context.Context) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM remote_sources WHERE removed=0 LIMIT 16`)
-	if err != nil {
-		return
-	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
-		}
-	}
-	rows.Close()
-	for _, id := range ids {
-		if ctx.Err() != nil {
-			return
-		}
-		s.reconcileSourceCache(ctx, id, s.private)
-	}
-}
-
 func (s *Service) Run(ctx context.Context) {
 	if s.startReadRuntime(ctx) != nil {
 		return
@@ -437,14 +417,10 @@ func (s *Service) Run(ctx context.Context) {
 	wake := worker.NewSignal()
 	stopWake := registerRemoteSourceWake(wake)
 	defer stopWake()
-	reconciled := false
 	worker.Run(ctx, "remotesources", wake, func(ctx context.Context) time.Duration {
 		_ = s.RefreshMounts(ctx)
-		if !reconciled {
-			// One bounded startup reconciliation; later wakes do not repeat it.
-			reconciled = true
-			s.reconcileSourceCaches(ctx)
-		}
+		// One bounded page per wake, resumable until every row has been checked.
+		s.reconcileSourceCachePage(ctx)
 		// Completed/failed old scan listings are disposable adapter cache; current
 		// pending cursors keep their snapshots regardless of wall-clock age.
 		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_listing_sessions WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM jobs j WHERE (j.id=remote_listing_sessions.job_id OR EXISTS(SELECT 1 FROM remote_inventory_checks c WHERE c.check_job=remote_listing_sessions.job_id AND c.job_id=j.id)) AND j.status IN ('queued','running','paused'))`, time.Now().Add(-24*time.Hour).Unix())

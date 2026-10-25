@@ -20446,6 +20446,9 @@
             ],
             "type": "object"
           },
+          "artworkFallbackUrl": {
+            "type": "string"
+          },
           "artworkRoles": {
             "items": {
               "type": "string"
@@ -118734,6 +118737,9 @@
             ],
             "type": "object"
           },
+          "artworkFallbackUrl": {
+            "type": "string"
+          },
           "artworkRoles": {
             "items": {
               "type": "string"
@@ -119192,6 +119198,12 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "defaultLanguage": {
+            "type": "string"
+          },
+          "defaultRegion": {
+            "type": "string"
           },
           "includeAdult": {
             "type": "boolean"
@@ -197660,6 +197672,9 @@
             ],
             "type": "object"
           },
+          "artworkFallbackUrl": {
+            "type": "string"
+          },
           "artworkRoles": {
             "items": {
               "type": "string"
@@ -198352,6 +198367,9 @@
               "jobs"
             ],
             "type": "object"
+          },
+          "artworkFallbackUrl": {
+            "type": "string"
           },
           "artworkRoles": {
             "items": {
@@ -214850,6 +214868,12 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "defaultLanguage": {
+            "type": "string"
+          },
+          "defaultRegion": {
+            "type": "string"
+          },
           "expectedRevision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -214927,6 +214951,12 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "defaultLanguage": {
+            "type": "string"
+          },
+          "defaultRegion": {
+            "type": "string"
           },
           "includeAdult": {
             "type": "boolean"
@@ -274286,6 +274316,12 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "defaultLanguage": {
+                      "type": "string"
+                    },
+                    "defaultRegion": {
+                      "type": "string"
+                    },
                     "includeAdult": {
                       "type": "boolean"
                     },
@@ -274504,6 +274540,12 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "defaultLanguage": {
+                    "type": "string"
+                  },
+                  "defaultRegion": {
+                    "type": "string"
+                  },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -274589,6 +274631,12 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "defaultLanguage": {
+                      "type": "string"
+                    },
+                    "defaultRegion": {
+                      "type": "string"
                     },
                     "includeAdult": {
                       "type": "boolean"
@@ -430341,6 +430389,9 @@
                       ],
                       "type": "object"
                     },
+                    "artworkFallbackUrl": {
+                      "type": "string"
+                    },
                     "artworkRoles": {
                       "items": {
                         "type": "string"
@@ -431113,6 +431164,9 @@
                         "jobs"
                       ],
                       "type": "object"
+                    },
+                    "artworkFallbackUrl": {
+                      "type": "string"
                     },
                     "artworkRoles": {
                       "items": {
@@ -431911,6 +431965,9 @@
                       ],
                       "type": "object"
                     },
+                    "artworkFallbackUrl": {
+                      "type": "string"
+                    },
                     "artworkRoles": {
                       "items": {
                         "type": "string"
@@ -432569,6 +432626,9 @@
                         "jobs"
                       ],
                       "type": "object"
+                    },
+                    "artworkFallbackUrl": {
+                      "type": "string"
                     },
                     "artworkRoles": {
                       "items": {

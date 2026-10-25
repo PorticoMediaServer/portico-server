@@ -18780,6 +18780,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "artworkFallbackUrl": {
+        "type": "string"
+      },
       "artworkRoles": {
         "items": {
           "type": "string"
@@ -114624,6 +114627,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "artworkFallbackUrl": {
+        "type": "string"
+      },
       "artworkRoles": {
         "items": {
           "type": "string"
@@ -115082,6 +115088,12 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "defaultLanguage": {
+        "type": "string"
+      },
+      "defaultRegion": {
+        "type": "string"
       },
       "includeAdult": {
         "type": "boolean"
@@ -179002,6 +179014,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "artworkFallbackUrl": {
+        "type": "string"
+      },
       "artworkRoles": {
         "items": {
           "type": "string"
@@ -179688,6 +179703,9 @@ export const schemas = {
           "jobs"
         ],
         "type": "object"
+      },
+      "artworkFallbackUrl": {
+        "type": "string"
       },
       "artworkRoles": {
         "items": {
@@ -196012,6 +196030,12 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "defaultLanguage": {
+        "type": "string"
+      },
+      "defaultRegion": {
+        "type": "string"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -196089,6 +196113,12 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "defaultLanguage": {
+        "type": "string"
+      },
+      "defaultRegion": {
+        "type": "string"
       },
       "includeAdult": {
         "type": "boolean"

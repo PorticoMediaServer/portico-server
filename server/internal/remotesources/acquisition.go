@@ -346,27 +346,31 @@ func (o *object) fromRangeCache(ctx context.Context, offset, length int64, relea
 		return nil, nil
 	}
 	end := offset + length
-	if end > cache.cached {
+	if end > cache.guard.cached {
 		cache.guard.mu.Lock()
-		defer cache.guard.mu.Unlock()
 		// Re-check under the writer lock: another acquisition may have grown it.
-		if end > cache.cached {
-			response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.cached, end-1))
+		if end > cache.guard.cached {
+			response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.guard.cached, end-1))
 			if err != nil {
+				cache.guard.mu.Unlock()
 				return nil, mapError(err)
 			}
 			appendErr := cache.append(ctx, response.Body, end)
 			closeErr := response.Body.Close()
 			if appendErr != nil {
+				cache.guard.mu.Unlock()
 				return nil, appendErr
 			}
 			if closeErr != nil {
+				cache.guard.mu.Unlock()
 				return nil, mapError(closeErr)
 			}
-			if end > cache.cached {
+			if end > cache.guard.cached {
+				cache.guard.mu.Unlock()
 				return nil, storage.ErrRemoteChanged
 			}
 		}
+		cache.guard.mu.Unlock()
 	}
 	return cache.holdReader(ctx, offset, length, release), nil
 }
