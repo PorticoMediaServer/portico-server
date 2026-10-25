@@ -27,6 +27,7 @@ import (
 	"portico.local/server/internal/diskspace"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/imagework"
+	"portico.local/server/internal/metadataprovider"
 )
 
 const artworkBytes = 8 << 20
@@ -107,6 +108,11 @@ func (s *Service) fetchArtwork(ctx context.Context, origin, provider string) ([]
 	return s.fetchArtworkRemote(ctx, origin, provider, artworkBytes, "image/*")
 }
 func (s *Service) fetchArtworkRemote(ctx context.Context, origin, provider string, limit int64, accept string) ([]byte, error) {
+	ctx = s.lookupContext(ctx)
+	check, err := metadataprovider.BeginNetworkAdmission(ctx)
+	if err != nil {
+		return nil, err
+	}
 	client := s.artClient
 	if client == nil {
 		client = newArtworkClient()
@@ -122,6 +128,9 @@ func (s *Service) fetchArtworkRemote(ctx context.Context, origin, provider strin
 		}
 		req.Header.Set("User-Agent", "Portico/0.1 (https://getportico.tv)")
 		req.Header.Set("Accept", accept)
+		if err := check(); err != nil {
+			return nil, err
+		}
 		response, err := client.Do(req)
 		if err != nil {
 			return nil, errors.New("offline")
@@ -151,6 +160,9 @@ func (s *Service) fetchArtworkRemote(ctx context.Context, origin, provider strin
 			raw = nil
 		}
 		response.Body.Close()
+		if err := check(); err != nil {
+			return nil, err
+		}
 		return raw, e
 	}
 	return nil, ErrArtworkPending

@@ -22,6 +22,7 @@ func (s *Service) musicCheckCurrent(ctx context.Context, j mbJob) error {
 	return s.activeMB(ctx, tx, j)
 }
 func (s *Service) musicSongSearch(ctx context.Context, j mbJob) error {
+	ctx = s.lookupContext(ctx)
 	scores := map[string]float64{}
 	j.fingerprintStatus = musicFingerprintStatus(j, s.acoustid != nil)
 	if j.fingerprintStatus == "ready" {

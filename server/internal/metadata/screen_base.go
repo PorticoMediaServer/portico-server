@@ -36,6 +36,7 @@ type screenEdition struct {
 	Source  string `json:"source"`
 }
 type screenBase struct {
+	LookupEpoch                                                                int64
 	ForceRefresh                                                               bool
 	IdentityLocked                                                             bool
 	OwnerDigest                                                                string
@@ -188,6 +189,12 @@ func readScreenBaseWithin(ctx context.Context, tx *sql.Tx, kind, id string, boun
 	if err != nil {
 		return b, err
 	}
+	online, epoch, policyErr := onlineLookupPolicyTx(ctx, tx)
+	if policyErr != nil {
+		return b, policyErr
+	}
+	b.Enabled = b.Enabled && online
+	b.LookupEpoch = epoch
 	b.Parent = entityPublic(ctx, tx, scanParentID(parentRaw))
 	if err = json.Unmarshal([]byte(providers), &b.Providers); err != nil {
 		return b, err

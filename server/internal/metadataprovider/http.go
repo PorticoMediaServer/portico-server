@@ -118,6 +118,10 @@ func retryDelay(value string, now time.Time) time.Duration {
 // than a decoded value, shares one pacing clock, one in-flight gate and one
 // Retry-After deferral. base overrides the transport's origin when non-empty.
 func (t *transport) raw(ctx context.Context, client *http.Client, base, route, token string, budget int64) ([]byte, error) {
+	check, admissionErr := networkAdmission(ctx)
+	if admissionErr != nil {
+		return nil, admissionErr
+	}
 	if client == nil {
 		client = t.client
 	}
@@ -142,6 +146,9 @@ func (t *transport) raw(ctx context.Context, client *http.Client, base, route, t
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	if err := check(); err != nil {
+		return nil, err
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -161,7 +168,14 @@ func (t *transport) raw(ctx context.Context, client *http.Client, base, route, t
 		}
 		return nil, problem
 	}
-	return readBounded(ctx, resp, budget, t.provider)
+	raw, err := readBounded(ctx, resp, budget, t.provider)
+	if err != nil {
+		return nil, err
+	}
+	if err := check(); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
 
 // readBounded reads a response body up to a budget, so a provider cannot make this process
@@ -181,6 +195,10 @@ func readBounded(ctx context.Context, resp *http.Response, budget int64, provide
 }
 
 func (t *transport) request(ctx context.Context, method, route, token string, body any, out any) error {
+	check, admissionErr := networkAdmission(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
 	// Only provider adapters construct paths. Redirect destinations are never fetched here.
 	if !strings.HasPrefix(route, "/") || strings.HasPrefix(route, "//") {
 		return errors.New("invalid provider route")
@@ -210,6 +228,9 @@ func (t *transport) request(ctx context.Context, method, route, token string, bo
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if err := check(); err != nil {
+		return err
 	}
 	resp, err := t.client.Do(req)
 	if err != nil {
@@ -243,6 +264,9 @@ func (t *transport) request(ctx context.Context, method, route, token string, bo
 	}
 	if len(raw) > budget {
 		return &Error{Provider: t.provider, Code: "response_too_large"}
+	}
+	if err := check(); err != nil {
+		return err
 	}
 	if err = json.Unmarshal(raw, out); err != nil {
 		return &Error{Provider: t.provider, Code: "invalid_response"}

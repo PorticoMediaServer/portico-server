@@ -70,6 +70,7 @@ type musicArtistFacts struct {
 
 // musicArtistStep enriches a bounded page of MusicBrainz-matched artists.
 func (s *Service) musicArtistStep(ctx context.Context) error {
+	ctx = s.lookupContext(ctx)
 	if s.wikidata == nil || s.wikipedia == nil || s.commons == nil {
 		return nil
 	}
@@ -151,6 +152,9 @@ func (s *Service) musicArtistStep(ctx context.Context) error {
 		results[i].facts, results[i].err = s.fetchMusicArtist(ctx, mb, c.mbid)
 	}
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		if err := checkLookupContextTx(ctx, tx); err != nil {
+			return err
+		}
 		stamp := tvdbStamp(s.publicationTime())
 		now := s.publicationTime().Format(time.RFC3339Nano)
 		for i, c := range claims {
@@ -192,6 +196,7 @@ func (s *Service) musicArtistStep(ctx context.Context) error {
 // fetchMusicArtist runs one chain. A missing link ends it with what is known
 // (MusicBrainz facts are always kept); only a failed request is retried.
 func (s *Service) fetchMusicArtist(ctx context.Context, mb musicArtistSource, mbid string) (musicArtistFacts, error) {
+	ctx = s.lookupContext(ctx)
 	var out musicArtistFacts
 	artist, err := mb.Artist(ctx, mbid)
 	if err != nil {

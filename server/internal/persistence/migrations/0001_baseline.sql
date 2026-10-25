@@ -2381,6 +2381,8 @@ CREATE TABLE lyric_fetch_runs (
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
 ) STRICT;
 CREATE TABLE metadata_runtime_settings(
+ online_lookups INTEGER NOT NULL DEFAULT 1 CHECK(online_lookups IN(0,1)),
+ lookup_epoch INTEGER NOT NULL DEFAULT 1 CHECK(lookup_epoch>0),
  default_language TEXT NOT NULL DEFAULT 'en' CHECK(default_language IN('en','ja','fr','de','es','it','pt','nl','sv','no','da','fi','pl','cs','sk','hu','ro','el','tr','ru','uk','ar','he','hi','th','vi','ko','zh')),
  default_region TEXT NOT NULL DEFAULT 'US' CHECK(length(default_region)=2 AND default_region GLOB '[A-Z][A-Z]'),
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,

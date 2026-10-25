@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/localonly"
 	"portico.local/server/internal/mediaartifact"
 	"portico.local/server/internal/storage"
 )
@@ -385,6 +386,7 @@ type Receipt struct {
 	Deleted         bool   `json:"deleted"`
 }
 type publication struct {
+	lookupEpoch                                              int64
 	object                                                   mediaartifact.Object
 	origin, provider, attribution, originalDigest, discovery string
 	discoveryRevision                                        int64
@@ -616,6 +618,17 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 	}
 	if !src.Available || src.size != pub.source.size || src.modified != pub.source.modified || src.facts != pub.source.facts {
 		return Receipt{}, ErrConflict
+	}
+	if pub.origin == "provider" {
+		if err := localonly.CheckOnline(ctx, tx, pub.lookupEpoch); err != nil {
+			return Receipt{}, err
+		}
+		if local, err := localonly.Item(ctx, tx, item); err != nil || local {
+			if err != nil {
+				return Receipt{}, err
+			}
+			return Receipt{}, localonly.Err
+		}
 	}
 	if pub.discovery != "" && src.InventoryRevision != pub.discoveryRevision {
 		return Receipt{}, ErrConflict

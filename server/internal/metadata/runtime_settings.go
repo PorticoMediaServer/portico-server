@@ -15,6 +15,7 @@ const DefaultLocalArtworkLimitBytes int64 = 2 << 30
 // MetadataSettings exposes credential presence only. Submitted keys never return
 // in JSON or provider failures; blank keys restore Portico's application key.
 type MetadataSettings struct {
+	OnlineLookups            *bool                     `json:"onlineLookups,omitempty"`
 	DefaultLanguage          string                    `json:"defaultLanguage,omitempty"`
 	DefaultRegion            string                    `json:"defaultRegion,omitempty"`
 	LibrariesComplete        *bool                     `json:"librariesComplete,omitempty"`
@@ -77,6 +78,7 @@ func (s *Service) CheckOpenSubtitles(ctx context.Context) (OpenSubtitlesStatus, 
 }
 
 type MetadataSettingsUpdate struct {
+	OnlineLookups          *bool                   `json:"onlineLookups,omitempty"`
 	DefaultLanguage        *string                 `json:"defaultLanguage,omitempty"`
 	DefaultRegion          *string                 `json:"defaultRegion,omitempty"`
 	Libraries              []MetadataLibraryChange `json:"libraries,omitempty"`
@@ -106,9 +108,11 @@ func readMetadataSettings(ctx context.Context, tx *sql.Tx) (MetadataSettings, st
 }
 func readMetadataSettingsWithSubtitles(ctx context.Context, tx *sql.Tx) (MetadataSettings, string, string, subtitleCredentials, error) {
 	var out MetadataSettings
+	var online bool
 	var tmdb, tvdb string
 	var subs subtitleCredentials
-	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,artwork_max_edge,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password,default_language,default_region FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &out.ArtworkMaxEdge, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password, &out.DefaultLanguage, &out.DefaultRegion)
+	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,artwork_max_edge,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password,default_language,default_region,online_lookups FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &out.ArtworkMaxEdge, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password, &out.DefaultLanguage, &out.DefaultRegion, &online)
+	out.OnlineLookups = &online
 	out.TMDBCredentialConfigured = tmdb != ""
 	out.TVDBCredentialConfigured = tvdb != ""
 	out.OpenSubtitlesKeyConfigured = subs.key != ""
@@ -282,6 +286,10 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	if in.DefaultRegion != nil && (len(*in.DefaultRegion) != 2 || (*in.DefaultRegion)[0] < 'A' || (*in.DefaultRegion)[0] > 'Z' || (*in.DefaultRegion)[1] < 'A' || (*in.DefaultRegion)[1] > 'Z') {
 		return current, ErrRepairInput
 	}
+	online := current.OnlineLookups != nil && *current.OnlineLookups
+	if in.OnlineLookups != nil {
+		online = *in.OnlineLookups
+	}
 	defaultLanguage, defaultRegion := current.DefaultLanguage, current.DefaultRegion
 	if in.DefaultLanguage != nil {
 		defaultLanguage = *in.DefaultLanguage
@@ -317,7 +325,10 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	if in.ArtworkMaxEdge != nil {
 		edge = *in.ArtworkMaxEdge
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,artwork_max_edge=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=?,default_language=?,default_region=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, edge, tmdb, tvdb, subs.key, subs.username, subs.password, defaultLanguage, defaultRegion)
+	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,artwork_max_edge=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=?,default_language=?,default_region=?,lookup_epoch=lookup_epoch+CASE WHEN online_lookups<>? THEN 1 ELSE 0 END,online_lookups=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, edge, tmdb, tvdb, subs.key, subs.username, subs.password, defaultLanguage, defaultRegion, online, online)
+	if e == nil && current.OnlineLookups != nil && online != *current.OnlineLookups {
+		e = invalidateLookupWorkTx(ctx, tx)
+	}
 	if e == nil && edge != current.ArtworkMaxEdge {
 		e = scheduleArtworkSizeTx(ctx, tx, current.ArtworkMaxEdge, edge)
 	}

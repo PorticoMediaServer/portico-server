@@ -84,6 +84,7 @@ func (s *Service) screenRefreshPriority(ctx context.Context, b screenBase, remem
 // screenRefreshRecord produces the accepted identity's current document, asking the provider
 // only when the rules allow it. It reports the record and whether it came from the provider.
 func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id metadataprovider.ScreenID, provider ScreenProvider) (metadataprovider.ScreenRecord, error) {
+	ctx = s.lookupContext(ctx)
 	b := p.Base
 	now := s.publicationTime().UTC()
 	remembered, held, e := s.rememberedScreenRecord(ctx, b, id)
@@ -190,6 +191,7 @@ func (s *Service) rememberedEpisodeRecord(ctx context.Context, b screenBase) (me
 // republished from it; one past its window is refreshed only while the provider's refresh
 // allowance lasts; an episode never fetched is always asked for.
 func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provider screenEpisodeProvider) (metadataprovider.ScreenRecord, error) {
+	ctx = s.lookupContext(ctx)
 	b := p.Base
 	now := s.publicationTime().UTC()
 	remembered, held, e := s.rememberedEpisodeRecord(ctx, b)
