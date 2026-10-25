@@ -36,7 +36,7 @@ export type SelectionBarProps = Readonly<{
   selectAll?: {kind: 'view'; total: number} | {kind: 'row'} | {kind: 'clear'};
   onSelectAll?: () => void;
   onExit: () => void;
-  allInView?: {visible: number};
+  allInView?: {visible: number; scope?: 'library' | 'view'};
   sticky?: boolean;
   className?: string;
 }>;

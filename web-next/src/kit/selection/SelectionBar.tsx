@@ -70,7 +70,7 @@ export function SelectionBar({selection, actions, context, typeCount, selectAll,
       <b>{text('next.selection.selected', {count: selection.count})}</b>{selectAll && onSelectAll && <SelectAll selectAll={selectAll} onSelectAll={onSelectAll} />}
       {context && <small>{context}</small>}
     </div>
-    {allInView && <div className={styles.allNote}><Icon name="i-check" size={18} /><span><b>{text('next.selection.allSelectedNote', {items: selectionCountText(selection)})}</b> {text('next.selection.allSelectedRemainder', {visible: allInView.visible})}</span><Button variant="text" size="xs" onClick={onExit}>{text('next.selection.clear')}</Button></div>}
+    {allInView && <div className={styles.allNote}><Icon name="i-check" size={18} /><span><b>{text(allInView.scope === 'view' ? 'next.selection.allSelectedViewNote' : 'next.selection.allSelectedNote', {items: selectionCountText(selection)})}</b> {text('next.selection.allSelectedRemainder', {visible: allInView.visible})}</span><Button variant="text" size="xs" onClick={onExit}>{text('next.selection.clear')}</Button></div>}
     {menu.menus}
   </div>;
 }
