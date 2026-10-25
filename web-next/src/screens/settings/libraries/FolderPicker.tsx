@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {browseServerFilesystem} from '@core/library-management.ts';
@@ -15,17 +15,35 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
 }>) {
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseServerFilesystem>>>();
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
+  const request = useRef<AbortController | undefined>(undefined);
   const read = useCallback(async (path?: string) => {
-    setBusy(true); setFailed(false);
-    try { const next = await browseServerFilesystem(api, {...(path ? {path} : {}), includeFiles: false, limit: 200}); setPage(next); setTyped(next.path); }
-    catch { setFailed(true); }
-    finally { setBusy(false); }
+    request.current?.abort();
+    const active = new AbortController();
+    request.current = active;
+    // A pending or failed destination must never leave the previous folder choosable.
+    setPage(undefined); setTyped(path ?? ''); setBusy(true); setFailed(false);
+    try {
+      const next = await browseServerFilesystem(api, {...(path ? {path} : {}), includeFiles: false, limit: 200}, active.signal);
+      if (active.signal.aborted || request.current !== active) return;
+      setPage(next); setTyped(next.path);
+    } catch {
+      if (!active.signal.aborted && request.current === active) setFailed(true);
+    } finally {
+      if (!active.signal.aborted && request.current === active) setBusy(false);
+    }
   }, [api]);
-  useEffect(() => { if (open) void read(undefined); }, [open, read]);
+  useEffect(() => {
+    if (open) void read(undefined);
+    return () => { request.current?.abort(); request.current = undefined; };
+  }, [open, read]);
+  const changeOpen = (next: boolean) => {
+    if (!next) { request.current?.abort(); request.current = undefined; }
+    onOpenChange(next);
+  };
   const go = (path: string) => { void read(path); };
-  return <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t('next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
-    footer={<><Button onClick={() => onOpenChange(false)}>{t('next.settings.cancel')}</Button>
-      <Button variant="primary" disabled={!page?.path || busy} onClick={() => { if (page?.path) { onChoose(page.path); onOpenChange(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
+  return <Dialog open={open} onOpenChange={changeOpen} size="md" title={t('next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
+    footer={<><Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
+      <Button variant="primary" disabled={!page?.path || busy || failed} onClick={() => { if (page?.path) { onChoose(page.path); changeOpen(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
     <div className={styles.picker}>
       <div className={styles.pickerPath}>
         <TextField label={t('next.settings.folderPath')} value={typed} onChange={event => setTyped(event.currentTarget.value)} />
