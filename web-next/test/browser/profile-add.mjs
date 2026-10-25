@@ -31,7 +31,7 @@ try {
       const page = await context.newPage(), errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`${base}/test/fixtures/profile-add.html?mode=${mode}`);
-      await page.locator('[data-ready]').waitFor();
+      await page.locator('[data-ready]').waitFor({state: 'attached'});
       if (mode === 'readonly') {
         assert.equal(await page.getByRole('dialog').count(), 0);
         assert.equal((await page.evaluate(() => window.profileTest.facts())).writes, 0);
@@ -44,7 +44,7 @@ try {
         if (mode === 'retired') await page.evaluate(() => window.profileTest.retire());
         await page.evaluate(() => window.profileTest.release());
         if (mode === 'failure') {
-          await page.locator('[data-failure]').waitFor();
+          await page.locator('[data-failure]').waitFor({state: 'attached'});
           const facts = await page.evaluate(() => window.profileTest.facts());
           assert.equal(facts.failures, 1);assert.equal(facts.closes, 1);
         } else if (mode === 'limit') {
