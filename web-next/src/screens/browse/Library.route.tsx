@@ -2,11 +2,12 @@ import {LibraryMetadataMenu} from '../metadata/LibraryMetadataMenu';
 import {ReadSeriesEntry} from '../read/ReadSeriesEntry';
 import {ReadPeriodicalEntry} from '../read/ReadPeriodicalEntry';
 import type {ReadingPeriodicalType} from '@portico/client-core';
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentView} from '@core/library-content.ts';
+import {LibraryManagementService} from '@core/library-management.ts';
 import {libraryTabs, readingTabModel, type LibraryTab} from '@core/presentation/library-tabs.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, type BrowseCapabilities} from '@core/browse.ts';
 import {metadataAgentPath, parseMetadataAgent} from '@core/server-admin/metadata-agent.ts';
@@ -118,16 +119,19 @@ function LibraryShow({context, captured, libraryId, search}: {context: ScreenCon
   useEffect(() => {selection.start(); return () => selection.dispose();}, [selection]);
   return <ShowScreen binding={binding} selection={selection} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
 }
+type ScanLease = Readonly<{context: ScreenContext; libraryId: string; life: {api: {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}; current: () => boolean}; signal: AbortSignal; service: LibraryManagementService; pending: {current: boolean}}>;
 /** The reading library's ⋯ keeps the owner's online unmatched entry, and adds only the rows
  *  whose ports this screen really holds: saving the current view, and the owner's library
- *  settings page. Mark all read, pins and scan wait for their own ports. */
-function readingLibraryMenu(resources: {life: {current: () => boolean}; controller: {canSaveView: () => boolean}}, context: ScreenContext, library: Library, onlineAttention: boolean, save: () => void) {
+ *  settings page. Mark all read and pins wait for their own ports; Scan is offered from its
+ *  own lease. */
+function readingLibraryMenu(resources: {life: {current: () => boolean}; controller: {canSaveView: () => boolean}}, context: ScreenContext, library: Library, onlineAttention: boolean, save: () => void, scan?: () => void) {
   const owner = context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' && context.identity.capabilities?.manageServer === true;
   const unmatched = onlineAttention && context.effects.editMetadata ? () => {if (resources.life.current() && context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {unmatched: true}}).catch(context.effects.reportError);} : undefined;
   const settings = owner ? () => {if (resources.life.current() && context.isCurrent()) void router.navigate({to: '/settings', search: {scope: 'server', section: 'libraries'}}).catch(context.effects.reportError);} : undefined;
   const canSave = resources.life.current() && context.isCurrent() && resources.controller.canSaveView();
-  if (!canSave && !unmatched && !settings) return undefined;
-  return <LibraryMenu owner={!!owner} read {...(canSave ? {onSaveView: save} : {})} {...(unmatched ? {onUnmatched: unmatched} : {})} {...(settings ? {onLibrarySettings: settings} : {})}/>;
+  if (!canSave && !unmatched && !settings && !scan) return undefined;
+  return <LibraryMenu owner={!!owner} read {...(canSave ? {onSaveView: save} : {})} {...(unmatched ? {onUnmatched: unmatched} : {})}
+    {...(settings ? {onLibrarySettings: settings} : {})} {...(scan ? {onScan: scan} : {})}/>;
 }
 function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
@@ -227,6 +231,37 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   // drawn column paints; the screen fills each column to the gutter.
   const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 170) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
   /** A Reading library draws the same wash and count line on its Books pivot, which builds its own header. */
+  /** The owner's Scan row is offered only when this library's own management read says the
+   *  server allows scanning it. Each setup gets a fresh lease: its own service, the captured
+   *  context and library it answers for, and a signal that retires it synchronously. */
+  const manageServer = context.identity?.viewer.authority === 'local' && context.identity.viewer.role === 'owner' && context.identity.capabilities?.manageServer === true;
+  const [scanOffer, setScanOffer] = useState<Readonly<{lease: ScanLease; allowed: boolean}>>();
+  useLayoutEffect(() => {
+    if (!manageServer || !isReadingLibrary(library.kind)) {setScanOffer(undefined); return;}
+    const controller = new AbortController(), life = resources.life;
+    const lease: ScanLease = {context, libraryId: library.id, life, signal: controller.signal, pending: {current: false},
+      service: new LibraryManagementService({scope: {serverId: context.scope.serverId, viewerId: context.scope.viewerId},
+        api: {request: <T,>(path: string, method?: string, body?: unknown, signal?: AbortSignal) =>
+          life.api.request<T>(path, method, body, controller.signal.aborted ? controller.signal : AbortSignal.any([controller.signal, ...(signal ? [signal] : [])]))}})};
+    let live = true;
+    setScanOffer(undefined);
+    void lease.service.selectLibrary(library.id).then(() => {
+      if (!live || controller.signal.aborted || !life.current() || !context.isCurrent()) return;
+      const selected = lease.service.getSnapshot().selected;
+      setScanOffer({lease, allowed: selected.phase === 'ready' && selected.data?.library.id === library.id && selected.data.library.actions.includes('scan')});
+    }).catch(error => {if (live && !controller.signal.aborted && life.current() && context.isCurrent()) context.effects.reportError(error);});
+    return () => {live = false; controller.abort(); lease.service.dispose();};
+  }, [manageServer, library.kind, library.id, resources, context]);
+  /** The click closes over the exact rendered lease and the exact selected row it offered. */
+  const scan = scanOffer?.allowed ? () => {
+    const {lease} = scanOffer;
+    if (lease.context !== context || lease.libraryId !== library.id || lease.signal.aborted || !lease.life.current()
+      || !context.isCurrent() || lease.pending.current) return;
+    const selected = lease.service.getSnapshot().selected;
+    if (selected.phase !== 'ready' || selected.data?.library.id !== library.id || !selected.data.library.actions.includes('scan')) return;
+    lease.pending.current = true;
+    void lease.service.scan().catch(error => {if (!lease.signal.aborted && lease.life.current() && context.isCurrent()) context.effects.reportError(error);}).finally(() => {lease.pending.current = false;});
+  } : undefined;
   const readingHeader = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
     api: resources.life.api, signal: resources.life.signal, isCurrent: resources.life.current, reportError: context.effects.reportError, enabled: isReadingLibrary(library.kind)});
   const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: readingHeader.libraryCounts.find(row => row.id === choice.id)?.text}));
@@ -244,9 +279,9 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
     artwork: context.artwork,
     // A Reading library's ⋯ draws only the rows this surface can really perform: saving the
-    // current view, the owner's Unmatched entry, and the owner's Library settings page. Mark all
-    // read, pins and scan wait for their own ports.
-    libraryMenu: isReadingLibrary(library.kind) ? readingLibraryMenu(resources, context, library, onlineAttention, save)
+    // current view, the owner's Unmatched entry, the owner's Library settings page, and Scan
+    // from its own lease. Mark all read and pins wait for their own ports.
+    libraryMenu: isReadingLibrary(library.kind) ? readingLibraryMenu(resources, context, library, onlineAttention, save, scan)
       : context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,
     onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
     onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
