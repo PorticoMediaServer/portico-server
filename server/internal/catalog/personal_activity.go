@@ -342,7 +342,7 @@ func chapterSourceFor(tx *sql.Tx, item int64, playbackID string, generation int)
  JOIN playback_source_pins pin ON pin.session_id=s.id AND pin.asset_id=s.asset_id
  JOIN catalog_assets a ON a.token=pin.asset_id AND a.size=pin.size AND a.modified_ns=pin.modified_ns
  JOIN catalog_asset_links l ON l.entity_id=file.id AND l.asset_id=a.id
- LEFT JOIN asset_chapter_facts f ON f.asset_id=a.token
+ LEFT JOIN asset_chapter_facts f ON f.asset_id=a.token AND f.size=pin.size AND f.modified_ns=pin.modified_ns AND f.status='known'
  WHERE file.id=?1`, item, playbackID, generation).Scan(&out.assetRevision, &out.assetID, &out.assetSize, &out.assetModified)
 	if errors.Is(err, sql.ErrNoRows) {
 		// No session, no pin, a replaced source or no linked asset: withhold.
@@ -418,15 +418,19 @@ func chapterRunContinues(previous, current chapterRunEvidence) bool {
 }
 
 // chapterEndsAtEof lets a genuine end-of-file report close the prior played
-// interval: the previous report was playing and the remaining span to the
-// physical end is no more than the rate could have played in the elapsed time.
-// An ended report without that previous interval, or any early completion
-// threshold, closes nothing.
+// interval: the previous report was playing, the reported clamped position
+// actually reaches the physical end, and the remaining span is no more than the
+// rate could have played in the elapsed time. An ended report short of the end,
+// one without that previous interval, or any early completion threshold closes
+// nothing.
 func chapterEndsAtEof(previous, current chapterRunEvidence, durationMs int64, terminal bool) bool {
 	if !terminal || durationMs <= 0 || !chapterRunSameIdentities(previous, current) {
 		return false
 	}
-	if previous.position >= durationMs || current.position < durationMs-positionMillis(1) {
+	if previous.position >= durationMs || current.position < durationMs {
+		// Only a reported clamped position that actually reaches the physical
+		// end closes the file; the near-end history threshold is not evidence
+		// of the last millisecond.
 		return false
 	}
 	elapsed := current.at.Sub(previous.at)
