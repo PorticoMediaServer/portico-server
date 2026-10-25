@@ -102,14 +102,18 @@ export function BrowseToolbar({model, labels, resultCount, platform = 'desktop',
   const quick = quickIds === undefined ? model.quick : model.quick.filter(item => quickIds.includes(item.id));
   const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={sortLabels.sort} onReshuffle={onReshuffle} showOrder={sortLabel === undefined}/>;
   const filters = <FiltersButton count={applied.length} open={filtersOpen} onClick={onFilters}/>;
+  // Frame 6 draws a library's sort beside Filters in the chip row; See all names its own
+  // order on the count row instead, so a surface that supplies sortLabel keeps that one.
+  const sortInFirstRow = platform === 'phone' && sortLabel === undefined;
   return <div className={[styles.toolbar, className].filter(Boolean).join(' ')} data-platform={platform} data-sticky={sticky || undefined} style={{top: topInset}}>
     {selection ?? <><div className={styles.toolbarMain}>
       {platform === 'tv' ? <>{sort}{filters}{onJump && <Chip onClick={onJump}>{t('next.browse.jump')}<Icon name="i-down" size={16}/></Chip>}</> : filters}
       <span className={styles.separator} aria-hidden="true"/>
+      {sortInFirstRow && sort}
       {actions}{quick.map(item => <QuickToggle key={item.id} selected={item.active} onCheckedChange={checked => onQuickChange(item.id, checked)}>{item.label?.text ?? labels.quick(item)}</QuickToggle>)}
       {platform !== 'phone' && <div className={styles.toolbarEnd}>{platform === 'desktop' && <span className={styles.resultCount}>{resultCount}</span>}{platform === 'desktop' && sort}
         {view && <ViewToggle {...view}/>} {cardSize && <CardSizeButton {...cardSize}/>} {save && <SaveViewButton {...save}/>}</div>}
-    </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{sort}{view && <ViewToggle {...view}/>}</span></div>}
+    </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{!sortInFirstRow && sort}{view && <ViewToggle {...view}/>}</span></div>}
     {applied.length > 0 && onRemoveFilter && onClearFilters && <div className={platform === 'tv' ? styles.tvAppliedRow : undefined}><AppliedFilterChips items={applied} onRemove={onRemoveFilter} onClear={onClearFilters}/>{platform === 'tv' && <span className={styles.resultCount}>{resultCount}</span>}</div>}</>}
   </div>;
 }
