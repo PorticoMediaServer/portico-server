@@ -77,5 +77,31 @@ grep -q 'def actual_viewport' "$ROOT/smoke/android/settings-capture.py" \
 grep -q 'server_rows_in_drawn_order' "$ROOT/smoke/android/settings-capture.py" \
   && ok "the capture records the Server row order" || bad "the capture records no row order"
 
+# Exercise the actual stamp preflight in isolation; no adb or emulator command runs.
+python3 - "$ROOT" <<'PYTEST' || fail=1
+import os, pathlib, subprocess, sys, tempfile
+source = pathlib.Path(sys.argv[1], "smoke/android/m0-pass.sh").read_text()
+start = source.index("STAMP=$(curl")
+end = source.index('say INFO "booting $AVD"', start)
+assert start < source.index('nohup "$HOME/Android/Sdk/emulator/emulator"')
+preflight = source[start:end]
+with tempfile.TemporaryDirectory() as scratch:
+    curl = pathlib.Path(scratch, "curl")
+    curl.write_text('#!/bin/sh\nprintf "%s" "$TEST_BODY"\nexit "$TEST_CURL_EXIT"\n')
+    curl.chmod(0o700)
+    for name, body, curl_exit, success in (
+        ("valid", '{"version":"test-build","id":"test-server"}', "0", True),
+        ("unreadable", "upstream error", "0", False),
+        ("missing identity", '{"version":"test-build"}', "0", False),
+        ("wrong type", '[]', "0", False),
+        ("HTTP failure", '{"version":"test-build","id":"test-server"}', "22", False),
+    ):
+        env = dict(os.environ, PATH=scratch + ":" + os.environ["PATH"], TEST_BODY=body, TEST_CURL_EXIT=curl_exit)
+        run = subprocess.run(["bash", "-c", 'set -uo pipefail; say() { :; }; SERVER=https://configured.invalid;\n' + preflight + '\necho DEVICE_START_REACHED'], env=env, text=True, capture_output=True)
+        assert (run.returncode == 0) == success, (name, run.returncode, run.stderr)
+        assert ("DEVICE_START_REACHED" in run.stdout) == success, (name, run.stdout)
+        print("PASS server preflight " + name)
+PYTEST
+
 printf 'self-check exit=%s\n' "$fail"
 exit "$fail"

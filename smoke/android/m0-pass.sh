@@ -69,6 +69,21 @@ if ls "$HOME/.android/avd/$AVD.avd/"*.lock >/dev/null 2>&1; then
   exit 75
 fi
 
+# Fetch the configured server stamp before starting any device. An unreadable stamp is
+# incomplete evidence, so leave Release's device untouched rather than running unpinned.
+STAMP=$(curl --fail --silent --show-error --max-time 15 "$SERVER/v1/system" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    version, server_id = data.get("version"), data.get("id")
+    if not isinstance(version, str) or not version.strip() or not isinstance(server_id, str) or not server_id.strip():
+        raise ValueError("missing version or id")
+    print(json.dumps({"version": version, "id": server_id}, sort_keys=True))
+except (ValueError, AttributeError):
+    sys.exit(1)
+') || { say FAIL "configured server stamp unavailable before UI; no device started"; exit 1; }
+say INFO "server before UI: $STAMP"
+
 say INFO "booting $AVD"
 nohup "$HOME/Android/Sdk/emulator/emulator" -avd "$AVD" -no-window -no-audio -no-boot-anim \
   -gpu swiftshader_indirect -no-snapshot -memory 2048 -cores 4 > "$OUT/emulator.log" 2>&1 &
@@ -86,11 +101,6 @@ DISPLAY_SIZE=$(adb shell wm size | tr -d '\r')
 DISPLAY_DENSITY=$(adb shell wm density | tr -d '\r')
 say INFO "display actual: $DISPLAY_SIZE / $DISPLAY_DENSITY (override=$OVERRIDE)"
 
-STAMP=$({ curl -sS --max-time 15 "$SERVER/v1/system" || true; } | python3 -c "import json,sys;
-try:
- d=json.load(sys.stdin); print(d.get('version'), d.get('id'))
-except Exception: print('unreadable')" 2>/dev/null)
-say INFO "server before UI: $STAMP"
 
 cleanup() {
   adb shell wm size reset >/dev/null 2>&1 || true
