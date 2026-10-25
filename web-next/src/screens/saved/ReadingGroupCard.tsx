@@ -50,6 +50,9 @@ export function ReadingGroupCard({card, service, runtime, operations, artwork, w
       // read decides which cards remain; no optimistic target/member mutation.
       await opening.service.refresh();
       if (!current(opening)) return;
+      // SavedService publishes read failures instead of rejecting refresh().
+      // Keep the known-receipt read-only retry until a real ready page arrives.
+      if (opening.service.getSnapshot().phase !== 'ready') {publish({opening, failed: true});return;}
       opening.needsRefresh = false;publish({opening});
     } catch (error) {
       if (current(opening)) {
