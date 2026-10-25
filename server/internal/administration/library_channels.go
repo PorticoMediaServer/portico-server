@@ -611,7 +611,12 @@ func (s *Service) ChannelHealthFor(ctx context.Context, auth Authorize, channel 
 			return err
 		}
 		out.Enabled = enabled != 0 && removed == 0
-		out.GeneratedThrough = timeFromMilliseconds(through)
+		// A channel that has never published has no generated-through instant;
+		// epoch zero is not a fact about it. The list producer in
+		// livechannels/library applies the same guard.
+		if through > 0 {
+			out.GeneratedThrough = timeFromMilliseconds(through)
+		}
 		if out.ActiveGeneration != "" {
 			if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM lc_entries WHERE generation_id=?`, out.ActiveGeneration).Scan(&out.ScheduledEntries); err != nil {
 				return err
