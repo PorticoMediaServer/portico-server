@@ -309,7 +309,7 @@ export function SettingsEntry() {
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
   // controller instead of leaving the old section set on screen.
-  }, [context, retry, route.section, reportTimeZone, context?.facts.identity.primaryProfile,
+  }, [context, retry, route.scope, route.section, !!preferences, reportTimeZone, context?.facts.identity.primaryProfile,
     context?.facts.identity.capabilities?.manageServer, context?.facts.identity.capabilities?.managePeople,
     context?.facts.identity.capabilities?.manageSignIn, context?.facts.identity.signIn,
     context?.session().viewer.role, context?.session().viewer.serverId, context?.session().viewer.authority, context?.session().viewer.accountId, context?.session().viewer.profileId]);
