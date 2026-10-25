@@ -19,6 +19,7 @@ import {homePlaybackItem} from '../screens/home/model';
 import type {HomeSelection} from '../screens/home/Home';
 import type {ShellPlaybackBinding} from './Playback';
 import {HomeDocumentResources} from './home-resources';
+import {openAppLogContext} from '../platform/app-log';
 
 /** Concrete protected-session assembly. Every command uses the actual current service/engine. */
 export const assembleShellBindings: ShellAssembler = async context => {
@@ -34,7 +35,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   const time = {t: language.t, locale: language.region.formatLocale, timeZone: language.region.timeZone,
     hourCycle: language.region.hour12 === true ? 'h12' as const : language.region.hour12 === false ? 'h23' as const : undefined};
   const feedback = new ShellFeedback(language, current), life = new AbortController();
-  const resources: (() => void)[] = [feedback.dispose, () => life.abort()];
+  const resources: (() => void)[] = [feedback.dispose, () => life.abort(), openAppLogContext(current)];
   const dispose = () => { if (!active) return; active = false; for (const cleanup of resources.splice(0).reverse()) { try { cleanup(); } catch { /* Continue fencing every other private owner. */ } } };
   try {
   const listeners = new Set<() => void>();
