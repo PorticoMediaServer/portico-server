@@ -570,8 +570,24 @@ func tsType(s map[string]any) string {
 		}
 		sort.Strings(keys)
 		required := map[string]bool{}
-		for _, k := range s["required"].([]string) {
-			required[k] = true
+		switch names := s["required"].(type) {
+		case nil:
+		case []string:
+			for _, name := range names {
+				required[name] = true
+			}
+		case []any:
+			// Custom schemas may have passed through encoding/json, whose
+			// arrays are []any. Preserve their required-property semantics.
+			for _, value := range names {
+				name, ok := value.(string)
+				if !ok {
+					panic("required property name must be a string")
+				}
+				required[name] = true
+			}
+		default:
+			panic("required properties must be an array")
 		}
 		fields := []string{}
 		for _, key := range keys {
