@@ -97,7 +97,7 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
     </>}
     {modal?.kind === 'remote' && <RemoteSourceDialog controller={modal.controller} close={close} saved={saved}/>}
     {modal?.kind === 'upload' && <UploadSourceDialog controller={modal.controller} close={close} saved={saved}/>}
-    {modal?.kind === 'discover' && <DiscoverTuners api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={close} useTuner={remote}/>}
+    {modal?.kind === 'discover' && <DiscoverTuners api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={close} onUseTuner={remote}/>}
     {modal?.kind === 'settings' && <SourceSettingsDialog controller={modal.controller} choices={modal.choices} name={modal.source.name} guides={snapshot.document?.sources ?? []} close={close} changed={() => {if (source.current()) void source.sources.load();}}/>}
     {modal?.kind === 'channels' && <ChannelMapDialog controller={modal.controller} name={modal.source.name} close={close}/>}
     {modal?.kind === 'remove' && <Dialog open title={t('web.liveTv.removeTitle', {name: modal.source.name})} description={t('web.liveTv.removeBody')} onOpenChange={open => {if (!open) close();}}

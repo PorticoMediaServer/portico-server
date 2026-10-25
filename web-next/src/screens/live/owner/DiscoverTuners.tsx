@@ -11,8 +11,8 @@ import {DiscoveryController} from './discovery-controller';
 import {dialogAction} from './dialog-lifetime';
 /** Discovery does not save or confirm a local address. Use this opens the
  * ordinary source check, including its server-required LAN confirmation. */
-export function DiscoverTuners({api, serverId, isCurrent, reportError, close, useTuner}: {
-  api: LibraryContentApi; serverId: string; isCurrent: () => boolean; reportError: (error: unknown) => void; close: () => void; useTuner: (tuner: string) => void;
+export function DiscoverTuners({api, serverId, isCurrent, reportError, close, onUseTuner}: {
+  api: LibraryContentApi; serverId: string; isCurrent: () => boolean; reportError: (error: unknown) => void; close: () => void; onUseTuner: (tuner: string) => void;
 }) {
   const controller = useMemo(() => new DiscoveryController(api, serverId, isCurrent, reportError), [api, serverId, isCurrent, reportError]);
   const owner = useRef(controller);owner.current = controller;
@@ -28,7 +28,7 @@ export function DiscoverTuners({api, serverId, isCurrent, reportError, close, us
       {result?.discoveryEnabled && !result.devices.length && <p>{t('web.liveSource.noTuners')}</p>}
       {result?.devices.map(tuner => <SettingsRow key={tuner.deviceId || tuner.address} label={tuner.friendlyName || tuner.model || t('web.liveSource.tunerFallback')}
         help={[tuner.model, tuner.address, tuner.tunerCount ? t('server.live.tunerCount', {count: tuner.tunerCount}) : ''].filter(Boolean).join(' · ')}>
-        {tuner.configured ? <span className={styles.badge}>{t('web.liveSource.alreadyAdded')}</span> : <Button size="small" onClick={dialogAction(owner, controller, () => {if (!busy) useTuner(tuner.baseUrl);})}>{t('web.liveSource.useThis')}</Button>}
+        {tuner.configured ? <span className={styles.badge}>{t('web.liveSource.alreadyAdded')}</span> : <Button size="small" onClick={dialogAction(owner, controller, () => {if (!busy) onUseTuner(tuner.baseUrl);})}>{t('web.liveSource.useThis')}</Button>}
       </SettingsRow>)}
     </div>
   </Dialog>;
