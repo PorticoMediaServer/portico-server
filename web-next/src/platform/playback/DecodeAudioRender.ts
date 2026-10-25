@@ -10,6 +10,7 @@ import {loadDeviceEqualizer} from './audio/equalizer-store';
 import {configureDestination, outputClockLag, type BrowserAudioFacts} from './audio/output';
 import {MediaCarrier} from './audio/carrier';
 import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
+import type {AppLogRecorder} from '../app-log';
 
 /**
  * Music decoded on the device (spec §18.1 version 2; Plan §9.6), Plexamp's model: the original file
@@ -74,7 +75,7 @@ export class DecodeAudioRender {
   private resumeAttempt = 0;
   private readonly listening: ListeningEffectsPort;
 
-  constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache) {
+  constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache, private readonly recordDiagnostic?: AppLogRecorder) {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum; this.byteCache = byteCache;
     this.listening = service;
     this.snapshot = service.getSnapshot();
@@ -138,6 +139,7 @@ export class DecodeAudioRender {
       if (this.disposed || attempt !== this.resumeAttempt || revision !== this.revision || current.intentId !== before.intentId || sessionKey(current.session) !== key || current.intent !== 'playing') return;
       this.service.pause();
       this.listening.listeningNotice('audio_autoplay_blocked');
+      this.recordDiagnostic?.('audio_autoplay_blocked', 'warn');
     };
     void this.context.resume().then(() => { if (this.context.state !== 'running') refused(); }, refused);
     // AudioContext.resume may remain pending under autoplay policy. An actual media-element
@@ -285,7 +287,7 @@ export class DecodeAudioRender {
         pending.ready = true;
         this.service.audioPrepared(token);
       } catch {
-        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; listeningDiagnostic('audio_transition_unavailable'); this.listening.audioPreparationFailed(); }
+        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; listeningDiagnostic('audio_transition_unavailable', undefined, this.recordDiagnostic); this.listening.audioPreparationFailed(); }
       }
     })();
   }
@@ -300,7 +302,7 @@ export class DecodeAudioRender {
     const sameAlbum = this.sameAlbum(s.itemId, committed.itemId);
     const nowFrame = Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate);
     const edge = linkDecks(this.context, p.deck, c.deck, {crossfadeSeconds: s.audioEffects.settings.crossfadeSeconds, sameAlbum, earliest: nowFrame});
-    if (edge.late) listeningDiagnostic('audio_edge_late');
+    if (edge.late) listeningDiagnostic('audio_edge_late', undefined, this.recordDiagnostic);
     this.incoming = {...c, edge: edge.start, fade: edge.fade};
     this.candidate = undefined;
   }
@@ -392,7 +394,7 @@ export class DecodeAudioRender {
       try { this.equalizer.bypass(); }
       catch { this.service.fallbackAudioRender(); }
       // This song continues through the dry path. Saved intent remains on, actual EQ is false.
-      listeningDiagnostic('equalizer_filter_unavailable', error);
+      listeningDiagnostic('equalizer_filter_unavailable', error, this.recordDiagnostic);
       if (owner && this.primary === owner.deck) this.service.listeningFallback('eq', {sessionId: owner.sessionId, generation: owner.generation, itemId: owner.itemId, intentId: owner.intentId});
     }
     this.reportProcessing();

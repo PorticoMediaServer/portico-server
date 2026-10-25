@@ -1,4 +1,7 @@
 export const settingsMessages = {
+  'next.settings.appLog.empty': 'No recent app log entries to send.',
+  'next.settings.appLog.recipient': 'Recipient: {owner}',
+  'next.settings.appLog.sent': 'The app log was sent to {owner}.',
   'next.shell.switchToLocalSignIn': 'Switch to local sign-in',
   'next.settings.backup.protectTitle': 'Backup passphrase',
   'next.settings.backup.changeTitle': 'Change backup passphrase',

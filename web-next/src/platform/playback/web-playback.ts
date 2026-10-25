@@ -79,6 +79,7 @@ export const failure = {
 } as const;
 
 export type WebPlaybackHost = Readonly<{
+  recordDiagnostic?: import('../app-log').AppLogRecorder;
   http: V1Http;
   /** Makes a capability path absolute on the selected server's current route. */
   mediaUrl(path: string): string;
@@ -575,7 +576,7 @@ export class WebPlayback implements PlaybackAdapter {
       catch {
         this.renderUnavailableSession = session.id;
         this.slot.hold(false);
-        listeningDiagnostic('audio_processing_unavailable');
+        listeningDiagnostic('audio_processing_unavailable', undefined, this.host.recordDiagnostic);
         service.listeningFallback('processing', invocation);
         if (!service.fallbackAudioRender()) service.audioRenderFailed('audio_render_failed');
         return;
@@ -653,7 +654,7 @@ export class WebPlayback implements PlaybackAdapter {
       if (this.render) {
         this.renderRetained = this.render.transportPosition();
         if (service.getSnapshot().audioEffects.prepared) {
-          listeningDiagnostic('audio_transition_unavailable');
+          listeningDiagnostic('audio_transition_unavailable', undefined, this.host.recordDiagnostic);
           (service as unknown as ListeningEffectsPort).audioPreparationFailed();
         }
         this.render.dispose();

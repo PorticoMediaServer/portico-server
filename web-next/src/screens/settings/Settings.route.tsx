@@ -8,7 +8,7 @@ import {captureReportContext, type ReportContext} from '@core/report-context.ts'
 import {SettingsPeopleClient} from '@core/settings-people.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import {defineWebScreen} from '../../route-registry';
-import {useProtectedWebScreenContext, useWebAction} from '../../route-registry-view';
+import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {shellLanguage} from '../../shell/settings';
@@ -105,8 +105,6 @@ const remoteSourcesPageSnapshot = Object.freeze({loading: false});
 
 export function SettingsEntry() {
   const protectedContext = useProtectedWebScreenContext();
-  // The Device "Send a report" row opens the app's existing authorised feedback flow.
-  const sendReport = useWebAction('feedback');
   const liveBinding = useRef(protectedContext?.binding);
   liveBinding.current = protectedContext?.binding;
   const location = useRouterState({select: state => state.location});
@@ -301,7 +299,7 @@ export function SettingsEntry() {
             text={defaultI18n.t('next.settingsSpec.account.audio-subtitles.groups.2.rows.0.control.text')} />;
         }
         if (row.id === 'device.remote') return <RemoteNowPlaying api={context.api} isCurrent={current} onFailure={reportError}/>;
-        if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl row={row} api={context.api} onSendReport={sendReport ? () => sendReport() : undefined} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
+        if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl key={context.epoch} row={row} api={context.api} isCurrent={current} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
         if (row.id === 'music.eq') return <MusicEqualizerRow platform={platform} isCurrent={current}/>;
         if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
         if (row.id === 'libraries.name' && isLibraryPanelContext(rowContext) && rowContext.recordId && typeof state.value === 'string') {

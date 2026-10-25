@@ -1,4 +1,5 @@
 import {playbackFailurePermanent} from '@core/playback-messages.ts';
+import {captureAppLogRecorder, type AppLogRecorder} from '../app-log';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -136,6 +137,7 @@ export class WebShellPlaybackRuntime {
   private readonly capabilityPublisher: CapabilityPublisher;
   private readonly life = new AbortController();
   private readonly channelControl: V1ChannelControl;
+  private readonly recordDiagnostic: AppLogRecorder;
 
   constructor(source: WebPlaybackSource, environment: WebPlaybackEnvironment = playbackEnvironment()) {
     if (source.contentScope.serverId !== source.authority.serverId || !source.authority.viewerFence || !source.isCurrent()) problem('invalid_playback_authority');
@@ -144,6 +146,8 @@ export class WebShellPlaybackRuntime {
     this.authority = Object.freeze({...source.authority});
     this.source = Object.freeze({...source, ...(localScope ? {localScope} : {}), authority: this.authority, contentScope: Object.freeze({...source.contentScope})});
     this.env = environment;
+    const record = captureAppLogRecorder();
+    this.recordDiagnostic = (code, level) => {if (!this.disposed && source.isCurrent()) record(code, level);};
     this.equalizerPort = environment.equalizerPort;
     this.capabilityPublisher = new CapabilityPublisher(localV1Http(source.api), () => JSON.stringify([this.authority.serverId, this.authority.accountId, this.authority.profileId, this.authority.epoch]));
     const inner = localV1Http(source.api);
@@ -196,6 +200,7 @@ export class WebShellPlaybackRuntime {
     // actual server session. DELETE cleanup still uses its original viewer-bound API.
     const http: V1Http = {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, life.signal]) : life.signal})};
     const web = new WebPlayback({
+      recordDiagnostic: this.recordDiagnostic,
       http, mediaUrl: path => this.source.api.mediaUrl(path),
       subscribeRoute: this.source.api.subscribeRoute, getRouteSnapshot: this.source.api.getRouteSnapshot,
       recoverRoute: () => this.source.api.getRouteConnection() ? this.source.api.recoverRoute() : undefined,
@@ -204,7 +209,7 @@ export class WebShellPlaybackRuntime {
       nativeHls: this.env.nativeHls ?? browserNativeHlsPolicy(), timers: this.env.timers, playerTimers: this.env.playerTimers, key: this.env.key,
       deviceMemory: typeof navigator === 'undefined' ? undefined : (navigator as Navigator & {deviceMemory?: number}).deviceMemory,
       createPlayer: this.env.createPlayer,
-      createRender: this.env.createRender === null ? undefined : this.env.createRender ?? ((service, element) => new DecodeAudioRender(service, path => this.source.api.mediaUrl(path), element as HTMLVideoElement, (current, next) => !!current && (service.getQueueController()?.sameAlbum?.(current, next) ?? false), this.audioCache)),
+      createRender: this.env.createRender === null ? undefined : this.env.createRender ?? ((service, element) => new DecodeAudioRender(service, path => this.source.api.mediaUrl(path), element as HTMLVideoElement, (current, next) => !!current && (service.getQueueController()?.sameAlbum?.(current, next) ?? false), this.audioCache, this.recordDiagnostic)),
     });
     const service = new PlaybackService({...web.transport, progressPlayback: async (id, payload) => {
       const before = service.getSnapshot();
