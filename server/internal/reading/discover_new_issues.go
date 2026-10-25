@@ -68,5 +68,10 @@ func (s *Service) discoverNewIssuesTx(ctx context.Context, tx *sql.Tx, p identit
 	if err = readingAttributionProjectionTx(ctx, tx, out); err != nil {
 		return nil, err
 	}
+	for _, item := range out {
+		if item.PublicationType == nil || item.PublicationType.Value != "magazine" || item.Series == nil || len(item.Series.ID) != 43 || item.Series.Name == "" {
+			return nil, ErrChanged
+		}
+	}
 	return out, nil
 }
