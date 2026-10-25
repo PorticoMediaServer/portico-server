@@ -1,8 +1,10 @@
-import {useEffect, useMemo, useState} from 'react';
-import {useParams} from '@tanstack/react-router';
+import {useLayoutEffect, useRef, useState} from 'react';
+import {useLocation, useParams} from '@tanstack/react-router';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
-import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
+import {useCommittedLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
+import {router} from '../../router';
+import type {ScreenContext} from './context';
 import {createDetailBindings} from './bindings';
 import {DetailScreen} from './Detail';
 import {createReadBindings, ReadItemEntry, type ReadItemEligibility} from '../read';
@@ -10,30 +12,57 @@ import {resolveItemRead} from './read-resolution';
 import {DetailLoading} from './Loading';
 import {ScreenProblem} from './ScreenProblem';
 
-function OrdinaryItem({captured, itemId}: {captured: ProtectedLibraryScreen; itemId: string}) {
-  const context = useLibraryScreenContext(captured);
-  const binding = useMemo(() => createDetailBindings(context), [context]);
-  useEffect(() => () => binding.dispose(), [binding]);
-  return <DetailScreen binding={binding} itemId={itemId}/>;
+type DetailLease = {id: number; context: ScreenContext; itemId: string; live: boolean; binding: ReturnType<typeof createDetailBindings>};
+function OrdinaryItem({context, itemId}: {context: ScreenContext; itemId: string}) {
+  const [lease, publish] = useState<DetailLease>();
+  const serial = useRef(0);
+  useLayoutEffect(() => {
+    const held: DetailLease = {id: ++serial.current, context, itemId, live: true, binding: createDetailBindings(context)};
+    publish(held);
+    return () => {held.live = false;held.binding.dispose();};
+  }, [context, itemId]);
+  return lease?.live && lease.context === context && lease.itemId === itemId && context.isCurrent()
+    ? <DetailScreen key={lease.id} binding={lease.binding} itemId={itemId}/> : <DetailLoading/>;
 }
 type ReadResolution = {phase: 'loading'} | {phase: 'ready'; eligibility: ReadItemEligibility | null} | {phase: 'error'; error: unknown};
+type ResolutionLease = {context: ScreenContext; itemId: string; retry: number; live: boolean};
 function BoundItem({captured, itemId}: {captured: ProtectedLibraryScreen; itemId: string}) {
-  const context = useLibraryScreenContext(captured), [resolution, setResolution] = useState<ReadResolution>({phase: 'loading'}), [retry, setRetry] = useState(0);
-  useEffect(() => {
-    const reading = createReadBindings(captured.context), request = new AbortController();
-    let active = true;
-    const current = () => active && context.isCurrent() && reading.authority.isCurrent();
+  const href = useLocation({select: location => location.href});
+  const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.href === href);
+  return context ? <ResolveItem captured={captured} context={context} itemId={itemId}/> : <DetailLoading/>;
+}
+function ResolveItem({captured, context, itemId}: {captured: ProtectedLibraryScreen; context: ScreenContext; itemId: string}) {
+  const [retry, setRetry] = useState(0);
+  const active = useRef<ResolutionLease | undefined>(undefined);
+  const [published, publish] = useState<Readonly<{lease: ResolutionLease; resolution: ReadResolution}>>();
+  useLayoutEffect(() => {
+    const held: ResolutionLease = {context, itemId, retry, live: true};
+    const owns = () => held.live && active.current === held && context.isCurrent();
+    active.current = held;
+    const reading = createReadBindings({...captured.context, isCurrent: owns}), request = new AbortController();
+    const current = () => owns() && reading.authority.isCurrent();
     const off = reading.authority.subscribe(() => {request.abort();});
-    setResolution({phase: 'loading'});
+    publish({lease: held, resolution: {phase: 'loading'}});
     void resolveItemRead(reading.client, itemId, request.signal, current)
-      .then(eligibility => {if (current()) setResolution({phase: 'ready', eligibility});})
-      .catch(error => {if (active && context.isCurrent()) setResolution({phase: 'error', error});});
-    return () => {active = false;request.abort();off();void reading.dispose().catch(error => {if (context.isCurrent()) context.effects.reportError(error);});};
+      .then(eligibility => {if (current()) publish({lease: held, resolution: {phase: 'ready', eligibility}});})
+      // A refused reading client may already have retired its own authority.
+      // The live route still owns the refusal surface, never an ordinary-item fallback.
+      .catch(error => {if (owns()) publish({lease: held, resolution: {phase: 'error', error}});});
+    return () => {
+      held.live = false;if (active.current === held) active.current = undefined;
+      request.abort();off();void reading.dispose().catch(() => {});
+    };
   }, [captured.context, context, itemId, retry]);
+  if (!published) return <DetailLoading/>;
+  const held = published.lease;
+  if (!held.live || active.current !== held || held.context !== context || held.itemId !== itemId || held.retry !== retry || !context.isCurrent()) return <DetailLoading/>;
+  const resolution = published.resolution;
   if (resolution.phase === 'loading') return <DetailLoading/>;
-  if (resolution.phase === 'error') return <ScreenProblem context={context} error={resolution.error} retry={() => setRetry(value => value + 1)}/>;
+  if (resolution.phase === 'error') return <ScreenProblem context={context} error={resolution.error} retry={() => {
+    if (held.live && active.current === held && context.isCurrent()) {held.live = false;setRetry(value => value + 1);}
+  }}/>;
   return resolution.eligibility ? <ReadItemEntry itemId={itemId} eligibility={resolution.eligibility}/>
-    : <OrdinaryItem captured={captured} itemId={itemId}/>;
+    : <OrdinaryItem context={context} itemId={itemId}/>;
 }
 function ItemRouteScreen() {
   const captured = useProtectedWebScreenContext();
