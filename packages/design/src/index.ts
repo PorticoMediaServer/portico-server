@@ -12,6 +12,8 @@ export const colors = {
   /** Surfaces, darkest to brightest: canvas → slate → raised → bright. */
   ink: "#071018",
   white: "#ffffff",
+  /** Windows caption Close hover, desktop-app frame 2. */
+  windowsCaptionClose: "#c42b1c",
   shadow: "#000000",
   collection: "#0a2233",
   generatedGreen: "#1e5b52",
