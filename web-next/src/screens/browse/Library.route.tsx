@@ -21,6 +21,7 @@ import {LibraryEmpty} from '../../kit/states/LibraryEmpty';
 import {useShellWidth} from '../../shell/viewport';
 import {createEpisodeSelection} from '../detail/episode-selection';
 import {ShowScreen} from '../detail/Show';
+import {AlbumScreen} from '../detail/Album';
 import {AudiobookEntry} from '../detail/audiobooks/Entry';
 import {createShowBindings} from '../detail/show-bindings';
 import type {ScreenContext} from '../detail/context';
@@ -351,6 +352,8 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
   return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention artwork={context.artwork} libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
     : view === 'show' || view === 'season' ? <LibraryShow context={context} captured={captured} libraryId={library.id} search={search}/>
+    : view === 'album' && search.entityId ? <AlbumScreen context={context} libraryId={library.id} albumId={search.entityId} actions={actions}
+      onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
       actions={(_section, entry) => actions(entry)} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
