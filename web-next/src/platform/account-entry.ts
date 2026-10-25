@@ -43,7 +43,7 @@ export type AccountEntryState = Readonly<{
  phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup'|'owner-reset-password';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
- movePreview?:MoveCodePreview; ownerReset?:OwnerResetDetails; setupCompleted?:true;
+ movePreview?:MoveCodePreview; ownerReset?:OwnerResetDetails; setupCompleted?:true; memberMoveCompleted?:true; memberMovePending?:true;
  busy?:boolean; error?:unknown; identityFailure?:Readonly<{serverName:string;failure:'local-changed'|'unconfirmed'}>;
 }>;
 type EntryPorts = Readonly<{
@@ -219,8 +219,8 @@ export class BrowserAccountEntry {
   const cleanup=this.temporary(api,session);
   await cleanup.request(routePath('delete_sessions_current'),'DELETE',undefined,AbortSignal.timeout(5000)).catch(()=>{});
  }
- private async accept(result:DirectSignIn,api:HttpLocalApi,revision:number,op:ReturnType<BrowserAccountEntry['operation']>,hosted?:RememberedServer['hosted']){
-  if(result.kind==='challenge'){if(op.current()){this.challenge=result;this.challengeRevision=revision;this.watchAuthority();this.publish({...this.state,phase:'challenge',busy:false});}return;}
+ private async accept(result:DirectSignIn,api:HttpLocalApi,revision:number,op:ReturnType<BrowserAccountEntry['operation']>,hosted?:RememberedServer['hosted'],memberMove=false){
+  if(result.kind==='challenge'){if(op.current()){this.challenge=result;this.challengeRevision=revision;this.watchAuthority();this.publish({...this.state,phase:'challenge',busy:false,...(memberMove?{memberMovePending:true as const}:{})});}return;}
   this.stopAuthorityWatch();
   try{
    if(!op.current())throw new Error('Sign-in was cancelled.');
@@ -245,7 +245,7 @@ export class BrowserAccountEntry {
    // before durable admission, and never revokes the current or a peer family.
    if(previous?.signIn===installed.signIn&&previous.connection.session.viewer.role==='account'&&previous.connection.session.viewer.authority===result.session.viewer.authority&&previous.connection.session.viewer.accountId===result.snapshot.account.id&&sameServerPin(previous.connection.pin,pin)&&shouldRetireAccountSession(previous.connection.session,result.session))void this.retire(api,previous.connection.session).catch(()=>{});
    const continuation=directSignInContinuation(result);
-   this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:continuation==='viewer'?'ready':continuation==='profile-selection'?'profiles':continuation});
+   this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:continuation==='viewer'?'ready':continuation==='profile-selection'?'profiles':continuation,...(memberMove||this.state.memberMovePending?{memberMoveCompleted:true as const,memberMovePending:undefined}:{})});
    this.watchAuthority();
   }catch(error){await this.retire(api,result.session);if(op.current()){api.setAccessToken('');this.watchAuthority();}throw error;}
  }
@@ -412,7 +412,7 @@ export class BrowserAccountEntry {
    if((await this.ports.store.read()).revision!==proof.revision)throw new CodedError('cancelled','The server selection changed.');
    if(!op.current())return;
    const result=await client.redeemLocal(proof.code,username,password,op.signal);
-   await this.accept(result,api,proof.revision,op);this.moveProof=undefined;
+   await this.accept(result,api,proof.revision,op,undefined,true);this.moveProof=undefined;
   }catch(error){if(op.current())this.publish({...state,busy:false,error});}
   finally{client.dispose();}
  }
@@ -568,7 +568,7 @@ export class BrowserAccountEntry {
    current.session.viewer.serverId===session.viewer.serverId&&current.session.viewer.authority===session.viewer.authority&&current.session.viewer.accountId===session.viewer.accountId?undefined:current);}
   finally{try{await this.retire(api,session);}finally{api.getRouteConnection()?.dispose();}}
  }
- private async admittedCompletion({api,result}:AdmittedCompletion,op:ReturnType<BrowserAccountEntry['operation']>,initialSetup=false){
+ private async admittedCompletion({api,result}:AdmittedCompletion,op:ReturnType<BrowserAccountEntry['operation']>,initialSetup=false,memberMove=false){
   if(!op.current()){await this.discardReturn(api,result.session);return;}
   const pin=api.getRouteConnection()?.pin;this.api=api;
   if(!pin)throw new CodedError('invalid_return',unreadableServerResponse);
@@ -578,6 +578,8 @@ export class BrowserAccountEntry {
     result.snapshot.serverId!==pin.serverId||result.snapshot.account.id!==saved.viewer.accountId||(['serverId','authority','accountId','profileId','role'] as const).some(key=>saved.viewer[key]!==result.session.viewer[key])){await this.discardReturn(api,result.session);throw new CodedError('cancelled','The server selection changed.');}
   this.api=api;this.session=result.session;
   await this.restoreProfiles({pin,session:result.session});
+  const moved=this.state;
+  if(memberMove&&!this.disposed&&moved.phase==='profiles'&&!moved.busy&&!moved.error&&moved.snapshot?.account.id===result.snapshot.account.id&&this.session?.sessionFamilyId===result.session.sessionFamilyId)this.publish({...moved,memberMoveCompleted:true});
   // The fresh setup writer may issue its single, unprotected main-profile
   // owner directly. Do not choose a profile or promote an account-only grant.
   const state=this.state;
@@ -589,7 +591,7 @@ export class BrowserAccountEntry {
  }
  private async registeredCompletion(completion:RegisteredCompletion,controller:RegisteredController,op:ReturnType<BrowserAccountEntry['operation']>){
   const {api,result}=completion;
-  if(result.kind==='signed-in')return this.admittedCompletion({api,result},op);
+  if(result.kind==='signed-in')return this.admittedCompletion({api,result},op,false,completion.memberMove===true);
   if(!op.current()){api.getRouteConnection()?.dispose();return;}
   this.api=api;const pin=api.getRouteConnection()?.pin;
   if(!pin)throw new CodedError('invalid_return',unreadableServerResponse);
