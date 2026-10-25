@@ -4,7 +4,6 @@ import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
 import type {ReadingController, ReadingPublication, ReaderErrorCode, ReaderLocation, ReaderContentsTarget, ReaderSearchResult, ReaderTocItem} from '@portico/reader-core';
 import {useShellWidth} from '../../shell/viewport';
-import {router} from '../../router';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReaderContents, ReaderPanel, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
 import {ReaderDisplayMark} from '../../kit/reader/ReaderDisplayMark';
@@ -65,7 +64,7 @@ export function readerCurrentContentsId(items: readonly ReaderTocItem[], locatio
 }
 export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
 
-export function ReaderBook({book, active, reportError, onBack, onOpenSettings, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
+export function ReaderBook({book, active, reportError, onBack, onOpenSettings, onSearchAll, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void; onSearchAll?: (query: string) => void}) {
   const {controller, publication, authority} = book;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
   const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
@@ -159,7 +158,12 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
           ? searchComplete ? t('next.reader.matches', {count: visibleHits.length})
             : visibleHits.length > 0 ? t('next.reader.matchesShown', {count: visibleHits.length}) : undefined
           : undefined}
-        onSearchAll={query.trim() ? () => {if (!authority.isCurrent() || !query.trim()) return; void router.navigate({to: '/search', search: {q: query.trim()}}).catch(reportError);} : undefined}
+        onSearchAll={onSearchAll && query.trim() ? () => {
+          const current = controller.getSnapshot(), value = query.trim();
+          if (!value || !active || !authority.isCurrent() || publication.signal.aborted || current.status !== 'ready'
+            || current.sourceId !== publication.source.id || current.sourceRevision !== publication.source.revision) return;
+          onSearchAll(value);
+        } : undefined}
         onStep={stepSearch}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
       : panel === 'display' ? <ReadingDisplay controller={controller} authority={authority} copy={readingDisplayCopy(defaultI18n, presentation, 7)}
