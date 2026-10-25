@@ -32,7 +32,7 @@ function InvitationInstance(props: AccountInvitationScreenProps) {
     setEntry(current);
     return () => current.dispose();
   }, []);
-  return entry ? <InvitationOperation {...props} entry={entry} /> : null;
+  return entry ? <InvitationOperation {...props} entry={entry} /> : <AuthStage legal={false}><p role="status">{defaultI18n.t('status.loading')}</p></AuthStage>;
 }
 function InvitationOperation({entry, link, account, signedOutContent, onBack, onDifferentAccount, onJoined}: AccountInvitationScreenProps & {entry: ReturnType<typeof createBrowserAccountEntry>}) {
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), delivered = useRef<unknown>(undefined);
