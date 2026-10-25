@@ -182,6 +182,7 @@ export class SettingsController {
     return binding && readSettingsBinding(binding, this.sources(), row.id);
   }
   rowState = (row: SettingsRow, context?: SettingsContext): SettingPresentation => {
+    if (row.id === 'troubleshooting.detailLength' && this.forms.logs?.status()?.logDetailMinutes === undefined) return {present: false};
     const location = settingsRowIndex.get(row.id);
     if (!location || !this.sectionVisible(location.section)) return {present: false};
     const value = this.read(row, context);
