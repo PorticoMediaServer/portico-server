@@ -253,7 +253,7 @@ export function SettingsEntry() {
   const openDetail = typeof raw.scope === 'string' || typeof raw.section === 'string';
   return <><SettingsScreen bindings={settings} route={route} navigate={navigate} openDetail={openDetail} />
     {profilePIN && owned.profiles === profilePIN.source && <ProfilePINDialog key={JSON.stringify([profilePIN.target.id, profilePIN.target.revision, profilePIN.remove])}
-      request={profilePIN} isCurrent={() => owned.context.isCurrent()} onClose={() => setProfilePIN(undefined)} onFailure={() => setFailure(true)} />}
+      request={profilePIN} isCurrent={() => owned.context.isCurrent() && !!profilePIN.source.getSnapshot().document} onClose={() => setProfilePIN(undefined)} onFailure={() => setFailure(true)} />}
   </>;
 }
 
