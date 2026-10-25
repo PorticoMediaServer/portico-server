@@ -1,6 +1,7 @@
 import {HandoffController} from '@core/remote-playback.ts';
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
-import type {I18n} from '@i18n';
+import {defaultI18n} from '@i18n';
+import type {HttpLocalApi} from '@core/index.ts';
 import type {WebShellPlaybackRuntime} from '../../platform/playback';
 import type {PlayOnLinkPort, PlayOnLinkPreview, PlayOnReceiversPort, PlayOnReceiver} from '../../platform/playback/play-on';
 import type {PlaybackFence} from '../../../../packages/player-core/src/index.ts';
@@ -12,7 +13,7 @@ const DIRECTORY_PATH = '/v1/receivers';
 const ROLLBACK = /\/v1\/handoffs\/[^/]+\/rollback$/;
 const PLATFORMS: Readonly<Record<string, string>> = {appletv: 'Apple TV', tvos: 'Apple TV', ios: 'iPhone', ipados: 'iPad', androidtv: 'Android TV', firetv: 'Fire TV', android: 'Android', web: 'Web', windows: 'Windows', macos: 'Mac', linux: 'Linux'};
 
-export type WatchReceiverApi = Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>;
+export type WatchReceiverApi = Pick<HttpLocalApi, 'request'>;
 
 /** The server's receiver directory and one proven handoff. Portico televisions, not a
  * guessed LAN scan: only an online, active receiver the viewer may send to is listed. */
@@ -26,7 +27,7 @@ export class WatchReceivers implements PlayOnReceiversPort {
   // continue to grant, hand off or commit, and no live request is ever unguarded.
   private flight?: Readonly<{guard: Readonly<{fence: PlaybackFence; sessionId: string; itemId: string; authority: unknown}>}>;
 
-  constructor(private readonly options: {api: WatchReceiverApi; runtime: WebShellPlaybackRuntime; t: I18n['t']; isCurrent(): boolean; reportError(error: unknown): void}) {
+  constructor(private readonly options: {api: WatchReceiverApi; runtime: WebShellPlaybackRuntime; isCurrent(): boolean; reportError(error: unknown): void}) {
     const identity = installationIdentity();
     // Without the persisted installation, this browser cannot prove who is asking;
     // the rows stay hidden from a send rather than inventing a device identity.
@@ -79,7 +80,7 @@ export class WatchReceivers implements PlayOnReceiversPort {
 
   private describe(platform: string): string {
     const label = PLATFORMS[platform.toLowerCase()];
-    return label ? this.options.t('next.cast.receiverOn', {platform: label}) : this.options.t('next.cast.receiverOnly');
+    return label ? defaultI18n.t('next.cast.receiverOn', {platform: label}) : defaultI18n.t('next.cast.receiverOnly');
   }
 
   private publish = (): void => {

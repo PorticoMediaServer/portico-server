@@ -57,7 +57,7 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
   const preferences = context.preferences?.getSnapshot('web') ?? context.facts?.preferences;
   const language = preferences ? shellLanguage(preferences) : defaultI18n;
   const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: language.t, isCurrent, reportError: binding.reportError});
-  const linkTv = watchLinkTv({request: (path, method, body, signal) => api.request(path, method, body, signal)});
+  const linkTv = watchLinkTv(api);
   const sender = new WebCastSender({api, serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
     describe: async itemId => (await describeItem(itemId)).title});
   const controller = new PlayOnController({sender, receivers, runtime: binding.runtime, airPlay: mediaAirPlayPort(video, undefined, {
