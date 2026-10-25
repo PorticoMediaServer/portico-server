@@ -113,7 +113,7 @@ func (s *Service) Criteria(ctx context.Context, auth Authorize, library, field, 
 		if field == "" {
 			// Playable kinds are exactly the old items table's membership
 			// (movie, episode, song, audiobook file, extra).
-			rows, err := tx.QueryContext(ctx, `SELECT f.field,COUNT(DISTINCT t.value_key) FROM catalog_attribute_fields f JOIN catalog_attribute_terms t ON t.field_id=f.id JOIN catalog_item_attribute_edges ed ON ed.term_id=t.id JOIN catalog_entities e ON e.id=ed.item_id JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 JOIN catalog_libraries cl ON cl.id=e.library_id WHERE (?='' OR cl.library_id=?) GROUP BY f.field ORDER BY f.field`, library, library)
+			rows, err := tx.QueryContext(ctx, `SELECT f.field,COUNT(DISTINCT t.value_key) FROM catalog_attribute_fields f JOIN catalog_attribute_terms t ON t.field_id=f.id JOIN catalog_item_attribute_edges ed ON ed.term_id=t.id JOIN catalog_entities e ON e.id=ed.item_id JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.retired=0 AND cl.retired=0 AND (?='' OR cl.library_id=?) GROUP BY f.field ORDER BY f.field`, library, library)
 			if err != nil {
 				return err
 			}
@@ -135,7 +135,7 @@ func (s *Service) Criteria(ctx context.Context, auth Authorize, library, field, 
 		}
 		// One row per value key; the display value is the smallest observed
 		// spelling (the old table could return one row per spelling).
-		rows, err := tx.QueryContext(ctx, `SELECT MIN(ed.source_value),t.value_key,COUNT(*) AS n FROM catalog_item_attribute_edges ed JOIN catalog_attribute_terms t ON t.id=ed.term_id JOIN catalog_attribute_fields f ON f.id=t.field_id JOIN catalog_entities e ON e.id=ed.item_id JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 JOIN catalog_libraries cl ON cl.id=e.library_id WHERE f.field=? AND (?='' OR cl.library_id=?) AND (?='' OR t.value_key>?) GROUP BY t.value_key ORDER BY t.value_key LIMIT ?`, field, library, library, c.ID, c.ID, size+1)
+		rows, err := tx.QueryContext(ctx, `SELECT MIN(ed.source_value),t.value_key,COUNT(*) AS n FROM catalog_item_attribute_edges ed JOIN catalog_attribute_terms t ON t.id=ed.term_id JOIN catalog_attribute_fields f ON f.id=t.field_id JOIN catalog_entities e ON e.id=ed.item_id JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 JOIN catalog_libraries cl ON cl.id=e.library_id WHERE f.field=? AND e.retired=0 AND cl.retired=0 AND (?='' OR cl.library_id=?) AND (?='' OR t.value_key>?) GROUP BY t.value_key ORDER BY t.value_key LIMIT ?`, field, library, library, c.ID, c.ID, size+1)
 		if err != nil {
 			return err
 		}
