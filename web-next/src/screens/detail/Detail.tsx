@@ -48,9 +48,12 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   const data = snapshot.data, {tab} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot);
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data?.item.kind === 'movie') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data]);
+  // Keep the viewport hook unconditional while the detail request is loading.
+  const standalonePhone = useShellWidth() < 600;
   if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} subject={binding.subject()} retry={() => { void binding.service.retry(); }} /> : <DetailLoading key={snapshot.target?.itemId} />;
   const tabs = [{value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}, ...(data.extras?.some(extra => extra.items.length) ? [{value: 'extras', label: t('next.controls.extras')}] : [])];
   return <article className={styles.page} data-compact={compact || undefined} data-title-id={data.scope.itemId}>
+    {standalonePhone && !compact && <div className={styles.phoneTopBar}>{binding.context.effects.back && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); })} />}</div>}
     {!compact && <TitleHero binding={binding} data={data} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
     {compact && <div className={styles.compactHeader}><h1>{data.item.title}</h1><TitleActions binding={binding} data={data} /></div>}
     <TitleTabs title={data.item.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact && <TitlePinnedActions binding={binding} data={data} />}><Tabs className={styles.tabStrip} aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
