@@ -355,6 +355,39 @@ func (f *Source) Validate() (failure error) {
 	return f.ctx.Err()
 }
 
+// CheckSelectionTx proves this already-acquired source's captured Reading
+// authority/revision inside a caller transaction. It performs no filesystem IO
+// and grants no download, offline or write authority: callers still need their
+// actual command policy and Validate/ReadAt observation checks outside the writer.
+// The original Source.Context must own the surrounding operation lifetime.
+func (f *Source) CheckSelectionTx(ctx context.Context, tx *sql.Tx) error {
+	if f == nil || f.service == nil || ctx == nil || tx == nil {
+		return ErrInvalid
+	}
+	if err := f.ctx.Err(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	current, err := f.service.selectTx(ctx, tx, f.p, f.ItemID, f.SourceID)
+	if err != nil {
+		return err
+	}
+	if current.Revision != f.Revision {
+		return ErrChanged
+	}
+	if f.remoteSession != nil {
+		if err = f.remoteSession.remote.CheckTx(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if err = f.ctx.Err(); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
 // StopAndRecheck ends a failed decode without reopening or retargeting its
 // source. Local custody supplies a fresh descriptor observation before closing.
 // Request cancellation only retires that request; it does not close the book.
