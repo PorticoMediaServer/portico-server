@@ -282,7 +282,7 @@ try {
   })()`);
   const pairBytes = Buffer.from(diff.format.split(',')[1], 'base64');
   await writeFile(resolve(output, 'pair.jpg'), pairBytes);
-  const summary = {state: 'server/remote-sources, one saved WebDAV source with its real reading profile', viewport: {width: 1440, height: 1000},
+  const summary = {state: 'server/remote-sources, real empty state; Add dialog captured separately', viewport: {width: 1440, height: 1000},
     build: buildFacts, reference: referenceFacts, raster: {changed: diff.changed, strong: diff.strong, percent: diff.percent, bounds: diff.bounds, bands: diff.bands}};
   await writeFile(resolve(output, 'facts.log'), JSON.stringify(summary, null, 2));
   note(`raster changed=${diff.changed} (${diff.percent}%) strong=${diff.strong} bounds=${JSON.stringify(diff.bounds)}`);
