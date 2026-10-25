@@ -37,6 +37,7 @@ func (s *Service) savedReading(r ContentRequest, libraries []string, flag string
 		Library    int64  `json:"library"`
 		Generation int64  `json:"generation"`
 		Kind       string `json:"kind"`
+		Mobi       bool   `json:"mobi"`
 	}
 	for rows.Next() {
 		var library string
@@ -46,16 +47,18 @@ func (s *Service) savedReading(r ContentRequest, libraries []string, flag string
 			rows.Close()
 			return out, err
 		}
-		if scope.generation.Ready == 0 || scope.generation.Input != scope.generation.Ready || rule != compactcatalog.ReadingPublicationTypeRuleVersion {
+		if scope.generation.Ready == 0 || scope.generation.Input != scope.generation.Ready || rule != compactcatalog.ReadingProjectionRuleVersion {
 			rows.Close()
 			return out, ErrReadingProjectionChanged
 		}
+		scope.mobi = scope.kind == "book" && s.readingMobiConfigured()
 		out.libraries[library] = &scope
 		members = append(members, struct {
 			Library    int64  `json:"library"`
 			Generation int64  `json:"generation"`
 			Kind       string `json:"kind"`
-		}{scope.library, scope.generation.Ready, scope.kind})
+			Mobi       bool   `json:"mobi"`
+		}{scope.library, scope.generation.Ready, scope.kind, scope.mobi})
 		witnesses = append(witnesses, library+":"+scope.fence())
 	}
 	err = rows.Err()
@@ -73,8 +76,8 @@ func (s *Service) savedReading(r ContentRequest, libraries []string, flag string
  JOIN reading_attribution_members m ON m.library_id=json_extract(admitted.value,'$.library') AND m.generation=json_extract(admitted.value,'$.generation')
  WHERE m.item_id=i.id AND i.library_id=m.library_id AND EXISTS(SELECT 1 FROM reading_publications publication
  JOIN catalog_asset_links link ON link.entity_id=i.id AND link.asset_id=publication.asset_id
- WHERE publication.item_id=i.id AND publication.asset_id=` + readingPrimaryPublicationSQL("i.id") + `
- AND ((i.kind=20 AND json_extract(admitted.value,'$.kind')='book' AND publication.format IN('epub','pdf'))
+ WHERE publication.item_id=i.id AND publication.asset_id=` + savedReadingPrimaryPublicationSQL("i.id") + `
+ AND ((i.kind=20 AND json_extract(admitted.value,'$.kind')='book' AND (publication.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND publication.format IN('mobi','azw3'))))
  OR (i.kind=21 AND json_extract(admitted.value,'$.kind')='comic' AND publication.format IN('cbz','pdf')))))`
 		encoded, err := json.Marshal(witnesses)
 		if err != nil {
@@ -159,4 +162,13 @@ func (s *Service) savedEntries(profile string, ids []string, scope savedReadingS
 		out = append(out, entry)
 	}
 	return out, nil
+}
+
+// The JSON admission tuple is produced only from the current server's captured
+// per-library scope, never user text. Choose primary within that exact kind and
+// converter domain so an unavailable original cannot conceal a native version.
+func savedReadingPrimaryPublicationSQL(item string) string {
+	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + `
+ AND ((json_extract(admitted.value,'$.kind')='book' AND (candidate.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND candidate.format IN('mobi','azw3')))) OR (json_extract(admitted.value,'$.kind')='comic' AND candidate.format IN('cbz','pdf')))
+ ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)`
 }
