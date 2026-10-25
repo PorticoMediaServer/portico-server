@@ -32,6 +32,11 @@ index api_events_activity_progress
 index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
+index app_report_entries_report
+index app_reports_expiry
+index app_reports_operation
+index app_reports_receipt
+index app_reports_recipient
 index artwork_candidates_source
 index artwork_discovery_due
 index artwork_entity_heads_entity
@@ -171,9 +176,11 @@ index catalog_collections_name
 index catalog_container_added_item
 index catalog_credits_department
 index catalog_credits_name
+index catalog_credits_owner_entry
 index catalog_credits_person
 index catalog_credits_provider_person
 index catalog_credits_role
+index catalog_credits_source_row
 index catalog_entities_added
 index catalog_entities_fact_gaps
 index catalog_entities_genreless
@@ -263,6 +270,7 @@ index compact_visibility_rows_movie_item
 index compact_visibility_sort_entity
 index compact_visibility_year
 index console_active_work
+index console_audit_action_page
 index console_inbox_page
 index console_receipts_expiry
 index console_records_page
@@ -274,9 +282,11 @@ index container_personal_undo_items_item
 index content_rating_age_lookup
 index continue_dismissals_item_id_fk
 index continue_show_dismissals_show_id_fk
+index credit_owner_entries_entity_id
 index credit_owner_entries_source
 index credit_source_publication_members_source
 index credit_source_publications_entity
+index credit_source_rows_person_reference
 index credit_source_rows_tuple
 index detail_jobs_due
 index direct_memberships_people_role
@@ -551,6 +561,8 @@ index reading_attribution_series_seek
 index reading_progress_publication
 index reading_progress_recent
 index reading_publication_types_inventory_object
+index reading_saved_group_receipts_expiry
+index reading_saved_groups_owner_listed
 index reading_text_counts_inventory_object
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
@@ -646,6 +658,8 @@ table api_credential_use
 table api_credentials
 table api_events
 table api_idempotency
+table app_report_entries
+table app_reports
 table artwork_candidates
 table artwork_compaction_failures
 table artwork_dirty
@@ -1288,6 +1302,9 @@ table reading_attribution_state
 table reading_progress
 table reading_publication_types
 table reading_publications
+table reading_saved_group_owners
+table reading_saved_group_receipts
+table reading_saved_groups
 table reading_source_values
 table reading_text_counts
 table rec_data_revision
@@ -1295,6 +1312,7 @@ table rec_profile_jobs
 table rec_profile_revisions
 table rec_profile_signals
 table rec_profile_taste
+table recording_root_request
 table remote_analysis_status
 table remote_inventory_checks
 table remote_listing_entries
@@ -2450,6 +2468,7 @@ trigger reading_attribution_ready_update
 trigger reading_attribution_source_delete
 trigger reading_attribution_source_insert
 trigger reading_attribution_source_update
+trigger reading_saved_group_identity_immutable
 trigger rec_data_external_delete
 trigger rec_data_external_insert
 trigger rec_data_similar_delete

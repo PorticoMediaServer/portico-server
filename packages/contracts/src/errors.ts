@@ -625,6 +625,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "recording_root_request_expired",
+    "status": 410,
+    "message": "This request expired. Start again.",
+    "retry": "never"
+  },
+  {
     "code": "request_in_progress",
     "status": 409,
     "message": "This request is still being processed.",

@@ -5743,6 +5743,35 @@ export const schemas = {
               },
               "type": "array"
             },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
+            },
             "author": {
               "type": "string"
             },
@@ -6168,6 +6197,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -6568,6 +6626,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -6615,6 +6678,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -6792,6 +6876,11 @@ export const schemas = {
             "overviewSourceUrl": {
               "type": "string"
             },
+            "pageCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "playback": {
               "properties": {
                 "itemId": {
@@ -6839,6 +6928,27 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "readingMark": {
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "read",
+                "revision"
+              ],
+              "type": "object"
             },
             "releaseDate": {
               "type": "string"
@@ -7699,6 +7809,35 @@ export const schemas = {
               },
               "type": "array"
             },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
+            },
             "author": {
               "type": "string"
             },
@@ -8124,6 +8263,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -8524,6 +8692,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -8571,6 +8744,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -8748,6 +8942,11 @@ export const schemas = {
             "overviewSourceUrl": {
               "type": "string"
             },
+            "pageCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "playback": {
               "properties": {
                 "itemId": {
@@ -8795,6 +8994,27 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "readingMark": {
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "read",
+                "revision"
+              ],
+              "type": "object"
             },
             "releaseDate": {
               "type": "string"
@@ -19145,6 +19365,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "canEditProviderCredits": {
+            "type": "boolean"
+          },
           "fields": {
             "additionalProperties": {
               "properties": {
@@ -19247,6 +19470,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "ownerEntryId": {
+                  "type": "string"
+                },
                 "provider": {
                   "type": "string"
                 },
@@ -19257,6 +19483,12 @@ export const schemas = {
                   "type": "string"
                 },
                 "source": {
+                  "type": "string"
+                },
+                "sourceRowId": {
+                  "type": "string"
+                },
+                "sourceStatus": {
                   "type": "string"
                 },
                 "targetId": {
@@ -19629,6 +19861,66 @@ export const schemas = {
   "DeleteQueueResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "DeleteReadingSavedGroupReferenceRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "DeleteReadingSavedGroupReferenceResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "referenceId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "removed": {
+        "enum": [
+          true
+        ],
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "referenceId",
+      "revision",
+      "removed",
+      "operationId"
+    ],
     "type": "object"
   },
   "DeleteReadingSessionsSessionIdRequest": {
@@ -21164,6 +21456,60 @@ export const schemas = {
     "required": [
       "limit",
       "items"
+    ],
+    "type": "object"
+  },
+  "GetAdminAccessEventsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminAccessEventsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "at": {
+              "description": "RFC 3339 UTC instant; empty when absent.",
+              "type": "string"
+            },
+            "code": {
+              "enum": [
+                "alert.acknowledge",
+                "downloads.settings",
+                "job.cancel",
+                "job.pause",
+                "job.resume",
+                "job.retry",
+                "optimization.cancel",
+                "optimization.delete",
+                "optimization.request",
+                "optimization.retry",
+                "schedule.apply",
+                "settings.apply"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "at",
+            "code"
+          ],
+          "type": "object"
+        },
+        "maxItems": 8,
+        "type": "array"
+      },
+      "limit": {
+        "const": 8,
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "items",
+      "limit"
     ],
     "type": "object"
   },
@@ -26754,6 +27100,69 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminDvrRecordingRootRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminDvrRecordingRootResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "effective": {
+        "anyOf": [
+          {
+            "enum": [
+              ""
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Absolute, already-clean native filesystem path; at most 1024 UTF-8 bytes; no control or bidi override characters.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "^(?:/|[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\x00-\\x1f\\x7f-\\x9f\\u202a-\\u202e\\u2066-\\u2069]*$",
+            "type": "string"
+          }
+        ]
+      },
+      "operatorControlled": {
+        "type": "boolean"
+      },
+      "pendingRestart": {
+        "type": "boolean"
+      },
+      "requested": {
+        "anyOf": [
+          {
+            "enum": [
+              ""
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Absolute, already-clean native filesystem path; at most 1024 UTF-8 bytes; no control or bidi override characters.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "^(?:/|[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\x00-\\x1f\\x7f-\\x9f\\u202a-\\u202e\\u2066-\\u2069]*$",
+            "type": "string"
+          }
+        ]
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "revision",
+      "requested",
+      "effective",
+      "pendingRestart",
+      "operatorControlled"
+    ],
+    "type": "object"
+  },
   "GetAdminDvrSettingsRequest": {
     "properties": {},
     "required": [],
@@ -28341,6 +28750,30 @@ export const schemas = {
               },
               "latestArtwork": {
                 "type": "string"
+              },
+              "publicationCounts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "required": [
@@ -28726,6 +29159,30 @@ export const schemas = {
                 },
                 "latestArtwork": {
                   "type": "string"
+                },
+                "publicationCounts": {
+                  "items": {
+                    "properties": {
+                      "atLeast": {
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count",
+                      "atLeast"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 }
               },
               "required": [
@@ -34524,6 +34981,98 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAppReportRecipientRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAppReportRecipientResponse": {
+    "properties": {
+      "displayName": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "displayName",
+      "revision"
+    ],
+    "type": "object"
+  },
+  "GetAppReportsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAppReportsResponse": {
+    "items": {
+      "properties": {
+        "createdMs": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "entries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "atMs": {
+                "type": "integer"
+              },
+              "code": {
+                "enum": [
+                  "audio_autoplay_blocked",
+                  "audio_edge_late",
+                  "audio_processing_unavailable",
+                  "audio_transition_unavailable",
+                  "equalizer_filter_unavailable"
+                ],
+                "type": "string"
+              },
+              "level": {
+                "enum": [
+                  "info",
+                  "warn",
+                  "error"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "atMs",
+              "level",
+              "code"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "entryCount": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "expiresMs": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "createdMs",
+        "expiresMs",
+        "entryCount"
+      ],
+      "type": "object"
+    },
+    "type": "array"
+  },
   "GetArtistsIdAlbumsRequest": {
     "properties": {},
     "required": [],
@@ -35519,6 +36068,30 @@ export const schemas = {
                 },
                 "latestArtwork": {
                   "type": "string"
+                },
+                "publicationCounts": {
+                  "items": {
+                    "properties": {
+                      "atLeast": {
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count",
+                      "atLeast"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 }
               },
               "required": [
@@ -35947,6 +36520,30 @@ export const schemas = {
               },
               "latestArtwork": {
                 "type": "string"
+              },
+              "publicationCounts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "required": [
@@ -37674,6 +38271,17 @@ export const schemas = {
     "properties": {
       "data": {
         "properties": {
+          "channelLogoUpload": {
+            "properties": {
+              "base64Multipart": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "base64Multipart"
+            ],
+            "type": "object"
+          },
           "exportOptions": {
             "properties": {
               "includePaths": {
@@ -48015,6 +48623,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -48440,6 +49077,35 @@ export const schemas = {
                                   },
                                   "type": "array"
                                 },
+                                "audioFacts": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "lossless": {
+                                      "type": "boolean"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec"
+                                  ],
+                                  "type": "object"
+                                },
                                 "author": {
                                   "type": "string"
                                 },
@@ -48840,6 +49506,11 @@ export const schemas = {
                                 "overviewSourceUrl": {
                                   "type": "string"
                                 },
+                                "pageCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "playback": {
                                   "properties": {
                                     "itemId": {
@@ -48887,6 +49558,27 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "readingMark": {
+                                  "properties": {
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "read": {
+                                      "type": "boolean"
+                                    },
+                                    "revision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "read",
+                                    "revision"
+                                  ],
+                                  "type": "object"
                                 },
                                 "releaseDate": {
                                   "type": "string"
@@ -49064,6 +49756,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -49111,6 +49808,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -49352,6 +50070,35 @@ export const schemas = {
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "audioFacts": {
+                          "properties": {
+                            "bitDepth": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "channels": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "type": "string"
+                            },
+                            "lossless": {
+                              "type": "boolean"
+                            },
+                            "sampleRate": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "codec"
+                          ],
+                          "type": "object"
                         },
                         "author": {
                           "type": "string"
@@ -49778,6 +50525,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -50178,6 +50954,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -50225,6 +51006,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -50402,6 +51204,11 @@ export const schemas = {
                         "overviewSourceUrl": {
                           "type": "string"
                         },
+                        "pageCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "playback": {
                           "properties": {
                             "itemId": {
@@ -50449,6 +51256,27 @@ export const schemas = {
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "readingMark": {
+                          "properties": {
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "read": {
+                              "type": "boolean"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "read",
+                            "revision"
+                          ],
+                          "type": "object"
                         },
                         "releaseDate": {
                           "type": "string"
@@ -51149,6 +51977,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -51574,6 +52431,35 @@ export const schemas = {
                                   },
                                   "type": "array"
                                 },
+                                "audioFacts": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "lossless": {
+                                      "type": "boolean"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec"
+                                  ],
+                                  "type": "object"
+                                },
                                 "author": {
                                   "type": "string"
                                 },
@@ -51974,6 +52860,11 @@ export const schemas = {
                                 "overviewSourceUrl": {
                                   "type": "string"
                                 },
+                                "pageCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "playback": {
                                   "properties": {
                                     "itemId": {
@@ -52021,6 +52912,27 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "readingMark": {
+                                  "properties": {
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "read": {
+                                      "type": "boolean"
+                                    },
+                                    "revision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "read",
+                                    "revision"
+                                  ],
+                                  "type": "object"
                                 },
                                 "releaseDate": {
                                   "type": "string"
@@ -52198,6 +53110,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -52245,6 +53162,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -53043,6 +53981,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -53468,6 +54435,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -53868,6 +54864,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -53915,6 +54916,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -54092,6 +55114,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -54139,6 +55166,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -54377,6 +55425,35 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
                   },
                   "author": {
                     "type": "string"
@@ -54803,6 +55880,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -55203,6 +56309,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -55250,6 +56361,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -55427,6 +56559,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -55474,6 +56611,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -56174,6 +57332,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -56599,6 +57786,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -56999,6 +58215,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -57046,6 +58267,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -57223,6 +58465,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -57270,6 +58517,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -57864,6 +59132,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -58289,6 +59586,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -58689,6 +60015,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -58736,6 +60067,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -58913,6 +60265,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -58960,6 +60317,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -59207,6 +60585,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -59632,6 +61039,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -60032,6 +61468,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -60079,6 +61520,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -60256,6 +61718,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -60303,6 +61770,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -60766,6 +62254,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -61191,6 +62708,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -61591,6 +63137,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -61638,6 +63189,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -61815,6 +63387,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -61862,6 +63439,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -62103,6 +63701,35 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
                   },
                   "author": {
                     "type": "string"
@@ -62529,6 +64156,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -62929,6 +64585,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -62976,6 +64637,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -63153,6 +64835,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -63200,6 +64887,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -63900,6 +65608,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -64325,6 +66062,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -64725,6 +66491,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -64772,6 +66543,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -64949,6 +66741,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -64996,6 +66793,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -65794,6 +67612,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -66219,6 +68066,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -66619,6 +68495,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -66666,6 +68547,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -66843,6 +68745,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -66890,6 +68797,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -67128,6 +69056,35 @@ export const schemas = {
                 "type": "string"
               },
               "type": "array"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "author": {
               "type": "string"
@@ -67554,6 +69511,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -67954,6 +69940,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -68001,6 +69992,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -68178,6 +70190,11 @@ export const schemas = {
             "overviewSourceUrl": {
               "type": "string"
             },
+            "pageCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "playback": {
               "properties": {
                 "itemId": {
@@ -68225,6 +70242,27 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "readingMark": {
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "read",
+                "revision"
+              ],
+              "type": "object"
             },
             "releaseDate": {
               "type": "string"
@@ -68925,6 +70963,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -69350,6 +71417,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -69750,6 +71846,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -69797,6 +71898,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -69974,6 +72096,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -70021,6 +72148,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -71352,6 +73500,35 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
                   "author": {
                     "type": "string"
                   },
@@ -71777,6 +73954,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -72177,6 +74383,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -72224,6 +74435,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -72401,6 +74633,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -72448,6 +74685,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -73418,6 +75676,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -73843,6 +76130,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -74243,6 +76559,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -74290,6 +76611,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -74467,6 +76809,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -74514,6 +76861,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -78781,6 +81149,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -79206,6 +81603,35 @@ export const schemas = {
                                   },
                                   "type": "array"
                                 },
+                                "audioFacts": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "lossless": {
+                                      "type": "boolean"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec"
+                                  ],
+                                  "type": "object"
+                                },
                                 "author": {
                                   "type": "string"
                                 },
@@ -79606,6 +82032,11 @@ export const schemas = {
                                 "overviewSourceUrl": {
                                   "type": "string"
                                 },
+                                "pageCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "playback": {
                                   "properties": {
                                     "itemId": {
@@ -79653,6 +82084,27 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "readingMark": {
+                                  "properties": {
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "read": {
+                                      "type": "boolean"
+                                    },
+                                    "revision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "read",
+                                    "revision"
+                                  ],
+                                  "type": "object"
                                 },
                                 "releaseDate": {
                                   "type": "string"
@@ -79830,6 +82282,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -79877,6 +82334,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -80118,6 +82596,35 @@ export const schemas = {
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "audioFacts": {
+                          "properties": {
+                            "bitDepth": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "channels": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "type": "string"
+                            },
+                            "lossless": {
+                              "type": "boolean"
+                            },
+                            "sampleRate": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "codec"
+                          ],
+                          "type": "object"
                         },
                         "author": {
                           "type": "string"
@@ -80544,6 +83051,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -80944,6 +83480,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -80991,6 +83532,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -81168,6 +83730,11 @@ export const schemas = {
                         "overviewSourceUrl": {
                           "type": "string"
                         },
+                        "pageCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "playback": {
                           "properties": {
                             "itemId": {
@@ -81215,6 +83782,27 @@ export const schemas = {
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "readingMark": {
+                          "properties": {
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "read": {
+                              "type": "boolean"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "read",
+                            "revision"
+                          ],
+                          "type": "object"
                         },
                         "releaseDate": {
                           "type": "string"
@@ -81915,6 +84503,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -82340,6 +84957,35 @@ export const schemas = {
                                   },
                                   "type": "array"
                                 },
+                                "audioFacts": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "lossless": {
+                                      "type": "boolean"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec"
+                                  ],
+                                  "type": "object"
+                                },
                                 "author": {
                                   "type": "string"
                                 },
@@ -82740,6 +85386,11 @@ export const schemas = {
                                 "overviewSourceUrl": {
                                   "type": "string"
                                 },
+                                "pageCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "playback": {
                                   "properties": {
                                     "itemId": {
@@ -82787,6 +85438,27 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "readingMark": {
+                                  "properties": {
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "read": {
+                                      "type": "boolean"
+                                    },
+                                    "revision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "read",
+                                    "revision"
+                                  ],
+                                  "type": "object"
                                 },
                                 "releaseDate": {
                                   "type": "string"
@@ -82964,6 +85636,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -83011,6 +85688,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -83809,6 +86507,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -84234,6 +86961,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -84634,6 +87390,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -84681,6 +87442,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -84858,6 +87640,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -84905,6 +87692,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -85143,6 +87951,35 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
                   },
                   "author": {
                     "type": "string"
@@ -85569,6 +88406,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -85969,6 +88835,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -86016,6 +88887,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -86193,6 +89085,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -86240,6 +89137,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -86940,6 +89858,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -87365,6 +90312,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -87765,6 +90741,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -87812,6 +90793,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -87989,6 +90991,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -88036,6 +91043,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -88873,6 +91901,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -89298,6 +92355,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -89698,6 +92784,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -89745,6 +92836,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -89922,6 +93034,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -89969,6 +93086,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -90210,6 +93348,35 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
                   },
                   "author": {
                     "type": "string"
@@ -90636,6 +93803,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -91036,6 +94232,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -91083,6 +94284,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -91260,6 +94482,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -91307,6 +94534,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -92007,6 +95255,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -92432,6 +95709,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -92832,6 +96138,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -92879,6 +96190,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -93056,6 +96388,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -93103,6 +96440,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -93901,6 +97259,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -94326,6 +97713,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -94726,6 +98142,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -94773,6 +98194,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -94950,6 +98392,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -94997,6 +98444,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -95235,6 +98703,35 @@ export const schemas = {
                 "type": "string"
               },
               "type": "array"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "author": {
               "type": "string"
@@ -95661,6 +99158,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -96061,6 +99587,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -96108,6 +99639,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -96285,6 +99837,11 @@ export const schemas = {
             "overviewSourceUrl": {
               "type": "string"
             },
+            "pageCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "playback": {
               "properties": {
                 "itemId": {
@@ -96332,6 +99889,27 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "readingMark": {
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "read",
+                "revision"
+              ],
+              "type": "object"
             },
             "releaseDate": {
               "type": "string"
@@ -97032,6 +100610,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -97457,6 +101064,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -97857,6 +101493,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -97904,6 +101545,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -98081,6 +101743,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -98128,6 +101795,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -99123,6 +102811,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -99548,6 +103265,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -99948,6 +103694,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -99995,6 +103746,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -100172,6 +103944,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -100219,6 +103996,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -100590,6 +104388,53 @@ export const schemas = {
     "format": "binary",
     "type": "string"
   },
+  "GetItemsItemIdReadingFavoriteRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsItemIdReadingFavoriteResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "favorite": {
+        "type": "boolean"
+      },
+      "itemId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+        "type": "string"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "itemId",
+      "favorite",
+      "revision"
+    ],
+    "type": "object"
+  },
   "GetItemsItemIdReadingMarkRequest": {
     "properties": {},
     "required": [],
@@ -100637,6 +104482,53 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetItemsItemIdReadingMyListRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsItemIdReadingMyListResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "itemId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+        "type": "string"
+      },
+      "listed": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "itemId",
+      "listed",
+      "revision"
+    ],
+    "type": "object"
+  },
   "GetItemsItemIdReadingVersionsRequest": {
     "properties": {},
     "required": [],
@@ -100651,7 +104543,9 @@ export const schemas = {
               "enum": [
                 "epub",
                 "pdf",
-                "cbz"
+                "cbz",
+                "mobi",
+                "azw3"
               ],
               "type": "string"
             },
@@ -102162,6 +106056,30 @@ export const schemas = {
               },
               "latestArtwork": {
                 "type": "string"
+              },
+              "publicationCounts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "required": [
@@ -103262,6 +107180,35 @@ export const schemas = {
             },
             "type": "array"
           },
+          "audioFacts": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "lossless": {
+                "type": "boolean"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "codec"
+            ],
+            "type": "object"
+          },
           "author": {
             "type": "string"
           },
@@ -103687,6 +107634,35 @@ export const schemas = {
                 },
                 "type": "array"
               },
+              "audioFacts": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
               "author": {
                 "type": "string"
               },
@@ -104087,6 +108063,11 @@ export const schemas = {
               "overviewSourceUrl": {
                 "type": "string"
               },
+              "pageCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "playback": {
                 "properties": {
                   "itemId": {
@@ -104134,6 +108115,27 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "readingMark": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "read": {
+                    "type": "boolean"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "read",
+                  "revision"
+                ],
+                "type": "object"
               },
               "releaseDate": {
                 "type": "string"
@@ -104311,6 +108313,11 @@ export const schemas = {
           "overviewSourceUrl": {
             "type": "string"
           },
+          "pageCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "playback": {
             "properties": {
               "itemId": {
@@ -104358,6 +108365,27 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "readingMark": {
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "read": {
+                "type": "boolean"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "itemId",
+              "read",
+              "revision"
+            ],
+            "type": "object"
           },
           "releaseDate": {
             "type": "string"
@@ -104787,6 +108815,35 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
                   "author": {
                     "type": "string"
                   },
@@ -105212,6 +109269,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -105612,6 +109698,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -105659,6 +109750,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -105836,6 +109948,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -105883,6 +110000,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -106228,6 +110366,30 @@ export const schemas = {
               },
               "latestArtwork": {
                 "type": "string"
+              },
+              "publicationCounts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "required": [
@@ -106328,6 +110490,35 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
                   },
                   "author": {
                     "type": "string"
@@ -106754,6 +110945,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -107154,6 +111374,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -107201,6 +111426,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -107378,6 +111624,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -107425,6 +111676,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -108252,6 +112524,35 @@ export const schemas = {
                 },
                 "type": "array"
               },
+              "audioFacts": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
               "author": {
                 "type": "string"
               },
@@ -108677,6 +112978,35 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
                   "author": {
                     "type": "string"
                   },
@@ -109077,6 +113407,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -109124,6 +113459,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -109301,6 +113657,11 @@ export const schemas = {
               "overviewSourceUrl": {
                 "type": "string"
               },
+              "pageCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "playback": {
                 "properties": {
                   "itemId": {
@@ -109348,6 +113709,27 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "readingMark": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "read": {
+                    "type": "boolean"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "read",
+                  "revision"
+                ],
+                "type": "object"
               },
               "releaseDate": {
                 "type": "string"
@@ -109777,6 +114159,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -110202,6 +114613,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -110602,6 +115042,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -110649,6 +115094,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -110826,6 +115292,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -110873,6 +115344,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -111249,6 +115741,35 @@ export const schemas = {
               "type": "string"
             },
             "type": "array"
+          },
+          "audioFacts": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "lossless": {
+                "type": "boolean"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "codec"
+            ],
+            "type": "object"
           },
           "author": {
             "type": "string"
@@ -111675,6 +116196,35 @@ export const schemas = {
                 },
                 "type": "array"
               },
+              "audioFacts": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
               "author": {
                 "type": "string"
               },
@@ -112075,6 +116625,11 @@ export const schemas = {
               "overviewSourceUrl": {
                 "type": "string"
               },
+              "pageCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "playback": {
                 "properties": {
                   "itemId": {
@@ -112122,6 +116677,27 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "readingMark": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "read": {
+                    "type": "boolean"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "read",
+                  "revision"
+                ],
+                "type": "object"
               },
               "releaseDate": {
                 "type": "string"
@@ -112299,6 +116875,11 @@ export const schemas = {
           "overviewSourceUrl": {
             "type": "string"
           },
+          "pageCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "playback": {
             "properties": {
               "itemId": {
@@ -112346,6 +116927,27 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "readingMark": {
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "read": {
+                "type": "boolean"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "itemId",
+              "read",
+              "revision"
+            ],
+            "type": "object"
           },
           "releaseDate": {
             "type": "string"
@@ -113062,6 +117664,30 @@ export const schemas = {
                 },
                 "latestArtwork": {
                   "type": "string"
+                },
+                "publicationCounts": {
+                  "items": {
+                    "properties": {
+                      "atLeast": {
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count",
+                      "atLeast"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 }
               },
               "required": [
@@ -115684,6 +120310,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "canEditProviderCredits": {
+            "type": "boolean"
+          },
           "fields": {
             "additionalProperties": {
               "properties": {
@@ -115786,6 +120415,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "ownerEntryId": {
+                  "type": "string"
+                },
                 "provider": {
                   "type": "string"
                 },
@@ -115796,6 +120428,12 @@ export const schemas = {
                   "type": "string"
                 },
                 "source": {
+                  "type": "string"
+                },
+                "sourceRowId": {
+                  "type": "string"
+                },
+                "sourceStatus": {
                   "type": "string"
                 },
                 "targetId": {
@@ -117387,6 +122025,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -117812,6 +122479,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -118212,6 +122908,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -118259,6 +122960,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -118436,6 +123158,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -118483,6 +123210,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -118777,6 +123525,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -119202,6 +123979,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -119602,6 +124408,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -119649,6 +124460,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -119826,6 +124658,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -119873,6 +124710,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -120249,6 +125107,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -120674,6 +125561,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -121074,6 +125990,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -121121,6 +126042,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -121298,6 +126240,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -121345,6 +126292,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -123880,6 +128848,35 @@ export const schemas = {
             },
             "type": "array"
           },
+          "audioFacts": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "lossless": {
+                "type": "boolean"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "codec"
+            ],
+            "type": "object"
+          },
           "author": {
             "type": "string"
           },
@@ -124305,6 +129302,35 @@ export const schemas = {
                 },
                 "type": "array"
               },
+              "audioFacts": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
               "author": {
                 "type": "string"
               },
@@ -124705,6 +129731,11 @@ export const schemas = {
               "overviewSourceUrl": {
                 "type": "string"
               },
+              "pageCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "playback": {
                 "properties": {
                   "itemId": {
@@ -124752,6 +129783,27 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "readingMark": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "read": {
+                    "type": "boolean"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "read",
+                  "revision"
+                ],
+                "type": "object"
               },
               "releaseDate": {
                 "type": "string"
@@ -124929,6 +129981,11 @@ export const schemas = {
           "overviewSourceUrl": {
             "type": "string"
           },
+          "pageCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "playback": {
             "properties": {
               "itemId": {
@@ -124976,6 +130033,27 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "readingMark": {
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "read": {
+                "type": "boolean"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "itemId",
+              "read",
+              "revision"
+            ],
+            "type": "object"
           },
           "releaseDate": {
             "type": "string"
@@ -125405,6 +130483,35 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
                   "author": {
                     "type": "string"
                   },
@@ -125830,6 +130937,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -126230,6 +131366,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -126277,6 +131418,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -126454,6 +131616,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -126501,6 +131668,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -127714,6 +132902,89 @@ export const schemas = {
       "items": {
         "items": {
           "properties": {
+            "conversion": {
+              "additionalProperties": false,
+              "properties": {
+                "converter": {
+                  "enum": [
+                    "libmobi:85dcfe803fc2a21020ddcf15c3eb66b93d388add"
+                  ],
+                  "type": "string"
+                },
+                "inputSHA256": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "options": {
+                  "enum": [
+                    "portico-epub-v1;unencrypted-only;no-replica;default-kf8"
+                  ],
+                  "type": "string"
+                },
+                "originalFormat": {
+                  "enum": [
+                    "mobi",
+                    "azw3"
+                  ],
+                  "type": "string"
+                },
+                "originalRevision": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "originalSize": {
+                  "maximum": 67108864,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "originalSourceId": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "outputSHA256": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "outputSize": {
+                  "maximum": 134217728,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "revision": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "workerSHA256": {
+                  "maxLength": 64,
+                  "minLength": 64,
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "originalRevision",
+                "originalSourceId",
+                "originalFormat",
+                "originalSize",
+                "inputSHA256",
+                "converter",
+                "workerSHA256",
+                "options",
+                "outputSHA256",
+                "outputSize",
+                "revision"
+              ],
+              "type": "object"
+            },
             "item": {
               "properties": {
                 "author": {
@@ -127747,7 +133018,9 @@ export const schemas = {
                   "enum": [
                     "epub",
                     "pdf",
-                    "cbz"
+                    "cbz",
+                    "mobi",
+                    "azw3"
                   ],
                   "type": "string"
                 },
@@ -127959,7 +133232,9 @@ export const schemas = {
                     "enum": [
                       "epub",
                       "pdf",
-                      "cbz"
+                      "cbz",
+                      "mobi",
+                      "azw3"
                     ],
                     "type": "string"
                   },
@@ -128094,7 +133369,9 @@ export const schemas = {
                         "enum": [
                           "epub",
                           "pdf",
-                          "cbz"
+                          "cbz",
+                          "mobi",
+                          "azw3"
                         ],
                         "type": "string"
                       },
@@ -128244,7 +133521,9 @@ export const schemas = {
                           "enum": [
                             "epub",
                             "pdf",
-                            "cbz"
+                            "cbz",
+                            "mobi",
+                            "azw3"
                           ],
                           "type": "string"
                         },
@@ -128408,7 +133687,9 @@ export const schemas = {
                           "enum": [
                             "epub",
                             "pdf",
-                            "cbz"
+                            "cbz",
+                            "mobi",
+                            "azw3"
                           ],
                           "type": "string"
                         },
@@ -128559,7 +133840,9 @@ export const schemas = {
                         "enum": [
                           "epub",
                           "pdf",
-                          "cbz"
+                          "cbz",
+                          "mobi",
+                          "azw3"
                         ],
                         "type": "string"
                       },
@@ -128676,6 +133959,75 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetReadingGroupMyListRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingGroupMyListResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "groupKind": {
+        "enum": [
+          "series",
+          "magazine",
+          "newspaper"
+        ],
+        "type": "string"
+      },
+      "libraryId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      },
+      "listed": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "referenceId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "seriesId": {
+        "maxLength": 43,
+        "minLength": 43,
+        "pattern": "^[A-Za-z0-9_-]{43}$",
+        "type": "string"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 64,
+        "minLength": 64,
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "libraryId",
+      "groupKind",
+      "seriesId",
+      "listed",
+      "revision"
+    ],
+    "type": "object"
+  },
   "GetReadingItemsRequest": {
     "properties": {},
     "required": [],
@@ -128717,7 +134069,9 @@ export const schemas = {
               "enum": [
                 "epub",
                 "pdf",
-                "cbz"
+                "cbz",
+                "mobi",
+                "azw3"
               ],
               "type": "string"
             },
@@ -128878,7 +134232,9 @@ export const schemas = {
                       "enum": [
                         "epub",
                         "pdf",
-                        "cbz"
+                        "cbz",
+                        "mobi",
+                        "azw3"
                       ],
                       "type": "string"
                     },
@@ -129093,7 +134449,9 @@ export const schemas = {
                   "enum": [
                     "epub",
                     "pdf",
-                    "cbz"
+                    "cbz",
+                    "mobi",
+                    "azw3"
                   ],
                   "type": "string"
                 },
@@ -129290,7 +134648,9 @@ export const schemas = {
               "enum": [
                 "epub",
                 "pdf",
-                "cbz"
+                "cbz",
+                "mobi",
+                "azw3"
               ],
               "type": "string"
             },
@@ -130044,6 +135404,35 @@ export const schemas = {
             },
             "type": "array"
           },
+          "audioFacts": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "lossless": {
+                "type": "boolean"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "codec"
+            ],
+            "type": "object"
+          },
           "author": {
             "type": "string"
           },
@@ -130469,6 +135858,35 @@ export const schemas = {
                 },
                 "type": "array"
               },
+              "audioFacts": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
               "author": {
                 "type": "string"
               },
@@ -130869,6 +136287,11 @@ export const schemas = {
               "overviewSourceUrl": {
                 "type": "string"
               },
+              "pageCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "playback": {
                 "properties": {
                   "itemId": {
@@ -130916,6 +136339,27 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "readingMark": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "read": {
+                    "type": "boolean"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "read",
+                  "revision"
+                ],
+                "type": "object"
               },
               "releaseDate": {
                 "type": "string"
@@ -131093,6 +136537,11 @@ export const schemas = {
           "overviewSourceUrl": {
             "type": "string"
           },
+          "pageCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "playback": {
             "properties": {
               "itemId": {
@@ -131140,6 +136589,27 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "readingMark": {
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "read": {
+                "type": "boolean"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "itemId",
+              "read",
+              "revision"
+            ],
+            "type": "object"
           },
           "releaseDate": {
             "type": "string"
@@ -131462,6 +136932,11 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "savedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      },
       "scope": {
         "properties": {
           "entityId": {
@@ -131498,432 +136973,9 @@ export const schemas = {
           "properties": {
             "entries": {
               "items": {
-                "additionalProperties": false,
-                "properties": {
-                  "absoluteNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "activeBeginYear": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "activeEndYear": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "addedAt": {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  "airDate": {
-                    "type": "string"
-                  },
-                  "album": {
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name"
-                    ],
-                    "type": "object"
-                  },
-                  "albumCount": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "albumType": {
-                    "type": "string"
-                  },
-                  "artist": {
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name"
-                    ],
-                    "type": "object"
-                  },
-                  "artistType": {
-                    "type": "string"
-                  },
-                  "artworkPaths": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "author": {
-                    "type": "string"
-                  },
-                  "available": {
-                    "type": "boolean"
-                  },
-                  "backdropUrl": {
-                    "type": "string"
-                  },
-                  "bookProgress": {
-                    "properties": {
-                      "bookId": {
-                        "type": "string"
-                      },
-                      "chapter": {
-                        "properties": {
-                          "endMs": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "index": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "startMs": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "title": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "index",
-                          "title",
-                          "startMs",
-                          "endMs"
-                        ],
-                        "type": "object"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "itemId": {
-                        "type": "string"
-                      },
-                      "partPositionMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "positionMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "remainingMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "bookId",
-                      "itemId",
-                      "partPositionMs"
-                    ],
-                    "type": "object"
-                  },
-                  "contentRating": {
-                    "type": "string"
-                  },
-                  "count": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "country": {
-                    "type": "string"
-                  },
-                  "dateBased": {
-                    "type": "boolean"
-                  },
-                  "discNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "displayTitle": {
-                    "type": "string"
-                  },
-                  "durationMs": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "edition": {
-                    "type": "string"
-                  },
-                  "episodeNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "favorite": {
-                    "type": "boolean"
-                  },
-                  "genres": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "hidden": {
-                    "nullable": true,
-                    "type": "boolean"
-                  },
-                  "homeActions": {
-                    "properties": {
-                      "collection": {
-                        "type": "boolean"
-                      },
-                      "delete": {
-                        "type": "boolean"
-                      },
-                      "details": {
-                        "type": "boolean"
-                      },
-                      "download": {
-                        "type": "boolean"
-                      },
-                      "editMetadata": {
-                        "type": "boolean"
-                      },
-                      "favorite": {
-                        "type": "boolean"
-                      },
-                      "myList": {
-                        "type": "boolean"
-                      },
-                      "notInterested": {
-                        "type": "boolean"
-                      },
-                      "play": {
-                        "type": "boolean"
-                      },
-                      "played": {
-                        "type": "boolean"
-                      },
-                      "playlist": {
-                        "type": "boolean"
-                      },
-                      "queue": {
-                        "type": "boolean"
-                      },
-                      "rating": {
-                        "type": "boolean"
-                      },
-                      "refreshMetadata": {
-                        "type": "boolean"
-                      },
-                      "removeFromContinue": {
-                        "type": "boolean"
-                      },
-                      "selection": {
-                        "properties": {
-                          "collection": {
-                            "type": "boolean"
-                          },
-                          "delete": {
-                            "type": "boolean"
-                          },
-                          "download": {
-                            "type": "boolean"
-                          },
-                          "edit": {
-                            "type": "boolean"
-                          },
-                          "favorite": {
-                            "type": "boolean"
-                          },
-                          "myList": {
-                            "type": "boolean"
-                          },
-                          "play": {
-                            "type": "boolean"
-                          },
-                          "playlist": {
-                            "type": "boolean"
-                          },
-                          "queue": {
-                            "type": "boolean"
-                          },
-                          "refresh": {
-                            "type": "boolean"
-                          },
-                          "watched": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "play",
-                          "queue",
-                          "playlist",
-                          "collection",
-                          "myList",
-                          "favorite",
-                          "watched",
-                          "download",
-                          "edit",
-                          "refresh",
-                          "delete"
-                        ],
-                        "type": "object"
-                      },
-                      "state": {
-                        "properties": {
-                          "containerRevision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "favorite": {
-                            "type": "boolean"
-                          },
-                          "personalRevision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "rating": {
-                            "nullable": true,
-                            "type": "number"
-                          },
-                          "watched": {
-                            "type": "boolean"
-                          },
-                          "watchlisted": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "watchlisted",
-                          "favorite",
-                          "watched",
-                          "rating",
-                          "personalRevision",
-                          "containerRevision"
-                        ],
-                        "type": "object"
-                      },
-                      "watched": {
-                        "type": "boolean"
-                      }
-                    },
-                    "required": [
-                      "play",
-                      "queue",
-                      "playlist",
-                      "collection",
-                      "myList",
-                      "favorite",
-                      "watched",
-                      "played",
-                      "rating",
-                      "editMetadata",
-                      "refreshMetadata",
-                      "delete",
-                      "download",
-                      "details",
-                      "state",
-                      "selection"
-                    ],
-                    "type": "object"
-                  },
-                  "homeTitleContext": {
-                    "properties": {
-                      "genres": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "kind": {
-                        "type": "string"
-                      },
-                      "seasonCount": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "year": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "genres"
-                    ],
-                    "type": "object"
-                  },
-                  "id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string"
-                  },
-                  "label": {
-                    "type": "string"
-                  },
-                  "language": {
-                    "type": "string"
-                  },
-                  "latestEpisode": {
-                    "properties": {
-                      "airDate": {
-                        "type": "string"
-                      },
-                      "count": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "episodeNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "seasonNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "title": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "airDate",
-                      "episodeNumber",
-                      "count"
-                    ],
-                    "type": "object"
-                  },
-                  "libraryId": {
-                    "type": "string"
-                  },
-                  "media": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
                     "properties": {
                       "absoluteNumber": {
                         "maximum": 9007199254740991,
@@ -131993,6 +137045,35 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
                       },
                       "author": {
                         "type": "string"
@@ -132111,6 +137192,10 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "hidden": {
+                        "nullable": true,
+                        "type": "boolean"
                       },
                       "homeActions": {
                         "properties": {
@@ -132302,6 +137387,27 @@ export const schemas = {
                         "type": "string"
                       },
                       "kind": {
+                        "enum": [
+                          "ebook",
+                          "comic",
+                          "movie",
+                          "show",
+                          "season",
+                          "episode",
+                          "artist",
+                          "album",
+                          "song",
+                          "book",
+                          "audiobook_file",
+                          "chapter",
+                          "collection",
+                          "category",
+                          "author",
+                          "book_series",
+                          "disc",
+                          "extra",
+                          "playlist"
+                        ],
                         "type": "string"
                       },
                       "label": {
@@ -132343,6 +137449,706 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "media": {
+                        "properties": {
+                          "absoluteNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "activeBeginYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "activeEndYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "addedAt": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "airDate": {
+                            "type": "string"
+                          },
+                          "album": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "albumType": {
+                            "type": "string"
+                          },
+                          "artist": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "artistType": {
+                            "type": "string"
+                          },
+                          "artworkPaths": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
+                          "author": {
+                            "type": "string"
+                          },
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "backdropUrl": {
+                            "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "contentRating": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "country": {
+                            "type": "string"
+                          },
+                          "dateBased": {
+                            "type": "boolean"
+                          },
+                          "discNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "displayTitle": {
+                            "type": "string"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "edition": {
+                            "type": "string"
+                          },
+                          "episodeNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
+                            ],
+                            "type": "object"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "latestEpisode": {
+                            "properties": {
+                              "airDate": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "episodeNumber": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "seasonNumber": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "airDate",
+                              "episodeNumber",
+                              "count"
+                            ],
+                            "type": "object"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "missing": {
+                            "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "navigation": {
+                            "properties": {
+                              "category": {
+                                "type": "string"
+                              },
+                              "channelId": {
+                                "type": "string"
+                              },
+                              "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              },
+                              "view": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "view"
+                            ],
+                            "type": "object"
+                          },
+                          "new": {
+                            "type": "boolean"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "overview": {
+                            "type": "string"
+                          },
+                          "overviewSource": {
+                            "type": "string"
+                          },
+                          "overviewSourceUrl": {
+                            "type": "string"
+                          },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "playback": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId"
+                            ],
+                            "type": "object"
+                          },
+                          "plays": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "progressMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
+                          "rating": {
+                            "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
+                          },
+                          "releaseDate": {
+                            "type": "string"
+                          },
+                          "removed": {
+                            "type": "boolean"
+                          },
+                          "resolution": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "seasonNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "show": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "sortLetter": {
+                            "type": "string"
+                          },
+                          "special": {
+                            "type": "boolean"
+                          },
+                          "stillUrl": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "totalAtLeast": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "trackNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "unwatchedCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "userRating": {
+                            "maximum": 10,
+                            "minimum": 0,
+                            "nullable": true,
+                            "type": "integer"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchedCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "missing",
+                          "id",
+                          "kind",
+                          "title",
+                          "addedAt"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -132394,6 +138200,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -132441,6 +138252,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -132560,235 +138392,172 @@ export const schemas = {
                       }
                     },
                     "required": [
-                      "missing",
                       "id",
-                      "kind",
-                      "title",
-                      "addedAt"
+                      "kind"
                     ],
                     "type": "object"
                   },
-                  "missing": {
-                    "type": "boolean"
-                  },
-                  "narrators": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "navigation": {
-                    "properties": {
-                      "category": {
-                        "type": "string"
-                      },
-                      "channelId": {
-                        "type": "string"
-                      },
-                      "entityId": {
-                        "type": "string"
-                      },
-                      "provenance": {
-                        "type": "string"
-                      },
-                      "sourceId": {
-                        "type": "string"
-                      },
-                      "view": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "view"
-                    ],
-                    "type": "object"
-                  },
-                  "new": {
-                    "type": "boolean"
-                  },
-                  "origin": {
-                    "type": "string"
-                  },
-                  "overview": {
-                    "type": "string"
-                  },
-                  "overviewSource": {
-                    "type": "string"
-                  },
-                  "overviewSourceUrl": {
-                    "type": "string"
-                  },
-                  "playback": {
-                    "properties": {
-                      "itemId": {
-                        "type": "string"
-                      },
-                      "startMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "itemId"
-                    ],
-                    "type": "object"
-                  },
-                  "plays": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "posterUrl": {
-                    "type": "string"
-                  },
-                  "progressMs": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "publicationType": {
-                    "enum": [
-                      "book",
-                      "magazine",
-                      "newspaper"
-                    ],
-                    "type": "string"
-                  },
-                  "publishedYear": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "publisher": {
-                    "type": "string"
-                  },
-                  "rating": {
-                    "type": "number"
-                  },
-                  "releaseDate": {
-                    "type": "string"
-                  },
-                  "removed": {
-                    "type": "boolean"
-                  },
-                  "resolution": {
-                    "type": "string"
-                  },
-                  "role": {
-                    "type": "string"
-                  },
-                  "seasonCount": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "seasonNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "series": {
-                    "items": {
-                      "properties": {
-                        "name": {
-                          "type": "string"
+                  {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "hidden": {
+                            "enum": [
+                              true
+                            ],
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "reading_group"
+                            ],
+                            "type": "string"
+                          },
+                          "removeMyList": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          }
                         },
-                        "position": {
-                          "type": "string"
-                        }
+                        "required": [
+                          "id",
+                          "kind",
+                          "hidden",
+                          "revision",
+                          "removeMyList"
+                        ],
+                        "type": "object"
                       },
-                      "required": [
-                        "name"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "show": {
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "hidden": {
+                            "enum": [
+                              false
+                            ],
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "reading_group"
+                            ],
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "navigation": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "entityId": {
+                                "maxLength": 43,
+                                "minLength": 43,
+                                "pattern": "^[A-Za-z0-9_-]{43}$",
+                                "type": "string"
+                              },
+                              "pivot": {
+                                "enum": [
+                                  "magazines",
+                                  "newspapers"
+                                ],
+                                "type": "string"
+                              },
+                              "view": {
+                                "enum": [
+                                  "series"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "view",
+                              "entityId"
+                            ],
+                            "type": "object"
+                          },
+                          "posterUrl": {
+                            "maxLength": 4096,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "readingGroup": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "groupKind": {
+                                "enum": [
+                                  "series",
+                                  "magazine",
+                                  "newspaper"
+                                ],
+                                "type": "string"
+                              },
+                              "seriesId": {
+                                "maxLength": 43,
+                                "minLength": 43,
+                                "pattern": "^[A-Za-z0-9_-]{43}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "groupKind",
+                              "seriesId"
+                            ],
+                            "type": "object"
+                          },
+                          "removeMyList": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "maxLength": 4096,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "hidden",
+                          "revision",
+                          "removeMyList",
+                          "libraryId",
+                          "readingGroup",
+                          "title",
+                          "count",
+                          "navigation"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "id",
-                      "name"
-                    ],
-                    "type": "object"
-                  },
-                  "sortLetter": {
-                    "type": "string"
-                  },
-                  "special": {
-                    "type": "boolean"
-                  },
-                  "stillUrl": {
-                    "type": "string"
-                  },
-                  "subtitle": {
-                    "type": "string"
-                  },
-                  "title": {
-                    "type": "string"
-                  },
-                  "totalAtLeast": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "trackNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "unwatchedCount": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "userRating": {
-                    "maximum": 10,
-                    "minimum": 0,
-                    "nullable": true,
-                    "type": "integer"
-                  },
-                  "watched": {
-                    "type": "boolean"
-                  },
-                  "watchedCount": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "watchlisted": {
-                    "type": "boolean"
-                  },
-                  "year": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "yearMax": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "yearMin": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                    ]
                   }
-                },
-                "required": [
-                  "id",
-                  "kind"
-                ],
-                "type": "object"
+                ]
               },
+              "maxItems": 100,
               "type": "array"
             },
             "heading": {
@@ -132884,6 +138653,7 @@ export const schemas = {
           ],
           "type": "object"
         },
+        "maxItems": 100,
         "type": "array"
       },
       "shapeCounts": {
@@ -133236,6 +139006,35 @@ export const schemas = {
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
                 },
                 "author": {
                   "type": "string"
@@ -133662,6 +139461,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -134062,6 +139890,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -134109,6 +139942,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -134286,6 +140140,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -134333,6 +140192,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -134799,6 +140679,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -135224,6 +141133,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -135624,6 +141562,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -135671,6 +141614,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -135848,6 +141812,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -135895,6 +141864,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -136884,6 +142874,35 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
                   "author": {
                     "type": "string"
                   },
@@ -137309,6 +143328,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -137709,6 +143757,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -137756,6 +143809,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -137933,6 +144007,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -137980,6 +144059,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -140059,6 +146159,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -140484,6 +146613,35 @@ export const schemas = {
                                   },
                                   "type": "array"
                                 },
+                                "audioFacts": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "lossless": {
+                                      "type": "boolean"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec"
+                                  ],
+                                  "type": "object"
+                                },
                                 "author": {
                                   "type": "string"
                                 },
@@ -140884,6 +147042,11 @@ export const schemas = {
                                 "overviewSourceUrl": {
                                   "type": "string"
                                 },
+                                "pageCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "playback": {
                                   "properties": {
                                     "itemId": {
@@ -140931,6 +147094,27 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "readingMark": {
+                                  "properties": {
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "read": {
+                                      "type": "boolean"
+                                    },
+                                    "revision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "read",
+                                    "revision"
+                                  ],
+                                  "type": "object"
                                 },
                                 "releaseDate": {
                                   "type": "string"
@@ -141108,6 +147292,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -141155,6 +147344,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -141396,6 +147606,35 @@ export const schemas = {
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "audioFacts": {
+                          "properties": {
+                            "bitDepth": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "channels": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "type": "string"
+                            },
+                            "lossless": {
+                              "type": "boolean"
+                            },
+                            "sampleRate": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "codec"
+                          ],
+                          "type": "object"
                         },
                         "author": {
                           "type": "string"
@@ -141822,6 +148061,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -142222,6 +148490,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -142269,6 +148542,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -142446,6 +148740,11 @@ export const schemas = {
                         "overviewSourceUrl": {
                           "type": "string"
                         },
+                        "pageCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "playback": {
                           "properties": {
                             "itemId": {
@@ -142493,6 +148792,27 @@ export const schemas = {
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "readingMark": {
+                          "properties": {
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "read": {
+                              "type": "boolean"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "read",
+                            "revision"
+                          ],
+                          "type": "object"
                         },
                         "releaseDate": {
                           "type": "string"
@@ -143193,6 +149513,35 @@ export const schemas = {
                               },
                               "type": "array"
                             },
+                            "audioFacts": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "lossless": {
+                                  "type": "boolean"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "codec"
+                              ],
+                              "type": "object"
+                            },
                             "author": {
                               "type": "string"
                             },
@@ -143618,6 +149967,35 @@ export const schemas = {
                                   },
                                   "type": "array"
                                 },
+                                "audioFacts": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "lossless": {
+                                      "type": "boolean"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "codec"
+                                  ],
+                                  "type": "object"
+                                },
                                 "author": {
                                   "type": "string"
                                 },
@@ -144018,6 +150396,11 @@ export const schemas = {
                                 "overviewSourceUrl": {
                                   "type": "string"
                                 },
+                                "pageCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "playback": {
                                   "properties": {
                                     "itemId": {
@@ -144065,6 +150448,27 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "readingMark": {
+                                  "properties": {
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "read": {
+                                      "type": "boolean"
+                                    },
+                                    "revision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "read",
+                                    "revision"
+                                  ],
+                                  "type": "object"
                                 },
                                 "releaseDate": {
                                   "type": "string"
@@ -144242,6 +150646,11 @@ export const schemas = {
                             "overviewSourceUrl": {
                               "type": "string"
                             },
+                            "pageCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "playback": {
                               "properties": {
                                 "itemId": {
@@ -144289,6 +150698,27 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "readingMark": {
+                              "properties": {
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
                             },
                             "releaseDate": {
                               "type": "string"
@@ -145087,6 +151517,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -145512,6 +151971,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -145912,6 +152400,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -145959,6 +152452,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -146136,6 +152650,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -146183,6 +152702,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -146421,6 +152961,35 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
                   },
                   "author": {
                     "type": "string"
@@ -146847,6 +153416,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -147247,6 +153845,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -147294,6 +153897,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -147471,6 +154095,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -147518,6 +154147,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -148218,6 +154868,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -148643,6 +155322,35 @@ export const schemas = {
                             },
                             "type": "array"
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "author": {
                             "type": "string"
                           },
@@ -149043,6 +155751,11 @@ export const schemas = {
                           "overviewSourceUrl": {
                             "type": "string"
                           },
+                          "pageCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "playback": {
                             "properties": {
                               "itemId": {
@@ -149090,6 +155803,27 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "readingMark": {
+                            "properties": {
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
+                            ],
+                            "type": "object"
                           },
                           "releaseDate": {
                             "type": "string"
@@ -149267,6 +156001,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -149314,6 +156053,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -150760,6 +157520,13 @@ export const schemas = {
             "accountId": {
               "maxLength": 128,
               "minLength": 1,
+              "type": "string"
+            },
+            "expiresAt": {
+              "format": "date-time",
+              "maxLength": 35,
+              "minLength": 20,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|\\+00:00)$",
               "type": "string"
             },
             "username": {
@@ -152425,6 +159192,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -152850,6 +159646,35 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
                     "author": {
                       "type": "string"
                     },
@@ -153250,6 +160075,11 @@ export const schemas = {
                     "overviewSourceUrl": {
                       "type": "string"
                     },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "playback": {
                       "properties": {
                         "itemId": {
@@ -153297,6 +160127,27 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
                     },
                     "releaseDate": {
                       "type": "string"
@@ -153474,6 +160325,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -153521,6 +160377,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -158831,6 +165708,93 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PatchAdminDvrRecordingRootRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "operationId": {
+        "maxLength": 160,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.-]+$",
+        "type": "string"
+      },
+      "path": {
+        "description": "Absolute, already-clean native filesystem path; at most 1024 UTF-8 bytes; no control or bidi override characters.",
+        "maxLength": 1024,
+        "minLength": 1,
+        "pattern": "^(?:/|[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\x00-\\x1f\\x7f-\\x9f\\u202a-\\u202e\\u2066-\\u2069]*$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "operationId",
+      "path"
+    ],
+    "type": "object"
+  },
+  "PatchAdminDvrRecordingRootResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "effective": {
+        "anyOf": [
+          {
+            "enum": [
+              ""
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Absolute, already-clean native filesystem path; at most 1024 UTF-8 bytes; no control or bidi override characters.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "^(?:/|[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\x00-\\x1f\\x7f-\\x9f\\u202a-\\u202e\\u2066-\\u2069]*$",
+            "type": "string"
+          }
+        ]
+      },
+      "operatorControlled": {
+        "type": "boolean"
+      },
+      "pendingRestart": {
+        "type": "boolean"
+      },
+      "requested": {
+        "anyOf": [
+          {
+            "enum": [
+              ""
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Absolute, already-clean native filesystem path; at most 1024 UTF-8 bytes; no control or bidi override characters.",
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "^(?:/|[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\x00-\\x1f\\x7f-\\x9f\\u202a-\\u202e\\u2066-\\u2069]*$",
+            "type": "string"
+          }
+        ]
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "revision",
+      "requested",
+      "effective",
+      "pendingRestart",
+      "operatorControlled"
+    ],
+    "type": "object"
+  },
   "PatchAdminFeedbackIdRequest": {
     "properties": {
       "expectedRevision": {
@@ -159221,6 +166185,30 @@ export const schemas = {
               },
               "latestArtwork": {
                 "type": "string"
+              },
+              "publicationCounts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "required": [
@@ -169020,6 +176008,121 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAppReportsRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "entries": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "atMs": {
+              "type": "integer"
+            },
+            "code": {
+              "enum": [
+                "audio_autoplay_blocked",
+                "audio_edge_late",
+                "audio_processing_unavailable",
+                "audio_transition_unavailable",
+                "equalizer_filter_unavailable"
+              ],
+              "type": "string"
+            },
+            "level": {
+              "enum": [
+                "info",
+                "warn",
+                "error"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "atMs",
+            "level",
+            "code"
+          ],
+          "type": "object"
+        },
+        "maxItems": 200,
+        "minItems": 1,
+        "type": "array"
+      },
+      "recipientRevision": {
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "recipientRevision",
+      "entries"
+    ],
+    "type": "object"
+  },
+  "PostAppReportsResponse": {
+    "properties": {
+      "createdMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "entries": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "atMs": {
+              "type": "integer"
+            },
+            "code": {
+              "enum": [
+                "audio_autoplay_blocked",
+                "audio_edge_late",
+                "audio_processing_unavailable",
+                "audio_transition_unavailable",
+                "equalizer_filter_unavailable"
+              ],
+              "type": "string"
+            },
+            "level": {
+              "enum": [
+                "info",
+                "warn",
+                "error"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "atMs",
+            "level",
+            "code"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "entryCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "expiresMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "createdMs",
+      "expiresMs",
+      "entryCount"
+    ],
+    "type": "object"
+  },
   "PostAuthMoveCodeRequest": {
     "properties": {
       "code": {
@@ -175411,6 +182514,35 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
                   "author": {
                     "type": "string"
                   },
@@ -175836,6 +182968,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -176236,6 +183397,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -176283,6 +183449,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -176460,6 +183647,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -176507,6 +183699,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
@@ -176804,6 +184017,35 @@ export const schemas = {
                 "type": "string"
               },
               "type": "array"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "author": {
               "type": "string"
@@ -177230,6 +184472,35 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "author": {
                   "type": "string"
                 },
@@ -177630,6 +184901,11 @@ export const schemas = {
                 "overviewSourceUrl": {
                   "type": "string"
                 },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "playback": {
                   "properties": {
                     "itemId": {
@@ -177677,6 +184953,27 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
                 },
                 "releaseDate": {
                   "type": "string"
@@ -177854,6 +185151,11 @@ export const schemas = {
             "overviewSourceUrl": {
               "type": "string"
             },
+            "pageCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "playback": {
               "properties": {
                 "itemId": {
@@ -177901,6 +185203,27 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "readingMark": {
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "read",
+                "revision"
+              ],
+              "type": "object"
             },
             "releaseDate": {
               "type": "string"
@@ -179865,6 +187188,30 @@ export const schemas = {
           },
           "latestArtwork": {
             "type": "string"
+          },
+          "publicationCounts": {
+            "items": {
+              "properties": {
+                "atLeast": {
+                  "type": "boolean"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "count",
+                "atLeast"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -181152,6 +188499,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "canEditProviderCredits": {
+            "type": "boolean"
+          },
           "fields": {
             "additionalProperties": {
               "properties": {
@@ -181254,6 +188604,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "ownerEntryId": {
+                  "type": "string"
+                },
                 "provider": {
                   "type": "string"
                 },
@@ -181264,6 +188617,12 @@ export const schemas = {
                   "type": "string"
                 },
                 "source": {
+                  "type": "string"
+                },
+                "sourceRowId": {
+                  "type": "string"
+                },
+                "sourceStatus": {
                   "type": "string"
                 },
                 "targetId": {
@@ -181348,6 +188707,9 @@ export const schemas = {
       "confirm": {
         "type": "boolean"
       },
+      "effectiveCredits": {
+        "type": "boolean"
+      },
       "expectedRevision": {
         "type": "string"
       },
@@ -181421,6 +188783,9 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "ownerEntryId": {
+              "type": "string"
+            },
             "provider": {
               "type": "string"
             },
@@ -181431,6 +188796,12 @@ export const schemas = {
               "type": "string"
             },
             "source": {
+              "type": "string"
+            },
+            "sourceRowId": {
+              "type": "string"
+            },
+            "sourceStatus": {
               "type": "string"
             },
             "targetId": {
@@ -181845,6 +189216,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "canEditProviderCredits": {
+            "type": "boolean"
+          },
           "fields": {
             "additionalProperties": {
               "properties": {
@@ -181947,6 +189321,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "ownerEntryId": {
+                  "type": "string"
+                },
                 "provider": {
                   "type": "string"
                 },
@@ -181957,6 +189334,12 @@ export const schemas = {
                   "type": "string"
                 },
                 "source": {
+                  "type": "string"
+                },
+                "sourceRowId": {
+                  "type": "string"
+                },
+                "sourceStatus": {
                   "type": "string"
                 },
                 "targetId": {
@@ -185750,6 +193133,163 @@ export const schemas = {
           }
         ]
       },
+      "observationReceipt": {
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "claims": {
+            "properties": {
+              "artifact": {
+                "properties": {
+                  "bytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sha256",
+                  "bytes"
+                ],
+                "type": "object"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "issuedAt": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "keyId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "preparationId": {
+                "type": "string"
+              },
+              "publication": {
+                "additionalProperties": false,
+                "properties": {
+                  "documentSha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "format": {
+                    "enum": [
+                      "epub",
+                      "pdf",
+                      "cbz"
+                    ],
+                    "type": "string"
+                  },
+                  "revision": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "revision",
+                  "format",
+                  "documentSha256"
+                ],
+                "type": "object"
+              },
+              "quality": {
+                "type": "string"
+              },
+              "qualityLabel": {
+                "type": "string"
+              },
+              "receiptId": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "viewer": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "authority",
+                  "accountId",
+                  "profileId",
+                  "serverId"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "kind",
+              "version",
+              "receiptId",
+              "keyId",
+              "viewer",
+              "itemId",
+              "preparationId",
+              "quality",
+              "qualityLabel",
+              "artifact",
+              "issuedAt",
+              "expiresAt"
+            ],
+            "type": "object"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "receiptId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiptId",
+          "algorithm",
+          "keyId",
+          "payload",
+          "signature",
+          "claims",
+          "revision"
+        ],
+        "type": "object"
+      },
       "observedAt": {
         "maximum": 9007199254740991,
         "minimum": 1,
@@ -186134,6 +193674,89 @@ export const schemas = {
         },
         "maxItems": 512,
         "type": "array"
+      },
+      "conversion": {
+        "additionalProperties": false,
+        "properties": {
+          "converter": {
+            "enum": [
+              "libmobi:85dcfe803fc2a21020ddcf15c3eb66b93d388add"
+            ],
+            "type": "string"
+          },
+          "inputSHA256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "options": {
+            "enum": [
+              "portico-epub-v1;unencrypted-only;no-replica;default-kf8"
+            ],
+            "type": "string"
+          },
+          "originalFormat": {
+            "enum": [
+              "mobi",
+              "azw3"
+            ],
+            "type": "string"
+          },
+          "originalRevision": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "originalSize": {
+            "maximum": 67108864,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "originalSourceId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "outputSHA256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "outputSize": {
+            "maximum": 134217728,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "revision": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "workerSHA256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "originalRevision",
+          "originalSourceId",
+          "originalFormat",
+          "originalSize",
+          "inputSHA256",
+          "converter",
+          "workerSHA256",
+          "options",
+          "outputSHA256",
+          "outputSize",
+          "revision"
+        ],
+        "type": "object"
       },
       "format": {
         "enum": [
@@ -187299,6 +194922,14 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "moveId": {
+        "type": "string"
       }
     },
     "required": [
@@ -197082,6 +204713,73 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutItemsItemIdReadingFavoriteRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "favorite": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision",
+      "favorite"
+    ],
+    "type": "object"
+  },
+  "PutItemsItemIdReadingFavoriteResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "favorite": {
+        "type": "boolean"
+      },
+      "itemId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+        "type": "string"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "itemId",
+      "favorite",
+      "revision"
+    ],
+    "type": "object"
+  },
   "PutItemsItemIdReadingMarkRequest": {
     "additionalProperties": false,
     "properties": {
@@ -197145,6 +204843,73 @@ export const schemas = {
       "viewerFence",
       "itemId",
       "read",
+      "revision"
+    ],
+    "type": "object"
+  },
+  "PutItemsItemIdReadingMyListRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "listed": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision",
+      "listed"
+    ],
+    "type": "object"
+  },
+  "PutItemsItemIdReadingMyListResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "itemId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+        "type": "string"
+      },
+      "listed": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "itemId",
+      "listed",
       "revision"
     ],
     "type": "object"
@@ -199066,6 +206831,95 @@ export const schemas = {
       "playlistId",
       "revision",
       "deleted"
+    ],
+    "type": "object"
+  },
+  "PutReadingGroupMyListRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "listed": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision",
+      "listed"
+    ],
+    "type": "object"
+  },
+  "PutReadingGroupMyListResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "groupKind": {
+        "enum": [
+          "series",
+          "magazine",
+          "newspaper"
+        ],
+        "type": "string"
+      },
+      "libraryId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      },
+      "listed": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "referenceId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "seriesId": {
+        "maxLength": 43,
+        "minLength": 43,
+        "pattern": "^[A-Za-z0-9_-]{43}$",
+        "type": "string"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 64,
+        "minLength": 64,
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "libraryId",
+      "groupKind",
+      "seriesId",
+      "listed",
+      "revision"
     ],
     "type": "object"
   },
@@ -204912,6 +212766,35 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "audioFacts": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "lossless": {
+                        "type": "boolean"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
                   "author": {
                     "type": "string"
                   },
@@ -205337,6 +213220,35 @@ export const schemas = {
                         },
                         "type": "array"
                       },
+                      "audioFacts": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "lossless": {
+                            "type": "boolean"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "codec"
+                        ],
+                        "type": "object"
+                      },
                       "author": {
                         "type": "string"
                       },
@@ -205737,6 +213649,11 @@ export const schemas = {
                       "overviewSourceUrl": {
                         "type": "string"
                       },
+                      "pageCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "playback": {
                         "properties": {
                           "itemId": {
@@ -205784,6 +213701,27 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "readingMark": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
                       "releaseDate": {
                         "type": "string"
@@ -205961,6 +213899,11 @@ export const schemas = {
                   "overviewSourceUrl": {
                     "type": "string"
                   },
+                  "pageCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "playback": {
                     "properties": {
                       "itemId": {
@@ -206008,6 +213951,27 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "readingMark": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
                   },
                   "releaseDate": {
                     "type": "string"
