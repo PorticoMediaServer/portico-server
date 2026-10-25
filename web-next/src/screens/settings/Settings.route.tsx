@@ -22,6 +22,7 @@ import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {LibrariesPanel} from './libraries/LibrariesPanel';
+import {MetadataSource} from './libraries/MetadataSource';
 import {LibraryHeader} from './libraries/LibraryHeader';
 import {RenameLibrary} from './libraries/RenameLibrary';
 import {LibraryScanAction} from './libraries/LibraryActions';
@@ -318,6 +319,7 @@ export function SettingsEntry() {
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
+      panelIntro: selected => selected.recordId && selected.tabId === 'metadata' && libraries ? <MetadataSource key={selected.recordId} libraryId={selected.recordId} api={context.api} isCurrent={current} /> : null,
       panelHeader: (selected, title) => selected.recordId && libraries ? <LibraryHeader key={selected.recordId} libraryId={selected.recordId} name={title} service={libraries} artwork={context.artwork} onError={reportError} /> : null,
       subscribe: listener => {const off = source.subscribe(listener), offProfiles = profiles?.subscribe(listener), offLimits = restrictions?.subscribe(listener), offHardware = hardware?.subscribe(listener), offServer = server?.subscribe(listener);return () => {off();offProfiles?.();offLimits?.();offHardware?.();offServer?.();};},
       change: (row, value, selected) => {
