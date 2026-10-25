@@ -6597,6 +6597,14 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                },
                 "publishedYear": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -6812,6 +6820,14 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
+            },
+            "publicationType": {
+              "enum": [
+                "book",
+                "magazine",
+                "newspaper"
+              ],
+              "type": "string"
             },
             "publishedYear": {
               "maximum": 9007199254740991,
@@ -8537,6 +8553,14 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                },
                 "publishedYear": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -8752,6 +8776,14 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
+            },
+            "publicationType": {
+              "enum": [
+                "book",
+                "magazine",
+                "newspaper"
+              ],
+              "type": "string"
             },
             "publishedYear": {
               "maximum": 9007199254740991,
@@ -9512,6 +9544,24 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "people.invitation_days": {
+            "enum": [
+              1,
+              3,
+              7,
+              30
+            ],
+            "maximum": 30,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "people.invitation_role": {
+            "enum": [
+              "member",
+              "administrator"
+            ],
+            "type": "string"
+          },
           "perAccountCap": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -9973,6 +10023,24 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "people.invitation_days": {
+                "enum": [
+                  1,
+                  3,
+                  7,
+                  30
+                ],
+                "maximum": 30,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "people.invitation_role": {
+                "enum": [
+                  "member",
+                  "administrator"
+                ],
+                "type": "string"
               },
               "perAccountCap": {
                 "maximum": 9007199254740991,
@@ -10451,6 +10519,24 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "people.invitation_days": {
+                "enum": [
+                  1,
+                  3,
+                  7,
+                  30
+                ],
+                "maximum": 30,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "people.invitation_role": {
+                "enum": [
+                  "member",
+                  "administrator"
+                ],
+                "type": "string"
               },
               "perAccountCap": {
                 "maximum": 9007199254740991,
@@ -20879,6 +20965,12 @@ export const schemas = {
   },
   "EmptyMissingTitlesRequest": {
     "properties": {
+      "before": {
+        "format": "date-time",
+        "maxLength": 64,
+        "minLength": 20,
+        "type": "string"
+      },
       "libraryId": {
         "type": "string"
       }
@@ -21295,6 +21387,19 @@ export const schemas = {
           "allowUnrated": {
             "type": "boolean"
           },
+          "awayQuality": {
+            "enum": [
+              "server",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
+            "type": "string"
+          },
           "channelPolicy": {
             "properties": {
               "channels": {
@@ -21508,6 +21613,19 @@ export const schemas = {
           },
           "allowUnrated": {
             "type": "boolean"
+          },
+          "awayQuality": {
+            "enum": [
+              "server",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
+            "type": "string"
           },
           "channelPolicy": {
             "properties": {
@@ -37886,6 +38004,24 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "people.invitation_days": {
+                "enum": [
+                  1,
+                  3,
+                  7,
+                  30
+                ],
+                "maximum": 30,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "people.invitation_role": {
+                "enum": [
+                  "member",
+                  "administrator"
+                ],
+                "type": "string"
+              },
               "perAccountCap": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -38363,6 +38499,24 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "people.invitation_days": {
+                "enum": [
+                  1,
+                  3,
+                  7,
+                  30
+                ],
+                "maximum": 30,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "people.invitation_role": {
+                "enum": [
+                  "member",
+                  "administrator"
+                ],
+                "type": "string"
               },
               "perAccountCap": {
                 "maximum": 9007199254740991,
@@ -40580,6 +40734,12 @@ export const schemas = {
       },
       "preparationId": {
         "type": "string"
+      },
+      "publication": {
+        "contentMediaType": "application/json",
+        "maxLength": 2097152,
+        "type": "string",
+        "x-maxUtf8Bytes": 2097152
       },
       "quality": {
         "type": "string"
@@ -48709,6 +48869,14 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publicationType": {
+                                  "enum": [
+                                    "book",
+                                    "magazine",
+                                    "newspaper"
+                                  ],
+                                  "type": "string"
+                                },
                                 "publishedYear": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -48924,6 +49092,14 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
+                            },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
                             },
                             "publishedYear": {
                               "maximum": 9007199254740991,
@@ -50031,6 +50207,14 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
+                            },
                             "publishedYear": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -50246,6 +50430,14 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": 0,
                           "type": "integer"
+                        },
+                        "publicationType": {
+                          "enum": [
+                            "book",
+                            "magazine",
+                            "newspaper"
+                          ],
+                          "type": "string"
                         },
                         "publishedYear": {
                           "maximum": 9007199254740991,
@@ -51811,6 +52003,14 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publicationType": {
+                                  "enum": [
+                                    "book",
+                                    "magazine",
+                                    "newspaper"
+                                  ],
+                                  "type": "string"
+                                },
                                 "publishedYear": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -52026,6 +52226,14 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
+                            },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
                             },
                             "publishedYear": {
                               "maximum": 9007199254740991,
@@ -53689,6 +53897,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -53904,6 +54120,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -55008,6 +55232,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -55223,6 +55455,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -56788,6 +57028,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -57003,6 +57251,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -58462,6 +58718,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -58677,6 +58941,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -59789,6 +60061,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -60004,6 +60284,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -61332,6 +61620,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -61547,6 +61843,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -62654,6 +62958,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -62869,6 +63181,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -64434,6 +64754,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -64649,6 +64977,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -66312,6 +66648,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -66527,6 +66871,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -67631,6 +67983,14 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                },
                 "publishedYear": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -67846,6 +68206,14 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
+            },
+            "publicationType": {
+              "enum": [
+                "book",
+                "magazine",
+                "newspaper"
+              ],
+              "type": "string"
             },
             "publishedYear": {
               "maximum": 9007199254740991,
@@ -69411,6 +69779,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -69626,6 +70002,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -71822,6 +72206,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -72037,6 +72429,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -73872,6 +74272,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -74087,6 +74495,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -79219,6 +79635,14 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publicationType": {
+                                  "enum": [
+                                    "book",
+                                    "magazine",
+                                    "newspaper"
+                                  ],
+                                  "type": "string"
+                                },
                                 "publishedYear": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -79434,6 +79858,14 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
+                            },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
                             },
                             "publishedYear": {
                               "maximum": 9007199254740991,
@@ -80541,6 +80973,14 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
+                            },
                             "publishedYear": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -80756,6 +81196,14 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": 0,
                           "type": "integer"
+                        },
+                        "publicationType": {
+                          "enum": [
+                            "book",
+                            "magazine",
+                            "newspaper"
+                          ],
+                          "type": "string"
                         },
                         "publishedYear": {
                           "maximum": 9007199254740991,
@@ -82321,6 +82769,14 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publicationType": {
+                                  "enum": [
+                                    "book",
+                                    "magazine",
+                                    "newspaper"
+                                  ],
+                                  "type": "string"
+                                },
                                 "publishedYear": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -82536,6 +82992,14 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
+                            },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
                             },
                             "publishedYear": {
                               "maximum": 9007199254740991,
@@ -84199,6 +84663,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -84414,6 +84886,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -85518,6 +85998,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -85733,6 +86221,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -87298,6 +87794,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -87513,6 +88017,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -89215,6 +89727,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -89430,6 +89950,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -90537,6 +91065,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -90752,6 +91288,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -92317,6 +92861,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -92532,6 +93084,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -94195,6 +94755,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -94410,6 +94978,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -95514,6 +96090,14 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                },
                 "publishedYear": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -95729,6 +96313,14 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
+            },
+            "publicationType": {
+              "enum": [
+                "book",
+                "magazine",
+                "newspaper"
+              ],
+              "type": "string"
             },
             "publishedYear": {
               "maximum": 9007199254740991,
@@ -97294,6 +97886,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -97509,6 +98109,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -99369,6 +99977,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -99584,6 +100200,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -99965,6 +100589,53 @@ export const schemas = {
   "GetItemsIdTrickplaySetThumbnailsVttResponse": {
     "format": "binary",
     "type": "string"
+  },
+  "GetItemsItemIdReadingMarkRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsItemIdReadingMarkResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "itemId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+        "type": "string"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "read": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "itemId",
+      "read",
+      "revision"
+    ],
+    "type": "object"
   },
   "GetItemsItemIdReadingVersionsRequest": {
     "properties": {},
@@ -103445,6 +104116,14 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publicationType": {
+                "enum": [
+                  "book",
+                  "magazine",
+                  "newspaper"
+                ],
+                "type": "string"
+              },
               "publishedYear": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -103660,6 +104339,14 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "publicationType": {
+            "enum": [
+              "book",
+              "magazine",
+              "newspaper"
+            ],
+            "type": "string"
           },
           "publishedYear": {
             "maximum": 9007199254740991,
@@ -104954,6 +105641,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -105169,6 +105864,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -106480,6 +107183,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -106695,6 +107406,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -108387,6 +109106,14 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
+                  },
                   "publishedYear": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -108602,6 +109329,14 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": 0,
                 "type": "integer"
+              },
+              "publicationType": {
+                "enum": [
+                  "book",
+                  "magazine",
+                  "newspaper"
+                ],
+                "type": "string"
               },
               "publishedYear": {
                 "maximum": 9007199254740991,
@@ -109896,6 +110631,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -110111,6 +110854,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -111353,6 +112104,14 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publicationType": {
+                "enum": [
+                  "book",
+                  "magazine",
+                  "newspaper"
+                ],
+                "type": "string"
+              },
               "publishedYear": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -111568,6 +112327,14 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "publicationType": {
+            "enum": [
+              "book",
+              "magazine",
+              "newspaper"
+            ],
+            "type": "string"
           },
           "publishedYear": {
             "maximum": 9007199254740991,
@@ -117474,6 +118241,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -117689,6 +118464,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -118848,6 +119631,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -119063,6 +119854,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -120304,6 +121103,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -120519,6 +121326,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -123919,6 +124734,14 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publicationType": {
+                "enum": [
+                  "book",
+                  "magazine",
+                  "newspaper"
+                ],
+                "type": "string"
+              },
               "publishedYear": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -124134,6 +124957,14 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "publicationType": {
+            "enum": [
+              "book",
+              "magazine",
+              "newspaper"
+            ],
+            "type": "string"
           },
           "publishedYear": {
             "maximum": 9007199254740991,
@@ -125428,6 +126259,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -125643,6 +126482,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -127204,6 +128051,307 @@ export const schemas = {
             "key": {
               "type": "string"
             },
+            "newIssues": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "issueDate": {
+                    "maxLength": 10,
+                    "minLength": 7,
+                    "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+                    "type": "string"
+                  },
+                  "item": {
+                    "properties": {
+                      "author": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "source": {
+                            "enum": [
+                              "owner",
+                              "file-metadata",
+                              "file-name",
+                              "folder"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {
+                            "maxLength": 4096,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "value",
+                          "source"
+                        ],
+                        "type": "object"
+                      },
+                      "coverUrl": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "enum": [
+                          "epub",
+                          "pdf",
+                          "cbz"
+                        ],
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "inventoryAvailable": {
+                        "type": "boolean"
+                      },
+                      "libraryId": {
+                        "type": "string"
+                      },
+                      "publicationType": {
+                        "properties": {
+                          "source": {
+                            "enum": [
+                              "owner",
+                              "file-metadata"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "value",
+                          "source"
+                        ],
+                        "type": "object"
+                      },
+                      "series": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "name": {
+                            "maxLength": 4096,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "number": {
+                            "minimum": 0,
+                            "type": "number"
+                          },
+                          "source": {
+                            "enum": [
+                              "owner",
+                              "file-metadata",
+                              "file-name",
+                              "folder"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "source"
+                        ],
+                        "type": "object"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "libraryId",
+                      "title",
+                      "format",
+                      "sourceId",
+                      "inventoryAvailable"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "item",
+                  "issueDate"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "newspaper": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "issueCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "latest": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "issueDate": {
+                      "maxLength": 10,
+                      "minLength": 7,
+                      "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+                      "type": "string"
+                    },
+                    "item": {
+                      "properties": {
+                        "author": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "owner",
+                                "file-metadata",
+                                "file-name",
+                                "folder"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "maxLength": 4096,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        "coverUrl": {
+                          "type": "string"
+                        },
+                        "format": {
+                          "enum": [
+                            "epub",
+                            "pdf",
+                            "cbz"
+                          ],
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "inventoryAvailable": {
+                          "type": "boolean"
+                        },
+                        "libraryId": {
+                          "type": "string"
+                        },
+                        "publicationType": {
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "owner",
+                                "file-metadata"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        "series": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "name": {
+                              "maxLength": 4096,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "number": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "source": {
+                              "enum": [
+                                "owner",
+                                "file-metadata",
+                                "file-name",
+                                "folder"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "libraryId",
+                        "title",
+                        "format",
+                        "sourceId",
+                        "inventoryAvailable"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "issueDate"
+                  ],
+                  "type": "object"
+                },
+                "name": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "issueCount",
+                "latest"
+              ],
+              "type": "object"
+            },
             "series": {
               "items": {
                 "additionalProperties": false,
@@ -127869,7 +129017,39 @@ export const schemas = {
     "type": "object"
   },
   "GetReadingPeriodicalIssuesResponse": {
+    "additionalProperties": false,
     "properties": {
+      "days": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "maxLength": 10,
+              "minLength": 7,
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            },
+            "issueCount": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "date",
+            "issueCount"
+          ],
+          "type": "object"
+        },
+        "maxItems": 31,
+        "type": "array"
+      },
+      "issueDate": {
+        "maxLength": 10,
+        "minLength": 7,
+        "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+        "type": "string"
+      },
       "items": {
         "items": {
           "additionalProperties": false,
@@ -128007,12 +129187,18 @@ export const schemas = {
           ],
           "type": "object"
         },
+        "maxItems": 100,
         "type": "array"
       },
       "libraryId": {
         "type": "string"
       },
+      "month": {
+        "pattern": "^[0-9]{4}-[0-9]{2}$",
+        "type": "string"
+      },
       "nextCursor": {
+        "pattern": "^[A-Za-z0-9_-]{171}\\.[A-Za-z0-9_-]{43}$",
         "type": "string"
       },
       "publicationType": {
@@ -128024,9 +129210,38 @@ export const schemas = {
       },
       "seriesId": {
         "type": "string"
+      },
+      "year": {
+        "pattern": "^[0-9]{4}$",
+        "type": "string"
+      },
+      "years": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "issueCount": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "year": {
+              "pattern": "^[0-9]{4}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "year",
+            "issueCount"
+          ],
+          "type": "object"
+        },
+        "maxItems": 9999,
+        "type": "array"
       }
     },
     "required": [
+      "days",
+      "years",
       "libraryId",
       "seriesId",
       "publicationType",
@@ -128166,10 +129381,266 @@ export const schemas = {
       },
       "nextCursor": {
         "type": "string"
+      },
+      "summary": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "enum": [
+                  "owner",
+                  "file-metadata",
+                  "file-name",
+                  "folder"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "source"
+            ],
+            "type": "object"
+          },
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "readCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "count",
+          "readCount"
+        ],
+        "type": "object"
       }
     },
     "required": [
       "items"
+    ],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdAnnotationsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdAnnotationsResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "entries": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "colour": {
+              "enum": [
+                "",
+                "yellow",
+                "green",
+                "blue",
+                "pink"
+              ],
+              "type": "string"
+            },
+            "createdAt": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "id": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "bookmark",
+                "highlight"
+              ],
+              "type": "string"
+            },
+            "location": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "cfi": {
+                      "maxLength": 4096,
+                      "minLength": 10,
+                      "type": "string"
+                    },
+                    "format": {
+                      "enum": [
+                        "epub"
+                      ],
+                      "type": "string"
+                    },
+                    "progression": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "section": {
+                      "maxLength": 1024,
+                      "minLength": 0,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "cfi",
+                    "progression"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "format": {
+                      "enum": [
+                        "pdf",
+                        "cbz"
+                      ],
+                      "type": "string"
+                    },
+                    "pageIndex": {
+                      "maximum": 1000000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "progression": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "pageIndex",
+                    "progression"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "note": {
+              "maxLength": 4096,
+              "minLength": 0,
+              "type": "string"
+            },
+            "rects": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "height": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "width": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "x": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "y": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "type": "object"
+              },
+              "maxItems": 128,
+              "type": "array"
+            },
+            "text": {
+              "maxLength": 8192,
+              "minLength": 0,
+              "type": "string"
+            },
+            "updatedAt": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "location",
+            "text",
+            "note",
+            "colour",
+            "createdAt",
+            "updatedAt"
+          ],
+          "type": "object"
+        },
+        "maxItems": 50,
+        "type": "array"
+      },
+      "nextCursor": {
+        "maxLength": 64,
+        "pattern": "^([A-Za-z0-9_-]{1,64})?$",
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "sourceId": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+      },
+      "sourceRevision": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "sourceId",
+      "sourceRevision",
+      "revision",
+      "entries",
+      "nextCursor"
     ],
     "type": "object"
   },
@@ -129427,6 +130898,14 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publicationType": {
+                "enum": [
+                  "book",
+                  "magazine",
+                  "newspaper"
+                ],
+                "type": "string"
+              },
               "publishedYear": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -129642,6 +131121,14 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "publicationType": {
+            "enum": [
+              "book",
+              "magazine",
+              "newspaper"
+            ],
+            "type": "string"
           },
           "publishedYear": {
             "maximum": 9007199254740991,
@@ -130936,6 +132423,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -131151,6 +132646,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -132588,6 +134091,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -132803,6 +134314,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -134134,6 +135653,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -134349,6 +135876,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -136203,6 +137738,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -136418,6 +137961,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -139362,6 +140913,14 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publicationType": {
+                                  "enum": [
+                                    "book",
+                                    "magazine",
+                                    "newspaper"
+                                  ],
+                                  "type": "string"
+                                },
                                 "publishedYear": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -139577,6 +141136,14 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
+                            },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
                             },
                             "publishedYear": {
                               "maximum": 9007199254740991,
@@ -140684,6 +142251,14 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
+                            },
                             "publishedYear": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -140899,6 +142474,14 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": 0,
                           "type": "integer"
+                        },
+                        "publicationType": {
+                          "enum": [
+                            "book",
+                            "magazine",
+                            "newspaper"
+                          ],
+                          "type": "string"
                         },
                         "publishedYear": {
                           "maximum": 9007199254740991,
@@ -142464,6 +144047,14 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publicationType": {
+                                  "enum": [
+                                    "book",
+                                    "magazine",
+                                    "newspaper"
+                                  ],
+                                  "type": "string"
+                                },
                                 "publishedYear": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -142679,6 +144270,14 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
+                            },
+                            "publicationType": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
                             },
                             "publishedYear": {
                               "maximum": 9007199254740991,
@@ -144342,6 +145941,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -144557,6 +146164,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -145661,6 +147276,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -145876,6 +147499,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -147441,6 +149072,14 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publicationType": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          },
                           "publishedYear": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -147656,6 +149295,14 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
                       },
                       "publishedYear": {
                         "maximum": 9007199254740991,
@@ -149097,6 +150744,46 @@ export const schemas = {
     },
     "required": [
       "move"
+    ],
+    "type": "object"
+  },
+  "GetSignInMoveWaitingRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSignInMoveWaitingResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "username": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "accountId",
+            "username"
+          ],
+          "type": "object"
+        },
+        "maxItems": 2000,
+        "type": "array"
+      },
+      "truncated": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "items",
+      "truncated"
     ],
     "type": "object"
   },
@@ -151592,6 +153279,14 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
                     "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -151807,6 +153502,14 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
                 },
                 "publishedYear": {
                   "maximum": 9007199254740991,
@@ -153318,6 +155021,40 @@ export const schemas = {
                     },
                     "preparationId": {
                       "type": "string"
+                    },
+                    "publication": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "documentSha256": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "format": {
+                          "enum": [
+                            "epub",
+                            "pdf",
+                            "cbz"
+                          ],
+                          "type": "string"
+                        },
+                        "revision": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "revision",
+                        "format",
+                        "documentSha256"
+                      ],
+                      "type": "object"
                     },
                     "quality": {
                       "type": "string"
@@ -155105,6 +156842,9 @@ export const schemas = {
         "type": "array"
       },
       "nextCursor": {
+        "type": "string"
+      },
+      "observedAt": {
         "type": "string"
       },
       "rule": {
@@ -174525,6 +176265,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -174740,6 +176488,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
@@ -175903,6 +177659,14 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                },
                 "publishedYear": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -176118,6 +177882,14 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
+            },
+            "publicationType": {
+              "enum": [
+                "book",
+                "magazine",
+                "newspaper"
+              ],
+              "type": "string"
             },
             "publishedYear": {
               "maximum": 9007199254740991,
@@ -183886,6 +185658,426 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostReadingOfflineProgressRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "location": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "cfi": {
+                "maxLength": 4096,
+                "minLength": 10,
+                "pattern": "^epubcfi\\(/.*\\)$",
+                "type": "string"
+              },
+              "format": {
+                "const": "epub",
+                "type": "string"
+              },
+              "progression": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "section": {
+                "maxLength": 1024,
+                "type": "string"
+              }
+            },
+            "required": [
+              "format",
+              "progression",
+              "cfi"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "format": {
+                "const": "pdf",
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 1000000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "progression": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "format",
+              "progression",
+              "pageIndex"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "format": {
+                "const": "cbz",
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 1000000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "progression": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "format",
+              "progression",
+              "pageIndex"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "observedAt": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "receipt": {
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "claims": {
+            "properties": {
+              "artifact": {
+                "properties": {
+                  "bytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sha256",
+                  "bytes"
+                ],
+                "type": "object"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "issuedAt": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "keyId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "preparationId": {
+                "type": "string"
+              },
+              "publication": {
+                "additionalProperties": false,
+                "properties": {
+                  "documentSha256": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "format": {
+                    "enum": [
+                      "epub",
+                      "pdf",
+                      "cbz"
+                    ],
+                    "type": "string"
+                  },
+                  "revision": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "revision",
+                  "format",
+                  "documentSha256"
+                ],
+                "type": "object"
+              },
+              "quality": {
+                "type": "string"
+              },
+              "qualityLabel": {
+                "type": "string"
+              },
+              "receiptId": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "viewer": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "authority",
+                  "accountId",
+                  "profileId",
+                  "serverId"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "kind",
+              "version",
+              "receiptId",
+              "keyId",
+              "viewer",
+              "itemId",
+              "preparationId",
+              "quality",
+              "qualityLabel",
+              "artifact",
+              "issuedAt",
+              "expiresAt"
+            ],
+            "type": "object"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "receiptId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "receiptId",
+          "algorithm",
+          "keyId",
+          "payload",
+          "signature",
+          "claims",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "startedAt": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "receipt",
+      "expectedRevision",
+      "observedAt",
+      "startedAt",
+      "location"
+    ],
+    "type": "object"
+  },
+  "PostReadingOfflineProgressResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "outcome": {
+        "enum": [
+          "applied",
+          "history_paused",
+          "stale_observation",
+          "superseded_online"
+        ],
+        "type": "string"
+      },
+      "progress": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "location": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cfi": {
+                        "maxLength": 4096,
+                        "minLength": 10,
+                        "pattern": "^epubcfi\\(/.*\\)$",
+                        "type": "string"
+                      },
+                      "format": {
+                        "const": "epub",
+                        "type": "string"
+                      },
+                      "progression": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "section": {
+                        "maxLength": 1024,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "progression",
+                      "cfi"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "format": {
+                        "const": "pdf",
+                        "type": "string"
+                      },
+                      "pageIndex": {
+                        "maximum": 1000000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "progression": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "progression",
+                      "pageIndex"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "format": {
+                        "const": "cbz",
+                        "type": "string"
+                      },
+                      "pageIndex": {
+                        "maximum": 1000000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "progression": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "progression",
+                      "pageIndex"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "observedAt": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sourceId": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "sourceRevision": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "stale": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sourceId",
+              "sourceRevision",
+              "location",
+              "revision",
+              "observedAt",
+              "stale"
+            ],
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "saved": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "progress",
+      "saved",
+      "outcome"
+    ],
+    "type": "object"
+  },
   "PostReadingSessionsRequest": {
     "properties": {
       "itemId": {
@@ -183903,6 +186095,12 @@ export const schemas = {
   },
   "PostReadingSessionsResponse": {
     "properties": {
+      "canAnnotate": {
+        "type": "boolean"
+      },
+      "canSaveFile": {
+        "type": "boolean"
+      },
       "contents": {
         "items": {
           "additionalProperties": false,
@@ -183964,8 +186162,23 @@ export const schemas = {
             ],
             "type": "string"
           },
+          "estimatedSeconds": {
+            "maximum": 16106128,
+            "minimum": 0,
+            "type": "integer"
+          },
           "language": {
             "type": "string"
+          },
+          "openingLines": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pageCount": {
+            "maximum": 4096,
+            "minimum": 1,
+            "type": "integer"
           },
           "publicationType": {
             "properties": {
@@ -183991,8 +186204,54 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "series": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]{43}$",
+                "type": "string"
+              },
+              "libraryId": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string"
+              },
+              "number": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "source": {
+                "enum": [
+                  "owner",
+                  "file-metadata",
+                  "file-name",
+                  "folder"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "source",
+              "libraryId"
+            ],
+            "type": "object"
+          },
           "title": {
             "type": "string"
+          },
+          "wordCount": {
+            "maximum": 67108864,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [],
@@ -184062,6 +186321,22 @@ export const schemas = {
       "metadata"
     ],
     "type": "object"
+  },
+  "PostReadingSessionsSessionIdFileSaveRequest": {
+    "properties": {
+      "operationId": {
+        "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PostReadingSessionsSessionIdFileSaveResponse": {
+    "format": "binary",
+    "type": "string"
   },
   "PostSavedResourcesRequest": {
     "properties": {
@@ -188635,6 +190910,19 @@ export const schemas = {
           "allowUnrated": {
             "type": "boolean"
           },
+          "awayQuality": {
+            "enum": [
+              "server",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
+            "type": "string"
+          },
           "channelPolicy": {
             "properties": {
               "channels": {
@@ -188840,6 +191128,19 @@ export const schemas = {
           "allowUnrated": {
             "type": "boolean"
           },
+          "awayQuality": {
+            "enum": [
+              "server",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
+            "type": "string"
+          },
           "channelPolicy": {
             "properties": {
               "channels": {
@@ -189003,6 +191304,19 @@ export const schemas = {
           },
           "allowUnrated": {
             "type": "boolean"
+          },
+          "awayQuality": {
+            "enum": [
+              "server",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
+            "type": "string"
           },
           "channelPolicy": {
             "properties": {
@@ -189234,6 +191548,19 @@ export const schemas = {
           },
           "allowUnrated": {
             "type": "boolean"
+          },
+          "awayQuality": {
+            "enum": [
+              "server",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
+            "type": "string"
           },
           "channelPolicy": {
             "properties": {
@@ -194755,6 +197082,73 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutItemsItemIdReadingMarkRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      },
+      "read": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision",
+      "read"
+    ],
+    "type": "object"
+  },
+  "PutItemsItemIdReadingMarkResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "itemId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+        "type": "string"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "read": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "itemId",
+      "read",
+      "revision"
+    ],
+    "type": "object"
+  },
   "PutItemsPersonalStateBatchRequest": {
     "properties": {
       "items": {
@@ -196672,6 +199066,209 @@ export const schemas = {
       "playlistId",
       "revision",
       "deleted"
+    ],
+    "type": "object"
+  },
+  "PutReadingSessionsSessionIdAnnotationsRequest": {
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "expectedRevision": {
+            "maximum": 9007199254740990,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "delete"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "operation",
+          "id"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "colour": {
+            "enum": [
+              "",
+              "yellow",
+              "green",
+              "blue",
+              "pink"
+            ],
+            "type": "string"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740990,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bookmark",
+              "highlight"
+            ],
+            "type": "string"
+          },
+          "location": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "cfi": {
+                    "maxLength": 4096,
+                    "minLength": 10,
+                    "type": "string"
+                  },
+                  "format": {
+                    "enum": [
+                      "epub"
+                    ],
+                    "type": "string"
+                  },
+                  "progression": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "section": {
+                    "maxLength": 1024,
+                    "minLength": 0,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "format",
+                  "cfi",
+                  "progression"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "enum": [
+                      "pdf",
+                      "cbz"
+                    ],
+                    "type": "string"
+                  },
+                  "pageIndex": {
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "progression": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "format",
+                  "pageIndex",
+                  "progression"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "note": {
+            "maxLength": 4096,
+            "minLength": 0,
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "upsert"
+            ],
+            "type": "string"
+          },
+          "rects": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "height": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "width": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "x": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "y": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "type": "object"
+            },
+            "maxItems": 128,
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 8192,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "operation",
+          "id",
+          "kind",
+          "location"
+        ],
+        "type": "object"
+      }
+    ]
+  },
+  "PutReadingSessionsSessionIdAnnotationsResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "revision"
     ],
     "type": "object"
   },
@@ -201292,6 +203889,40 @@ export const schemas = {
                     "preparationId": {
                       "type": "string"
                     },
+                    "publication": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "documentSha256": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "format": {
+                          "enum": [
+                            "epub",
+                            "pdf",
+                            "cbz"
+                          ],
+                          "type": "string"
+                        },
+                        "revision": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "revision",
+                        "format",
+                        "documentSha256"
+                      ],
+                      "type": "object"
+                    },
                     "quality": {
                       "type": "string"
                     },
@@ -201641,6 +204272,40 @@ export const schemas = {
                     },
                     "preparationId": {
                       "type": "string"
+                    },
+                    "publication": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "documentSha256": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "format": {
+                          "enum": [
+                            "epub",
+                            "pdf",
+                            "cbz"
+                          ],
+                          "type": "string"
+                        },
+                        "revision": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "revision",
+                        "format",
+                        "documentSha256"
+                      ],
+                      "type": "object"
                     },
                     "quality": {
                       "type": "string"
@@ -203101,6 +205766,14 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publicationType": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      },
                       "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -203316,6 +205989,14 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "publicationType": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
                   },
                   "publishedYear": {
                     "maximum": 9007199254740991,
