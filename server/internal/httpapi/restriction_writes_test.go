@@ -402,6 +402,8 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"PUT /v1/libraries/{libraryId}/reading/groups/{groupKind}/{seriesId}/my-list": {check: readingSavedGroupRestrictionCheck},
+		"DELETE /v1/reading/saved-groups/{referenceId}": {check: readingSavedGroupRestrictionCheck},
 		"PUT /v1/items/{itemId}/reading/favorite": {check: readingFavoriteRestrictionCheck},
 		"PUT /v1/items/{itemId}/reading/my-list": {check: readingSavedRestrictionCheck},
 		"PUT /v1/items/{itemId}/reading/mark":           {check: readingMarkRestrictionCheck},

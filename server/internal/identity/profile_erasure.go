@@ -39,7 +39,7 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 	}
 	key := PersonalKey(v)
 	// Explicit reading annotations are personal content even when automatic history is paused.
-	for _, table := range []string{"reading_annotations", "reading_annotation_sets"} {
+	for _, table := range []string{"reading_annotations", "reading_annotation_sets", "reading_saved_groups", "reading_saved_group_receipts", "reading_saved_group_owners"} {
 		if ok, e := exists(table); e != nil {
 			return e
 		} else if ok {
