@@ -385,7 +385,7 @@ export function castDeclaredProfile(model:'chromecast'|'chromecast_ultra'|'googl
  const video=[v('h264',{bitDepths:[8],maxWidth:width,maxHeight:height,maxLevel:uhd?51:41,maxFrameRate:uhd?60:30,dynamicRanges:['sdr']}),v('vp8',{bitDepths:[8],maxWidth:width,maxHeight:height})];
  if(hevc)video.push(v('hevc',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxLevel:uhd?153:123,maxFrameRate:60,dynamicRanges:hdr,dolbyVisionProfiles:model==='google_tv_4k'||streamer?[5,8]:[]}));
  if(hevc||model==='nest_hub')video.push(v('vp9',{bitDepths:uhd?[8,10]:[8],maxWidth:width,maxHeight:height,dynamicRanges:hdr.filter(r=>r!=='dolby_vision'&&r!=='hdr10plus')}));
- if(model==='google_tv_hd'||model==='google_tv_4k'||streamer)video.push(v('av1',{bitDepths:[8,10],maxWidth:width,maxHeight:height,dynamicRanges:hdr.filter(r=>r!=='dolby_vision')}));
+ if(model==='google_tv_hd'||streamer)video.push(v('av1',{bitDepths:[8,10],maxWidth:width,maxHeight:height,dynamicRanges:hdr.filter(r=>r!=='dolby_vision')}));
  const names=video.map(x=>x.codec);
  const audio=streamer?[a('aac',8),a('mp3',2),a('opus',2),a('vorbis',2),a('flac',8),a('pcm',8)]:[a('aac',2),a('mp3',2),a('opus',2),a('vorbis',2),a('flac',2)];
  return {
