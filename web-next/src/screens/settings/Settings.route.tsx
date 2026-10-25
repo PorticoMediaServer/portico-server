@@ -169,7 +169,7 @@ export function SettingsEntry() {
     const libraries = route.section === 'libraries' && identity.primaryProfile === true && identity.capabilities?.manageServer === true && (role === 'owner' || role === 'admin')
       ? new LibraryManagementService({api: context.api, scope: {serverId: viewer.serverId, viewerId: options.viewerId}}) : undefined;
     // Storage & backups owns one bounded usage sweep shared by its drawn rows.
-    const server = route.section === 'storage' ? createServerSettingsSurfaces({transport: context.api, serverId: viewer.serverId, isCurrent: current, openTarget: openSettingsRow,
+    const server = route.section === 'storage' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true ? createServerSettingsSurfaces({transport: context.api, serverId: viewer.serverId, isCurrent: current, openTarget: openSettingsRow,
       backups: controller.backups, subscribe: controller.subscribe, scopeKey: `${viewer.serverId}/${options.viewerId}`, reportError}) : undefined;
     const troubleshooting = route.section === 'troubleshooting' ? createTroubleshootingSurfaces({transport: context.api, serverId: viewer.serverId,
       viewerId: options.viewerId, downloadBase: context.api.baseUrl, isCurrent: current, subscribe: controller.subscribe, reportError,
