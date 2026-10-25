@@ -1,4 +1,4 @@
-import {useEffect, useSyncExternalStore} from 'react';
+import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {tunerStatus, tunerUseLine} from '@core/server-admin/live-words.ts';
 import {errorMessage} from '@core/presentation/errors.ts';
@@ -9,6 +9,7 @@ import styles from '../../../live/owner/owner.module.css';
 const t = defaultI18n.t;
 /** Actual source allocations, never client-estimated tuner availability. */
 export function Tuners({controller}: {controller: TunerController}) {
+  const [expanded, setExpanded] = useState<readonly string[]>([]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), view = state.view;
   useEffect(() => {
     void controller.load();
@@ -24,11 +25,13 @@ export function Tuners({controller}: {controller: TunerController}) {
     {!view && state.loading && <p role="status">{t('status.loadingThing', {thing: t('server.thing.tuners')})}</p>}
     {view && !view.sources.length && <p>{t('web.dvrSettings.noTuners')}</p>}
     {!!view?.sources.length && <div className={styles.sources}>{view.sources.map(source => {
-      const status = tunerStatus(t, source), uses = [...source.active, ...source.upcoming.slice(0, 6)];
+      const status = tunerStatus(t, source), showAll = expanded.includes(source.sourceId), uses = [...source.active, ...(showAll ? source.upcoming : source.upcoming.slice(0, 6))];
       return <SettingsRow key={source.sourceId} label={<>{source.sourceName} <span className={styles.badge} data-tone={status.tone}>{status.text}</span></>}>
         <div>{uses.length ? uses.map((use, index) => <p key={use.allocationId || use.recordingId || index}>
           {tunerUseLine(t, use, iso => defaultI18n.formatDate(iso, {weekday: 'short', hour: 'numeric', minute: '2-digit'}))}
-        </p>) : <p>{t('web.dvrSettings.nothingScheduled')}</p>}</div>
+        </p>) : <p>{t('web.dvrSettings.nothingScheduled')}</p>}
+          {!showAll && source.upcoming.length > 6 && <Button size="small" variant="text" onClick={() => {if (controller.isActive()) setExpanded(ids => ids.includes(source.sourceId) ? ids : [...ids, source.sourceId]);}}>{t('action.showMore')}</Button>}
+        </div>
       </SettingsRow>;
     })}</div>}
   </section>;
