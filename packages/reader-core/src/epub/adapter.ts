@@ -245,6 +245,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
   const urls={literata:URL.createObjectURL(options.fonts.literata),manrope:URL.createObjectURL(options.fonts.manrope)};
   let location:ReaderLocation|null=null,preferences=mount.preferences,viewport=mount.viewport,dead=false;
   let cleanupDoc:()=>void=()=>{};
+  let clearSearchMark:()=>void=()=>{};
   function current(){throwIfAborted(signal);if(dead)throw new ReaderError('closed');unchanged();}
   function apply() {
     const display=epubDisplay(preferences,viewport,urls);surface.style.background=display.background;
@@ -264,7 +265,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     mount.onLocation(location);
   };
   const load=(event:Event)=>{
-    if(dead||signal.aborted)return;cleanupDoc();const {doc,index}=(event as CustomEvent<{doc:Document;index:number}>).detail;
+    if(dead||signal.aborted)return;clearSearchMark();cleanupDoc();const {doc,index}=(event as CustomEvent<{doc:Document;index:number}>).detail;
     const iframe=doc.defaultView?.frameElement;
     if(mount.metadata?.title)iframe?.setAttribute('title',mount.metadata.title);
     doc.documentElement.lang ||= metadataLanguage(book.metadata?.language)??'';
@@ -304,17 +305,18 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
       const link=(event.target as Element|null)?.closest('a[href]');if(!link)return;event.preventDefault();
       const href=link.getAttribute('href');if(!href||/^[a-z][a-z\d+.-]*:|^\//i.test(href))return;
       const target=book.resolveHref(book.sections[index].resolveHref(href));
-      if(target)void cancellable(renderer.goTo(target),signal).catch(()=>{});
+      if(target){clearSearchMark();void cancellable(renderer.goTo(target),signal).catch(()=>{});}
     },opts);
   };
   renderer.addEventListener('relocate',relocate);renderer.addEventListener('load',load);
-  const dispose=()=>{if(dead)return;dead=true;abort.abort();scope.dispose();cleanupDoc();renderer.removeEventListener('relocate',relocate);renderer.removeEventListener('load',load);
+  const dispose=()=>{if(dead)return;dead=true;abort.abort();scope.dispose();clearSearchMark();cleanupDoc();renderer.removeEventListener('relocate',relocate);renderer.removeEventListener('load',load);
     try{renderer.destroy();}finally{surface.remove();URL.revokeObjectURL(urls.literata);URL.revokeObjectURL(urls.manrope);}};
   signal.addEventListener('abort',dispose,{once:true});
   const view:ReaderView<P>={
     async navigate(target:ReaderNavigation,callerSignal) {
       current();const task=abortScope([signal,callerSignal]),active=task.signal;
       try {
+      clearSearchMark();
       if(target.kind==='next')await cancellable(renderer.next(),active);
       else if(target.kind==='previous')await cancellable(renderer.prev(),active);
       else if(target.kind==='location') {
@@ -331,6 +333,31 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     },
     async applyPreferences(next,callerSignal){current();throwIfAborted(callerSignal);preferences=next;apply();await new Promise<void>(r=>requestAnimationFrame(()=>r()));current();},
     async resize(next,callerSignal){current();throwIfAborted(callerSignal);viewport=next;apply();await new Promise<void>(r=>requestAnimationFrame(()=>r()));current();},
+    async showSearchResult(target,callerSignal) {
+      current();throwIfAborted(callerSignal);clearSearchMark();
+      if(!target)return;
+      if(target.format!=='epub')throw new ReaderError('invalid_location');
+      const resolved=book.resolveCFI(target.cfi);
+      if(!resolved||typeof resolved.anchor!=='function')throw new ReaderError('invalid_location');
+      const content=renderer.getContents().find(content=>content.index===resolved.index);
+      if(!content)throw new ReaderError('invalid_location');
+      const range=resolved.anchor(content.doc);
+      if(!range||typeof range!=='object'||!('startContainer' in range)||!('endContainer' in range)||!range.toString())throw new ReaderError('invalid_location');
+      const match=range as Range;
+      if(match.startContainer.ownerDocument!==content.doc||match.endContainer.ownerDocument!==content.doc)throw new ReaderError('invalid_location');
+      // The range comes from the same checked book CFI in its mounted document.
+      // CSS Highlights do not create a DOM selection or annotation record.
+      const support=content.doc.defaultView as unknown as {CSS?:{highlights?:{set(name:string,value:unknown):void;delete(name:string):boolean}};Highlight?:new(...ranges:Range[])=>unknown}|null;
+      if(!support?.CSS?.highlights||!support.Highlight)return;
+      const registry=support.CSS.highlights,name='portico-reader-search';
+      const style=content.doc.createElement('style');style.textContent='::highlight(portico-reader-search){background:rgba(64,159,212,.48);color:inherit;}';
+      (content.doc.head??content.doc.documentElement).append(style);
+      try{registry.set(name,new support.Highlight(match));}catch(error){style.remove();throw error;}
+      const clear=()=>{registry.delete(name);style.remove();callerSignal.removeEventListener('abort',clear);clearSearchMark=()=>{};};
+      clearSearchMark=clear;callerSignal.addEventListener('abort',clear,{once:true});
+      if(callerSignal.aborted){clear();throwIfAborted(callerSignal);}
+      current();
+    },
     getLocation(){return location;},dispose
   };
   try {

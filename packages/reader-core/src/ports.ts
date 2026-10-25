@@ -68,6 +68,8 @@ export interface ReaderView<Preferences extends object> {
   applyPreferences(preferences: Readonly<Preferences>, signal: AbortSignal): Promise<void>;
   resize(viewport: ReaderViewport, signal: AbortSignal): Promise<void>;
   getLocation(): ReaderLocation | null;
+  /** Transient presentation of a real search result; no bookmark/annotation persistence. */
+  showSearchResult?(location: ReaderLocation | null, signal: AbortSignal): Promise<void>;
   setZoom?(zoom: ReaderZoom, signal: AbortSignal): Promise<void>;
   getZoom?(): ReaderZoomState;
   canTurnAtFit?(): boolean;
