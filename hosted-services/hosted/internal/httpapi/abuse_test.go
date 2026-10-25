@@ -7,6 +7,7 @@ import (
 	"portico.local/hosted/internal/identity"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A11: every budget class has its own fixed table, cycling through many keys
@@ -14,25 +15,29 @@ import (
 // the network budget.
 func TestBudgetIsolationAndNoResetByChurn(t *testing.T) {
 	h := &Handler{}
+	// Churn must be measured inside one fixed window. The production wrapper
+	// reads time.Now for every call and may legitimately cross a minute here.
+	now := time.Date(2026, time.October, 25, 12, 0, 0, 0, time.UTC)
+	allow := func(key string, limit int) bool { return h.budgets.allow(key, limit, now) }
 	for i := 0; i < 31; i++ {
-		h.allowAttempt("auth:/v1/sessions:"+budgetIP("2001:db8:9::1"), 30)
+		allow("auth:/v1/sessions:"+budgetIP("2001:db8:9::1"), 30)
 	}
-	if h.allowAttempt("auth:/v1/sessions:"+budgetIP("2001:db8:9::1"), 30) {
+	if allow("auth:/v1/sessions:"+budgetIP("2001:db8:9::1"), 30) {
 		t.Fatal("limit not applied")
 	}
 	for i := 0; i < 200000; i++ {
-		h.allowAttempt(fmt.Sprint("auth:/v1/sessions:churn-", i), 30)
+		allow(fmt.Sprint("auth:/v1/sessions:churn-", i), 30)
 	}
-	if h.allowAttempt("auth:/v1/sessions:"+budgetIP("2001:db8:9::1"), 30) {
+	if allow("auth:/v1/sessions:"+budgetIP("2001:db8:9::1"), 30) {
 		t.Fatal("churning other keys reset the attacker's count")
 	}
-	if !h.allowAttempt("auth:/v1/sessions:"+budgetIP("2001:db8:2::1"), 30) {
+	if !allow("auth:/v1/sessions:"+budgetIP("2001:db8:2::1"), 30) {
 		t.Fatal("other network blocked")
 	}
 	for i := 0; i < 200000; i++ {
-		h.allowAttempt(fmt.Sprint("refresh:churn-", i), 120)
+		allow(fmt.Sprint("refresh:churn-", i), 120)
 	}
-	if !h.allowAttempt("account:acct_1", 240) || !h.allowAttempt("server:srv_1", 120) {
+	if !allow("account:acct_1", 240) || !allow("server:srv_1", 120) {
 		t.Fatal("unauthenticated churn reached the account or server budget")
 	}
 	blocked := false

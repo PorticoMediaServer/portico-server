@@ -165,14 +165,23 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 	transition := ""
 	if in.Purpose == "switch" {
 		var startPayload []byte
-		if e = tx.QueryRowContext(ctx, `SELECT start_payload FROM owner_claim_starts WHERE operation_id=$1`, in.OperationID).Scan(&startPayload); e != nil {
-			return empty, claims.ErrStale
+		e = tx.QueryRowContext(ctx, `SELECT start_payload FROM owner_claim_starts WHERE operation_id=$1`, in.OperationID).Scan(&startPayload)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return empty, e
 		}
-		var start claimweb.OwnerStart
-		if json.Unmarshal(startPayload, &start) != nil {
-			return empty, claims.ErrInvalid
+		if e == nil {
+			var start claimweb.OwnerStart
+			if json.Unmarshal(startPayload, &start) != nil ||
+				(start.Kind != claimweb.OwnerStartKind && start.Kind != claimweb.OwnerStartKindV2) ||
+				(start.Kind == claimweb.OwnerStartKind && start.TransitionMode != "") ||
+				(start.Kind == claimweb.OwnerStartKindV2 && start.TransitionMode != "switch" && start.TransitionMode != "start-over") {
+				return empty, claims.ErrInvalid
+			}
+			transition = start.TransitionMode
 		}
-		transition = start.TransitionMode
+		// An ordinary legacy approval may precede any browser start. It stays
+		// version 2 with no mode; registration still cannot adopt that approval.
+		// Absence never creates the version-3 Start Over authority.
 	}
 	version := "2"
 	if transition != "" {
