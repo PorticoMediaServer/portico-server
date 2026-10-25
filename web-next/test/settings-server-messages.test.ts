@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createI18n, resolveRegion} from '../../packages/i18n/src/index.ts';
+import {messageTime} from '../src/screens/settings/server/troubleshooting/message-time.ts';
 import {SettingsMessagesSource, appendMessage, messageRetryMs} from '../src/screens/settings/server/troubleshooting/messages-source.ts';
 import type {LogRecord} from '../../packages/client-core/src/server-administration.ts';
 const line = (sequence: string): LogRecord => ({sequence, at: '2026-10-22T19:00:00Z', level: 'info', category: 'server', message: 'Backup finished.'});
@@ -122,4 +124,13 @@ test('a queued old reconnect callback cannot open after pause or replacement', a
   source.setLive(true);await flush();assert.equal(opens, 2);
   source.setLive(true);await flush();assert.equal(opens, 3);
   callbacks[1]();await flush();assert.equal(opens, 3);source.dispose();
+});
+
+
+test('message timestamps keep drawn seconds without a year and follow the viewer clock and zone', () => {
+  const device = {locales: ['en-US'], timeZone: 'America/Halifax', hour12: true};
+  const twelve = createI18n(resolveRegion({hourCycle: 'h12'}, device));
+  const twentyFour = createI18n(resolveRegion({hourCycle: 'h23'}, device));
+  assert.equal(messageTime(twelve, '2026-10-22T18:58:02Z'), 'Oct 22, 3:58:02 PM');
+  assert.equal(messageTime(twentyFour, '2026-10-22T18:58:02Z'), 'Oct 22, 15:58:02');
 });

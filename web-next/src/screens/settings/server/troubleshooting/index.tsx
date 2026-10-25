@@ -51,7 +51,7 @@ export type TroubleshootingPageProps = Readonly<{
 /** The drawn tab strip, offering only the screens this pass actually draws. */
 export function TroubleshootingPage({messages, reports, feedback, support, subscribe, isCurrent, downloadBase, reportError, initialView = 'messages'}: TroubleshootingPageProps) {
   const [view, setView] = useState<View>(initialView);
-  return <div className={styles.page}>
+  return <div className={styles.page} data-view={view}>
     <div className={styles.tabs} role="tablist">{TABS.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={tab.id === view}
       className={styles.tab} onClick={() => setView(tab.id)}>{t(tab.label)}</button>)}</div>
     {view === 'messages' ? <MessagesPanel source={messages} reportError={reportError} />
