@@ -142,11 +142,17 @@ func (s *Store) Close() {
 	if s == nil {
 		return
 	}
-	s.closeOnce.Do(func() { close(s.stop) })
+	s.closeOnce.Do(func() {
+		// Closed before the sweep runs: no Start can insert after it.
+		s.mu.Lock()
+		s.closed = true
+		for state := range s.sessions {
+			s.dropLocked(state)
+		}
+		s.mu.Unlock()
+		close(s.stop)
+	})
 	<-s.done
-	s.mu.Lock()
-	s.closed = true
-	s.mu.Unlock()
 }
 
 func randomValue(bytes int) (string, error) {
@@ -159,7 +165,7 @@ func randomValue(bytes int) (string, error) {
 
 // Start opens one owner-bound sign-in session and returns the authorization URL
 // and its state. The client secret and PKCE verifier stay on the server.
-func (s *Store) Start(actor, clientID, clientSecret string) (string, string, error) {
+func (s *Store) Start(actor, clientID, clientSecret string, authorizationDeadline time.Time) (string, string, error) {
 	if s == nil || actor == "" || len(clientID) < 8 || len(clientID) > 512 || len(clientSecret) < 8 || len(clientSecret) > 2048 {
 		return "", "", ErrInvalid
 	}
@@ -179,10 +185,18 @@ func (s *Store) Start(actor, clientID, clientSecret string) (string, string, err
 		return "", "", ErrInvalid
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
+	expires := time.Now().Add(sessionTTL)
+	if !authorizationDeadline.IsZero() && authorizationDeadline.Before(expires) {
+		expires = authorizationDeadline
+	}
+	if !expires.After(time.Now()) {
+		_ = listener.Close()
+		return "", "", ErrInvalid
+	}
 	current := &session{
 		actor: actor, clientID: clientID, clientSecret: clientSecret, verifier: verifier,
 		redirectURI: fmt.Sprintf("http://127.0.0.1:%d%s", port, documentPath), state: state, port: port,
-		expires: time.Now().Add(sessionTTL), listener: listener,
+		expires: expires, listener: listener,
 	}
 	s.mu.Lock()
 	if s.closed {
@@ -577,6 +591,9 @@ func googleExchange(ctx context.Context, clientID, clientSecret, code, verifier,
 	}
 	granted := false
 	for _, scope := range strings.Fields(payload.Scope) {
+		// The request asks for drive.readonly only. Google can answer with the
+		// broader drive scope for a client configured for full access; that is the
+		// provider's receipt, not a wider request here.
 		if scope == "https://www.googleapis.com/auth/drive.readonly" || scope == "https://www.googleapis.com/auth/drive" {
 			granted = true
 		}
