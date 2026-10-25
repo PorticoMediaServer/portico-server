@@ -29,9 +29,25 @@ func PinManifestTextTx(ctx context.Context, tx *sql.Tx, session, item, source, v
 }
 
 func (s *Service) OpenManifestDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) (*mediaartifact.Reader, int64, error) {
-	if e := s.CheckManifestDocument(ctx, p, item, session, id, revision); e != nil {
+	snapshot, p, e := s.readTx(ctx, p, item)
+	if e != nil {
 		return nil, 0, e
 	}
+	if _, _, e = manifestDocumentTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
+		snapshot.Rollback()
+		return nil, 0, e
+	}
+	scope, e := sessionTx(ctx, snapshot.Tx(), p, item, session)
+	if e != nil {
+		snapshot.Rollback()
+		return nil, 0, e
+	}
+	ctx = s.playbackSourceContext(ctx, p, item, session, scope, func(check context.Context, tx *sql.Tx) error {
+		_, _, err := manifestDocumentTx(check, tx, p, item, session, id, revision)
+		return err
+	})
+	snapshot.Rollback()
+	defer closePlaybackSourceContext(ctx)
 	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
 		return nil, 0, e
 	}

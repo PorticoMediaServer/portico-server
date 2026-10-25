@@ -30,6 +30,7 @@ type PlaybackSourceInvocation struct {
 	facts    PlaybackSourceFacts
 	checkTx  func(context.Context, *sql.Tx) error
 	retained *playbackSourceRetained
+	lifetime context.Context
 }
 
 type playbackSourceContinuation struct {
@@ -107,6 +108,10 @@ func closePlaybackSourceContext(ctx context.Context) {
 
 func (i PlaybackSourceInvocation) Facts() PlaybackSourceFacts { return i.facts }
 
+// Lifetime is the actual Select request, not an extraction child's deadline.
+// It conveys no authority; capture and every continuation still call CheckTx.
+func (i PlaybackSourceInvocation) Lifetime() context.Context { return i.lifetime }
+
 func (i PlaybackSourceInvocation) CheckTx(ctx context.Context, tx *sql.Tx) error {
 	if ctx == nil || tx == nil || i.checkTx == nil || i.retained == nil {
 		return ErrUnavailable
@@ -133,9 +138,9 @@ func PlaybackSourceInvocationFromContext(ctx context.Context) (PlaybackSourceInv
 	return i, ok && i.checkTx != nil && i.retained != nil
 }
 
-func (s *Service) playbackSourceContext(ctx context.Context, p identity.Principal, item, session string, scope sessionScope) context.Context {
+func (s *Service) playbackSourceContext(ctx context.Context, p identity.Principal, item, session string, scope sessionScope, checks ...func(context.Context, *sql.Tx) error) context.Context {
 	facts := PlaybackSourceFacts{Principal: p, ItemID: item, AssetID: scope.source, SessionID: session, SessionGeneration: scope.generation, SourceSize: scope.size, SourceModifiedNS: scope.modified}
-	i := PlaybackSourceInvocation{facts: facts, retained: &playbackSourceRetained{}}
+	i := PlaybackSourceInvocation{facts: facts, retained: &playbackSourceRetained{}, lifetime: ctx}
 	context.AfterFunc(ctx, i.retained.close)
 	i.checkTx = func(check context.Context, tx *sql.Tx) error {
 		current, err := s.authorize(check, tx, facts.Principal, facts.ItemID)
@@ -148,6 +153,11 @@ func (s *Service) playbackSourceContext(ctx context.Context, p identity.Principa
 		}
 		if !now.available || now.source != facts.AssetID || now.generation != facts.SessionGeneration || now.size != facts.SourceSize || now.modified != facts.SourceModifiedNS {
 			return ErrConflict
+		}
+		for _, checkTx := range checks {
+			if err := checkTx(check, tx); err != nil {
+				return err
+			}
 		}
 		return nil
 	}

@@ -57,6 +57,30 @@ type cacheFill struct {
 }
 
 func (s *Service) ensureCached(ctx context.Context, p identity.Principal, item, id string, revision int64) error {
+	if _, selected := PlaybackSourceInvocationFromContext(ctx); selected {
+		// A selected playback continuation cannot outlive its real caller or join
+		// detached work admitted for another actor/session. Keep the existing
+		// concurrency and outer time bounds; each publication rechecks its seal.
+		s.cacheMu.Lock()
+		if s.life.Err() != nil {
+			s.cacheMu.Unlock()
+			return ErrUnavailable
+		}
+		s.cacheDone.Add(1)
+		s.cacheMu.Unlock()
+		defer s.cacheDone.Done()
+		work, cancel := context.WithTimeout(ctx, 2*time.Hour)
+		defer cancel()
+		stop := context.AfterFunc(s.life, cancel)
+		defer stop()
+		select {
+		case s.cacheWorkers <- struct{}{}:
+			defer func() { <-s.cacheWorkers }()
+			return s.fillCache(work, p, item, id, revision, false)
+		case <-work.Done():
+			return work.Err()
+		}
+	}
 	// Cache fills live beyond a disconnected first reader. Retrying joins the
 	// same work instead of restarting a full demux pass.
 	key := item + ":" + id + ":" + strconv.FormatInt(revision, 10)

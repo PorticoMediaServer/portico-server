@@ -106,8 +106,13 @@ func (s *Service) OpenSubtitlePlaybackInput(ctx context.Context, item, asset, pa
 	if facts.ItemID != item || facts.AssetID != asset || facts.SourceSize != size || facts.SourceModifiedNS != modified {
 		return nil, subtitles.ErrConflict
 	}
-	life, cancel := context.WithCancel(ctx)
-	snapshot, err := dbwork.BeginSnapshot(life, s.db)
+	if invocation.Lifetime() == nil {
+		return nil, subtitles.ErrUnavailable
+	}
+	// The logical source lease remains with Select through final publication;
+	// the extraction range below retains its shorter child cancellation.
+	life, cancel := context.WithCancel(invocation.Lifetime())
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -152,7 +157,7 @@ func (s *Service) OpenSubtitlePlaybackInput(ctx context.Context, item, asset, pa
 		closeLease()
 		return nil, err
 	}
-	reader, err := lease.OpenRange(life)
+	reader, err := lease.OpenRange(ctx)
 	if err != nil {
 		closeLease()
 		return nil, err

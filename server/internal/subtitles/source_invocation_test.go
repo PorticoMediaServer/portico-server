@@ -118,6 +118,97 @@ type invocationSourceInputs struct {
 	open func(context.Context, string, string, string) (RenderInput, error)
 }
 
+type selectedCacheExtractor struct {
+	extract func(context.Context) ([]byte, string, error)
+}
+
+func (e selectedCacheExtractor) Probe(context.Context, string, string) (*Inventory, string, error) {
+	return nil, "", ErrUnsupported
+}
+func (e selectedCacheExtractor) Extract(ctx context.Context, _ string, _ string, _ int, _ string) ([]byte, string, error) {
+	return e.extract(ctx)
+}
+
+func TestSelectionRefusesBeforeDiscoveredBurnCacheExtraction(t *testing.T) {
+	for _, change := range []string{"session", "generation", "revision", "authority"} {
+		t.Run(change, func(t *testing.T) {
+			f := newSubtitleFixture(t)
+			persistDiscovered(t, f, []Track{{Origin: "embedded", StreamIndex: 3, Format: "ass", Language: "en"}})
+			catalog, err := f.s.List(context.Background(), f.p, f.item.Public)
+			if err != nil || len(catalog.Resources) != 1 {
+				t.Fatal(catalog, err)
+			}
+			calls := 0
+			f.s.Extractor = selectedCacheExtractor{extract: func(context.Context) ([]byte, string, error) {
+				calls++
+				return nil, "", ErrUnsupported
+			}}
+			m := SelectRequest{OperationID: "early-refusal", Generation: 1, ExpectedRevision: 1, Mode: "track", ResourceID: catalog.Resources[0].ID, ResourceRevision: catalog.Resources[0].Revision, PositionUS: "0", OffsetUS: "0"}
+			session := "session"
+			switch change {
+			case "session":
+				session = "foreign-session"
+			case "generation":
+				m.Generation++
+			case "revision":
+				m.ExpectedRevision++
+			case "authority":
+				f.allowed = false
+			}
+			if _, err := f.s.Select(context.Background(), f.p, f.item.Public, session, m); err == nil || calls != 0 {
+				t.Fatal("refused selection reached extraction", err, calls)
+			}
+		})
+	}
+}
+
+func TestSelectedCacheKeepsCallerSealAndCancellation(t *testing.T) {
+	f := newSubtitleFixture(t)
+	persistDiscovered(t, f, []Track{{Origin: "embedded", StreamIndex: 3, Format: "srt", Language: "en"}})
+	catalog, err := f.s.List(context.Background(), f.p, f.item.Public)
+	if err != nil || len(catalog.Resources) != 1 {
+		t.Fatal(catalog, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	snapshot, p, err := f.s.readTx(ctx, f.p, f.item.Public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := sessionTx(ctx, snapshot.Tx(), p, f.item.Public, "session")
+	snapshot.Rollback()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := f.s.playbackSourceContext(ctx, p, f.item.Public, "session", scope)
+	defer closePlaybackSourceContext(selected)
+	entered := make(chan struct{})
+	f.s.Extractor = selectedCacheExtractor{extract: func(work context.Context) ([]byte, string, error) {
+		invocation, ok := PlaybackSourceInvocationFromContext(work)
+		if !ok || invocation.Lifetime() != ctx || invocation.Facts().SessionID != "session" {
+			t.Error("selected extraction detached or lost its seal")
+		}
+		close(entered)
+		<-work.Done()
+		return nil, "", work.Err()
+	}}
+	done := make(chan error, 1)
+	go func() {
+		done <- f.s.ensureCached(selected, p, f.item.Public, catalog.Resources[0].ID, catalog.Resources[0].Revision)
+	}()
+	<-entered
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatal("selected work outlived caller", err)
+	}
+	f.s.cacheMu.Lock()
+	detached := len(f.s.cacheFills)
+	f.s.cacheMu.Unlock()
+	if detached != 0 {
+		t.Fatal("selected extraction entered detached cache work")
+	}
+}
+
 func (i invocationSourceInputs) OpenSubtitleInput(ctx context.Context, item, source, session string) (RenderInput, error) {
 	return i.open(ctx, item, source, session)
 }
