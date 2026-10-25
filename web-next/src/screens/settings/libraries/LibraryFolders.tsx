@@ -22,6 +22,8 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
   const service = useMemo(() => new LibraryInventoryService({api, scope, libraryId}), [api, scope, libraryId]);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [menu, setMenu] = useState<string>(), [editing, setEditing] = useState<InventorySource>(), [removing, setRemoving] = useState<InventorySource>(), [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
+  useEffect(() => {setConfirmation('');}, [removing]);
   const [picking, setPicking] = useState(false), [adding, setAdding] = useState<string>();
   useEffect(() => { void service.refresh().catch(onError); return () => service.dispose(); }, [service, onError]);
   const lifetime = useRef<{running: boolean} | undefined>(undefined);
@@ -82,9 +84,11 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
     <Dialog open={!!removing} onOpenChange={open => { if (!open && !lifetime.current?.running) setRemoving(undefined); }} size="sm" role="alertdialog"
       title={t('next.settings.libraries.removeFolderTitle')} description={t('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.itemActions.1.confirm')}
       footer={<><Button disabled={busy} onClick={() => { if (!lifetime.current?.running) setRemoving(undefined); }}>{t('next.settings.cancel')}</Button>
-        <Button variant="primary" loading={busy} disabled={busy} onClick={() => { if (!removing) return; void run(() => service.removeSource(removing.id, config.revision), () => setRemoving(undefined)); }}>
+        <Button variant="primary" loading={busy} disabled={busy || !removing || confirmation !== removing.name} onClick={() => { if (!removing || confirmation !== removing.name) return; void run(() => service.removeSource(removing.id, config.revision), () => setRemoving(undefined)); }}>
           {t('next.settings.libraries.removeFolderTitle')}</Button></>}>
       <p className={styles.formNote}>{removing?.path}</p>
+      <TextField label={t('confirm.typeToConfirm', {token: removing?.name ?? ''})} value={confirmation} disabled={busy}
+        onChange={event => setConfirmation(event.currentTarget.value)} />
     </Dialog>
   </>;
 }
@@ -95,20 +99,27 @@ function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: R
   open: boolean; onOpenChange: (open: boolean) => void; source?: InventorySource; initialPath?: string; busy: boolean;
   onSave: (edit: Readonly<{name: string; path: string; classification: 'local' | 'network'; followSymlinks: boolean; intervalSeconds: number}>) => void;
 }>) {
+  const [classification, setClassification] = useState<'local' | 'network'>('local');
+  const [followSymlinks, setFollowSymlinks] = useState(false);
   const [name, setName] = useState(''), [path, setPath] = useState(''), [interval, setInterval] = useState('0');
   useEffect(() => {
+    setClassification(source?.classification ?? 'local'); setFollowSymlinks(source?.followSymlinks ?? false);
     if (source) { setName(source.name); setPath(source.path); setInterval(String(source.intervalSeconds)); return; }
     if (initialPath) { const parts = initialPath.split(/[\\/]/).filter(Boolean); setName(parts[parts.length - 1] ?? ''); setPath(initialPath); setInterval('0'); }
   }, [source, initialPath]);
   return <Dialog open={open} onOpenChange={next => { if (!busy) onOpenChange(next); }} size="md" title={t(source ? 'next.settings.libraries.editFolder' : 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}
     footer={<><Button disabled={busy} onClick={() => { if (!busy) onOpenChange(false); }}>{t('next.settings.cancel')}</Button>
       <Button variant="primary" loading={busy} disabled={busy || !name.trim() || !path.trim()} onClick={() => {
-        onSave({name: name.trim(), path: path.trim(), classification: source?.classification ?? 'local',
-          followSymlinks: source?.followSymlinks ?? false, intervalSeconds: Number(interval) || 0});
+        onSave({name: name.trim(), path: path.trim(), classification,
+          followSymlinks, intervalSeconds: Number(interval) || 0});
       }}>{t('next.settings.libraries.saveFolder')}</Button></>}>
     <div className={styles.form}>
       <TextField label={label('1.rows.1.label')} value={name} onChange={event => setName(event.currentTarget.value)} />
       <TextField label={label('1.rows.0.label')} value={path} onChange={event => setPath(event.currentTarget.value)} />
+      <RichSelect label={t('next.ownerLibraries.addFolder.location')} value={classification}
+        options={(['local', 'network'] as const).map((value, index) => ({value, label: t(('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.2.control.options.' + index + '.label') as Parameters<typeof t>[0])}))}
+        onValueChange={value => { if (!busy && (value === 'local' || value === 'network')) setClassification(value); }} />
+      <label><input type="checkbox" checked={followSymlinks} disabled={busy} onChange={event => setFollowSymlinks(event.currentTarget.checked)} /> {t('next.ownerLibraries.addFolder.follow')}</label>
       <RichSelect label={label('1.rows.3.label')} value={interval} options={folderIntervalOptions().map(option => ({...option, label: t(option.label)}))}
         onValueChange={setInterval} />
     </div>
