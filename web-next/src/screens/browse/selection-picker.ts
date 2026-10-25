@@ -1,10 +1,22 @@
+import {selectionQuerySelector} from '@core/selection-model/index.ts';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {parseHomeDestinationPicker} from '@core/home-selection/destination-picker.ts';
 import {DetailService} from '@core/detail.ts';
 import {HomeSelectionDestinations} from '@core/home-selection/destinations.ts';
 import type {HomeSelectionPicker} from '@core/home-selection/types.ts';
-import type {SelectionItem, SelectedItem, SelectionTarget} from '@core/selection-model/index.ts';
+import type {SelectionItem, SelectedItem, SelectionTarget, QuerySelectionTarget, BrowseSelectionContext} from '@core/selection-model/index.ts';
 import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions';
+
+export type LibraryPickerTarget = readonly SelectionItem[] | QuerySelectionTarget<BrowseSelectionContext>;
+const queryTarget = (target: LibraryPickerTarget): target is QuerySelectionTarget<BrowseSelectionContext> => 'mode' in target;
+
+export function queryDestinationTarget<C>(target: QuerySelectionTarget<C>, kind: EntryDestination): boolean {
+  if (!target.total || !target.summary.every[kind] || target.summary.library.kind !== 'single'
+    || !/^browse_[a-f0-9]{64}$/.test(target.expected.catalogRevision)
+    || !target.summary.types.length || target.summary.types.some(type => !['movie', 'episode', 'song', 'audiobook_file'].includes(type.kind))) return false;
+  const checked = selectionQuerySelector(target);
+  return checked.ok && 'query' in checked.selector && checked.selector.query.libraryId === target.summary.library.libraryId;
+}
 
 /** A private checked destination session, never Saved's visible route or store. */
 export class LibraryPickerProducer {
@@ -13,7 +25,7 @@ export class LibraryPickerProducer {
   private session?: HomeSelectionDestinations;
   private flight?: Promise<void>;
   private state?: HomeSelectionPicker;
-  constructor(private readonly targets: readonly SelectionItem[], private readonly kind: EntryDestination,
+  constructor(private readonly targets: LibraryPickerTarget, private readonly kind: EntryDestination,
     private readonly ports: EntryActionPorts, private readonly canCreate: boolean, private readonly publish: (state: HomeSelectionPicker) => void) {
     const api = {request: async <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
       this.check();
@@ -36,6 +48,21 @@ export class LibraryPickerProducer {
   open() {return this.run(async () => {
     const identity = this.ports.pickerIdentity;
     if (!identity) throw new Error('picker-identity-required');
+    if (queryTarget(this.targets)) {
+      if (!queryDestinationTarget(this.targets, this.kind)) throw new Error('query-destination-unavailable');
+      const selected = structuredClone(this.targets);
+      const request = {kind: this.kind, query: '', limit: 40};
+      const raw = await this.api.request<unknown>(routePath('post_home_destination_picker'), 'POST', request, this.lifetime.signal); this.check();
+      if (!raw || typeof raw !== 'object' || !('viewerFence' in raw) || typeof raw.viewerFence !== 'string' || !/^[a-f0-9]{64}$/.test(raw.viewerFence)) throw new Error('picker-authority-required');
+      const page = parseHomeDestinationPicker(raw, request, this.ports.serverId, raw.viewerFence);
+      const viewId = await this.ports.requestId(); this.check();
+      const target: SelectionTarget = {...structuredClone(selected), context: {
+        scope: {serverId: this.ports.serverId, authority: identity.authority, accountId: identity.accountId, profileId: identity.profileId,
+          viewId, privacyFence: raw.viewerFence}, revision: {catalogRevision: String(page.revision.catalog), viewerRevision: String(page.revision.viewer)}}};
+      this.session = new HomeSelectionDestinations({api: this.api, events: identity.events, requestId: this.ports.requestId}, target, this.kind,
+        this.lifetime.signal, this.current, this.update);
+      await this.session.load();return;
+    }
     if (!this.targets.length || this.targets.length > 256 || new Set(this.targets.map(item => item.id)).size !== this.targets.length) throw new Error('picker-target-required');
     const picks: SelectedItem[] = [];
     let parents = false;
