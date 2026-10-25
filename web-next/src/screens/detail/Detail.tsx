@@ -36,6 +36,7 @@ import {runScreenCommand} from './context';
 import {DetailLoading} from './Loading';
 import {GenreNames} from './GenreNames';
 import {PreplayChoices} from './PreplayChoices';
+import {StartRadioMenuItem} from './StartRadio';
 export {DetailLoading} from './Loading';
 
 export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
@@ -177,6 +178,9 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const [files, setFiles] = useState<FileInfoProjection>(), [failed, setFailed] = useState(false);
   const [manage, setManage] = useState<FileInfoAction>(), [rating, setRating] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
+  // music-plus: Start radio belongs to this exact title page's own lifetime.
+  const radioLife = useMemo(() => new AbortController(), []);
+  useEffect(() => () => radioLife.abort(), [radioLife]);
   const versionRead = useRef<AbortController | undefined>(undefined), versionChoice = useRef<AbortController | undefined>(undefined);
   const [versions, setVersions] = useState<Readonly<{data: DetailProjection; options: PlaybackOptions; request: AbortController}>>();
   const downloadAvailable = !!binding.context.effects.download && data.item.available && ['movie', 'episode', 'song', 'audiobook_file'].includes(data.item.kind)
@@ -265,6 +269,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const canAddToPlaylist = leaf && offered('add_to_playlist') && !!binding.context.effects.addToPlaylist;
   const canAddToCollection = leaf && offered('add_to_collection') && !!binding.context.effects.addToCollection;
   const everyoneRows = personal || canAddToPlaylist || canAddToCollection || downloadAvailable;
+  const radioSeed = kind === 'song' || kind === 'album' ? Object.freeze({id: data.item.id, title: data.item.title}) : undefined;
   const ownerRows = !!refreshPath || canEditMetadata || canDelete;
   const sheet = width < 600;
   const destination = (effect: typeof binding.context.effects.addToPlaylist) => runScreenCommand(binding.context, () => {
@@ -276,6 +281,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
           order — personal first, then playlist, collection and Download — before the version and
           File info block and the owner's own section, with Delete last and destructive. The sheet
           draws each block as its own card, so its separators are the gaps the frame shows. */}
+      {radioSeed && <MenuGroup><StartRadioMenuItem context={binding.context} seed={radioSeed} signal={radioLife.signal}
+        current={() => binding.context.isCurrent() && binding.service.getSnapshot().phase === 'ready' && binding.service.getSnapshot().data === data} /></MenuGroup>}
       {everyoneRows && <MenuGroup>
         {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
         {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
