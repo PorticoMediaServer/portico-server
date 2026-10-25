@@ -89,9 +89,19 @@ func sameOwnerSession(first identity.Principal, firstScope catalog.AdminScope, a
 		first.Epoch == again.Epoch && firstScope.ViewerFence == againScope.ViewerFence
 }
 
-func driveOAuthActor(p identity.Principal, viewerFence string) string {
-	actor, _ := json.Marshal([]string{p.Authority, p.AccountID, p.ProfileID, viewerFence})
-	return string(actor)
+// driveOAuthActor is the stored key that binds a sign-in to the exact verified
+// authorization: the verified authorization hash (never a raw token) as well as
+// the account and viewer fence. An empty hash has no verified authorization and
+// is refused. Start, status, paste and cancel all compare this same key.
+func driveOAuthActor(p identity.Principal, viewerFence string) (string, error) {
+	if p.Hash == "" {
+		return "", errors.New("no verified authorization")
+	}
+	actor, err := json.Marshal([]string{p.Authority, p.AccountID, p.ProfileID, viewerFence, p.Hash})
+	if err != nil {
+		return "", err
+	}
+	return string(actor), nil
 }
 
 func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
@@ -106,13 +116,17 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		if r.URL.RawQuery != "" {
 			return DriveOAuthStartResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		authorizationURL, state, err := d.DriveOAuth.Start(driveOAuthActor(p, scope.ViewerFence), in.ClientID, in.ClientSecret, p.ExpiresAt)
+		actor, err := driveOAuthActor(p, scope.ViewerFence)
+		if err != nil {
+			return DriveOAuthStartResponse{}, &apierror.Error{Code: "not_permitted"}
+		}
+		authorizationURL, state, err := d.DriveOAuth.Start(actor, in.ClientID, in.ClientSecret, p.ExpiresAt)
 		if err != nil {
 			return DriveOAuthStartResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
 		again, againScope, err := d.storageOwner(r)
 		if err != nil || !sameOwnerSession(p, scope, again, againScope) {
-			d.DriveOAuth.Cancel(driveOAuthActor(p, scope.ViewerFence), state)
+			d.DriveOAuth.Cancel(actor, state)
 			return DriveOAuthStartResponse{}, &apierror.Error{Code: "not_permitted"}
 		}
 		return DriveOAuthStartResponse{Scope: scope, AuthorizationURL: authorizationURL, State: state}, nil
@@ -128,7 +142,11 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		if r.URL.RawQuery != "" {
 			return DriveOAuthPasteResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		if err = d.DriveOAuth.Paste(driveOAuthActor(p, scope.ViewerFence), in.State, in.RedirectURL); err != nil {
+		actor, actorErr := driveOAuthActor(p, scope.ViewerFence)
+		if actorErr != nil {
+			return DriveOAuthPasteResponse{}, &apierror.Error{Code: "not_permitted"}
+		}
+		if err = d.DriveOAuth.Paste(actor, in.State, in.RedirectURL); err != nil {
 			if errors.Is(err, driveoauth.ErrDenied) {
 				return DriveOAuthPasteResponse{Scope: scope, Phase: driveoauth.Denied}, nil
 			}
@@ -151,7 +169,11 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		if r.URL.RawQuery != "" {
 			return DriveOAuthStatusResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		result, err := d.DriveOAuth.Status(ctx, driveOAuthActor(p, scope.ViewerFence), in.State)
+		actor, actorErr := driveOAuthActor(p, scope.ViewerFence)
+		if actorErr != nil {
+			return DriveOAuthStatusResponse{}, &apierror.Error{Code: "not_permitted"}
+		}
+		result, err := d.DriveOAuth.Status(ctx, actor, in.State)
 		if err != nil {
 			if errors.Is(err, driveoauth.ErrExchange) {
 				return DriveOAuthStatusResponse{}, &apierror.Error{Code: "source_credentials_required"}
@@ -160,7 +182,7 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		}
 		again, againScope, err := d.storageOwner(r)
 		if err != nil || !sameOwnerSession(p, scope, again, againScope) {
-			d.DriveOAuth.Cancel(driveOAuthActor(p, scope.ViewerFence), in.State)
+			d.DriveOAuth.Cancel(actor, in.State)
 			return DriveOAuthStatusResponse{}, &apierror.Error{Code: "not_permitted"}
 		}
 		return DriveOAuthStatusResponse{Scope: scope, Phase: result.Phase, Token: result.Token}, nil
@@ -176,7 +198,11 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		if r.URL.RawQuery != "" {
 			return DriveOAuthCancelResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		d.DriveOAuth.Cancel(driveOAuthActor(p, scope.ViewerFence), in.State)
+		actor, actorErr := driveOAuthActor(p, scope.ViewerFence)
+		if actorErr != nil {
+			return DriveOAuthCancelResponse{}, &apierror.Error{Code: "not_permitted"}
+		}
+		d.DriveOAuth.Cancel(actor, in.State)
 		return DriveOAuthCancelResponse{Scope: scope, Cancelled: true}, nil
 	})
 }
