@@ -1,6 +1,6 @@
 import {deleteClientReport, listClientReports, readClientReport, type ClientReport, type ReportTransport} from '@core/client-reports.ts';
 import {readCatalogueFailures, type CatalogueFailures} from '@core/catalogue-failures.ts';
-import {ConsoleClient, type EvidenceRecord} from '@core/console.ts';
+import {ConsoleClient, type EvidenceRecord, type ConsoleAPI} from '@core/console.ts';
 
 export type RecordLane = 'runtime' | 'client' | 'audit';
 export type RecordsSlice = Readonly<{lane: RecordLane; items: readonly EvidenceRecord[]; next?: string}>;
@@ -28,9 +28,32 @@ export class SettingsReportsSource {
   private readonly lifetime = new AbortController();
   private reading?: Promise<void>;
   private readonly console: ConsoleClient;
-  constructor(private readonly transport: ReportTransport, private readonly serverId: string, viewerId: string, private readonly isCurrent: () => boolean) {
-    this.console = new ConsoleClient(transport, {serverId, viewerId});
+  private readonly transport: ReportTransport;
+  private recordsGeneration = 0;
+  private removing?: object;
+  constructor(transport: ReportTransport, private readonly serverId: string, viewerId: string, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void = () => {}) {
+    const api = transport as ConsoleAPI;
+    this.transport = {request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => this.request(signal, current => api.request<T>(path, method, body, current))};
+    this.console = new ConsoleClient({request: this.transport.request, requestConsole: <T>(path: string, method: string, body: unknown, signal: AbortSignal) => this.request(signal, current => api.requestConsole ? api.requestConsole<T>(path, method, body, current) : api.request<T>(path, method, body, current))}, {serverId, viewerId});
+    this.console.onDenied(() => this.retire());
   }
+  private retire() {if (this.current()) {this.dispose();this.reportError(new Error('reports_authority_ended'));}}
+  private async request<T>(signal: AbortSignal | undefined, send: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (!this.current() || signal?.aborted) throw new DOMException('The report request ended.', 'AbortError');
+    const request = new AbortController(), abort = () => request.abort();
+    signal?.addEventListener('abort', abort, {once: true});this.lifetime.signal.addEventListener('abort', abort, {once: true});
+    try {
+      if (!this.current() || signal?.aborted) throw new DOMException('The report request ended.', 'AbortError');
+      const value = await send(request.signal);
+      if (!this.current() || signal?.aborted) throw new DOMException('The report request ended.', 'AbortError');
+      return value;
+    } catch (error) {
+      const failure = error && typeof error === 'object' ? error as {status?: number; code?: string} : {};
+      if (this.current() && (failure.status === 401 || failure.status === 403 || ['unauthorized','forbidden','not_permitted'].includes(failure.code ?? ''))) this.retire();
+      throw error;
+    } finally {signal?.removeEventListener('abort', abort);this.lifetime.signal.removeEventListener('abort', abort);}
+  }
+  listed = (report: ClientReport): boolean => this.current() && this.state.reports.includes(report);
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
   getSnapshot = (): ReportsSnapshot => this.current() ? this.state : empty;
   subscribe = (listener: () => void): (() => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
@@ -38,7 +61,9 @@ export class SettingsReportsSource {
   private signal() {return this.lifetime.signal;}
   load = (): Promise<void> => {
     if (!this.current() || this.reading) return this.reading ?? Promise.resolve();
+    const recordsGeneration = ++this.recordsGeneration;
     const task = Promise.resolve().then(async () => {
+      if (!this.current()) return;
       this.publish({...this.state, phase: 'loading'});
       try {
         const [page, setAside, records] = await Promise.all([
@@ -47,73 +72,91 @@ export class SettingsReportsSource {
           this.console.records('runtime').catch(() => undefined),
         ]);
         if (!this.current()) return;
-        this.publish({phase: 'ready', reports: page.items, ...(page.nextCursor ? {next: page.nextCursor} : {}), ...(setAside ? {setAside} : {}),
-          ...(records ? {records: {lane: 'runtime' as const, items: records.items, ...(records.nextCursor ? {next: records.nextCursor} : {})}} : {})});
+        this.publish({...this.state, phase: 'ready', reports: page.items, ...(page.nextCursor ? {next: page.nextCursor} : {}), ...(setAside ? {setAside} : {}),
+          ...(records && recordsGeneration === this.recordsGeneration ? {records: {lane: 'runtime' as const, items: records.items, ...(records.nextCursor ? {next: records.nextCursor} : {})}} : {})});
       } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
       finally {this.reading = undefined;}
     });
     this.reading = task;return task;
   };
   /** The next page the server named, appended in its order; no page is ever guessed. */
-  more = async (): Promise<void> => {
+  more = (): Promise<void> => {
     const cursor = this.state.next;
-    if (!this.current() || this.reading || !cursor) return;
-    this.publish({...this.state, phase: 'loading'});
-    try {
-      const page = await listClientReports(this.transport, this.serverId, cursor, this.signal());
+    if (!this.current() || this.reading || !cursor) return this.reading ?? Promise.resolve();
+    const task = Promise.resolve().then(async () => {
       if (!this.current()) return;
-      const known = new Set(this.state.reports.map(report => report.id));
-      this.publish({...this.state, phase: 'ready', reports: [...this.state.reports, ...page.items.filter(report => !known.has(report.id))], ...(page.nextCursor ? {next: page.nextCursor} : {next: undefined})});
-    } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
+      this.publish({...this.state, phase: 'loading'});
+      try {
+        const page = await listClientReports(this.transport, this.serverId, cursor, this.signal());
+        if (!this.current()) return;
+        const known = new Set(this.state.reports.map(report => report.id));
+        this.publish({...this.state, phase: 'ready', reports: [...this.state.reports, ...page.items.filter(report => !known.has(report.id))], ...(page.nextCursor ? {next: page.nextCursor} : {next: undefined})});
+      } catch {if (this.current()) this.publish({...this.state, phase: 'error'});}
+      finally {this.reading = undefined;}
+    });
+    this.reading = task;return task;
   };
   /** One report exactly as the server keeps it, for the dialog that is open now. */
-  async read(id: string, signal: AbortSignal): Promise<ClientReport> {
-    if (!this.current() || !this.state.reports.some(report => report.id === id)) throw new Error('The selected report is no longer listed.');
-    return readClientReport(this.transport, this.serverId, id, signal);
+  async read(id: string, signal: AbortSignal, expected?: ClientReport): Promise<ClientReport> {
+    const selected = this.state.reports.find(report => report.id === id);
+    if (!selected || expected && selected !== expected || !this.current() || signal.aborted) throw new DOMException('The report selection ended.', 'AbortError');
+    const report = await readClientReport(this.transport, this.serverId, id, signal);
+    if (!this.listed(selected) || signal.aborted || report.id !== id) throw new DOMException('The report selection ended.', 'AbortError');
+    return report;
   }
-  /** Delete the listed report the owner chose, then reread the list the server answers. */
-  async remove(id: string): Promise<boolean> {
-    if (!this.current() || !this.state.reports.some(report => report.id === id)) return false;
+  /** One explicit listed deletion; a lost response is never automatically replayed. */
+  async remove(id: string, expected?: ClientReport): Promise<boolean> {
+    const selected = this.state.reports.find(report => report.id === id);
+    if (!selected || expected && selected !== expected || !this.current() || this.removing) return false;
+    const attempt = {};this.removing = attempt;
     this.publish({...this.state, phase: 'loading'});
     try {
+      if (!this.listed(selected) || this.removing !== attempt) return false;
       await deleteClientReport(this.transport, id, this.signal());
-      if (!this.current()) return false;
+      if (!this.current() || this.removing !== attempt) return false;
       const page = await listClientReports(this.transport, this.serverId, '', this.signal());
-      if (!this.current()) return false;
+      if (!this.current() || this.removing !== attempt) return false;
       this.publish({...this.state, phase: 'ready', reports: page.items, ...(page.nextCursor ? {next: page.nextCursor} : {next: undefined})});
       return true;
-    } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});return false;}
+    } catch {if (this.current()) this.publish({...this.state, phase: 'error'});return false;}
+    finally {if (this.removing === attempt) this.removing = undefined;}
   }
   /** Switch the records lane from its first page; the list keeps only that lane's rows. */
   selectLane = async (lane: RecordLane): Promise<void> => {
     const shown = this.state.records;
-    if (!this.current() || (shown?.lane === lane && shown.items.length > 0)) return;
+    if (!this.current()) return;
+    const generation = ++this.recordsGeneration;
+    if (shown?.lane === lane && shown.items.length > 0) return;
     try {
       const page = await this.console.records(lane);
-      if (!this.current()) return;
+      if (!this.current() || generation !== this.recordsGeneration) return;
       this.publish({...this.state, records: {lane, items: page.items, ...(page.nextCursor ? {next: page.nextCursor} : {})}});
-    } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
+    } catch {if (this.current() && generation === this.recordsGeneration) this.publish({...this.state, phase: 'error'});}
   };
   /** The next page of the selected lane, only when the server named one. */
   moreRecords = async (): Promise<void> => {
     const current = this.state.records;
     if (!this.current() || !current?.next) return;
+    const generation = ++this.recordsGeneration;
     try {
       const page = await this.console.records(current.lane, current.next);
       if (!this.current()) return;
+      if (generation !== this.recordsGeneration || this.state.records !== current) return;
       const known = new Set(current.items.map(item => item.sequence));
       this.publish({...this.state, records: {lane: current.lane, items: [...current.items, ...page.items.filter(item => !known.has(item.sequence))], ...(page.nextCursor ? {next: page.nextCursor} : {})}});
-    } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
+    } catch {if (this.current() && generation === this.recordsGeneration) this.publish({...this.state, phase: 'error'});}
   };
   /** Back to the first page of the selected lane. */
   latestRecords = async (): Promise<void> => {
     const current = this.state.records;
     if (!this.current() || !current) return;
+    const generation = ++this.recordsGeneration;
     try {
       const page = await this.console.records(current.lane);
       if (!this.current()) return;
+      if (generation !== this.recordsGeneration || this.state.records !== current) return;
       this.publish({...this.state, records: {lane: current.lane, items: page.items, ...(page.nextCursor ? {next: page.nextCursor} : {})}});
-    } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
+    } catch {if (this.current() && generation === this.recordsGeneration) this.publish({...this.state, phase: 'error'});}
   };
   /** Re-read the titles a rebuild set aside; the server tries them again by itself. */
   checkSetAside = async (): Promise<void> => {
@@ -124,5 +167,5 @@ export class SettingsReportsSource {
     } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
   };
   retry = (): Promise<void> => {this.state = empty;return this.load();};
-  dispose(): void {if (!this.lifetime.signal.aborted) {this.lifetime.abort();this.listeners.clear();this.console.dispose();this.state = empty;}}
+  dispose(): void {if (!this.lifetime.signal.aborted) {this.lifetime.abort();this.recordsGeneration++;this.removing = undefined;this.listeners.clear();this.console.dispose();this.state = empty;}}
 }

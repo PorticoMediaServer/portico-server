@@ -66,7 +66,7 @@ export function TroubleshootingPage({messages, reports, feedback, support, subsc
 
 export function createTroubleshootingSurfaces(options: TroubleshootingSurfacesOptions): TroubleshootingSurfaces {
   const messages = new SettingsMessagesSource(options.transport, options.messageConnection, options.isCurrent, options.reportError);
-  const reports = new SettingsReportsSource(options.transport, options.serverId, options.viewerId, options.isCurrent);
+  const reports = new SettingsReportsSource(options.transport, options.serverId, options.viewerId, options.isCurrent, options.reportError);
   const feedback = new SettingsFeedbackSource(options.transport, options.serverId, options.viewerId, options.isCurrent, options.reportError);
   const support = new SettingsSupportSource(options.transport, options.serverId, options.viewerId, options.isCurrent, options.reportError);
   const subscribe = (listener: () => void) => {
