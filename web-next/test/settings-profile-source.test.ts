@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProfileSettingsSource} from '../src/screens/settings/account-profile/source.ts';
+import {changeProfileSetting, profileSettingState} from '../src/screens/settings/account-profile/rows.ts';
 
 function fixture() {
   let current = true, hold: Promise<void> | undefined, release!: () => void, fail = false;
@@ -66,4 +67,14 @@ test('failed mutation removes stale revisions until a fresh read', async () => {
 test('retirement during busy notification prevents the command and dispose aborts reads', async () => {
   const f = fixture();await f.source.load();f.source.subscribe(() => {if (f.source.getSnapshot().busy) f.retire();});
   await f.source.rename('Late');assert.equal(f.calls.length, 1);f.source.dispose();assert.equal(f.calls[0].signal?.aborted, true);
+});
+test('row projection uses the selected real profile and account, never spec examples', async () => {
+  const f = fixture();assert.deepEqual(profileSettingState(f.source, 'profile.name'), {present: false});
+  await f.source.load();f.source.select('child');
+  assert.equal(profileSettingState(f.source, 'profile.name')?.value, 'Child');
+  assert.equal(profileSettingState(f.source, 'profile.color')?.value, 'mint');
+  assert.equal(profileSettingState(f.source, 'profile.username')?.displayValue, 'actual');
+  assert.equal(profileSettingState(f.source, 'profile.picture'), undefined);
+  assert.equal(changeProfileSetting(f.source, 'profile.color', 'invented'), undefined);
+  assert.equal(f.calls.length, 1);f.retire();assert.deepEqual(profileSettingState(f.source, 'profile.username'), {present: false});f.source.dispose();
 });
