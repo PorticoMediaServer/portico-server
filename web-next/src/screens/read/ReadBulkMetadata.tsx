@@ -21,10 +21,10 @@ type Open = Readonly<{life: ReturnType<typeof screenLifetime>; preview: BulkMeta
 export function ReadBulkMetadata({context, items, kind, anchor, onClose}: {context: ScreenContext; items: readonly ReadingLibraryItem[]; kind: 'ebook' | 'comic'; anchor: RefObject<HTMLElement | null>; onClose: () => void}) {
   const [open, setOpen] = useState<Open>(), [draft, setDraft] = useState<BulkEditorDraft>(emptyDraft), [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false), [retry, setRetry] = useState(0), [uncertain, setUncertain] = useState(false), [receipts, setReceipts] = useState<readonly BulkReceipt[]>([]);
-  const operation = useRef<Operation | undefined>(undefined), pending = useRef(false);
+  const operation = useRef<Operation | undefined>(undefined), pending = useRef<ReturnType<typeof screenLifetime> | undefined>(undefined);
   useEffect(() => {
     const life = screenLifetime(context); let active = true;
-    setOpen(undefined); setFailed(false); setUncertain(false); setReceipts([]); setDraft(emptyDraft); operation.current = undefined; pending.current = false;
+    setOpen(undefined); setFailed(false); setUncertain(false); setReceipts([]); setDraft(emptyDraft); operation.current = undefined; pending.current = undefined;
     const owner = context.identity?.viewer;
     if (owner?.authority !== 'local' || owner.role !== 'owner' || !items.length || items.length > bulkTargetLimit || new Set(items.map(item => item.id)).size !== items.length) {life.dispose(); setFailed(true); return;}
     void fetchBulkMetadataPreview(life.api, {targets: previewTargets(items, kind)}, context.scope.serverId, life.signal()).then(preview => {
@@ -45,7 +45,7 @@ export function ReadBulkMetadata({context, items, kind, anchor, onClose}: {conte
   const save = async (selected: readonly ReadingLibraryItem[], applied: BulkEditorDraft) => {
     const held = open;
     if (!held || pending.current || !held.life.current() || operation.current) return;
-    pending.current = true; setBusy(true); setFailed(false);
+    pending.current = held.life; setBusy(true); setFailed(false);
     try {
       const preview = await fetchBulkMetadataPreview(held.life.api, {targets: previewTargets(selected, kind)}, context.scope.serverId, held.life.signal());
       if (!held.life.current()) return;
@@ -54,13 +54,13 @@ export function ReadBulkMetadata({context, items, kind, anchor, onClose}: {conte
       const captured: Operation = Object.freeze({body, draft: applied, preview}); operation.current = captured;
       await send(held, captured);
     } catch (error) {if (held.life.current()) {setFailed(true); context.effects.reportError(error);}}
-    finally {pending.current = false; if (held.life.current()) setBusy(false);}
+    finally {if (pending.current === held.life) pending.current = undefined; if (held.life.current()) setBusy(false);}
   };
   const retryUncertain = async () => {
     const held = open, captured = operation.current;
     if (!held || !captured || pending.current || !held.life.current()) return;
-    pending.current = true; setBusy(true);
-    try {await send(held, captured);} finally {pending.current = false; if (held.life.current()) setBusy(false);}
+    pending.current = held.life; setBusy(true);
+    try {await send(held, captured);} finally {if (pending.current === held.life) pending.current = undefined; if (held.life.current()) setBusy(false);}
   };
   const close = (value: boolean) => {if (!value && !busy) onClose();};
   if (!open || uncertain) return <Dialog open title={t('next.home.editSelection')} onOpenChange={close} returnFocusRef={anchor}
