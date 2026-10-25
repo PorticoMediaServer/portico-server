@@ -1456,6 +1456,8 @@ export const webMessages = {
   'web.segments.start': 'Starts at',
   'web.segments.end': 'Ends at',
   'web.segments.timeHelp': 'Minutes and seconds, such as 1:23.5.',
+  'web.segments.waitingReview': 'Waiting for review',
+  'web.segments.durationMinutes': '{count} min',
   'web.segments.chooseTitle': 'Choose a show or film to review.',
   'web.segments.noLibraries': 'No video libraries to measure yet.',
   'web.segments.error': 'The intros and credits review could not be read.',
