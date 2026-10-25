@@ -36,7 +36,6 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
     <div className={styles.form}>
       {retained && <p role="alert">{t('next.settings.people.unsureCreate')}</p>}
       {!retained && error ? <p role="alert">{t('next.settings.people.createFailed')}</p> : null}
-      {!retained && error ? <p className={styles.formNote}>{String((error as {message?: string})?.message ?? '')}</p> : null}
       <fieldset disabled={locked || busy} className={styles.fieldset}>
         <legend>{t('next.settings.people.role')}</legend>
         {(['member', 'admin'] as const).map(role => <label key={role} className={styles.choice}>
