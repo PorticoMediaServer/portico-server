@@ -3,7 +3,7 @@ package dbwork
 import (
 	"database/sql/driver"
 
-	"modernc.org/sqlite"
+	"portico.local/server/internal/thirdparty/sqlite"
 	"portico.local/server/internal/readingidentity"
 )
 
