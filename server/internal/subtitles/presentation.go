@@ -99,6 +99,9 @@ func (s *Service) selectPlayback(ctx context.Context, p identity.Principal, item
 		if e != nil {
 			return PlaybackPlan{}, e
 		}
+		if err := checkDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
+			return PlaybackPlan{}, err
+		}
 		if !visible(resource, p) || resource.SourceID != scope.source {
 			return PlaybackPlan{}, identity.ErrUnauthorized
 		}
@@ -161,6 +164,9 @@ func (s *Service) selectPlayback(ctx context.Context, p identity.Principal, item
 			return PlaybackPlan{}, ErrConflict
 		}
 		selected := s.playbackSourceContext(ctx, p, item, session, scope, func(check context.Context, tx *sql.Tx) error {
+			if err := checkDiscResourceSessionTx(check, tx, session, resource.ID); err != nil {
+				return err
+			}
 			var selectionRevision int64
 			if err := tx.QueryRowContext(check, `SELECT revision FROM playback_subtitle_state WHERE session_id=? AND generation=?`, session, m.Generation).Scan(&selectionRevision); err != nil {
 				return err

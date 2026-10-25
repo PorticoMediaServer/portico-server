@@ -561,7 +561,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			return Options{}, err
 		}
 	}
-	if preview.DiscTitle != nil && (preview.VersionID == "" || preview.PartID != "" || preview.SubtitleID != "" && preview.SubtitleID != "none") {
+	if preview.DiscTitle != nil && (preview.VersionID == "" || preview.PartID != "") {
 		return Options{}, &FieldError{Path: "discTitleId"}
 	}
 	var discChapters []Chapter
@@ -597,6 +597,9 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		if err = s.streams(ctx, tx, first.id, &v); err != nil {
 			return Options{}, err
 		}
+		if v.Disc != nil {
+			v.Subtitles = []SubStream{}
+		}
 		for _, r := range subtitleCatalog.Resources {
 			renderers[r.ID], formats[r.ID] = r.Renderer, r.Format
 			if r.SourceID == first.id && r.Enabled {
@@ -608,6 +611,17 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			discChapters, err = s.discVersion(ctx, tx, &v, *preview.DiscTitle)
 			if err != nil {
 				return Options{}, err
+			}
+			discSubtitles, discErr := s.discSubtitleCatalog(ctx, tx, p, item, v.ID, *preview.DiscTitle)
+			if discErr != nil {
+				return Options{}, discErr
+			}
+			for _, r := range discSubtitles.Resources {
+				renderers[r.ID], formats[r.ID] = r.Renderer, r.Format
+				if r.Enabled {
+					lower := strings.ToLower(r.Title)
+					v.Subtitles = append(v.Subtitles, SubStream{Deliveries: r.Deliveries, ID: r.ID, Format: r.Format, Source: subtitleSource(r.Origin), Language: r.Language, Title: r.Title, Forced: r.Forced, SDH: r.HearingImpaired || strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: r.Default})
+				}
 			}
 			first.container = v.Container
 			if len(v.Video) > 0 {

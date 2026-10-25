@@ -17,6 +17,9 @@ func (s *Service) SelectedBurnInput(ctx context.Context, session, resource strin
 		return nil, 0, e
 	}
 	defer gate.Rollback()
+	if e = checkDiscResourceSessionTx(ctx, gate.Tx(), session, resource); e != nil {
+		return nil, 0, e
+	}
 	var digest string
 	var size, offset int64
 	e = gate.Tx().QueryRowContext(ctx, `SELECT v.digest,v.size,st.offset_us FROM playback_subtitle_state st

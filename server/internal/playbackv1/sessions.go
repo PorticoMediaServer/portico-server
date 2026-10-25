@@ -634,7 +634,7 @@ func subtitleWeight(chosen *subtitles.Resource, req *SubtitleRequest) string {
 }
 
 // subtitleResources lists one file's selectable subtitle tracks.
-func (s *Service) subtitleResources(ctx context.Context, p identity.Principal, item, asset string) []subtitles.Resource {
+func (s *Service) subtitleResources(ctx context.Context, p identity.Principal, item, asset string, discTitle ...*catalog.DiscTitleRef) []subtitles.Resource {
 	if s.Subtitles == nil {
 		return nil
 	}
@@ -643,12 +643,17 @@ func (s *Service) subtitleResources(ctx context.Context, p identity.Principal, i
 		return nil
 	}
 	defer done()
-	catalog, err := s.Subtitles.ListTx(ctx, tx, p, item, "")
+	var listed subtitles.Catalog
+	if len(discTitle) > 0 && discTitle[0] != nil {
+		listed, err = s.discSubtitleCatalog(ctx, tx, p, item, asset, *discTitle[0])
+	} else {
+		listed, err = s.Subtitles.ListTx(ctx, tx, p, item, asset)
+	}
 	if err != nil {
 		return nil
 	}
 	out := []subtitles.Resource{}
-	for _, r := range catalog.Resources {
+	for _, r := range listed.Resources {
 		if r.SourceID == asset && r.Enabled {
 			out = append(out, r)
 		}
@@ -698,9 +703,6 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		if t.version == "" || t.part != 0 || !video {
 			return playback.Session{}, Presentation{}, &FieldError{Path: "discTitle"}
 		}
-		if request.Subtitles != nil && request.Subtitles.TrackID != "" && request.Subtitles.TrackID != TrackOff {
-			return playback.Session{}, Presentation{}, &FieldError{Path: "subtitles.trackId"}
-		}
 	}
 	if !video && request.Quality.Mode == QualityFixed || video && request.Quality.Mode == QualityCD {
 		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
@@ -741,12 +743,9 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	// engine cannot draw itself costs a converted picture, which decides the
 	// engine.
 	subtitle := request.Subtitles
-	if request.DiscTitle != nil {
-		subtitle = &SubtitleRequest{TrackID: TrackOff}
-	}
 	var resources []subtitles.Resource
 	if video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && carry != nil && carry.SubtitleMode == "on") {
-		resources = s.subtitleResources(ctx, c.Principal, t.item, asset)
+		resources = s.subtitleResources(ctx, c.Principal, t.item, asset, request.DiscTitle)
 	}
 	if subtitle == nil {
 		subtitle = carriedSubtitle(carry, subtitles.PlaybackPlan{Resources: resources})
@@ -754,6 +753,9 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	var chosen *subtitles.Resource
 	if subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" {
 		chosen = resourceByID(resources, string(subtitle.TrackID))
+		if request.DiscTitle != nil && chosen == nil {
+			return playback.Session{}, Presentation{}, &FieldError{Path: "subtitles.trackId"}
+		}
 	}
 	choice.SubtitleKind = subtitleWeight(chosen, subtitle)
 	// A styled or image track has an original the server hands over as it is

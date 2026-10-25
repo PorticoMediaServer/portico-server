@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/subtitles"
 )
 
 // DiscTitleRef is a checked title selection within an existing physical
@@ -25,12 +26,12 @@ func discTitleRevision(source, token, facts string) string {
 	sum := sha256.Sum256([]byte("disc_title_offer_v1\x00" + source + "\x00" + token + "\x00" + facts))
 	return hex.EncodeToString(sum[:])
 }
-func persistDiscTitleMediaTx(ctx context.Context, tx *sql.Tx, object, revision, fingerprint string, f assets.Facts) error {
+func persistDiscTitleMediaTx(ctx context.Context, tx *sql.Tx, object, revision, fingerprint string, f assets.Facts, policy ScanPolicy) error {
 	if f.DiscSelection == nil || len(f.Streams) == 0 || len(f.Streams) > 128 || len(f.DiscSelection.Members) > disc.MaxConsumedMembers {
 		return disc.ErrProtocol
 	}
 	key := f.DiscSelection.TitleKey
-	raw, _ := json.Marshal([]any{revision, fingerprint, f.Container, f.VideoCodec, f.AudioCodec, f.Width, f.Height, f.Duration, f.DiscSelection.Members})
+	raw, _ := json.Marshal([]any{revision, fingerprint, f.Container, f.VideoCodec, f.AudioCodec, f.Width, f.Height, f.Duration, f.OriginUS, f.TimingKnown, f.DiscSelection.Members})
 	seen := map[int]bool{}
 	for _, st := range f.Streams {
 		if st.Index < 0 || seen[st.Index] || (st.Type != "video" && st.Type != "audio" && st.Type != "subtitle") {
@@ -55,7 +56,7 @@ func persistDiscTitleMediaTx(ctx context.Context, tx *sql.Tx, object, revision, 
 	if int64(math.Round(f.Duration*1000)) != duration {
 		return disc.ErrProtocol
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO inventory_disc_title_media(object_id,title_key,source_revision,fingerprint,revision,container,video_codec,audio_codec,width,height,duration_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(object_id,title_key) DO UPDATE SET source_revision=excluded.source_revision,fingerprint=excluded.fingerprint,revision=excluded.revision,container=excluded.container,video_codec=excluded.video_codec,audio_codec=excluded.audio_codec,width=excluded.width,height=excluded.height,duration_ms=excluded.duration_ms`, object, key, revision, fingerprint, mediaRevision, f.Container, f.VideoCodec, f.AudioCodec, f.Width, f.Height, duration)
+	_, err := tx.ExecContext(ctx, `INSERT INTO inventory_disc_title_media(object_id,title_key,source_revision,fingerprint,revision,container,video_codec,audio_codec,width,height,duration_ms,origin_us,timing_known) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(object_id,title_key) DO UPDATE SET source_revision=excluded.source_revision,fingerprint=excluded.fingerprint,revision=excluded.revision,container=excluded.container,video_codec=excluded.video_codec,audio_codec=excluded.audio_codec,width=excluded.width,height=excluded.height,duration_ms=excluded.duration_ms,origin_us=excluded.origin_us,timing_known=excluded.timing_known`, object, key, revision, fingerprint, mediaRevision, f.Container, f.VideoCodec, f.AudioCodec, f.Width, f.Height, duration, f.OriginUS, f.TimingKnown)
 	if err != nil {
 		return err
 	}
@@ -80,13 +81,32 @@ func persistDiscTitleMediaTx(ctx context.Context, tx *sql.Tx, object, revision, 
 			return err
 		}
 	}
+	if !policy.Allows("subtitles") {
+		return nil
+	}
+	tracks := []subtitles.Track{}
+	for _, stream := range f.Streams {
+		if stream.Type == "subtitle" {
+			format := subtitles.CodecFormat(stream.Codec)
+			reason := ""
+			if format == "" {
+				format = stream.Codec
+				reason = "unsupported_format"
+			}
+			tracks = append(tracks, subtitles.Track{Origin: "embedded", StreamIndex: stream.Index, Format: format, Language: stream.Language, Title: stream.Title, Default: stream.Default, Forced: stream.Forced, HearingImpaired: stream.HearingImpaired, Reason: reason})
+		}
+	}
+	if err = subtitles.PersistDiscResourcesTx(ctx, tx, object, key, revision, fingerprint, mediaRevision, policy.Revision, f.OriginUS, f.TimingKnown, tracks); err != nil {
+		return err
+	}
+
 	return nil
 }
 func ReadDiscTitleMedia(ctx context.Context, q discQueryer, d *DiscSelection, key string) (assets.Facts, string, error) {
 	var f assets.Facts
 	var revision string
 	var ms int64
-	err := q.QueryRowContext(ctx, `SELECT revision,container,video_codec,audio_codec,width,height,duration_ms FROM inventory_disc_title_media WHERE object_id=? AND title_key=? AND source_revision=? AND fingerprint=?`, d.Object, key, d.Revision, d.Fingerprint).Scan(&revision, &f.Container, &f.VideoCodec, &f.AudioCodec, &f.Width, &f.Height, &ms)
+	err := q.QueryRowContext(ctx, `SELECT revision,container,video_codec,audio_codec,width,height,duration_ms,origin_us,timing_known FROM inventory_disc_title_media WHERE object_id=? AND title_key=? AND source_revision=? AND fingerprint=?`, d.Object, key, d.Revision, d.Fingerprint).Scan(&revision, &f.Container, &f.VideoCodec, &f.AudioCodec, &f.Width, &f.Height, &ms, &f.OriginUS, &f.TimingKnown)
 	if err != nil {
 		return f, "", err
 	}
@@ -214,7 +234,7 @@ func (s *Service) CommitDiscAlternate(ctx context.Context, job, object, revision
 	if !valid {
 		return ErrDiscSelectionChanged
 	}
-	if err = persistDiscTitleMediaTx(ctx, tx, object, revision, f.DiscSelection.StructureFingerprint, f); err != nil {
+	if err = persistDiscTitleMediaTx(ctx, tx, object, revision, f.DiscSelection.StructureFingerprint, f, policy); err != nil {
 		return err
 	}
 	return gated.Commit()

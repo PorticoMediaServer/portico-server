@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaartifact"
 )
@@ -60,6 +61,9 @@ func sessionTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, sess
 			e = ErrUnsupported
 		}
 	}
+	if e == nil {
+		e = disc.CheckPlaybackSelectionTx(ctx, tx, session)
+	}
 	return v, e
 }
 
@@ -101,7 +105,7 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 		return out, e
 	}
 	out.OffsetUS = strconv.FormatInt(offset, 10)
-	catalog, e := s.ListTx(ctx, tx, p, item, scope.source)
+	catalog, e := s.listSessionTx(ctx, tx, p, item, scope.source, session)
 	if e != nil {
 		return out, e
 	}
@@ -112,6 +116,9 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 		r, e := scanResource(tx.QueryRowContext(ctx, `SELECT `+resourceColumns+` FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id WHERE r.id=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND v.revision=? AND EXISTS(SELECT 1 FROM playback_subtitle_pins pin WHERE pin.session_id=? AND pin.resource_id=r.id AND pin.resource_revision=v.revision)`, selected, item, revision, session))
 		if e != nil {
 			return out, e
+		}
+		if err := checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
+			return out, err
 		}
 		if !visible(r, p) || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
 			return out, identity.ErrUnauthorized
@@ -239,6 +246,9 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		if e != nil {
 			return PlaybackPlan{}, e
 		}
+		if err := checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
+			return PlaybackPlan{}, err
+		}
 		if !visible(r, p) || r.SourceID != scope.source {
 			return PlaybackPlan{}, identity.ErrUnauthorized
 		}
@@ -339,7 +349,7 @@ func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, 
 	if e := s.CheckDocument(ctx, p, item, session, id, revision); e != nil {
 		return nil, e
 	}
-	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
+	if e := s.ensureSessionCached(ctx, p, item, session, id, revision); e != nil {
 		return nil, e
 	}
 	gated3, p, e := s.readTx(ctx, p, item)
@@ -350,6 +360,9 @@ func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, 
 	defer gated3.Rollback()
 	scope, e := sessionTx(ctx, tx, p, item, session)
 	if e != nil {
+		return nil, e
+	}
+	if e = checkDiscResourceSessionTx(ctx, tx, session, id); e != nil {
 		return nil, e
 	}
 	if !scope.available {
@@ -400,6 +413,9 @@ func (s *Service) CheckDocument(ctx context.Context, p identity.Principal, item,
 	scope, e := sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return e
+	}
+	if err := checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
+		return err
 	}
 	if !scope.available {
 		return ErrUnavailable

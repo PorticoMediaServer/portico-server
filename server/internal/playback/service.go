@@ -94,7 +94,7 @@ func New(db *sql.DB) *Service { return &Service{db: db} }
 // device has already reported broken for it. All of it belongs to the same
 // immutable decision, so first play, a rung change and an audio change read it
 // through this one function.
-func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p identity.Principal, input *DeliveryInput, values DeliveryPreferenceReader, catalogued bool, explicitAudio *int) error {
+func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p identity.Principal, input *DeliveryInput, values DeliveryPreferenceReader, catalogued bool, explicitAudio *int, boundDisc ...*DeliverySource) error {
 	values = preferenceReaderOrDefaults(values)
 	device := capabilityDocumentFor(ctx, tx, p)
 	input.Device = &device
@@ -111,6 +111,15 @@ func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p ide
 	}
 	if !catalogued {
 		return nil
+	}
+	// Only a source resolved from a checked title offer or immutable live-session
+	// pin may enter here. Reloading the physical asset would replace its title.
+	if len(boundDisc) > 0 && boundDisc[0] != nil {
+		input.Source = boundDisc[0]
+		input.Disc = true
+		var err error
+		input.ExcludedByEngine, err = routeFailuresTx(ctx, tx, p, input.SourceID)
+		return err
 	}
 	source, err := loadDeliverySource(ctx, tx, input.SourceID)
 	if err != nil {
@@ -210,13 +219,15 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	}
 	input.OriginalLanguage = originalLanguage
 	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.CarriedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.CarriedAudioLanguage
-	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio); e != nil {
-		return planInputs{}, e
-	}
+	var boundDisc []*DeliverySource
 	if v1.DiscTitle != nil {
 		if err := discPlanInputTx(ctx, tx, &input, v1.DiscTitle); err != nil {
 			return planInputs{}, err
 		}
+		boundDisc = []*DeliverySource{input.Source}
+	}
+	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio, boundDisc...); e != nil {
+		return planInputs{}, e
 	}
 	if rung, ok := LadderPreset(strings.TrimPrefix(v1.QualityID, "automatic:")); ok && input.Source.Video != nil {
 		rate := input.Source.BitRate
@@ -523,10 +534,8 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, e
 		}
 	}
-	if v1.DiscTitle == nil {
-		if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
-			return Session{}, e
-		}
+	if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
+		return Session{}, e
 	}
 
 	if mode == "hls" {

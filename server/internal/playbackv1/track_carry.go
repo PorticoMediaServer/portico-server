@@ -111,10 +111,14 @@ func (s *Service) carryChoice(ctx context.Context, p identity.Principal, item, m
 		next.SubtitleMode, next.SubtitleLanguage = "off", ""
 		if view.Subtitle != nil {
 			next.SubtitleMode = "on"
-			for _, resource := range s.subtitleResources(ctx, p, item, plan.SourceID) {
-				if resource.ID == view.Subtitle.TrackID {
-					next.SubtitleLanguage = trackLanguage(resource.Language)
-					break
+			if s.Subtitles != nil {
+				if selected, err := s.Subtitles.Plan(ctx, p, item, media); err == nil {
+					for _, resource := range selected.Resources {
+						if resource.ID == view.Subtitle.TrackID {
+							next.SubtitleLanguage = trackLanguage(resource.Language)
+							break
+						}
+					}
 				}
 			}
 		}

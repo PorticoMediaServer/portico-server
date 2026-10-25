@@ -62,7 +62,7 @@ func (s *Service) DownloadTracks(ctx context.Context, p identity.Principal, item
 		return out, e
 	}
 	for _, r := range catalog.Resources {
-		if !r.Enabled || r.Retired || !visible(r, p) {
+		if r.discScoped || !r.Enabled || r.Retired || !visible(r, p) {
 			continue
 		}
 		track := DownloadTrack{ID: r.ID, Revision: r.Revision, Language: r.Language, Title: r.Title, Format: r.Format, Default: r.Default, Forced: r.Forced}
@@ -132,6 +132,9 @@ func (s *Service) downloadResource(ctx context.Context, p identity.Principal, it
 	}
 	if e != nil {
 		return r, p, e
+	}
+	if r.discScoped {
+		return r, p, ErrUnsupported
 	}
 	if !visible(r, p) {
 		return r, p, identity.ErrNotVisible

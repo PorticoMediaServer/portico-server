@@ -132,6 +132,12 @@ func (s *Service) authorized(ctx context.Context, gated *dbwork.Write, p identit
 		gated.Rollback()
 		return nil, p, e
 	}
+	if invocation, ok := DiscExtractionInvocationFromContext(ctx); ok {
+		if e = invocation.CheckTx(ctx, tx); e != nil {
+			gated.Rollback()
+			return nil, p, e
+		}
+	}
 	if e = checkPlaybackSourcePublicationTx(ctx, tx); e != nil {
 		gated.Rollback()
 		return nil, p, e
@@ -190,6 +196,7 @@ type Resource struct {
 	digest                                        string
 	size, sourceSize, sourceModified, sourceFacts int64
 	resourceOwner                                 string
+	discScoped                                    bool
 	deleted                                       bool
 }
 
@@ -198,14 +205,15 @@ const resourceColumns = `r.id,r.source_id,v.revision,r.scope,r.owner,r.deleted,r
  COALESCE((SELECT is_default FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0),
  COALESCE((SELECT is_forced FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0),
  COALESCE((SELECT source_evidence FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),''),
- COALESCE((SELECT hearing_impaired FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0)`
+ COALESCE((SELECT hearing_impaired FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0),
+ EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id)`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanResource(row rowScanner) (Resource, error) {
 	var r Resource
 	var offset int64
-	e := row.Scan(&r.ID, &r.SourceID, &r.Revision, &r.Scope, &r.resourceOwner, &r.deleted, &r.DiscoveryID, &r.Language, &r.Title, &r.Format, &r.Origin, &r.Provider, &r.Attribution, &r.Rights, &offset, &r.digest, &r.size, &r.sourceSize, &r.sourceModified, &r.sourceFacts, &r.Renderer, &r.Default, &r.Forced, &r.sourceEvidence, &r.HearingImpaired)
+	e := row.Scan(&r.ID, &r.SourceID, &r.Revision, &r.Scope, &r.resourceOwner, &r.deleted, &r.DiscoveryID, &r.Language, &r.Title, &r.Format, &r.Origin, &r.Provider, &r.Attribution, &r.Rights, &offset, &r.digest, &r.size, &r.sourceSize, &r.sourceModified, &r.sourceFacts, &r.Renderer, &r.Default, &r.Forced, &r.sourceEvidence, &r.HearingImpaired, &r.discScoped)
 	r.OffsetUS = strconv.FormatInt(offset, 10)
 	r.Deliveries = deliveryFormats(r.Format)
 	r.Enabled = !r.deleted
@@ -216,6 +224,9 @@ func visible(r Resource, p identity.Principal) bool {
 	return r.Scope == "shared" || r.resourceOwner == actor(p)
 }
 func manageable(r Resource, p identity.Principal) bool {
+	if r.discScoped {
+		return false
+	}
 	return r.Scope == "shared" && owner(p) || r.Scope == "personal" && r.resourceOwner == actor(p)
 }
 
@@ -261,6 +272,9 @@ func (s *Service) List(ctx context.Context, p identity.Principal, item string) (
 	return out, gated.Commit()
 }
 func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, filter string) (Catalog, error) {
+	return s.listTx(ctx, tx, p, item, filter, nil)
+}
+func (s *Service) listTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, filter string, scope *DiscScope) (Catalog, error) {
 	out := Catalog{Version: 1, ItemID: item, Revision: 1, CanShare: owner(p), Sources: []Source{}, Resources: []Resource{}, Discovered: []Discovery{}, Provider: s.ProviderStatus()}
 	if e := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT revision FROM subtitle_collections WHERE item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))),1)`, item).Scan(&out.Revision); e != nil {
 		return out, e
@@ -289,6 +303,14 @@ func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 		if e != nil {
 			return out, e
 		}
+		if scope != nil && id == scope.Source {
+			var ms int64
+			if e = tx.QueryRowContext(ctx, `SELECT duration_ms,origin_us,timing_known FROM inventory_disc_title_media WHERE object_id=? AND title_key=? AND revision=?`, scope.Object, scope.TitleKey, scope.FactsRevision).Scan(&ms, &v.originUS, &v.TimingKnown); e != nil {
+				return out, e
+			}
+			v.duration = float64(ms) / 1000
+			v.DurationUS = strconv.FormatInt(ms*1000, 10)
+		}
 		if s.storage.Guard != nil && s.storage.Guard(v.path) != nil {
 			v.Available = false
 		}
@@ -297,7 +319,11 @@ func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 		out.Sources = append(out.Sources, v)
 		byID[id] = v
 	}
-	rows, e = tx.QueryContext(ctx, `SELECT `+resourceColumns+` FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=r.current_revision WHERE r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.deleted=0 AND (r.scope='shared' OR r.owner=?) AND (?='' OR r.source_id=?) ORDER BY r.id`, item, actor(p), filter, filter)
+	object, key, facts := "", "", ""
+	if scope != nil {
+		object, key, facts = scope.Object, scope.TitleKey, scope.FactsRevision
+	}
+	rows, e = tx.QueryContext(ctx, `SELECT `+resourceColumns+` FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=r.current_revision WHERE r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.deleted=0 AND (r.scope='shared' OR r.owner=?) AND (?='' OR r.source_id=?) AND ((?='' AND `+discDefaultResource+`) OR (?<>'' AND `+discResourceCurrent+` AND EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id AND dr.object_id=? AND dr.title_key=? AND dr.title_facts_revision=?))) ORDER BY r.id`, item, actor(p), filter, filter, object, object, object, key, facts)
 	if e != nil {
 		return out, e
 	}
@@ -313,6 +339,13 @@ func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 		if !r.Enabled {
 			r.Reason = "source_changed"
 		}
+		if r.discScoped {
+			extractor, ok := s.Extractor.(DiscSubtitleExtractor)
+			if !ok || !extractor.DiscSubtitleAvailable() {
+				r.Enabled = false
+				r.Reason = "renderer_unavailable"
+			}
+		}
 		out.Resources = append(out.Resources, r)
 	}
 	e = rows.Err()
@@ -320,7 +353,7 @@ func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 	if e != nil {
 		return out, e
 	}
-	rows, e = tx.QueryContext(ctx, `SELECT t.id,t.asset_id,f.revision,t.origin,t.format,t.language,t.title,t.is_default,t.is_forced,t.reason,t.locator,t.stream_index,COALESCE(sc.size,0),COALESCE(sc.modified_ns,0),COALESCE(sc.digest,''),t.hearing_impaired FROM asset_subtitles t JOIN asset_subtitle_facts f ON f.asset_id=t.asset_id JOIN catalog_assets a ON a.token=t.asset_id JOIN catalog_asset_links link ON link.asset_id=a.id LEFT JOIN subtitle_sidecars sc ON sc.id=t.sidecar_id WHERE link.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND f.size=a.size AND f.modified_ns=a.modified_ns AND (?='' OR a.token=?) ORDER BY t.asset_id,t.id`, item, filter, filter)
+	rows, e = tx.QueryContext(ctx, `SELECT t.id,t.asset_id,f.revision,t.origin,t.format,t.language,t.title,t.is_default,t.is_forced,t.reason,t.locator,t.stream_index,COALESCE(sc.size,0),COALESCE(sc.modified_ns,0),COALESCE(sc.digest,''),t.hearing_impaired FROM asset_subtitles t JOIN asset_subtitle_facts f ON f.asset_id=t.asset_id JOIN catalog_assets a ON a.token=t.asset_id JOIN catalog_asset_links link ON link.asset_id=a.id LEFT JOIN subtitle_sidecars sc ON sc.id=t.sidecar_id WHERE link.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND f.size=a.size AND f.modified_ns=a.modified_ns AND (?='' OR a.token=?) AND NOT EXISTS(SELECT 1 FROM inventory_disc_facts d WHERE d.asset_id=a.token) ORDER BY t.asset_id,t.id`, item, filter, filter)
 	if e != nil {
 		return out, e
 	}
@@ -599,6 +632,11 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 		}
 	}
 
+	if invocation, ok := DiscExtractionInvocationFromContext(ctx); ok {
+		if err := invocation.validateInput(ctx); err != nil {
+			return Receipt{}, err
+		}
+	}
 	gated3, p, e := s.tx(ctx, p, item)
 	if e != nil {
 		return Receipt{}, e

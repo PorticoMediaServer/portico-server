@@ -8436,6 +8436,7 @@ CREATE TABLE inventory_disc_title_media(
  source_revision TEXT NOT NULL, fingerprint TEXT NOT NULL, revision TEXT NOT NULL,
  container TEXT NOT NULL, video_codec TEXT NOT NULL, audio_codec TEXT NOT NULL,
  width INTEGER NOT NULL,height INTEGER NOT NULL,duration_ms INTEGER NOT NULL,
+ origin_us INTEGER NOT NULL DEFAULT 0,timing_known INTEGER NOT NULL DEFAULT 0 CHECK(timing_known IN(0,1)),
  PRIMARY KEY(object_id,title_key),
  FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
@@ -8459,6 +8460,16 @@ CREATE TABLE inventory_disc_title_requests(
  PRIMARY KEY(job_id,object_id),
  FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
+-- Retain title attribution when inventory retires; it must never become an
+-- unscoped subtitle resource when its source or accepted title disappears.
+CREATE TABLE subtitle_disc_resources(
+ resource_id TEXT PRIMARY KEY REFERENCES subtitle_resources(id) ON DELETE CASCADE,
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,title_facts_revision TEXT NOT NULL,
+ stream_index INTEGER NOT NULL CHECK(stream_index>=0),source_revision TEXT NOT NULL,
+ fingerprint TEXT NOT NULL,policy_revision INTEGER NOT NULL,origin_us INTEGER NOT NULL,timing_known INTEGER NOT NULL CHECK(timing_known IN(0,1)),
+ UNIQUE(object_id,title_key,title_facts_revision,stream_index,resource_id)
+) STRICT;
+CREATE INDEX subtitle_disc_resources_title ON subtitle_disc_resources(object_id,title_key,title_facts_revision,resource_id);
 CREATE TABLE playback_disc_pins(
  session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
  object_id TEXT NOT NULL,

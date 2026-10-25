@@ -14,15 +14,13 @@ import (
 // after its viewer, source, resource and policy fences have been checked.
 // The new grant, selected subtitle and ordinary delivery plan commit together.
 func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p identity.Principal, session string, resource *subtitles.Resource) error {
-	var alternate bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_pins WHERE session_id=? AND title_facts_revision<>'')`, session).Scan(&alternate); err != nil {
+	if err := checkDiscSessionTx(ctx, tx, session); err != nil {
 		return err
 	}
-	if alternate {
-		if resource != nil {
-			return subtitles.ErrUnsupported
+	if resource != nil {
+		if err := subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
+			return err
 		}
-		return nil
 	}
 	old, err := loadDeliveryPlan(tx, session)
 	if err != nil {
@@ -67,7 +65,15 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if old.AudioStream >= 0 {
 		explicit = &old.AudioStream
 	}
-	if err = s.completeDeliveryInputTx(ctx, tx, p, &input, values, true, explicit); err != nil {
+	discSession, err := hasDiscSessionTx(ctx, tx, session)
+	if err != nil {
+		return err
+	}
+	var boundDisc []*DeliverySource
+	if discSession {
+		boundDisc = []*DeliverySource{&source}
+	}
+	if err = s.completeDeliveryInputTx(ctx, tx, p, &input, values, true, explicit, boundDisc...); err != nil {
 		return err
 	}
 	plan, err := planDelivery(input)

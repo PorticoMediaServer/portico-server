@@ -108,7 +108,7 @@ func Persist(tx *sql.Tx, asset string, size, modified int64, f *Inventory) error
 		}
 
 	}
-	_, e = tx.Exec(`UPDATE subtitle_resources SET deleted=1 WHERE source_id=? AND discovered=1 AND discovery_id NOT IN(SELECT id FROM asset_subtitles WHERE asset_id=? AND reason='')`, asset, asset)
+	_, e = tx.Exec(`UPDATE subtitle_resources SET deleted=1 WHERE source_id=? AND discovered=1 AND NOT EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=subtitle_resources.id) AND discovery_id NOT IN(SELECT id FROM asset_subtitles WHERE asset_id=? AND reason='')`, asset, asset)
 	if e != nil {
 		return e
 	}

@@ -88,7 +88,7 @@ func (s *Service) OpenOriginalFile(ctx context.Context, p identity.Principal, it
 	if e := s.CheckOriginal(ctx, p, item, session, id, revision); e != nil {
 		return nil, 0, "", "", e
 	}
-	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
+	if e := s.ensureSessionCached(ctx, p, item, session, id, revision); e != nil {
 		return nil, 0, "", "", e
 	}
 	snapshot, p, e := s.readTx(ctx, p, item)
@@ -96,6 +96,9 @@ func (s *Service) OpenOriginalFile(ctx context.Context, p identity.Principal, it
 		return nil, 0, "", "", e
 	}
 	defer snapshot.Rollback()
+	if e = checkOriginalTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
+		return nil, 0, "", "", e
+	}
 	var object mediaartifact.Object
 	var format, encoding string
 	e = snapshot.Tx().QueryRowContext(ctx, `SELECT digest,size,format,encoding FROM subtitle_original_files WHERE resource_id=? AND revision=? AND part=?`, id, revision, part).Scan(&object.Digest, &object.Size, &format, &encoding)
@@ -110,7 +113,7 @@ func (s *Service) OriginalFonts(ctx context.Context, p identity.Principal, item,
 	if e := s.CheckOriginal(ctx, p, item, session, id, revision); e != nil {
 		return out, e
 	}
-	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
+	if e := s.ensureSessionCached(ctx, p, item, session, id, revision); e != nil {
 		return out, e
 	}
 	snapshot, p, e := s.readTx(ctx, p, item)
@@ -118,6 +121,9 @@ func (s *Service) OriginalFonts(ctx context.Context, p identity.Principal, item,
 		return out, e
 	}
 	defer snapshot.Rollback()
+	if e = checkOriginalTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
+		return out, e
+	}
 	_ = snapshot.Tx().QueryRowContext(ctx, `SELECT skipped_fonts FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, id, revision).Scan(&out.SkippedCount)
 	rows, e := snapshot.Tx().QueryContext(ctx, `SELECT part,name FROM subtitle_original_files WHERE resource_id=? AND revision=? AND part LIKE 'font:%' ORDER BY length(part),part LIMIT 16`, id, revision)
 	if e != nil {
@@ -141,14 +147,17 @@ func (s *Service) OriginalLines(ctx context.Context, p identity.Principal, item,
 	if e := s.CheckOriginal(ctx, p, item, session, id, revision); e != nil {
 		return out, e
 	}
-	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
+	if e := s.ensureSessionCached(ctx, p, item, session, id, revision); e != nil {
 		return out, e
 	}
-	snapshot, _, e := s.readTx(ctx, p, item)
+	snapshot, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return out, e
 	}
 	defer snapshot.Rollback()
+	if e = checkOriginalTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
+		return out, e
+	}
 	e = snapshot.Tx().QueryRowContext(ctx, `SELECT forced_lines,total_lines FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, id, revision).Scan(&out.Forced, &out.Total)
 	if e != nil {
 		return Lines{}, ErrUnsupported

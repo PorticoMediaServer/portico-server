@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/subtitles"
 )
 
 // discVersion projects one checked title into its existing physical version.
@@ -48,8 +50,8 @@ func (s *Service) discVersion(ctx context.Context, tx *sql.Tx, v *Version, ref c
 			rate += st.Detail.BitRate
 		}
 	}
-	// Embedded subtitle resources currently belong to the accepted main title.
-	// Until their per-title producer exists this preview truthfully offers none.
+	// Resource IDs are attached separately from this exact title catalogue.
+	// Raw stream indexes never become selectable subtitle IDs.
 	v.Subtitles = []SubStream{}
 	if known {
 		v.BitrateKbps = int(rate / 1000)
@@ -59,4 +61,22 @@ func (s *Service) discVersion(ctx context.Context, tx *sql.Tx, v *Version, ref c
 		out = append(out, Chapter{Title: fmt.Sprintf("Chapter %d", i+1), StartMs: c.StartMs})
 	}
 	return out, nil
+}
+
+func (s *Service) discSubtitleCatalog(ctx context.Context, tx *sql.Tx, p identity.Principal, item, asset string, ref catalog.DiscTitleRef) (subtitles.Catalog, error) {
+	if s.Subtitles == nil {
+		return subtitles.Catalog{}, nil
+	}
+	d, err := catalog.ReadDiscSelection(ctx, tx, asset)
+	if err != nil {
+		return subtitles.Catalog{}, err
+	}
+	if d == nil {
+		return subtitles.Catalog{}, ErrNotFound
+	}
+	title, _, revision, err := catalog.ResolveDiscTitleTx(ctx, tx, d, ref)
+	if err != nil {
+		return subtitles.Catalog{}, err
+	}
+	return s.Subtitles.ListDiscTitleTx(ctx, tx, p, item, subtitles.DiscScope{Source: asset, Object: d.Object, TitleKey: title.Key(d.Structure.Kind), FactsRevision: revision, SourceRevision: d.Revision, Fingerprint: d.Fingerprint})
 }

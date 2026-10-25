@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/subtitles"
 )
 
 func discPlanInputTx(ctx context.Context, tx *sql.Tx, input *DeliveryInput, ref *catalog.DiscTitleRef) error {
@@ -94,6 +95,12 @@ func pinDiscSessionTx(ctx context.Context, tx *sql.Tx, id, asset string, ref *ca
 		factsRevision = revision
 		streamRevision, chapterRevision = 0, 0
 	}
+	if factsRevision == "" {
+		_, factsRevision, err = catalog.ReadDiscTitleMedia(ctx, tx, d, key)
+		if err != nil {
+			return err
+		}
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO playback_disc_pins(session_id,object_id,title_key,source_revision,fingerprint,stream_revision,chapter_revision,title_facts_revision) VALUES(?,?,?,?,?,?,?,?)`, id, d.Object, key, d.Revision, d.Fingerprint, streamRevision, chapterRevision, factsRevision)
 	return err
 }
@@ -101,26 +108,15 @@ func pinDiscSessionTx(ctx context.Context, tx *sql.Tx, id, asset string, ref *ca
 // The selection is checked alongside the occurrence's existing physical-source
 // pin. A later scan may not silently change a running title or its track indices.
 func checkDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) error {
-	var bad bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_pins p WHERE p.session_id=? AND NOT EXISTS(
- SELECT 1 FROM inventory_disc_facts d JOIN inventory_objects o ON o.id=d.object_id AND o.asset_id=d.asset_id
- JOIN library_sources s ON s.id=o.source_id JOIN playback_sessions ps ON ps.asset_id=d.asset_id AND ps.id=p.session_id
- JOIN catalog_assets a ON a.token=d.asset_id
- JOIN asset_stream_facts st ON st.asset_id=d.asset_id AND st.size=a.size AND st.modified_ns=a.modified_ns
- JOIN asset_chapter_facts ch ON ch.asset_id=d.asset_id AND ch.size=a.size AND ch.modified_ns=a.modified_ns
- WHERE d.object_id=p.object_id AND d.fingerprint=p.fingerprint AND d.source_revision=p.source_revision
- AND ((p.title_facts_revision='' AND d.media_title_key=p.title_key AND d.media_stream_revision=p.stream_revision AND d.media_chapter_revision=p.chapter_revision AND st.revision=p.stream_revision AND ch.revision=p.chapter_revision)
- OR (p.title_facts_revision<>'' AND EXISTS(SELECT 1 FROM inventory_disc_title_media m WHERE m.object_id=p.object_id AND m.title_key=p.title_key AND m.source_revision=p.source_revision AND m.fingerprint=p.fingerprint AND m.revision=p.title_facts_revision)))
- AND d.encryption='none' AND o.revision=d.source_revision AND o.retired=0 AND o.state='available' AND s.enabled=1 AND s.kind='local'
- AND d.source_generation=s.generation AND d.root_incarnation=s.incarnation AND o.root_incarnation=s.incarnation))`, id).Scan(&bad)
-	if err != nil {
+	if err := disc.CheckPlaybackSelectionTx(ctx, tx, id); err != nil {
+		if errors.Is(err, disc.ErrProtocol) {
+			return identity.ErrUnauthorized
+		}
 		return err
-	}
-	if bad {
-		return identity.ErrUnauthorized
 	}
 	return nil
 }
+
 func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInput, bool, error) {
 	tx, done, err := dbwork.BeginRead(ctx, h.db)
 	if err != nil {
@@ -203,7 +199,21 @@ func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInp
 		if e != nil {
 			return e
 		}
-		e = checkSessionOccurrenceTx(check, current, id)
+		// A start may prepare its selected subtitle before publishing its V1
+		// presentation. Only the sealed, exact-source selection invocation may
+		// continue that still-live private preparation; ordinary playback cannot.
+		if invocation, ok := subtitles.DiscExtractionInvocationFromContext(ctx); ok {
+			if invocation.Facts().SessionID != id {
+				e = identity.ErrUnauthorized
+			} else {
+				e = invocation.CheckTx(check, current)
+				if e == nil {
+					e = checkSessionOccurrenceModeTx(check, current, id, true)
+				}
+			}
+		} else {
+			e = checkSessionOccurrenceTx(check, current, id)
+		}
 		release()
 		if e != nil {
 			return e
@@ -391,7 +401,7 @@ func discSourceFacts(asset string, f assets.Facts) DeliverySource {
 func loadSessionDeliverySource(ctx context.Context, tx *sql.Tx, session, asset string) (DeliverySource, error) {
 	var key, revision string
 	err := tx.QueryRowContext(ctx, `SELECT title_key,title_facts_revision FROM playback_disc_pins WHERE session_id=?`, session).Scan(&key, &revision)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && revision == "" {
+	if errors.Is(err, sql.ErrNoRows) {
 		return loadDeliverySource(ctx, tx, asset)
 	}
 	if err != nil {
@@ -399,6 +409,9 @@ func loadSessionDeliverySource(ctx context.Context, tx *sql.Tx, session, asset s
 	}
 	if err = checkDiscSessionTx(ctx, tx, session); err != nil {
 		return DeliverySource{}, err
+	}
+	if revision == "" {
+		return loadDeliverySource(ctx, tx, asset)
 	}
 	d, err := catalog.ReadDiscSelection(ctx, tx, asset)
 	if err != nil || d == nil {

@@ -110,9 +110,6 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		c.Remote = r.location == "remote" || r.location == "cellular"
 	}
 	stored := r.stored()
-	if stored.DiscTitle != nil && change.Subtitles != nil && change.Subtitles.TrackID != TrackOff && change.Subtitles.TrackID != "" {
-		return SessionView{}, &FieldError{Path: "subtitles.trackId"}
-	}
 	next := stored
 	if change.State != "" {
 		next.State = change.State
@@ -375,7 +372,7 @@ func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current 
 	if err != nil {
 		return false
 	}
-	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset), string(req.TrackID)), req) != ""
+	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset, r.stored().DiscTitle), string(req.TrackID)), req) != ""
 }
 
 // Stop is DELETE /v1/playback/sessions/{id} (spec §5.8): idempotent; a final

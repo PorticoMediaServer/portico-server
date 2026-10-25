@@ -34,6 +34,11 @@ func (s *Service) fillCache(ctx context.Context, p identity.Principal, item, id 
 		snapshot.Rollback()
 		return nil
 	}
+	if r.discScoped {
+		snapshot.Rollback()
+		return s.fillDiscCache(ctx, p, item, r)
+	}
+
 	var discoveryRevision int64
 	e = snapshot.Tx().QueryRowContext(ctx, `SELECT discovery_revision FROM subtitle_resources WHERE id=? AND current_revision=? AND deleted=0`, id, revision).Scan(&discoveryRevision)
 	snapshot.Rollback()

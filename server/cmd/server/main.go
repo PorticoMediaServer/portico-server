@@ -707,6 +707,8 @@ func run() (runErr error) {
 	}
 	offlineDownloads.Start()
 	defer offlineDownloads.Close()
+	subtitleRenderer.DiscInputs = player.OpenDiscSubtitleInput
+	subtitleRenderer.DiscAvailable = player.DiscSubtitleAvailable
 	subtitleService.Extractor = subtitleRenderer
 	subtitleService.SourceInputs = subtitleRenderer
 	scanner.Subtitles = subtitleService

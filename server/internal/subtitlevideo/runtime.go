@@ -33,6 +33,8 @@ type Options struct {
 	Libraries                  []string
 }
 type Runtime struct {
+	DiscInputs                 func(context.Context, string, string, string) (subtitles.DiscInput, error)
+	DiscAvailable              func() bool
 	custody                    *livechannels.PhysicalLocks
 	db                         *sql.DB
 	storage                    *storage.Client

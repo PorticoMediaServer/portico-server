@@ -20,7 +20,7 @@ func PinManifestTextTx(ctx context.Context, tx *sql.Tx, session, item, source, v
  SELECT ?,r.id,v.revision FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=r.current_revision
  JOIN catalog_assets a ON a.token=r.source_id JOIN subtitle_render_revisions rr ON rr.resource_id=r.id AND rr.revision=v.revision
  WHERE r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.source_id=? AND r.deleted=0 AND (r.scope='shared' OR r.owner=?) AND rr.renderer='external_text'
- AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns ORDER BY CASE WHEN r.id=(SELECT resource_id FROM playback_subtitle_state WHERE session_id=?1) THEN 0 ELSE 1 END,rr.is_default DESC,rr.is_forced DESC,v.language,r.id LIMIT 32`, session, item, source, viewer)
+ AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns AND `+strings.ReplaceAll(discSessionResourcePredicate, "$SESSION", "?1")+` ORDER BY CASE WHEN r.id=(SELECT resource_id FROM playback_subtitle_state WHERE session_id=?1) THEN 0 ELSE 1 END,rr.is_default DESC,rr.is_forced DESC,v.language,r.id LIMIT 32`, session, item, source, viewer)
 	if err != nil {
 		return err
 	}
@@ -152,6 +152,9 @@ func manifestDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal, i
 	scope, e := sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return Resource{}, 0, e
+	}
+	if err := checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
+		return Resource{}, 0, err
 	}
 	if !scope.available {
 		return Resource{}, 0, ErrUnavailable
