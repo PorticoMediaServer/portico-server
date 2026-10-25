@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/dbwork"
 	"sort"
 	"strings"
 	"time"
@@ -301,14 +302,56 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 		return SourceInput{}, 0, e
 	}
 	var guideRevision int64
+	fetchCtx := ctx
+	if c.Draft.ID != "" {
+		var cancel context.CancelFunc
+		fetchCtx, cancel = context.WithCancel(ctx)
+		unregister := []func(){}
+		defer func() {
+			cancel()
+			for _, stop := range unregister {
+				stop()
+			}
+		}()
+		// The final guide check and registration share the writer gate with a
+		// pause, so a pause either commits before this check (and is refused) or
+		// after this registration (and its after-commit callback cancels this
+		// fetch). The gate holds no database write of its own.
+		gated, gateErr := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+		if gateErr != nil {
+			return SourceInput{}, 0, gateErr
+		}
+		tx := gated.Tx()
+		if v.GuideSourceID != "" {
+			var guideState string
+			if e = tx.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, v.GuideSourceID).Scan(&guideRevision, &guideState); e != nil {
+				gated.Rollback()
+				return SourceInput{}, 0, ErrSourceUnavailable
+			}
+			if guideState != "active" {
+				gated.Rollback()
+				return SourceInput{}, 0, ErrSourceUnavailable
+			}
+		}
+		stop, registerErr := s.guideFetches.register(c.Draft.ID, cancel)
+		if registerErr != nil {
+			gated.Rollback()
+			return SourceInput{}, 0, registerErr
+		}
+		unregister = append(unregister, stop)
+		if v.GuideSourceID != "" && v.GuideSourceID != c.Draft.ID {
+			stopGuide, registerErr := s.guideFetches.register(v.GuideSourceID, cancel)
+			if registerErr != nil {
+				gated.Rollback()
+				return SourceInput{}, 0, registerErr
+			}
+			unregister = append(unregister, stopGuide)
+		}
+		if e = gated.Commit(); e != nil {
+			return SourceInput{}, 0, e
+		}
+	}
 	if v.GuideSourceID != "" {
-		var guideState string
-		if e = s.db.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, v.GuideSourceID).Scan(&guideRevision, &guideState); e != nil {
-			return SourceInput{}, 0, ErrSourceUnavailable
-		}
-		if guideState != "active" {
-			return SourceInput{}, 0, ErrSourceUnavailable
-		}
 		var raw []byte
 		e = s.db.QueryRowContext(ctx, `SELECT sealed FROM live_remote_configs WHERE source_id=?`, v.GuideSourceID).Scan(&raw)
 		if e != nil {
@@ -329,7 +372,7 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 		c.Approvals = append(c.Approvals, guide.Approvals...)
 	}
 	f.defaults = d
-	in, count, e := f.fetch(ctx, c)
+	in, count, e := f.fetch(fetchCtx, c)
 	if e != nil {
 		return in, count, e
 	}

@@ -26,7 +26,8 @@ type Store struct {
 	db *sql.DB
 	// cursorKey signs continuation cursors. It is stable per state folder
 	// (configuration live_cursor_key), never a file key.
-	cursorKey []byte
+	cursorKey    []byte
+	guideFetches guideFetchRegistry
 }
 
 // cursorKeyName keeps the cursor HMAC key in the configuration table. Hashing
@@ -550,6 +551,14 @@ func (s *Store) SetEnabled(ctx context.Context, a Authority, sourceID string, re
 		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO live_enable_receipts VALUES(?,?,?,?)`, requestID, hash, sourceID, revision+1); e != nil {
 			return ErrUnavailable
+		}
+		if !enabled {
+			// Committed pause only: the callback is discarded on rollback and
+			// runs before the writer gate is released. Cancelling contexts is
+			// bounded in-memory work; publication still rechecks state/revision.
+			if e = dbwork.AfterCommit(tx, func() { s.guideFetches.cancel(sourceID) }); e != nil {
+				return ErrUnavailable
+			}
 		}
 		return nil
 	})
