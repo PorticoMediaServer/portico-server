@@ -138,6 +138,15 @@ func TestArtworkRepairInstallPreservesOpenReaderAndRejectsMissingRestore(t *test
 	}
 }
 func TestArtworkRepairHonorsBoundedRetryAfter(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	allowed, epoch, err := localonly.Online(context.Background(), db)
+	if err != nil || !allowed || epoch < 1 {
+		t.Fatalf("fixture must reach provider backoff through real lookup admission: allowed=%v epoch=%d err=%v", allowed, epoch, err)
+	}
 	now := time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC)
 	if delay := artworkRetryAfter("3600", now).Sub(now); delay != time.Hour {
 		t.Fatal(delay)
@@ -145,10 +154,12 @@ func TestArtworkRepairHonorsBoundedRetryAfter(t *testing.T) {
 	if delay := artworkRetryAfter("999999999", now).Sub(now); delay != 24*time.Hour {
 		t.Fatal(delay)
 	}
-	s := &Service{now: func() time.Time { return now }, artClient: &http.Client{Transport: p08cTransport(func(r *http.Request) (*http.Response, error) {
+	s := New(db, "in-process-fixture")
+	s.now = func() time.Time { return now }
+	s.artClient = &http.Client{Transport: p08cTransport(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 429, Header: http.Header{"Retry-After": []string{"3600"}}, Body: io.NopCloser(bytes.NewReader(nil))}, nil
-	})}}
-	_, err := s.fetchArtwork(context.Background(), "https://image.tmdb.org/t/p/original/a.jpg", "tmdb")
+	})}
+	_, err = s.fetchArtwork(context.Background(), "https://image.tmdb.org/t/p/original/a.jpg", "tmdb")
 	var retry *artworkRetry
 	if !errors.As(err, &retry) || retry.after.Sub(now) != time.Hour {
 		t.Fatal("provider backoff lost", err)
