@@ -6,7 +6,7 @@ import type {V1QueueEditIntent} from '../../packages/client-core/src/playback-v1
 import {playbackFence, queueScope} from '../../packages/player-core/src/index.ts';
 import {createWebQueueListPort} from '../src/platform/playback/queue-list.ts';
 
-function fixture(hidden = false) {
+function fixture(hidden = false, selectable = true, kind = 'movie') {
   const scope = queueScope({serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile',
     controllerId: 'controller', controllerEpoch: 'epoch', commandLaneId: 'lane'});
   const queue: QueueSnapshot = {id: 'queue', scope, revision: '1', highestSeenSequence: '0', replayWindow: {results: 256, bodies: 32},
@@ -15,17 +15,19 @@ function fixture(hidden = false) {
         editionId: null, partId: null, sourceContext: {kind: 'item', id: 'item_' + id, revision: null, entryId: null}})};
   let view: QueuePlaybackView = {queue, highestSequence: '0', current: {id: 'session', generation: 1, state: 'playing'},
     next: {entryId: 'first', available: true, reason: 'ready'}, items: queue.entries.flatMap(entry => entry.hidden ? [] :
-      [{entryId: entry.id, itemId: entry.itemId, title: entry.id, kind: 'movie', libraryId: 'library'}]), remainingCount: 2,
+      [{entryId: entry.id, itemId: entry.itemId, title: entry.id, kind, libraryId: 'library'}]), remainingCount: 2,
     postPlay: {nextEntryId: 'first', available: true, reason: 'ready', countdownSeconds: 0, autoplay: false,
       passoutCheckDue: false, automaticAdvances: 0, startDuringCredits: false}};
   let workspace: QueueState = {phase: 'ready', error: null, queue};
   const edits: {revision: string; intent: V1QueueEditIntent; signal: AbortSignal}[] = [], life = new AbortController();
-  const port = createWebQueueListPort({queueId: queue.id, isCurrent: () => true,
+  const plays: {entryId: string; revision: string; signal: AbortSignal}[] = [];
+  const port = createWebQueueListPort({queueId: queue.id, selectable, isCurrent: () => true,
     fence: playbackFence({kind: 'queue', playback: {scope, run: 1}, sessionId: 'session', generation: 1,
       itemId: 'item_current', entryId: 'current', sourceId: 'source'}),
-    read: () => ({view, workspace}), subscribe: () => () => {}, play: async () => {},
+    read: () => ({view, workspace}), subscribe: () => () => {},
+    play: async (entryId, revision, lifetime) => {plays.push({entryId, revision, signal: lifetime.signal});},
     edit: async (revision, intent, lifetime) => {edits.push({revision, intent, signal: lifetime.signal});}});
-  return {port, edits, life, lifetime: {signal: life.signal, isCurrent: () => !life.signal.aborted},
+  return {port, edits, plays, life, lifetime: {signal: life.signal, isCurrent: () => !life.signal.aborted},
     replace() {view = {...view};workspace = {...workspace};}};
 }
 
@@ -54,4 +56,25 @@ test('Up Next never moves across an unavailable neighbor or removes a hidden row
   await assert.rejects(f.port.move(snapshot, 'first', 1, f.lifetime));
   await assert.rejects(f.port.remove(snapshot, 'second', f.lifetime));
   assert.equal(f.edits.length, 0);
+});
+
+test('Up Next selection retains the drawn occurrence/revision and refuses retired gestures', async () => {
+  const f = fixture(), snapshot = f.port.getSnapshot();
+  await f.port.play(snapshot, 'first', f.lifetime);
+  assert.deepEqual(f.plays, [{entryId: 'first', revision: '1', signal: f.life.signal}]);
+  const retired = fixture(), old = retired.port.getSnapshot();retired.life.abort();
+  await assert.rejects(retired.port.play(old, 'first', retired.lifetime));
+  assert.equal(retired.plays.length, 0);
+  const replaced = fixture(), previous = replaced.port.getSnapshot();replaced.replace();
+  await assert.rejects(replaced.port.play(previous, 'first', replaced.lifetime));
+  assert.equal(replaced.plays.length, 0);
+});
+
+test('Up Next selection is absent for unsupported ownership and non-video rows', async () => {
+  for (const f of [fixture(false, false), fixture(false, true, 'song'), fixture(false, true, 'unknown')]) {
+    const snapshot = f.port.getSnapshot();
+    assert.equal(snapshot.entries[1]!.canPlay, false);
+    await assert.rejects(f.port.play(snapshot, 'first', f.lifetime));
+    assert.equal(f.plays.length, 0);
+  }
 });

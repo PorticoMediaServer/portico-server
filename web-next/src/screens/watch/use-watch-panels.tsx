@@ -1,9 +1,12 @@
-import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {useLocation} from '@tanstack/react-router';
 import {router} from '../../router';
 import {defaultI18n} from '@i18n';
 import {shellLanguage} from '../../shell/settings';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import type {WebPlaybackRuntimeSnapshot,WebQueueListPort} from '../../platform/playback';
+import type {WebShellPlaybackRuntime} from '../../platform/playback';
+import type {WebQueueListLifetime} from '../../platform/playback/queue-list';
 import {fenceKey} from '../../shell/playback-model';
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
 import {playbackFailure} from '../../../../web/src/player/failure';
@@ -20,6 +23,22 @@ import {WatchInfoPanel} from './WatchInfoPanel';
 import {watchLossNotice} from './loss-copy';
 import {settingsPlatform} from '../../platform/settings-platform';
 const noSubscribe=()=>()=>{},noPreferences=()=>null;
+/** Selecting a queue row replaces the output and its drawer, but not the
+ * original route/authority. Keep that command on this committed route lifetime
+ * so drawer teardown cannot cancel its own accepted playback. */
+function useQueueSelectionLife(context:ShellAssemblyContext|undefined,runtime:WebShellPlaybackRuntime|undefined):WebQueueListLifetime|undefined {
+ const location=useLocation({select:value=>value});
+ const [held,publish]=useState<Readonly<{context:ShellAssemblyContext;runtime:WebShellPlaybackRuntime;location:typeof location;life:WebQueueListLifetime}>>();
+ useLayoutEffect(()=>{
+  if(!context?.isCurrent()||!runtime)return;
+  const controller=new AbortController();
+  const life:WebQueueListLifetime={signal:controller.signal,isCurrent:()=>!controller.signal.aborted&&context.isCurrent()
+   &&router.state.location===location&&!runtime.getSnapshot().disposed};
+  publish({context,runtime,location,life});
+  return()=>controller.abort();
+ },[context,runtime,location]);
+ return held&&held.context===context&&held.runtime===runtime&&held.location===location&&held.life.isCurrent()?held.life:undefined;
+}
 /** One adapter in the persistent parent; components borrow the existing runtime and stores. */
 export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlaybackRuntimeSnapshot|undefined,context:ShellAssemblyContext|undefined):WatchSurfaces|undefined {
  const preferences=useSyncExternalStore(context?.preferences?.subscribe??noSubscribe,()=>context?.preferences?.getSnapshot('web')??context?.facts.preferences??null,noPreferences);
@@ -29,9 +48,10 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
  const together=useTogetherBindings(context),model=useMemo(()=>binding&&snapshot?watchPanelModel(binding.runtime,snapshot,i18n):null,[binding,snapshot,i18n]);
  const [startRoom,setStartRoom]=useState(false),room=together?.getSnapshot().room;
  // f1q: one port per captured queue run, so a replacement fence never inherits an old list.
- const ports=useRef<{key?:string;port?:WebQueueListPort}>({});
+ const selectionLife=useQueueSelectionLife(context,binding?.runtime);
+ const ports=useRef<{key?:string;life?:WebQueueListLifetime;port?:WebQueueListPort}>({});
  const fence=snapshot?.fence,key=fence?fenceKey(fence):undefined;
- if(!key||key!==ports.current.key||!ports.current.port?.isCurrent())ports.current={key,port:fence&&binding&&typeof binding.runtime.queueList==='function'?binding.runtime.queueList(fence):undefined};
+ if(!key||key!==ports.current.key||selectionLife!==ports.current.life||!ports.current.port?.isCurrent())ports.current={key,life:selectionLife,port:fence&&binding&&typeof binding.runtime.queueList==='function'?binding.runtime.queueList(fence,selectionLife):undefined};
  const queue=ports.current.port?.isCurrent()?ports.current.port:undefined;
  // states f9: an owner who can manage this server gets the drawn way to the real setting. The
  // action belongs to the exact failed attempt it was drawn for; the click re-checks that attempt

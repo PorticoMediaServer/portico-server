@@ -1,6 +1,6 @@
 import type {QueuePlaybackView} from '@core/queue-controller.ts';
 import type {QueueState} from '@core/queues.ts';
-import type {V1QueueEditIntent} from '@core/playback-v1/v1-queue-player.ts';
+import {queueVideoKind, type V1QueueEditIntent} from '@core/playback-v1/v1-queue-player.ts';
 import type {QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 
 export type WebQueueListEntry = Readonly<{
@@ -14,16 +14,16 @@ export type WebQueueListSnapshot = Readonly<{
 }>;
 export type WebQueueListPort = Readonly<{
   getSnapshot(): WebQueueListSnapshot; subscribe(listener: () => void): () => void; isCurrent(): boolean;
-  play(snapshot: WebQueueListSnapshot, entryId: string): Promise<void>;
+  play(snapshot: WebQueueListSnapshot, entryId: string, lifetime: WebQueueListLifetime): Promise<void>;
   move(snapshot: WebQueueListSnapshot, entryId: string, direction: -1 | 1, lifetime: WebQueueListLifetime): Promise<void>;
   remove(snapshot: WebQueueListSnapshot, entryId: string, lifetime: WebQueueListLifetime): Promise<void>;
 }>;
 export type WebQueueListLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
 type QueueListSource = Readonly<{
-  fence: QueuePlaybackFence; queueId: string; isCurrent(): boolean;
+  fence: QueuePlaybackFence; queueId: string; selectable: boolean; isCurrent(): boolean;
   read(): Readonly<{view: QueuePlaybackView | null; workspace: QueueState}>;
   subscribe(listener: () => void): () => void;
-  play(entryId: string, revision: string): Promise<void>;
+  play(entryId: string, revision: string, lifetime: WebQueueListLifetime): Promise<void>;
   edit(revision: string, intent: V1QueueEditIntent, lifetime: WebQueueListLifetime): Promise<void>;
 }>;
 const empty: WebQueueListSnapshot = Object.freeze({current: false, entries: Object.freeze([]), more: null, change: 'idle'});
@@ -53,7 +53,7 @@ export function createWebQueueListPort(source: QueueListSource): WebQueueListPor
       const allowed = known && !playing && !busy && workspace.phase === 'ready';
       return Object.freeze({entryId: entry.id, ...(known && item ? {title: item.title} : {}), hidden: !known,
         pending: entry.hidden && entry.pending === true, playing,
-        canPlay: allowed, canMoveUp: allowed && index > 1 && readable(shown[index - 1]),
+        canPlay: allowed && source.selectable && !!item && queueVideoKind(item.kind), canMoveUp: allowed && index > 1 && readable(shown[index - 1]),
         canMoveDown: allowed && readable(shown[index + 1]), canRemove: allowed});
     }));
     const remaining = view.remainingCount;
@@ -64,9 +64,9 @@ export function createWebQueueListPort(source: QueueListSource): WebQueueListPor
     cache = {view, workspace, sending, error, snapshot};
     return snapshot;
   };
-  const execute = async (snapshot: WebQueueListSnapshot, entryId: string, action: 'play' | 'remove' | -1 | 1, lifetime?: WebQueueListLifetime) => {
-    const current = () => source.isCurrent() && (!lifetime || !lifetime.signal.aborted && lifetime.isCurrent());
-    if ((action !== 'play' && !lifetime) || sending || !current() || snapshot !== getSnapshot() || !snapshot.current || !snapshot.revision || snapshot.queueId !== source.queueId) throw changed();
+  const execute = async (snapshot: WebQueueListSnapshot, entryId: string, action: 'play' | 'remove' | -1 | 1, lifetime: WebQueueListLifetime) => {
+    const current = () => source.isCurrent() && !lifetime.signal.aborted && lifetime.isCurrent();
+    if (sending || !current() || snapshot !== getSnapshot() || !snapshot.current || !snapshot.revision || snapshot.queueId !== source.queueId) throw changed();
     const entry = snapshot.entries.find(row => row.entryId === entryId);
     if (!entry || (action === 'play' ? !entry.canPlay : action === 'remove' ? !entry.canRemove : action === -1 ? !entry.canMoveUp : !entry.canMoveDown)) throw changed();
     const {view} = source.read();
@@ -80,10 +80,9 @@ export function createWebQueueListPort(source: QueueListSource): WebQueueListPor
       // Subscribers may run synchronously while the sending state publishes.
       // Their newer queue can never replace the command's captured witness.
       if (accepted.view !== view || accepted.workspace.queue?.id !== snapshot.queueId || accepted.workspace.queue.revision !== snapshot.revision) throw changed();
-      if (action === 'play') await source.play(entryId, snapshot.revision);
-      else if (action === 'remove' && lifetime) await source.edit(snapshot.revision, {action: 'remove', entryId}, lifetime);
+      if (action === 'play') await source.play(entryId, snapshot.revision, lifetime);
+      else if (action === 'remove') await source.edit(snapshot.revision, {action: 'remove', entryId}, lifetime);
       else {
-        if (action === 'remove' || !lifetime) throw changed();
         const to = index + action;
         const neighbor = snapshot.entries[to];
         if (!neighbor || neighbor.playing || neighbor.hidden) throw changed();
@@ -100,7 +99,7 @@ export function createWebQueueListPort(source: QueueListSource): WebQueueListPor
   };
   return Object.freeze({getSnapshot, isCurrent: () => getSnapshot().current,
     subscribe(listener: () => void) {listeners.add(listener);const off = source.subscribe(listener);return () => {listeners.delete(listener);off();};},
-    play: (snapshot: WebQueueListSnapshot, entryId: string) => execute(snapshot, entryId, 'play'),
+    play: (snapshot: WebQueueListSnapshot, entryId: string, lifetime: WebQueueListLifetime) => execute(snapshot, entryId, 'play', lifetime),
     remove: (snapshot: WebQueueListSnapshot, entryId: string, lifetime: WebQueueListLifetime) => execute(snapshot, entryId, 'remove', lifetime),
     move: (snapshot: WebQueueListSnapshot, entryId: string, direction: -1 | 1, lifetime: WebQueueListLifetime) => direction === -1 || direction === 1 ? execute(snapshot, entryId, direction, lifetime) : Promise.reject(changed()),
   });

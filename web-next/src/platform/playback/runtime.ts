@@ -1,7 +1,7 @@
 import {playbackFailurePermanent} from '@core/playback-messages.ts';
 import {captureAppLogRecorder, type AppLogRecorder} from '../app-log';
 import {advancePendingChoice, takePendingTrackChoice, type PendingChoiceProgress} from '@core/pending-track-choice.ts';
-import {createWebQueueListPort, type WebQueueListPort} from './queue-list';
+import {createWebQueueListPort, type WebQueueListPort, type WebQueueListLifetime} from './queue-list';
 import {capacityRetryHttp, type WebPlaybackCapacityWait} from './capacity-retry';
 import {startFailureHttp, type WebPlaybackStartFailure} from './start-failure';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
@@ -1356,7 +1356,7 @@ export class WebShellPlaybackRuntime {
     if (this.current(stack)) this.sync();
   }
   /** Root34's general Up next list uses only this captured server queue. */
-  queueList(fence: PlaybackFence): WebQueueListPort | undefined {
+  queueList(fence: PlaybackFence, selectionLife?: WebQueueListLifetime): WebQueueListPort | undefined {
     if (fence.kind !== 'queue' || !this.matches(fence) || this.stack.mode !== 'server' || this.group?.matches(fence)) return;
     const stack = this.stack, view = stack.queue.getSnapshot().view, queueId = view?.queue.id;
     const session = stack.queue.currentSession(), playback = stack.service.getSnapshot();
@@ -1367,10 +1367,20 @@ export class WebShellPlaybackRuntime {
       itemId: session.itemId, versionId: session.versionId, queueId, entryId: fence.entryId});
     const current = () => this.current(stack) && this.matches(fence) && !this.group?.matches(fence)
       && stack.queue.currentSession()?.versionId === target.versionId && stack.queue.getSnapshot().view?.queue.id === queueId;
-    return createWebQueueListPort({fence, queueId, isCurrent: current,
+    const selectable = session.kind === 'vod' && session.role === 'local' && !this.group?.active() && !!selectionLife;
+    return createWebQueueListPort({fence, queueId, selectable, isCurrent: current,
       read: () => ({view: stack.queue.getSnapshot().view, workspace: stack.queue.workspace.service.getSnapshot()}),
       subscribe: listener => {const off = this.subscribe(listener), offQueue = stack.queue.subscribe(listener), offWorkspace = stack.queue.workspace.service.subscribe(listener);return () => {off();offQueue();offWorkspace();};},
-      play: (entryId, revision) => {if (!current()) problem('stale_playback_command');return stack.queue.playEntry(queueId, entryId, revision);},
+      play: (entryId, revision, gesture) => {
+        if (!selectable || !selectionLife || !current() || gesture.signal.aborted || !gesture.isCurrent()) problem('stale_playback_command');
+        // The drawer proves this gesture before dispatch. The original route
+        // then owns the command across its intended output/drawer replacement;
+        // core owns the old-to-accepted output fence and late admission cleanup.
+        const isCurrent = () => this.current(stack) && !this.group?.active() && !selectionLife.signal.aborted && selectionLife.isCurrent();
+        if (!isCurrent()) problem('stale_playback_command');
+        return stack.queue.selectQueuedEntry(target, {queueId, expectedRevision: revision, entryId},
+          {signal: AbortSignal.any([stack.life.signal, this.life.signal, selectionLife.signal]), isCurrent});
+      },
       edit: (revision, intent, lifetime) => {
         const isCurrent = () => current() && !lifetime.signal.aborted && lifetime.isCurrent();
         if (!isCurrent()) problem('stale_playback_command');

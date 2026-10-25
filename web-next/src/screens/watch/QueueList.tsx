@@ -43,7 +43,7 @@ export function WatchQueueList({port, context}: {port: WebQueueListPort; context
         <div className={styles.list} aria-busy={snapshot.change === 'sending' || undefined} data-watch-queue>
           {snapshot.entries.map(row => <div key={row.entryId} className={styles.row} aria-current={row.playing ? 'true' : undefined}>
             <button type="button" className={styles.name} disabled={!row.canPlay} aria-label={t('player.queuePlay', {title: name(row)})}
-              onClick={() => act(() => port.play(snapshot, row.entryId))}>
+              onClick={() => act(() => port.play(snapshot, row.entryId, lifetime))}>
               <span>{name(row)}</span>{row.playing && <small>{t('player.queueNowPlaying')}</small>}
             </button>
             {!row.playing && <span className={styles.actions}>
