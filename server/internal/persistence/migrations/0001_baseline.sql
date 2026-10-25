@@ -235,6 +235,36 @@ CREATE TABLE reading_text_counts(
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_text_counts_inventory_object ON reading_text_counts(inventory_object_id);
+CREATE TABLE reading_annotation_sets(
+ owner_key TEXT NOT NULL,
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
+ revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ PRIMARY KEY(owner_key,item_id,asset_id,source_revision),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE TABLE reading_annotations(
+ owner_key TEXT NOT NULL,
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
+ id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 64),
+ kind TEXT NOT NULL CHECK(kind IN('bookmark','highlight')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=4096),
+ section TEXT CHECK(section IS NULL OR length(section)<=1024),
+ page_index INTEGER,
+ progression REAL NOT NULL CHECK(progression>=0 AND progression<=1),
+ quote TEXT NOT NULL CHECK(length(quote)<=8192),
+ note TEXT NOT NULL CHECK(length(note)<=4096),
+ colour TEXT NOT NULL,
+ created_at INTEGER NOT NULL CHECK(created_at BETWEEN 0 AND 9007199254740991),
+ updated_at INTEGER NOT NULL CHECK(updated_at BETWEEN created_at AND 9007199254740991),
+ PRIMARY KEY(owner_key,item_id,asset_id,source_revision,id),
+ FOREIGN KEY(owner_key,item_id,asset_id,source_revision) REFERENCES reading_annotation_sets(owner_key,item_id,asset_id,source_revision) ON DELETE CASCADE,
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
+ CHECK((kind='bookmark' AND quote='' AND colour='') OR (kind='highlight' AND length(quote)>0 AND colour IN('yellow','green','blue','pink'))),
+ CHECK((format='epub' AND cfi IS NOT NULL AND page_index IS NULL) OR (format IN('pdf','cbz') AND cfi IS NULL AND section IS NULL AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 1000000))) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_progress(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
