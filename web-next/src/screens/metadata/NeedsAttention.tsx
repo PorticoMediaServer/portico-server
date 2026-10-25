@@ -17,7 +17,7 @@ const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
  * why, up to three closest matches, and only the actions the server names for it. The list is
  * the library's own; the server stays the authority on what each row offers.
  */
-export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void; onEdit?: (entry: AttentionEntry, anchor: HTMLElement) => void}) {
+export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void; onEdit?: (entry: AttentionEntry, anchor: HTMLElement, matching?: boolean) => void}) {
   const service = useMemo(() => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId), [api, libraryId]);
   const [page, setPage] = useState<AttentionPage>(), [cursors, setCursors] = useState<readonly string[]>([]), [cursor, setCursor] = useState('');
   const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>();
@@ -66,7 +66,7 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {l
       onIdentify={() => {setTyped(''); setProvider('tmdb'); setIdentifying(entry);}}
       onRetry={() => void send(entry, {action: 'retry'}, t('server.attention.lookingUp'))}
       onKeep={() => void send(entry, {action: 'dismiss'}, t('metadata.attention.kept'))}
-      onOpen={onOpen ? () => onOpen(entry) : undefined} onEdit={onEdit && entry.kind === 'item' && ['movie', 'episode', 'song', 'audiobook_file'].includes(entry.itemKind) ? anchor => onEdit(entry, anchor) : undefined} />)}</div>
+      onOpen={onOpen ? () => onOpen(entry) : undefined} onEdit={onEdit && (['show', 'album', 'book', 'song'].includes(entry.kind) || entry.kind === 'item' && ['movie', 'episode', 'song', 'audiobook_file'].includes(entry.itemKind)) ? (anchor, matching) => onEdit(entry, anchor, matching) : undefined} />)}</div>
     {!loading && !error && page && !page.entries.length ? <div className={styles.empty}>
       <span className={styles.emptyIcon}><Icon name="i-check" size={28}/></span><b>{t('metadata.attention.empty')}</b><p>{libraryName ? t('metadata.attention.emptyLibraryBody', {library: libraryName}) : t('metadata.attention.emptyBody')}</p>
     </div> : null}
@@ -98,7 +98,7 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {l
 
 function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen, onEdit}: {
   entry: AttentionEntry; busy: boolean; onUse: (candidateKey: string, order?: string) => void;
-  onSearch: () => void; onIdentify: () => void; onRetry: () => void; onKeep: () => void; onOpen?: () => void; onEdit?: (anchor: HTMLElement) => void;
+  onSearch: () => void; onIdentify: () => void; onRetry: () => void; onKeep: () => void; onOpen?: () => void; onEdit?: (anchor: HTMLElement, matching?: boolean) => void;
 }) {
   const [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
   const music = entry.kind === 'album' || entry.kind === 'song' || entry.kind === 'book';
@@ -137,6 +137,7 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen,
         {!music && (attentionOffers(entry, 'search') || attentionOffers(entry, 'id')) ? <span>{t(candidates.length ? 'metadata.attention.notThese' : 'metadata.attention.lookYourself')}</span> : null}
         {attentionOffers(entry, 'search') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onSearch}><Icon name="i-search" size={16} />{t('metadata.attention.searchByHand')}</button> : null}
         {attentionOffers(entry, 'id') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onIdentify}><Icon name="i-link" size={16} />{t('metadata.attention.enterProviderId')}</button> : null}
+        {entry.kind === 'album' && onEdit ? <button className={styles.textAction} type="button" disabled={busy} onClick={event => onEdit(event.currentTarget, true)}><Icon name="i-music" size={16} />{t('metadata.attention.chooseRelease')}</button> : null}
         {onOpen && (music || attentionOffers(entry, 'parent')) ? <button className={styles.textAction} type="button" disabled={busy} onClick={onOpen}><Icon name={kindIcon} size={16} />{t(music ? entry.kind === 'book' ? 'metadata.attention.openBook' : 'metadata.attention.openAlbum' : 'metadata.attention.openShow')}</button> : null}
         {!candidates.length && attentionOffers(entry, 'retry') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onRetry}><Icon name="i-refresh" size={16} />{t('server.attention.lookUpAgain')}</button> : null}
       </div>
