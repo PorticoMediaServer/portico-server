@@ -133,6 +133,11 @@ const handheldType = {
   liveMiniTitle: type(15.5, 'normal', 700),
   libraryKindTitle: type(20, 'normal', 800, -.02),
   liveOwnerSourceTitle: type(16.5, 'normal', 700),
+  // Existing mobile-web audiobook detail metrics; consumers lift these without redesign.
+  audiobookDiscGlyph: type(54, 'normal', 800, -.05), audiobookDetailTitle: type(28, 30.8, 800, -.035),
+  audiobookDetailEyebrow: type(13.5, 18.9, 700), audiobookDetailAuthor: type(16, 22.4, 700),
+  audiobookDetailSection: type(19, 'normal', 700, -.015), audiobookChapter: type(15, 19.5, 600),
+  audiobookRelatedTitle: type(15.5, 'normal', 700, -.01),
   // owner-dashboard phone composition: preserve the drawn metrics when lifting raw CSS.
   dashboardPhoneBarTitle: type(16.5, 19.8, 800, -.015), dashboardPhoneBarDetail: type(12, 14.4, 600),
   dashboardPhoneHeading: type(40, 40, 800, -.04), dashboardPhoneName: type(19, 'normal', 800, -.02),
