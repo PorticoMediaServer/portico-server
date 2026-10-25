@@ -99,6 +99,9 @@ export interface ReaderDocument<Preferences extends object> {
   /** Resolve a captured manifest entry through this already-open engine. */
   resolveContents?(index: number, signal: AbortSignal): Promise<ReaderLocation>;
   mount(options: ReaderMount<Preferences>): Promise<ReaderView<Preferences>>;
+  /** Literal in-publication text search. A single word matches a whole Unicode
+   * word/token; multiword input is a contiguous literal phrase with the same
+   * outer boundaries. No query language or new toggle is part of this port. */
   search(query: string, options: ReaderSearchOptions): AsyncIterable<ReaderSearchResult>;
   /** Real fixed-page preview; width 32..2048, bytes at most 16MiB. */
   page?(index: number, options: Readonly<{width: number; signal: AbortSignal}>): Promise<ReaderPageImage>;
