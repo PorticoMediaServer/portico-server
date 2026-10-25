@@ -118,7 +118,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
         onPlay: entry.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.item.id, entry.item.sourceId)).catch(resources.reportError);} : undefined,
       }})),
     }] : []),
-    ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('library.tab.series'), items: series.map(summary => ({id: summary.id, card: {
+    ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('next.reader.yourSeries'), items: series.map(summary => ({id: summary.id, card: {
       model: {title: summary.name, caption: [
         /** desktop-read 1b/4c: the real number of titles, then the real read tally. */
         {id: 'count', text: comic ? t('next.reader.volumeCount', {count: summary.count}) : t('lib.count', {count: summary.count, pivot: 'books'}), role: 'context' as const},
