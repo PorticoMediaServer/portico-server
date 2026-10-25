@@ -93,9 +93,11 @@ closed manifest decoding, target/converter/options and file hashes are checked;
 no caller path reaches a guest. NewMobiConverter receives the existing storage
 supervisor. The existing session/source gates own every conversion and resource.
 The Linux sandbox admits only FD-bound worker/input, no network/home/library
-mount, private bounded output tmpfs; worker limits bind before parsing. No fallback
+mount, read-only root/device filesystems and private bounded output tmpfs; worker limits bind before parsing. No fallback
 on missing helper, missing user namespace/required option or unsupported target.
 
 Release still needs to source-review this recipe and qualify its actual builder,
 static/transitive artifact closure, bubblewrap dynamic closure/options and resource
 profile at its checkpoint. These unresolved receipts are not fabricated here.
+
+Conversion staging uses ReadAtContext/ValidateContext with the actual conversion deadline through original DB authorization, local helper extent/observation and remote range acquisition/extent/check. It composes original source retirement, does not substitute leases or create sequential fallback, and parsing uses the same deadline-bound reader.
