@@ -85,7 +85,12 @@ func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 			return
 		}
 		target := metadata.RepairTarget{Kind: r.PathValue("kind"), ID: r.PathValue("id")}
-		authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
+		authorize := func(tx *sql.Tx) error {
+			if err := d.manualMetadataAuthorize(ctx, tx, p); err != nil {
+				return err
+			}
+			return d.readingMetadataTargetAuthorize(ctx, tx, p, target)
+		}
 		out, err := d.Metadata.DeleteUploadedArtwork(ctx, target, r.PathValue("role"), r.PathValue("candidateId"), r.URL.Query().Get("expectedRevision"), metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize)
 		if err != nil {
 			repairFailure(w, err)
@@ -153,7 +158,12 @@ func (d Dependencies) artworkUpload(w http.ResponseWriter, r *http.Request, rate
 		return
 	}
 	target := metadata.RepairTarget{Kind: r.PathValue("kind"), ID: r.PathValue("id")}
-	authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
+	authorize := func(tx *sql.Tx) error {
+		if err := d.manualMetadataAuthorize(ctx, tx, p); err != nil {
+			return err
+		}
+		return d.readingMetadataTargetAuthorize(ctx, tx, p, target)
+	}
 	out, err := d.Metadata.UploadArtwork(ctx, target, r.PathValue("role"), r.FormValue("subject"), r.FormValue("expectedRevision"), raw, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize)
 	if err != nil {
 		uploadFailure(w, err)

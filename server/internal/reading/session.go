@@ -206,10 +206,11 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	// Catalogue identity is authoritative; do not resurrect package creators.
 	// This is a current authorized DB snapshot, with no added provider Stat or
 	// archive read and no positive eligibility cache.
-	values, err := s.publicationAttributions(ctx, p, document.Selection)
+	values, cover, err := s.publicationAttributions(ctx, p, document.Selection)
 	if err != nil {
 		return nil, Publication{}, err
 	}
+	document.Metadata.CoverURL = cover
 	if values.Author != nil {
 		document.Metadata.Author = values.Author.Value
 	}

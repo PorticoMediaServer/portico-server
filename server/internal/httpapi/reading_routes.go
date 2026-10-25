@@ -65,7 +65,7 @@ func (d Dependencies) readingPrincipal(w http.ResponseWriter, r *http.Request) (
 // selected in this same snapshot. It never derives from archive metadata,
 // titles or paths and never re-reads per item.
 func readingItemProjection(row reading.LibraryRow) ReadingItem {
-	out := ReadingItem{ID: row.ID, LibraryID: row.LibraryID, Title: row.Title, Format: ReadingFormat(row.Format), SourceID: row.SourceID, InventoryAvailable: row.InventoryAvailable}
+	out := ReadingItem{CoverURL: row.CoverURL, ID: row.ID, LibraryID: row.LibraryID, Title: row.Title, Format: ReadingFormat(row.Format), SourceID: row.SourceID, InventoryAvailable: row.InventoryAvailable}
 	if row.Author != nil {
 		out.Author = &ReadingAuthor{Value: row.Author.Value, Source: ReadingAttributionSource(row.Author.Source)}
 	}
@@ -169,7 +169,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	v, m := document.Selection, document.Metadata
-	out := ReadingSessionResponse{Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{m.Title, m.Author, m.Language, ReadingDirection(m.Direction)}, Spine: document.Spine, PageNames: document.PageNames}
+	out := ReadingSessionResponse{Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
 	for _, entry := range document.Contents {
 		out.Contents = append(out.Contents, ReadingContentsEntry{entry.Title, entry.Section, entry.Fragment, entry.Depth})
 	}

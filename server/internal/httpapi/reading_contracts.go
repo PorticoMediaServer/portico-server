@@ -15,6 +15,7 @@ func (ReadingDirection) JSONSchema() map[string]any {
 }
 
 type ReadingMetadata struct {
+	CoverURL  string           `json:"coverUrl,omitempty"`
 	Title     string           `json:"title,omitempty"`
 	Author    string           `json:"author,omitempty"`
 	Language  string           `json:"language,omitempty"`
@@ -26,6 +27,7 @@ type ReadingResource struct {
 	Size int64  `json:"size"`
 }
 type ReadingItem struct {
+	CoverURL           string         `json:"coverUrl,omitempty"`
 	ID                 string         `json:"id"`
 	LibraryID          string         `json:"libraryId"`
 	Title              string         `json:"title"`

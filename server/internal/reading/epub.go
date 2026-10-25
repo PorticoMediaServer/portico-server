@@ -15,7 +15,7 @@ type Resource struct {
 	MIME string
 	Size int64
 }
-type Metadata struct{ Title, Author, Language, Direction string }
+type Metadata struct{ Title, Author, Language, Direction, CoverURL string }
 type EPUB struct {
 	archive    *archive
 	Resources  []Resource

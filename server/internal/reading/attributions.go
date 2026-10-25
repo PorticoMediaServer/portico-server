@@ -3,6 +3,8 @@ package reading
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"net/url"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -33,22 +35,69 @@ func readingAttributionProjectionTx(ctx context.Context, tx *sql.Tx, items []Lib
 			items[i].Series = s
 		}
 	}
-	return nil
+	return readingArtworkProjectionTx(ctx, tx, items)
 }
 
-func (s *Service) publicationAttributions(ctx context.Context, p identity.Principal, selected Selection) (compactcatalog.ReadingValues, error) {
+func (s *Service) publicationAttributions(ctx context.Context, p identity.Principal, selected Selection) (compactcatalog.ReadingValues, string, error) {
 	g, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
-		return compactcatalog.ReadingValues{}, err
+		return compactcatalog.ReadingValues{}, "", err
 	}
 	defer g.Rollback()
 	current, err := s.selectTx(ctx, g.Tx(), p, selected.ItemID, selected.SourceID)
 	if err != nil {
-		return compactcatalog.ReadingValues{}, err
+		return compactcatalog.ReadingValues{}, "", err
 	}
 	if current.Revision != selected.Revision {
-		return compactcatalog.ReadingValues{}, ErrChanged
+		return compactcatalog.ReadingValues{}, "", ErrChanged
 	}
 	values, err := compactcatalog.ReadingAcceptedValuesTx(ctx, g.Tx(), []int64{selected.Entity})
-	return values[selected.Entity], err
+	if err != nil {
+		return compactcatalog.ReadingValues{}, "", err
+	}
+	rows := []LibraryRow{{ID: selected.ItemID, entity: selected.Entity}}
+	if err = readingArtworkProjectionTx(ctx, g.Tx(), rows); err != nil {
+		return compactcatalog.ReadingValues{}, "", err
+	}
+	return values[selected.Entity], rows[0].CoverURL, nil
+}
+
+// One bounded lookup for the visible selected entities, never archive I/O or a provider fetch.
+func readingArtworkProjectionTx(ctx context.Context, tx *sql.Tx, items []LibraryRow) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(items))
+	for i := range items {
+		ids[i] = items[i].entity
+	}
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,o.digest FROM json_each(?) selected
+      JOIN artwork_selections a ON a.kind='item' AND a.entity_id=selected.value AND a.role='cover' AND a.subject=''
+      JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready'`, string(encoded))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	covers := map[int64]string{}
+	for rows.Next() {
+		var entity int64
+		var digest string
+		if err = rows.Scan(&entity, &digest); err != nil {
+			return err
+		}
+		covers[entity] = digest
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	for i := range items {
+		if digest := covers[items[i].entity]; digest != "" {
+			items[i].CoverURL = "/v1/items/" + url.PathEscape(items[i].ID) + "/art/cover?v=" + digest
+		}
+	}
+	return nil
 }

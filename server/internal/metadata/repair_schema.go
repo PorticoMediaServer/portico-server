@@ -184,7 +184,7 @@ func schemaIndex(specs []RepairFieldSpec) map[string]RepairFieldSpec {
 // a client knows which upload and selection surfaces to offer.
 func artworkRolesFor(kind, itemKind string) []string {
 	if kind == "item" && readingRepairKind(itemKind) {
-		return []string{}
+		return []string{"cover"}
 	}
 	switch kind {
 	case "item":
