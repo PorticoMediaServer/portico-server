@@ -1,5 +1,6 @@
 import {useLayoutEffect, useRef, type Dispatch, type SetStateAction} from 'react';
-import {createWatchBodyBindings, useCapturedScreenContext, type CapturedScreenContextInput, type ScreenContext, type WatchBodyBindings, type WatchBodyTarget} from '../detail';
+import {createWatchBodyBindings, type CapturedScreenContextInput, type ScreenContext, type WatchBodyBindings, type WatchBodyTarget} from '../detail';
+import {useCommittedLibraryScreenContext} from '../browse/screen-context';
 import type {WebShellPlaybackRuntime} from '../../platform/playback';
 import {watchBodyKey} from './body-target';
 
@@ -7,11 +8,18 @@ export type RetainedWatchBody = Readonly<{runtime: WebShellPlaybackRuntime; cont
 
 /** The factory and its real view state survive temporary source/offer gaps and every layout.
  * Only a verified new title or captured authority retires them. This owns no media or route. */
-export function WatchBodyOwner({captured, runtime, target, onReady}: {
+type WatchBodyOwnerProps = {
   captured: CapturedScreenContextInput; runtime: WebShellPlaybackRuntime; target: WatchBodyTarget | undefined;
   onReady: Dispatch<SetStateAction<RetainedWatchBody | undefined>>;
-}) {
-  const context = useCapturedScreenContext(captured), current = useRef<RetainedWatchBody | undefined>(undefined);
+};
+export function WatchBodyOwner(props: WatchBodyOwnerProps) {
+  // This protected host spans routes. Only its original authority/runtime owns
+  // the context; title changes remain the body binding's existing concern.
+  const context = useCommittedLibraryScreenContext(props.captured, 'watch-title-body', () => true);
+  return context ? <CommittedWatchBodyOwner {...props} context={context}/> : null;
+}
+function CommittedWatchBodyOwner({context, runtime, target, onReady}: WatchBodyOwnerProps & {context: ScreenContext}) {
+  const current = useRef<RetainedWatchBody | undefined>(undefined);
   useLayoutEffect(() => {
     const before = current.current;
     if (before && (before.runtime !== runtime || before.context !== context || !context.isCurrent())) {
