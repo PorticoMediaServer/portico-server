@@ -159,6 +159,7 @@ export const accountMessages = {
   'accounts.invitation.libraryList': '{head} and {last}',
   'accounts.invitation.porticoBody': '{server} invited you. Join with your Portico Account and it’s on all your devices.',
   'accounts.invitation.libraries': 'What you’ll see',
+  'accounts.invitation.invitedYou': 'Invited you to join',
   'accounts.invitation.member': 'You’ll join as a member.',
   'accounts.invitation.joinAs': 'Join as {username}',
   'accounts.invitation.account': 'Your Portico Account',

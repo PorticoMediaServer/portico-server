@@ -3,7 +3,6 @@ import type {JoinLink} from '@core/join-link.ts';
 import {AccountInvitationScreen} from '../screens/accounts/AccountInvitation';
 import {ShortInvitationEntry} from '../screens/accounts/ShortInvitationEntry';
 import {HostedError} from '../kit/accounts/ServicesAuth';
-import {Button} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import {ServicesAuthForm} from './AuthForm';
 import {servicesInvitationAccount} from './invitation-account';
@@ -49,8 +48,8 @@ export function ServicesInvitationDialog({account, link, pasted, onBack}: {accou
   const current = useMemo(() => session ? servicesInvitationAccount(account, session) : undefined, [account, session]);
   const [error, setError] = useState<unknown>();
   const different = () => { if (session) void account.service.logoutIfCurrent(accountIdentity(session)).catch(setError); };
-  return <Dialog open onOpenChange={open => { if (!open) onBack(); }} title={t('services.start.join')} description={t('services.start.joinLede')}
-    footer={<Button onClick={onBack}>{t('action.cancel')}</Button>}>
+  // The drawn dialog carries its own Join and Cancel row; the surface adds no footer.
+  return <Dialog open onOpenChange={open => { if (!open) onBack(); }} title={t('services.start.join')} description={t('services.start.joinLede')}>
     <p className={dialogStyles.link} title={pasted}>{pasted}</p>
     <AccountInvitationScreen presentation="dialog" link={link} account={current} onBack={onBack} onDifferentAccount={different}
       signedOutContent={<><HostedError error={error} /><ServicesAuthForm account={account} embedded invitation onSignedIn={() => {}} /></>}

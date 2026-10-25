@@ -55,22 +55,32 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
 
 /** A kind-specific glyph is supplied only from an actual library kind. A name
  * alone never becomes a movie/TV/category claim. */
-export function PorticoInvitation({serverName, libraries, member, account, signedOutContent, busy, error, errorContent, onJoin, onDifferentAccount, bare = false}: {
+export function PorticoInvitation({serverName, libraries, member, account, signedOutContent, busy, error, errorContent, onJoin, onDifferentAccount, onCancel, bare = false, compact = false}: {
   serverName: string; libraries: readonly Readonly<{name: string; icon?: IconName}>[]; member: boolean;
   account?: Readonly<{username: string}>; signedOutContent: ReactNode; busy?: boolean; error?: unknown; errorContent?: ReactNode;
-  onJoin: () => void; onDifferentAccount: () => void; bare?: boolean;
+  onJoin: () => void; onDifferentAccount: () => void; onCancel?: () => void; bare?: boolean;
+  /** Connect 27's dialog: a compact server preview and one action row. The page
+   * presentation stays the default for every other caller. */
+  compact?: boolean;
 }) {
   return <AuthStage shape="top" legal={false} bare={bare} className={styles.porticoInvitationStage} contentClassName={styles.porticoInvitationContent}
-    topRight={account && <span className={styles.invitationHeaderAvatar} aria-hidden="true">{Array.from(account.username)[0]?.toUpperCase()}</span>}>
-    <p className={styles.eyebrow}>{t('accounts.invitation.to')}</p><h1>{serverName}</h1>
-    <p className={styles.lede}>{t('accounts.invitation.porticoBody', {server: serverName})}</p>
+    topRight={!compact && account && <span className={styles.invitationHeaderAvatar} aria-hidden="true">{Array.from(account.username)[0]?.toUpperCase()}</span>}>
+    {compact ? <div className={styles.invitationPreview}><span className={styles.invitationPreviewIcon}><Icon name="i-server" size={26} /></span>
+      <span><b>{serverName}</b><small>{t('accounts.invitation.invitedYou')}</small></span></div>
+      : <><p className={styles.eyebrow}>{t('accounts.invitation.to')}</p><h1>{serverName}</h1>
+        <p className={styles.lede}>{t('accounts.invitation.porticoBody', {server: serverName})}</p></>}
     <InvitationLibraries libraries={libraries} member={member} />
     {errorContent ?? <AuthError error={error} />}
-    {account ? <><div className={styles.invitationAccount}><span className={styles.invitationAccountAvatar} aria-hidden="true">{Array.from(account.username)[0]?.toUpperCase()}</span>
-      <span><b>{t('accounts.invitation.joinAs', {username: account.username})}</b><small>{t('accounts.invitation.account')}</small></span>
-      <button type="button" onClick={onDifferentAccount} disabled={busy}>{t('accounts.invitation.notYou')}</button>
-    </div><Button variant="primary" loading={busy} onClick={onJoin}>{t('accounts.invitation.join', {server: serverName})}</Button>
-      <p className={styles.invitationQuiet}>{t('accounts.invitation.porticoJoinedHelp', {server: serverName})}</p></> : signedOutContent}
+    {!account ? signedOutContent : compact
+      ? <div className={styles.invitationCompactActions}>
+        <Button variant="primary" loading={busy} onClick={onJoin}>{t('accounts.invitation.joinAs', {username: account.username})}</Button>
+        {onCancel && <Button onClick={onCancel} disabled={busy}>{t('action.cancel')}</Button>}
+      </div>
+      : <><div className={styles.invitationAccount}><span className={styles.invitationAccountAvatar} aria-hidden="true">{Array.from(account.username)[0]?.toUpperCase()}</span>
+        <span><b>{t('accounts.invitation.joinAs', {username: account.username})}</b><small>{t('accounts.invitation.account')}</small></span>
+        <button type="button" onClick={onDifferentAccount} disabled={busy}>{t('accounts.invitation.notYou')}</button>
+      </div><Button variant="primary" loading={busy} onClick={onJoin}>{t('accounts.invitation.join', {server: serverName})}</Button>
+        <p className={styles.invitationQuiet}>{t('accounts.invitation.porticoJoinedHelp', {server: serverName})}</p></>}
   </AuthStage>;
 }
 

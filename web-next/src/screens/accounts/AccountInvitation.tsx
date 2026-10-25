@@ -57,6 +57,6 @@ function InvitationOperation({entry, link, account, signedOutContent, onBack, on
     error={state.error} onJoin={(username, password, name) => void entry.joinLocal(username, password, name)} onBack={onBack} />;
   // MAIN's current preview exposes library names, not kinds. Do not guess an
   // icon from the name; exact phone-library presentation needs that producer.
-  return <PorticoInvitation bare={bare} serverName={state.server.name} libraries={invitation.libraries} member={invitation.role === 'member'} account={account?.isCurrent() ? account : undefined}
+  return <PorticoInvitation bare={bare} compact={bare} onCancel={onBack} serverName={state.server.name} libraries={invitation.libraries} member={invitation.role === 'member'} account={account?.isCurrent() ? account : undefined}
     signedOutContent={signedOutContent} busy={state.busy} error={state.error} onJoin={() => {if (account?.isCurrent()) void entry.joinPortico(account);}} onDifferentAccount={onDifferentAccount} />;
 }
