@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BrowseFacetPage, BrowseFacetValue} from '@portico/client-core';
 import {Button} from '../../kit/controls';
@@ -21,22 +21,30 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
 }) {
   const [page, setPage] = useState<BrowseFacetPage>(), [values, setValues] = useState<readonly BrowseFacetValue[]>([]);
   const [failed, setFailed] = useState(false), [more, setMore] = useState(false), [retry, setRetry] = useState(0);
+  const lifetime = useRef<AbortController>(undefined);
+  const pending = useRef(false), offset = useRef(0);
   useEffect(() => {
     const operation = new AbortController();
-    setFailed(false); setPage(undefined); setValues([]);
+    lifetime.current = operation; pending.current = false; offset.current = 0;
+    setFailed(false); setPage(undefined); setValues([]); setMore(false);
     void loadFacetPage(request, {libraryId, field, pivot}, operation.signal)
-      .then(first => {if (!operation.signal.aborted) {setPage(first); setValues(first.values);}})
+      .then(first => {if (!operation.signal.aborted) {offset.current = first.values.length; setPage(first); setValues(first.values);}})
       .catch(() => {if (!operation.signal.aborted) setFailed(true);});
     return () => operation.abort();
   }, [libraryId, field, pivot, request, retry]);
   const loadMore = () => {
-    if (!page || more) return;
-    const operation = new AbortController();
+    const operation = lifetime.current;
+    if (!page || pending.current || !operation || operation.signal.aborted) return;
+    pending.current = true;
     setMore(true);
-    void loadFacetPage(request, {libraryId, field, pivot, offset: values.length}, operation.signal)
-      .then(next => {if (!operation.signal.aborted) setValues(current => [...current, ...next.values.filter(entry => !current.some(seen => seen.value === entry.value))]);})
+    void loadFacetPage(request, {libraryId, field, pivot, offset: offset.current}, operation.signal)
+      .then(next => {if (!operation.signal.aborted) {
+        if (!next.values.length && offset.current < next.total) throw new Error('invalid_document');
+        offset.current += next.values.length; setPage(next);
+        setValues(current => [...current, ...next.values.filter(entry => !current.some(seen => seen.value === entry.value))]);
+      }})
       .catch(() => {if (!operation.signal.aborted) setFailed(true);})
-      .finally(() => {if (!operation.signal.aborted) setMore(false);});
+      .finally(() => {if (!operation.signal.aborted) {pending.current = false; setMore(false);}});
   };
   if (failed || page && values.length === 0) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
@@ -45,10 +53,10 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
     {values.map(entry => onSelect ? <button key={entry.value} type="button" className={styles.value} onClick={() => onSelect(entry)}>
       <span className={styles.label}>{entry.label}</span>
       <span className={styles.count}>{defaultI18n.number(entry.count)}{entry.countIsLowerBound ? '+' : ''}</span>
-    </button> : <div key={entry.value} className={styles.value}>
+    </button> : <div key={entry.value} className={`${styles.value} ${styles.static}`}>
       <span className={styles.label}>{entry.label}</span>
       <span className={styles.count}>{defaultI18n.number(entry.count)}{entry.countIsLowerBound ? '+' : ''}</span>
     </div>)}
-    {values.length < page.total && <div className={styles.more}><Button variant="glass" onClick={loadMore} disabled={more}>{t('action.showMore')}</Button></div>}
+    {offset.current < page.total && <div className={styles.more}><Button variant="glass" onClick={loadMore} disabled={more}>{t('action.showMore')}</Button></div>}
   </div>;
 }

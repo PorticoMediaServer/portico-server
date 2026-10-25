@@ -57,7 +57,7 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {})});}}
     onLibrary={libraryId => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}).catch(context.effects.reportError);}}
     onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
-  const request: FacetRequest = (path, method, body, signal) => life.api.request(path, method, body, signal);
+  const request = useMemo<FacetRequest>(() => (path, method, body, signal) => life.api.request(path, method, body, signal), [life]);
   if (selected.shows === 'facet') return <>{header}<FacetPage libraryId={library.id} field={selected.facetSource?.field === 'series' ? 'series' : 'author'}
     pivot={gridPivot ?? (library.kind === 'comic' ? 'comics' : 'books')} request={request}
     {...(selected.facetSource?.field === 'author' ? {onSelect: value => navigate({view: 'browse', ...(gridPivot ? {pivot: gridPivot} : {}), query: authorPredicate(value.value)})} : {})}/></>;
