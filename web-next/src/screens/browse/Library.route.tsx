@@ -70,7 +70,7 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
       if (active && life.current()) setCapabilities({context: captured.context, data: parseBrowseCapabilities(raw)});
     })().catch(error => {if (active && life.current()) context.effects.reportError(error);});
     return () => {active = false;};
-  }, [context, life, library.id, library.kind]);
+  }, [captured.context, context, life, library.id, library.kind]);
   /** Root §3: the server's published pivots decide the reading tabs; older servers keep the authored pair. */
   const tabs = useMemo(() => readingTabs(capabilities, library.kind), [capabilities, library.kind]);
   const periodicalPivot = search.pivot === 'magazines' || search.pivot === 'newspapers' ? search.pivot : undefined;
