@@ -118,6 +118,9 @@ func Registry() []Field {
 		field("library.missingTitles", "library", "enumeration", "after_days", nil, nil, MissingTitleRules, "hot", "catalog missing titles", "When a title whose files are no longer on disk is removed from the library: immediately, after a number of days, or never. Until then it stays, marked missing, and a file that comes back restores it. Each profile's watch state is kept either way."),
 		field("library.missingTitlesDays", "library", "integer", 30, bounded(1), bounded(3650), nil, "hot", "catalog missing titles", "How many days a missing title is kept when the rule is after a number of days."),
 		field("library.segmentDetection", "library", "enumeration", "standard", nil, nil, SegmentDetectionModes, "hot", "mediaanalysis segment detection", "Finds intros and end credits so viewers can skip them. Standard compares the sound of a show's episodes and costs a few seconds of processing per episode. Thorough also reads the picture near the end of every episode and film to find credits and post-credits scenes; it decodes video and takes minutes per file. Each library can follow this or choose its own."),
+		field("segments.tvMode", "segments", "enumeration", "server", nil, nil, []string{"server", "standard", "thorough", "off"}, "hot", "mediaanalysis library kind detection", "Default detection mode for this video library kind; an explicit per-library choice wins."),
+		field("segments.animeMode", "segments", "enumeration", "server", nil, nil, []string{"server", "standard", "thorough", "off"}, "hot", "mediaanalysis library kind detection", "Default detection mode for this video library kind; an explicit per-library choice wins."),
+		field("segments.movieMode", "segments", "enumeration", "server", nil, nil, []string{"server", "standard", "thorough", "off"}, "hot", "mediaanalysis library kind detection", "Default detection mode for this video library kind; an explicit per-library choice wins."),
 		field("segments.useChapterNames", "segments", "boolean", true, nil, nil, nil, "hot", "segmentmarkers viewer projection", "Use embedded chapter labels for unapproved viewer skip suggestions. Owner decisions are retained."),
 		field("segments.viewerConfidencePercent", "segments", "integer", 50, bounded(30), bounded(70), []string{"30", "50", "70"}, "hot", "segmentmarkers viewer projection", "Confidence floor for unapproved viewer skip buttons. Approval and ambiguity rules remain independent."),
 		field("segments.automaticConfidencePercent", "segments", "integer", 85, bounded(70), bounded(95), []string{"70", "85", "95"}, "hot", "segmentmarkers measured automatic projection", "Confidence floor for automatic skips from cross-episode measurements. Single-file guesses never become automatic."),
@@ -208,6 +211,9 @@ type Settings struct {
 	// (SegmentDetectionModes). A document saved before the field existed
 	// reads as empty, which is the default, standard.
 	SegmentDetection                  string `json:"library.segmentDetection"`
+	SegmentTVMode                     string `json:"segments.tvMode,omitempty"`
+	SegmentAnimeMode                  string `json:"segments.animeMode,omitempty"`
+	SegmentMovieMode                  string `json:"segments.movieMode,omitempty"`
 	SegmentUseChapterNames            *bool  `json:"segments.useChapterNames,omitempty"`
 	SegmentViewerConfidencePercent    int    `json:"segments.viewerConfidencePercent,omitempty"`
 	SegmentAutomaticConfidencePercent int    `json:"segments.automaticConfidencePercent,omitempty"`
@@ -252,7 +258,7 @@ type LogRetention struct {
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
 	chapterNames := true
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -483,6 +489,24 @@ func validateSettings(v *Settings) error {
 	if v.MissingTitlesDays < 1 || v.MissingTitlesDays > 3650 {
 		fields = append(fields, "values.library.missingTitlesDays")
 	}
+	if v.SegmentTVMode == "" {
+		v.SegmentTVMode = "server"
+	}
+	if !oneOf(v.SegmentTVMode, []string{"server", "standard", "thorough", "off"}) {
+		fields = append(fields, "values.segments.tvMode")
+	}
+	if v.SegmentAnimeMode == "" {
+		v.SegmentAnimeMode = "server"
+	}
+	if !oneOf(v.SegmentAnimeMode, []string{"server", "standard", "thorough", "off"}) {
+		fields = append(fields, "values.segments.animeMode")
+	}
+	if v.SegmentMovieMode == "" {
+		v.SegmentMovieMode = "server"
+	}
+	if !oneOf(v.SegmentMovieMode, []string{"server", "standard", "thorough", "off"}) {
+		fields = append(fields, "values.segments.movieMode")
+	}
 	if v.SegmentUseChapterNames == nil {
 		chapterNames := true
 		v.SegmentUseChapterNames = &chapterNames
@@ -518,6 +542,9 @@ func validateSettings(v *Settings) error {
 	return nil
 }
 func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange) (out SettingsDocument, e error) {
+	omittedSegmentTVMode := c.Values.SegmentTVMode == ""
+	omittedSegmentAnimeMode := c.Values.SegmentAnimeMode == ""
+	omittedSegmentMovieMode := c.Values.SegmentMovieMode == ""
 	omittedChapters := c.Values.SegmentUseChapterNames == nil
 	omittedViewer := c.Values.SegmentViewerConfidencePercent == 0
 	omittedAutomatic := c.Values.SegmentAutomaticConfidencePercent == 0
@@ -542,6 +569,15 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 			return &ConflictError{current.Revision}
 		}
 		values := normalized
+		if omittedSegmentTVMode {
+			values.SegmentTVMode = current.Requested.SegmentTVMode
+		}
+		if omittedSegmentAnimeMode {
+			values.SegmentAnimeMode = current.Requested.SegmentAnimeMode
+		}
+		if omittedSegmentMovieMode {
+			values.SegmentMovieMode = current.Requested.SegmentMovieMode
+		}
 		if omittedChapters {
 			values.SegmentUseChapterNames = current.Requested.SegmentUseChapterNames
 		}
