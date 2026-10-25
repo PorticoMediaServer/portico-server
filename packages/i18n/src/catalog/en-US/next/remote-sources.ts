@@ -189,6 +189,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.advCacheFailed': 'Saved, but the storage program did not take the new cache: {reason}',
   'next.remoteSources.problemHeading': 'A remote source needs attention.',
   'next.remoteSources.folderTruncated': 'This folder holds more folders than Portico lists at once. Open a subfolder to narrow it down.',
+  'next.remoteSources.problemMore': ' {count} more need attention.',
   'next.remoteSources.existingLibraryMissing': 'Choose the library to add these folders to.',
   'next.remoteSources.libraryKind': 'Type',
   'next.remoteSources.on': 'On',

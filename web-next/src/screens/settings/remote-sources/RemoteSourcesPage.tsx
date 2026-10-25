@@ -131,11 +131,13 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
   const [notice, setNotice] = useState('');
   const refresh = () => {if (!isCurrent()) return;setNotice('');void service.load();};
   const recover = () => {if (!isCurrent()) return;setNotice('');void service.recover().catch(error => {if (isCurrent()) setNotice(remoteErrorText(error));});};
-  const attention = sources.find(source => stateTone(source) === 'danger');
+  const needing = sources.filter(source => stateTone(source) === 'danger');
+  const attention = needing[0];
+  const attentionMore = needing.length > 1 ? t('next.remoteSources.problemMore', {count: needing.length - 1}) : '';
   return <div className={styles.page}>
     {attention && <div className={styles.pageNotice} role="status">
       <Icon name="i-warn" size={20}/>
-      <span><b>{t('next.remoteSources.problemHeading')}</b> {problemId(attention) ? t(problemId(attention)!) : t('next.remoteSources.problem.offline')}
+      <span><b>{t('next.remoteSources.problemHeading')}</b> {attention.name}: {problemId(attention) ? t(problemId(attention)!) : t('next.remoteSources.problem.offline')}{attentionMore}
         <Button size="xs" variant="text" onClick={() => setManaging(attention)}>{t('next.remoteSources.openSource', {name: attention.name})}</Button></span>
     </div>}
     <SettingsGroup title={t('next.settingsSpec.server.remote-sources.groups.0.title')}
