@@ -229,6 +229,8 @@ CREATE TABLE reading_text_counts(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
  word_count INTEGER CHECK(word_count IS NULL OR word_count BETWEEN 0 AND 67108864),
+ opening_lines TEXT CHECK(opening_lines IS NULL OR length(opening_lines)<=4096),
+ opening_rule_version INTEGER NOT NULL DEFAULT 0 CHECK(opening_rule_version IN(0,1)),
  inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
  source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
  rule_version INTEGER NOT NULL CHECK(rule_version>0),
