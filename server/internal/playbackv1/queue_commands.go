@@ -1454,11 +1454,11 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 	if kind == "song" || kind == "audiobook_file" || kind == "track" {
 		sessionKind = "audio"
 	}
-	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, kind), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
+	stored := storedRequest{DiscTitle: req.DiscTitle, VersionID: req.VersionID, Quality: c.defaultQuality(ctx, kind), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}
-	if sessionKind == "vod" {
+	if sessionKind == "vod" && req.DiscTitle == nil {
 		stored.Carry = s.queueCarry(ctx, c, q, req.ReplacesSessionID)
 	}
 	startCtx := ctx

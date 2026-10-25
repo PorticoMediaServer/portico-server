@@ -937,7 +937,7 @@ func (s *Service) readyWait() time.Duration {
 // session; the same key with another body is ErrIdempotencyMismatch (422
 // idempotency_key_reused, the one API-wide code; spec §17.1).
 func (s *Service) Start(ctx context.Context, c Caller, key string, req StartRequest) (SessionView, bool, error) {
-	if req.DiscTitle != nil && (req.ItemID == "" || req.VersionID == "" || req.PartIndex != 0 || req.Queue != nil || req.ChannelID != "" || req.TransferID != "" || len(req.DiscTitle.ID) != 64 || len(req.DiscTitle.Revision) != 64) {
+	if req.DiscTitle != nil && (req.ItemID == "" && req.Queue == nil || req.VersionID == "" || req.PartIndex != 0 || req.ChannelID != "" || req.TransferID != "" || req.CastTransferID != "" || len(req.DiscTitle.ID) != 64 || len(req.DiscTitle.Revision) != 64) {
 		return SessionView{}, false, &FieldError{Path: "discTitle"}
 	}
 
