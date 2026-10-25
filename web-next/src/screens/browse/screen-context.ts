@@ -1,4 +1,4 @@
-import {createEntryMetadataEffect, retireEntryMetadata} from '../../shell/entry-metadata';
+import {createEntryMetadataEffect, retireEntryMetadata, type EntryMetadataPorts} from '../../shell/entry-metadata';
 import {createBrowserDownloadPort} from '../../platform/browser-download';
 import {useEffect, useMemo, useRef} from 'react';
 import type {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -8,7 +8,7 @@ import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
 import {openWatchVersionChooser} from '../watch/version-presentation';
 import {createScreenPlayEffect, createScreenSeasonPlayEffect} from './playback-effect';
-import {addToDestinationEffect, deleteTitleEffect, entryActions, type EntryActionPorts} from '../../shell/entry-actions';
+import {addToDestinationEffect, deleteTitleEffect, entryActions} from '../../shell/entry-actions';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 
@@ -32,7 +32,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
     const assert = () => {if (!current()) throw new DOMException('Screen authority changed', 'AbortError');};
     const reportError = (error: unknown) => {if (current()) binding.current.home.effects.reportError(error);};
     const navigate = (action: Promise<void>) => {void action.catch(reportError);};
-    const entryPorts: EntryActionPorts = {pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}, api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, requestId: async () => crypto.randomUUID()};
+    const entryPorts: EntryMetadataPorts = {artwork: context.artwork,pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}, api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, requestId: async () => crypto.randomUUID()};
     const entryEffects = {...(viewer.authority === 'local' && viewer.role === 'owner' ? {editMetadata: createEntryMetadataEffect(entryPorts, () => current() && context.session().viewer.role === 'owner' && context.session().viewer.authority === 'local')} : {}), addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'), addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'), ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {})};
     const value: ScreenContext = {
       api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,

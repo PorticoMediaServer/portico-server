@@ -167,6 +167,6 @@ function SingleMetadataEditor({source, snapshot}: {source: SelectionRendererSour
   }} : {})}), [metadata, source.controller, grant, preview]);
   return <Dialog open onOpenChange={open => {if (!open) source.controller.closeEditor();}} title={t('next.home.editSelection')}
     returnFocusRef={source.anchor} responsive={false} placement="right" width={720} showCloseButton={false} headerClassName={metadataStyles.hostTitle} bodyClassName={metadataStyles.hostBody}>
-    <MetadataEditor api={api} scope={metadata.scope} target={target} onClose={() => source.controller.closeEditor()}/>
+    <MetadataEditor artwork={source.artwork} api={api} scope={metadata.scope} target={target} onClose={() => source.controller.closeEditor()}/>
   </Dialog>;
 }

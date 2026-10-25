@@ -5,9 +5,10 @@ import {defaultI18n} from '@i18n';
 import {Dialog} from '../kit/overlays';
 import {MetadataEditor} from '../screens/metadata/MetadataEditor';
 import styles from '../screens/metadata/metadata.module.css';
+import type {ShellArtwork} from './artwork';
 import type {EntryActionPorts, EntryActionTarget} from './entry-actions';
 
-export type EntryMetadataPorts = Omit<EntryActionPorts, 'api'> & Readonly<{api: EntryActionPorts['api'] & Readonly<{requestMetadataUpload?: <T>(path: string, body: FormData, signal?: AbortSignal) => Promise<T>}>}>;
+export type EntryMetadataPorts = Omit<EntryActionPorts, 'api'> & Readonly<{artwork?: ShellArtwork; api: EntryActionPorts['api'] & Readonly<{requestMetadataUpload?: <T>(path: string, body: FormData, signal?: AbortSignal) => Promise<T>}>}>;
 type AggregateMetadataTarget = Readonly<{entityKind: 'show' | 'album' | 'book'; entityId: string; libraryId: string; title: string; initialTab?: 'general' | 'matching'}>;
 export type EntryMetadataEffect = (target: EntryActionTarget | AggregateMetadataTarget, anchor: HTMLElement) => Promise<void>;
 type Open = Readonly<{id: number; target: EntryActionTarget | AggregateMetadataTarget; anchor: HTMLElement; ports: EntryMetadataPorts; lifetime: AbortController; ownerCurrent: () => boolean}>;
@@ -68,7 +69,7 @@ function CheckedMetadata({value}: {value: Open & {target: EntryActionTarget}}) {
   const target = useMemo(() => ({kind: 'item' as const, id: value.target.itemId, libraryId: value.target.libraryId}), [value]);
   return <Dialog open responsive={false} onOpenChange={open => {if (!open) close();}} title={defaultI18n.t('next.home.editSelection')}
     returnFocusRef={anchor} placement="right" width={720} showCloseButton={!data} headerClassName={data ? styles.hostTitle : undefined} bodyClassName={data ? styles.hostBody : undefined}>
-    {data ? <MetadataEditor api={metadataApi} scope={scope} target={target} onClose={close}/>
+    {data ? <MetadataEditor artwork={value.ports.artwork} api={metadataApi} scope={scope} target={target} onClose={close}/>
       : <p role={failed ? 'alert' : 'status'}>{defaultI18n.t(failed ? 'next.states.crashed' : 'next.states.loading')}</p>}
   </Dialog>;
 }
@@ -113,7 +114,7 @@ function CheckedAggregateMetadata({value}: {value: Open & {target: AggregateMeta
   const dismiss = () => {if (opened === value) close();};
   return <Dialog open responsive={false} onOpenChange={open => {if (!open) dismiss();}} title={defaultI18n.t('next.home.editSelection')}
     returnFocusRef={anchor} placement="right" width={720} showCloseButton={!grant} headerClassName={grant ? styles.hostTitle : undefined} bodyClassName={grant ? styles.hostBody : undefined}>
-    {grant ? <MetadataEditor api={metadataApi} scope={scope} target={target} initialTab={value.target.initialTab} onClose={dismiss}/>
+    {grant ? <MetadataEditor artwork={value.ports.artwork} api={metadataApi} scope={scope} target={target} initialTab={value.target.initialTab} onClose={dismiss}/>
       : <p role={failed ? 'alert' : 'status'}>{defaultI18n.t(failed ? 'next.states.crashed' : 'next.states.loading')}</p>}
   </Dialog>;
 }
