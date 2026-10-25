@@ -10,7 +10,7 @@ export function ColourBackdrop({shape = 'side', fill = false, className, style, 
 }
 
 /** Bounded card washes contain no sharp art, scrims, controls or readiness overrides. */
-export type AmbientArtTreatment = 'hero' | 'title' | 'phone' | 'cover' | 'wash' | 'library' | 'artist' | 'poster'
+export type AmbientArtTreatment = 'hero' | 'title' | 'phone' | 'cover' | 'wash' | 'library' | 'library-phone' | 'artist' | 'poster'
   | 'resume' | 'resume-phone' | 'library-row' | 'collection-tile' | 'session-audio';
 
 export type AmbientArtProps = ArtStyleProps & Readonly<{
