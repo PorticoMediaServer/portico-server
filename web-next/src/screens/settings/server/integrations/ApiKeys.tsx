@@ -7,16 +7,18 @@ import {Dialog} from '../../../../kit/overlays/Dialog';
 import {Icon} from '../../../../kit/Icon';
 import {AssistantsPanel} from '../../integrations/Assistants';
 import {SettingsApiKeysSource} from './api-keys-source';
+import {WebhooksPanel} from './Webhooks';
+import type {SettingsWebhooksSource} from './webhooks-source';
 import styles from './integrations.module.css';
 
 const t = defaultI18n.t;
 type IssuedCard = Readonly<{source: SettingsApiKeysSource; value: IssuedApiCredential; token: object}>;
 type FormAttempt = Readonly<{source: SettingsApiKeysSource}>;
-type Props = Readonly<{source: SettingsApiKeysSource; baseUrl: string; isCurrent: () => boolean; reportError: (error: unknown) => void; otherRows: ReactNode; advancedRows: ReactNode}>;
+type Props = Readonly<{source: SettingsApiKeysSource; webhooks: SettingsWebhooksSource; baseUrl: string; isCurrent: () => boolean; reportError: (error: unknown) => void; otherRows: ReactNode; advancedRows: ReactNode}>;
 
 /** The owner's real key list and creator; generic webhook/advanced rows retain
  * their existing controller, while Assistants invokes this same key creator. */
-export function IntegrationsPage({source, baseUrl, isCurrent, reportError, otherRows, advancedRows}: Props) {
+export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportError, otherRows, advancedRows}: Props) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [creating, setCreating] = useState(false), [name, setName] = useState(''), [ticked, setTicked] = useState<ReadonlySet<ApiScope>>(new Set()), [days, setDays] = useState<ExpiryDays>(0);
   const [issued, setIssued] = useState<IssuedCard>(), [copied, setCopied] = useState(false), [ended, setEnded] = useState(false), [revoking, setRevoking] = useState<ApiCredential>();
@@ -87,6 +89,7 @@ export function IntegrationsPage({source, baseUrl, isCurrent, reportError, other
       </>}
       <p className={styles.footnote}>{t('api.tokens.lifetime')}</p>
     </section>
+    <WebhooksPanel source={webhooks} isCurrent={isCurrent} />
     {otherRows}
     <div id="integrations.assistantAddress"><div id="integrations.assistantKey"><AssistantsPanel baseUrl={baseUrl} isCurrent={isCurrent} openCreateKey={start} reportError={reportError} /></div></div>
     {advancedRows}
