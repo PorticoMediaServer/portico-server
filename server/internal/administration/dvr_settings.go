@@ -259,8 +259,10 @@ type TunerView struct {
 	UpcomingWindowHours int `json:"upcomingWindowHours"`
 }
 
-// upcomingWindow is how far ahead the allocation page looks.
-const upcomingWindow = 48
+// upcomingWindow is how far ahead the tuner page looks. It is the one source
+// for both the query horizon and UpcomingWindowHours, which the client help
+// renders as "over the next N hours".
+const upcomingWindow = 12
 
 // Tuners reports which tuner each source is using and what is queued. It reads
 // the DVR store's own tables; nothing here schedules or claims anything.
