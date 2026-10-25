@@ -8848,3 +8848,33 @@ CREATE TABLE reading_saved_group_owners (
 CREATE TRIGGER reading_saved_group_identity_immutable BEFORE UPDATE OF reference_id,owner_key,server_id,library_id,group_kind,series_key ON reading_saved_groups
  WHEN NEW.reference_id<>OLD.reference_id OR NEW.owner_key<>OLD.owner_key OR NEW.server_id<>OLD.server_id OR NEW.library_id<>OLD.library_id OR NEW.group_kind<>OLD.group_kind OR NEW.series_key<>OLD.series_key
  BEGIN SELECT RAISE(ABORT,'private Reading group reference identity is immutable'); END;
+
+-- Root §23: an explicit Send app log is a closed, code-only journal, separate from
+-- the server-reference feedback diagnostics. Only the receiving server's owner reads it.
+CREATE TABLE app_reports(
+ id TEXT PRIMARY KEY,
+ recipient_account_id TEXT NOT NULL CHECK(length(recipient_account_id) BETWEEN 1 AND 128),
+ authority TEXT NOT NULL CHECK(length(authority) BETWEEN 1 AND 64),
+ account_id TEXT NOT NULL CHECK(length(account_id) BETWEEN 1 AND 128),
+ profile_id TEXT NOT NULL CHECK(length(profile_id) BETWEEN 1 AND 128),
+ device_id TEXT NOT NULL CHECK(length(device_id) BETWEEN 1 AND 256),
+ created_ms INTEGER NOT NULL CHECK(created_ms >= 0),
+ expires_ms INTEGER NOT NULL CHECK(expires_ms > created_ms AND expires_ms <= created_ms + 604800000),
+ entry_count INTEGER NOT NULL CHECK(entry_count BETWEEN 1 AND 200),
+ operation_id TEXT NOT NULL CHECK(length(operation_id) BETWEEN 16 AND 128),
+ intent_sha TEXT NOT NULL CHECK(length(intent_sha) = 64)
+) STRICT;
+CREATE TABLE app_report_entries(
+ report_id TEXT NOT NULL,
+ position INTEGER NOT NULL CHECK(position BETWEEN 0 AND 199),
+ at_ms INTEGER NOT NULL CHECK(at_ms >= 0),
+ level TEXT NOT NULL CHECK(level IN ('info','warn','error')),
+ code TEXT NOT NULL CHECK(code IN ('audio_transition_unavailable','audio_edge_late','audio_processing_unavailable','equalizer_filter_unavailable','audio_autoplay_blocked')),
+ PRIMARY KEY(report_id,position),
+ FOREIGN KEY(report_id) REFERENCES app_reports(id) ON DELETE CASCADE
+) STRICT;
+CREATE INDEX app_reports_receipt ON app_reports(authority,created_ms);
+CREATE INDEX app_report_entries_report ON app_report_entries(report_id);
+CREATE INDEX app_reports_expiry ON app_reports(expires_ms);
+CREATE UNIQUE INDEX app_reports_operation ON app_reports(authority,account_id,profile_id,device_id,operation_id);
+CREATE INDEX app_reports_recipient ON app_reports(recipient_account_id,created_ms,id);

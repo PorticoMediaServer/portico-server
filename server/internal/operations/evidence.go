@@ -590,6 +590,7 @@ func (s *Store) Prune(ctx context.Context) error {
 		{`DELETE FROM console_alerts WHERE status='resolved' AND last_ms<?`, []any{now - days(v.Effective.JobDays)}},
 		{`DELETE FROM console_records WHERE time_ms<?`, []any{now - days(v.Effective.DiagnosticDays)}},
 		{`DELETE FROM console_reports WHERE expires_ms<=?`, []any{now}},
+		{`DELETE FROM app_reports WHERE expires_ms<=?`, []any{now}},
 		{`DELETE FROM console_notifications WHERE expires_ms<=? OR created_ms<?`, []any{now, now - days(v.Effective.NotificationDays)}},
 		{`DELETE FROM console_operations WHERE state IN ('succeeded','failed','cancelled') AND updated_ms<?`, []any{now - days(v.Effective.JobDays)}},
 		{`DELETE FROM console_documents WHERE scope LIKE 'session:%' AND NOT EXISTS(SELECT 1 FROM authorization_access WHERE hash=substr(console_documents.scope,9) AND revoked=0 AND expires_at>?)`, []any{s.Now().UTC().Format(time.RFC3339)}},

@@ -454,14 +454,14 @@ func (s *Scheduler) Run(ctx context.Context) {
 		return nil
 	})
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "console_*", "maintenance_*")
+	unregister := dbwork.WakeOnTables(wake, "console_*", "maintenance_*", "app_reports")
 	defer unregister()
 	progress := worker.NewProgress(dbwork.ChangingCommits)
 	lastPrune := int64(0)
 	worker.Run(ctx, "operations.scheduler", wake, func(ctx context.Context) time.Duration {
 		progress.Reset()
 		s.tick(ctx)
-		if s.Store.now()-lastPrune >= 600000 {
+		if s.Store.now()-lastPrune >= 600000 || s.Store.appReportsDue(ctx) {
 			lastPrune = s.Store.now()
 			c, done := context.WithTimeout(ctx, 5*time.Second)
 			e := s.Store.Prune(c)

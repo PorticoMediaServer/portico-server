@@ -36,6 +36,19 @@ func (s *Scheduler) nextWake(ctx context.Context) time.Duration {
 	if rows.Err() != nil {
 		return time.Second
 	}
+	// Uploaded app logs have an absolute payload deadline even when no
+	// operation or maintenance schedule is active. The table wake handles a
+	// newly accepted report; this timer handles its later expiry.
+	var expiry sql.NullInt64
+	if err := s.Store.DB.QueryRowContext(ctx, `SELECT min(expires_ms) FROM app_reports`).Scan(&expiry); err != nil {
+		return time.Second
+	}
+	if expiry.Valid {
+		at := time.UnixMilli(expiry.Int64)
+		if next.IsZero() || at.Before(next) {
+			next = at
+		}
+	}
 	if next.IsZero() {
 		return 0
 	}
@@ -62,4 +75,12 @@ func nextScheduleDue(v Schedule, now time.Time) time.Time {
 		at = at.Add(time.Minute)
 	}
 	return time.Time{}
+}
+
+// appReportsDue makes the automatic retention pass run at the exact payload
+// deadline rather than waiting for the ordinary ten-minute pruning interval.
+func (s *Store) appReportsDue(ctx context.Context) bool {
+	var due bool
+	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM app_reports WHERE expires_ms<=?)`, s.now()).Scan(&due)
+	return err == nil && due
 }
