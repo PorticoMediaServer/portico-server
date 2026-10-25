@@ -103,3 +103,10 @@ test('the account-configuration kind has its drawn words', () => {
   assert.match(defaultI18n.t('next.remoteSources.configEncrypted'), /encrypted/);
   assert.match(defaultI18n.t('next.remoteSources.configChecksOnSave'), /tests the remote when you save/);
 });
+
+test('the S3 kind has its drawn fields and its own refusal words', () => {
+  assert.equal(defaultI18n.t('next.remoteSources.connectS3'), 'S3 storage');
+  assert.match(defaultI18n.t('next.remoteSources.s3EndpointHelp'), /https/);
+  assert.match(defaultI18n.t('next.remoteSources.s3Checks'), /nothing is typed in rclone/);
+  assert.match(defaultI18n.t('next.remoteSources.s3Invalid'), /Check the endpoint/);
+});

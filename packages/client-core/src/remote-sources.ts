@@ -54,6 +54,36 @@ const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Obje
  everything:{scanDepth:'complete',wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0},
  ask:{scanDepth:'basic',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
 });
+/** The drawn S3 form's fields. The owner fills these in; Portico writes the
+ * rclone configuration section, so nobody types rclone's file format. */
+export type S3SourceFields=Readonly<{endpoint:string;region:string;accessKey:string;secretKey:string;bucket:string;folder:string}>;
+export type S3SourceDraft=Readonly<{remote:string;config:string}>;
+const s3Value=(value:string,max:number):boolean=>value.length>=1&&value.length<=max&&!/[\r\n\u0000]/.test(value);
+const s3FolderPart=/^[^\\/\r\n\u0000]{1,255}$/;
+/**
+ * One S3-compatible source as the exact section the server's own validator and
+ * candidate test accept. Undefined means a field is not usable; nothing is
+ * guessed or partly written. The display name is not part of the section.
+ */
+export function s3SourceDraft(fields:S3SourceFields):S3SourceDraft|undefined{
+ const endpoint=fields.endpoint.trim();
+ let url:URL;
+ try{url=new URL(endpoint);}catch{return undefined;}
+ if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.search||url.hash||url.pathname!=='/')return undefined;
+ if(!/^https:\/\/[^\s]+$/i.test(endpoint))return undefined;
+ const region=fields.region.trim();
+ if(region&&!/^[a-z0-9-]{1,32}$/i.test(region))return undefined;
+ const accessKey=fields.accessKey.trim();
+ if(!s3Value(accessKey,256))return undefined;
+ if(!s3Value(fields.secretKey,1024))return undefined;
+ const bucket=fields.bucket.trim();
+ if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(bucket))return undefined;
+ const folder=fields.folder.trim().replace(/^\/+|\/+$/g,'');
+ if(folder&&(folder.length>1024||!folder.split('/').every(part=>part!=='.'&&part!=='..'&&s3FolderPart.test(part))))return undefined;
+ const config=['[portico]','type = s3','provider = Other',`access_key_id = ${accessKey}`,`secret_access_key = ${fields.secretKey}`,`endpoint = ${endpoint}`,...(region?[`region = ${region}`]:[])].join('\n')+'\n';
+ return Object.freeze({remote:`portico:${bucket}${folder?`/${folder}`:''}`,config});
+}
+
 /** The four drawn choices, exactly the server's own SourceReadPreset values. */
 export function sourceReadPreset(name:SourceReadPreset):SourceReadValues{return Object.freeze({...sourceReadPresets[name]});}
 export function sourceReadPresetName(values:SourceReadValues):SourceReadPreset|undefined{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RemoteSourceService,readSourceAvailability,sourceAvailabilityMessage} from '../src/remote-sources.ts';
+import {RemoteSourceService,readSourceAvailability,s3SourceDraft,sourceAvailabilityMessage} from '../src/remote-sources.ts';
 import type {LibraryContentApi} from '../src/library-content.ts';
 const scope={serverId:'server',viewerId:'owner'},wire={serverId:'server',viewerFence:'fence'};
 const op='1788580000000-12345678-1234-1234-1234-123456789012';
@@ -549,4 +549,22 @@ test('a malformed account configuration read fails closed',async()=>{
  const trimmed=new RemoteSourceService(api(async()=>({scope:wire,path:'/config',remotes,truncated:true})),scope,async()=>op);
  assert.equal((await trimmed.rcloneConfig()).truncated,true);trimmed.dispose();
  absent.dispose();
+});
+
+test('the drawn S3 fields build the section and remote the server validates',()=>{
+ const fields={name:'Archive',endpoint:'https://s3.eu-central-1.amazonaws.com',region:'eu-central-1',accessKey:'AKIAEXAMPLE',secretKey:'private-secret',bucket:'media-archive',folder:'Movies/2026'};
+ const draft=s3SourceDraft(fields);
+ assert(draft,'a complete form builds');
+ assert.equal(draft!.remote,'portico:media-archive/Movies/2026');
+ assert.equal(draft!.config,'[portico]\ntype = s3\nprovider = Other\naccess_key_id = AKIAEXAMPLE\nsecret_access_key = private-secret\nendpoint = https://s3.eu-central-1.amazonaws.com\nregion = eu-central-1\n');
+ const bare=s3SourceDraft({...fields,region:'',folder:'',endpoint:'https://minio.local:9000'});
+ assert.equal(bare!.remote,'portico:media-archive');
+ assert(!bare!.config.includes('region ='));
+ assert(bare!.config.startsWith('[portico]\ntype = s3\nprovider = Other\n'));
+ for(const patch of [
+  {endpoint:'http://s3.example'},{endpoint:'https://user:pw@s3.example'},{endpoint:'https://s3.example/path'},{endpoint:'s3.example'},
+  {bucket:'media/archive'},{bucket:''},{folder:'../etc'},{folder:'a//b'},{accessKey:''},{secretKey:'a\nb'},{secretKey:''},{region:'eu central'},
+ ]){
+  assert.equal(s3SourceDraft({...fields,...patch}),undefined,JSON.stringify(patch));
+ }
 });

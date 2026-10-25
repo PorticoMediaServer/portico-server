@@ -1,8 +1,8 @@
 import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {
-  RemoteSourceService, sourceReadPreset, sourceReadPresetName,
-  type DAVConnectionResult, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type RemoteSourceStatus, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  RemoteSourceService, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
+  type DAVConnectionResult, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -21,13 +21,15 @@ import {ProgramPicker} from './ProgramPicker';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
-type SourceKind = 'webdav' | 'rclone' | 'config';
+type SourceKind = 'webdav' | 'rclone' | 'config' | 's3';
 type RcloneDraft = {name: string; remote: string; config: string};
 const emptyRclone: RcloneDraft = {name: '', remote: '', config: ''};
+const emptyS3: S3SourceFields = {name: '', endpoint: '', region: '', accessKey: '', secretKey: '', bucket: '', folder: ''};
 const kindOptions = [
   {value: 'webdav', label: t('next.remoteSources.connectWebdav')},
   {value: 'rclone', label: t('next.remoteSources.connectRclone')},
   {value: 'config', label: t('next.remoteSources.connectFromConfig')},
+  {value: 's3', label: t('next.remoteSources.connectS3')},
 ];
 const presetLabels: Readonly<Record<SourceReadPreset, MessageId>> = {
   list: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.0.label',
@@ -193,6 +195,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [configView, setConfigView] = useState<RcloneConfigView>();
   const [configRemote, setConfigRemote] = useState('');
   const [configName, setConfigName] = useState('');
+  const [s3, setS3] = useState<S3SourceFields>(emptyS3);
   const [result, setResult] = useState<DAVConnectionResult>();
   const [rcloneResult, setRcloneResult] = useState<RcloneTestResult>();
   const [error, setError] = useState('');
@@ -228,7 +231,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   /** A refused owner retires this form before Settings hears about it. */
   const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
-    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName('');
+    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3);
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
@@ -287,6 +290,24 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
+  const updateS3 = (patch: Partial<S3SourceFields>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setS3(current => ({...current, ...patch}));};
+  const testS3 = async () => {
+    const guard = attemptGuard();
+    if (pending.current || !guard()) return;
+    const built = s3SourceDraft(s3);
+    if (!built) {setError(t('next.remoteSources.s3Invalid'));return;}
+    pending.current = true;
+    const attempt = ++testAttempt.current;
+    setError('');setRcloneResult(undefined);setBusy(true);
+    try {const next = await service.testRclone({remote: built.remote, config: built.config}, guard);
+      if (guard() && attempt === testAttempt.current) setRcloneResult(next);}
+    catch (value) {
+      if (!guard() || attempt !== testAttempt.current) return;
+      if (authFailure(value)) {refuse(value);return;}
+      setError(remoteErrorText(value));
+    }
+    finally {if (guard() && attempt === testAttempt.current) {pending.current=false;setBusy(false);}}
+  };
   const testRclone = async () => {
     const guard = attemptGuard();
     if (pending.current || !guard()) return;
@@ -336,6 +357,28 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       if (state.error || !state.receipt) {if (guard()) setError(state.error || t('next.remoteSources.unconfirmed'));return;}
       const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);setDraft(current => ({...current, password: ''}));
       try {const next = await service.readProfile(source.id, String(source.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      catch (value) {if (guard()) setError(remoteErrorText(value));}
+      finally {if (guard()) setLoadingProfile(false);}
+    } finally {if (guard()) {pending.current=false;setBusy(false);}}
+  };
+  const createS3 = async () => {
+    const guard = attemptGuard();
+    if (pending.current || !guard() || !rcloneResult || !s3.name.trim()) return;
+    const built = s3SourceDraft(s3);
+    if (!built) {setError(t('next.remoteSources.s3Invalid'));return;}
+    pending.current = true;setError('');setBusy(true);
+    // The secret leaves the fields as the save starts; only the request holds it now.
+    setS3(current => ({...current, secretKey: ''}));
+    try {
+      const receipt = await service.configureRclone(null, {name: s3.name.trim(), remote: built.remote, config: built.config}, undefined, guard);
+      if (!guard()) return;
+      const state = service.getSnapshot();
+      if (!receipt) {
+        if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
+        setError(state.error || t('next.remoteSources.unconfirmed'));return;
+      }
+      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
@@ -452,9 +495,10 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   </>;
   const canContinue = sourceKind === 'webdav' ? !!result
     : sourceKind === 'rclone' ? !!rcloneResult && !!rclone.name.trim()
-      : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
+      : sourceKind === 's3' ? !!rcloneResult && !!s3.name.trim()
+        : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
   const footer = step === 'connection'
-    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
+    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
     : step === 'reading'
       ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
       : step === 'folders' ? foldersFooter : doneFooter;
@@ -466,7 +510,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.whatToConnect')}>
         {kindOptions.map(option => <button key={option.value} type="button" role="radio" aria-checked={sourceKind === option.value} className={styles.kindTile}
           data-picked={sourceKind === option.value || undefined} disabled={busy} onClick={() => chooseSourceKind(option.value as SourceKind)}>
-          <Icon name={option.value === 'rclone' ? 'i-storage' : 'i-globe'} size={22}/>{option.label}</button>)}
+          <Icon name={option.value === 'webdav' ? 'i-globe' : 'i-storage'} size={22}/>{option.label}</button>)}
       </div>
       {sourceKind === 'webdav' ? <>
         <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
@@ -478,6 +522,24 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
         <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.name.trim() || !draft.root.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
           {result && <span className={styles.testCard} data-tone={result.rangeSupport === 'unsupported' ? 'warning' : 'good'}><Icon name="i-check" size={18}/>{t(result.rangeSupport === 'unsupported' ? 'next.remoteSources.testedLimited' : 'next.remoteSources.tested', {origin: result.origin})}</span>}
+        </div>
+      </> : sourceKind === 's3' ? <>
+        <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectS3')}</b><small>{t('next.remoteSources.connectS3Hint')}</small></span></div>
+        <TextField label={t('next.remoteSources.name')} value={s3.name} maxLength={200} disabled={busy} onChange={event => updateS3({name: event.target.value})}/>
+        <TextField label={t('next.remoteSources.s3Endpoint')} description={t('next.remoteSources.s3EndpointHelp')} value={s3.endpoint} placeholder={t('next.remoteSources.s3EndpointPlaceholder')} maxLength={2048} disabled={busy}
+          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({endpoint: event.target.value})}/>
+        <TextField label={t('next.remoteSources.s3Region')} description={t('next.remoteSources.s3RegionHelp')} value={s3.region} maxLength={32} disabled={busy}
+          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({region: event.target.value})}/>
+        <TextField label={t('next.remoteSources.s3AccessKey')} value={s3.accessKey} maxLength={256} disabled={busy}
+          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({accessKey: event.target.value})}/>
+        <TextField label={t('next.remoteSources.s3SecretKey')} type="password" value={s3.secretKey} maxLength={1024} disabled={busy} onChange={event => updateS3({secretKey: event.target.value})}/>
+        <TextField label={t('next.remoteSources.s3Bucket')} description={t('next.remoteSources.s3BucketHelp')} value={s3.bucket} maxLength={63} disabled={busy}
+          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({bucket: event.target.value})}/>
+        <TextField label={t('next.remoteSources.s3Folder')} description={t('next.remoteSources.s3FolderHelp')} value={s3.folder} maxLength={1024} disabled={busy}
+          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({folder: event.target.value})}/>
+        <p className={styles.note}>{t('next.remoteSources.s3Checks')}</p>
+        <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !s3.endpoint.trim() || !s3.accessKey.trim() || !s3.secretKey || !s3.bucket.trim()} onClick={() => void testS3()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
+          {rcloneResult && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{rcloneResult.version ? t('next.remoteSources.testedRclone', {version: rcloneResult.version}) : t('next.remoteSources.testedRcloneUnknown')}</span>}
         </div>
       </> : sourceKind === 'config' ? <>
         <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectFromConfig')}</b><small>{t('next.remoteSources.connectFromConfigHint')}</small></span></div>
