@@ -8,7 +8,7 @@ import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {Skeleton, StateView} from '../../kit/states';
 import {Button} from '../../kit/controls';
-import {createReadBindings} from './bindings';
+import {createReadBindings, type ReadBindingContext} from './bindings';
 import {bindReadPreferences} from './preferences';
 import {bindReadingProgress} from './progress';
 import {loadReadFonts, type ReadFonts} from './fonts';
@@ -97,7 +97,10 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
   const reportError = receiver.reportError;
   useEffect(() => {
     retireContentsTarget(captured.context, stagedContents);
-    const life = new AbortController(), bindings = createReadBindings(captured.context);
+    const original = receiver.context;
+    const bindingContext: ReadBindingContext = {api: original.api, session: original.session, preferences: original.preferences, facts: original.facts,
+      isCurrent: () => original.isCurrent() && receiver.current()};
+    const life = new AbortController(), bindings = createReadBindings(bindingContext);
     let alive = true, fonts: ReadFonts | undefined, publication: ReadingPublication | undefined;
     let reader: ReturnType<typeof bindReadPreferences> | undefined, progress: ReturnType<typeof bindReadingProgress> | undefined;
     const offRetired = bindings.authority.subscribe(() => {if (alive) setState({failed: true});});
