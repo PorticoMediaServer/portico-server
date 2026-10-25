@@ -48,7 +48,7 @@ function InvitationOperation({entry, link, account, signedOutContent, onBack, on
   const code = state.error && typeof state.error === 'object' && 'code' in state.error ? state.error.code : undefined;
   if (code === 'invitation_expired' || code === 'invitation_used' || code === 'invitation_for_another_account') return <InvitationUnavailable otherAccount={code === 'invitation_for_another_account'} onBack={onBack} onDifferentAccount={onDifferentAccount} />;
   const invitation = state.invitation;
-  if (!invitation || !state.server) return <AuthStage legal={false}><AuthError error={state.error} />{Boolean(state.error) && <Button onClick={() => void entry.inspectInvitation(link)}>{defaultI18n.t('action.tryAgain')}</Button>}</AuthStage>;
+  if (!invitation || !state.server) return <AuthStage legal={false}>{!state.error && <p role="status">{defaultI18n.t('status.loading')}</p>}<AuthError error={state.error} />{Boolean(state.error) && <Button onClick={() => void entry.inspectInvitation(link)}>{defaultI18n.t('action.tryAgain')}</Button>}</AuthStage>;
   if (invitation.signInMethod === 'local') return <LocalInvitationForm serverName={state.server.name} inviter={invitation.inviterUsername} libraries={invitation.libraries.map(library => library.name)} busy={state.busy}
     error={state.error} onJoin={(username, password, name) => void entry.joinLocal(username, password, name)} onBack={onBack} />;
   // MAIN's current preview exposes library names, not kinds. Do not guess an
