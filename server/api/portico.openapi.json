@@ -397966,6 +397966,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "browsing",

@@ -20,7 +20,9 @@ func TestReadingLibrarySummaryUsesEligibleLeavesAndGuardedArtwork(t *testing.T) 
 			}
 			leaf := compactcatalog.Ebook
 			want := "ebook"
-			if kind == "comic" { leaf, want = compactcatalog.Comic, "comic" }
+			if kind == "comic" {
+				leaf, want = compactcatalog.Comic, "comic"
+			}
 			// An entity without a publication/link cannot inflate the Reading count.
 			c.Entity(compactcatalog.Entity{Library: c.Handle("reading"), Kind: leaf, Key: "orphan", Title: "No publication"}, nil)
 			digest := strings.Repeat("a", 64)
@@ -29,8 +31,12 @@ func TestReadingLibrarySummaryUsesEligibleLeavesAndGuardedArtwork(t *testing.T) 
 			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('item',?,'cover','','reading-cover',?,'',0,1,'fixture','now')`, items[0].ID, digest)
 			c.Drain()
 			summaries, err := s.SummarizeLibraries(context.Background(), viewer, libraries)
-			if err != nil { t.Fatal(err) }
-			if len(summaries) != 1 { t.Fatalf("library scope: %+v", summaries) }
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(summaries) != 1 {
+				t.Fatalf("library scope: %+v", summaries)
+			}
 			got := summaries["reading"]
 			if len(got.Counts) != 1 || got.Counts[0].Kind != want || got.Counts[0].Count != 4 || got.Counts[0].AtLeast || got.Empty || !got.EmptyKnown {
 				t.Fatalf("unavailable eligible leaves must remain counted: %+v", got)
@@ -40,7 +46,9 @@ func TestReadingLibrarySummaryUsesEligibleLeavesAndGuardedArtwork(t *testing.T) 
 			}
 			viewer.Restrictions = identity.ContentRestrictions{BlockUnrated: true}
 			summaries, err = s.SummarizeLibraries(context.Background(), viewer, libraries)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			got = summaries["reading"]
 			if got.Counts[0].Count != 0 || !got.Empty || !got.EmptyKnown || len(got.CoverURLs) != 0 || got.LatestArtwork != "" {
 				t.Fatalf("restricted leaves or cover escaped: %+v", got)
