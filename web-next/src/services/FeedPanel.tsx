@@ -11,20 +11,25 @@ export function FeedPanel({feed, onReviewDevices}: {feed: ServicesFeed; onReview
   const i18n = useMemo(servicesI18n, []), {t} = i18n;
   const state = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const [error, setError] = useState<unknown>(), [downloading, setDownloading] = useState<string>();
-  const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  const lifetime = useRef<{downloading: boolean} | undefined>(undefined);
+  useEffect(() => {
+    const capture = {downloading: false}; lifetime.current = capture; setDownloading(undefined);
+    return () => {if (lifetime.current === capture) lifetime.current = undefined;};
+  }, [feed]);
   const download = async (id: string, noticeId: string) => {
-    if (downloading) return;
+    const capture = lifetime.current;
+    if (!capture || capture.downloading) return;
+    capture.downloading = true;
     setDownloading(id); setError(undefined);
     try {
       const data = await feed.client.downloadExport(id);
-      if (!alive.current) return;
+      if (lifetime.current !== capture) return;
       const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
       const link = document.createElement('a'); link.href = url; link.download = 'portico-account.json'; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      await feed.markRead([noticeId]);
-    } catch (value) { if (alive.current) setError(value); }
-    finally { if (alive.current) setDownloading(undefined); }
+      if (lifetime.current === capture) await feed.markRead([noticeId]);
+    } catch (value) { if (lifetime.current === capture) setError(value); }
+    finally { if (lifetime.current === capture) {capture.downloading = false;setDownloading(undefined);}; }
   };
   return <>
     {state.error ? <><HostedError error={state.error} /><Button disabled={state.busy} onClick={() => void feed.refresh()}>{t('action.tryAgain')}</Button></> : null}{error ? <HostedError error={error} /> : null}
