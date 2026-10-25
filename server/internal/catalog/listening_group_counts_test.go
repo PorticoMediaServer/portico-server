@@ -70,10 +70,22 @@ func TestRestrictedBookGroupCountTracksVisibleBooks(t *testing.T) {
 		t.Fatalf("restricted series sections %q: %+v", sections, page.Sections)
 	}
 	groups := listeningSectionByID(t, page, "groups")
-	if len(groups.Entries) != 1 || groups.Entries[0].Count == nil || *groups.Entries[0].Count != 1 {
-		t.Fatalf("restricted series count: %+v", groups)
+	var saga, otherSaga string
+	for name, target := range map[string]*string{"Saga": &saga, "Other Saga": &otherSaga} {
+		if err := c.DB.QueryRow(`SELECT token FROM catalog_book_groups WHERE kind=2 AND name=?`, name).Scan(target); err != nil {
+			t.Fatal(err)
+		}
 	}
-	saga := groups.Entries[0].ID
+	if len(groups.Entries) != 2 {
+		t.Fatalf("restricted series set: %+v", groups)
+	}
+	// Both series own one visible book; identify each by its canonical id.
+	for _, want := range []struct{ id, title string }{{saga, "Saga"}, {otherSaga, "Other Saga"}} {
+		entry := listeningEntryByID(t, groups, want.id)
+		if entry.Title != want.title || entry.Count == nil || *entry.Count != 1 {
+			t.Fatalf("restricted series %q: %+v", want.title, entry)
+		}
+	}
 	// The unrestricted series page fixes the author destination identity the
 	// restricted page must keep.
 	free := phase34ListeningRequest("books", "book_series", saga)
@@ -114,10 +126,6 @@ func TestRestrictedBookGroupCountTracksVisibleBooks(t *testing.T) {
 	// The hidden series still has a visible book, but this author's membership
 	// is through its hidden book alone: a visible book elsewhere must not leak
 	// the name onto this page.
-	var otherSaga string
-	if err = c.DB.QueryRow(`SELECT token FROM catalog_book_groups WHERE kind=2 AND name='Other Saga'`).Scan(&otherSaga); err != nil {
-		t.Fatal(err)
-	}
 	// Unrestricted, the fixture names both authors, so the restricted page's
 	// single author is the guard and not a missing membership.
 	free.EntityID = otherSaga
@@ -166,8 +174,17 @@ func TestRestrictedBookGroupCountTracksVisibleBooks(t *testing.T) {
 		t.Fatalf("updated restricted series sections %q: %+v", sections, page.Sections)
 	}
 	groups = listeningSectionByID(t, page, "groups")
-	if len(groups.Entries) != 1 || groups.Entries[0].Count == nil || *groups.Entries[0].Count != 2 {
-		t.Fatalf("updated restricted series count: %+v", groups)
+	if len(groups.Entries) != 2 {
+		t.Fatalf("updated restricted series set: %+v", groups)
+	}
+	for _, want := range []struct {
+		id, title string
+		count     int
+	}{{saga, "Saga", 2}, {otherSaga, "Other Saga", 1}} {
+		entry := listeningEntryByID(t, groups, want.id)
+		if entry.Title != want.title || entry.Count == nil || *entry.Count != want.count {
+			t.Fatalf("updated restricted series %q: %+v", want.title, entry)
+		}
 	}
 }
 
@@ -180,6 +197,17 @@ func listeningSectionByID(t *testing.T, page ContentEnvelope, id string) Content
 	}
 	t.Fatalf("section %q absent: %+v", id, page.Sections)
 	return ContentSection{}
+}
+
+func listeningEntryByID(t *testing.T, section ContentSection, id string) ContentEntry {
+	t.Helper()
+	for _, entry := range section.Entries {
+		if entry.ID == id {
+			return entry
+		}
+	}
+	t.Fatalf("entry %q absent from section %q: %+v", id, section.ID, section.Entries)
+	return ContentEntry{}
 }
 
 func listeningSectionIDs(page ContentEnvelope) string {
