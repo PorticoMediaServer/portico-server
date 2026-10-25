@@ -16,8 +16,15 @@ type Input struct {
 }
 
 func (p Probe) FFmpegInput(path string, t Title, positionMs int64, seek *Seek) (Input, error) {
-	if !cleanLocalPath(path) || p.Schema != Schema || p.Encryption != "none" || positionMs < 0 || positionMs >= t.DurationMs {
+	if !cleanLocalPath(path) || p.checkTitleInput(t, positionMs) != nil {
 		return Input{}, ErrProtocol
+	}
+	return p.ffmpegTitleInput(path, t, positionMs, seek)
+}
+
+func (p Probe) checkTitleInput(t Title, positionMs int64) error {
+	if p.Schema != Schema || p.Encryption != "none" || positionMs < 0 || positionMs >= t.DurationMs || p.Kind != "bluray" && p.Kind != "dvd" {
+		return ErrProtocol
 	}
 	// A valid-looking playlist/title number is not authority to play it. Keep
 	// the exact selected title tied to this probe, including its observed
@@ -27,14 +34,18 @@ func (p Probe) FFmpegInput(path string, t Title, positionMs int64, seek *Seek) (
 	for _, observed := range p.Titles {
 		if observed.Key(p.Kind) == t.Key(p.Kind) {
 			if !reflect.DeepEqual(observed, t) {
-				return Input{}, ErrProtocol
+				return ErrProtocol
 			}
 			matches++
 		}
 	}
 	if matches != 1 {
-		return Input{}, ErrProtocol
+		return ErrProtocol
 	}
+	return nil
+}
+
+func (p Probe) ffmpegTitleInput(path string, t Title, positionMs int64, seek *Seek) (Input, error) {
 	switch p.Kind {
 	case "bluray":
 		if t.Playlist == nil {

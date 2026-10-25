@@ -172,10 +172,8 @@ static int probe_bd(BLURAY *bd, const char *packaging) {
     }
     emit("]}\n"); return publish();
 }
-static int seek_bd(BLURAY *bd, unsigned playlist, uint64_t ms) {
+static int position_bd(BLURAY *bd, unsigned playlist, uint64_t ms, int64_t *offset, uint64_t *time) {
     const BLURAY_DISC_INFO *info = bd_get_disc_info(bd);
-    int64_t offset;
-    uint64_t time;
     uint32_t count;
     int found = 0;
     if (!info || !info->bluray_detected || info->aacs_detected || info->bdplus_detected) return 6;
@@ -194,10 +192,17 @@ static int seek_bd(BLURAY *bd, unsigned playlist, uint64_t ms) {
     }
     if (!found) return 2;
     if (!bd_select_playlist(bd, playlist) || !bd_select_angle(bd, 0)) return 3;
-    offset = bd_seek_time(bd, ms*90);
-    if (offset < 0) return 3;
-    time = bd_tell_time(bd)/90;
-    if (time > ms) return 3;
+    *offset = bd_seek_time(bd, ms*90);
+    if (*offset < 0) return 3;
+    *time = bd_tell_time(bd)/90;
+    if (*time > ms) return 3;
+    return 0;
+}
+static int seek_bd(BLURAY *bd, unsigned playlist, uint64_t ms) {
+    int64_t offset;
+    uint64_t time;
+    int status = position_bd(bd, playlist, ms, &offset, &time);
+    if (status) return status;
     emit("{\"schema\":1,\"playlist\":%u,\"requestedMs\":%" PRIu64 ",\"byteOffset\":%" PRId64 ",\"titleTimeMs\":%" PRIu64 "}\n", playlist, ms, offset, time);
     return publish();
 }
@@ -362,6 +367,39 @@ static int probe_remote_image(uint64_t size) {
     result = probe_dvd_readers(dvd, NULL, &navigation, &callbacks, "iso");
     return image.failed || navigation.failed ? 3 : result;
 }
+static int seek_remote_image(uint64_t size, unsigned playlist, uint64_t ms) {
+    remote_image image = {size, 0, 0};
+    BLURAY *bd = bd_init();
+    int result;
+    if (!size || size > INT64_MAX || size % 2048 || !bd) { if (bd) bd_close(bd); return 2; }
+    if (!bd_open_stream(bd, &image, remote_bd_blocks)) { bd_close(bd); return 3; }
+    result = seek_bd(bd, playlist, ms);
+    bd_close(bd); return image.failed ? 3 : result;
+}
+static int stream_remote_bluray(uint64_t size, unsigned playlist, uint64_t ms, uint64_t expected_offset, uint64_t expected_time) {
+    remote_image image = {size, 0, 0};
+    BLURAY *bd = bd_init();
+    unsigned char buffer[6144 * 16];
+    int64_t offset;
+    uint64_t time;
+    uint64_t written = 0;
+    int result, count;
+    if (!size || size > INT64_MAX || size % 2048 || expected_offset > INT64_MAX || !bd) { if (bd) bd_close(bd); return 2; }
+    if (!bd_open_stream(bd, &image, remote_bd_blocks)) { bd_close(bd); return 3; }
+    result = position_bd(bd, playlist, ms, &offset, &time);
+    if (result || (uint64_t)offset != expected_offset || time != expected_time) {
+        bd_close(bd); return result ? result : 3;
+    }
+    /* Only libbluray reads the selected title in its branching/clip order.
+     * A source/broker error is a nonzero exit, never successful end-of-title. */
+    while ((count = bd_read(bd, buffer, sizeof(buffer))) > 0) {
+        if (image.failed || (size_t)count > sizeof(buffer) || (uint64_t)count > UINT64_MAX-written ||
+            fwrite(buffer, 1, (size_t)count, result_output) != (size_t)count) { bd_close(bd); return 3; }
+        written += (uint64_t)count;
+    }
+    bd_close(bd);
+    return count < 0 || !written || image.failed || fflush(result_output) ? 3 : 0;
+}
 #endif
 static int number(const char *s, uint64_t *out) {
     char *end;
@@ -378,6 +416,17 @@ static int run(int argc, char **argv) {
         uint64_t size;
         if (!number(argv[2], &size)) return 2;
         return probe_remote_image(size);
+    }
+    if (argc == 5 && !strcmp(argv[1], "seek-image-stream")) {
+        uint64_t size, playlist, ms;
+        if (!number(argv[2], &size) || !number(argv[3], &playlist) || playlist > 99999 || !number(argv[4], &ms)) return 2;
+        return seek_remote_image(size, (unsigned)playlist, ms);
+    }
+    if (argc == 7 && !strcmp(argv[1], "stream-bluray-image")) {
+        uint64_t size, playlist, ms, offset, time;
+        if (!number(argv[2], &size) || !number(argv[3], &playlist) || playlist > 99999 || !number(argv[4], &ms) ||
+            !number(argv[5], &offset) || !number(argv[6], &time)) return 2;
+        return stream_remote_bluray(size, (unsigned)playlist, ms, offset, time);
     }
 #endif
     if (argc < 3 || stat(argv[2], &st) || (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))) return 2;
