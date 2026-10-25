@@ -1,0 +1,5 @@
+.waiting {position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; pointer-events: none; color: var(--color-text); text-shadow: 0 2px 12px #000;}
+.waiting svg {animation: waiting-turn 1.2s linear infinite;}
+.waiting p {margin: 0; padding: 0 24px; text-align: center; font-size: 15px; line-height: 1.5;}
+@keyframes waiting-turn {to {transform: rotate(360deg);}}
+@media (prefers-reduced-motion: reduce) {.waiting svg {animation: none;}}
