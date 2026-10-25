@@ -1,5 +1,5 @@
 import {ReadGroupSavedAction} from './ReadGroupSavedAction';
-import {useEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -28,7 +28,9 @@ export function ReadSeriesEntry({libraryId, seriesId}: {libraryId: string; serie
 }
 function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libraryId: string; seriesId: string}) {
   const [resources, setResources] = useState<Resources>(), [retry, setRetry] = useState(0), [retired, setRetired] = useState(false);
-  useEffect(() => {
+  // A committed opening owns the bindings and the cursor: a strict replay publishes the new pair
+  // in the same commit that retires the old one, so a disposed owner is never left on screen.
+  useLayoutEffect(() => {
     const bindings = createReadBindings(captured.context), rows = createReadingSeriesCollection(bindings.client, libraryId, seriesId);
     setRetired(false);
     const off = bindings.authority.subscribe(() => {setRetired(true); setResources(undefined);});
