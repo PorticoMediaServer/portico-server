@@ -149674,12 +149674,16 @@ export const schemas = {
           "viewerFence"
         ],
         "type": "object"
+      },
+      "truncated": {
+        "type": "boolean"
       }
     },
     "required": [
       "scope",
       "path",
-      "remotes"
+      "remotes",
+      "truncated"
     ],
     "type": "object"
   },

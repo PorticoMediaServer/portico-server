@@ -84,6 +84,24 @@ func (s *Service) publishSegmentEvidence(ctx context.Context, f segmentFile, e s
 	if planning != f.Planning || queuedPolicy != planning.digest() || queuedMode != f.Mode {
 		return gated.Commit()
 	}
+	// The source may have changed its intro choice while this file was measured.
+	// Publication follows the mode that applies now, not the one it started with.
+	effective, err := effectiveSegmentModeTx(ctx, tx, f.ObjectID, f.LibraryID)
+	if err != nil {
+		return err
+	}
+	if effective == SegmentModeOff {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id=? AND source_revision=?`, f.ObjectID, f.Revision); err != nil {
+			return err
+		}
+		return gated.Commit()
+	}
+	if effective != "" && effective != f.Mode {
+		if _, err = tx.ExecContext(ctx, `UPDATE segment_files SET mode=?,state='pending',updated_ms=? WHERE object_id=? AND source_revision=?`, effective, nowMS(), f.ObjectID, f.Revision); err != nil {
+			return err
+		}
+		return gated.Commit()
+	}
 	summary := map[string]any{"algorithm": segmentdetect.EvidenceAlgorithm, "mode": f.Mode, "planningPolicy": f.Planning.digest(), "openingPoints": len(e.Opening.Points), "closingPoints": len(e.Closing.Points), "frames": len(e.Frames), "fileDetections": len(detections)}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO analysis_results(id,object_id,asset_id,source_revision,root_incarnation,configuration_generation,policy_revision,stage,algorithm,evidence,tool_digest,duration_us,summary_json,created_ms) VALUES(?,?,?,?,?,?,0,?,?,?,?,?,?,?)`, id, f.ObjectID, f.AssetID, f.Revision, f.Incarnation, f.Generation, SegmentStage, segmentdetect.EvidenceAlgorithm+"/"+f.Mode, inputEvidence, tool, f.DurationUS, jsonString(summary), nowMS()); err != nil {
 		return err

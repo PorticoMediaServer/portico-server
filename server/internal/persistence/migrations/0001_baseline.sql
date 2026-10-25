@@ -2108,6 +2108,7 @@ CREATE TABLE library_sources (
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
  last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', changes_pruned_sequence INTEGER NOT NULL DEFAULT 0, last_progress_at TEXT NOT NULL DEFAULT '',
  remote_source_id TEXT REFERENCES remote_sources(id),
+ double_check_job TEXT NOT NULL DEFAULT '',
  UNIQUE(library_id,root)
 ) STRICT;
 CREATE TABLE library_scan_policies (

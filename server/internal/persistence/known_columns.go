@@ -2645,6 +2645,7 @@ library_sonic_settings.revision
 library_sources.changes_pruned_sequence
 library_sources.classification
 library_sources.configured_root
+library_sources.double_check_job
 library_sources.enabled
 library_sources.follow_symlinks
 library_sources.generation
@@ -4578,6 +4579,8 @@ reading_attribution_members.author_key
 reading_attribution_members.author_source
 reading_attribution_members.author_value
 reading_attribution_members.generation
+reading_attribution_members.issue_date
+reading_attribution_members.issue_date_source
 reading_attribution_members.item_id
 reading_attribution_members.library_id
 reading_attribution_members.number_value
@@ -4630,6 +4633,12 @@ reading_source_values.number_value
 reading_source_values.source
 reading_source_values.source_revision
 reading_source_values.text_value
+reading_text_counts.asset_id
+reading_text_counts.inventory_object_id
+reading_text_counts.item_id
+reading_text_counts.rule_version
+reading_text_counts.source_revision
+reading_text_counts.word_count
 rec_data_revision.id
 rec_data_revision.revision
 rec_profile_jobs.profile_id

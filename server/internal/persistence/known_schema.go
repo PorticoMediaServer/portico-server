@@ -535,6 +535,7 @@ index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
 index reading_attribution_author_facet
+index reading_attribution_issue_date
 index reading_attribution_pending
 index reading_attribution_rule_version
 index reading_attribution_series_facet
@@ -542,6 +543,7 @@ index reading_attribution_series_seek
 index reading_progress_publication
 index reading_progress_recent
 index reading_publication_types_inventory_object
+index reading_text_counts_inventory_object
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
@@ -1272,6 +1274,7 @@ table reading_progress
 table reading_publication_types
 table reading_publications
 table reading_source_values
+table reading_text_counts
 table rec_data_revision
 table rec_profile_jobs
 table rec_profile_revisions

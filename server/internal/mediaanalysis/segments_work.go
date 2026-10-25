@@ -51,7 +51,7 @@ const (
 func (s *Service) RunSegments(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "inventory_changes", "server_settings", "console_settings_revision", "admin_documents", "segment_*")
+	unregister := dbwork.WakeOnTables(wake, "inventory_changes", "server_settings", "console_settings_revision", "admin_documents", "remote_source_settings", "segment_*")
 	defer unregister()
 	worker.Run(ctx, "mediaanalysis.segments", wake, func(ctx context.Context) time.Duration {
 		if !dbwork.Yield(ctx) || !dbwork.WaitBackground(ctx) {
@@ -136,7 +136,11 @@ func (s *Service) segmentCatchup(ctx context.Context) (bool, error) {
 			enabled[l.ID] = l
 		}
 	}
-	digest := segmentModesDigest(libraries)
+	sourceModes, err := segmentSourceModesTx(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	digest := token(segmentModesDigest(libraries) + "|" + sourceModes)
 	if digest != state.Modes {
 		// A changed mode is a new pass: a library turned on (or up to
 		// thorough) has files to measure, and one turned off has queued
@@ -406,6 +410,18 @@ func (s *Service) segmentFileStep(ctx context.Context) (bool, time.Duration, err
 		return true, 0, s.segmentFailure(ctx, object, revision, attempt, err)
 	}
 	f.Mode = mode
+	// The source's own intro choice applies to work already queued: a file whose
+	// source was switched off is dropped, and one whose mode changed is queued
+	// again under the new mode instead of being measured with the old one.
+	if effective, e := s.effectiveMode(ctx, f.ObjectID, f.LibraryID); e != nil {
+		return true, 0, s.segmentFailure(ctx, object, revision, attempt, e)
+	} else if effective == SegmentModeOff {
+		_, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM segment_files WHERE object_id=? AND source_revision=? AND state='pending'`, f.ObjectID, f.Revision)
+		return true, 0, e
+	} else if effective != "" && effective != f.Mode {
+		_, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE segment_files SET mode=?,state='pending',updated_ms=? WHERE object_id=? AND source_revision=?`, effective, nowMS(), f.ObjectID, f.Revision)
+		return true, 0, e
+	}
 	chapters, err := s.chapters(ctx, f.AssetID)
 	if err != nil {
 		return true, 0, s.segmentFailure(ctx, object, revision, attempt, err)

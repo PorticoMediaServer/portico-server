@@ -83,6 +83,11 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if generation, err := strconv.ParseInt(spec.SourceGeneration, 10, 64); err != nil || generation < 1 || strconv.FormatInt(generation, 10) != spec.SourceGeneration {
 		return nil, ErrServeConfiguration
 	}
+	if spec.DirCacheSeconds < 0 || spec.DirCacheSeconds > 86400 || spec.ReadBufferBytes < 0 || spec.ReadBufferBytes > 1<<30 ||
+		spec.ConnectTimeoutSeconds < 0 || spec.ConnectTimeoutSeconds > 600 || spec.IdleTimeoutSeconds < 0 || spec.IdleTimeoutSeconds > 3600 ||
+		spec.Retries < 0 || spec.Retries > 10 || spec.LowLevelRetries < 0 || spec.LowLevelRetries > 10 {
+		return nil, ErrServeConfiguration
+	}
 	if spec.Enforce == nil || !filepath.IsAbs(spec.PrivateDirectory) || len(spec.Configuration) == 0 || len(spec.Configuration) > 64<<10 || !serveRemote.MatchString(spec.Remote) || spec.Port < 1 || spec.Port > 65535 || spec.Username == "" || spec.Password == "" || strings.ContainsAny(spec.Username, ":\r\n\x00") || strings.ContainsAny(spec.Password, "\r\n\x00") || spec.Connections < 1 || spec.Connections > 256 || spec.RequestsPerSecond < 1 || spec.RequestsPerSecond > 1000000 || spec.BytesPerSecond < 0 {
 		return nil, ErrServeConfiguration
 	}
