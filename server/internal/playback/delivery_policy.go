@@ -56,8 +56,8 @@ func NetworkClassOf(remote bool) (NetworkClass, string) {
 	return NetworkLocal, LocalityLocal
 }
 
-// QualityHome and QualityRemote are the two saved quality defaults a viewer
-// has: one for the owner's home networks and one for everywhere else.
+// QualityHome and QualityRemote are the server-reach preference lanes. Cellular
+// transport has its independent quality.mobile choice, regardless of reach.
 const (
 	QualityHome   = "home"
 	QualityRemote = "remote"
@@ -183,8 +183,8 @@ func validDeliveryMode(m string) bool {
 // registry defaults, so a caller that could not read preferences still gets a
 // coherent policy.
 //
-// QualityMode is the viewer's saved default quality for this network class
-// (quality.home or quality.remote): what a start that names no quality gets.
+// QualityMode is the viewer's saved default quality: quality.mobile on cellular
+// transport, otherwise quality.home or quality.remote for the network class.
 // The ceilings are the owner's alone. The video bitrate ceiling is a limit on
 // connections from outside the home networks and is absent inside them.
 func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, locality, transport string, cfg DeliveryConfiguration) ResolvedDeliveryPolicy {
