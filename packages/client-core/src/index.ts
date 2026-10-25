@@ -135,6 +135,11 @@ export type PlaybackSession = {
 };
 export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'|'move'> & {signIn: 'portico' | 'local';move:'to_portico'|'to_local'|null};
 /** A server-named request field (`name`, `rules[0].query.libraryIds`), or undefined for anything else. */
+/** A closed numeric rclone version (three numeric parts plus an optional suffix); never prose. */
+function errorProgramVersion(value:unknown):string|undefined{
+  return typeof value==='string'&&/^\d{1,4}(?:\.\d{1,4}){2}(?:[-+][0-9A-Za-z.+-]{1,32})?$/.test(value)?value:undefined;
+}
+
 /** CD-06: `error.confirmRoots`, kept only as a short list of plain http(s) URLs. */
 export function errorConfirmRoots(value: unknown): readonly string[] | undefined {
   if (!Array.isArray(value) || value.length === 0 || value.length > 16) return undefined;
@@ -225,6 +230,9 @@ export class ApiError extends Error {
   confirmRoots?: readonly string[];
   /** Only a checked move_collision document is retained; no generic response-body storage. */
   current?: MoveCollisionDetails;
+  /** Bounded closed version facts for storage_executable_too_old; never raw server text. */
+  version?: string;
+  minimumVersion?: string;
   constructor(
     status: number,
     code: string,
@@ -540,6 +548,11 @@ export class HttpLocalApi {
       const roots = errorConfirmRoots(data?.error?.current?.confirmRoots);
       if (roots) error.confirmRoots = roots;
       if(error.status===409&&error.code==='move_collision')error.current=parseMoveCollisionDetails(data?.error?.current);
+      if(error.code==='storage_executable_too_old'){
+        const current=data?.error?.current, version=errorProgramVersion(current?.version), minimum=errorProgramVersion(current?.minimumVersion);
+        if(version)error.version=version;
+        if(minimum)error.minimumVersion=minimum;
+      }
       throw error;
     }
     return response.status === 204 ? (undefined as T) : response.json();
