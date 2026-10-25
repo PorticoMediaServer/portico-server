@@ -93,7 +93,7 @@ func TestQualityR24OptionsDescribeRetainedSurroundBudget(t *testing.T) {
 	}
 	for _, option := range view.Options {
 		if option.Quality == "1080p-low" {
-			if option.PreparedProfileID != "hevc-1080p-low-v3" || option.MaxVideoBitrateBPS != 8000000 || option.MaxAudioBitrateBPS != 384000 {
+			if option.PreparedProfileID != "hevc-1080p-low-v4" || option.MaxVideoBitrateBPS != 8000000 || option.MaxAudioBitrateBPS != 384000 {
 				t.Fatalf("recipe metadata %+v", option)
 			}
 			return

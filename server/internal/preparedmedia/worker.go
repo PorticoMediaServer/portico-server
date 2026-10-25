@@ -826,11 +826,23 @@ func acceptOutput(original, output probed, p Profile) error {
 	if keptHDR && (output.Range != original.Range || output.DolbyVision) {
 		return ErrOutput
 	}
-	if output.AudioTracks > 0 && output.AudioCodec != "aac" {
+	seventhOne := rich && recipeFor(p).KeepSeventhOne
+	expectedAudio := "aac"
+	if seventhOne && decoder.PreparedAudioCodec(true, original.AudioChannels) == "flac" {
+		expectedAudio = "flac"
+	}
+	if output.AudioTracks > 0 && output.AudioCodec != expectedAudio {
 		return ErrOutput
 	}
 	for i, c := range output.AudioChannels {
-		if i >= len(original.AudioChannels) || c != decoder.PreparedChannels(rich, original.AudioChannels[i]) {
+		if i >= len(original.AudioChannels) {
+			return ErrOutput
+		}
+		want := decoder.PreparedChannels(rich, original.AudioChannels[i])
+		if seventhOne {
+			want = decoder.PreparedChannelsRich(true, original.AudioChannels[i])
+		}
+		if c != want {
 			return ErrOutput
 		}
 	}

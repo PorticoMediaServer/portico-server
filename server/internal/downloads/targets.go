@@ -141,8 +141,23 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, foun
 	if quality == QualityOriginal && !found.Cue || sameAsSource(quality, found) {
 		return ""
 	}
+	// A recipe's audio path depends on this source's own tracks, so the
+	// quality is judged with the same channels the encoder will read.
+	channels, haveChannels := []int(nil), false
+	if facts, err := playback.DeliverySourceTx(ctx, tx, found.Asset); err == nil {
+		channels, haveChannels = sourceChannels(facts), true
+	}
+	producible := func(id string) bool {
+		if id == "" {
+			return false
+		}
+		if haveChannels {
+			return preparedmedia.ProducibleForSource(id, channels)
+		}
+		return preparedmedia.Producible(id)
+	}
 	if found.Kind == "song" && canonicalMusicQuality(quality) {
-		if recipe != "" && preparedmedia.Producible(recipe) {
+		if producible(recipe) {
 			return ""
 		}
 		if versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
@@ -151,7 +166,7 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, foun
 		return ReasonNotOptimized
 	}
 	if quality == "automatic" && recipe != "" {
-		if preparedmedia.Producible(recipe) {
+		if producible(recipe) {
 			return ""
 		}
 		if versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
@@ -169,7 +184,7 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, foun
 	if recipe == "" {
 		return ReasonNotOptimized
 	}
-	if preparedmedia.Producible(recipe) {
+	if producible(recipe) {
 		return ""
 	}
 	versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
@@ -417,7 +432,7 @@ func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDoc
 	if err != nil || facts.Video == nil || !richGains(facts) {
 		return plain
 	}
-	if !preparedmedia.Producible(rich) {
+	if !preparedmedia.ProducibleForSource(rich, sourceChannels(facts)) {
 		versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
 		if e != nil || selectableVersionForSource(versions, rich, found.Asset) == nil {
 			return plain
@@ -483,8 +498,22 @@ func richTarget(f playback.DeliverySource, recipe preparedmedia.Profile) playbac
 		profile = "Main 10"
 	}
 	out := playback.DeliverySource{Container: "mp4", Video: &playback.SourceVideo{Codec: "hevc", StreamDetail: assets.StreamDetail{Profile: profile, Level: decoder.HEVCOutputLevel(width, height, rate), BitDepth: depth, Width: width, Height: height, FrameRate: rate, DynamicRange: r, CodecTag: "hvc1"}}}
+	channels := make([]int, 0, len(f.Audio))
+	for _, a := range f.Audio {
+		channels = append(channels, a.Channels)
+	}
+	codec := decoder.PreparedAudioCodec(true, channels)
 	for i, a := range f.Audio {
-		out.Audio = append(out.Audio, playback.SourceAudio{Index: i + 1, Ordinal: i, Codec: "aac", Channels: decoder.PreparedChannels(true, a.Channels), Default: a.Default, StreamDetail: assets.StreamDetail{SampleRate: 48000}})
+		out.Audio = append(out.Audio, playback.SourceAudio{Index: i + 1, Ordinal: i, Codec: codec, Channels: decoder.PreparedChannelsRich(true, a.Channels), Default: a.Default, StreamDetail: assets.StreamDetail{SampleRate: 48000}})
+	}
+	return out
+}
+
+// sourceChannels is every audio track's channel count in stream order.
+func sourceChannels(f playback.DeliverySource) []int {
+	out := make([]int, 0, len(f.Audio))
+	for _, a := range f.Audio {
+		out = append(out, a.Channels)
 	}
 	return out
 }

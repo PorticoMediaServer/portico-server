@@ -22,9 +22,14 @@ type PreparedRecipe struct {
 	AudioOnly, DropChapters, BoundedFragments bool
 	Width, Height, VideoKbps, AudioKbps       int
 	// VideoCodec is "h264" (empty) or "hevc". An HEVC recipe keeps the
-	// source's HDR10 or HLG picture at 10 bits and its surround sound up to
-	// 5.1; an H.264 recipe is SDR and stereo, tone-mapping an HDR source.
+	// source's HDR10 or HLG picture at 10 bits and its surround sound; a
+	// recipe with KeepSeventhOne keeps 7.1 (FLAC for 7.1, AAC otherwise),
+	// while an older one caps the same source at 5.1 AAC. An H.264 recipe is
+	// SDR and stereo, tone-mapping an HDR source.
 	VideoCodec string
+	// KeepSeventhOne marks the rich recipe version that keeps 7.1. An older
+	// rich recipe keeps the same identity and bytes it always had.
+	KeepSeventhOne bool
 	// Source is what the encode was told about the source it reads. Its zero
 	// value is an SDR source with stereo sound.
 	Source PreparedSource
@@ -63,11 +68,38 @@ func PreparedChannels(surround bool, source int) int {
 	}
 }
 
+// PreparedChannelsRich is the channel count a rich recipe version writes for
+// one source track: the KeepSeventhOne version keeps 7.1, the older one has
+// always folded it to 5.1.
+func PreparedChannelsRich(seventhOne bool, source int) int {
+	if seventhOne && source > 6 {
+		return 8
+	}
+	return PreparedChannels(true, source)
+}
+
+// PreparedAudioCodec is the audio codec the KeepSeventhOne rich recipe writes
+// for these source tracks: FLAC for a whole programme that carries more than
+// six channels on any track, AAC otherwise. One codec covers every track of
+// the file so the muxer writes one audio sample entry per track and the
+// acceptance check stays exact (VIDEO §3 VS-8).
+func PreparedAudioCodec(seventhOne bool, channels []int) string {
+	if !seventhOne {
+		return "aac"
+	}
+	for _, c := range channels {
+		if c > 6 {
+			return "flac"
+		}
+	}
+	return "aac"
+}
+
 func preparedAudioKbps(channels int) int {
-	switch channels {
-	case 1:
+	switch {
+	case channels == 1:
 		return 96
-	case 2:
+	case channels == 2:
 		return 192
 	}
 	return 384
@@ -168,11 +200,16 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 		// at one-second intervals, including audio with no video keyframes.
 		args = append(args, "-frag_duration", "1000000")
 	}
-	args = append(args, "-sn", "-dn", "-map_metadata", "-1", "-c:a", "aac")
+	seventhOne := hevc && r.KeepSeventhOne
+	audioCodec := PreparedAudioCodec(seventhOne, r.Source.AudioChannels)
+	args = append(args, "-sn", "-dn", "-map_metadata", "-1", "-c:a", audioCodec)
 	if hevc && len(r.Source.AudioChannels) > 0 {
 		for i, channels := range r.Source.AudioChannels {
-			out := PreparedChannels(true, channels)
-			args = append(args, "-ac:a:"+strconv.Itoa(i), strconv.Itoa(out), "-b:a:"+strconv.Itoa(i), strconv.Itoa(preparedAudioKbps(out))+"k")
+			out := PreparedChannelsRich(seventhOne, channels)
+			args = append(args, "-ac:a:"+strconv.Itoa(i), strconv.Itoa(out))
+			if audioCodec != "flac" {
+				args = append(args, "-b:a:"+strconv.Itoa(i), strconv.Itoa(preparedAudioKbps(out))+"k")
+			}
 		}
 	} else {
 		args = append(args, "-b:a", strconv.Itoa(min(r.AudioKbps, 192))+"k", "-ac", "2")

@@ -17,10 +17,23 @@ func PreparedProducible(r PreparedRecipe) bool {
 	if r.AudioOnly {
 		video = ""
 	}
+	audio := "aac"
 	if r.VideoCodec == "hevc" {
 		video, depth, channels = "hevc", 10, 6
+		// A KeepSeventhOne recipe asks for its real codec when the source's
+		// channels are known and valid; unknown or nonpositive facts need the
+		// 7.1 carrier before the recipe can be promised at all.
+		unknown := len(r.Source.AudioChannels) == 0
+		for _, c := range r.Source.AudioChannels {
+			if c <= 0 {
+				unknown = true
+			}
+		}
+		if r.KeepSeventhOne && (unknown || PreparedAudioCodec(true, r.Source.AudioChannels) == "flac") {
+			audio, channels = "flac", 8
+		}
 	}
-	return AvailableConversionOutputs(CurrentToolchain()).SupportsConversion(video, depth, "aac", channels)
+	return AvailableConversionOutputs(CurrentToolchain()).SupportsConversion(video, depth, audio, channels)
 }
 
 // PreparedToneMapAvailable reports whether an H.264 recipe can tone-map an HDR

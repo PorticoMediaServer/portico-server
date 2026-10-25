@@ -54,9 +54,12 @@ var profiles = canonicalProfiles()
 
 func canonicalProfiles() []Profile {
 	out := []Profile{}
+	// AudioKbps is the size estimate for a recipe, not a fixed encode rate: a
+	// FLAC 7.1 programme measures larger once it has been produced.
 	for _, r := range qualityladder.Fixed() {
 		out = append(out, Profile{"portable-" + r.ID + "-v3", r.Label, "video", r.Width(), r.Height, r.VideoBitrateBPS / 1000, r.MaxAudioBitrateBPS / 1000, "H.264 SDR video and AAC audio in MP4."})
 		out = append(out, Profile{"hevc-" + r.ID + "-v3", r.Label, "video", r.Width(), r.Height, r.VideoBitrateBPS / 1000, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."})
+		out = append(out, Profile{"hevc-" + r.ID + "-v4", r.Label, "video", r.Width(), r.Height, r.VideoBitrateBPS / 1000, 384, "HEVC video that keeps HDR and surround up to 7.1 (FLAC), in MP4."})
 	}
 	out = append(out,
 		Profile{"music-original-flac-v1", "Original cue track", "audio", 0, 0, 0, 0, "FLAC at the source rate and depth, for a cue track."},
@@ -74,6 +77,11 @@ func canonicalProfiles() []Profile {
 func Profiles() []Profile {
 	out := []Profile{}
 	for _, p := range profiles {
+		// An older rich recipe keeps its identity and its old bytes; only the
+		// current version is offered as a new recipe.
+		if Rich(p.ID) && strings.HasSuffix(p.ID, "-v3") {
+			continue
+		}
 		if decoder.PreparedProducible(recipeFor(p)) {
 			out = append(out, p)
 		}
@@ -81,11 +89,28 @@ func Profiles() []Profile {
 	return out
 }
 
-// Producible reports whether the conversion code can make this recipe today.
-// A recipe that exists only as a row in the table is not something to offer.
+// Producible reports whether the conversion code can make this recipe today
+// without knowing the source's channels. A KeepSeventhOne recipe is judged by
+// its 7.1 carrier here; the source-aware check is ProducibleForSource.
 func Producible(id string) bool {
 	p, err := profile(id)
-	return err == nil && decoder.PreparedProducible(recipeFor(p))
+	if err != nil {
+		return false
+	}
+	return decoder.PreparedProducible(recipeFor(p))
+}
+
+// ProducibleForSource asks the same question with the selected source's audio
+// channels, so a 5.1 source under the 7.1 recipe is admitted on the AAC path it
+// is actually written through, and a 7.1 source needs the FLAC carrier.
+func ProducibleForSource(id string, channels []int) bool {
+	p, err := profile(id)
+	if err != nil {
+		return false
+	}
+	r := recipeFor(p)
+	r.Source.AudioChannels = append([]int(nil), channels...)
+	return decoder.PreparedProducible(r)
 }
 
 // recipeFor is the one translation from a recipe's identity to what the
@@ -95,9 +120,9 @@ func recipeFor(p Profile) decoder.PreparedRecipe {
 		return r
 	}
 	if Rich(p.ID) {
-		return decoder.PreparedRecipe{DropChapters: true, BoundedFragments: true, VideoCodec: "hevc", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
+		return decoder.PreparedRecipe{DropChapters: true, BoundedFragments: true, VideoCodec: "hevc", KeepSeventhOne: strings.HasSuffix(p.ID, "-v4"), Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
 	}
-	return decoder.PreparedRecipe{DropChapters: !strings.HasSuffix(p.ID, "-v1"), BoundedFragments: strings.HasSuffix(p.ID, "-v3"), AudioOnly: p.Kind == "audio", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
+	return decoder.PreparedRecipe{DropChapters: !strings.HasSuffix(p.ID, "-v1"), BoundedFragments: strings.HasSuffix(p.ID, "-v3") || strings.HasSuffix(p.ID, "-v4"), AudioOnly: p.Kind == "audio", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
 }
 
 // Rich reports whether a recipe keeps HEVC, HDR and surround sound.
@@ -111,7 +136,7 @@ func RichProfileFor(quality string) string {
 		return ""
 	}
 	for _, p := range profiles {
-		if Rich(p.ID) && p.Height == rung.Height && p.VideoKbps == rung.VideoBitrateBPS/1000 {
+		if Rich(p.ID) && strings.HasSuffix(p.ID, "-v4") && p.Height == rung.Height && p.VideoKbps == rung.VideoBitrateBPS/1000 {
 			return p.ID
 		}
 	}

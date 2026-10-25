@@ -391,11 +391,14 @@ func TestPreparedRecipesUseCanonicalVersionedIdentity(t *testing.T) {
 			}
 			continue
 		}
-		if !strings.HasSuffix(current.ID, "-v3") {
+		if !strings.HasSuffix(current.ID, "-v3") && !strings.HasSuffix(current.ID, "-v4") {
 			t.Fatal(current.ID)
 		}
 		if !r.DropChapters || !r.BoundedFragments {
 			t.Fatal("unbounded or unremapped current recipe", current.ID)
+		}
+		if r.KeepSeventhOne != strings.HasSuffix(current.ID, "-v4") {
+			t.Fatal("recipe version does not match its bytes", current.ID)
 		}
 	}
 	for _, gone := range []string{"portable-720-v1", "portable-1080-v2", "portable-1440-v3"} {

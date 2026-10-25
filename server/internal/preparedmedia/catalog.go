@@ -202,3 +202,23 @@ func SelectChoiceTx(ctx context.Context, tx *sql.Tx, item string, c *Choice) (Ve
 	}
 	return Version{}, ErrUnavailable
 }
+
+// sourceAudioChannels is the channel count of every audio track of the
+// selected source, in stream order. A recipe version keeps or folds them per
+// track, so the admission check needs the real values, not a profile guess.
+func sourceAudioChannels(ctx context.Context, tx *sql.Tx, asset string) ([]int, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT channels FROM asset_streams WHERE asset_id=? AND type='audio' ORDER BY stream_index LIMIT 64`, asset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int{}
+	for rows.Next() {
+		var channels int
+		if err = rows.Scan(&channels); err != nil {
+			return nil, err
+		}
+		out = append(out, channels)
+	}
+	return out, rows.Err()
+}

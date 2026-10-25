@@ -22,8 +22,14 @@ func TestRichRecipeKeepsHDRAndSurroundForDevicesThatPlayThem(t *testing.T) {
 	}
 	target := richTarget(hdr, recipe)
 	v := target.Video
-	if v.Codec != "hevc" || v.BitDepth != 10 || v.DynamicRange != assets.RangeHDR10 || v.Width != 1920 || v.Height != 1080 || target.Audio[0].Channels != 6 || target.Audio[0].Codec != "aac" {
+	if v.Codec != "hevc" || v.BitDepth != 10 || v.DynamicRange != assets.RangeHDR10 || v.Width != 1920 || v.Height != 1080 || target.Audio[0].Channels != 8 || target.Audio[0].Codec != "flac" {
 		t.Fatalf("%+v %+v", v, target.Audio)
+	}
+	// A 5.1 source keeps AAC; only a 7.1 source needs E-AC-3.
+	fiveOne := hdr
+	fiveOne.Audio = []playback.SourceAudio{{Codec: "eac3", Channels: 6}}
+	if fiveOneTarget := richTarget(fiveOne, recipe); fiveOneTarget.Audio[0].Channels != 6 || fiveOneTarget.Audio[0].Codec != "aac" {
+		t.Fatalf("5.1 was not kept as AAC: %+v", fiveOneTarget.Audio)
 	}
 	// A device that knows only H.264 and stereo is not given HEVC.
 	if playback.DownloadPlayable(target, playback.BaselineCapabilityDocument()) {
@@ -35,8 +41,8 @@ func TestRichRecipeKeepsHDRAndSurroundForDevicesThatPlayThem(t *testing.T) {
 	device.AudioOutput.MaxChannels = 6
 	device.Engines.Native.Evidence = playback.EvidenceDeclared
 	device.Engines.Native.Video = append(device.Engines.Native.Video, playback.ClientVideoCodec{Codec: "hevc", BitDepths: []int{8, 10}, DynamicRanges: []string{"sdr", "hdr10", "hlg"}, MaxWidth: 3840, MaxHeight: 2160, MaxFrameRate: 60})
-	device.Engines.Native.Audio = []playback.ClientAudioCodec{{Codec: "aac", MaxChannels: 6}}
-	device.Engines.Native.Transports = []playback.ClientTransport{{Transport: playback.TransportDirect, Containers: []string{"mp4"}, Video: []string{"h264", "hevc"}, Audio: []string{"aac"}}}
+	device.Engines.Native.Audio = []playback.ClientAudioCodec{{Codec: "aac", MaxChannels: 6}, {Codec: "flac", MaxChannels: 8}}
+	device.Engines.Native.Transports = []playback.ClientTransport{{Transport: playback.TransportDirect, Containers: []string{"mp4"}, Video: []string{"h264", "hevc"}, Audio: []string{"aac", "flac"}}}
 	if err := device.Accept(); err != nil {
 		t.Fatal(err)
 	}

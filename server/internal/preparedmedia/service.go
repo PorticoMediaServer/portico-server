@@ -229,11 +229,6 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request) (
 	if _, e := profile(r.ProfileID); e != nil {
 		return out, e
 	}
-	// A recipe the conversion code cannot build is refused here, before a job
-	// that could only fail is queued.
-	if !Producible(r.ProfileID) {
-		return out, ErrUnsupported
-	}
 	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return out, e
@@ -268,7 +263,14 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request) (
 		return out, e
 	}
 	recipe, _ := profile(r.ProfileID)
-	if !Producible(recipe.ID) {
+	// The selected source's channels decide which audio path this recipe
+	// actually writes, so a 7.1-only carrier is not advertised from a 5.1
+	// qualification and vice versa.
+	channels, e := sourceAudioChannels(ctx, tx, sel.Asset)
+	if e != nil {
+		return out, e
+	}
+	if !ProducibleForSource(recipe.ID, channels) {
 		return out, ErrUnsupported
 	}
 	if (recipe.Kind == "audio") != (sel.Kind == "song" || sel.Kind == "audiobook_file") {
