@@ -26,6 +26,7 @@ func Valid(mode Mode, value int) bool {
 }
 
 type Facts struct {
+	AwayQuality AwayQuality
 	Mode           Mode `json:"mode"`
 	Limit          *int `json:"limit"`
 	ServerCeiling  *int `json:"serverCeiling"`
@@ -47,11 +48,33 @@ func Effective(person, ceiling *int) *int {
 	}
 	return &v
 }
+// AwayQuality is a person's own away-from-home quality ceiling: "server" follows
+// the server's, otherwise it names one published quality-ladder id. It can only
+// narrow what the server already allows.
+type AwayQuality string
+
+const AwayQualityServer AwayQuality = "server"
+
+// AwayQualities is the closed set the supplier accepts.
+var AwayQualities = []AwayQuality{AwayQualityServer, "2160p", "1080p-high", "1080p-low", "720p-high", "720p-low", "480p", "240p"}
+
+func ValidAwayQuality(value AwayQuality) bool {
+	for _, offered := range AwayQualities {
+		if value == offered {
+			return true
+		}
+	}
+	return false
+}
+
 func ReadTx(ctx context.Context, tx *sql.Tx, account string) (out Facts, err error) {
 	var value, ceiling sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(s.mode,'inherit'),s.stream_limit,p.per_account_cap FROM accounts a LEFT JOIN account_stream_limits s ON s.account_id=a.id JOIN playback_owner_policy p ON p.singleton=1 WHERE a.id=?`, account).Scan(&out.Mode, &value, &ceiling)
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(s.mode,'inherit'),s.stream_limit,COALESCE(s.away_quality,''),p.per_account_cap FROM accounts a LEFT JOIN account_stream_limits s ON s.account_id=a.id JOIN playback_owner_policy p ON p.singleton=1 WHERE a.id=?`, account).Scan(&out.Mode, &value, &out.AwayQuality, &ceiling)
 	if err != nil {
 		return out, err
+	}
+	if out.AwayQuality == "" {
+		out.AwayQuality = AwayQualityServer
 	}
 	if value.Valid {
 		v := int(value.Int64)
@@ -73,6 +96,18 @@ func WriteTx(ctx context.Context, tx *sql.Tx, account string, mode Mode, value i
 		v = value
 	}
 	_, e := tx.ExecContext(ctx, `INSERT INTO account_stream_limits(account_id,mode,stream_limit) VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET mode=excluded.mode,stream_limit=excluded.stream_limit`, account, mode, v)
+	return e
+}
+
+// WriteAwayQualityTx stores one person's away ceiling in the same normalized row
+// the stream mode lives in, so the cap and the count that honours it are read
+// together. It is written only when the owner supplied a value: an omitted field
+// keeps whatever the person already had.
+func WriteAwayQualityTx(ctx context.Context, tx *sql.Tx, account string, value AwayQuality) error {
+	if !ValidAwayQuality(value) {
+		return errors.New("invalid account away quality")
+	}
+	_, e := tx.ExecContext(ctx, `INSERT INTO account_stream_limits(account_id,mode,away_quality) VALUES(?,'inherit',?) ON CONFLICT(account_id) DO UPDATE SET away_quality=excluded.away_quality`, account, string(value))
 	return e
 }
 

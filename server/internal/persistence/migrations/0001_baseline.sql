@@ -8220,6 +8220,7 @@ CREATE TABLE account_stream_limits(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  mode TEXT NOT NULL CHECK(mode IN('inherit','unlimited','limit')),
  stream_limit INTEGER,
+ "away_quality" TEXT CHECK("away_quality" IN('server','2160p','1080p-high','1080p-low','720p-high','720p-low','480p','240p')),
  CHECK((mode='limit' AND stream_limit IS NOT NULL AND stream_limit BETWEEN 1 AND 1000) OR (mode IN('inherit','unlimited') AND stream_limit IS NULL))
 ) STRICT;
 

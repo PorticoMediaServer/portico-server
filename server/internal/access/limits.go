@@ -83,6 +83,10 @@ type Limits struct {
 	MaxProfiles       int               `json:"maxProfiles"`
 	AllowRemote       bool              `json:"allowRemote"`
 	Conversion        string            `json:"conversion"`
+	// AwayQuality is this person's away-from-home ceiling: the server sentinel,
+	// or one published quality-ladder id that narrows it. Omitted means "leave
+	// whatever is stored", so an older full write cannot clear a saved cap.
+	AwayQuality       streamlimits.AwayQuality `json:"awayQuality,omitempty"`
 	MaxStreams        int               `json:"maxStreams"`
 	MaxStreamsMode    streamlimits.Mode `json:"maxStreamsMode"`
 	RemoteBitrateKbps int               `json:"remoteBitrateKbps"`
@@ -105,7 +109,7 @@ type Limits struct {
 // DefaultLimits inherits the server stream ceiling, adds no content ceiling,
 // and permits unrated content. Explicit unlimited also obeys the server ceiling.
 func DefaultLimits() Limits {
-	return Limits{MaxStreamsMode: streamlimits.Inherit, AccessTokens: true, MaxProfiles: 8, AllowRemote: true, Conversion: "server", MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
+	return Limits{MaxStreamsMode: streamlimits.Inherit, AccessTokens: true, MaxProfiles: 8, AllowRemote: true, Conversion: "server", AwayQuality: streamlimits.AwayQualityServer, MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
 }
 
 // LimitsDocument is the wire shape every limits read and write returns.
@@ -122,6 +126,9 @@ func normalizeLimits(v *Limits) error {
 	fields := []string{}
 	if v.MaxProfiles < 1 || v.MaxProfiles > 8 {
 		fields = append(fields, "limits.maxProfiles")
+	}
+	if v.AwayQuality != "" && !streamlimits.ValidAwayQuality(v.AwayQuality) {
+		fields = append(fields, "limits.awayQuality")
 	}
 	if v.Conversion != "server" && v.Conversion != "audio" && v.Conversion != "none" {
 		fields = append(fields, "limits.conversion")
@@ -279,7 +286,7 @@ func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
 		if e := tx.QueryRow(`SELECT access_tokens,max_profiles FROM direct_memberships WHERE account_id=?`, account).Scan(&out.Limits.AccessTokens, &out.Limits.MaxProfiles); e != nil {
 			return out, e
 		}
-		out.Limits.MaxStreamsMode = streams.Mode
+		out.Limits.MaxStreamsMode, out.Limits.AwayQuality = streams.Mode, streams.AwayQuality
 		if streams.Limit != nil {
 			out.Limits.MaxStreams = *streams.Limit
 		}
@@ -297,7 +304,7 @@ func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
 	if e := tx.QueryRow(`SELECT access_tokens,max_profiles FROM direct_memberships WHERE account_id=?`, account).Scan(&out.Limits.AccessTokens, &out.Limits.MaxProfiles); e != nil {
 		return out, e
 	}
-	out.Limits.MaxStreamsMode = streams.Mode
+	out.Limits.MaxStreamsMode, out.Limits.AwayQuality = streams.Mode, streams.AwayQuality
 	out.Limits.MaxStreams = 0
 	if streams.Limit != nil {
 		out.Limits.MaxStreams = *streams.Limit
@@ -364,6 +371,11 @@ func (s *Store) SetLimits(ctx context.Context, auth Authorize, account string, c
 		raw, e := limitsBody(c.Limits)
 		if e != nil {
 			return e
+		}
+		if c.Limits.AwayQuality != "" {
+			if e = streamlimits.WriteAwayQualityTx(ctx, tx, account, c.Limits.AwayQuality); e != nil {
+				return e
+			}
 		}
 		if e = streamlimits.WriteTx(ctx, tx, account, c.Limits.MaxStreamsMode, c.Limits.MaxStreams); e != nil {
 			return e
