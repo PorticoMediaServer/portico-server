@@ -8,6 +8,7 @@ import {all, createRenderer, one, tree} from '../../web/test/helpers/interaction
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
 async function mount(entry: any, options: {play?: () => Promise<void>; live?: Map<string, any>; openFailure?: boolean} = {}) {
   const h = createRenderer(), calls: {name: string; value?: any}[] = [];
+  const range = await componentModule(new URL('../src/kit/cards/selection-range.ts', import.meta.url), {react: h.react});
   const binding = {live: {subscribe: () => () => {}, getSnapshot: () => options.live ?? new Map()},
     open: (value: any) => { calls.push({name: 'open', value}); if (options.openFailure) throw new Error('failed'); },
     play: (value: any) => { calls.push({name: 'play', value}); return options.play?.() ?? Promise.resolve(); },
@@ -15,7 +16,7 @@ async function mount(entry: any, options: {play?: () => Promise<void>; live?: Ma
   const app = await componentModule(new URL('../src/screens/search/Search.tsx', import.meta.url), {
     react: h.react, '../detail/text': {t, locale: () => 'en-US'}, '../detail/context': {runScreenCommand},
     '../detail/model': {entryCard: (value: any) => ({title: value.title})},
-    '../../kit/cards': {PosterCard: 'PosterCard', SquareCard: 'SquareCard', CircleCard: 'CircleCard', EpisodeTile: 'EpisodeTile', GenreTile: 'GenreTile', LiveCard: 'LiveCard'},
+    '../../kit/cards': {useSelectionRangePreview: range.useSelectionRangePreview, PosterCard: 'PosterCard', SquareCard: 'SquareCard', CircleCard: 'CircleCard', EpisodeTile: 'EpisodeTile', GenreTile: 'GenreTile', LiveCard: 'LiveCard'},
     '../../kit/artwork': {Artwork: 'Artwork'}, '../../kit/Icon': {Icon: 'Icon'}, './search.module.css': {default: {}},
   });
   const flat = () => tree(h.render(() => app.SearchResult({entry, binding, onCommit: () => calls.push({name: 'commit'})})));

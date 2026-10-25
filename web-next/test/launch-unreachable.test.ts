@@ -79,12 +79,37 @@ test('desktop-app.html#15: an offline computer says so instead of blaming the se
 
 test('a retired wait stops waking on focus, view or network return', async t => {
   t.mock.timers.enable({apis: ['setTimeout', 'Date']});
+  const windowEvents = new EventTarget(), documentEvents = new EventTarget();
+  Object.defineProperty(documentEvents, 'visibilityState', {value: 'visible'});
+  const supplied = {
+    addEventListener: windowEvents.addEventListener.bind(windowEvents),
+    removeEventListener: windowEvents.removeEventListener.bind(windowEvents),
+    dispatchEvent: windowEvents.dispatchEvent.bind(windowEvents),
+    document: documentEvents,
+  };
+  const originals = Object.keys(supplied).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
+  for (const [key, value] of Object.entries(supplied)) Object.defineProperty(globalThis, key, {configurable: true, value});
   let restores = 0;
   const bootstrap = bootstrapped(async () => { restores++; throw transport(); });
+  t.after(() => {
+    bootstrap.dispose();
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  });
   await bootstrap.start();
   assert.equal(bootstrap.getSnapshot().phase, 'unreachable');
+  let unsubscribe = () => {};
+  const retried = new Promise<void>(resolve => {
+    unsubscribe = bootstrap.subscribe(() => {
+      const snapshot = bootstrap.getSnapshot();
+      if (snapshot.phase === 'unreachable' && !snapshot.unreachable?.retrying && restores === 2) resolve();
+    });
+  });
   globalThis.dispatchEvent(new Event('focus'));
-  for (let flush = 0; flush < 4; flush++) await Promise.resolve();
+  await retried;
+  unsubscribe();
   assert.equal(restores, 2);
   bootstrap.dispose();
   t.mock.timers.tick(120000);
