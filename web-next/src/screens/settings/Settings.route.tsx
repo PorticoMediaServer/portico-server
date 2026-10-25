@@ -36,6 +36,7 @@ import {createPrivacySettingsSurfaces} from './privacy-controls';
 import {PeopleScreen, type PeopleBindings} from './People';
 import {SignInSettingsSource} from './signin-source';
 import {SettingsOwnerSwitch} from './owner-switch';
+import {OwnerSignInSwitch} from './OwnerSignInSwitch';
 import {DeviceRowControl} from './device-rows';
 import {deviceRowState, isDeviceSyntheticRow} from './device-rows-model';
 import {AudioSubtitleLanguageList, SubtitlePreview, isSubtitlePreview, preferredLanguageKind} from './audio-subtitles-rows';
@@ -176,6 +177,7 @@ export function SettingsEntry() {
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         if (row.id === 'profile.delete' && profiles) return <ProfileDelete source={profiles} isCurrent={current} onFailure={reportError} />;
+        if (row.id === 'signin.switchToPortico' && signIn?.ownerSwitch) return <OwnerSignInSwitch source={signIn.ownerSwitch} isCurrent={current} onError={reportError}/>;
         if (row.id === 'profile.pinForget' && profiles) return <ProfileForgetDevices source={profiles} isCurrent={current} onFailure={reportError} />;
         if (row.id === 'profile.pinChange' && profiles) return <Button size="small" variant="glass" disabled={state.disabled} onClick={() => openProfilePIN(false)}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
