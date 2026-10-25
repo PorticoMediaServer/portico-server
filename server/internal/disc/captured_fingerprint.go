@@ -24,8 +24,7 @@ func CapturedStructureFingerprint(captureID string, version mediasource.Version,
 		// One finite object is not a version of a folder and its dependencies.
 		return "", ErrRemoteUnqualified
 	}
-	if captureID == "" || strings.TrimSpace(captureID) != captureID || len(captureID) > 256 || strings.ContainsAny(captureID, "\x00\r\n") ||
-		version.ID() == "" || version.Evidence().Kind != mediasource.ContentSHA256 || version.Evidence().Size <= 0 {
+	if !validCaptureIdentity(captureID, version) {
 		return "", ErrProtocol
 	}
 	raw, err := json.Marshal(probe)
@@ -45,4 +44,9 @@ func CapturedStructureFingerprint(captureID string, version mediasource.Version,
 	}
 	hash.Write(raw)
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func validCaptureIdentity(id string, version mediasource.Version) bool {
+	return id != "" && strings.TrimSpace(id) == id && len(id) <= 256 && !strings.ContainsAny(id, "\x00\r\n") &&
+		version.ID() != "" && version.Evidence().Kind == mediasource.ContentSHA256 && version.Evidence().Size > 0
 }
