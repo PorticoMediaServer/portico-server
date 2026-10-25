@@ -1,6 +1,6 @@
 import {activateCard, useSelectionRangePreview} from '../../kit/cards';
 import {useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
-import {defaultI18n} from '@i18n';
+import {defaultI18n, type MessageId} from '@i18n';
 import {timelineFacts, type TextEnvironment} from '@portico/client-core/kit-model';
 import {durationText} from '@core/presentation/kit-model/text.ts';
 import type {BrowseSortSelection} from '@core/browse.ts';
@@ -36,11 +36,20 @@ const gridGap = 20, gridRowGap = 30;
 // caption offset, two 14px/1.3 title lines, the 2px year offset and one 13px line at the
 // font's 1.4 normal leading. Frames #grid (49px, one line) and #big (66.6px, two lines) agree.
 const gridCaption = 66.6;
-const columns = [
+type BrowseColumn = Readonly<{id: string; label: MessageId}>;
+const columns: readonly BrowseColumn[] = [
   {id: 'title', label: 'library.column.title'}, {id: 'year', label: 'library.column.year'},
   {id: 'duration', label: 'library.column.runtime'}, {id: 'communityRating', label: 'library.column.rating'},
   {id: 'resolution', label: 'library.column.resolution'}, {id: 'added', label: 'library.column.added'},
-] as const;
+];
+// desktop-read 2c draws a reading list as Title, Author, Progress, Series, Pages and Added.
+// Each cell is filled from the row's own published fact and stays empty when the row has none,
+// so a column is never filled with a guess.
+const readingColumns: readonly BrowseColumn[] = [
+  {id: 'title', label: 'library.column.title'}, {id: 'author', label: 'library.column.author'},
+  {id: 'progress', label: 'library.column.progress'}, {id: 'series', label: 'library.column.series'},
+  {id: 'pages', label: 'library.column.pages'}, {id: 'added', label: 'library.column.added'},
+];
 export function BrowseResults(props: BrowseResultsProps) {
   const {controller, view, shape, cardWidth, onVisibleRange} = props;
   const root = useRef<HTMLDivElement>(null), grid = useRef<WindowedGridHandle>(null);
@@ -66,6 +75,8 @@ export function BrowseResults(props: BrowseResultsProps) {
   const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
   const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 16 / 9 : 1;
   const musicGenres = state.capabilities?.library.kind === 'music' && controller.source.pivot === 'genres';
+  const reading = state.capabilities?.library.kind === 'book' || state.capabilities?.library.kind === 'comic';
+  const drawnColumns = reading ? readingColumns : columns;
   // Frame #collections draws three 16:9 series tiles at 24px: a page of about ten groups reads as
   // banners, not as seven poster columns. Every other grid fills its columns to the gutter.
   const tiles = shape === 'collection' && !list, gap = tiles ? 24 : gridGap;
@@ -77,23 +88,23 @@ export function BrowseResults(props: BrowseResultsProps) {
   const height = musicGenres ? 152 : width / ratio + (shape === 'collection' ? 0 : gridCaption);
   const gutter = {'--grid-overflow': `${overflow}px`} as CSSProperties;
   if (failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
-  return <div className={styles.results} ref={root} data-view={view} data-shape={tiles ? 'collection' : undefined} data-empty={snapshot.total === 0 ? '' : undefined} style={gutter}>
+  return <div className={styles.results} ref={root} data-view={view} data-reading={reading || undefined} data-shape={tiles ? 'collection' : undefined} data-empty={snapshot.total === 0 ? '' : undefined} style={gutter}>
     {tiles && <p className={styles.collectionsNote}><Icon name="i-layers" size={18}/>{t('next.browse.collectionsAutomatic')}</p>}
-    {list && <div className={styles.listHead} role="row">{columns.map(column => {
+    {list && <div className={styles.listHead} role="row">{drawnColumns.map(column => {
       const offered = state.capabilities?.sorts.find(sort => sort.id === column.id);
-      return <div key={column.id} role="columnheader" aria-sort={state.sort?.field === column.id ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+      return <div key={column.id} role="columnheader" className={column.id === 'pages' || column.id === 'added' ? styles.listNumber : undefined} aria-sort={state.sort?.field === column.id ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
         {offered ? <button type="button" onClick={() => props.onSort({field: offered.id, direction: state.sort?.field === offered.id && offered.directions.length > 1 ? state.sort.direction === 'asc' ? 'desc' : 'asc' : offered.defaultDirection})}>{t(column.label)}{state.sort?.field === column.id && <Icon name={state.sort.direction === 'asc' ? 'i-up' : 'i-down'} size={14}/>}</button> : t(column.label)}
       </div>;
-    })}<span aria-label={t('next.cards.watched')} role="columnheader"/><span/></div>}
+    })}{!reading && <span aria-label={t('next.cards.watched')} role="columnheader"/>}<span/></div>}
     {snapshot.total === 0 ? props.empty : <WindowedGrid collection={controller.collection} ref={grid} label={props.label} height={size.height - (list ? 44 : 0)}
       cardWidth={width} rowHeight={list ? 70 : height} gap={list ? 0 : gap} rowGap={list ? 0 : tiles ? 24 : gridRowGap} reducedMotion={props.reducedMotion}
       onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : musicGenres ? 152 : width / ratio} width={list ? '100%' : width}/>}
-      renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
+      renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index} reading={reading}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
         width={width} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
     {state.sort?.field === 'title' && anchors.length > 0 && !tiles && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
   </div>;
 }
-function BrowseListRow({member, index, artwork, env, actions}: BrowseResultsProps & {member: BrowseMember; index: number}) {
+function BrowseListRow({member, index, artwork, env, actions, reading}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean}) {
   const source = useRef<'pointer' | 'keyboard'>('pointer');
   const {entry} = member, title = entry.displayTitle ?? entry.title, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
   const range = useSelectionRangePreview(action.selection);
@@ -103,9 +114,18 @@ function BrowseListRow({member, index, artwork, env, actions}: BrowseResultsProp
   return <div className={styles.listRow} data-browse-entry={entry.id} data-selected={action.selection?.checked || undefined} data-preview={action.selection?.preview || undefined} {...range} onKeyDown={event => {range.onKeyDown(event);if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
     <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>}
       <button type="button" data-layout-primary onClick={event => activateCard(action.onOpen, action.selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'})}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span>{title}</span></button></div>
-    <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating === undefined ? '–' : defaultI18n.number(entry.rating, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</span>
-    <span>{resolution && <span className={styles.resolution}>{resolution}</span>}</span><span>{added}</span>
-    <span className={styles.listWatched}>{entry.watched ? <Icon name="i-check" size={18}/> : progress !== undefined && <span className={styles.miniProgress}><span style={{width: `${progress * 100}%`}}/></span>}</span>
+    {reading ? <>
+      <span className={styles.listAuthor}>{entry.author}</span>
+      {/* A finished mark draws the drawn state. An explicit unread mark only says the mark was
+          reset — the title may still hold reading progress — so it draws nothing. */}
+      <span className={styles.listProgress}>{entry.readingMark?.read === true ? <><Icon name="i-check" size={16}/>{t('next.cards.finished')}</> : undefined}</span>
+      <span className={styles.listSeries}>{entry.series?.[0] ? entry.series[0].position ? t('library.seriesPosition', {series: entry.series[0].name, number: entry.series[0].position}) : entry.series[0].name : undefined}</span>
+      <span className={styles.listNumber}>{entry.pageCount === undefined ? undefined : defaultI18n.number(entry.pageCount)}</span>
+      <span className={styles.listNumber}>{added}</span>
+    </> : <>
+      <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating === undefined ? '–' : defaultI18n.number(entry.rating, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</span>
+      <span>{resolution && <span className={styles.resolution}>{resolution}</span>}</span><span>{added}</span>
+      <span className={styles.listWatched}>{entry.watched ? <Icon name="i-check" size={18}/> : progress !== undefined && <span className={styles.miniProgress}><span style={{width: `${progress * 100}%`}}/></span>}</span></>}
     <span className={styles.listActions}>{action.onPlay && !action.selection?.active && <Button variant="primary" size="small" icon="i-play" iconOnly onClick={action.onPlay} aria-label={t('next.browse.play', {title})}/>}{action.onMore && <Button variant="icon" size="small" icon="i-more" iconOnly onClick={event => action.onMore?.(event.currentTarget)} aria-label={t('next.browse.moreFor', {title})}/>}</span>
   </div>;
 }
