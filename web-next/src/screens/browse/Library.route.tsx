@@ -155,7 +155,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
       signal: resources.life.signal(), isCurrent: resources.life.current,
       canCreateCollection: context.identity?.viewer.role === 'owner',
       pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}},
-    ...(runtime ? {enqueue: playSelection.enqueue} : {}),
+    ...(runtime ? {enqueue: playSelection.enqueue, enqueueQuery: playSelection.enqueueQuery} : {}),
     owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
     descriptor: () => resources.controller.wholeSelection(),
     ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {deletion: {api: resources.life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId,
