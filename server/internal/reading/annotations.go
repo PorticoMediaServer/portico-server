@@ -58,7 +58,7 @@ func annotationText(s string, limit int) bool {
 
 // CanAnnotate is offering information only; every operation still checks its live principal.
 func CanAnnotate(p identity.Principal) bool {
-	return p.Grant == "" && p.Authority != "" && p.AccountID != "" && p.ProfileID != "" && (p.Role == "owner" || p.Role == "admin" || p.Role == "member")
+	return identity.CanUsePersonalState(p)
 }
 func (f *Source) annotationOwner() (string, error) {
 	if !CanAnnotate(f.p) {

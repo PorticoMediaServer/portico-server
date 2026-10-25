@@ -402,6 +402,7 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"PUT /v1/items/{itemId}/reading/mark":           {check: readingMarkRestrictionCheck},
 		"POST /v1/reading/sessions":                     {check: readingRestrictionCheck("POST /v1/reading/sessions")},
 		"HEAD /v1/reading/sessions/{sessionId}/source":  {check: readingRestrictionCheck("HEAD /v1/reading/sessions/{sessionId}/source")},
 		"PUT /v1/reading/sessions/{sessionId}/progress": {check: readingRestrictionCheck("PUT /v1/reading/sessions/{sessionId}/progress")},

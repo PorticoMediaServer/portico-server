@@ -7,3 +7,9 @@ import "portico.local/server/internal/persistence"
 func PersonalKey(v Viewer) string {
 	return persistence.PersonalOwnerKey(v.Authority, v.AccountID, v.ProfileID)
 }
+
+// CanUsePersonalState identifies a normal selected profile. It is eligibility
+// only: every operation must still re-admit the live principal and target.
+func CanUsePersonalState(p Principal) bool {
+	return p.Grant == "" && p.Authority != "" && p.AccountID != "" && p.ProfileID != "" && (p.Role == "owner" || p.Role == "admin" || p.Role == "member")
+}

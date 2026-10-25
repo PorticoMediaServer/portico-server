@@ -334,6 +334,10 @@ func personalTarget(tx *sql.Tx, entityID int64, field string) error {
 }
 
 func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation, authorize func(*sql.Tx) error) (PersonalState, error) {
+	return s.setPersonal(account, profile, item, m, authorize, false)
+}
+
+func (s *Service) setPersonal(account, profile, item string, m PersonalMutation, authorize func(*sql.Tx) error, readingMark bool) (PersonalState, error) {
 	out := PersonalState{}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 || m.ExpectedRevision > 9007199254740991 {
 		return out, requestinput.New("invalid operationId or expectedRevision")
@@ -373,7 +377,12 @@ func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation,
 	if e != nil {
 		return out, e
 	}
-	if e = personalTarget(tx, entityID, field); e != nil {
+	if readingMark {
+		e = readingMarkTarget(tx, entityID)
+	} else {
+		e = personalTarget(tx, entityID, field)
+	}
+	if e != nil {
 		return out, e
 	}
 	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
@@ -515,7 +524,7 @@ func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation,
 			return out, e
 		}
 	}
-	if field == "watched" {
+	if field == "watched" && !readingMark {
 		if m.ProgressSeconds != nil {
 			var duration float64
 			if e = tx.QueryRow(`SELECT COALESCE(max(COALESCE(l.end_seconds,a.duration)-l.start_seconds),0) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?`, entityID).Scan(&duration); e != nil {
