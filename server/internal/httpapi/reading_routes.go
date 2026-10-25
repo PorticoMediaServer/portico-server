@@ -63,6 +63,7 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 	register("GET /v1/reading/sessions/{sessionId}/annotations", []string{"cursor", "revision"}, d.readingAnnotations)
 	register("PUT /v1/reading/sessions/{sessionId}/annotations", nil, d.readingMutateAnnotation)
 	register("GET /v1/reading/sessions/{sessionId}/progress", nil, d.readingSessionProgress)
+	register("GET /v1/reading/sessions/{sessionId}/search", []string{"q", "cursor", "limit"}, d.searchReadingSession)
 	register("PUT /v1/reading/sessions/{sessionId}/progress", nil, d.readingSaveSessionProgress)
 	register("DELETE /v1/reading/sessions/{sessionId}", nil, d.closeReadingSession)
 	register("GET /v1/reading/sessions/{sessionId}/source", nil, d.serveReadingSource)
@@ -247,6 +248,78 @@ func (d Dependencies) readingSessionProgress(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	write(w, 200, ReadingProgressResponse{readingProgressProjection(progress)})
+}
+
+func (d Dependencies) searchReadingSession(w http.ResponseWriter, r *http.Request) {
+	p, ok := d.readingPrincipal(w, r)
+	if !ok {
+		return
+	}
+	// Literal section search is CPU-heavy. Reuse the existing per-viewer and
+	// global search cap rather than adding a reader-specific limiter.
+	if d.admission != nil {
+		done, ok := d.admission.acquireSearch(identity.PersonalKey(p.Viewer))
+		if !ok {
+			w.Header().Set("Retry-After", "1")
+			write(w, 429, map[string]any{"error": map[string]any{"code": "search_busy", "message": "Too many searches are already running. Try again in a moment.", "retryable": true}})
+			return
+		}
+		defer done()
+	}
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		var err error
+		if limit, err = strconv.Atoi(raw); err != nil {
+			readingFailure(w, reading.ErrInvalid)
+			return
+		}
+	}
+	beforeFence, err := d.browseFence(r, p)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	result, err := d.readingService().SearchSession(r.Context(), p, r.PathValue("sessionId"),
+		r.URL.Query().Get("q"), r.URL.Query().Get("cursor"), limit)
+	if err != nil {
+		readingFailure(w, err)
+		return
+	}
+	// The service rechecks the retained actor/source/version and the live
+	// visibility predicate in a fresh snapshot. The handler separately compares
+	// its viewer/restriction fence before writing, so a scope change between the
+	// two reads refuses the page instead of publishing it under the old scope.
+	// browseFence is not a catalogue-generation proof.
+	afterFence, err := d.browseFence(r, p)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	if afterFence != beforeFence {
+		policyError(w, "revision_mismatch")
+		return
+	}
+	hits := make([]ReadingSearchHit, 0, len(result.Hits))
+	for _, hit := range result.Hits {
+		hits = append(hits, ReadingSearchHit{
+			SectionPath:  hit.SectionPath,
+			SectionIndex: hit.SectionIndex,
+			UTF16Offset:  hit.UTF16Offset,
+			Excerpt:      hit.Excerpt,
+			MatchStart:   hit.MatchStart,
+			MatchLength:  hit.MatchLength,
+		})
+	}
+	readingHeaders(w, result.SourceRevision)
+	write(w, 200, ReadingSearchResponse{
+		SessionID:      result.SessionID,
+		SourceID:       result.SourceID,
+		SourceRevision: result.SourceRevision,
+		IndexRevision:  result.IndexRevision,
+		Coverage:       ReadingSearchCoverage{Status: result.Coverage.Status, Reason: result.Coverage.Reason},
+		Hits:           hits,
+		Next:           result.Next,
+	})
 }
 
 func (d Dependencies) readingSaveSessionProgress(w http.ResponseWriter, r *http.Request) {

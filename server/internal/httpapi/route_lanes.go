@@ -371,6 +371,7 @@ var routeLanes = map[string]string{
 	"GET /v1/reading/sessions/{sessionId}/assets":                                 "media-body",
 	"GET /v1/reading/sessions/{sessionId}/pages/{pageIndex}":                      "media-body",
 	"GET /v1/reading/sessions/{sessionId}/progress":                               "browsing",
+	"GET /v1/reading/sessions/{sessionId}/search":                                 "browsing",
 	"GET /v1/reading/sessions/{sessionId}/source":                                 "media-body",
 	"GET /v1/receivers":                                                           "browsing",
 	"GET /v1/receivers/{id}/grants":                                               "browsing",

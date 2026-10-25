@@ -178,3 +178,74 @@ type ReadingProgressSavedResponse struct {
 	Progress *ReadingProgress `json:"progress"`
 	Saved    bool             `json:"saved"`
 }
+
+// ReadingSearchHit is one exact hit in the selected publication's persisted
+// text index. The offset is UTF-16 units in the server's normalized section
+// text, and Match is a UTF-16 range inside Excerpt; no CFI or position is
+// invented.
+type ReadingSearchHit struct {
+	SectionPath  string `json:"sectionPath"`
+	SectionIndex int    `json:"sectionIndex"`
+	UTF16Offset  int    `json:"utf16Offset"`
+	Excerpt      string `json:"excerpt"`
+	MatchStart   int    `json:"matchStart"`
+	MatchLength  int    `json:"matchLength"`
+}
+
+// ReadingSearchCoverage is the exact index state for the captured session. An
+// empty page with pending coverage is not a claim that the book has no matches.
+type ReadingSearchCoverage struct {
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type ReadingSearchResponse struct {
+	SessionID      string                `json:"sessionId"`
+	SourceID       string                `json:"sourceId"`
+	SourceRevision string                `json:"sourceRevision"`
+	IndexRevision  int64                 `json:"indexRevision"`
+	Coverage       ReadingSearchCoverage `json:"coverage"`
+	Hits           []ReadingSearchHit    `json:"hits"`
+	Next           string                `json:"next,omitempty"`
+}
+
+func (ReadingSearchCoverage) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"status"},
+		"properties": map[string]any{
+			"status": map[string]any{"type": "string", "enum": []string{"indexed", "pending", "unsupported", "evicted", "excluded"}},
+			"reason": map[string]any{"type": "string", "maxLength": 64},
+		},
+	}
+}
+
+func (ReadingSearchResponse) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false,
+		"required": []string{"sessionId", "sourceId", "sourceRevision", "indexRevision", "coverage", "hits"},
+		"properties": map[string]any{
+			"sessionId":      map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"sourceId":       map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"sourceRevision": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"indexRevision":  map[string]any{"type": "integer", "minimum": 0},
+			"coverage": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"status"},
+				"properties": map[string]any{
+					"status": map[string]any{"type": "string", "enum": []string{"indexed", "pending", "unsupported", "evicted", "excluded"}},
+					"reason": map[string]any{"type": "string", "maxLength": 64},
+				}},
+			"hits": map[string]any{"type": "array", "maxItems": 50, "items": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"required": []string{"sectionPath", "sectionIndex", "utf16Offset", "excerpt", "matchStart", "matchLength"},
+				"properties": map[string]any{
+					"sectionPath":  map[string]any{"type": "string", "minLength": 1, "maxLength": 1024},
+					"sectionIndex": map[string]any{"type": "integer", "minimum": 0, "maximum": 4095},
+					"utf16Offset":  map[string]any{"type": "integer", "minimum": 0},
+					"excerpt":      map[string]any{"type": "string", "maxLength": 8192},
+					"matchStart":   map[string]any{"type": "integer", "minimum": 0},
+					"matchLength":  map[string]any{"type": "integer", "minimum": 1},
+				},
+			}},
+			"next": map[string]any{"type": "string", "maxLength": 512},
+		},
+	}
+}

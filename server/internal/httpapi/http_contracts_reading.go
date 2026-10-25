@@ -77,6 +77,12 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, ReadingProgressResponse](registry, m); err != nil {
 		return err
 	}
+	m = metadata("get_reading_sessions_sessionId_search", "GET", "/v1/reading/sessions/{sessionId}/search", "Search the selected publication's persisted text index", apikit.ScopeRead)
+	m.Query = []string{"q", "cursor", "limit"}
+	m.Errors = append(append([]string{}, m.Errors...), "search_busy")
+	if err := apikit.RegisterHTTP[struct{}, ReadingSearchResponse](registry, m); err != nil {
+		return err
+	}
 	m = metadata("put_reading_sessions_sessionId_progress", "PUT", "/v1/reading/sessions/{sessionId}/progress", "Save the selected publication's location with compare and swap", apikit.ScopePlayback)
 	m.Headers = []string{"If-Match"}
 	// Validating a saved location can inspect the actual publication bytes.
