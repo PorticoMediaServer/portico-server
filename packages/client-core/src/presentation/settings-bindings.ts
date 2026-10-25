@@ -106,6 +106,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'storage.keepDownloads':{form:'maintenance',key:'retention.downloads',codec:'number-choice'},
  'storage.keepSubtitles':{form:'maintenance',key:'retention.subtitles',codec:'number-choice'},
  'storage.keepTrickplay':{form:'maintenance',key:'retention.trickplay',codec:'number-choice'},
+ 'troubleshooting.detailLength':{form:'logs',key:'logDetailMinutes',codec:'number-choice'},
  'troubleshooting.logLevel':{form:'logs',key:'logLevel'},
  'troubleshooting.keepLogs':{form:'runtime',key:'diagnosticDays',codec:'number-choice'},
  'troubleshooting.keepLogsByKind':{form:'runtime',key:'logRetention',codec:'log-retention'},

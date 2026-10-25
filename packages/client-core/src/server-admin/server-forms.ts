@@ -1,7 +1,7 @@
 import {routeBody} from "../../../contracts/src/routes.ts";
 import {routePath} from "../../../contracts/src/routes.ts";
 import type {ConsoleClient, RuntimeSettings, SettingsDocument} from '../console.ts';
-import {parseConnectivityStatus, parseLogSettings, type ConnectivityPolicy, type ConnectivityStatus, type LogSettings} from '../server-administration.ts';
+import {parseConnectivityStatus, parseLogSettings, type ConnectivityPolicy, type ConnectivityStatus, type LogSettings, type LogDetailMinutes} from '../server-administration.ts';
 import {parseDVRDocument, parseEnvelope, parseLiveDefaultsDocument, folderTemplateProblems, type DVRDefaults, type DVRDocument, type LiveDefaults} from '../administration.ts';
 import {loadRemoteAccess, saveRemoteAccess, type RemoteAccess, type RemoteConfiguration} from '../remote-access.ts';
 import {loadCertificate, saveCertificate, type CertificateApi, type CertificateConfig, type CertificateStatus} from '../certificates.ts';
@@ -205,15 +205,16 @@ export function scheduledJobs(doc: Pick<MaintenanceDocument, 'tasks'>, settings:
 
 // ── Message log detail ──────────────────────────────────────────────────────────────────────
 
-export type LogsDraft = Readonly<{logLevel: LogSettings['logLevel']; retention: LogSettings['retention']}>;
+export type LogsDraft = Readonly<{logLevel: LogSettings['logLevel']; logDetailMinutes: LogDetailMinutes; retention: LogSettings['retention']}>;
 
 export function logsForm(deps: ServerFormDeps): DraftForm<LogsDraft, LogSettings> {
   const ids = createOperationIds(deps.operationId);
   return new DraftForm<LogsDraft, LogSettings>({
-    load: async signal => { const settings = parseLogSettings(await deps.api.request(routePath("get_admin_logs_settings"), 'GET', undefined, signal)); return {value: {logLevel: settings.logLevel, retention: settings.retention}, status: settings}; },
+    load: async signal => { const settings = parseLogSettings(await deps.api.request(routePath("get_admin_logs_settings"), 'GET', undefined, signal)); return {value: {logLevel: settings.logLevel, logDetailMinutes: settings.logDetailMinutes ?? 30, retention: settings.retention}, status: settings}; },
     save: async (draft, _saved, status) => {
-      const payload = {logLevel: draft.logLevel, retention: draft.retention};
-      await deps.api.request(routePath("patch_admin_logs_settings"), 'PATCH', routeBody("patch_admin_logs_settings", {expectedRevision: status?.revision ?? 0, operationId: ids.forPayload(JSON.stringify({revision: status?.revision, ...payload})), ...payload}));
+      const payload = {logLevel: draft.logLevel, retention: draft.retention, ...(status?.logDetailMinutes === undefined ? {} : {logDetailMinutes: draft.logDetailMinutes})};
+      const intent = {expectedRevision: status?.revision ?? 0, operationId: ids.forPayload(JSON.stringify({revision: status?.revision, ...payload})), ...payload};
+      await deps.api.request(routePath("patch_admin_logs_settings"), 'PATCH', routeBody("patch_admin_logs_settings", intent));
       ids.release();
     },
   });
