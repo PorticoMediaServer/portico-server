@@ -20,6 +20,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'metadata.artworkSize':{form:'metadata',key:'artworkMaxEdge',codec:'artwork-size'},
  'device.player':{form:'device',key:'playerEngine',codec:'player-engine'},
  'device.receive':{form:'device',key:'receiveFromDevices',codec:'boolean'},
+ 'device.lossNotices':{form:'device',key:'lossNotices',codec:'boolean'},
  'audioSubtitles.surround':{form:'device',key:'forceStereo',codec:'surround'},
  'quality.disableHdr':{form:'device',key:'disableHdr',codec:'boolean'},
  'quality.tvSupports':{form:'device',key:'tvSupports',fields:{hdr:'tvHdr',surround:'tvSurround'},codec:'tv-support'},
