@@ -31,7 +31,8 @@ export type DeleteResult=Readonly<{revision:number;removed:number;failed:number;
 export type FilesystemRoot=Readonly<{path:string;name:string;kind:string;description:string;classification?:'local'|'network'}>;
 export type FilesystemEntry=Readonly<{name:string;path:string;kind:'directory'|'file'|'unknown';readable:boolean;symlink:boolean;bytes:number;hidden:boolean;reason?:string}>;
 export type FilesystemPage=Readonly<{path:string;parent:string;separator:string;platform:string;writable:boolean;writableChecked:boolean;runsAs?:string;reason?:string;suggestions:readonly string[];truncated:boolean;roots:readonly FilesystemRoot[];entries:readonly FilesystemEntry[];nextCursor:string}>;
-export type LiveDefaults=Readonly<{importLimits:Readonly<{bytes:number;channels:number;programmes:number}>;streamBufferMs:number;retryWindowMs:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
+export type LiveTimeshiftMinutes=10|30|60|120;
+export type LiveDefaults=Readonly<{timeshiftMinutes?:LiveTimeshiftMinutes;importLimits:Readonly<{bytes:number;channels:number;programmes:number}>;streamBufferMs:number;retryWindowMs:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
 export type FilterRule=Readonly<{mode:'include'|'exclude';values:readonly string[]}>;
 export type LiveSourceKind='playlist'|'xmltv-guide'|'hdhomerun';
 /** `importLimits`: this source's own, lower than the server's; null keeps the server's. */
@@ -233,7 +234,9 @@ export function parseFilesystemPage(v:unknown):FilesystemPage{
 function parseLiveDefaults(v:unknown):LiveDefaults{
  if(!object(v)||!count(v.streamBufferMs)||!count(v.retryWindowMs)||!text(v.userAgent,200)||!count(v.guideDays)||!flag(v.logoImport)||!flag(v.discoveryEnabled))invalid('live defaults');
  if(!object(v.importLimits)||!count(v.importLimits.bytes)||v.importLimits.bytes>1073741824||!count(v.importLimits.channels)||v.importLimits.channels>100000||!count(v.importLimits.programmes)||v.importLimits.programmes>10000000)invalid('live import limits');
- return Object.freeze({importLimits:Object.freeze({bytes:v.importLimits.bytes,channels:v.importLimits.channels,programmes:v.importLimits.programmes}),streamBufferMs:v.streamBufferMs,retryWindowMs:v.retryWindowMs,userAgent:v.userAgent,guideDays:v.guideDays,logoImport:v.logoImport,discoveryEnabled:v.discoveryEnabled});
+ const timeshiftMinutes=v.timeshiftMinutes;
+ if(timeshiftMinutes!==undefined&&timeshiftMinutes!==10&&timeshiftMinutes!==30&&timeshiftMinutes!==60&&timeshiftMinutes!==120)invalid('live rewind');
+ return Object.freeze({...(timeshiftMinutes===undefined?{}:{timeshiftMinutes}),importLimits:Object.freeze({bytes:v.importLimits.bytes,channels:v.importLimits.channels,programmes:v.importLimits.programmes}),streamBufferMs:v.streamBufferMs,retryWindowMs:v.retryWindowMs,userAgent:v.userAgent,guideDays:v.guideDays,logoImport:v.logoImport,discoveryEnabled:v.discoveryEnabled});
 }
 /** parseLiveDefaultsDocument reads the server-wide live source settings. */
 export function parseLiveDefaultsDocument(v:unknown):Readonly<{scope:string;revision:number;digest:string;settings:LiveDefaults}>{

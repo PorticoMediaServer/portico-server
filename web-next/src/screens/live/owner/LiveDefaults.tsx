@@ -1,7 +1,7 @@
 import {useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {liveDefaultsForm} from '@core/server-admin/server-forms.ts';
-import {Button, Switch, TextField} from '../../../kit/controls';
+import {Button, Select, Switch, TextField} from '../../../kit/controls';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import styles from './owner.module.css';
 const t = defaultI18n.t;
@@ -20,6 +20,16 @@ export function LiveDefaults({form, isCurrent, failure}: {form: DefaultsForm; is
       {number('web.dvrSettings.buffer', draft.streamBufferMs / 1000, 0, 120, value => form.set({streamBufferMs: value * 1000}), 'settings.unit.seconds', 'web.dvrSettings.bufferHelp')}
       {number('web.dvrSettings.retryWindow', draft.retryWindowMs / 1000, 5, 600, value => form.set({retryWindowMs: value * 1000}), 'settings.unit.seconds', 'web.dvrSettings.retryWindowHelp')}
       {number('web.dvrSettings.guideDays', draft.guideDays, 1, 21, value => form.set({guideDays: value}), 'settings.unit.days', 'web.dvrSettings.guideDaysHelp')}
+      {draft.timeshiftMinutes !== undefined && <SettingsRow label={t('next.settingsSpec.server.live.groups.1.rows.2.label')} help={t('next.settingsSpec.server.live.groups.1.rows.2.help')}>
+        <Select value={String(draft.timeshiftMinutes)} disabled={state.saving} aria-label={t('next.settingsSpec.server.live.groups.1.rows.2.label')}
+          options={[
+            {value: '10', label: t('next.settingsSpec.server.live.groups.1.rows.2.control.options.0.label')},
+            {value: '30', label: t('next.settingsSpec.server.live.groups.1.rows.2.control.options.1.label')},
+            {value: '60', label: t('next.settingsSpec.server.live.groups.1.rows.2.control.options.2.label')},
+            {value: '120', label: t('next.settingsSpec.server.live.groups.1.rows.2.control.options.3.label')},
+          ]}
+          onValueChange={value => {const minutes = Number(value); if (isCurrent() && (minutes === 10 || minutes === 30 || minutes === 60 || minutes === 120)) form.set({timeshiftMinutes: minutes});}}/>
+      </SettingsRow>}
       <SettingsRow label={t('web.dvrSettings.userAgent')} help={t('web.dvrSettings.userAgentHelp')}><TextField value={draft.userAgent} maxLength={200} variant="setting" disabled={state.saving}
         aria-label={t('web.dvrSettings.userAgent')} onChange={event => {if (isCurrent()) form.set({userAgent: event.currentTarget.value});}}/></SettingsRow>
       <SettingsRow label={t('next.liveOwner.logoImport')} help={t('next.liveOwner.logoImportHelp')}><Switch checked={draft.logoImport} disabled={state.saving} aria-label={t('next.liveOwner.logoImport')}
