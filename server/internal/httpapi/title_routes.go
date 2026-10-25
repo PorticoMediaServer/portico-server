@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -20,9 +21,29 @@ import (
 // list of titles whose files are gone, emptying it, saying two titles are one,
 // and removing a library.
 
+type missingRemovalBefore string
+
+func (value *missingRemovalBefore) UnmarshalJSON(raw []byte) error {
+	var decoded *string
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	if decoded == nil || len(*decoded) < 20 || len(*decoded) > 64 {
+		return errors.New("before must be a timestamp string")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, *decoded); err != nil {
+		return errors.New("before must be a timestamp string")
+	}
+	*value = missingRemovalBefore(*decoded)
+	return nil
+}
+func (missingRemovalBefore) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "format": "date-time", "minLength": 20, "maxLength": 64}
+}
+
 type emptyMissingRequest struct {
 	// Before narrows this explicit removal to absences strictly older than a server list observation.
-	Before *string `json:"before,omitempty"`
+	Before missingRemovalBefore `json:"before,omitempty"`
 	// LibraryID limits the emptying to one library; empty means every library.
 	LibraryID string `json:"libraryId,omitempty"`
 }
@@ -166,8 +187,8 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			// caller repeats while there is more.
 			deadline := time.Now().Add(8 * time.Second)
 			cutoff := time.Now()
-			if in.Before != nil {
-				before, err := time.Parse(time.RFC3339Nano, *in.Before)
+			if in.Before != "" {
+				before, err := time.Parse(time.RFC3339Nano, string(in.Before))
 				if err != nil || before.UnixMilli() <= 0 || before.After(cutoff) {
 					return total, &apierror.Error{Code: "invalid_request"}
 				}
