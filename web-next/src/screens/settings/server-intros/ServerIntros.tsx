@@ -5,6 +5,7 @@ import type {SegmentKind, SegmentReviewEntry, SegmentReviewMarker, SegmentTitleR
 import {Button} from '../../../kit/controls';
 import {Icon} from '../../../kit/Icon';
 import {CreateMarkerSheet, SegmentWindows, StatTiles, type SegmentEdit, type SegmentMark} from '../../../kit/shell';
+import {Dialog} from '../../../kit/overlays/Dialog';
 import {Menu} from '../../../kit/overlays/Popover';
 import {usePhone} from '../../../kit/overlays/shared';
 import type {SegmentIntrosSnapshot, SegmentIntrosSource} from './source';
@@ -51,6 +52,7 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
   const createOp = useRef<CreateOp | undefined>(undefined);
   useLayoutEffect(() => () => {createOp.current = undefined;}, []);
   const createOpening = useRef(0);
+  const [confirmingDetect, setConfirmingDetect] = useState(false);
   useLayoutEffect(() => {
     createCommitted.current = creating;
     return () => {if (createCommitted.current === creating) createCommitted.current = undefined;};
@@ -122,7 +124,7 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
 
         <div className={styles.pane}>
           {!title ? snapshot.titleLoading ? <p className={styles.loading} role="status">{t('web.segments.loading')}</p> : snapshot.titleError ? <ReviewNotice tone="bad" onRetry={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}>{t('web.segments.error')}</ReviewNotice> : <p className={styles.empty}>{t('web.segments.chooseTitle')}</p> : <Review title={title} season={snapshot.season} entries={entries} snapshot={snapshot} edit={edit}
-            onSeason={value => source.selectSeason(value)} onApproveAll={() => {void source.approve();}} onDetect={() => {void source.detectAgain();}}
+            onSeason={value => source.selectSeason(value)} onApproveAll={() => {void source.approve();}} onDetect={() => setConfirmingDetect(true)}
             onRetryTitle={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}
             onEdit={(entry, marker) => {const next: EditOpening = {opening: ++opening.current, entryId: entry.itemId, marker, start: seconds(marker.startUS), end: seconds(marker.endUS), kind: marker.kind};committed.current = next;setEdit(next);}}
             onChange={(entry, value) => {const open = committed.current;if (!open || open.opening !== value.opening || open.marker.id !== value.id || open.entryId !== entry.itemId) return;setEdit(current => current && current.opening === value.opening ? {...current, start: value.start, end: value.end, kind: value.kind} : current);}}
@@ -135,6 +137,9 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
         </div>
       </div>}
     </section>
+    <Dialog open={confirmingDetect} onOpenChange={setConfirmingDetect} size="sm" role="alertdialog" title={t('web.segments.detectAgain')} description={t('web.segments.detectAgainHelp')}
+      footer={<><Button variant="glass" size="compact" disabled={busy} onClick={() => setConfirmingDetect(false)}>{t('next.shell.cancel')}</Button>
+        <Button variant="primary" size="compact" disabled={busy} onClick={() => {setConfirmingDetect(false);void source.detectAgain();}}>{t('web.segments.detectAgain')}</Button></>}>{null}</Dialog>
     {creating ? <CreateMarkerSheet key={creating.opening} duration={seconds(creating.entry.durationUS)} busy={busy}
       onCancel={() => {const open = createCommitted.current;if (!open || open.opening !== creating.opening) return;createCommitted.current = undefined;setCreating(undefined);}}
       onSave={draft => {
