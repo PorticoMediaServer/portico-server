@@ -3,6 +3,7 @@ import {captureAppLogRecorder, type AppLogRecorder} from '../app-log';
 import {advancePendingChoice, takePendingTrackChoice, type PendingChoiceProgress} from '@core/pending-track-choice.ts';
 import {createWebQueueListPort, type WebQueueListPort} from './queue-list';
 import {capacityRetryHttp, type WebPlaybackCapacityWait} from './capacity-retry';
+import {startFailureHttp, type WebPlaybackStartFailure} from './start-failure';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -65,6 +66,7 @@ type OfferBinding = {
   detailFence?: string;
 };
 type Stack = {
+  startFailure?: WebPlaybackStartFailure;
   capacityWait?: WebPlaybackCapacityWait;
   capacityCurrent?: () => boolean;
   preplay?: Readonly<{versionId: string; progress: PendingChoiceProgress}>;
@@ -205,12 +207,19 @@ export class WebShellPlaybackRuntime {
     // A stale successful start is returned to the retired core owner so it can abandon the
     // actual server session. DELETE cleanup still uses its original viewer-bound API.
     const bound: V1Http = {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, life.signal]) : life.signal})};
-    const http = capacityRetryHttp({http: bound, life: life.signal, timers: this.env.timers,
+    const capacity = capacityRetryHttp({http: bound, life: life.signal, timers: this.env.timers,
       isCurrent: () => this.current(stackReference), captureCurrent: () => stackReference.capacityCurrent, publish: wait => {
         if (!this.current(stackReference)) return;
         stackReference.capacityWait = wait;
         this.sync();
       }});
+    const http = startFailureHttp({http: capacity, api: this.source.api, events: this.source.events, life: life.signal, now: this.env.timers?.now,
+      isCurrent: () => this.current(stackReference), captureCurrent: () => stackReference.capacityCurrent,
+      isInitial: () => !stackReference.queue.currentSession() && !stackReference.service.getSnapshot().session,
+      publish: failure => {if (this.current(stackReference)) {stackReference.startFailure = failure;this.sync();}},
+      cancelStart: () => {if (this.current(stackReference)) {
+        this.replacing = true;this.retire(stackReference);this.stack = this.makeStack();this.activate(this.stack);this.replacing = false;this.sync();
+      }}});
     const web = new WebPlayback({
       recordDiagnostic: this.recordDiagnostic,
       http, mediaUrl: path => this.source.api.mediaUrl(path),
@@ -390,11 +399,13 @@ export class WebShellPlaybackRuntime {
       stack.subject = entrySubject(input.entry); stack.posterUrl = input.entry.posterUrl; stack.backdropUrl = input.entry.backdropUrl;
     }
     stack.expanded = input.entry.kind !== 'song';
-    if (aggregate) {
+    const current = () => this.current(stack) && serial === this.operation;
+    stack.capacityCurrent = current;
+    try {if (aggregate) {
       await stack.queue.playSegments([{source: {container: {kind: input.entry.kind, id: input.entry.id}}, anchor: {itemId: input.target.itemId}}], {startSeconds: input.target.startSeconds, isCurrent: () => this.current(stack) && serial === this.operation});
     } else {
       await stack.service.play(input.target.itemId, input.target.startSeconds);
-    }
+    }} finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined;}
     if (!this.current(stack) || serial !== this.operation) return;
     this.sync();
   }
@@ -406,7 +417,9 @@ export class WebShellPlaybackRuntime {
     if (!/^[A-Za-z0-9_.-]{1,128}$/.test(itemId) || startSeconds !== undefined && !validSeconds(startSeconds)) problem('invalid_playback_target');
     const serial = ++this.operation, stack = this.replace();
     stack.expanded = true;
-    await stack.service.play(itemId, startSeconds);
+    const current = () => this.current(stack) && serial === this.operation;
+    stack.capacityCurrent = current;
+    try {await stack.service.play(itemId, startSeconds);} finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined;}
     if (!this.current(stack) || serial !== this.operation) return;
     this.sync();
   }
@@ -508,11 +521,12 @@ export class WebShellPlaybackRuntime {
     const cancel = () => {if (this.current(stack) && serial === this.operation) stack.service.leave();};
     signal.addEventListener('abort', cancel, {once: true});
     try {
+      stack.capacityCurrent = current;
       await stack.queue.playItem(itemId, seconds, undefined, undefined, undefined, undefined, {signal, isCurrent: current, state: playing ? 'playing' : 'paused'});
       if (!current()) problem('stale_selection_context');
       if (stack.queue.currentSession()?.itemId !== itemId || stack.service.getSnapshot().phase === 'error') problem('group_playback_failed');
       this.sync();
-    } catch (error) {cancel();throw error;} finally {signal.removeEventListener('abort', cancel);}
+    } catch (error) {cancel();throw error;} finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined;signal.removeEventListener('abort', cancel);}
   }
   private async groupTransport(command: GroupTransportCommand, fence: PlaybackFence, seconds?: number): Promise<boolean> {
     if (!this.group?.matches(fence)) return false;
@@ -785,8 +799,10 @@ export class WebShellPlaybackRuntime {
       this.replacing = true; this.retire(stack); this.stack = this.makeStack(); this.activate(this.stack); this.replacing = false; this.sync();
     } };
     request.signal.addEventListener('abort', cancel, {once: true});
+    const originalCurrent = () => this.current(stack) && serial === this.operation && !request.signal.aborted && current(request.context);
     try {
-      const queue = await stack.queue.playSegments(segments, {startSeconds: selectionStartSeconds(request.items), signal: request.signal, isCurrent: () => this.current(stack) && serial === this.operation && current(request.context)});
+      stack.capacityCurrent = originalCurrent;
+      const queue = await stack.queue.playSegments(segments, {startSeconds: selectionStartSeconds(request.items), signal: request.signal, isCurrent: originalCurrent});
       this.selectionCurrent(request.context, request.signal, current);
       if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
       this.sync();
@@ -794,7 +810,7 @@ export class WebShellPlaybackRuntime {
     } catch (error) {
       if (this.current(stack) && serial === this.operation) cancel();
       throw error;
-    } finally { request.signal.removeEventListener('abort', cancel); }
+    } finally {if (stack.capacityCurrent === originalCurrent) stack.capacityCurrent = undefined;request.signal.removeEventListener('abort', cancel);}
   }
   private async enqueueSelection(request: HomeSelectionPlaybackRequest & {placement: 'next' | 'end'}, current: (context: SelectionContext) => boolean) {
     this.selectionCurrent(request.context, request.signal, current);
@@ -1008,7 +1024,8 @@ export class WebShellPlaybackRuntime {
         this.renderSubtitles(stack);
       }
       this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!fence && stack.subject?.kind === 'video' && stack.web.slot.nativeSurfaceActive, authority: this.authority, sequence: ++this.sequence, playback, dock: this.dock.getSnapshot(), fence, subject: stack.subject, presentation, presentations: this.presentations(presentation), queueView: stack.queue.getSnapshot().view, session, offers, options: stack.options, problem: this.runtimeProblem, disposed: false,
-        ...(stack.capacityWait?.isCurrent() ? {capacityWait: stack.capacityWait} : {})});
+        ...(stack.capacityWait?.isCurrent() ? {capacityWait: stack.capacityWait} : {}),
+        ...(stack.startFailure?.isCurrent() ? {startFailure: stack.startFailure} : {})});
       this.advancePreplay(stack, playback, fence);
       this.rememberCurrent();
       for (const listener of [...this.listeners]) listener();
