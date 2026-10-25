@@ -36,7 +36,7 @@ export function HostedSetupApproval({phase, serverName, address, accountName, re
     <AuthStage service contentClassName={styles.approvalContent}>
       <h1>{t('web.general.notConnectedBadge')}</h1>
       <p className={styles.lede}>{t('web.claim.denied', {server: serverName})}</p>
-      {error && <HostedError error={error}/>}
+      {Boolean(error) && <HostedError error={error}/>}
       <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
     </AuthStage>
   </div>;
