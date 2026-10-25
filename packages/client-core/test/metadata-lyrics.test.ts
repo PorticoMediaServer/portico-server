@@ -17,7 +17,7 @@ test('owner choice sends exact current source and global CAS, without a playback
   }}});
   await service.load();
   const data = service.getSnapshot().data!;
-  await service.choose(data.resources[0], data);
+  await service.choose(data.resources[0]!, data);
   assert.deepEqual(writes, [{method: 'PUT', body: {scope: 'library', sourceId: 'asset', sourceVersion: 'b'.repeat(64), sessionId: '', expectedSelectionRevision: 0, resourceId: 'lyrics', revision: 1}}]);
   service.dispose();
 });
@@ -28,11 +28,11 @@ test('old view callbacks and a synchronously retired saving grant send no lyrics
   await service.load();
   const old = service.getSnapshot().data!;
   await service.load();
-  await service.choose(old.resources[0], old);
+  await service.choose(old.resources[0]!, old);
   assert.equal(writes, 0);
   const data = service.getSnapshot().data!;
   const off = service.subscribe(() => {if (service.getSnapshot().phase === 'saving') current = false;});
-  await service.choose(data.resources[0], data);
+  await service.choose(data.resources[0]!, data);
   assert.equal(writes, 0);
   off(); service.dispose();
 });

@@ -14,6 +14,7 @@ export class MetadataLyricsService {
   private fence?: string;
   constructor(private readonly options: {api: Api; scope: RepairScope; target: RepairTarget; current: () => boolean}) {
     if (options.target.kind !== 'item') throw Error('Choose a song.');
+    this.options = {...options, scope: Object.freeze({...options.scope}), target: Object.freeze({...options.target})};
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
