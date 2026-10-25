@@ -494,6 +494,15 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 			for _, a := range t.Attr {
 				name := strings.ToLower(a.Name.Local)
 				value := strings.TrimSpace(a.Value)
+				if name == "srcset" {
+					if t.Name.Local != "img" || t.Name.Space != "http://www.w3.org/1999/xhtml" || a.Name.Local != "srcset" || a.Name.Space != "" {
+						return ErrInvalid
+					}
+					if err := validateSrcset(base, a.Value, assets); err != nil {
+						return err
+					}
+					continue
+				}
 				if strings.HasPrefix(name, "on") || name == "base" || name == "srcdoc" || name == "srcset" || name == "http-equiv" || name == "ping" || name == "action" || name == "formaction" || name == "background" {
 					return ErrInvalid
 				}
