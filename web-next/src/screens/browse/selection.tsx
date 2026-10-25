@@ -138,7 +138,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     if (!destinations?.collection) throw new Error('selection-collection-unavailable');
     await destinations.collection(leafItems(), anchor);
   };
-  let personalFlight: Readonly<{key: string; promise: Promise<void>}> | undefined;
+  const personalRunner = actions ? createSelectionActions({...actions, reportError}) : undefined;
   const personal = async (action: PersonalSelectionAction) => {
     if (!actions || !playSelection.captureOperation || !playSelection.isOperationCurrent) throw new Error('selection-actions-unavailable');
     const selection = playSelection.getSnapshot().selection, target = selection?.target;
@@ -151,16 +151,8 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     if (selection!.summary.every[fact] !== true) throw new Error('selection-grant-unavailable');
     const operation = playSelection.captureOperation?.() ?? null;
     if (!operation || operation.target !== target) throw new Error('selection-operation-required');
-    const key = JSON.stringify([target.mode, target.mode === 'query' ? target.queryId : target.items.map(pick => pick.key),
-      target.mode === 'query' ? target.total : null, action]);
-    if (personalFlight?.key === key) return personalFlight.promise;
-    const promise = (async () => {
-      const runner = createSelectionActions({...actions, reportError,
-        isCurrent: () => actions.isCurrent() && playSelection.isOperationCurrent?.(operation) === true});
-      await runner.personal(operation, action, actions.signal ?? new AbortController().signal);
-    })();
-    personalFlight = Object.freeze({key, promise});
-    try {await promise;} finally {if (personalFlight?.promise === promise) personalFlight = undefined;}
+    await personalRunner!.personal(operation, action, actions.signal,
+      () => playSelection.isOperationCurrent?.(operation) === true);
   };
   const snapshot = () => playSelection.getSnapshot(), rowFor = (member: BrowseMember, index: number) => {
     const rows = snapshot().rows;
