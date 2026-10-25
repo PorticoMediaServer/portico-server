@@ -3801,7 +3801,7 @@ CREATE TABLE remote_source_capture_physical(
  library_generation INTEGER NOT NULL,
  root_identity TEXT NOT NULL,
  inventory_object_id TEXT NOT NULL,
- inventory_revision INTEGER NOT NULL,
+ inventory_revision TEXT NOT NULL,
  inventory_relative_path TEXT NOT NULL,
  config_digest TEXT NOT NULL CHECK(length(config_digest)=64 AND config_digest NOT GLOB '*[^0-9a-f]*'),
  observation_source TEXT NOT NULL,
@@ -3828,12 +3828,18 @@ CREATE TABLE remote_source_capture_actor(
 CREATE TABLE remote_source_capture_policy(
  capture_id TEXT PRIMARY KEY,
  profile_revision INTEGER NOT NULL,
+ profile_scan_depth TEXT NOT NULL,
+ profile_whole_file_reads INTEGER NOT NULL CHECK(profile_whole_file_reads IN(0,1)),
+ profile_connections INTEGER NOT NULL,
+ profile_requests_per_second INTEGER NOT NULL,
+ profile_bytes_per_second INTEGER NOT NULL,
  cache_settings_revision INTEGER NOT NULL,
  cache_bytes INTEGER NOT NULL CHECK(cache_bytes>0),
  cache_floor_bytes INTEGER NOT NULL,
  applied_bytes INTEGER NOT NULL,
  applied_floor_bytes INTEGER NOT NULL,
  applied INTEGER NOT NULL CHECK(applied IN(0,1)),
+ config_digest TEXT NOT NULL CHECK(length(config_digest)=64 AND config_digest NOT GLOB '*[^0-9a-f]*'),
  policy_witness TEXT NOT NULL) STRICT;
 CREATE TABLE remote_source_capture_quota(
  source_id TEXT PRIMARY KEY,

@@ -63,7 +63,7 @@ type captureTarget struct {
 	rootIdentity      string
 
 	inventoryObjectID     string
-	inventoryRevision     int64
+	inventoryRevision     string
 	inventoryRelativePath string
 	assetID               string
 	itemID                string
@@ -92,7 +92,7 @@ type capturePhysicalRow struct {
 	libraryGeneration     int64
 	rootIdentity          string
 	inventoryObjectID     string
-	inventoryRevision     int64
+	inventoryRevision     string
 	inventoryRelativePath string
 	configDigest          string
 	observationSource     string
@@ -121,15 +121,21 @@ type captureActorRow struct {
 }
 
 type capturePolicyRow struct {
-	captureID         string
-	profileRevision   int64
-	settingsRevision  int64
-	cacheBytes        int64
-	cacheFloorBytes   int64
-	appliedBytes      int64
-	appliedFloorBytes int64
-	applied           bool
-	policyWitness     string
+	captureID             string
+	profileRevision       int64
+	profileScanDepth      string
+	profileWholeFileReads int
+	profileConnections    int
+	profileRequests       int
+	profileBytes          int64
+	settingsRevision      int64
+	cacheBytes            int64
+	cacheFloorBytes       int64
+	appliedBytes          int64
+	appliedFloorBytes     int64
+	applied               bool
+	configDigest          string
+	policyWitness         string
 }
 
 type captureChargeRow struct {
@@ -156,10 +162,12 @@ func capturePolicyWitness(t *captureTarget) string {
 	parts := []string{
 		"portico.remote-capture.policy.v1", t.sourceID, t.configGeneration, t.mountID,
 		t.librarySourceID, t.libraryID, t.incarnation, strconv.FormatInt(t.libraryGeneration, 10), t.rootIdentity,
-		t.inventoryObjectID, strconv.FormatInt(t.inventoryRevision, 10), t.observation.Object,
+		t.inventoryObjectID, t.inventoryRevision, t.observation.Object,
 		strconv.FormatInt(t.observation.Revision, 10), t.scanRevision, strconv.FormatInt(t.size, 10),
-		strconv.FormatBool(t.sequential), strconv.FormatInt(t.profile.Revision, 10),
-		strconv.FormatInt(t.settings.revision, 10), strconv.FormatInt(t.settings.values.CacheBytes, 10),
+		strconv.FormatBool(t.sequential), strconv.FormatInt(t.profile.Revision, 10), t.profile.ScanDepth,
+		strconv.FormatBool(t.profile.WholeFileReads), strconv.Itoa(t.profile.Limits.Connections),
+		strconv.Itoa(t.profile.Limits.RequestsPerSecond), strconv.FormatInt(t.profile.Limits.BytesPerSecond, 10),
+		t.configDigest, strconv.FormatInt(t.settings.revision, 10), strconv.FormatInt(t.settings.values.CacheBytes, 10),
 		strconv.FormatInt(t.settings.values.CacheFloorBytes, 10), strconv.FormatInt(t.settings.appliedBytes, 10),
 		strconv.FormatInt(t.settings.appliedFloor, 10), strconv.FormatBool(t.applied),
 	}
@@ -172,7 +180,7 @@ func (t *captureTarget) binding(captureID, acquisitionID, reservationID string) 
 		SourceID:         t.sourceID,
 		ConfigGeneration: t.configGeneration,
 		ObjectID:         t.inventoryObjectID,
-		ObjectRevision:   strconv.FormatInt(t.inventoryRevision, 10),
+		ObjectRevision:   t.inventoryRevision,
 		AssetID:          t.assetID,
 		AcquisitionID:    acquisitionID,
 		ReservationID:    reservationID,
@@ -186,34 +194,42 @@ func (p *captureProducer) resolveTargetTx(ctx context.Context, tx *sql.Tx, asset
 	if tx == nil || assetID == "" {
 		return out, ownedcapture.ErrInput
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision,o.source_id,o.relative_path,o.asset_id,o.size,
- s.id,s.library_id,s.root,s.generation,s.incarnation,s.root_identity,
- r.root,r.mount_id,r.config
+	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision,o.source_id,o.relative_path,o.asset_id,o.size,o.modified_ns,o.root_incarnation,
+ s.id,s.library_id,s.root,s.generation,s.incarnation,s.root_identity,s.health,s.enabled,s.identity_confirmed,
+ r.id,r.root,r.mount_id,r.config,
+ a.path,a.size,a.modified_ns,a.available
  FROM inventory_objects o
  JOIN library_sources s ON s.id=o.source_id
  JOIN remote_sources r ON r.id=s.remote_source_id
- WHERE o.asset_id=? AND o.retired=0 AND o.state='available' AND s.enabled=1 AND s.kind='remote' AND r.removed=0
- AND EXISTS(SELECT 1 FROM inventory_disc_facts d WHERE d.object_id=o.id AND d.kind IN('bluray','dvd'))
+ JOIN catalog_assets a ON a.token=o.asset_id
+ WHERE o.asset_id=? AND o.retired=0 AND o.state='available' AND o.unsupported_reason=''
+ AND o.root_incarnation=s.incarnation
+ AND s.enabled=1 AND s.kind='remote' AND s.identity_confirmed=1 AND s.health NOT IN('offline','root_changed','removing')
+ AND r.removed=0 AND a.available=1 AND o.size=a.size AND o.modified_ns=a.modified_ns
+ AND EXISTS(SELECT 1 FROM catalog_asset_links ia JOIN catalog_entities item ON item.id=ia.entity_id JOIN catalog_libraries lib ON lib.id=item.library_id
+   WHERE ia.asset_id=a.id AND ia.available=1 AND item.retired=0 AND lib.retired=0 AND lib.library_id=s.library_id)
  ORDER BY o.id LIMIT 2`, assetID)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	type candidate struct {
-		objectID, assetID, sourceID, relative                string
-		revision, size                                       int64
-		librarySourceID, libraryID, libraryRoot, incarnation string
-		libraryGeneration                                    int64
-		rootIdentity                                         string
-		remoteRoot, mountID                                  string
-		config                                               []byte
+		objectID, revision, objectSourceID, librarySourceID, relative, assetID, rootIncarnation string
+		size, modified, assetSize, assetModified                                                int64
+		libraryID, libraryRoot, incarnation, rootIdentity, health                               string
+		libraryGeneration                                                                       int64
+		enabled, identityConfirmed, available                                                   int
+		remoteID, remoteRoot, mountID                                                           string
+		config                                                                                  []byte
+		assetPath                                                                               string
 	}
 	list := []candidate{}
 	for rows.Next() {
 		var c candidate
-		if err = rows.Scan(&c.objectID, &c.revision, &c.sourceID, &c.relative, &c.assetID, &c.size,
-			&c.librarySourceID, &c.libraryID, &c.libraryRoot, &c.libraryGeneration, &c.incarnation, &c.rootIdentity,
-			&c.remoteRoot, &c.mountID, &c.config); err != nil {
+		if err = rows.Scan(&c.objectID, &c.revision, &c.objectSourceID, &c.relative, &c.assetID, &c.size, &c.modified, &c.rootIncarnation,
+			&c.librarySourceID, &c.libraryID, &c.libraryRoot, &c.libraryGeneration, &c.incarnation, &c.rootIdentity, &c.health, &c.enabled, &c.identityConfirmed,
+			&c.remoteID, &c.remoteRoot, &c.mountID, &c.config,
+			&c.assetPath, &c.assetSize, &c.assetModified, &c.available); err != nil {
 			return out, err
 		}
 		if c.assetID != assetID {
@@ -228,39 +244,52 @@ func (p *captureProducer) resolveTargetTx(ctx context.Context, tx *sql.Tx, asset
 		return out, ownedcapture.ErrInput
 	}
 	c := list[0]
-	if c.size <= 0 || !strings.HasSuffix(strings.ToLower(c.relative), ".iso") {
+	if c.objectSourceID != c.librarySourceID {
 		return out, ownedcapture.ErrInput
 	}
-	var items []string
-	itemRows, err := tx.QueryContext(ctx, `SELECT DISTINCT pid(i.public_id) FROM inventory_objects o
- JOIN catalog_assets a ON a.token=o.asset_id
- JOIN catalog_asset_links ia ON ia.asset_id=a.id
- JOIN catalog_entities i ON i.id=ia.entity_id
- WHERE o.id=? AND i.retired=0 LIMIT 2`, c.objectID)
+	itemRows, err := tx.QueryContext(ctx, `SELECT pid(item.public_id) FROM catalog_asset_links link
+ JOIN catalog_entities item ON item.id=link.entity_id
+ JOIN catalog_libraries lib ON lib.id=item.library_id
+ WHERE link.asset_id=(SELECT id FROM catalog_assets WHERE token=?) AND link.available=1 AND item.retired=0 AND lib.retired=0 AND lib.library_id=?
+ ORDER BY item.id LIMIT 2`, assetID, c.libraryID)
 	if err != nil {
 		return out, err
 	}
+	var itemID string
+	items := 0
 	for itemRows.Next() {
-		var id string
-		if err = itemRows.Scan(&id); err != nil {
+		items++
+		if items > 1 {
+			itemRows.Close()
+			return out, ownedcapture.ErrInput
+		}
+		if err = itemRows.Scan(&itemID); err != nil {
 			itemRows.Close()
 			return out, err
 		}
-		items = append(items, id)
 	}
+	err = itemRows.Err()
 	itemRows.Close()
-	if err = itemRows.Err(); err != nil {
+	if err != nil {
 		return out, err
 	}
-	if len(items) != 1 {
+	if items != 1 || itemID == "" {
 		return out, ownedcapture.ErrInput
 	}
+	libraryRoot := filepath.Clean(c.libraryRoot)
+	fullPath := filepath.Join(libraryRoot, filepath.FromSlash(c.relative))
+	if c.size <= 0 || c.size != c.assetSize || c.modified != c.assetModified || c.available != 1 ||
+		c.enabled != 1 || c.identityConfirmed != 1 || c.health == "offline" || c.health == "root_changed" || c.health == "removing" ||
+		c.rootIncarnation != c.incarnation || !filepath.IsAbs(libraryRoot) || filepath.Clean(libraryRoot) != libraryRoot ||
+		!strings.HasSuffix(strings.ToLower(c.relative), ".iso") || c.assetPath != fullPath || !validObservationObject(filepath.ToSlash(c.relative)) {
+		return out, ownedcapture.ErrInput
+	}
+	out.itemID = itemID
 	out.inventoryObjectID = c.objectID
 	out.inventoryRevision = c.revision
 	out.inventoryRelativePath = filepath.ToSlash(c.relative)
 	out.assetID = assetID
-	out.itemID = items[0]
-	out.sourceID = c.sourceID
+	out.sourceID = c.remoteID
 	out.libraryID = c.libraryID
 	out.librarySourceID = c.librarySourceID
 	out.incarnation = c.incarnation
@@ -268,14 +297,14 @@ func (p *captureProducer) resolveTargetTx(ctx context.Context, tx *sql.Tx, asset
 	out.rootIdentity = c.rootIdentity
 	out.remoteRoot = c.remoteRoot
 	out.mountID = c.mountID
-	out.path = filepath.Join(c.libraryRoot, filepath.FromSlash(c.relative))
+	out.path = fullPath
 	out.size = c.size
-	rel, err := filepath.Rel(filepath.Clean(c.remoteRoot), filepath.Clean(out.path))
+	rel, err := filepath.Rel(filepath.Clean(c.remoteRoot), fullPath)
 	if err != nil || !filepath.IsLocal(rel) {
 		return out, ownedcapture.ErrInput
 	}
 	out.observation.Object = filepath.ToSlash(rel)
-	generation, err := observationGenerationTx(ctx, tx, c.sourceID)
+	generation, err := observationGenerationTx(ctx, tx, c.remoteID)
 	if err != nil {
 		return out, err
 	}
@@ -283,24 +312,21 @@ func (p *captureProducer) resolveTargetTx(ctx context.Context, tx *sql.Tx, asset
 	out.observation.Generation = generation
 	sum := sha256.Sum256(c.config)
 	out.configDigest = hex.EncodeToString(sum[:])
-	if out.observation.Generation != generation {
-		return out, storage.ErrRemoteChanged
-	}
-	scan, err := readScanObservationTx(ctx, tx, c.sourceID, out.observation.Object)
+	scan, err := readScanObservationTx(ctx, tx, c.remoteID, out.observation.Object)
 	if err != nil {
 		return out, err
 	}
-	if scan.Ref.SourceID != c.sourceID || scan.Ref.Generation != generation || scan.Ref.Revision < 1 || scan.Observation.Facts.Size != c.size {
+	if scan.Ref.SourceID != c.remoteID || scan.Ref.Generation != generation || scan.Ref.Revision < 1 || scan.Observation.Facts.Size != c.size {
 		return out, storage.ErrRemoteChanged
 	}
 	out.observation = scan.Ref
 	out.scanRevision = scan.Observation.ScanRevision
-	profile, err := SourceReadProfileTx(ctx, tx, c.sourceID)
+	profile, err := SourceReadProfileTx(ctx, tx, c.remoteID)
 	if err != nil {
 		return out, err
 	}
 	out.profile = profile
-	settings, err := readAdvancedTx(ctx, tx, c.sourceID)
+	settings, err := readAdvancedTx(ctx, tx, c.remoteID)
 	if err != nil {
 		return out, err
 	}
@@ -319,15 +345,105 @@ func (p *captureProducer) resolveTargetTx(ctx context.Context, tx *sql.Tx, asset
 	if out.floor == 0 && c.mountID != "" {
 		out.floor = settings.appliedFloor
 	}
-	sequential, err := sourceObjectSequentialTx(ctx, tx, c.sourceID, out.path)
-	if err != nil {
-		return out, err
-	}
-	if !sequential {
+	sequential, err := sourceObjectSequentialTx(ctx, tx, c.remoteID, fullPath)
+	if err != nil || !sequential {
 		return out, storage.ErrRemoteRange
 	}
 	out.sequential = true
 	return out, nil
+}
+
+func sameTarget(a, b captureTarget) bool {
+	return a.sourceID == b.sourceID && a.configGeneration == b.configGeneration && a.mountID == b.mountID &&
+		a.configDigest == b.configDigest && a.librarySourceID == b.librarySourceID && a.libraryID == b.libraryID &&
+		a.incarnation == b.incarnation && a.libraryGeneration == b.libraryGeneration && a.rootIdentity == b.rootIdentity &&
+		a.inventoryObjectID == b.inventoryObjectID && a.inventoryRevision == b.inventoryRevision &&
+		a.inventoryRelativePath == b.inventoryRelativePath && a.assetID == b.assetID && a.itemID == b.itemID &&
+		a.observation == b.observation && a.scanRevision == b.scanRevision && a.size == b.size && a.sequential == b.sequential &&
+		a.path == b.path && a.remoteRoot == b.remoteRoot && a.profile == b.profile &&
+		a.settings.revision == b.settings.revision && a.settings.saved == b.settings.saved &&
+		a.settings.values.CacheBytes == b.settings.values.CacheBytes && a.settings.values.CacheFloorBytes == b.settings.values.CacheFloorBytes &&
+		a.settings.appliedBytes == b.settings.appliedBytes && a.settings.appliedFloor == b.settings.appliedFloor &&
+		a.floor == b.floor && a.applied == b.applied
+}
+
+func (p *captureProducer) checkTargetTx(ctx context.Context, tx *sql.Tx, t captureTarget) error {
+	if tx == nil {
+		return ownedcapture.ErrInput
+	}
+	var objectID, revision, librarySourceID, relative, assetID, rootIncarnation, state, unsupported string
+	var size, modified, assetSize, assetModified int64
+	var retired, available, enabled, identityConfirmed, removed int
+	var libraryID, libraryRoot, incarnation, rootIdentity, health string
+	var libraryGeneration int64
+	var remoteID, remoteRoot, mountID string
+	var config []byte
+	var assetPath string
+	err := tx.QueryRowContext(ctx, `SELECT o.id,o.revision,o.source_id,o.relative_path,o.asset_id,o.size,o.modified_ns,o.root_incarnation,o.retired,o.state,o.unsupported_reason,
+ s.id,s.library_id,s.root,s.generation,s.incarnation,s.root_identity,s.health,s.enabled,s.identity_confirmed,
+ r.id,r.root,r.mount_id,r.removed,r.config,
+ a.path,a.size,a.modified_ns,a.available
+ FROM inventory_objects o
+ JOIN library_sources s ON s.id=o.source_id
+ JOIN remote_sources r ON r.id=s.remote_source_id
+ JOIN catalog_assets a ON a.token=o.asset_id
+ WHERE o.id=?`, t.inventoryObjectID).Scan(&objectID, &revision, &librarySourceID, &relative, &assetID, &size, &modified, &rootIncarnation, &retired, &state, &unsupported,
+		&librarySourceID, &libraryID, &libraryRoot, &libraryGeneration, &incarnation, &rootIdentity, &health, &enabled, &identityConfirmed,
+		&remoteID, &remoteRoot, &mountID, &removed, &config,
+		&assetPath, &assetSize, &assetModified, &available)
+	if err != nil {
+		return ownedcapture.ErrCurrent
+	}
+	fullPath := filepath.Join(filepath.Clean(libraryRoot), filepath.FromSlash(relative))
+	if objectID != t.inventoryObjectID || revision != t.inventoryRevision || librarySourceID != t.librarySourceID || relative != t.inventoryRelativePath ||
+		assetID != t.assetID || size != t.size || modified != assetModified || rootIncarnation != incarnation || retired != 0 || state != "available" || unsupported != "" ||
+		assetSize != size || available != 1 || enabled != 1 || identityConfirmed != 1 || health == "offline" || health == "root_changed" || health == "removing" ||
+		libraryID != t.libraryID || libraryGeneration != t.libraryGeneration || incarnation != t.incarnation || rootIdentity != t.rootIdentity ||
+		remoteID != t.sourceID || remoteRoot != t.remoteRoot || mountID != t.mountID || removed != 0 ||
+		!strings.EqualFold(filepath.Ext(relative), ".iso") || assetPath != fullPath || fullPath != t.path {
+		return ownedcapture.ErrCurrent
+	}
+	sum := sha256.Sum256(config)
+	if hex.EncodeToString(sum[:]) != t.configDigest {
+		return ownedcapture.ErrCurrent
+	}
+	var links int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_asset_links ia JOIN catalog_entities item ON item.id=ia.entity_id JOIN catalog_libraries lib ON lib.id=item.library_id
+ WHERE ia.asset_id=(SELECT token FROM catalog_assets WHERE token=?) AND ia.available=1 AND item.retired=0 AND lib.retired=0 AND lib.library_id=? AND pid(item.public_id)=?`, t.assetID, t.libraryID, t.itemID).Scan(&links); err != nil || links != 1 {
+		return ownedcapture.ErrCurrent
+	}
+	generation, err := observationGenerationTx(ctx, tx, t.sourceID)
+	if err != nil || generation != t.configGeneration {
+		return ownedcapture.ErrCurrent
+	}
+	profile, err := SourceReadProfileTx(ctx, tx, t.sourceID)
+	if err != nil || profile.SourceID != t.profile.SourceID || profile.Revision != t.profile.Revision ||
+		profile.ScanDepth != t.profile.ScanDepth || profile.WholeFileReads != t.profile.WholeFileReads ||
+		profile.Limits != t.profile.Limits {
+		return ownedcapture.ErrCurrent
+	}
+	settings, err := readAdvancedTx(ctx, tx, t.sourceID)
+	if err != nil || settings.revision != t.settings.revision || settings.saved != t.settings.saved ||
+		settings.values.CacheBytes != t.settings.values.CacheBytes || settings.values.CacheFloorBytes != t.settings.values.CacheFloorBytes ||
+		settings.appliedBytes != t.settings.appliedBytes || settings.appliedFloor != t.settings.appliedFloor {
+		return ownedcapture.ErrCurrent
+	}
+	applied := settings.saved
+	if t.mountID != "" {
+		applied = settings.appliedBytes == settings.values.CacheBytes && (settings.values.CacheFloorBytes == 0 || settings.appliedFloor == settings.values.CacheFloorBytes)
+	}
+	if applied != t.applied {
+		return ownedcapture.ErrCurrent
+	}
+	scan, err := readScanObservationTx(ctx, tx, t.sourceID, t.observation.Object)
+	if err != nil || scan.Ref != t.observation || scan.Observation.ScanRevision != t.scanRevision || scan.Observation.Facts.Size != t.size {
+		return ownedcapture.ErrCurrent
+	}
+	sequential, err := sourceObjectSequentialTx(ctx, tx, t.sourceID, t.path)
+	if err != nil || !sequential {
+		return ownedcapture.ErrCurrent
+	}
+	return nil
 }
 
 func captureRowTx(ctx context.Context, tx *sql.Tx, captureID string) (captureRows, error) {
@@ -350,8 +466,8 @@ func captureRowTx(ctx context.Context, tx *sql.Tx, captureID string) (captureRow
 	if err != nil {
 		return out, err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT capture_id,profile_revision,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,policy_witness FROM remote_source_capture_policy WHERE capture_id=?`, captureID).Scan(
-		&out.policy.captureID, &out.policy.profileRevision, &out.policy.settingsRevision, &out.policy.cacheBytes, &out.policy.cacheFloorBytes, &out.policy.appliedBytes, &out.policy.appliedFloorBytes, &out.policy.applied, &out.policy.policyWitness)
+	err = tx.QueryRowContext(ctx, `SELECT capture_id,profile_revision,profile_scan_depth,profile_whole_file_reads,profile_connections,profile_requests_per_second,profile_bytes_per_second,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,config_digest,policy_witness FROM remote_source_capture_policy WHERE capture_id=?`, captureID).Scan(
+		&out.policy.captureID, &out.policy.profileRevision, &out.policy.profileScanDepth, &out.policy.profileWholeFileReads, &out.policy.profileConnections, &out.policy.profileRequests, &out.policy.profileBytes, &out.policy.settingsRevision, &out.policy.cacheBytes, &out.policy.cacheFloorBytes, &out.policy.appliedBytes, &out.policy.appliedFloorBytes, &out.policy.applied, &out.policy.configDigest, &out.policy.policyWitness)
 	return out, err
 }
 
@@ -360,117 +476,12 @@ func sameCaptureBinding(b ownedcapture.Binding, rows captureRows) bool {
 		b.SourceID == rows.physical.sourceID &&
 		b.ConfigGeneration == rows.physical.configGeneration &&
 		b.ObjectID == rows.physical.inventoryObjectID &&
-		b.ObjectRevision == strconv.FormatInt(rows.physical.inventoryRevision, 10) &&
+		b.ObjectRevision == rows.physical.inventoryRevision &&
 		b.AssetID == rows.actor.assetID &&
 		b.AcquisitionID == rows.charge.acquisitionID &&
 		b.ReservationID == rows.charge.reservationID &&
 		b.PolicyWitness == rows.policy.policyWitness &&
 		b.AuthorityWitness == rows.actor.authorityWitness
-}
-
-func sameTarget(a, b captureTarget) bool {
-	return a.sourceID == b.sourceID && a.configGeneration == b.configGeneration && a.mountID == b.mountID &&
-		a.librarySourceID == b.librarySourceID && a.libraryID == b.libraryID && a.incarnation == b.incarnation &&
-		a.libraryGeneration == b.libraryGeneration && a.rootIdentity == b.rootIdentity &&
-		a.inventoryObjectID == b.inventoryObjectID && a.inventoryRevision == b.inventoryRevision &&
-		a.assetID == b.assetID && a.itemID == b.itemID && a.observation == b.observation &&
-		a.scanRevision == b.scanRevision && a.size == b.size && a.profile.Revision == b.profile.Revision &&
-		a.settings.revision == b.settings.revision && a.settings.values.CacheBytes == b.settings.values.CacheBytes &&
-		a.settings.values.CacheFloorBytes == b.settings.values.CacheFloorBytes && a.settings.appliedBytes == b.settings.appliedBytes &&
-		a.settings.appliedFloor == b.settings.appliedFloor && a.applied == b.applied && a.floor == b.floor && a.sequential == b.sequential
-}
-
-func (p *captureProducer) checkTargetTx(ctx context.Context, tx *sql.Tx, t captureTarget) error {
-	if tx == nil {
-		return ownedcapture.ErrInput
-	}
-	var objectID, sourceID, assetID string
-	var revision int64
-	var retired, enabled, removed int
-	var state, relative string
-	var size int64
-	var librarySourceID, libraryID, libraryRoot, incarnation, rootIdentity string
-	var libraryGeneration int64
-	var mountID, remoteRoot string
-	var config []byte
-	err := tx.QueryRowContext(ctx, `SELECT o.id,o.revision,o.source_id,o.asset_id,o.retired,o.state,o.relative_path,o.size,
- s.id,s.library_id,s.root,s.generation,s.incarnation,s.root_identity,s.enabled,
- r.root,r.mount_id,r.removed,r.config
- FROM inventory_objects o
- JOIN library_sources s ON s.id=o.source_id
- JOIN remote_sources r ON r.id=s.remote_source_id
- WHERE o.id=?`, t.inventoryObjectID).Scan(&objectID, &revision, &sourceID, &assetID, &retired, &state, &relative, &size,
-		&librarySourceID, &libraryID, &libraryRoot, &libraryGeneration, &incarnation, &rootIdentity, &enabled,
-		&remoteRoot, &mountID, &removed, &config)
-	if err != nil {
-		return ownedcapture.ErrCurrent
-	}
-	if objectID != t.inventoryObjectID || revision != t.inventoryRevision || sourceID != t.sourceID || assetID != t.assetID ||
-		retired != 0 || state != "available" || !strings.EqualFold(filepath.Ext(relative), ".iso") || relative != t.inventoryRelativePath || size != t.size ||
-		librarySourceID != t.librarySourceID || libraryID != t.libraryID || libraryRoot != "" && filepath.Join(libraryRoot, filepath.FromSlash(relative)) != t.path ||
-		libraryGeneration != t.libraryGeneration || incarnation != t.incarnation || rootIdentity != t.rootIdentity || enabled != 1 ||
-		remoteRoot != t.remoteRoot || mountID != t.mountID || removed != 0 {
-		return ownedcapture.ErrCurrent
-	}
-	sum := sha256.Sum256(config)
-	if hex.EncodeToString(sum[:]) != t.configDigest {
-		return ownedcapture.ErrCurrent
-	}
-	generation, err := observationGenerationTx(ctx, tx, t.sourceID)
-	if err != nil || generation != t.configGeneration {
-		return ownedcapture.ErrCurrent
-	}
-	profile, err := SourceReadProfileTx(ctx, tx, t.sourceID)
-	if err != nil || profile.Revision != t.profile.Revision {
-		return ownedcapture.ErrCurrent
-	}
-	settings, err := readAdvancedTx(ctx, tx, t.sourceID)
-	if err != nil || settings.revision != t.settings.revision || settings.values.CacheBytes != t.settings.values.CacheBytes ||
-		settings.values.CacheFloorBytes != t.settings.values.CacheFloorBytes || settings.appliedBytes != t.settings.appliedBytes ||
-		settings.appliedFloor != t.settings.appliedFloor || settings.saved != t.settings.saved {
-		return ownedcapture.ErrCurrent
-	}
-	applied := settings.saved
-	if t.mountID != "" {
-		applied = settings.appliedBytes == settings.values.CacheBytes && (settings.values.CacheFloorBytes == 0 || settings.appliedFloor == settings.values.CacheFloorBytes)
-	}
-	if applied != t.applied {
-		return ownedcapture.ErrCurrent
-	}
-	scan, err := readScanObservationTx(ctx, tx, t.sourceID, t.observation.Object)
-	if err != nil || scan.Ref != t.observation || scan.Observation.ScanRevision != t.scanRevision || scan.Observation.Facts.Size != t.size {
-		return ownedcapture.ErrCurrent
-	}
-	var disc int
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_disc_facts WHERE object_id=? AND kind IN('bluray','dvd'))`, t.inventoryObjectID).Scan(&disc); err != nil || disc != 1 {
-		return ownedcapture.ErrCurrent
-	}
-	sequential, err := sourceObjectSequentialTx(ctx, tx, t.sourceID, t.path)
-	if err != nil || !sequential {
-		return ownedcapture.ErrCurrent
-	}
-	itemRows, err := tx.QueryContext(ctx, `SELECT DISTINCT pid(i.public_id) FROM inventory_objects o
- JOIN catalog_assets a ON a.token=o.asset_id
- JOIN catalog_asset_links ia ON ia.asset_id=a.id
- JOIN catalog_entities i ON i.id=ia.entity_id
- WHERE o.id=? AND i.retired=0 LIMIT 2`, t.inventoryObjectID)
-	if err != nil {
-		return ownedcapture.ErrCurrent
-	}
-	items := []string{}
-	for itemRows.Next() {
-		var itemID string
-		if err = itemRows.Scan(&itemID); err != nil {
-			itemRows.Close()
-			return ownedcapture.ErrCurrent
-		}
-		items = append(items, itemID)
-	}
-	itemRows.Close()
-	if err = itemRows.Err(); err != nil || len(items) != 1 || items[0] != t.itemID {
-		return ownedcapture.ErrCurrent
-	}
-	return nil
 }
 
 func (p *captureProducer) checkActorTx(ctx context.Context, tx *sql.Tx, a captureActorRow) (identity.Principal, error) {
@@ -526,10 +537,12 @@ func (p *captureProducer) checkBindingTx(ctx context.Context, tx *sql.Tx, b owne
 		inventoryRelativePath: rows.physical.inventoryRelativePath, assetID: rows.actor.assetID, itemID: rows.actor.itemID,
 		observation:  ObservationRef{SourceID: rows.physical.observationSource, Generation: rows.physical.observationGeneration, Object: rows.physical.observationObject, Revision: rows.physical.observationRevision},
 		scanRevision: rows.physical.scanRevision, size: rows.physical.size, sequential: rows.physical.sequential,
-		profile:  SourceReadProfile{SourceID: rows.physical.sourceID, Revision: rows.policy.profileRevision},
+		profile: SourceReadProfile{SourceID: rows.physical.sourceID, Revision: rows.policy.profileRevision, ScanDepth: rows.policy.profileScanDepth,
+			WholeFileReads: rows.policy.profileWholeFileReads == 1, Limits: ReadLimits{Connections: rows.policy.profileConnections, RequestsPerSecond: rows.policy.profileRequests, BytesPerSecond: rows.policy.profileBytes}},
 		settings: advancedRow{saved: true, revision: rows.policy.settingsRevision, values: SourceAdvanced{CacheBytes: rows.policy.cacheBytes, CacheFloorBytes: rows.policy.cacheFloorBytes}, appliedBytes: rows.policy.appliedBytes, appliedFloor: rows.policy.appliedFloorBytes},
 		applied:  rows.policy.applied, floor: rows.policy.cacheFloorBytes,
 	}
+	target.configDigest = rows.policy.configDigest
 	// The physical path is private source data, reconstructed from the exact
 	// inventory row and library source; it is never part of Binding.
 	var root string
@@ -938,8 +951,9 @@ func (p *captureProducer) Admit(ctx context.Context, captureID string, request o
 		captureID, target.principal.ServerID, target.principal.AccountID, target.principal.ProfileID, family.ID, family.DeviceID, target.principal.Authority, target.principal.Role, target.principal.Grant, target.principal.Epoch, target.itemID, target.assetID, captureID); err != nil {
 		return nil, err
 	}
-	if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_capture_policy(capture_id,profile_revision,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,policy_witness) VALUES(?,?,?,?,?,?,?,?,?)`,
-		captureID, target.profile.Revision, target.settings.revision, target.settings.values.CacheBytes, target.settings.values.CacheFloorBytes, target.settings.appliedBytes, target.settings.appliedFloor, boolInt(target.applied), binding.PolicyWitness); err != nil {
+	if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_capture_policy(capture_id,profile_revision,profile_scan_depth,profile_whole_file_reads,profile_connections,profile_requests_per_second,profile_bytes_per_second,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,config_digest,policy_witness) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		captureID, target.profile.Revision, target.profile.ScanDepth, boolInt(target.profile.WholeFileReads), target.profile.Limits.Connections, target.profile.Limits.RequestsPerSecond, target.profile.Limits.BytesPerSecond,
+		target.settings.revision, target.settings.values.CacheBytes, target.settings.values.CacheFloorBytes, target.settings.appliedBytes, target.settings.appliedFloor, boolInt(target.applied), target.configDigest, binding.PolicyWitness); err != nil {
 		return nil, err
 	}
 	// The active map closes the tiny Admit-commit/builder-journal gap: bounded
