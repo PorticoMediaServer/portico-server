@@ -86,6 +86,6 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
       </ServicesWorkspaceRow>
     </ServicesGroup> : null}
     <Dialog open={Boolean(leaving)} onOpenChange={open => { if (!open && !busy) setLeaving(undefined); }} title={t('web.hostedAccount.leaveTitle', {server: leaving?.name ?? ''})}
-      description={t('web.hostedAccount.leaveBody', {server: leaving?.name ?? ''})} footer={<><Button size="small" disabled={busy} onClick={() => setLeaving(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction loading={busy} onClick={() => void leave()}>{t('web.hostedAccount.leaveServer')}</ServicesDangerAction></>}><></></Dialog>
+      description={t('web.hostedAccount.leaveBody', {server: leaving?.name ?? ''})} showCloseButton={false} footer={<><Button size="small" disabled={busy} onClick={() => setLeaving(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction loading={busy} onClick={() => void leave()}>{t('web.hostedAccount.leaveServer')}</ServicesDangerAction></>}><></></Dialog>
   </>;
 }
