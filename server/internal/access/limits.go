@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/qualityladder"
 	"portico.local/server/internal/streamlimits"
 )
 
@@ -84,10 +83,6 @@ type Limits struct {
 	MaxProfiles       int               `json:"maxProfiles"`
 	AllowRemote       bool              `json:"allowRemote"`
 	Conversion        string            `json:"conversion"`
-	// AwayQuality is the largest quality this person may be offered away from
-	// home: "server" follows the server's own ceiling, otherwise one published
-	// quality-ladder id. It narrows what the server may send; it never raises it.
-	AwayQuality       string            `json:"awayQuality"`
 	MaxStreams        int               `json:"maxStreams"`
 	MaxStreamsMode    streamlimits.Mode `json:"maxStreamsMode"`
 	RemoteBitrateKbps int               `json:"remoteBitrateKbps"`
@@ -110,7 +105,7 @@ type Limits struct {
 // DefaultLimits inherits the server stream ceiling, adds no content ceiling,
 // and permits unrated content. Explicit unlimited also obeys the server ceiling.
 func DefaultLimits() Limits {
-	return Limits{MaxStreamsMode: streamlimits.Inherit, AccessTokens: true, MaxProfiles: 8, AllowRemote: true, Conversion: "server", AwayQuality: "server", MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
+	return Limits{MaxStreamsMode: streamlimits.Inherit, AccessTokens: true, MaxProfiles: 8, AllowRemote: true, Conversion: "server", MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
 }
 
 // LimitsDocument is the wire shape every limits read and write returns.
@@ -127,9 +122,6 @@ func normalizeLimits(v *Limits) error {
 	fields := []string{}
 	if v.MaxProfiles < 1 || v.MaxProfiles > 8 {
 		fields = append(fields, "limits.maxProfiles")
-	}
-	if !validAwayQuality(v.AwayQuality) {
-		fields = append(fields, "limits.awayQuality")
 	}
 	if v.Conversion != "server" && v.Conversion != "audio" && v.Conversion != "none" {
 		fields = append(fields, "limits.conversion")
@@ -402,21 +394,6 @@ func accountExists(tx *sql.Tx, account string) error {
 	return nil
 }
 
-// validAwayQuality accepts the server sentinel or one published ladder id; a
-// person's ceiling can only narrow the server's, so an unknown id is refused
-// rather than silently treated as no limit.
-func validAwayQuality(value string) bool {
-	if value == "" || value == "server" {
-		return true
-	}
-	for _, preset := range qualityladder.Fixed() {
-		if preset.ID == value {
-			return true
-		}
-	}
-	return false
-}
-
 // Existing non-stream access settings use their established body store. Stream
 // mode/value, token permission and profile capacity have normalized authorities
 // and are deliberately absent here; reads overlay those rows, never this body.
@@ -424,7 +401,6 @@ func limitsBody(v Limits) ([]byte, error) {
 	type stored struct {
 		AllowRemote       bool           `json:"allowRemote"`
 		Conversion        string         `json:"conversion"`
-		AwayQuality       string         `json:"awayQuality"`
 		RemoteBitrateKbps int            `json:"remoteBitrateKbps"`
 		RatingSystem      string         `json:"ratingSystem"`
 		MaxContentRating  string         `json:"maxContentRating"`
@@ -433,5 +409,5 @@ func limitsBody(v Limits) ([]byte, error) {
 		Channels          ChannelPolicy  `json:"channelPolicy"`
 		Tags              TagPolicy      `json:"tagPolicy"`
 	}
-	return json.Marshal(stored{v.AllowRemote, v.Conversion, v.AwayQuality, v.RemoteBitrateKbps, v.RatingSystem, v.MaxContentRating, v.AllowUnrated, v.Schedule, v.Channels, v.Tags})
+	return json.Marshal(stored{v.AllowRemote, v.Conversion, v.RemoteBitrateKbps, v.RatingSystem, v.MaxContentRating, v.AllowUnrated, v.Schedule, v.Channels, v.Tags})
 }
