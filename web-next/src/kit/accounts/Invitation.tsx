@@ -66,7 +66,7 @@ export function PorticoInvitation({serverName, libraries, member, account, signe
   return <AuthStage shape="top" legal={false} bare={bare} className={styles.porticoInvitationStage} contentClassName={styles.porticoInvitationContent}
     topRight={!compact && account && <span className={styles.invitationHeaderAvatar} aria-hidden="true">{Array.from(account.username)[0]?.toUpperCase()}</span>}>
     {compact ? <div className={styles.invitationPreview}><span className={styles.invitationPreviewIcon}><Icon name="i-server" size={26} /></span>
-      <span><b>{serverName}</b><small>{t('accounts.invitation.invitedYou')}</small></span></div>
+      <span><b>{serverName}</b><small>{t('accounts.invitation.invitedYouToJoin')}</small></span></div>
       : <><p className={styles.eyebrow}>{t('accounts.invitation.to')}</p><h1>{serverName}</h1>
         <p className={styles.lede}>{t('accounts.invitation.porticoBody', {server: serverName})}</p></>}
     <InvitationLibraries libraries={libraries} member={member} />
