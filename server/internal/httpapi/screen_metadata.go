@@ -140,7 +140,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	// The choices before a library exists: the agents (with their languages)
-	// POST /v1/libraries accepts for this kind. No database read is needed.
+	// POST /v1/libraries accepts for this kind, with its persisted new-library locale.
 	d.httpHandle(mux, "GET /v1/library-kinds/{kind}/metadata-agents", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := administrator(w, r, false); !ok {
 			return
@@ -150,7 +150,19 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			failure(w, requestinput.New("invalid library kind"))
 			return
 		}
-		write(w, 200, map[string]any{"libraryKind": kind, "agents": metadata.LibraryAgentOptions(kind)})
+		if d.Metadata == nil {
+			policyError(w, "metadata_unavailable")
+			return
+		}
+		options, err := d.Metadata.NewLibraryAgentOptions(r.Context(), kind)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		if _, ok := administrator(w, r, false); !ok {
+			return
+		}
+		write(w, 200, map[string]any{"libraryKind": kind, "agents": options})
 	})
 	d.httpHandle(mux, "GET /v1/libraries/{id}/metadata/screen", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := administrator(w, r, false); !ok {
