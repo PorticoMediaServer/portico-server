@@ -170,3 +170,13 @@ test('direct spotlight offers parse and adapt without manufacturing a row or sel
   assert.equal(homeEntryCapabilities(candidate.resumeTarget!,web).watchlisted,undefined);
   assert.equal(candidate.entry.homeActions!.state.personalRevision,5);
 });
+
+test('Not interested requires a strict explicit offer and never becomes a selection offer', () => {
+  for (const offered of [undefined, false, 'true', 1, null, true]) {
+    const value = entry('movie', {homeActions: {...actions(), notInterested: offered}});
+    assert.equal(homeEntryCapabilities(value, {...phone, recommendationRow:true}).notInterested === true, offered === true);
+    assert.equal('notInterested' in homeEntrySelection(value, phone)!.capabilities, false);
+    assert.equal(value.homeActions?.notInterested === true, offered === true);
+    assert.equal(homeEntryCapabilities(value, phone).notInterested, undefined);
+  }
+});

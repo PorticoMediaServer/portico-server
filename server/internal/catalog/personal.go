@@ -317,13 +317,17 @@ func mutationField(m *PersonalMutation) (string, json.RawMessage, error) {
 // taste engine maps an episode, a song or a book file to that same work, so
 // the flag may sit on either. Anything else (a season, an artist, a
 // collection) answers as absent, like an unknown id.
+func personalTargetSupported(kind string, playable bool, field string) bool {
+	return playable || field == "notInterested" && (kind == "show" || kind == "album" || kind == "book")
+}
+
 func personalTarget(tx *sql.Tx, entityID int64, field string) error {
 	var kind string
 	var playable bool
 	if e := tx.QueryRow(`SELECT k.name,k.playable FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.id=?`, entityID).Scan(&kind, &playable); e != nil {
 		return e
 	}
-	if playable || field == "notInterested" && (kind == "show" || kind == "album" || kind == "book") {
+	if personalTargetSupported(kind, playable, field) {
 		return nil
 	}
 	return sql.ErrNoRows

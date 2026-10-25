@@ -13,6 +13,7 @@ import (
 // Device support is deliberately separate; these facts never grant a write.
 // Every command rechecks its own authority and current target on execution.
 type HomeActions struct {
+	NotInterested      bool                 `json:"notInterested,omitempty"`
 	RemoveFromContinue bool                 `json:"removeFromContinue,omitempty"`
 	Play               bool                 `json:"play"`
 	Queue              bool                 `json:"queue"`
@@ -76,6 +77,7 @@ type HomeActionAuthority struct {
 type homeActionFacts struct {
 	kind, library string
 	available     bool
+	playable      bool
 	state         HomeActionState
 }
 
@@ -167,7 +169,7 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 	bound = append(bound, containerArgs...)
 	// The requested primary keys drive every join. Personal state is the
 	// displayed title's row; a show's first episode cannot supply its flags.
-	found, err := s.read().Query(`SELECT pid(e.public_id),k.name,l.library_id,
+	found, err := s.read().Query(`SELECT pid(e.public_id),k.name,l.library_id,k.playable,
 	 `+availability+`,COALESCE(p.watchlisted,0),COALESCE(p.favorite,0),p.rating,
 	 COALESCE(p.revision,0),COALESCE(c.watched,`+personalstate.SQL("?", "e.id")+`,0),COALESCE(c.revision,0)
 	 FROM json_each(?) requested CROSS JOIN catalog_entities e ON e.public_id=pid_blob(requested.value)
@@ -184,7 +186,7 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 	for found.Next() {
 		var id string
 		var f homeActionFacts
-		if err = found.Scan(&id, &f.kind, &f.library, &f.available, &f.state.Watchlisted, &f.state.Favorite, &f.state.Rating, &f.state.PersonalRevision, &f.state.Watched, &f.state.ContainerRevision); err != nil {
+		if err = found.Scan(&id, &f.kind, &f.library, &f.playable, &f.available, &f.state.Watchlisted, &f.state.Favorite, &f.state.Rating, &f.state.PersonalRevision, &f.state.Watched, &f.state.ContainerRevision); err != nil {
 			break
 		}
 		facts[id] = f
@@ -225,6 +227,13 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 		}
 		available := f.available
 		a := &HomeActions{State: f.state, Details: true}
+		// Same-snapshot visible displayed identity, using exactly the batch writer's
+		// target support. Row classification only affects client presentation.
+		targetMatches := true
+		if (f.kind == "show" || f.kind == "album" || f.kind == "book") && entry.Navigation != nil && entry.Navigation.EntityID != "" {
+			targetMatches = entry.Navigation.EntityID == entry.ID
+		}
+		a.NotInterested = authority.Personal && targetMatches && personalTargetSupported(f.kind, f.playable, "notInterested")
 		a.Play = authority.Playback && available
 		a.Queue = authority.Queue && available
 		// Playlist jobs expand a real container selector server-side. Explicit

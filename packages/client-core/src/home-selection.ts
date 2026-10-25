@@ -6,6 +6,8 @@ import type {EntryCapabilities} from './presentation/entry-actions.ts';
 /** Actual platform runtimes narrow server offers; they never create a grant. */
 export type HomeActionPlatform=Readonly<{
   platform:'web'|'phone-app'|'tv';
+  /** Presentation context only; never supplies a server grant. */
+  recommendationRow?:boolean;
   playbackAvailable?:boolean;
   queueAvailable?:boolean;
   nativeDownloadsAvailable?:boolean;
@@ -74,6 +76,7 @@ function menuCapabilities(kind:ContentEntryKind,actions:HomeActions|undefined,pl
     ...(actions.rating?{rating:actions.state.rating}:{}),
     addToPlaylist:grants.playlist,addToCollection:grants.collection,
     ...(grants.download?{download:container?'container' as const:'media' as const}:{}),
+    ...(actions.notInterested===true&&platform.recommendationRow===true?{notInterested:true}:{}),
     details:actions.details,editMetadata:grants.edit,refreshMetadata:grants.refresh,delete:grants.delete,
   });
 }
