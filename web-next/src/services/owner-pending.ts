@@ -68,15 +68,20 @@ export async function forgetHostedOwnerPending(store: HostedOwnerPendingStore, p
 
 /** Headless operation scope, using the browserAccount singleton supplied by the
  * caller. No automatic approval, completion, redirect or second session store. */
-type ApprovalOperations = Readonly<{review: typeof reviewHostedOwnerClaim; decide: typeof decideHostedOwnerClaim; complete: typeof completeHostedOwnerClaim}>;
+type ApprovalReview = Pick<HostedOwnerClaimReview, 'request' | 'identity' | 'expiresAt'>;
+type ApprovalOperations<Review extends ApprovalReview> = Readonly<{
+  review: (account: ServicesAccount, request: HostedOwnerClaimLink, signal: AbortSignal) => Promise<Review>;
+  decide: (account: ServicesAccount, review: Review, decision: 'approve' | 'deny', signal: AbortSignal) => Promise<void>;
+  complete: (account: ServicesAccount, review: Review, signal: AbortSignal) => Promise<string | undefined>;
+}>;
 export function scopedHostedOwnerClaim(account: ServicesAccount, store: HostedOwnerPendingStore, value: HostedOwnerPending) {
   return scopedHostedApproval(account, store, value, {review: reviewHostedOwnerClaim, decide: decideHostedOwnerClaim, complete: completeHostedOwnerClaim});
 }
 /** Code/currentness mechanics only. Purpose-closed validators are fixed by the
  * caller module, never by the URL or an untrusted pending scalar. */
-export function scopedHostedApproval(account: ServicesAccount, store: HostedOwnerPendingStore, value: HostedOwnerPending, operations: ApprovalOperations) {
+export function scopedHostedApproval<Review extends ApprovalReview>(account: ServicesAccount, store: HostedOwnerPendingStore, value: HostedOwnerPending, operations: ApprovalOperations<Review>) {
   const pending = checked(value, account.api.origin, Date.now());
-  let epoch = 0, active: AbortController | undefined, reviewed: HostedOwnerClaimReview | undefined, disposed = false;
+  let epoch = 0, active: AbortController | undefined, reviewed: Review | undefined, disposed = false;
   const operation = () => {
     if (disposed) throw changed();
     active?.abort();

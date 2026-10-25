@@ -112,7 +112,7 @@ async function lookup(account: ServicesAccount, request: HostedOwnerClaimLink, s
     // A change-owner claim names what the previous owner becomes; a plain switch
     // carries neither field. Anything else is refused rather than guessed.
     const previousOwnerRole = claim.previousOwnerRole;
-    if (previousOwnerRole !== undefined && !['admin', 'member', 'remove'].includes(previousOwnerRole)) throw invalid();
+    if (previousOwnerRole !== undefined && previousOwnerRole !== 'admin' && previousOwnerRole !== 'member' && previousOwnerRole !== 'remove') throw invalid();
     const currentOwnerUsername = claim.currentOwnerUsername;
     if (currentOwnerUsername !== undefined && (!currentOwnerUsername || new TextEncoder().encode(currentOwnerUsername).length > 64)) throw invalid();
     if ((previousOwnerRole === undefined) !== (currentOwnerUsername === undefined)) throw invalid();
