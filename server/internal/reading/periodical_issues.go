@@ -30,14 +30,24 @@ type PeriodicalYear struct {
 	Year       string
 	IssueCount int64
 }
+type PeriodicalDay struct {
+	Date       string
+	IssueCount int64
+}
 type PeriodicalIssuePage struct {
 	SeriesPage
 	Years []PeriodicalYear
+	Days  []PeriodicalDay
 }
 
 // Year buckets count the complete eligible series, before any date/year window.
 func (s *Service) PeriodicalIssuesInYear(ctx context.Context, p identity.Principal, library, series, publicationType, issueDate, year, cursor string, limit int) (PeriodicalIssuePage, error) {
-	out := PeriodicalIssuePage{SeriesPage: SeriesPage{Items: []LibraryRow{}}, Years: []PeriodicalYear{}}
+	return s.PeriodicalIssuesInMonth(ctx, p, library, series, publicationType, issueDate, year, "", cursor, limit)
+}
+
+// A newspaper month publishes actual available edition dates, not guessed days.
+func (s *Service) PeriodicalIssuesInMonth(ctx context.Context, p identity.Principal, library, series, publicationType, issueDate, year, month, cursor string, limit int) (PeriodicalIssuePage, error) {
+	out := PeriodicalIssuePage{SeriesPage: SeriesPage{Items: []LibraryRow{}}, Years: []PeriodicalYear{}, Days: []PeriodicalDay{}}
 	if s == nil || s.DB == nil || s.Visible == nil || s.SeriesScope == nil {
 		return out, identity.ErrForbidden
 	}
@@ -48,6 +58,9 @@ func (s *Service) PeriodicalIssuesInYear(ctx context.Context, p identity.Princip
 		return out, ErrInvalid
 	}
 	if year != "" && (len(year) != 4 || !compactcatalog.ValidReadingIssueDate(year+"-01") || issueDate != "" && issueDate[:4] != year) {
+		return out, ErrInvalid
+	}
+	if month != "" && (publicationType != "newspaper" || len(month) != 7 || !compactcatalog.ValidReadingIssueDate(month) || year != "" && month[:4] != year || issueDate != "" && issueDate[:7] != month) {
 		return out, ErrInvalid
 	}
 	if library == "" || len(library) > 128 || len(series) != 43 || limit < 1 || limit > 100 || len(cursor) > 4096 {
@@ -88,6 +101,9 @@ func (s *Service) PeriodicalIssuesInYear(ctx context.Context, p identity.Princip
 	}
 	if year != "" {
 		cursorDomain += ":year:" + year
+	}
+	if month != "" {
+		cursorDomain += ":month:" + month
 	}
 	digest, err := seriesScopeDigest(library, series, cursorDomain, scope, limit)
 	if err != nil {
@@ -131,6 +147,31 @@ func (s *Service) PeriodicalIssuesInYear(ctx context.Context, p identity.Princip
 	yearRows.Close()
 	if err != nil {
 		return out, err
+	}
+	if month != "" {
+		base += ` AND m.issue_date>=? AND m.issue_date<?`
+		args = append(args, month+"-", month+".")
+		dayRows, e := tx.QueryContext(ctx, `SELECT m.issue_date,count(*)`+base+` GROUP BY m.issue_date ORDER BY m.issue_date LIMIT 32`, args...)
+		if e != nil {
+			return out, e
+		}
+		for dayRows.Next() {
+			var day PeriodicalDay
+			if e = dayRows.Scan(&day.Date, &day.IssueCount); e != nil {
+				dayRows.Close()
+				return out, e
+			}
+			if len(out.Days) >= 31 || len(day.Date) != 10 || !compactcatalog.ValidReadingIssueDate(day.Date) || day.Date[:7] != month || day.IssueCount < 1 || day.IssueCount > 9007199254740991 {
+				dayRows.Close()
+				return out, ErrChanged
+			}
+			out.Days = append(out.Days, day)
+		}
+		e = dayRows.Err()
+		dayRows.Close()
+		if e != nil {
+			return out, e
+		}
 	}
 	if year != "" {
 		base += ` AND m.issue_date>=? AND m.issue_date<?`
@@ -203,7 +244,7 @@ func (s *Service) PeriodicalIssuesInYear(ctx context.Context, p identity.Princip
 	if err != nil {
 		return out, err
 	}
-	if len(out.Items) == 0 && cursor == "" && issueDate == "" && year == "" {
+	if len(out.Items) == 0 && cursor == "" && issueDate == "" && year == "" && month == "" {
 		return out, ErrUnavailable
 	}
 	if len(out.Items) > limit {
