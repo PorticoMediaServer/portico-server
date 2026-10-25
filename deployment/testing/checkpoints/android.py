@@ -37,8 +37,8 @@ class Device:
     time.sleep(1)
  def text(self):
   nodes=self.nodes()
-  if any(x.get('password') is True or x.get('editable') is True for x in nodes):raise Refusal('editable-or-credential-screen')
-  return '\n'.join(str(x.get('label','')) for x in nodes)
+  if any(x.get('password') is True for x in nodes):raise Refusal('credential-screen')
+  return '\n'.join(str(x.get('label','')) for x in nodes if x.get('editable') is not True)
  def key(self,key):subprocess.run(['adb','-s',self.serial,'shell','input','keyevent',key],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
  def tap(self,pattern):
   nodes=self.nodes();candidates=[x for x in nodes if re.fullmatch(pattern,str(x.get('label',''))) and x.get('hittable') is True and x.get('enabled') is not False and (x.get('type','').endswith('Button') or str(x.get('identifier','')).startswith('phone-tab-'))]
@@ -111,7 +111,10 @@ def main():
   home=flow('home-real-rows',lambda:d.wait_text(legacy.HOME_ROWS.pattern,20))
   if home:
    if a.mode=='phone':flow('libraries-open',lambda:(d.tap('Libraries'),d.wait_text('Movies',15)))
-   movies=flow('movies-browse',lambda:(d.tap('Movies(?:,.*)?'),d.wait_text('Movies',15)))
+   def browse_movies():
+    if not re.search(r'80 movies|12 Angry Men',d.text()):d.tap('Movies(?:,.*)?')
+    d.wait_text('12 Angry Men',20)
+   movies=flow('movies-browse',browse_movies)
    if a.mode=='tv':
     def focus_walk():
      seen=set()
