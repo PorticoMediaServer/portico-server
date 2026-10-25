@@ -1,4 +1,5 @@
 export const settingsMessages = {
+  'next.shell.switchToLocalSignIn': 'Switch to local sign-in',
   'next.settings.backup.protectTitle': 'Backup passphrase',
   'next.settings.backup.changeTitle': 'Change backup passphrase',
   'next.settings.backup.restoreTitle': 'This backup is protected',

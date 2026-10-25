@@ -40,7 +40,7 @@ export function ProfileAvatarFace({initial, art = 'blue', size = 34, appearance 
 
 export type AccountMenuActions = Readonly<{
   manageProfiles?: () => void; addProfile?: () => void; switchProfile: (profile: ProfileIdentity) => void;
-  switchServer: () => void; settings: () => void; notifications?: () => void; watchTogether: () => void; downloads?: () => void;
+  switchServer: () => void; switchToLocalSignIn?: () => void; settings: () => void; notifications?: () => void; watchTogether: () => void; downloads?: () => void;
   feedback?: () => void; help: () => void; signOut: () => void; signOutPorticoAccount?: () => void;
 }>;
 export type AccountMenuProps = Readonly<{
@@ -60,6 +60,7 @@ export function AccountMenu({open, onOpenChange, trigger, current, primary, acco
     {serverAction}
     <MenuSeparator />
     {serverChoices?.length ? <MenuGroup label={t('next.shell.switchServerMenu')}>{serverChoices.map(server=><MenuItem key={server.id} className={styles.menuAction} icon="i-server" onSelect={server.onSelect}>{server.label}</MenuItem>)}</MenuGroup> : <MenuItem className={styles.menuAction} icon="i-server" onSelect={actions.switchServer}>{t('next.shell.switchServerMenu')}</MenuItem>}
+    {actions.switchToLocalSignIn && <MenuItem className={styles.menuAction} icon="i-switch" onSelect={actions.switchToLocalSignIn}>{t('next.shell.switchToLocalSignIn')}</MenuItem>}
     <MenuItem className={styles.menuAction} icon="i-gear" onSelect={actions.settings}>{t('next.shell.settings')}</MenuItem>
     {actions.notifications && <MenuItem className={styles.menuAction} icon="i-bell" onSelect={actions.notifications} aria-label={notificationCount === undefined ? t('next.shell.notifications') : t('next.shell.notificationsUnread', {count: notificationCount})}><span className={styles.notificationAction}>{t('next.shell.notifications')}{notificationCount !== undefined && notificationCount > 0 ? <span className={styles.notificationCount}>{notificationCount}</span> : notificationDot ? <span className={styles.notificationMenuDot} aria-hidden="true" /> : undefined}</span></MenuItem>}
     <MenuSeparator />

@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState, type ComponentType, type ReactNode} from 'react';
 import {Link, useNavigate, useRouterState} from '@tanstack/react-router';
+import {ownerSwitchContextAllowed} from '../platform/secure-pending';
 import {defaultI18n} from '@i18n';
 import type {Library, Viewer} from '@core/index.ts';
 import {AccountMenu, ProfileAvatar, ProfileAvatarFace, type ProfileIdentity, type ProfileTone} from '../kit/shell';
@@ -97,7 +98,9 @@ export function Shell({identity, OwnerActivity, dockVisible, serverAway, onSignO
       ...(identity.canManageProfiles ? {manageProfiles: () => { void navigate({to: '/settings'}); }} : {}),
       ...(identity.canManageProfiles ? {addProfile: () => { void navigate({to: '/settings'}); }} : {}),
       switchProfile: profile => {if(onSwitchProfile){setProfilePin('');setProfileError(undefined);setProfileChoice(profile);if(!profile.pinRequired)void chooseProfile(profile);}else{void navigate({to: '/profiles', search: {profileId: profile.id}});}},
-      switchServer: () => { void navigate({to: '/servers'}); }, settings: () => { void navigate({to: '/settings'}); },
+      switchServer: () => { void navigate({to: '/servers'}); },
+      ...(identity.signIn === 'portico' && viewer.role === 'owner' && identity.capabilities?.manageServer === true && ownerSwitchContextAllowed() ? {switchToLocalSignIn: () => { void navigate({to: '/settings', search: {section: 'signin'}}); }} : {}),
+      settings: () => { void navigate({to: '/settings'}); },
       ...(!desktop ? {notifications: () => { void navigate({to: '/notifications'}); }} : {}),
       watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: onFeedback,
       help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,signOutPorticoAccount:onSignOutPorticoAccount,
