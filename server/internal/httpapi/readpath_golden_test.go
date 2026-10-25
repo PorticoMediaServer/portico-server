@@ -604,6 +604,8 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 					switch entry["kind"] {
 					case "movie":
 						actions.Playlist, actions.Collection, actions.Rating = true, true, true
+						// Not-interested is a supported personal command for a movie.
+						actions.NotInterested = true
 					case "show":
 						actions.Selection.Favorite, actions.Selection.Watched = true, true
 					default:
