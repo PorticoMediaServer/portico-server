@@ -182,3 +182,8 @@
   .creditRow > button { grid-column: 1 / -1; justify-self: end; }
   .editorTabs button { flex: none; }
 }
+
+.choices > .uploadTile { margin-top: 0; min-width: 0; padding: 12px; justify-content: center; }
+.choices > .uploadTile label { position: relative; padding: 8px; border: 1px solid var(--color-line-strong); border-radius: 8px; cursor: pointer; }
+.choices > .uploadTile label:focus-within { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.choices > .uploadTile input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

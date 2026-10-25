@@ -272,6 +272,11 @@ function Artwork({data, busy, portraitCover, onUse, onLock, onFindMore, onRefetc
   const role = data.artworkRoles.includes(selected) ? selected : data.artworkRoles[0];
   const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
   const chosen = data.snapshot.artwork.find(choice => choice.role === role);
+  const uploadTile = onUpload ? <div className={styles.uploadTile} onDragOver={event => {if (!busy) event.preventDefault();}} onDrop={event => {event.preventDefault(); if (!busy) void upload(event.dataTransfer.files[0]);}}>
+        <b>{t('web.metadata.uploadImage')}</b><p>{t('web.metadata.uploadImageHelp')}</p>
+        <label>{t('web.metadata.chooseImageFile')}<input type="file" accept="image/jpeg,image/png" disabled={busy} onChange={event => {const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file);}}/></label>
+        {uploadError ? <p role="alert">{uploadError}</p> : null}
+      </div> : null;
   return <div className={styles.artwork}>
     {localOnly ? <p className={styles.lockHelp}>{t('web.metadata.localArtworkHelp')}</p> : null}
     <div className={styles.artRoles} role="tablist" aria-label={t('web.metadata.tabArtwork')}>{data.artworkRoles.map((value, index) =>
@@ -292,19 +297,16 @@ function Artwork({data, busy, portraitCover, onUse, onLock, onFindMore, onRefetc
         {onFindMore && <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>}
         {onRefetch && <Button size="small" onClick={() => onRefetch(role)} disabled={busy || !chosen}>{t('web.metadata.refetchChosen')}</Button>}
       </header>
-      {candidates.length ? <div className={styles.choices} data-shape={portraitCover && role === 'cover' ? 'poster' : role === 'cover' || role === 'square' ? 'square' : role === 'backdrop' || role === 'still' || role === 'thumbnail' || role === 'logo' ? 'landscape' : role === 'banner' ? 'banner' : 'poster'}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
+      {!candidates.length ? <p className={styles.working}>{t('web.metadata.noCandidates')}</p> : null}
+      <div className={styles.choices} data-shape={portraitCover && role === 'cover' ? 'poster' : role === 'cover' || role === 'square' ? 'square' : role === 'backdrop' || role === 'still' || role === 'thumbnail' || role === 'logo' ? 'landscape' : role === 'banner' ? 'banner' : 'poster'}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
         {candidate.previewUrl ? <img src={candidate.previewUrl} alt={t('web.metadata.artAlt', {role: t('web.metadata.artRole', {role}), provider: providerName(candidate.provider)})} loading="lazy" /> : <div className={styles.placeholder} />}
         <figcaption><small>{providerName(candidate.provider)}{candidate.locale ? ` · ${candidate.locale}` : ''}{candidate.votes != null ? ` · ${t('web.metadata.votes', {count: candidate.votes})}` : ''}</small></figcaption>
         {candidate.current ? <span className={styles.badge}>{t('web.metadata.inUse')}</span>
           : <Button size="small" disabled={busy} onClick={() => onUse(role, candidate.id)}>{t('web.liveSource.useThis')}</Button>}
         {candidate.provider === 'upload' ? <Button size="small" disabled={busy} onClick={() => {if (removal.current) retireRemoval(removal.current); const attempt: Removal = {data, candidate, handler: onRemove, live: true, started: false}; removal.current = attempt; setRemoveFailed(false); setRemoving(attempt);}}>{t('web.metadata.removeUpload')}</Button> : null}
-      </figure>)}</div> : <p className={styles.working}>{t('web.metadata.noCandidates')}</p>}
+      </figure>)}{uploadTile}</div>
       {onMakeFromVideo && (role === 'still' || role === 'thumbnail') ? <div className={styles.uploadTile}><b>{t('web.metadata.makeFromVideo')}</b><p>{t('web.metadata.makeFromVideoHelp')}</p><Button size="small" disabled={busy} onClick={() => {if (isDataCurrent(data)) void onMakeFromVideo(data);}}>{t('web.metadata.makeFromVideo')}</Button></div> : null}
-      {onUpload ? <div className={styles.uploadTile} onDragOver={event => {if (!busy) event.preventDefault();}} onDrop={event => {event.preventDefault(); if (!busy) void upload(event.dataTransfer.files[0]);}}>
-        <b>{t('web.metadata.uploadImage')}</b><p>{t('web.metadata.uploadImageHelp')}</p>
-        <label>{t('web.metadata.chooseImageFile')}<input type="file" accept="image/jpeg,image/png" disabled={busy} onChange={event => {const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file);}}/></label>
-        {uploadError ? <p role="alert">{uploadError}</p> : null}
-      </div> : null}
+
       {data.artwork.jobs.filter(job => job.role === role).map(job => <p key={job.id} role="status">{t('web.metadata.artJob', {role: t('web.metadata.artRole', {role}), state: job.status})}</p>)}
     </section> : null}
     <Dialog open={Boolean(removing && currentRemoval(removing))} title={t('web.metadata.removeUploadTitle')} description={t('web.metadata.removeUploadBody')} onOpenChange={open => {if (!open) retireRemoval(removing);}}
