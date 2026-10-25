@@ -30,13 +30,14 @@ function BoundNotifications({captured}: {captured: NonNullable<ReturnType<typeof
   const apply = (action: InboxAction, note: Notification) => {if (context.isCurrent() && service.getSnapshot().items.includes(note)) void service.apply(action, [note.id]);};
   const open = (note: Notification, action: NotificationAction) => {
     if (!context.isCurrent() || !service.getSnapshot().items.includes(note) || !note.actions.includes(action)) return;
-    const target = notificationDestination(action, context.facts.identity.libraries, context.facts.identity.capabilities?.manageServer === true);
+    const target = notificationDestination(action, context.facts.identity.libraries, context.facts.identity.capabilities?.manageServer === true, note);
     if (!target) return;
     void service.apply('read', [note.id]);
     if (target.view === 'home') void router.navigate({to: '/'});
     else if (target.view === 'settings') void router.navigate({to: '/settings'});
     else if (target.view === 'dashboard') void router.navigate({to: '/dashboard'});
     else if (target.view === 'library') void router.navigate({to: '/library/$libraryId', params: {libraryId: target.id}});
+    else if (target.view === 'downloads') void router.navigate({to: '/saved', search: {view: 'downloads'}});
     else void router.navigate({to: '/item/$itemId', params: {itemId: target.id}});
   };
   const panel = <NotificationsPanel snapshot={state} onAudience={audience => {if (context.isCurrent()) void service.load(audience, state.view);}}
@@ -48,7 +49,7 @@ function BoundNotifications({captured}: {captured: NonNullable<ReturnType<typeof
           const words = noticeWords(note, defaultI18n);
           return <NotificationItem key={note.id} title={words.title} body={words.body} unread={!note.read} archived={note.archived} layout={phone ? 'phone' : 'desktop'}
             when={[{id: 'when', role: 'context', text: defaultI18n.relativeTime(note.createdAt)}]} actions={note.actions.map((action, index) => ({id: String(index), label: action.label,
-              disabled: !notificationDestination(action, context.facts.identity.libraries, context.facts.identity.capabilities?.manageServer === true), onAction: () => open(note, action)}))}
+              disabled: !notificationDestination(action, context.facts.identity.libraries, context.facts.identity.capabilities?.manageServer === true, note), onAction: () => open(note, action)}))}
             onMarkRead={() => apply('read', note)} onArchive={() => apply('archive', note)} onMoveToInbox={() => apply('unarchive', note)} />;
         })}
   </NotificationsPanel>;
