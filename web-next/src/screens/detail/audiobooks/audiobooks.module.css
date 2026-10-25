@@ -10,34 +10,34 @@
 .eyebrow { display:block; margin:18px auto 4px; padding:0; border:0; background:none; color:var(--color-accent-strong); font:var(--type-audiobook-detail-eyebrow-weight) var(--type-audiobook-detail-eyebrow-size)/var(--type-audiobook-detail-eyebrow-line) var(--font); }
 .hero h1 { margin:0 0 4px; font-size:var(--type-audiobook-detail-title-size); line-height:var(--type-audiobook-detail-title-line); font-weight:var(--type-audiobook-detail-title-weight); letter-spacing:var(--type-audiobook-detail-title-tracking); }
 .author { padding:0; border:0; background:none; font:var(--type-audiobook-detail-author-weight) var(--type-audiobook-detail-author-size)/var(--type-audiobook-detail-author-line) var(--font); color:var(--color-accent-strong); }
-.meta { display:flex; flex-wrap:wrap; justify-content:center; margin-top:8px; font-size:13px; gap:6px 12px; color:var(--color-text-secondary); }
+.meta { display:flex; flex-wrap:wrap; justify-content:center; margin-top:8px; font-size:var(--type-audiobook-detail-meta-size); gap:6px 12px; color:var(--color-text-secondary); }
 .actions { display:flex; gap:10px; margin:20px 20px 0; }
 .primary { flex:1; }
 .round { border-radius:50%; }
-.progress { margin:14px 20px 0; display:flex; align-items:center; gap:12px; font-size:12.5px; font-weight:600; color:var(--color-text-tertiary); }
+.progress { margin:14px 20px 0; display:flex; align-items:center; gap:12px; font-size:var(--type-audiobook-detail-progress-size); font-weight:var(--type-audiobook-detail-progress-weight); color:var(--color-text-tertiary); }
 .progress > span { flex:1; height:4px; border-radius:4px; overflow:hidden; background:rgb(237 245 250 / .18); }
 .progress i, .chapterProgress i { display:block; height:100%; background:var(--color-accent-strong); }
-.about { margin:16px 20px 0; font-size:14px; line-height:1.5; color:var(--color-text-secondary); display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+.about { margin:16px 20px 0; font-size:var(--type-audiobook-detail-synopsis-size); line-height:var(--type-audiobook-detail-synopsis-line); color:var(--color-text-secondary); display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
 .about[data-expanded] { display:block; }
-.readMore { display:block; margin:4px 20px 0; padding:0; border:0; background:none; font:700 14px/1.5 var(--font); color:var(--color-text); }
+.readMore { display:block; margin:4px 20px 0; padding:0; border:0; background:none; font:var(--type-audiobook-detail-read-more-weight) var(--type-audiobook-detail-read-more-size)/var(--type-audiobook-detail-read-more-line) var(--font); color:var(--color-text); }
 .sectionHead { display:flex; align-items:baseline; justify-content:space-between; margin:22px 20px 6px; }
 .sectionHead h2 { margin:0; font-size:var(--type-audiobook-detail-section-size); font-weight:var(--type-audiobook-detail-section-weight); letter-spacing:var(--type-audiobook-detail-section-tracking); }
-.sectionHead > span { font-size:13px; color:var(--color-text-tertiary); font-weight:600; }
+.sectionHead > span { font-size:var(--type-audiobook-detail-meta-size); color:var(--color-text-tertiary); font-weight:var(--type-audiobook-detail-progress-weight); }
 .chapter { position:relative; display:flex; align-items:center; gap:12px; width:100%; height:50px; padding:0 16px 0 20px; border:0; color:inherit; background:transparent; font:var(--type-audiobook-chapter-weight) var(--type-audiobook-chapter-size)/var(--type-audiobook-chapter-line) var(--font); text-align:left; }
 .chapterRow { display:flex; align-items:center; }
 .chapterRow > .chapter { flex:1; min-width:0; }
 .chapterRow + .chapterRow .chapter::before { content:''; position:absolute; top:0; left:56px; right:0; height:1px; background:rgb(59 86 104 / .3); }
 .chapter[data-current] { color:var(--color-accent-strong); background:rgb(237 245 250 / .05); height:58px; }
-.number { width:22px; text-align:center; color:var(--color-text-tertiary); font-size:13.5px; font-variant-numeric:tabular-nums; flex:none; }
+.number { width:22px; text-align:center; color:var(--color-text-tertiary); font-size:var(--type-audiobook-chapter-number-size); font-variant-numeric:tabular-nums; flex:none; }
 .chapterTitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.duration { margin-left:auto; font-size:13px; color:var(--color-text-tertiary); font-variant-numeric:tabular-nums; flex:none; }
+.duration { margin-left:auto; font-size:var(--type-audiobook-detail-meta-size); color:var(--color-text-tertiary); font-variant-numeric:tabular-nums; flex:none; }
 .chapterProgress { position:absolute; left:56px; right:70px; bottom:8px; height:3px; border-radius:3px; background:rgb(237 245 250 / .18); overflow:hidden; }
 .bookRow { display:flex; align-items:center; gap:14px; padding:10px 14px 10px 20px; }
 .bookRow > button:first-child { display:flex; align-items:center; gap:14px; flex:1; min-width:0; padding:0; border:0; background:none; color:inherit; text-align:left; }
 .thumb { flex:none; width:66px; height:66px; border-radius:7px; overflow:hidden; }
 .thumb > * { width:100%; height:100%; }
 .bookRow b { display:block; font-size:var(--type-audiobook-related-title-size); font-weight:var(--type-audiobook-related-title-weight); letter-spacing:var(--type-audiobook-related-title-tracking); }
-.bookRow small { display:block; margin-top:3px; font-size:12.5px; color:var(--color-text-tertiary); }
-.details { margin:2px 16px 0; padding:12px 14px; border-radius:12px; background:var(--color-raised); font-size:15px; }
+.bookRow small { display:block; margin-top:3px; font-size:var(--type-audiobook-detail-progress-size); color:var(--color-text-tertiary); }
+.details { margin:2px 16px 0; padding:12px 14px; border-radius:12px; background:var(--color-raised); font-size:var(--type-audiobook-detail-fact-size); }
 .details dt { margin-top:8px; }
-.details dd { margin:4px 0 12px; color:var(--color-text-tertiary); font-size:13px; }
+.details dd { margin:4px 0 12px; color:var(--color-text-tertiary); font-size:var(--type-audiobook-detail-meta-size); }
