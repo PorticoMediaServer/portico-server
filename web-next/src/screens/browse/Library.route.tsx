@@ -14,6 +14,7 @@ import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {StateView} from '../../kit/states';
+import {LibraryEmpty} from '../../kit/states/LibraryEmpty';
 import {useShellWidth} from '../../shell/viewport';
 import {ShowScreen} from '../detail/Show';
 import {AudiobookEntry} from '../detail/audiobooks/Entry';
@@ -178,7 +179,8 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
       if (tab.shows === 'unmatched') {navigate({unmatched: true});return;}
       if (tab.shows === 'playlists') {void router.navigate({to: '/saved', search: {view: 'playlists'}}).catch(context.effects.reportError);return;}
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
-  const empty = <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
+  const empty = <LibraryEmpty api={resources.life.api} scope={context.scope} libraryId={library.id} libraryName={library.name}
+    owner={context.identity?.viewer.role === 'owner'} onActivity={() => {if (context.isCurrent()) void router.navigate({to: '/dashboard'}).catch(context.effects.reportError);}}/>;
   const save = () => {
     if (!resources.controller.canSaveView()) return;
     const query = resources.controller.query();
