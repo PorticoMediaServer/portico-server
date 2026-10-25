@@ -17,6 +17,11 @@ test('every declared table is a document the server accepts',()=>{
  assert.equal(appleDeclaredProfile({television:true}).engines.native.embeddedAudioSwitching,true);
  assert.ok(castDeclaredProfile('chromecast').engines.native.video!.every(v=>v.codec!=='hevc'));
  assert.ok(castDeclaredProfile('google_tv_4k').engines.native.video!.find(v=>v.codec==='hevc')!.dynamicRanges!.includes('dolby_vision'));
+ const googleTV=castDeclaredProfile('google_tv_4k').engines.native,streamer=castDeclaredProfile('google_tv_streamer').engines.native;
+ assert.equal(googleTV.video!.some(v=>v.codec==='av1'),false,'the older 4K model does not inherit Streamer AV1');
+ assert.equal(googleTV.transports!.some(t=>t.video?.includes('av1')),false,'transport offers cannot invent the absent decoder');
+ assert.ok(streamer.video!.some(v=>v.codec==='av1'),'Streamer retains its declared AV1 decoder');
+ assert.ok(streamer.transports!.some(t=>t.transport==='hls_fmp4'&&t.video?.includes('av1')),'Streamer retains AV1 over fMP4 HLS');
  // Passthrough is beside the decoders, never one of them.
  for(const d of [vegaDeclaredProfile(),webosDeclaredProfile()]){
   assert.deepEqual(d.engines.native.audioPassthrough!.map(a=>a.codec),['ac3','eac3']);
