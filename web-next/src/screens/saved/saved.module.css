@@ -34,6 +34,20 @@
 .playlistRowCopy > small > span { overflow: hidden; text-overflow: ellipsis; }
 .playlistRowPin { display: grid; place-items: center; color: var(--color-accent-strong); flex: none; }
 .playlistRowChevron { color: var(--color-line-strong); flex: none; }
+/* collections.html 10 and 14: collections and saved views are rows on a phone. */
+.resourceList { padding: 20px; }
+.resourceRow { position: relative; display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; padding: 8px 0; text-align: left; color: var(--color-text); }
+.resourceRow::before { content: ''; position: absolute; top: 0; left: 78px; right: 0; height: 1px; background: color-mix(in srgb, var(--color-line) 70%, transparent); }
+.resourceRow:first-child::before { content: none; }
+.resourceRow:where(:hover) { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.resourceRowArt { width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: var(--color-ink); box-shadow: 0 6px 14px -6px var(--color-shadow); }
+.resourceRowArt > * { width: 100%; height: 100%; }
+.resourceRowCopy { min-width: 0; }
+.resourceRowCopy > b { display: block; font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); letter-spacing: var(--type-subheading-tracking); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resourceRowCopy > small { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: calc(var(--type-caption-size) * 27 / 26); color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resourceRowCopy > small > svg { flex: none; }
+.resourceRowCopy > .resourceRowVisible { color: var(--color-accent-strong); font-weight: var(--type-caption-strong-weight); }
+.resourceRowCopy > .resourceRowNote { color: var(--color-text-tertiary); }
 .resultCount { font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .toolbarEnd { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) * 14 / 13); }
 .directoryCount { color: var(--color-text-secondary); font-size: calc(var(--type-caption-size) * 29 / 26); font-weight: var(--type-caption-strong-weight); }

@@ -430,6 +430,8 @@ export const webMessages = {
   'web.saved.finished': 'Finished',
   'web.saved.summary': 'Description',
   'web.saved.visibleToAll': 'Visible to everyone on this server',
+ 'web.saved.visibleToEveryone': 'Visible to everyone',
+ 'web.saved.onlyYou': 'Only you',
   'web.saved.sharedHelp': 'Every member can browse it; only you can change it.',
   'web.saved.privateHelp': 'Only this profile can see it.',
   'web.saved.rename': 'Rename…',

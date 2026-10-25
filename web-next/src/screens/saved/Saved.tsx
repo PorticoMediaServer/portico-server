@@ -21,6 +21,7 @@ import {WindowedGrid} from '../../kit/layout';
 import {Skeleton, StateView} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useQuietRefresh} from '../../platform/freshness';
+import {useShellWidth} from '../../shell/viewport';
 import {homeCardModel} from '../home/model';
 import {BrowseEntryCard} from '../browse';
 import {LocalDownloads, ServerDownloads, type SavedDownloadEffects} from './Downloads';
@@ -305,6 +306,7 @@ function mediaEntry(entry: SavedEntry): ContentEntry | undefined {
 function PersonalResources(bindings: SavedViewBindings & {onCreate: () => void}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), kind = bindings.route.view === 'views' ? 'views' : 'collections';
   const summary = useSyncExternalStore(bindings.runtime.summary.subscribe, bindings.runtime.summary.getSnapshot, bindings.runtime.summary.getSnapshot);
+  const phone = useShellWidth() < 600;
   const count = kind === 'views' ? summary.value?.savedViews : summary.value?.collections;
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   return <>
@@ -312,9 +314,28 @@ function PersonalResources(bindings: SavedViewBindings & {onCreate: () => void})
       : <>{count !== undefined && <span className={styles.directoryCount}>{s('next.saved.savedViewsCount', {count})}</span>}<span className={styles.directoryHelp}>{s('next.saved.viewsHelp')}</span></>}</div>
     {snapshot.error && !snapshot.resources.length && <StateView title={t('saved.loadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />}
     {!snapshot.loading && !snapshot.error && !snapshot.resources.length && <StateView title={t(`web.saved.empty.${kind}`)} body={t(`web.saved.empty.${kind}Body`)} />}
-    <div className={styles.resources}>{snapshot.resources.map(resource => <PersonalResourceTile key={resource.id} resource={resource} bindings={bindings} />)}</div>
+    <div className={phone ? styles.resourceList : styles.resources}>{snapshot.resources.map(resource => phone
+      ? <PersonalResourceRow key={resource.id} resource={resource} bindings={bindings}/>
+      : <PersonalResourceTile key={resource.id} resource={resource} bindings={bindings}/>)}</div>
     {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
   </>;
+}
+/** collections.html 10 and 14: at phone width a collection or saved view is a row.
+ * A collection names who can see it: everyone on the server, only you, or the
+ * owner's share. A saved view marks its place on Home. */
+function PersonalResourceRow({resource, bindings}: {resource: PersonalResource; bindings: SavedViewBindings}) {
+  const covers = (resource.artworkPaths ?? []).map(path => bindings.artwork.foreground(path, 64, 1)).filter((source): source is ArtworkSource => !!source);
+  const collection = resource.kind === 'collection', shared = collection && resource.role !== 'owner', visible = collection && resource.visibility === 'server';
+  return <button type="button" className={styles.resourceRow} onClick={() => bindings.effects.selectRoute({view: 'resource', resourceId: resource.id})}>
+    <span className={styles.resourceRowArt}><CoverMosaic covers={covers} shape="square" alt="" /></span>
+    <span className={styles.resourceRowCopy}><b>{resource.name}</b>
+      <small>{collection ? t('lib.count', {count: resource.entryCount, pivot: 'collections'}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</small>
+      {shared ? <small className={styles.resourceRowNote}><Icon name="i-people" size={13}/>{t('web.saved.sharedByOwner')}</small>
+        : collection ? <small className={visible ? styles.resourceRowVisible : styles.resourceRowNote}><Icon name={visible ? 'i-people' : 'i-lock'} size={13}/>{t(visible ? 'web.saved.visibleToEveryone' : 'web.saved.onlyYou')}</small>
+          : resource.onHome ? <small className={styles.resourceRowVisible}><Icon name="i-home" size={13}/>{s('next.saved.onHome')}</small> : null}
+    </span>
+    <Icon name="i-right" size={18} className={styles.playlistRowChevron} />
+  </button>;
 }
 function PersonalResourceTile({resource, bindings}: {resource: PersonalResource; bindings: SavedViewBindings}) {
   const covers = (resource.artworkPaths ?? []).map(path => bindings.artwork.foreground(path, bindings.presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
