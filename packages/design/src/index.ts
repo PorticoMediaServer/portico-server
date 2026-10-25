@@ -138,6 +138,9 @@ const handheldType = {
   audiobookDetailEyebrow: type(13.5, 18.9, 700), audiobookDetailAuthor: type(16, 22.4, 700),
   audiobookDetailSection: type(19, 'normal', 700, -.015), audiobookChapter: type(15, 19.5, 600),
   audiobookRelatedTitle: type(15.5, 'normal', 700, -.01),
+  audiobookDetailMeta: type(13, 'normal', 400), audiobookDetailProgress: type(12.5, 'normal', 600),
+  audiobookDetailSynopsis: type(14, 21, 400), audiobookDetailReadMore: type(14, 21, 700),
+  audiobookChapterNumber: type(13.5, 'normal', 600), audiobookDetailFact: type(15, 'normal', 400),
   // owner-dashboard phone composition: preserve the drawn metrics when lifting raw CSS.
   dashboardPhoneBarTitle: type(16.5, 19.8, 800, -.015), dashboardPhoneBarDetail: type(12, 14.4, 600),
   dashboardPhoneHeading: type(40, 40, 800, -.04), dashboardPhoneName: type(19, 'normal', 800, -.02),
