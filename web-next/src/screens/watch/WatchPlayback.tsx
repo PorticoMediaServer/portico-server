@@ -14,6 +14,7 @@ import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
 import {WatchCapacityWait} from './CapacityWait';
+import {WatchStartFailure} from './StartFailure';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import {createWatchPlayOn, remotePictureKeepsCaptions, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
@@ -331,6 +332,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
       <video ref={video} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
     {snapshot?.capacityWait && <WatchCapacityWait wait={snapshot.capacityWait} />}
+    {binding && snapshot?.startFailure && <WatchStartFailure failure={snapshot.startFailure} authority={snapshot.authority} context={context} reportError={binding.reportError}/>}
     {binding && snapshot && <WatchMusicNowPlaying binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       surfaces={drawnSurfaces} geometry={geometry} live={live}

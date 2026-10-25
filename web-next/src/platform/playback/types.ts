@@ -22,6 +22,7 @@ import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
 import type {LocalPlaybackScope} from '../../../../packages/player-core/src/index.ts';
 import type {WebLocalQueueSnapshot, WebLocalQueueResource} from './local-queue.ts';
 import type {WebPlaybackCapacityWait} from './capacity-retry.ts';
+import type {WebPlaybackStartFailure} from './start-failure.ts';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
@@ -86,6 +87,8 @@ export type WebPlaybackInfoRead = Readonly<{
   isCurrent():boolean;
 }>;
 export type WebPlaybackRuntimeSnapshot = Readonly<{
+  /** A captured first start refused before any playback fence was admitted. */
+  startFailure?: WebPlaybackStartFailure;
   /** The server refused conversion capacity and directed an exact idempotent retry. */
   capacityWait?: WebPlaybackCapacityWait;
   /** Actual app-local receipt/queue state, never projected as a V1 session or queueView. */
