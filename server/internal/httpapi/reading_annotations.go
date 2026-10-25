@@ -52,7 +52,9 @@ func (ReadingAnnotationOperation) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"upsert", "delete"}}
 }
 
+type ReadingAnnotationRect = reading.AnnotationRect
 type ReadingAnnotation struct {
+	Rects     []ReadingAnnotationRect `json:"rects"`
 	ID        string                  `json:"id"`
 	Kind      ReadingAnnotationKind   `json:"kind"`
 	Location  ReadingLocation         `json:"location"`
@@ -70,6 +72,7 @@ type ReadingAnnotationsResponse struct {
 	NextCursor     string              `json:"nextCursor"`
 }
 type ReadingAnnotationRequest struct {
+	Rects            []ReadingAnnotationRect    `json:"rects,omitempty"`
 	ExpectedRevision ReadingAnnotationRevision  `json:"expectedRevision"`
 	Operation        ReadingAnnotationOperation `json:"operation"`
 	ID               string                     `json:"id"`
@@ -85,7 +88,10 @@ type ReadingAnnotationSavedResponse struct {
 
 func readingAnnotationProjection(a reading.Annotation) ReadingAnnotation {
 	l := a.Location
-	return ReadingAnnotation{a.ID, ReadingAnnotationKind(a.Kind), ReadingLocation{ReadingFormat(l.Format), l.CFI, l.Section, l.PageIndex, l.Progression}, a.Text, a.Note, ReadingAnnotationColour(a.Colour), a.CreatedAt, a.UpdatedAt}
+	if a.Rects == nil {
+		a.Rects = []ReadingAnnotationRect{}
+	}
+	return ReadingAnnotation{a.Rects, a.ID, ReadingAnnotationKind(a.Kind), ReadingLocation{ReadingFormat(l.Format), l.CFI, l.Section, l.PageIndex, l.Progression}, a.Text, a.Note, ReadingAnnotationColour(a.Colour), a.CreatedAt, a.UpdatedAt}
 }
 func (d Dependencies) readingAnnotations(w http.ResponseWriter, r *http.Request) {
 	f, ok := d.openReadingBytes(w, r)
@@ -142,7 +148,7 @@ func (d Dependencies) readingMutateAnnotation(w http.ResponseWriter, r *http.Req
 		l := request.Location
 		location = reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}
 	}
-	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: request.ExpectedRevision.value, Operation: string(request.Operation), Annotation: reading.Annotation{ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
+	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: request.ExpectedRevision.value, Operation: string(request.Operation), Annotation: reading.Annotation{Rects: request.Rects, ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -191,10 +197,14 @@ func annotationLocationSchema() map[string]any {
 			"format": map[string]any{"type": "string", "enum": []string{"pdf", "cbz"}}, "pageIndex": annotationInteger(1000000), "progression": progression}),
 	}}
 }
+func annotationRectsSchema() map[string]any {
+	unit := map[string]any{"type": "number", "minimum": 0, "maximum": 1}
+	return map[string]any{"type": "array", "maxItems": 128, "items": annotationObject([]string{"x", "y", "width", "height"}, map[string]any{"x": unit, "y": unit, "width": unit, "height": unit})}
+}
 func (ReadingAnnotation) JSONSchema() map[string]any {
 	return map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"id", "kind", "location", "text", "note", "colour", "createdAt", "updatedAt"},
-		"properties": map[string]any{"id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema(), "createdAt": annotationInteger(9007199254740991), "updatedAt": annotationInteger(9007199254740991)},
+		"properties": map[string]any{"id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "rects": annotationRectsSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema(), "createdAt": annotationInteger(9007199254740991), "updatedAt": annotationInteger(9007199254740991)},
 	}
 }
 func (ReadingAnnotationsResponse) JSONSchema() map[string]any {
@@ -211,6 +221,6 @@ func (ReadingAnnotationRequest) JSONSchema() map[string]any {
 		annotationObject([]string{"expectedRevision", "operation", "id"}, map[string]any{
 			"expectedRevision": annotationInteger(9007199254740990), "operation": map[string]any{"type": "string", "enum": []string{"delete"}}, "id": annotationIDSchema()}),
 		annotationObject([]string{"expectedRevision", "operation", "id", "kind", "location"}, map[string]any{
-			"expectedRevision": annotationInteger(9007199254740990), "operation": map[string]any{"type": "string", "enum": []string{"upsert"}}, "id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema()}),
+			"expectedRevision": annotationInteger(9007199254740990), "operation": map[string]any{"type": "string", "enum": []string{"upsert"}}, "id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "rects": annotationRectsSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema()}),
 	}}
 }

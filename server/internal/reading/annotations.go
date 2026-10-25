@@ -3,7 +3,9 @@ package reading
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -15,7 +17,14 @@ import (
 const annotationLimit = 256
 const annotationPage = 50
 
+type AnnotationRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
 type Annotation struct {
+	Rects                []AnnotationRect
 	ID, Kind             string
 	Location             Location
 	Text, Note, Colour   string
@@ -112,7 +121,7 @@ func (f *Source) Annotations(cursor string, expected *int64) (*AnnotationPage, e
 		return nil, ErrConflict
 	}
 	out := &AnnotationPage{SourceID: v.SourceID, SourceRevision: v.Revision, Revision: revision, Entries: []Annotation{}}
-	rows, err := g.Tx().QueryContext(ctx, `SELECT id,kind,format,cfi,section,page_index,progression,quote,note,colour,created_at,updated_at FROM reading_annotations WHERE owner_key=? AND item_id=? AND asset_id=? AND source_revision=? AND id>? ORDER BY id LIMIT ?`, owner, v.Entity, v.Asset, v.Revision, cursor, annotationPage+1)
+	rows, err := g.Tx().QueryContext(ctx, `SELECT id,kind,format,cfi,section,page_index,progression,quote,note,colour,created_at,updated_at,rects FROM reading_annotations WHERE owner_key=? AND item_id=? AND asset_id=? AND source_revision=? AND id>? ORDER BY id LIMIT ?`, owner, v.Entity, v.Asset, v.Revision, cursor, annotationPage+1)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +129,12 @@ func (f *Source) Annotations(cursor string, expected *int64) (*AnnotationPage, e
 		var a Annotation
 		var cfi, section sql.NullString
 		var page sql.NullInt64
-		if err = rows.Scan(&a.ID, &a.Kind, &a.Location.Format, &cfi, &section, &page, &a.Location.Progression, &a.Text, &a.Note, &a.Colour, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		var rects string
+		if err = rows.Scan(&a.ID, &a.Kind, &a.Location.Format, &cfi, &section, &page, &a.Location.Progression, &a.Text, &a.Note, &a.Colour, &a.CreatedAt, &a.UpdatedAt, &rects); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err = json.Unmarshal([]byte(rects), &a.Rects); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -206,6 +220,14 @@ func (f *Source) MutateAnnotation(m AnnotationMutation) (int64, error) {
 		if a.Kind == "bookmark" && (a.Text != "" || a.Colour != "") || a.Kind == "highlight" && (strings.TrimSpace(a.Text) == "" || a.Colour != "yellow" && a.Colour != "green" && a.Colour != "blue" && a.Colour != "pink") {
 			return 0, ErrInvalid
 		}
+		if len(a.Rects) > 128 || len(a.Rects) > 0 && (a.Kind != "highlight" || a.Location.Format != "pdf") || a.Kind == "highlight" && a.Location.Format == "pdf" && len(a.Rects) == 0 {
+			return 0, ErrInvalid
+		}
+		for _, r := range a.Rects {
+			if math.IsNaN(r.X) || math.IsNaN(r.Y) || math.IsNaN(r.Width) || math.IsNaN(r.Height) || math.IsInf(r.X, 0) || math.IsInf(r.Y, 0) || math.IsInf(r.Width, 0) || math.IsInf(r.Height, 0) || r.X < 0 || r.Y < 0 || r.Width <= 0 || r.Height <= 0 || r.X+r.Width > 1.000001 || r.Y+r.Height > 1.000001 {
+				return 0, ErrInvalid
+			}
+		}
 		if err = f.annotationLocation(a.Location); err != nil {
 			return 0, err
 		}
@@ -275,7 +297,14 @@ func (f *Source) MutateAnnotation(m AnnotationMutation) (int64, error) {
 			page = *a.Location.PageIndex
 		}
 		now := time.Now().UnixMilli()
-		_, err = tx.ExecContext(ctx, `INSERT INTO reading_annotations(owner_key,item_id,asset_id,source_revision,id,kind,format,cfi,section,page_index,progression,quote,note,colour,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_key,item_id,asset_id,source_revision,id) DO UPDATE SET kind=excluded.kind,format=excluded.format,cfi=excluded.cfi,section=excluded.section,page_index=excluded.page_index,progression=excluded.progression,quote=excluded.quote,note=excluded.note,colour=excluded.colour,updated_at=excluded.updated_at`, owner, v.Entity, v.Asset, v.Revision, a.ID, a.Kind, a.Location.Format, cfi, section, page, a.Location.Progression, a.Text, a.Note, a.Colour, now, now)
+		if a.Rects == nil {
+			a.Rects = []AnnotationRect{}
+		}
+		rectJSON, err := json.Marshal(a.Rects)
+		if err != nil {
+			return 0, err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO reading_annotations(owner_key,item_id,asset_id,source_revision,id,kind,format,cfi,section,page_index,progression,quote,note,colour,created_at,updated_at,rects) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_key,item_id,asset_id,source_revision,id) DO UPDATE SET kind=excluded.kind,format=excluded.format,cfi=excluded.cfi,section=excluded.section,page_index=excluded.page_index,progression=excluded.progression,quote=excluded.quote,note=excluded.note,colour=excluded.colour,updated_at=excluded.updated_at,rects=excluded.rects`, owner, v.Entity, v.Asset, v.Revision, a.ID, a.Kind, a.Location.Format, cfi, section, page, a.Location.Progression, a.Text, a.Note, a.Colour, now, now, string(rectJSON))
 		if err != nil {
 			return 0, err
 		}
