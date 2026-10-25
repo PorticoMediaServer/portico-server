@@ -75,8 +75,9 @@ type ReadingItemsResponse struct {
 	NextCursor string        `json:"nextCursor,omitempty"`
 }
 type ReadingContinueItem struct {
-	Item     ReadingItem     `json:"item"`
-	Progress ReadingProgress `json:"progress"`
+	Conversion *ReadingConversionProvenance `json:"conversion,omitempty"`
+	Item       ReadingItem                  `json:"item"`
+	Progress   ReadingProgress              `json:"progress"`
 }
 type ReadingContinueResponse struct {
 	Items      []ReadingContinueItem `json:"items"`

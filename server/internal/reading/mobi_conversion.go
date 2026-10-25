@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/storage"
 )
 
@@ -288,4 +289,43 @@ func (f *Source) prepareMobi() error {
 	}
 	f.derived = derived
 	return f.Validate()
+}
+
+// currentMobiProvenance is a metadata comparison, never source/read authority.
+// Only an actual retained output of this exact actor/profile/session/source and
+// current converter can witness current coordinates. Evicted/closed/replaced
+// output stays stale; no conversion, migration or coordinate inference occurs.
+func (s *Service) currentMobiProvenance(candidates []*Session, p identity.Principal, original Selection, wanted string) (MobiProvenance, bool) {
+	if s.Mobi == nil {
+		return MobiProvenance{}, false
+	}
+	for _, session := range candidates {
+		session.mu.Lock()
+		cache := session.mobi
+		owns := !session.closed && session.life != nil && session.life.Err() == nil && session.actor == p.Hash && session.owner == identity.PersonalKey(p.Viewer) && session.selection.ItemID == original.ItemID && session.selection.SourceID == original.SourceID && session.selection.Revision == original.Revision
+		if owns && cache != nil {
+			actual := cache.provenance
+			if actual.OriginalSourceID == original.SourceID && actual.OriginalRevision == original.Revision && actual.OriginalFormat == original.Format && actual.OriginalSize == original.Size && actual.Converter == mobiDependency && actual.Options == mobiOptions && actual.WorkerSHA256 == s.Mobi.bundle.WorkerSHA256 && actual.Revision == wanted && int64(cache.size()) == actual.OutputSize {
+				session.mu.Unlock()
+				return actual, true
+			}
+		}
+		session.mu.Unlock()
+	}
+	return MobiProvenance{}, false
+}
+
+// Capture map membership before opening a DB snapshot; no session-map lock is
+// taken under a database transaction. Later sessions can only be missed/stale.
+func (s *Service) mobiSessionCandidates() []*Session {
+	if s.Mobi == nil {
+		return nil
+	}
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	out := make([]*Session, 0, len(s.sessions))
+	for _, session := range s.sessions {
+		out = append(out, session)
+	}
+	return out
 }

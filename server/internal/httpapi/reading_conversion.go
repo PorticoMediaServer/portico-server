@@ -1,5 +1,7 @@
 package httpapi
 
+import "portico.local/server/internal/reading"
+
 // ReadingConversionProvenance is evidence about this actual derived publication,
 // not a location, tool path, reusable capability or alternate original-file grant.
 type ReadingConversionProvenance struct {
@@ -29,4 +31,11 @@ func (ReadingConversionProvenance) JSONSchema() map[string]any {
 			"outputSHA256": hash, "outputSize": map[string]any{"type": "integer", "minimum": 1, "maximum": 128 << 20}, "revision": hash,
 		},
 	}
+}
+
+func readingConversionProjection(c *reading.MobiProvenance) *ReadingConversionProvenance {
+	if c == nil {
+		return nil
+	}
+	return &ReadingConversionProvenance{OriginalRevision: c.OriginalRevision, OriginalSourceID: c.OriginalSourceID, OriginalFormat: c.OriginalFormat, OriginalSize: c.OriginalSize, InputSHA256: c.InputSHA256, Converter: c.Converter, WorkerSHA256: c.WorkerSHA256, Options: c.Options, OutputSHA256: c.OutputSHA256, OutputSize: c.OutputSize, Revision: c.Revision}
 }

@@ -12,8 +12,9 @@ import (
 )
 
 type ContinueRow struct {
-	Item     LibraryRow
-	Progress Progress
+	Conversion *MobiProvenance
+	Item       LibraryRow
+	Progress   Progress
 }
 
 type ContinuePage struct {
@@ -71,6 +72,7 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
 			return out, err
 		}
 	}
+	conversions := s.mobiSessionCandidates()
 	g, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
 		return out, err
@@ -93,11 +95,11 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
  WHERE rp.owner_key=? AND rp.asset_id=p.asset_id AND rp.progression<1
  AND NOT EXISTS(SELECT 1 FROM reading_progress newer WHERE newer.owner_key=rp.owner_key AND newer.item_id=rp.item_id
  AND (newer.observed_at>rp.observed_at OR (newer.observed_at=rp.observed_at AND newer.asset_id>rp.asset_id)))
- AND (?='' OR cl.library_id=?) AND ` + publicationEligible + ` AND (` + filter + `)
+ AND (?='' OR cl.library_id=?) AND ` + publicationEligible + ` AND (p.format NOT IN('mobi','azw3') OR ?=1) AND (` + filter + `)
  AND NOT EXISTS(SELECT 1 FROM inventory_objects earlier INDEXED BY inventory_objects_asset
  JOIN library_sources earlier_source ON earlier_source.id=earlier.source_id AND earlier_source.library_id=cl.library_id
  WHERE earlier.asset_id=a.token AND earlier.id<o.id AND ` + priorEligible + `)`
-	values := append([]any{identity.PersonalKey(p.Viewer), library, library}, args...)
+	values := append([]any{identity.PersonalKey(p.Viewer), library, library, s.Mobi != nil}, args...)
 	if cursor != "" {
 		query += ` AND (rp.observed_at,rp.item_id,rp.asset_id)<(?,?,?)`
 		values = append(values, after.observed, after.item, after.asset)
@@ -128,8 +130,19 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
 		if page.Valid {
 			progress.Location.PageIndex = &page.Int64
 		}
-		progress.Stale = progress.SourceRevision != selected.fence() || progress.Location.Format != selected.Format
-		out.Items = append(out.Items, ContinueRow{Item: LibraryRow{ID: selected.ItemID, LibraryID: selected.library, Title: selected.Title, Format: selected.Format, SourceID: selected.token, InventoryAvailable: true, entity: selected.Entity}, Progress: progress})
+		selected.SourceID = selected.token
+		selected.Revision = selected.fence()
+		presentation := selected
+		var conversion *MobiProvenance
+		if (selected.Format == "mobi" || selected.Format == "azw3") && progress.Location.Format == "epub" {
+			if actual, ok := s.currentMobiProvenance(conversions, p, selected, progress.SourceRevision); ok {
+				conversion = &actual
+				presentation.Format = "epub"
+				presentation.Revision = actual.Revision
+			}
+		}
+		progress.Stale = progress.SourceRevision != presentation.Revision || progress.Location.Format != presentation.Format
+		out.Items = append(out.Items, ContinueRow{Conversion: conversion, Item: LibraryRow{ID: selected.ItemID, LibraryID: selected.library, Title: selected.Title, Format: selected.Format, SourceID: selected.token, InventoryAvailable: true, entity: selected.Entity}, Progress: progress})
 		last = continueCursor{progress.ObservedAt, selected.Entity, selected.Asset}
 	}
 	if err = rows.Err(); err != nil {
