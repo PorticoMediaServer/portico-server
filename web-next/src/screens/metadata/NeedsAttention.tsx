@@ -59,13 +59,13 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
   return <section className={styles.attention}>
     {error ? <HostedError error={error} /> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
-    {page?.entries.map(entry => <Row key={entry.entityId} entry={entry} busy={busy === entry.entityId}
+    <div className={styles.listBox}>{page?.entries.map(entry => <Row key={entry.entityId} entry={entry} busy={busy === entry.entityId}
       onUse={(candidateKey, order) => void send(entry, {action: 'accept', candidateKey, ...(order ? {order} : {})}, t('server.attention.matched', {title: entry.candidates.find(value => value.key === candidateKey)?.title ?? entry.title}))}
       onSearch={() => {setQuery(entry.title); setSearching(entry);}}
       onIdentify={() => {setTyped(''); setProvider('tmdb'); setIdentifying(entry);}}
       onRetry={() => void send(entry, {action: 'retry'}, t('server.attention.lookingUp'))}
       onKeep={() => void send(entry, {action: 'dismiss'}, t('metadata.attention.kept'))}
-      onOpen={onOpen ? () => onOpen(entry) : undefined} />)}
+      onOpen={onOpen ? () => onOpen(entry) : undefined} />)}</div>
     {!loading && !error && page && !page.entries.length ? <div className={styles.empty}>
       <b><Icon name="i-check" size={18} />{t('metadata.attention.empty')}</b><p>{t('metadata.attention.emptyBody')}</p>
     </div> : null}
@@ -119,10 +119,12 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
     </header>
     {working ? <p className={styles.working}>{t(entry.reason.includes('search') ? 'metadata.attention.rowSearching' : 'metadata.attention.rowMatching')}</p> : <>
       {candidates.map(candidate => {
-        const facts = candidateFacts(t, has, candidate);
+        const facts = candidate.reasons.flatMap(reason => candidateFacts(t, has, {reasons: [reason]}).map(words => ({reason, words})));
         const selected = candidate.orders.find(item => item.id === orders[candidate.key])?.id ?? candidate.orders[0]?.id;
         return <div key={candidate.key} className={styles.candidate}>
-          <div><b>{candidateLine(candidate)}</b>{facts.length ? <small>{facts.join(' · ')}</small> : null}
+          <span className={styles.candidatePoster} aria-hidden="true">{candidate.posterUrl ? <img src={candidate.posterUrl} alt="" loading="lazy"/> : <i>{Array.from(candidate.title.trim())[0] ?? ''}</i>}</span>
+          <div><div className={styles.candidateTitle}><b>{candidate.title}</b>{candidate.year > 0 ? <span className={styles.candidateYear}>{candidate.year}</span> : null}<span className={styles.provider}>{providerName(candidate.identity.provider)}</span></div>
+            {facts.length ? <div className={styles.facts}>{facts.map(({reason, words}) => <span key={reason} className={styles.fact} data-positive={reason === 'exact_title_or_alias' || reason === 'release_year_agrees' || undefined}>{words}</span>)}</div> : null}
             {candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
               <select value={selected} onChange={event => {const value = event.currentTarget.value; setOrders(current => ({...current, [candidate.key]: value}));}}>
                 {candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -135,7 +137,7 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
         {attentionOffers(entry, 'search') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onSearch}><Icon name="i-search" size={16} />{t('metadata.attention.searchByHand')}</button> : null}
         {attentionOffers(entry, 'id') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onIdentify}><Icon name="i-link" size={16} />{t('metadata.attention.enterProviderId')}</button> : null}
         {onOpen && (music || attentionOffers(entry, 'parent')) ? <button className={styles.textAction} type="button" disabled={busy} onClick={onOpen}><Icon name={kindIcon} size={16} />{t(music ? entry.kind === 'book' ? 'metadata.attention.openBook' : 'metadata.attention.openAlbum' : 'metadata.attention.openShow')}</button> : null}
-        {attentionOffers(entry, 'retry') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onRetry}><Icon name="i-refresh" size={16} />{t('server.attention.lookUpAgain')}</button> : null}
+        {!candidates.length && attentionOffers(entry, 'retry') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onRetry}><Icon name="i-refresh" size={16} />{t('server.attention.lookUpAgain')}</button> : null}
       </div>
     </>}
   </article>;
