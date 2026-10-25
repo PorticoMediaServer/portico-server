@@ -126,7 +126,9 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const currentContentsId = snapshot.status === 'ready' && snapshot.sourceId === publication.source.id && snapshot.sourceRevision === publication.source.revision
     ? readerCurrentContentsId(snapshot.toc, snapshot.location) : undefined;
   const contents = (items: readonly ReaderTocItem[]): readonly ReaderContentsEntry[] => items.map(item => ({id: item.id, label: item.label,
-    page: item.location.pageLabel, current: item.id === currentContentsId, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
+    page: item.location.pageLabel, current: item.id === currentContentsId,
+    remaining: item.id === currentContentsId && snapshot.location?.pagesLeftInSection !== undefined
+      ? t('next.reader.sectionRemaining', {count: snapshot.location.pagesLeftInSection}) : undefined, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
   const searchHits: ReaderSearchHit[] = visibleHits.map(hit => {
     const start = hit.excerpt.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
     const context = start < 0 ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, start)}, {text: hit.excerpt.slice(start, start + query.length), match: true}, {text: hit.excerpt.slice(start + query.length)}];
