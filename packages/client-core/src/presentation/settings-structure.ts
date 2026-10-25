@@ -635,8 +635,8 @@ const serverPages: readonly AuthoredPage[] = [
     panel('state', 'server.stateFolder'),
   ]},
   {id: 'general', title: 'settings.server.general', icon: 'server', sections: [
-    {id: 'identity', title: 'web.general.identity', rows: [
-      setting('runtime', 'name', 'web.general.serverName', {type: 'text', maxLength: 100}, {help: 'web.general.serverNameHelp'}),
+    {id: 'identity', title: 'next.settingsSpec.server.general.groups.0.title', rows: [
+      setting('runtime', 'name', 'web.general.serverName', {type: 'text', maxLength: 100}, {help: 'next.settingsSpec.server.general.groups.0.rows.0.help'}),
       custom('server.identity'),
     ]},
     panel('updates', 'server.updates', 'settings.server.updates'),
