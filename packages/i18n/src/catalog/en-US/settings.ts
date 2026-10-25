@@ -682,6 +682,7 @@ export const settingsMessages = {
   'web.metadata.field.department': 'Department',
   'web.metadata.addPerson': 'Add person',
   'metadata.attention.browseHelp': 'These titles are named from their files. Open one and choose Edit metadata… to match it, or leave it as it is.',
+  'metadata.settings.returnFromKeyHelp': 'OpenSubtitles opens in a new browser tab. Come back here and paste your key.',
   'metadata.settings.libraryTable': 'What each library uses',
   'metadata.settings.library': 'Library',
   'metadata.settings.titlesSource': 'Titles come from',
