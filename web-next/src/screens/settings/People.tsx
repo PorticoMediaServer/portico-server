@@ -11,6 +11,14 @@ import {SettingsPageFailure} from '../../kit/settings';
 import {peopleTableRow} from './people-table-row';
 import type {SettingsViewerScope} from '../../platform/settings-platform';
 import type {SettingsInvitations} from './invitations';
+import {InvitationShortCodeDialog} from '../../kit/accounts';
+import {randomId} from '@core/random-id.ts';
+import {InviteAttempts, defaultInviteChoices, inviteBody, type InviteAttempt, type InviteChoices} from './people-invite';
+import {PeopleInviteForm} from './people-invite-form';
+import type {ServerInvitation} from '@core/direct-account.ts';
+
+const invitationStates = ['pending', 'accepted', 'revoked', 'expired'] as const;
+const invitationState = (value: string) => invitationStates.find(state => state === value);
 
 const t = defaultI18n.t, section = settingsSpec.find(section => section.scope === 'server' && section.id === 'people')!;
 const table = section.groups![0].rows[0].control, personSpec = section.panels!.person;
@@ -29,7 +37,7 @@ export type PeopleStreamLimits = Readonly<{
 export type PeopleBindings = Readonly<{
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
-  streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void;
+  streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; signIn?: 'local' | 'portico'; openHome: () => void; reportError: (error: unknown) => void;
 }>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
@@ -40,6 +48,49 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
 
 function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const {client} = bindings;
+  const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
+  const [formBusy, setFormBusy] = useState(false), [formError, setFormError] = useState<unknown>(), [retained, setRetained] = useState<InviteAttempt>();
+  const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null), alive = useRef(true);
+  const formSession = useRef(0), formActive = useRef(false);
+  const formToken = formSession.current;
+  const attempts = useRef<InviteAttempts | undefined>(undefined);
+  if (!attempts.current) attempts.current = new InviteAttempts(randomId);
+  useEffect(() => () => { alive.current = false; attempts.current?.retire(); inviteLife.current.abort(); }, []);
+  /** Opening the form writes nothing; Create is the explicit command. */
+  const openInvite = (opener: HTMLElement) => {
+    if (!alive.current || !bindings.authority.isCurrent() || attempts.current?.busy) return;
+    ++formSession.current; formActive.current = true;
+    inviteOpener.current = opener;
+    setFormError(undefined);
+    setFormOpen(true);
+  };
+  const choicesOf = (attempt: InviteAttempt): InviteChoices => ({role: attempt.body.role === 'admin' ? 'admin' : 'member',
+    allLibraries: attempt.body.allowedLibraries.length === 0, libraryIds: attempt.body.allowedLibraries,
+    expiresInHours: attempt.body.expiresInHours, ...(attempt.body.notes === undefined ? {} : {notes: attempt.body.notes}),
+    ...(attempt.body.porticoUsername === undefined ? {} : {porticoUsername: attempt.body.porticoUsername})});
+  const submitInvite = async (nextChoices: InviteChoices) => {
+    const invitations = bindings.invitations, owner = attempts.current!;
+    const currentForm = () => alive.current && bindings.authority.isCurrent() && formActive.current && formSession.current === formToken;
+    if (!invitations || !currentForm()) return;
+    let attempt: InviteAttempt | undefined;
+    try { attempt = owner.begin(inviteBody(nextChoices)); } catch (error) { if (currentForm()) setFormError(error); return; }
+    if (!attempt) return;
+    setFormBusy(true); setFormError(undefined);
+    try {
+      const created = await invitations.create({...attempt.body, allowedLibraries: [...attempt.body.allowedLibraries]},
+        {signal: inviteLife.current.signal, isCurrent: currentForm});
+      if (!currentForm()) return;
+      if (!invitationState(created.state)) throw new Error('invitation_state_unknown');
+      owner.created(); setFormBusy(false); formActive.current = false;
+      setRetained(undefined); setFormOpen(false); setIssued(created); setInviteOpen(true);
+    } catch (error) {
+      if (!currentForm()) return;
+      const status = (error as {status?: number})?.status;
+      if (status === 401 || status === 403) { owner.retire(); formActive.current = false; inviteLife.current.abort(); failure(error); return; }
+      owner.failed(error); setFormError(error); setRetained(owner.pending);
+    } finally { if (currentForm()) setFormBusy(false); }
+  };
   const live = useSyncExternalStore(bindings.authority.subscribe, bindings.authority.isCurrent, () => false);
   const [denied, setDenied] = useState(false);
   const [query, setQuery] = useState<TableQuery>(initialQuery), [page, setPage] = useState<SettingsPeoplePage>(), [error, setError] = useState<unknown>();
@@ -164,7 +215,8 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   };
   if (!live || denied) return null;
   return <>
-    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} disabled={!bindings.invite} onClick={event => {if (bindings.authority.isCurrent()) bindings.invite?.(event.currentTarget);}}>{t(table.addLabel!)}</Button>}>
+    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} disabled={!bindings.invite && !bindings.invitations}
+      onClick={event => { if (!bindings.authority.isCurrent()) return; if (bindings.invite) bindings.invite(event.currentTarget); else void openInvite(event.currentTarget); }}>{t(table.addLabel!)}</Button>}>
     {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => peopleTableRow(row, bindings.actor))} columns={table.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
       query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false, options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))}
@@ -187,5 +239,14 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
       {command.action === 'access' ? <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.awayAccess', 'bulk.maxRating'].includes(row.id) || row.id === 'bulk.maxStreams' && !!bindings.streamLimits, value: row.id === 'bulk.maxStreams' ? bindings.streamLimits?.readBulk(bulk) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none'})}
         change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
     </Dialog>}
+    <PeopleInviteForm open={formOpen} onOpenChange={open => { if (formSession.current !== formToken || !formActive.current || attempts.current?.busy) return; if (!open) { formActive.current = false; ++formSession.current; setFormError(undefined); } setFormOpen(open); }}
+      choices={choices} onChoices={next => { if (formActive.current && formSession.current === formToken && !attempts.current?.busy) setChoices(next); }} libraries={bindings.libraries} signIn={bindings.signIn}
+      busy={formBusy} error={formError} retained={retained}
+      onCreate={() => { void submitInvite(choices); }}
+      onRetry={() => { if (retained && formActive.current && formSession.current === formToken) { void submitInvite(choicesOf(retained)); } }} />
+    {issued && <InvitationShortCodeDialog open={inviteOpen} onOpenChange={setInviteOpen}
+      invitation={{id: issued.id, revision: issued.revision, state: invitationState(issued.state)!}}
+      request={(operationId, signal, isCurrent) => bindings.invitations!.shortCode(issued, operationId, {signal, isCurrent})}
+      isCurrent={bindings.authority.isCurrent} issueOnOpen returnFocusRef={inviteOpener} />}
   </>;
 }
