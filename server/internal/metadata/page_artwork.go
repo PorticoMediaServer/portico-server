@@ -30,7 +30,11 @@ func seedArtworkCandidate(ctx context.Context, tx *sql.Tx, t RepairTarget, role,
 	if err != nil {
 		return err
 	}
-	id, err := insertArtworkCandidate(ctx, tx, t, role, subject, provider, imageID, origin, "", attribution, fence, now, rank)
+	locale := ""
+	if provider != "local" {
+		locale = "und"
+	}
+	id, err := insertArtworkCandidate(ctx, tx, t, role, subject, provider, imageID, origin, locale, attribution, fence, now, rank)
 	if err != nil {
 		return err
 	}
@@ -127,12 +131,12 @@ func (s *Service) tvdbPageArtwork(ctx context.Context, id int64) []discoveredArt
 	attribution := artworkAttribution("tvdb")
 	for _, person := range page.People {
 		if artworkURLAllowed(person.URL, "tvdb") {
-			out = append(out, discoveredArtwork{role: "portrait", subject: "tvdb:" + strconv.FormatInt(person.PersonID, 10), provider: "tvdb", imageID: publicationDigest(person.URL), origin: person.URL, attribution: attribution, votes: -1})
+			out = append(out, discoveredArtwork{role: "portrait", subject: "tvdb:" + strconv.FormatInt(person.PersonID, 10), provider: "tvdb", imageID: publicationDigest(person.URL), origin: person.URL, locale: "und", attribution: attribution, votes: -1})
 		}
 	}
 	for _, season := range page.Seasons {
 		if artworkURLAllowed(season.URL, "tvdb") {
-			out = append(out, discoveredArtwork{role: "poster", provider: "tvdb", imageID: publicationDigest(season.URL), origin: season.URL, attribution: attribution, votes: -1, season: &seasonImageTarget{season.Number, season.Order}})
+			out = append(out, discoveredArtwork{role: "poster", provider: "tvdb", imageID: publicationDigest(season.URL), origin: season.URL, locale: "und", attribution: attribution, votes: -1, season: &seasonImageTarget{season.Number, season.Order}})
 		}
 	}
 	return out

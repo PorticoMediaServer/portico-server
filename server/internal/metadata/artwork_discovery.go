@@ -568,7 +568,7 @@ func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, lo
 			if season.Number >= 0 && season.Number <= 9999 && len(out) < 160 {
 				origin := imageURL(season.Poster, "w780")
 				if origin != "" {
-					out = append(out, discoveredArtwork{role: "poster", provider: "tmdb", imageID: season.Poster, origin: origin, attribution: Attribution, votes: -1, season: &seasonImageTarget{season.Number, "official"}})
+					out = append(out, discoveredArtwork{role: "poster", provider: "tmdb", imageID: season.Poster, origin: origin, locale: "und", attribution: Attribution, votes: -1, season: &seasonImageTarget{season.Number, "official"}})
 				}
 			}
 		}
