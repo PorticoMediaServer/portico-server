@@ -25,6 +25,8 @@ export type SelectionActions = Readonly<{
   onRefresh?: () => void;
   onDelete?: () => void;
   deleteDisabledReason?: string;
+  /** Explanatory dialog is reachable; this description does not disable its trigger. */
+  deleteExplanation?: string;
   ownerMark?: ReactNode;
 }>;
 export type SelectionBarProps = Readonly<{
