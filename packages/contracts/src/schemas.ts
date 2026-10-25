@@ -5862,6 +5862,9 @@ export const schemas = {
                 "myList": {
                   "type": "boolean"
                 },
+                "notInterested": {
+                  "type": "boolean"
+                },
                 "play": {
                   "type": "boolean"
                 },
@@ -6278,6 +6281,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
                       "type": "boolean"
                     },
                     "play": {
@@ -7796,6 +7802,9 @@ export const schemas = {
                 "myList": {
                   "type": "boolean"
                 },
+                "notInterested": {
+                  "type": "boolean"
+                },
                 "play": {
                   "type": "boolean"
                 },
@@ -8212,6 +8221,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
                       "type": "boolean"
                     },
                     "play": {
@@ -9399,6 +9411,16 @@ export const schemas = {
           "library.segmentDetection": {
             "type": "string"
           },
+          "logDetailMinutes": {
+            "enum": [
+              15,
+              30,
+              60,
+              120,
+              240
+            ],
+            "type": "integer"
+          },
           "logLevel": {
             "type": "string"
           },
@@ -9491,6 +9513,15 @@ export const schemas = {
           "remoteSignInPolicy": {
             "type": "string"
           },
+          "segments.animeMode": {
+            "enum": [
+              "server",
+              "standard",
+              "thorough",
+              "off"
+            ],
+            "type": "string"
+          },
           "segments.automaticConfidencePercent": {
             "enum": [
               70,
@@ -9500,6 +9531,101 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "segments.creditsWindow": {
+            "enum": [
+              "usual",
+              "long"
+            ],
+            "type": "string"
+          },
+          "segments.filmCreditsWindow": {
+            "enum": [
+              "usual",
+              "long"
+            ],
+            "type": "string"
+          },
+          "segments.introWindow": {
+            "enum": [
+              "usual",
+              "long"
+            ],
+            "type": "string"
+          },
+          "segments.movieMode": {
+            "enum": [
+              "server",
+              "standard",
+              "thorough",
+              "off"
+            ],
+            "type": "string"
+          },
+          "segments.shortestEpisode": {
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "segments.shortestFilm": {
+            "enum": [
+              5,
+              10,
+              15,
+              20,
+              25,
+              30,
+              35,
+              40,
+              45,
+              50,
+              55,
+              60
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "segments.tvMode": {
+            "enum": [
+              "server",
+              "standard",
+              "thorough",
+              "off"
+            ],
+            "type": "string"
           },
           "segments.useChapterNames": {
             "type": "boolean"
@@ -9747,6 +9873,16 @@ export const schemas = {
               "library.segmentDetection": {
                 "type": "string"
               },
+              "logDetailMinutes": {
+                "enum": [
+                  15,
+                  30,
+                  60,
+                  120,
+                  240
+                ],
+                "type": "integer"
+              },
               "logLevel": {
                 "type": "string"
               },
@@ -9839,6 +9975,15 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "segments.animeMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -9848,6 +9993,101 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "segments.creditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.filmCreditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.introWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.movieMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
+              "segments.shortestEpisode": {
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.shortestFilm": {
+                "enum": [
+                  5,
+                  10,
+                  15,
+                  20,
+                  25,
+                  30,
+                  35,
+                  40,
+                  45,
+                  50,
+                  55,
+                  60
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.tvMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"
@@ -10111,6 +10351,16 @@ export const schemas = {
               "library.segmentDetection": {
                 "type": "string"
               },
+              "logDetailMinutes": {
+                "enum": [
+                  15,
+                  30,
+                  60,
+                  120,
+                  240
+                ],
+                "type": "integer"
+              },
               "logLevel": {
                 "type": "string"
               },
@@ -10203,6 +10453,15 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "segments.animeMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -10212,6 +10471,101 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "segments.creditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.filmCreditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.introWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.movieMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
+              "segments.shortestEpisode": {
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.shortestFilm": {
+                "enum": [
+                  5,
+                  10,
+                  15,
+                  20,
+                  25,
+                  30,
+                  35,
+                  40,
+                  45,
+                  50,
+                  55,
+                  60
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.tvMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"
@@ -17000,6 +17354,81 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CreateStorageSourceRcloneRequest": {
+    "properties": {
+      "config": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "remote": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "remote",
+      "config"
+    ],
+    "type": "object"
+  },
+  "CreateStorageSourceRcloneResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
   "CreateWebhookRequest": {
     "properties": {
       "enabled": {
@@ -20390,6 +20819,11 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "sessionCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "username": {
         "type": "string"
       }
@@ -20457,6 +20891,11 @@ export const schemas = {
               "type": "string"
             },
             "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sessionCount": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -22653,6 +23092,9 @@ export const schemas = {
                 "description": "RFC 3339 UTC instant; empty when absent.",
                 "type": "string"
               },
+              "includePaths": {
+                "type": "boolean"
+              },
               "included": {
                 "items": {
                   "type": "string"
@@ -22663,6 +23105,28 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "pathCategories": {
+                "items": {
+                  "enum": [
+                    "library-configured-root",
+                    "library-resolved-root",
+                    "managed-mount-point"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "pathsInvalidAmongExamined": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "pathsScanTruncated": {
+                "type": "boolean"
+              },
+              "pathsTruncated": {
+                "type": "boolean"
               },
               "redaction": {
                 "type": "string"
@@ -22944,6 +23408,73 @@ export const schemas = {
               "scans",
               "mounts",
               "recentScanFailures"
+            ],
+            "type": "object"
+          },
+          "snapshotPaths": {
+            "properties": {
+              "examined": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "invalidAmongExamined": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "items": {
+                "items": {
+                  "properties": {
+                    "category": {
+                      "enum": [
+                        "library-configured-root",
+                        "library-resolved-root",
+                        "managed-mount-point"
+                      ],
+                      "type": "string"
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "reference",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "limit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scanBudget": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scanTruncated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "limit",
+              "hasMore",
+              "scanBudget",
+              "examined",
+              "scanTruncated",
+              "invalidAmongExamined",
+              "items"
             ],
             "type": "object"
           }
@@ -29346,6 +29877,16 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "logDetailMinutes": {
+        "enum": [
+          15,
+          30,
+          60,
+          120,
+          240
+        ],
+        "type": "integer"
       },
       "logLevel": {
         "type": "string"
@@ -36700,6 +37241,17 @@ export const schemas = {
     "properties": {
       "data": {
         "properties": {
+          "exportOptions": {
+            "properties": {
+              "includePaths": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "includePaths"
+            ],
+            "type": "object"
+          },
           "externalScopes": {
             "additionalProperties": {
               "type": "string"
@@ -36944,6 +37496,16 @@ export const schemas = {
               "library.segmentDetection": {
                 "type": "string"
               },
+              "logDetailMinutes": {
+                "enum": [
+                  15,
+                  30,
+                  60,
+                  120,
+                  240
+                ],
+                "type": "integer"
+              },
               "logLevel": {
                 "type": "string"
               },
@@ -37036,6 +37598,15 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "segments.animeMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -37045,6 +37616,101 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "segments.creditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.filmCreditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.introWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.movieMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
+              "segments.shortestEpisode": {
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.shortestFilm": {
+                "enum": [
+                  5,
+                  10,
+                  15,
+                  20,
+                  25,
+                  30,
+                  35,
+                  40,
+                  45,
+                  50,
+                  55,
+                  60
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.tvMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"
@@ -37308,6 +37974,16 @@ export const schemas = {
               "library.segmentDetection": {
                 "type": "string"
               },
+              "logDetailMinutes": {
+                "enum": [
+                  15,
+                  30,
+                  60,
+                  120,
+                  240
+                ],
+                "type": "integer"
+              },
               "logLevel": {
                 "type": "string"
               },
@@ -37400,6 +38076,15 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "segments.animeMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
               "segments.automaticConfidencePercent": {
                 "enum": [
                   70,
@@ -37409,6 +38094,101 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "segments.creditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.filmCreditsWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.introWindow": {
+                "enum": [
+                  "usual",
+                  "long"
+                ],
+                "type": "string"
+              },
+              "segments.movieMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
+              },
+              "segments.shortestEpisode": {
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26,
+                  27,
+                  28,
+                  29,
+                  30
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.shortestFilm": {
+                "enum": [
+                  5,
+                  10,
+                  15,
+                  20,
+                  25,
+                  30,
+                  35,
+                  40,
+                  45,
+                  50,
+                  55,
+                  60
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.tvMode": {
+                "enum": [
+                  "server",
+                  "standard",
+                  "thorough",
+                  "off"
+                ],
+                "type": "string"
               },
               "segments.useChapterNames": {
                 "type": "boolean"
@@ -46379,6 +47159,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -46776,6 +47559,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "myList": {
+                                  "type": "boolean"
+                                },
+                                "notInterested": {
                                   "type": "boolean"
                                 },
                                 "play": {
@@ -47194,6 +47980,9 @@ export const schemas = {
                                       "type": "boolean"
                                     },
                                     "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "notInterested": {
                                       "type": "boolean"
                                     },
                                     "play": {
@@ -48094,6 +48883,9 @@ export const schemas = {
                             "myList": {
                               "type": "boolean"
                             },
+                            "notInterested": {
+                              "type": "boolean"
+                            },
                             "play": {
                               "type": "boolean"
                             },
@@ -48510,6 +49302,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "myList": {
+                                  "type": "boolean"
+                                },
+                                "notInterested": {
                                   "type": "boolean"
                                 },
                                 "play": {
@@ -49868,6 +50663,9 @@ export const schemas = {
                                 "myList": {
                                   "type": "boolean"
                                 },
+                                "notInterested": {
+                                  "type": "boolean"
+                                },
                                 "play": {
                                   "type": "boolean"
                                 },
@@ -50284,6 +51082,9 @@ export const schemas = {
                                       "type": "boolean"
                                     },
                                     "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "notInterested": {
                                       "type": "boolean"
                                     },
                                     "play": {
@@ -51338,6 +52139,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -51735,6 +52539,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -52153,6 +52960,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -53050,6 +53860,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -53466,6 +54279,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -54824,6 +55640,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -55240,6 +56059,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -56492,6 +57314,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -56908,6 +57733,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -57813,6 +58641,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -58229,6 +59060,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -58948,6 +59782,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -59345,6 +60182,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -59763,6 +60603,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -60663,6 +61506,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -61079,6 +61925,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -62437,6 +63286,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -62853,6 +63705,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -63907,6 +64762,9 @@ export const schemas = {
               "myList": {
                 "type": "boolean"
               },
+              "notInterested": {
+                "type": "boolean"
+              },
               "play": {
                 "type": "boolean"
               },
@@ -64304,6 +65162,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
                       "type": "boolean"
                     },
                     "play": {
@@ -64722,6 +65583,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -65619,6 +66483,9 @@ export const schemas = {
                 "myList": {
                   "type": "boolean"
                 },
+                "notInterested": {
+                  "type": "boolean"
+                },
                 "play": {
                   "type": "boolean"
                 },
@@ -66035,6 +66902,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
                       "type": "boolean"
                     },
                     "play": {
@@ -67393,6 +68263,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -67809,6 +68682,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -69798,6 +70674,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -70214,6 +71093,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -71842,6 +72724,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -72258,6 +73143,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -76594,6 +77482,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -76991,6 +77882,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "myList": {
+                                  "type": "boolean"
+                                },
+                                "notInterested": {
                                   "type": "boolean"
                                 },
                                 "play": {
@@ -77409,6 +78303,9 @@ export const schemas = {
                                       "type": "boolean"
                                     },
                                     "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "notInterested": {
                                       "type": "boolean"
                                     },
                                     "play": {
@@ -78309,6 +79206,9 @@ export const schemas = {
                             "myList": {
                               "type": "boolean"
                             },
+                            "notInterested": {
+                              "type": "boolean"
+                            },
                             "play": {
                               "type": "boolean"
                             },
@@ -78725,6 +79625,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "myList": {
+                                  "type": "boolean"
+                                },
+                                "notInterested": {
                                   "type": "boolean"
                                 },
                                 "play": {
@@ -80083,6 +80986,9 @@ export const schemas = {
                                 "myList": {
                                   "type": "boolean"
                                 },
+                                "notInterested": {
+                                  "type": "boolean"
+                                },
                                 "play": {
                                   "type": "boolean"
                                 },
@@ -80499,6 +81405,9 @@ export const schemas = {
                                       "type": "boolean"
                                     },
                                     "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "notInterested": {
                                       "type": "boolean"
                                     },
                                     "play": {
@@ -81553,6 +82462,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -81950,6 +82862,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -82368,6 +83283,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -83265,6 +84183,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -83681,6 +84602,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -85039,6 +85963,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -85455,6 +86382,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -86548,6 +87478,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -86945,6 +87878,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -87363,6 +88299,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -88263,6 +89202,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -88679,6 +89621,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -90037,6 +90982,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -90453,6 +91401,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -91507,6 +92458,9 @@ export const schemas = {
               "myList": {
                 "type": "boolean"
               },
+              "notInterested": {
+                "type": "boolean"
+              },
               "play": {
                 "type": "boolean"
               },
@@ -91904,6 +92858,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
                       "type": "boolean"
                     },
                     "play": {
@@ -92322,6 +93279,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -93219,6 +94179,9 @@ export const schemas = {
                 "myList": {
                   "type": "boolean"
                 },
+                "notInterested": {
+                  "type": "boolean"
+                },
                 "play": {
                   "type": "boolean"
                 },
@@ -93635,6 +94598,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
                       "type": "boolean"
                     },
                     "play": {
@@ -94993,6 +95959,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -95409,6 +96378,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -97062,6 +98034,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -97478,6 +98453,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -101132,6 +102110,9 @@ export const schemas = {
               "myList": {
                 "type": "boolean"
               },
+              "notInterested": {
+                "type": "boolean"
+              },
               "play": {
                 "type": "boolean"
               },
@@ -101548,6 +102529,9 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "myList": {
+                    "type": "boolean"
+                  },
+                  "notInterested": {
                     "type": "boolean"
                   },
                   "play": {
@@ -102635,6 +103619,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -103051,6 +104038,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -104155,6 +105145,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -104571,6 +105564,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -106056,6 +107052,9 @@ export const schemas = {
                   "myList": {
                     "type": "boolean"
                   },
+                  "notInterested": {
+                    "type": "boolean"
+                  },
                   "play": {
                     "type": "boolean"
                   },
@@ -106472,6 +107471,9 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "myList": {
+                        "type": "boolean"
+                      },
+                      "notInterested": {
                         "type": "boolean"
                       },
                       "play": {
@@ -107559,6 +108561,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -107975,6 +108980,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -109010,6 +110018,9 @@ export const schemas = {
               "myList": {
                 "type": "boolean"
               },
+              "notInterested": {
+                "type": "boolean"
+              },
               "play": {
                 "type": "boolean"
               },
@@ -109426,6 +110437,9 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "myList": {
+                    "type": "boolean"
+                  },
+                  "notInterested": {
                     "type": "boolean"
                   },
                   "play": {
@@ -115032,6 +116046,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -115448,6 +116465,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -116400,6 +117420,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -116816,6 +117839,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -117850,6 +118876,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -118266,6 +119295,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -121453,6 +122485,9 @@ export const schemas = {
               "myList": {
                 "type": "boolean"
               },
+              "notInterested": {
+                "type": "boolean"
+              },
               "play": {
                 "type": "boolean"
               },
@@ -121869,6 +122904,9 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "myList": {
+                    "type": "boolean"
+                  },
+                  "notInterested": {
                     "type": "boolean"
                   },
                   "play": {
@@ -122956,6 +123994,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -123372,6 +124413,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -126303,6 +127347,9 @@ export const schemas = {
               "myList": {
                 "type": "boolean"
               },
+              "notInterested": {
+                "type": "boolean"
+              },
               "play": {
                 "type": "boolean"
               },
@@ -126719,6 +127766,9 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "myList": {
+                    "type": "boolean"
+                  },
+                  "notInterested": {
                     "type": "boolean"
                   },
                   "play": {
@@ -127806,6 +128856,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -128222,6 +129275,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -129452,6 +130508,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -129868,6 +130927,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -130992,6 +132054,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -131408,6 +132473,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -133055,6 +134123,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -133471,6 +134542,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -135803,6 +136877,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -136200,6 +137277,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "myList": {
+                                  "type": "boolean"
+                                },
+                                "notInterested": {
                                   "type": "boolean"
                                 },
                                 "play": {
@@ -136618,6 +137698,9 @@ export const schemas = {
                                       "type": "boolean"
                                     },
                                     "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "notInterested": {
                                       "type": "boolean"
                                     },
                                     "play": {
@@ -137518,6 +138601,9 @@ export const schemas = {
                             "myList": {
                               "type": "boolean"
                             },
+                            "notInterested": {
+                              "type": "boolean"
+                            },
                             "play": {
                               "type": "boolean"
                             },
@@ -137934,6 +139020,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "myList": {
+                                  "type": "boolean"
+                                },
+                                "notInterested": {
                                   "type": "boolean"
                                 },
                                 "play": {
@@ -139292,6 +140381,9 @@ export const schemas = {
                                 "myList": {
                                   "type": "boolean"
                                 },
+                                "notInterested": {
+                                  "type": "boolean"
+                                },
                                 "play": {
                                   "type": "boolean"
                                 },
@@ -139708,6 +140800,9 @@ export const schemas = {
                                       "type": "boolean"
                                     },
                                     "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "notInterested": {
                                       "type": "boolean"
                                     },
                                     "play": {
@@ -140762,6 +141857,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -141159,6 +142257,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -141577,6 +142678,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -142474,6 +143578,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -142890,6 +143997,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -144248,6 +145358,9 @@ export const schemas = {
                           "myList": {
                             "type": "boolean"
                           },
+                          "notInterested": {
+                            "type": "boolean"
+                          },
                           "play": {
                             "type": "boolean"
                           },
@@ -144664,6 +145777,9 @@ export const schemas = {
                                 "type": "boolean"
                               },
                               "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
                                 "type": "boolean"
                               },
                               "play": {
@@ -146551,6 +147667,16 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "removedProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "retainedProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -146742,6 +147868,16 @@ export const schemas = {
             "type": "integer"
           },
           "profiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "removedProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "retainedProfiles": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -147303,6 +148439,98 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetStorageSourceRcloneOperationRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceRcloneOperationResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
+  "GetStorageSourceRcloneProvidersRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceRcloneProvidersResponse": {
+    "properties": {
+      "providers": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "providers"
+    ],
+    "type": "object"
+  },
   "GetStorageSourceReadProfileRequest": {
     "properties": {},
     "required": [],
@@ -147783,6 +149011,9 @@ export const schemas = {
                     "myList": {
                       "type": "boolean"
                     },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
                     "play": {
                       "type": "boolean"
                     },
@@ -148199,6 +149430,9 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
                           "type": "boolean"
                         },
                         "play": {
@@ -154538,6 +155772,16 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "logDetailMinutes": {
+        "enum": [
+          15,
+          30,
+          60,
+          120,
+          240
+        ],
+        "type": "integer"
+      },
       "logLevel": {
         "type": "string"
       },
@@ -154592,6 +155836,16 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "logDetailMinutes": {
+        "enum": [
+          15,
+          30,
+          60,
+          120,
+          240
+        ],
+        "type": "integer"
       },
       "logLevel": {
         "type": "string"
@@ -158144,6 +159398,9 @@ export const schemas = {
       "idempotencyKey": {
         "type": "string"
       },
+      "includePaths": {
+        "type": "boolean"
+      },
       "to": {
         "description": "RFC 3339 UTC instant; empty when absent.",
         "type": "string"
@@ -158318,6 +159575,9 @@ export const schemas = {
                 "description": "RFC 3339 UTC instant; empty when absent.",
                 "type": "string"
               },
+              "includePaths": {
+                "type": "boolean"
+              },
               "included": {
                 "items": {
                   "type": "string"
@@ -158328,6 +159588,28 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "pathCategories": {
+                "items": {
+                  "enum": [
+                    "library-configured-root",
+                    "library-resolved-root",
+                    "managed-mount-point"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "pathsInvalidAmongExamined": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "pathsScanTruncated": {
+                "type": "boolean"
+              },
+              "pathsTruncated": {
+                "type": "boolean"
               },
               "redaction": {
                 "type": "string"
@@ -158609,6 +159891,73 @@ export const schemas = {
               "scans",
               "mounts",
               "recentScanFailures"
+            ],
+            "type": "object"
+          },
+          "snapshotPaths": {
+            "properties": {
+              "examined": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "invalidAmongExamined": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "items": {
+                "items": {
+                  "properties": {
+                    "category": {
+                      "enum": [
+                        "library-configured-root",
+                        "library-resolved-root",
+                        "managed-mount-point"
+                      ],
+                      "type": "string"
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "reference",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "limit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scanBudget": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "scanTruncated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "limit",
+              "hasMore",
+              "scanBudget",
+              "examined",
+              "scanTruncated",
+              "invalidAmongExamined",
+              "items"
             ],
             "type": "object"
           }
@@ -163151,6 +164500,16 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "logDetailMinutes": {
+        "enum": [
+          15,
+          30,
+          60,
+          120,
+          240
+        ],
+        "type": "integer"
       },
       "logLevel": {
         "type": "string"
@@ -170539,6 +171898,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -170955,6 +172317,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -171911,6 +173276,9 @@ export const schemas = {
                 "myList": {
                   "type": "boolean"
                 },
+                "notInterested": {
+                  "type": "boolean"
+                },
                 "play": {
                   "type": "boolean"
                 },
@@ -172327,6 +173695,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
                       "type": "boolean"
                     },
                     "play": {
@@ -181768,6 +183139,16 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "removedProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "retainedProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -182146,6 +183527,16 @@ export const schemas = {
         "type": "integer"
       },
       "profiles": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "removedProfiles": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "retainedProfiles": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -196236,6 +197627,75 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "RemoveStorageSourceRcloneRequest": {
+    "properties": {
+      "expectedGeneration": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedGeneration"
+    ],
+    "type": "object"
+  },
+  "RemoveStorageSourceRcloneResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
   "ReorderLibraryCollectionRequest": {
     "properties": {
       "afterItemId": {
@@ -198182,6 +199642,9 @@ export const schemas = {
                       "myList": {
                         "type": "boolean"
                       },
+                      "notInterested": {
+                        "type": "boolean"
+                      },
                       "play": {
                         "type": "boolean"
                       },
@@ -198598,6 +200061,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "myList": {
+                            "type": "boolean"
+                          },
+                          "notInterested": {
                             "type": "boolean"
                           },
                           "play": {
@@ -208739,6 +210205,56 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "TestStorageSourceRcloneRequest": {
+    "properties": {
+      "config": {
+        "type": "string"
+      },
+      "remote": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "remote",
+      "config"
+    ],
+    "type": "object"
+  },
+  "TestStorageSourceRcloneResponse": {
+    "properties": {
+      "result": {
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "result"
+    ],
+    "type": "object"
+  },
   "TestStorageSourceWebdavRequest": {
     "properties": {
       "insecureLocal": {
@@ -210423,6 +211939,87 @@ export const schemas = {
     },
     "required": [
       "queue"
+    ],
+    "type": "object"
+  },
+  "UpdateStorageSourceRcloneRequest": {
+    "properties": {
+      "config": {
+        "type": "string"
+      },
+      "expectedGeneration": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "remote": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedGeneration",
+      "name",
+      "remote",
+      "config"
+    ],
+    "type": "object"
+  },
+  "UpdateStorageSourceRcloneResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
     ],
     "type": "object"
   },

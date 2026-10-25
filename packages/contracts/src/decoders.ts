@@ -23,6 +23,7 @@ export function decodeCreateDownloadPreparationsResponse(input: unknown): types.
 export function decodeCreateDownloadRequestResponse(input: unknown): types.CreateDownloadRequestResponse { return decode("CreateDownloadRequestResponse", input) as types.CreateDownloadRequestResponse; }
 export function decodeCreateJobResponse(input: unknown): types.CreateJobResponse { return decode("CreateJobResponse", input) as types.CreateJobResponse; }
 export function decodeCreateQueueResponse(input: unknown): types.CreateQueueResponse { return decode("CreateQueueResponse", input) as types.CreateQueueResponse; }
+export function decodeCreateStorageSourceRcloneResponse(input: unknown): types.CreateStorageSourceRcloneResponse { return decode("CreateStorageSourceRcloneResponse", input) as types.CreateStorageSourceRcloneResponse; }
 export function decodeCreateWebhookResponse(input: unknown): types.CreateWebhookResponse { return decode("CreateWebhookResponse", input) as types.CreateWebhookResponse; }
 export function decodeDeleteAdminBackupResponse(input: unknown): types.DeleteAdminBackupResponse { return decode("DeleteAdminBackupResponse", input) as types.DeleteAdminBackupResponse; }
 export function decodeDeleteAdminDvrRecordingGroupsIdResponse(input: unknown): types.DeleteAdminDvrRecordingGroupsIdResponse { return decode("DeleteAdminDvrRecordingGroupsIdResponse", input) as types.DeleteAdminDvrRecordingGroupsIdResponse; }
@@ -349,6 +350,8 @@ export function decodeGetStorageMountsResponse(input: unknown): types.GetStorage
 export function decodeGetStorageOperationsIdResponse(input: unknown): types.GetStorageOperationsIdResponse { return decode("GetStorageOperationsIdResponse", input) as types.GetStorageOperationsIdResponse; }
 export function decodeGetStorageRcloneBundledResponse(input: unknown): types.GetStorageRcloneBundledResponse { return decode("GetStorageRcloneBundledResponse", input) as types.GetStorageRcloneBundledResponse; }
 export function decodeGetStorageSourceOperationsIdResponse(input: unknown): types.GetStorageSourceOperationsIdResponse { return decode("GetStorageSourceOperationsIdResponse", input) as types.GetStorageSourceOperationsIdResponse; }
+export function decodeGetStorageSourceRcloneOperationResponse(input: unknown): types.GetStorageSourceRcloneOperationResponse { return decode("GetStorageSourceRcloneOperationResponse", input) as types.GetStorageSourceRcloneOperationResponse; }
+export function decodeGetStorageSourceRcloneProvidersResponse(input: unknown): types.GetStorageSourceRcloneProvidersResponse { return decode("GetStorageSourceRcloneProvidersResponse", input) as types.GetStorageSourceRcloneProvidersResponse; }
 export function decodeGetStorageSourceReadProfileResponse(input: unknown): types.GetStorageSourceReadProfileResponse { return decode("GetStorageSourceReadProfileResponse", input) as types.GetStorageSourceReadProfileResponse; }
 export function decodeGetStorageSourcesResponse(input: unknown): types.GetStorageSourcesResponse { return decode("GetStorageSourcesResponse", input) as types.GetStorageSourcesResponse; }
 export function decodeGetStorageStatusResponse(input: unknown): types.GetStorageStatusResponse { return decode("GetStorageStatusResponse", input) as types.GetStorageStatusResponse; }
@@ -659,6 +662,7 @@ export function decodeRefreshItemsMetadataResponse(input: unknown): types.Refres
 export function decodeRefreshShowsMetadataResponse(input: unknown): types.RefreshShowsMetadataResponse { return decode("RefreshShowsMetadataResponse", input) as types.RefreshShowsMetadataResponse; }
 export function decodeRemoveLibraryResponse(input: unknown): types.RemoveLibraryResponse { return decode("RemoveLibraryResponse", input) as types.RemoveLibraryResponse; }
 export function decodeRemoveQueueEntryResponse(input: unknown): types.RemoveQueueEntryResponse { return decode("RemoveQueueEntryResponse", input) as types.RemoveQueueEntryResponse; }
+export function decodeRemoveStorageSourceRcloneResponse(input: unknown): types.RemoveStorageSourceRcloneResponse { return decode("RemoveStorageSourceRcloneResponse", input) as types.RemoveStorageSourceRcloneResponse; }
 export function decodeReorderLibraryCollectionResponse(input: unknown): types.ReorderLibraryCollectionResponse { return decode("ReorderLibraryCollectionResponse", input) as types.ReorderLibraryCollectionResponse; }
 export function decodeReorderPlaylistWindowResponse(input: unknown): types.ReorderPlaylistWindowResponse { return decode("ReorderPlaylistWindowResponse", input) as types.ReorderPlaylistWindowResponse; }
 export function decodeReorderSavedCollectionResponse(input: unknown): types.ReorderSavedCollectionResponse { return decode("ReorderSavedCollectionResponse", input) as types.ReorderSavedCollectionResponse; }
@@ -721,8 +725,10 @@ export function decodeStopAccountPlaybackResponse(input: unknown): types.StopAcc
 export function decodeStopPlaybackSessionResponse(input: unknown): types.StopPlaybackSessionResponse { return decode("StopPlaybackSessionResponse", input) as types.StopPlaybackSessionResponse; }
 export function decodeSyncDownloadProgressResponse(input: unknown): types.SyncDownloadProgressResponse { return decode("SyncDownloadProgressResponse", input) as types.SyncDownloadProgressResponse; }
 export function decodeTerminateAdminSessionResponse(input: unknown): types.TerminateAdminSessionResponse { return decode("TerminateAdminSessionResponse", input) as types.TerminateAdminSessionResponse; }
+export function decodeTestStorageSourceRcloneResponse(input: unknown): types.TestStorageSourceRcloneResponse { return decode("TestStorageSourceRcloneResponse", input) as types.TestStorageSourceRcloneResponse; }
 export function decodeTestStorageSourceWebdavResponse(input: unknown): types.TestStorageSourceWebdavResponse { return decode("TestStorageSourceWebdavResponse", input) as types.TestStorageSourceWebdavResponse; }
 export function decodeTestWebhookResponse(input: unknown): types.TestWebhookResponse { return decode("TestWebhookResponse", input) as types.TestWebhookResponse; }
 export function decodeUndoContainerPersonalStateResponse(input: unknown): types.UndoContainerPersonalStateResponse { return decode("UndoContainerPersonalStateResponse", input) as types.UndoContainerPersonalStateResponse; }
 export function decodeUpdateQueueResponse(input: unknown): types.UpdateQueueResponse { return decode("UpdateQueueResponse", input) as types.UpdateQueueResponse; }
+export function decodeUpdateStorageSourceRcloneResponse(input: unknown): types.UpdateStorageSourceRcloneResponse { return decode("UpdateStorageSourceRcloneResponse", input) as types.UpdateStorageSourceRcloneResponse; }
 export function decodeUpdateWebhookResponse(input: unknown): types.UpdateWebhookResponse { return decode("UpdateWebhookResponse", input) as types.UpdateWebhookResponse; }
