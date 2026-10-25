@@ -11,6 +11,9 @@ spec.loader.exec_module(ci)
 
 class SelectionTests(unittest.TestCase):
     def setUp(self):
+        env = patch.dict(ci.os.environ, {"CI_FULL_TREE": "0"})
+        env.start()
+        self.addCleanup(env.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -23,6 +26,16 @@ class SelectionTests(unittest.TestCase):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
         return p
+
+    def test_full_tree_does_not_depend_on_cancelled_push_history(self):
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1", "CI_BASE": "missing-commit"}), patch.object(ci, "git", return_value=["old/source.ts", "new/test.test.ts"]) as git:
+            self.assertEqual(ci.changed(), {"old/source.ts", "new/test.test.ts"})
+            git.assert_called_once_with("ls-files")
+
+    def test_full_module_runs_tests_without_a_name_or_diff_filter(self):
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1"}), patch.object(ci, "changed", side_effect=AssertionError("diff must not be read")), patch.object(ci, "run_all") as run:
+            ci.go_checks("apikit", "affected")
+            self.assertEqual(run.call_args.args[0], [(["go", "test", "-count=1", "./..."], self.root / "apikit"), (["go", "vet", "./..."], self.root / "apikit")])
 
     def test_catalogue_uses_named_counterpart_never_full_suite(self):
         self.file("server/internal/catalog/movie.go", "package catalog")

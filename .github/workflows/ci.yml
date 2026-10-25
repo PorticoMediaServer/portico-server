@@ -1,19 +1,19 @@
 name: CI
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: '33 * * * *'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: merge-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: false
 env:
-  CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  CI_FULL_TREE: '1'
   GOTOOLCHAIN: go1.26.10
 jobs:
   repository:
-    timeout-minutes: 10
+    timeout-minutes: 40
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -33,7 +33,7 @@ jobs:
         run: scripts/check-repo-binaries.sh
       - run: python3 scripts/test-ci-affected.py
   go:
-    timeout-minutes: 10
+    timeout-minutes: 40
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -61,11 +61,22 @@ jobs:
           mkdir -p .scratch
           printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
           echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
-      - name: Changed Go tests and vet
-        run: python3 scripts/ci-affected.py go --module 'hosted-services/${{ matrix.module }}'
+      - name: Build every Go package
+        working-directory: hosted-services/${{ matrix.module }}
+        run: |
+          status=0
+          go build ./... > "$RUNNER_TEMP/go-build.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/go-build.log"
+          exit "$status"
+      - name: Full Go module tests and vet
+        run: |
+          status=0
+          python3 scripts/ci-affected.py go --module 'hosted-services/${{ matrix.module }}' > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"
 
   security:
-    timeout-minutes: 10
+    timeout-minutes: 40
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -89,5 +100,9 @@ jobs:
           mkdir -p .scratch
           printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
           echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
-      - name: Changed Go tests and vet
-        run: python3 scripts/ci-affected.py go --module hosted-services/hosted --group hosted
+      - name: Full Go module tests and vet
+        run: |
+          status=0
+          python3 scripts/ci-affected.py go --module hosted-services/hosted --group hosted > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"

@@ -212,3 +212,13 @@ type testBinary string
 func (testBinary) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "format": "binary"}
 }
+
+func TestTSTypeDecodedRequiredProperties(t *testing.T) {
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(`{"type":"object","required":["value"],"properties":{"value":{"type":"string"},"note":{"type":"string"}}}`), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if got := tsType(decoded); got != `{ "note"?: string; "value": string }` {
+		t.Fatalf("decoded required properties changed: %s", got)
+	}
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded push checks. Full package/application suites belong to nightly CI."""
+"""Full hourly checks, with bounded selection retained for explicit local use."""
 import argparse
 import json
 import os
@@ -16,6 +16,8 @@ def git(*args):
 
 
 def changed():
+    if os.environ.get("CI_FULL_TREE") == "1":
+        return set(git("ls-files"))
     base = os.environ.get("CI_BASE", "")
     if not base or set(base) == {"0"}:
         base = "HEAD^"
@@ -71,6 +73,10 @@ def go_plan(module, paths):
 
 
 def go_checks(module, group):
+    if os.environ.get("CI_FULL_TREE") == "1" and group == "affected":
+        vet = ["bash", str(ROOT / "scripts/vet-go.sh")] if module == "server" else ["go", "vet", "./..."]
+        run_all([(["go", "test", "-count=1", "./..."], ROOT / module), (vet, ROOT / module)])
+        return
     if group == "affected":
         selected = go_plan(module, changed())
     elif group == "auth":
