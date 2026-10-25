@@ -530,6 +530,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/storage/mounts":                            writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
 		"POST /v1/storage/mounts/{id}/actions":               writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
 		"POST /v1/storage/sources/webdav/test":               {check: TestDAVConnectionHTTPChecksOwnerAndNeverPublishesBlockedTest},
+		"POST /v1/storage/sources/{id}/test":                 writeExempt("owner-only saved-source connection test; reads the saved association under exclusive test custody and mutates no saved row or catalogue (storageOwner on the route)"),
 		"POST /v1/storage/sources/rclone/test":               {check: TestRcloneConnectionRouteKeepsOwnerFirstAndNoSubsystemFacts},
 		"POST /v1/storage/sources/rclone":                    {check: TestRcloneSourceRouteKeepsOwnerFirstAndNoSubsystemFacts},
 		"POST /v1/storage/sources/rclone/config":             writeExempt("owner-only storage configuration read from the account file; no member catalogue mutation (storageOwner on the route)"),

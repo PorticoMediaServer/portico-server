@@ -253,6 +253,22 @@ type candidateMetadata struct {
 
 type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remotemedia.ExclusiveTest, map[string]candidateMetadata) (func(context.Context) error, func(), error)
 
+// providerTestFailure marks a failure observed after the temporary candidate
+// serve actually reached the provider. Setup, program, custody and local
+// database/file errors are never marked, so a saved-source test cannot report a
+// provider outcome it did not observe.
+type providerTestFailure struct{ err error }
+
+func (e *providerTestFailure) Error() string { return e.err.Error() }
+func (e *providerTestFailure) Unwrap() error { return e.err }
+
+func providerTest(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &providerTestFailure{err: err}
+}
+
 // runCandidateServe holds source I/O exclusively through both phases. The
 // observer's second phase runs only after physical Wait, under the SAME hold.
 func (s *Service) runCandidateServe(ctx context.Context, source, generation string, profile SourceReadProfile, raw []byte, remote string, program rcloneprogram.Program, digest string, policy remotemedia.Policy, check func(context.Context) error, observe candidateObserver) error {
@@ -333,7 +349,13 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	}
 	rootMetadata, err := checkRoot(metadataClient, remote)
 	if err != nil {
-		return mapError(err)
+		if life.Err() != nil {
+			return life.Err()
+		}
+		if checkErr := check(life); checkErr != nil {
+			return checkErr
+		}
+		return providerTest(mapError(err))
 	}
 	checked := map[string]bool{remote: true}
 	leafMetadata := map[string]candidateMetadata{remote: rootMetadata}
@@ -352,7 +374,10 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 			if life.Err() != nil {
 				return life.Err()
 			}
-			return mapError(err)
+			if checkErr := check(life); checkErr != nil {
+				return checkErr
+			}
+			return providerTest(mapError(err))
 		}
 		leafMetadata[leaf.Remote] = metadata
 	}
@@ -375,7 +400,10 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	}
 	if afterStop != nil {
 		if err = afterStop(life); err != nil {
-			return err
+			if checkErr := check(life); checkErr != nil {
+				return checkErr
+			}
+			return providerTest(err)
 		}
 	}
 	return check(life)

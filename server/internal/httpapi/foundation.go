@@ -683,6 +683,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerSourceReadSettings(registry, d)
 	registerSourceFolders(registry, d)
 	registerSourceStatus(registry, d)
+	registerSourceTest(registry, d)
 	registerSourceAdvanced(registry, d)
 	registerSourceProgram(registry, d)
 	registerDAVConnectionTest(registry, d)

@@ -25,6 +25,12 @@ func davServeConfiguration(config remotemedia.DAVConfig) []byte {
 // temporary serve, then its setup-only direct diagnostic. The returned DB-only
 // guard is reused in the existing config/receipt publication transaction.
 func (s *Service) testDAVSetup(ctx context.Context, currentID string, source Source, config remotemedia.DAVConfig, authorize func(*sql.Tx) error) (remotemedia.SetupRangeSupport, func(*sql.Tx) error, error) {
+	return s.testDAVSetupAt(ctx, currentID, source.Generation-1, source, config, authorize)
+}
+
+// testDAVSetupAt takes the exact expected generation instead of impersonating
+// the pre-save generation. Existing save callers keep the narrow wrapper above.
+func (s *Service) testDAVSetupAt(ctx context.Context, currentID string, expectedGeneration int64, source Source, config remotemedia.DAVConfig, authorize func(*sql.Tx) error) (remotemedia.SetupRangeSupport, func(*sql.Tx) error, error) {
 	unknown := remotemedia.SetupRangeUnknown
 	if authorize == nil {
 		return unknown, nil, storage.ErrRemoteConfig
@@ -56,7 +62,7 @@ func (s *Service) testDAVSetup(ctx context.Context, currentID string, source Sou
 			if err != nil {
 				return err
 			}
-			if generation != source.Generation-1 || root != source.RootPath || kind != "webdav" || actual != profile {
+			if generation != expectedGeneration || root != source.RootPath || kind != "webdav" || actual != profile {
 				return storage.ErrRemoteChanged
 			}
 		}
@@ -105,7 +111,7 @@ func (s *Service) testDAVSetup(ctx context.Context, currentID string, source Sou
 	}
 	raw := davServeConfiguration(config)
 	defer clear(raw)
-	generation := strconv.FormatInt(max(int64(1), source.Generation-1), 10)
+	generation := strconv.FormatInt(max(int64(1), expectedGeneration), 10)
 	if err = s.runCandidateServe(ctx, currentID, generation, profile, raw, "portico:", program, "", policy, check, observe); err != nil {
 		return unknown, nil, err
 	}

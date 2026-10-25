@@ -167,21 +167,26 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	if observed > 0 {
 		out.LastCheckedAt = time.UnixMilli(observed).UTC().Format(time.RFC3339)
 	}
-	var successMs, failureMs int64
-	var lastError string
-	contactErr := snapshot.Tx().QueryRowContext(ctx, `SELECT last_success_ms,last_failure_ms,last_error_code FROM remote_source_contacts WHERE source_id=? AND mount_id=? AND source_generation=?`, row.ID, row.MountID, out.Generation).Scan(&successMs, &failureMs, &lastError)
-	if contactErr == nil {
-		if at := contactTime(successMs); at != "" {
-			out.LastConnectedAt = at
-		}
-		if failureMs > 0 && contactErrorCodes[lastError] {
-			if at := contactTime(failureMs); at != "" {
-				out.LastErrorAt = at
-				out.LastErrorCode = lastError
+	// Contact evidence is keyed by the effective generation. Without that
+	// authority proof the status still reads, but contact facts are omitted
+	// rather than matched against the raw configuration generation.
+	if effective, e := observationGenerationTx(ctx, snapshot.Tx(), row.ID); e == nil {
+		var successMs, failureMs int64
+		var lastError string
+		contactErr := snapshot.Tx().QueryRowContext(ctx, `SELECT last_success_ms,last_failure_ms,last_error_code FROM remote_source_contacts WHERE source_id=? AND mount_id=? AND source_generation=?`, row.ID, row.MountID, effective).Scan(&successMs, &failureMs, &lastError)
+		if contactErr == nil {
+			if at := contactTime(successMs); at != "" {
+				out.LastConnectedAt = at
 			}
+			if failureMs > 0 && contactErrorCodes[lastError] {
+				if at := contactTime(failureMs); at != "" {
+					out.LastErrorAt = at
+					out.LastErrorCode = lastError
+				}
+			}
+		} else if !errors.Is(contactErr, sql.ErrNoRows) {
+			return SourceStatus{}, contactErr
 		}
-	} else if !errors.Is(contactErr, sql.ErrNoRows) {
-		return SourceStatus{}, contactErr
 	}
 	// Ten drawn libraries are plenty for the page; the count stays bounded so a
 	// constant-cost read never grows with the owner's library list. Only enabled

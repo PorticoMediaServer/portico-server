@@ -701,6 +701,7 @@ var routeLanes = map[string]string{
 	"POST /v1/storage/sources/rclone/drive/oauth/start":                           "admin-long",
 	"POST /v1/storage/sources/rclone/drive/oauth/status":                          "admin-long",
 	"POST /v1/storage/sources/rclone/test":                                        "admin-long",
+	"POST /v1/storage/sources/{id}/test":                                          "admin-long",
 	"POST /v1/storage/sources/webdav":                                             "default",
 	"POST /v1/storage/sources/webdav/test":                                        "admin-long",
 	"POST /v1/topshelf/token":                                                     "browsing",
