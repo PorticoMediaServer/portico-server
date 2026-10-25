@@ -652,7 +652,7 @@ func artworkLanguageRank(language, preferred string) int {
 		if err != nil {
 			return strings.ToLower(value)
 		}
-		base, _ := tag.Base()
+		base, _, _ := tag.Raw()
 		return base.String()
 	}
 	language = normalize(language)
