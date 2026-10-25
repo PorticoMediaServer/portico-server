@@ -49,7 +49,7 @@ export function ServicesInvitationDialog({account, link, pasted, onBack}: {accou
   const current = useMemo(() => session ? servicesInvitationAccount(account, session) : undefined, [account, session]);
   const [error, setError] = useState<unknown>();
   const different = () => { if (session) void account.service.logoutIfCurrent(accountIdentity(session)).catch(setError); };
-  return <Dialog open onOpenChange={open => { if (!open) onBack(); }} accessibilityLabel={t('services.start.join')}
+  return <Dialog open onOpenChange={open => { if (!open) onBack(); }} title={t('services.start.join')}
     footer={<Button onClick={onBack}>{t('action.cancel')}</Button>}>
     <p className={dialogStyles.link} title={pasted}>{pasted}</p>
     <AccountInvitationScreen presentation="dialog" link={link} account={current} onBack={onBack} onDifferentAccount={different}

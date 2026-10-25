@@ -1,5 +1,5 @@
 import {ImageSubtitleRenderer} from './image-renderer.ts';
-import {Overlay, type OverlayVideo} from './overlay.ts';
+import {SubtitleOverlay, type OverlayVideo} from './overlay.ts';
 import type {DrawnSubtitleSource, ReadSubtitleFile} from './types.ts';
 
 /**
@@ -18,7 +18,7 @@ export type ImageSubtitleSurface = Readonly<{
 }>;
 
 export function createImageSubtitleSurface(video: HTMLVideoElement, read: ReadSubtitleFile, failed: (reason: unknown) => void = () => {}): ImageSubtitleSurface | undefined {
-  if (!Overlay.supported()) return undefined;
+  if (!SubtitleOverlay.supported()) return undefined;
   const host = video.parentElement ?? video;
   if (!host) return undefined;
   const canvas = host.ownerDocument.createElement('canvas');
@@ -28,7 +28,7 @@ export function createImageSubtitleSurface(video: HTMLVideoElement, read: ReadSu
   host.append(canvas);
   // The default environment places the canvas by its real containing block and follows the
   // element's own fit/layout, which a fixed inset would shift on every relayout.
-  const overlay = new Overlay(video as unknown as OverlayVideo, canvas, {
+  const overlay = new SubtitleOverlay(video as unknown as OverlayVideo, canvas, {
     renderers: async kind => { if (kind !== 'pgs' && kind !== 'vobsub') throw new Error('unsupported_image_subtitle'); return new ImageSubtitleRenderer(); }});
   return Object.freeze({
     async present(source: DrawnSubtitleSource) {
