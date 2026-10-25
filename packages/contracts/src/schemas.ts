@@ -198504,6 +198504,44 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ReleaseProfileDownloadsCacheRequest": {
+    "properties": {
+      "operationId": {
+        "type": "string"
+      },
+      "profileKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "profileKey",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "ReleaseProfileDownloadsCacheResponse": {
+    "properties": {
+      "claims": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "more": {
+        "type": "boolean"
+      },
+      "retained": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "claims",
+      "retained",
+      "more"
+    ],
+    "type": "object"
+  },
   "RemoveLibraryRequest": {
     "properties": {
       "confirmation": {

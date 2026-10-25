@@ -15700,6 +15700,27 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "release_profile_downloads_cache",
+    "method": "POST",
+    "path": "/v1/admin/downloads/cache/release",
+    "summary": "Release one bounded page of a profile’s prepared download copies without withdrawing offline permissions; repeat while more is true",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "idempotency_key_reused",
+      "downloads_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "remove_library",
     "method": "DELETE",
     "path": "/v1/admin/libraries/{id}",
@@ -19444,6 +19465,7 @@ export const routePaths = {
   "query_titles": "/v1/titles",
   "refresh_items_metadata": "/v1/items/{id}/metadata/refresh",
   "refresh_shows_metadata": "/v1/shows/{id}/metadata/refresh",
+  "release_profile_downloads_cache": "/v1/admin/downloads/cache/release",
   "remove_library": "/v1/admin/libraries/{id}",
   "remove_queue_entry": "/v1/queues/{id}/entries/{entryId}",
   "remove_storage_source_rclone": "/v1/storage/sources/rclone/{id}",

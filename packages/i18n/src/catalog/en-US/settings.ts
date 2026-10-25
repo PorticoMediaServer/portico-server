@@ -435,7 +435,7 @@ export const settingsMessages = {
   'server.downloadUsage.more': 'More people have downloads than are listed here.',
   'server.downloadUsage.remove': 'Remove their downloads',
   'server.downloadUsage.removeTitle': 'Remove downloads for {name}?',
-  'server.downloadUsage.removeBody': 'The copies made for them are removed from the server, and the ones on their devices stop working the next time those devices are online. They can download again.',
+  'server.downloadUsage.removeBody': 'The copies the server prepared for this person are removed. Their devices keep what they already downloaded, and the server prepares anything needed again.',
   'server.downloadUsage.removed': 'Their downloads were removed.',
   'server.scan.skipped': 'What the last scan skipped',
   'server.scan.skippedHelp': 'Files and folders the scan left out, each with why. Everything else was scanned as usual.',
