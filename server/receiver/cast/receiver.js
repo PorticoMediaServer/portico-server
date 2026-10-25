@@ -195,7 +195,11 @@
       if (!playback) { showIdle(); return; }
       var playingState = manager ? manager.getPlayerState() : 'IDLE';
       if (resumePicture && ['PLAYING','PAUSED','BUFFERING'].indexOf(playingState) >= 0) { pictureReady = true; showPlaying(); return; }
-      showIdle();
+      // Nothing is playing: the failed occurrence ends with its card instead of leaving a
+      // session (and any transcode behind it) open under an idle screen, and the controller
+      // is told the title failed here so it can offer the retry the card names.
+      if (controllerSender) send(controllerSender, {type: 'load-failed', code: 'playback_failed'});
+      serial(function () { return stopPlayback().catch(function () {}); }).then(broadcast).catch(function () {});
     }, ERROR_VISIBLE_MS);
   }
 
@@ -746,7 +750,10 @@
     });
   }
   function recover(code) {
-    if(recovering||!playback||recoveries>=3)return;
+    if(recovering||!playback)return;
+    // Up to three silent recoveries; after them the drawn card says this TV can't play the title
+    // (frame 13), rather than leaving a broken picture up with nobody able to stop it.
+    if(recoveries>=3){showError(code);return;}
     recovering=true;recoveries++;broadcast();
     serial(async function(){var item=playback.itemId,at=position(),wasPaused=paused(),identity=meta;
       // The server remembers that this way of delivering the file failed here and re-plans the
