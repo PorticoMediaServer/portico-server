@@ -697,6 +697,7 @@ export const settingsMessages = {
   'metadata.attention.keepAsIs': 'Keep as is',
   'metadata.attention.kept': 'Kept as is. It stays in your library, and comes back here only if its files change.',
   'metadata.attention.empty': 'No unmatched items.',
+  'metadata.attention.emptyLibraryBody': 'Every title in {library} has a match. A title Portico can’t match stays in your library under its file name, and is listed here after a scan.',
   'metadata.attention.emptyBody': 'Unmatched titles stay in the library, named and playable, until you match them.',
   'metadata.attention.rowMatching': 'Matching',
   'metadata.attention.rowSearching': 'Searching',
