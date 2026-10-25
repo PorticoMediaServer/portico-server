@@ -57,7 +57,7 @@ func (s *Service) TestRcloneConnection(ctx context.Context, input RcloneConnecti
 	if err != nil || version != "rclone v"+rcloneprogram.BundledVersion {
 		return out, ErrExecutableInvalid
 	}
-	// Keep the same canonical executable/digest checks as saved sources.
+	// Keep the same absolute selected-path and version check as saved sources.
 	program.Path = filepath.Clean(executable)
 	raw := []byte(input.Config)
 	defer clear(raw)

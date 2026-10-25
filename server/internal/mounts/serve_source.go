@@ -65,5 +65,5 @@ func (s *Service) CaptureServeSource(ctx context.Context, id, generation string)
 		clear(raw)
 		return out, storage.ErrRemoteChanged
 	}
-	return ServeSource{Program: rcloneprogram.Program{Path: b.executable}, ApprovedProgramDigest: b.digest, Remote: b.remote, Generation: generation, Configuration: raw, CacheBytes: cache, CacheFloor: floor}, nil
+	return ServeSource{Program: rcloneprogram.Program{Path: b.executable, Included: b.included}, ApprovedProgramDigest: b.digest, Remote: b.remote, Generation: generation, Configuration: raw, CacheBytes: cache, CacheFloor: floor}, nil
 }

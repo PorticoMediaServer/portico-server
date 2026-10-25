@@ -73,7 +73,28 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	if c.Name == "" {
 		c.Name = m.Name
 	}
-	if c.Executable == "" {
+	// The program choice is preserved before any executable fallback: a request
+	// with neither a path nor an included intent (Advanced/cache edits) keeps
+	// the saved selection instead of silently demoting it to custom. An explicit
+	// non-empty executable means custom; explicit included=true resolves the
+	// bundled program even when the saved selection was custom.
+	included := m.ProgramIncluded
+	switch {
+	case c.UseIncluded != nil && *c.UseIncluded:
+		program, e := rcloneprogram.Resolve()
+		if e != nil || c.Executable != "" && c.Executable != program.Path {
+			return zero, ErrExecutableInvalid
+		}
+		c.Executable = program.Path
+		included = true
+	case c.UseIncluded != nil && !*c.UseIncluded:
+		if c.Executable == "" {
+			return zero, ErrExecutableInvalid
+		}
+		included = false
+	case c.Executable != "":
+		included = false
+	default:
 		c.Executable = m.Executable
 	}
 	if c.Remote == "" {
@@ -182,12 +203,13 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	if _, err = tx.Exec(`UPDATE mount_backend_configs SET generation=generation+1,config_file=?,version=?,cache_bytes=?,cache_floor=? WHERE mount_id=?`, file, version, cache, floor, id); err != nil {
 		return zero, err
 	}
-	if _, err = tx.Exec(`UPDATE managed_mounts SET name=?,executable=?,digest=?,remote=?,error='' WHERE id=?`, c.Name, executable, digest, c.Remote, id); err != nil {
+	if _, err = tx.Exec(`UPDATE managed_mounts SET name=?,executable=?,digest=?,program_included=?,remote=?,error='' WHERE id=?`, c.Name, executable, digest, included, c.Remote, id); err != nil {
 		return zero, err
 	}
 	m.Name = c.Name
 	m.Executable = executable
 	m.ExecutableDigest = digest
+	m.ProgramIncluded = included
 	m.ExecutableVersion = version
 	m.ControlRevision++
 	m.BackendRevision++

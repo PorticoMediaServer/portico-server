@@ -92,6 +92,7 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 		Action:           "configure",
 		ExpectedRevision: expectedRevision,
 		Executable:       executable,
+		UseIncluded:      &useIncluded,
 	}, authorize)
 	if err != nil {
 		return SourceProgram{}, err
@@ -99,5 +100,5 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 	if receipt.Mount == nil {
 		return SourceProgram{}, storage.ErrRemoteConfig
 	}
-	return SourceProgram{Executable: receipt.Mount.Executable, Version: receipt.Mount.ExecutableVersion, Revision: receipt.Mount.ControlRevision, Included: includedPath != "" && receipt.Mount.Executable == includedPath}, nil
+	return SourceProgram{Executable: receipt.Mount.Executable, Version: receipt.Mount.ExecutableVersion, Revision: receipt.Mount.ControlRevision, Included: receipt.Mount.ProgramIncluded}, nil
 }

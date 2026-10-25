@@ -22,6 +22,11 @@ import (
 
 var ErrServeConfiguration = errors.New("remote serve configuration is invalid")
 
+// ErrServeProgram reports a custom program that is no longer a usable rclone at
+// start. Ruling B-42 has no approval fingerprint: a changed file is re-checked
+// by running it with version, and only a failure reaches this state.
+var ErrServeProgram = errors.New("approved remote source program changed or is unavailable")
+
 // ServeCommandSpec is private, already validated source configuration. Enforce
 // must install the source's enforcing outbound boundary, not just approve a URL
 // or set proxy environment variables (SFTP/SMB connect directly).
@@ -103,14 +108,6 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if spec.CacheBytes < 0 || spec.CacheFloor < 0 || spec.CacheBytes > 0 && (!filepath.IsAbs(spec.CacheDirectory) || spec.CacheFloor == 0) {
 		return nil, ErrServeConfiguration
 	}
-	if !program.Included {
-		if err := checkServeProgram(program, spec.ApprovedProgramDigest); err != nil {
-			return nil, err
-		}
-		if _, err := program.Check(ctx); err != nil {
-			return nil, err
-		}
-	}
 	canonical, err := filepath.EvalSymlinks(spec.PrivateDirectory)
 	if err != nil || canonical != spec.PrivateDirectory {
 		return nil, ErrServeConfiguration
@@ -186,8 +183,8 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 		if p.Command.Path != program.Path {
 			return nil, ErrServeProgram
 		}
-		if err = checkServeProgram(program, spec.ApprovedProgramDigest); err != nil {
-			return nil, err
+		if _, err = program.Check(ctx); err != nil {
+			return nil, ErrServeProgram
 		}
 	}
 	good = true
@@ -320,12 +317,9 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 			return nil, err
 		}
 	}
+	// The custom-program check happened once in PrepareServe, immediately
+	// before this command was built; no second version run happens here.
 	if err = lease.Check(life); err == nil {
-		if !program.Included {
-			err = checkServeProgram(program, spec.ApprovedProgramDigest)
-		}
-	}
-	if err == nil {
 		err = budget.Context().Err()
 	}
 	if err == nil {

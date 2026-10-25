@@ -54,7 +54,7 @@ func (s *Service) EditRcloneSource(ctx context.Context, actor, id string, input 
 		return RcloneSourceReceipt{}, ErrExecutableInvalid
 	}
 	receipt, err := s.Command(ctx, actor, id, Command{OperationID: input.OperationID, Action: "configure", sourceGeneration: input.ExpectedGeneration,
-		Name: input.Name, Executable: program.Path, Remote: input.Remote, Config: input.Config}, authorize)
+		Name: input.Name, Executable: program.Path, Remote: input.Remote, Config: input.Config, UseIncluded: boolPointer(true)}, authorize)
 	if err != nil {
 		return RcloneSourceReceipt{}, err
 	}

@@ -3249,7 +3249,7 @@ CREATE TABLE hosted_policy_signers(server_id TEXT PRIMARY KEY,key_id TEXT NOT NU
 CREATE TABLE networking_web_claims(operation_id TEXT PRIMARY KEY,request TEXT NOT NULL,watch TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE hosted_server_events(operation_id TEXT NOT NULL,kind TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(operation_id,kind)) STRICT;
 CREATE TABLE managed_mounts(
- id TEXT PRIMARY KEY,name TEXT NOT NULL,executable TEXT NOT NULL,digest TEXT NOT NULL,
+ id TEXT PRIMARY KEY,name TEXT NOT NULL,executable TEXT NOT NULL,digest TEXT NOT NULL,program_included INTEGER NOT NULL DEFAULT 0 CHECK(program_included IN(0,1)),
  remote TEXT NOT NULL,mount_path TEXT NOT NULL UNIQUE,desired TEXT NOT NULL DEFAULT 'stopped',
  observed TEXT NOT NULL DEFAULT 'stopped',error TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE mount_allocations(

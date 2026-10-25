@@ -42,6 +42,10 @@ type Command struct {
 	// Only the narrow source editor can set this. It is not a wire command or
 	// a replacement for the legacy lifecycle control revision.
 	sourceGeneration int64
+	// UseIncluded is the requested program selection for a narrow source edit.
+	// Nil means the request omitted a program choice and configure preserves the
+	// saved selection; never decoded from a wire body.
+	UseIncluded *bool `json:"-"`
 }
 type Receipt struct {
 	OperationID     string `json:"operationId"`
@@ -75,16 +79,23 @@ func freshOperation(id string) error {
 	}
 	return nil
 }
+func boolPointer(value bool) *bool { return &value }
+
 func (s *Service) fingerprint(actor, id string, c Command) string {
 	if c.receiptKey != "" {
 		// The receipt identifies the request, not mutable configuration content.
 		c.Config = ""
 	}
+	// The included intent is not wire data, so it is added explicitly as the
+	// original tri-state: nil is omitted, and explicit false and true are
+	// distinct hashes. A pre-upgrade custom retry that carried no tri-state may
+	// fail closed as a conflict rather than replay under a guessed presence.
 	raw, _ := json.Marshal(struct {
 		Actor, ID        string
 		Command          Command
 		SourceGeneration int64 `json:"sourceGeneration,omitempty"`
-	}{actor, id, c, c.sourceGeneration})
+		Included         *bool `json:"included,omitempty"`
+	}{actor, id, c, c.sourceGeneration, c.UseIncluded})
 	defer clear(raw)
 	mac := hmac.New(sha256.New, s.fpKey[:])
 	mac.Write(raw)
@@ -209,7 +220,7 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 			return zero, ErrInvalid
 		}
 		var receipt Receipt
-		_, e = s.create(ctx, CreateInput{c.Name, c.Executable, c.Remote, c.Config}, func(tx *sql.Tx, m Mount) error {
+		_, e = s.create(ctx, CreateInput{Name: c.Name, Executable: c.Executable, Remote: c.Remote, Config: c.Config, UseIncluded: c.UseIncluded != nil && *c.UseIncluded}, func(tx *sql.Tx, m Mount) error {
 			if e := authorize(tx); e != nil {
 				return e
 			}

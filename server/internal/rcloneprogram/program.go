@@ -102,6 +102,13 @@ func (p Program) Inspect(ctx context.Context) Status {
 	return status
 }
 
+// CheckVersionLine applies the same rclone and minimum-version rules to a
+// version line captured by the owner's existing validation custody. It never
+// runs a process itself.
+func CheckVersionLine(line string) (Version, error) {
+	return parseVersion(strings.TrimSuffix(line, "\r"))
+}
+
 // CheckCustom runs only `version`, at every source start. Wrapper scripts and
 // in-place upgrades work without permissions, file-format, size or hash approval.
 func CheckCustom(ctx context.Context, path string) (Version, error) {

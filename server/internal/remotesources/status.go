@@ -9,7 +9,6 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 )
 
@@ -134,13 +133,10 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	if row.MountID != "" {
 		var executable, version, remote string
 		var control int64
-		if err = snapshot.Tx().QueryRowContext(ctx, `SELECT m.executable,COALESCE(b.version,''),m.remote,(SELECT c.revision FROM mount_controls c WHERE c.mount_id=m.id) FROM managed_mounts m LEFT JOIN mount_backend_configs b ON b.mount_id=m.id WHERE m.id=?`, row.MountID).Scan(&executable, &version, &remote, &control); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err = snapshot.Tx().QueryRowContext(ctx, `SELECT m.executable,COALESCE(b.version,''),m.remote,m.program_included,(SELECT c.revision FROM mount_controls c WHERE c.mount_id=m.id) FROM managed_mounts m LEFT JOIN mount_backend_configs b ON b.mount_id=m.id WHERE m.id=?`, row.MountID).Scan(&executable, &version, &remote, &out.ProgramIncluded, &control); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return SourceStatus{}, err
 		}
 		out.Program, out.ProgramVersion, out.Remote, out.ProgramRevision = executable, version, remote, control
-		if bundled, e := rcloneprogram.Resolve(); e == nil {
-			out.ProgramIncluded = bundled.Path == executable
-		}
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, row.ID).Scan(&out.CacheUsedBytes); err != nil {
 		return SourceStatus{}, err

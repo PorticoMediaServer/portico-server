@@ -39,13 +39,23 @@ type Mount struct {
 	DesiredState      string   `json:"desiredState"`
 	ObservedState     string   `json:"observedState"`
 	Error             string   `json:"error,omitempty"`
-	ExecutableDigest  string   `json:"executableDigest"`
+	// ExecutableDigest is legacy native/mount custody only. Programs approved
+	// under ruling B-42 record none (version is the only check); old rows may
+	// still carry one, and the serve path never requires it.
+	ExecutableDigest string `json:"executableDigest,omitempty"`
+	// ProgramIncluded is the committed program selection: true when the owner
+	// chose the rclone included with Portico Server. It is never derived from a
+	// path comparison; historical rows default false (unknown/custom).
+	ProgramIncluded bool `json:"programIncluded"`
 }
 type CreateInput struct {
 	Name       string `json:"name"`
 	Executable string `json:"executable"`
 	Remote     string `json:"remote"`
-	Config     string `json:"config"`
+	// UseIncluded is internal: the server resolves the actual bundled program
+	// and ignores any caller-supplied path. It is not wire data.
+	UseIncluded bool   `json:"-"`
+	Config      string `json:"config"`
 }
 type child struct {
 	runtimeID         string
@@ -212,7 +222,7 @@ func loadOrCreateFingerprintKey(db *sql.DB, out *[32]byte) error {
 	return err
 }
 func (s *Service) List() ([]Mount, error) {
-	rows, err := s.db.Query(`SELECT m.id,m.name,m.mount_path,m.desired,m.observed,m.error,m.digest,m.executable,c.revision,c.removal_pending,b.generation,b.version,b.cache_bytes,b.cache_floor FROM managed_mounts m JOIN mount_controls c ON c.mount_id=m.id JOIN mount_backend_configs b ON b.mount_id=m.id ORDER BY m.name,m.id`)
+	rows, err := s.db.Query(`SELECT m.id,m.name,m.mount_path,m.desired,m.observed,m.error,m.digest,m.executable,m.program_included,c.revision,c.removal_pending,b.generation,b.version,b.cache_bytes,b.cache_floor FROM managed_mounts m JOIN mount_controls c ON c.mount_id=m.id JOIN mount_backend_configs b ON b.mount_id=m.id ORDER BY m.name,m.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +230,7 @@ func (s *Service) List() ([]Mount, error) {
 	result := []Mount{}
 	for rows.Next() {
 		var m Mount
-		if err = rows.Scan(&m.ID, &m.Name, &m.MountPath, &m.DesiredState, &m.ObservedState, &m.Error, &m.ExecutableDigest, &m.Executable, &m.ControlRevision, &m.RemovalPending, &m.BackendRevision, &m.ExecutableVersion, &m.CacheBytes, &m.CacheFloor); err != nil {
+		if err = rows.Scan(&m.ID, &m.Name, &m.MountPath, &m.DesiredState, &m.ObservedState, &m.Error, &m.ExecutableDigest, &m.Executable, &m.ProgramIncluded, &m.ControlRevision, &m.RemovalPending, &m.BackendRevision, &m.ExecutableVersion, &m.CacheBytes, &m.CacheFloor); err != nil {
 			return nil, err
 		}
 		projectMountActions(&m)
@@ -256,6 +266,13 @@ func (s *Service) create(ctx context.Context, input CreateInput, record func(*sq
 	}
 	if err := validateConfig(input.Config, input.Remote); err != nil {
 		return Mount{}, ErrConfigInvalid
+	}
+	if input.UseIncluded {
+		program, e := rcloneprogram.Resolve()
+		if e != nil || input.Executable != "" && input.Executable != program.Path {
+			return Mount{}, ErrExecutableInvalid
+		}
+		input.Executable = program.Path
 	}
 	executable, digest, version, err := s.approveExecutable(ctx, input.Executable)
 	if err != nil {
@@ -325,12 +342,12 @@ func (s *Service) create(ctx context.Context, input CreateInput, record func(*sq
 	if err = syncDirectory(s.private); err != nil {
 		return Mount{}, err
 	}
-	m := Mount{BackendRevision: 1, ExecutableVersion: version, CacheFloor: 2 << 30, ID: id, Name: input.Name, MountPath: path, DesiredState: "stopped", ObservedState: "stopped", ExecutableDigest: digest, Executable: input.Executable, ControlRevision: 1}
+	m := Mount{BackendRevision: 1, ExecutableVersion: version, CacheFloor: 2 << 30, ID: id, Name: input.Name, MountPath: path, DesiredState: "stopped", ObservedState: "stopped", ExecutableDigest: digest, Executable: input.Executable, ProgramIncluded: input.UseIncluded, ControlRevision: 1}
 	projectMountActions(&m)
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	tx := gated.Tx()
 	if err == nil {
-		_, err = tx.Exec(`INSERT INTO managed_mounts(id,name,executable,digest,remote,mount_path) VALUES(?,?,?,?,?,?)`, id, input.Name, input.Executable, digest, input.Remote, path)
+		_, err = tx.Exec(`INSERT INTO managed_mounts(id,name,executable,digest,program_included,remote,mount_path) VALUES(?,?,?,?,?,?,?)`, id, input.Name, input.Executable, digest, input.UseIncluded, input.Remote, path)
 		if err == nil {
 			_, err = tx.Exec(`UPDATE mount_backend_configs SET version=? WHERE mount_id=?`, version, id)
 		}
@@ -563,16 +580,12 @@ func (s *Service) reconcile(ctx context.Context) bool {
 			s.retry[m.ID] = time.Now().Add(30 * time.Second)
 			continue
 		}
-		var executable, digest, remote, configFile string
-		if e = s.db.QueryRow(`SELECT m.executable,m.digest,m.remote,b.config_file FROM managed_mounts m JOIN mount_backend_configs b ON b.mount_id=m.id WHERE m.id=?`, m.ID).Scan(&executable, &digest, &remote, &configFile); e != nil {
+		var executable, remote, configFile string
+		if e = s.db.QueryRow(`SELECT m.executable,m.remote,b.config_file FROM managed_mounts m JOIN mount_backend_configs b ON b.mount_id=m.id WHERE m.id=?`, m.ID).Scan(&executable, &remote, &configFile); e != nil {
 			continue
 		}
-		actual, e := executableDigest(executable)
-		if e != nil || actual != digest {
-			s.state(m.ID, "failed", "Executable changed or is unavailable. Reconfigure this mount.")
-			s.retry[m.ID] = time.Now().Add(time.Minute)
-			continue
-		}
+		// Ruling B-42: no fingerprint custody here. A custom program is checked
+		// by version at its actual start (guardian); old rows are included too.
 		info, e := os.Lstat(m.MountPath)
 		if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			s.state(m.ID, "failed", "Managed mount directory changed.")
@@ -583,7 +596,7 @@ func (s *Service) reconcile(ctx context.Context) bool {
 			s.retry[m.ID] = time.Now().Add(30 * time.Second)
 			continue
 		}
-		request := launch{Executable: executable, Digest: digest, Remote: remote, MountPath: m.MountPath, ConfigPath: filepath.Join(s.private, configFile), PrivateHome: s.work, Password: "", CachePath: filepath.Join(s.cache, m.ID+".cache"), CacheBytes: m.CacheBytes, CacheFloor: m.CacheFloor}
+		request := launch{Executable: executable, Remote: remote, MountPath: m.MountPath, ConfigPath: filepath.Join(s.private, configFile), PrivateHome: s.work, Password: "", Included: m.ProgramIncluded, CachePath: filepath.Join(s.cache, m.ID+".cache"), CacheBytes: m.CacheBytes, CacheFloor: m.CacheFloor}
 		cmd := exec.Command(s.helper, "--portico-rclone-guardian")
 		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 		cmd.Stdout = io.Discard

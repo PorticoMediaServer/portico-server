@@ -86,7 +86,7 @@ func (s *Service) SaveRcloneSource(ctx context.Context, actor string, input Rclo
 		return RcloneSourceReceipt{}, ErrExecutableInvalid
 	}
 	receipt, err := s.Command(ctx, actor, "", Command{OperationID: input.OperationID, Action: "create", Name: input.Name,
-		Executable: program.Path, Remote: input.Remote, Config: input.Config}, authorize)
+		Executable: program.Path, Remote: input.Remote, Config: input.Config, UseIncluded: boolPointer(true)}, authorize)
 	if err != nil {
 		return RcloneSourceReceipt{}, err
 	}
@@ -161,7 +161,7 @@ func (s *Service) SaveRcloneConfigSource(ctx context.Context, actor string, inpu
 		return RcloneSourceReceipt{}, ErrConfigInvalid
 	}
 	receipt, err := s.Command(ctx, actor, "", Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path,
-		Remote: input.Remote + ":", Config: section, receiptKey: accountConfigReceiptKey}, authorize)
+		Remote: input.Remote + ":", Config: section, receiptKey: accountConfigReceiptKey, UseIncluded: boolPointer(true)}, authorize)
 	if err != nil {
 		return RcloneSourceReceipt{}, err
 	}

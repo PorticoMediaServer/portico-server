@@ -1,12 +1,14 @@
 package mounts
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/supervise"
 	"strconv"
 	"time"
@@ -20,14 +22,42 @@ func Guardian(input io.Reader) error {
 	if err := decoder.Decode(&request); err != nil {
 		return err
 	}
-	if actual, err := executableDigest(request.Executable); err != nil || actual != request.Digest {
-		return errors.New("executable changed")
+	if !filepath.IsAbs(request.Executable) {
+		return errors.New("executable path is required")
+	}
+	// One monitor for the whole guardian life starts before any start work: the
+	// parent closing control cancels the version check and every later wait, and
+	// the same signal drives ongoing child shutdown.
+	life, cancelLife := context.WithCancel(context.Background())
+	defer cancelLife()
+	disconnected := make(chan struct{})
+	supervise.Go("mounts.guardian.drain", func() {
+		_, _ = io.Copy(io.Discard, input)
+		cancelLife()
+		close(disconnected)
+	})
+	// Ruling B-42: a custom program is checked by version at this mount start;
+	// the bundled selection is not checked. No fingerprint is compared. A
+	// cancelled check kills and waits for its version child inside CheckCustom.
+	if !request.Included {
+		check, cancel := context.WithTimeout(life, rcloneprogram.CheckTimeout)
+		_, err := rcloneprogram.CheckCustom(check, request.Executable)
+		cancel()
+		if life.Err() != nil {
+			return errors.New("guardian control closed")
+		}
+		if err != nil {
+			return errors.New("custom rclone program stopped working")
+		}
 	}
 	unlock, err := lockMount(filepath.Join(request.PrivateHome, filepath.Base(request.MountPath)+".mount.lock"))
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	if life.Err() != nil {
+		return errors.New("guardian control closed")
+	}
 	args := []string{"mount", request.Remote, request.MountPath,
 		"--config", request.ConfigPath, "--ask-password=false", "--read-only",
 		"--buffer-size=8M", "--dir-cache-time=1m", "--contimeout=10s", "--timeout=30s",
@@ -57,13 +87,14 @@ func Guardian(input io.Reader) error {
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	ownProcess(cmd)
+	if life.Err() != nil {
+		return errors.New("guardian control closed")
+	}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	ended := make(chan error, 1)
 	supervise.Go("mounts.guardian.wait", func() { ended <- cmd.Wait() })
-	disconnected := make(chan struct{})
-	supervise.Go("mounts.guardian.drain", func() { _, _ = io.Copy(io.Discard, input); close(disconnected) })
 	select {
 	case err := <-ended:
 		return err
@@ -80,7 +111,8 @@ func Guardian(input io.Reader) error {
 }
 
 type launch struct {
-	Executable, Digest, Remote, MountPath, ConfigPath, PrivateHome, Password string
-	CachePath                                                                string
-	CacheBytes, CacheFloor                                                   int64
+	Executable, Remote, MountPath, ConfigPath, PrivateHome, Password string
+	Included                                                         bool
+	CachePath                                                        string
+	CacheBytes, CacheFloor                                           int64
 }

@@ -21,12 +21,14 @@ import (
 	"unicode/utf8"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 )
 
 // NativeBackend is a private, generation-fenced handle. It intentionally exposes
 // neither the remote locator nor the configuration file contents.
 type NativeBackend struct {
+	included                                           bool
 	service                                            *Service
 	id, executable, digest, remote, config, generation string
 }
@@ -44,7 +46,7 @@ func (s *Service) Native(ctx context.Context, id string) (*NativeBackend, error)
 	b := &NativeBackend{service: s, id: id}
 	var generation int64
 	var file string
-	err := s.db.QueryRowContext(ctx, `SELECT m.executable,m.digest,m.remote,c.config_file,c.generation FROM managed_mounts m JOIN mount_backend_configs c ON c.mount_id=m.id JOIN mount_controls k ON k.mount_id=m.id WHERE m.id=? AND k.removal_pending=0`, id).Scan(&b.executable, &b.digest, &b.remote, &file, &generation)
+	err := s.db.QueryRowContext(ctx, `SELECT m.executable,m.digest,m.remote,m.program_included,c.config_file,c.generation FROM managed_mounts m JOIN mount_backend_configs c ON c.mount_id=m.id JOIN mount_controls k ON k.mount_id=m.id WHERE m.id=? AND k.removal_pending=0`, id).Scan(&b.executable, &b.digest, &b.remote, &b.included, &file, &generation)
 	if err != nil {
 		return nil, storage.ErrRemoteOffline
 	}
@@ -103,9 +105,11 @@ func NativeHelper(input io.Reader, output io.Writer) error {
 	if err := dec.Decode(&r); err != nil {
 		return storage.ErrRemoteConfig
 	}
-	if actual, err := executableDigest(r.Executable); err != nil || actual != r.Digest {
-		return storage.ErrRemoteBinary
+	if !filepath.IsAbs(r.Executable) {
+		return storage.ErrRemoteConfig
 	}
+	// The parent checks a custom program by version at this start; there is no
+	// fingerprint custody here any more (ruling B-42).
 	if !filepath.IsAbs(r.ConfigPath) || !filepath.IsAbs(r.PrivateHome) || !remotePattern.MatchString(r.Remote) {
 		return storage.ErrRemoteConfig
 	}
@@ -164,10 +168,13 @@ func (b *NativeBackend) runOwned(ctx context.Context, relative, operation, lane 
 	if err != nil {
 		return err
 	}
-	// Re-fingerprint before EVERY lifecycle, including native reads and listing.
-	digest, err := executableDigest(b.executable)
-	if err != nil || digest != b.digest {
-		return storage.ErrRemoteBinary
+	// A custom program is checked by version at this native start under the
+	// source's original operation context and validation custody. A bundled
+	// selection is never checked. No digest is compared for old or new rows.
+	if !b.included {
+		if _, err := checkProgramVersion(ctx, &b.service.validationSupervisor, b.executable); err != nil {
+			return storage.ErrRemoteBinary
+		}
 	}
 	data, _ := json.Marshal(nativeRequest{b.executable, b.digest, target, b.config, b.service.work, "", operation, offset, count})
 	cmd := exec.Command(b.service.helper, "--portico-rclone-native")
@@ -246,34 +253,62 @@ func (e NativeEntry) Snapshot(root, relative string) storage.Snapshot {
 }
 
 func (s *Service) approveExecutable(ctx context.Context, executable string) (string, string, string, error) {
-	canonical, err := filepath.EvalSymlinks(executable)
-	if err != nil {
+	// Ruling B-42: the selected path must be absolute, and the only acceptance
+	// check is running it with version under the existing validation custody.
+	// Scripts, version-manager shims and Windows programs are valid. No file is
+	// hashed here: a runnable program may not be readable, and Save must neither
+	// reject it nor block on a read. The digest is honestly absent.
+	executable = strings.TrimSpace(executable)
+	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable || len(executable) > 8192 || strings.IndexFunc(executable, unicode.IsControl) >= 0 {
 		return "", "", "", ErrExecutableInvalid
 	}
-	digest, err := executableDigest(canonical)
+	version, err := checkProgramVersion(ctx, &s.validationSupervisor, executable)
 	if err != nil {
-		return "", "", "", ErrExecutableInvalid
+		return "", "", "", err
 	}
-	check, cancel := context.WithTimeout(ctx, 5*time.Second)
+	return executable, "", "rclone v" + version.Version, nil
+}
+
+// checkProgramVersion is the one B-42 program check: a bounded version run under
+// existing supervision and admission, with a bounded first line drained fully.
+func checkProgramVersion(ctx context.Context, supervisor *storage.Supervisor, executable string) (rcloneprogram.Version, error) {
+	check, cancel := context.WithTimeout(ctx, rcloneprogram.CheckTimeout)
 	defer cancel()
-	cmd := exec.Command(canonical, "version")
-	var version string
-	err = s.validationSupervisor.Run(check, "rclone-version", cmd, func(r io.Reader) error {
-		raw, e := io.ReadAll(io.LimitReader(r, 4097))
-		if e != nil || len(raw) > 4096 {
-			return ErrExecutableInvalid
+	cmd := exec.Command(executable, "version")
+	var line []byte
+	if err := supervisor.Run(check, "rclone-version", cmd, func(r io.Reader) error {
+		buf := make([]byte, 256)
+		captured := false
+		for {
+			n, readErr := r.Read(buf)
+			if n > 0 && !captured {
+				for _, c := range buf[:n] {
+					if c == '\n' {
+						captured = true
+						break
+					}
+					if len(line) < 129 {
+						line = append(line, c)
+					}
+				}
+			}
+			if readErr == io.EOF {
+				return nil
+			}
+			if readErr != nil {
+				return ErrExecutableInvalid
+			}
 		}
-		version = strings.SplitN(string(raw), "\n", 2)[0]
-		if !strings.HasPrefix(version, "rclone v") || len(version) > 128 {
-			return ErrExecutableInvalid
-		}
-		return nil
-	})
-	after, e := executableDigest(canonical)
-	if err != nil || e != nil || after != digest {
-		return "", "", "", ErrExecutableInvalid
+	}); err != nil {
+		return rcloneprogram.Version{}, ErrExecutableInvalid
 	}
-	return canonical, digest, version, nil
+	version, err := rcloneprogram.CheckVersionLine(string(line))
+	if err != nil {
+		// Until the chooser gets distinct codes, map every typed version failure
+		// to the existing declared domain error so HTTP never falls to internal.
+		return rcloneprogram.Version{}, ErrExecutableInvalid
+	}
+	return version, nil
 }
 
 func (s *Service) candidateFile(raw []byte) (string, error) {
