@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"portico.local/server/internal/readingpaths"
 
 	"portico.local/server/internal/compactcatalog"
@@ -133,11 +134,11 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 	if r.kind == "comic" {
 		formats = "'cbz','pdf'"
 	}
-	query := `SELECT m.item_id,l.library_id,COALESCE(d.poster_url,''),COALESCE(m.author_value,''),
+	query := `SELECT m.item_id,l.library_id,m.publication_type,COALESCE(m.author_value,''),
  EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_asset_links selected_link ON selected_link.entity_id=p.item_id AND selected_link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id JOIN inventory_item_availability available ON available.item_id=p.item_id AND available.asset_id=a.token
  WHERE p.item_id=m.item_id AND p.format IN(` + formats + `) AND p.asset_id=` + readingPrimaryPublicationSQL("m.item_id") + ` AND available.available=1)
- FROM reading_attribution_members m JOIN catalog_libraries l ON l.id=m.library_id LEFT JOIN catalog_item_details d ON d.entity_id=m.item_id
+ FROM reading_attribution_members m JOIN catalog_libraries l ON l.id=m.library_id
  WHERE ` + r.memberScope() + ` AND m.item_id IN(` + placeholders(len(ids)) + `)`
 	read, err := s.read().Query(query, ids...)
 	if err != nil {
@@ -149,14 +150,31 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 		var id int64
 		var entry ContentEntry
 		var available bool
-		if err = read.Scan(&id, &entry.LibraryID, &entry.PosterURL, &entry.Author, &available); err != nil {
+		var publicationType sql.NullString
+		if err = read.Scan(&id, &entry.LibraryID, &publicationType, &entry.Author, &available); err != nil {
 			return nil, err
+		}
+		if publicationType.Valid {
+			switch publicationType.String {
+			case "book", "magazine", "newspaper":
+				entry.PublicationType = ReadingPublicationType(publicationType.String)
+			default:
+				return nil, ErrReadingProjectionChanged
+			}
 		}
 		entry.Subtitle = entry.Author
 		entry.Available = &available
 		facts[id] = entry
 	}
 	if err = read.Err(); err != nil {
+		return nil, err
+	}
+	entities := make([]int64, len(rows))
+	for i, row := range rows {
+		entities[i] = row.entity
+	}
+	covers, err := compactcatalog.ReadingCoverDigestsTx(s.Context(), dbwork.Snapshot(s.Context()), entities)
+	if err != nil {
 		return nil, err
 	}
 	out := make([]ContentEntry, 0, len(rows))
@@ -166,6 +184,10 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 			return nil, ErrStaleContinuation
 		}
 		entry.ID = row.id
+		if digest := covers[row.entity]; digest != "" {
+			entry.PosterURL = "/v1/items/" + url.PathEscape(row.id) + "/art/cover?v=" + digest
+		}
+
 		entry.Kind = row.kind
 		entry.Title = row.title
 		entry.SortLetter = sorttext.Letter(row.sortKey)

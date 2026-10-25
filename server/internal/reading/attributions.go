@@ -3,7 +3,6 @@ package reading
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"net/url"
 
 	"portico.local/server/internal/compactcatalog"
@@ -72,27 +71,8 @@ func readingArtworkProjectionTx(ctx context.Context, tx *sql.Tx, items []Library
 	for i := range items {
 		ids[i] = items[i].entity
 	}
-	encoded, err := json.Marshal(ids)
+	covers, err := compactcatalog.ReadingCoverDigestsTx(ctx, tx, ids)
 	if err != nil {
-		return err
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,o.digest FROM json_each(?) selected
-      JOIN artwork_selections a ON a.kind='item' AND a.entity_id=selected.value AND a.role='cover' AND a.subject=''
-      JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready'`, string(encoded))
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	covers := map[int64]string{}
-	for rows.Next() {
-		var entity int64
-		var digest string
-		if err = rows.Scan(&entity, &digest); err != nil {
-			return err
-		}
-		covers[entity] = digest
-	}
-	if err = rows.Err(); err != nil {
 		return err
 	}
 	for i := range items {
