@@ -543,6 +543,10 @@ func shortPlaybackID(id string) string {
 func (l *LinearRuntime) produceMonitored(parent context.Context, w playback.LinearWork, entry *linearEntry) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
+	var startup *linearStartup
+	if w.Selection.Reference.Kind == "live-source" {
+		startup = &linearStartup{started: time.Now(), phase: linearStartupAdmission}
+	}
 	done := make(chan struct{})
 	supervise.Go("playbackruntime.linear.readiness", func() {
 		defer close(done)
@@ -564,7 +568,9 @@ func (l *LinearRuntime) produceMonitored(parent context.Context, w playback.Line
 			entry.mu.Lock()
 			buffer := entry.buffer
 			entry.mu.Unlock()
-			if !buffer.Window().Ready {
+			window := buffer.Window()
+			if !window.Ready {
+				startup.report(w, window)
 				return
 			}
 			if !ready {
@@ -589,7 +595,7 @@ func (l *LinearRuntime) produceMonitored(parent context.Context, w playback.Line
 	})
 	var e error
 	if w.Selection.Reference.Kind == "live-source" {
-		e = l.produceLive(ctx, w, entry)
+		e = l.produceLive(ctx, w, entry, startup)
 	} else {
 		e = l.produceLibraryDirect(ctx, w, entry)
 	}
@@ -675,7 +681,7 @@ func linearMonitorVerdict(changed bool, e error, transient int) (stop bool, coun
 // fail for infrastructure reasons before the producer is stopped anyway.
 const linearMonitorPatience = 10
 
-func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, entry *linearEntry) (result error) {
+func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, entry *linearEntry, startup *linearStartup) (result error) {
 	var allocation livechannels.Allocation
 	var input livechannels.Input
 	e := l.owner.Linear.authority.WithLinearWriteTx(ctx, w.PlaybackID, func(tx *sql.Tx, current playback.LinearWork) error {
@@ -745,11 +751,13 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 		}
 	})
 	defer func() { cancel(); <-renewed }()
+	startup.enter(linearStartupOpening, nil)
 	gateway, e := linearinput.Open(work, input)
 	if e != nil {
 		return e
 	}
 	defer gateway.Close()
+	startup.enter(linearStartupProbing, gateway)
 	reservation, e := gateway.Reserve()
 	if e != nil {
 		return e
@@ -771,10 +779,12 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	entry.mu.Lock()
 	pinned := entry.engine
 	entry.mu.Unlock()
+	startup.enter(linearStartupPlanning, nil)
 	plan, engine, e := linearEnginePlan(raw, w, packaging, pinned)
 	if e != nil {
 		return e
 	}
+	startup.planned(plan)
 	entry.mu.Lock()
 	entry.engine = engine
 	entry.captions = gateway.Captions()
@@ -800,6 +810,7 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	if e != nil {
 		return e
 	}
+	startup.enter(linearStartupCapture, nil)
 	result = decoder.RunLinearHLS(work, l.owner.probeSupervisor, w.PlaybackID+"-"+strconv.FormatInt(w.ProducerOrdinal, 10), l.config.FFmpeg, gateway.URL(), output, plan, reservation, lock, l.config.DecoderLibraries...)
 	if result == nil {
 		finish, done := context.WithTimeout(work, 5*time.Second)
