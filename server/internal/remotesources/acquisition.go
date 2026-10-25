@@ -37,7 +37,7 @@ type object struct {
 	cached, ceiling, floor     int64
 	terminal                   error
 	rangeCache                 *rangeCache
-	sourceOps                  *remotemedia.OperationBudget
+	sourceOps                  *sourceOpsGate
 }
 
 func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.RemoteObject, error) {
@@ -112,11 +112,16 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 		// both reach the provider, and a direct read must count against the
 		// source's saved connection ceiling exactly as a served read does.
 		entry, e := func() (remotemedia.DAVEntry, error) {
-			gated, grelease, gerr := gate.Enter(ctx)
+			gated, grelease, gerr := gate.budget.Enter(ctx)
 			if gerr != nil {
 				return remotemedia.DAVEntry{}, sourceOpsError(ctx, gerr)
 			}
 			defer grelease()
+			// The stat and the one-byte version discovery are two provider
+			// requests, so each takes its own saved request slot.
+			if waitErr := gate.pacer.waitRequest(gated); waitErr != nil {
+				return remotemedia.DAVEntry{}, sourceOpsError(ctx, waitErr)
+			}
 			found, statErr := d.Stat(gated, relative)
 			if statErr != nil {
 				return remotemedia.DAVEntry{}, mapError(statErr)
@@ -125,6 +130,9 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 				return remotemedia.DAVEntry{}, storage.ErrRemoteRange
 			}
 			o.snapshot = davSnapshot(found, b.Root)
+			if waitErr := gate.pacer.waitRequest(gated); waitErr != nil {
+				return remotemedia.DAVEntry{}, sourceOpsError(ctx, waitErr)
+			}
 			o.conditional, statErr = d.OpenVersion(gated, relative, remoteVersionScope(b, o.generation), o.snapshot.ObjectID)
 			if errors.Is(statErr, mediasource.ErrIdentityRequired) || errors.Is(statErr, remotemedia.ErrRepresentationRange) {
 				return remotemedia.DAVEntry{}, storage.ErrRemoteRange
@@ -246,9 +254,13 @@ func (o *object) Observe(parent context.Context) (storage.Snapshot, error) {
 		return storage.Snapshot{}, err
 	}
 	if o.conditional != nil {
-		gated, grelease, gateErr := o.sourceOps.Enter(ctx)
+		gated, grelease, gateErr := o.sourceOps.budget.Enter(ctx)
 		if gateErr != nil {
 			return storage.Snapshot{}, sourceOpsError(ctx, gateErr)
+		}
+		if waitErr := o.sourceOps.pacer.waitRequest(gated); waitErr != nil {
+			grelease()
+			return storage.Snapshot{}, sourceOpsError(ctx, waitErr)
 		}
 		response, e := o.conditional.Open(gated, "GET", "bytes=0-0")
 		if e != nil {
@@ -302,10 +314,15 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 		}
 		// A provider range read holds one permit until its body closes; a cache
 		// hit above made no provider request and was not charged.
-		gated, grelease, gateErr := o.sourceOps.Enter(ctx)
+		gated, grelease, gateErr := o.sourceOps.budget.Enter(ctx)
 		if gateErr != nil {
 			release()
 			return nil, sourceOpsError(ctx, gateErr)
+		}
+		if waitErr := o.sourceOps.pacer.waitRequest(gated); waitErr != nil {
+			grelease()
+			release()
+			return nil, sourceOpsError(ctx, waitErr)
 		}
 		response, e := o.conditional.Open(gated, http.MethodGet, fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
 		if e != nil {
@@ -313,7 +330,7 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 			release()
 			return nil, mapError(e)
 		}
-		return &readCloser{Reader: response.Body, close: func() error { err := response.Body.Close(); grelease(); release(); return err }}, nil
+		return &readCloser{Reader: &pacedReader{Reader: response.Body, pacer: o.sourceOps.pacer, ctx: gated}, close: func() error { err := response.Body.Close(); grelease(); release(); return err }}, nil
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -395,10 +412,15 @@ func (o *object) fromRangeCache(ctx context.Context, offset, length int64, relea
 		return nil, nil
 	}
 	if end > cache.guard.cached {
-		gated, grelease, gateErr := o.sourceOps.Enter(ctx)
+		gated, grelease, gateErr := o.sourceOps.budget.Enter(ctx)
 		if gateErr != nil {
 			cache.guard.mu.Unlock()
 			return nil, sourceOpsError(ctx, gateErr)
+		}
+		if waitErr := o.sourceOps.pacer.waitRequest(gated); waitErr != nil {
+			grelease()
+			cache.guard.mu.Unlock()
+			return nil, sourceOpsError(ctx, waitErr)
 		}
 		response, err := o.conditional.Open(gated, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.guard.cached, end-1))
 		if err != nil {
@@ -406,7 +428,7 @@ func (o *object) fromRangeCache(ctx context.Context, offset, length int64, relea
 			cache.guard.mu.Unlock()
 			return nil, mapError(err)
 		}
-		appendErr := cache.append(ctx, response.Body, end)
+		appendErr := cache.append(ctx, &pacedReader{Reader: response.Body, pacer: o.sourceOps.pacer, ctx: gated}, end)
 		closeErr := response.Body.Close()
 		grelease()
 		if appendErr != nil {
@@ -465,6 +487,32 @@ type readCloser struct {
 }
 
 func (r *readCloser) Close() error { r.once.Do(func() { r.err = r.close() }); return r.err }
+
+// pacedReader delays delivered bytes at the source's saved byte rate. Each read
+// is capped to one bounded chunk, so a large caller buffer cannot bypass a slow
+// rate on its first read; a failed or cancelled pacing wait clears the bytes it
+// would have delivered so the consumer cannot use unpaced data. The permit
+// context owns it, so retirement or cancellation ends the delay exactly as it
+// ends the body.
+type pacedReader struct {
+	io.Reader
+	pacer *sourceRatePacer
+	ctx   context.Context
+}
+
+func (r *pacedReader) Read(p []byte) (int, error) {
+	if len(p) > directPacedChunk {
+		p = p[:directPacedChunk]
+	}
+	n, err := r.Reader.Read(p)
+	if n > 0 {
+		if waitErr := r.pacer.waitBytes(r.ctx, int64(n)); waitErr != nil {
+			clear(p[:n])
+			return 0, waitErr
+		}
+	}
+	return n, err
+}
 
 // sourceOpsError keeps a retired source gate distinct from the caller's own
 // cancellation: the wait ends with the generation, not with a policy refusal,

@@ -17,7 +17,6 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
 
@@ -158,7 +157,7 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 // provider response itself is bounded by the DAV parser (4 MiB of XML); this
 // loop additionally stops after a bounded number of qualifying folders, and
 // reports truncation when it does.
-func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, generation, relative string, showHidden bool, ops *remotemedia.OperationBudget) (folderListing, error) {
+func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, generation, relative string, showHidden bool, ops *sourceOpsGate) (folderListing, error) {
 	d, current, err := s.dav(ctx, row.ID)
 	if err != nil {
 		s.health(b, generation, err)
@@ -169,9 +168,13 @@ func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, gen
 	}
 	deadline, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
-	gated, grelease, gateErr := ops.Enter(deadline)
+	gated, grelease, gateErr := ops.budget.Enter(deadline)
 	if gateErr != nil {
 		return folderListing{}, sourceOpsError(ctx, gateErr)
+	}
+	if waitErr := ops.pacer.waitRequest(gated); waitErr != nil {
+		grelease()
+		return folderListing{}, sourceOpsError(ctx, waitErr)
 	}
 	page, err := d.List(gated, relative)
 	grelease()

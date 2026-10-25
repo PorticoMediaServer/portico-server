@@ -87,14 +87,16 @@ func (s *Service) beginCandidateTestAt(ctx context.Context, source, generation s
 		finish()
 		return nil, nil, storage.ErrBusy
 	}
+	var gate *sourceOpsGate
 	var budget *remotemedia.OperationBudget
 	if !cold {
 		var err error
-		budget, err = s.sourceOperationsNow(ctx, source, generation)
+		gate, err = s.sourceOperationsNow(ctx, source, generation)
 		if err != nil {
 			finish()
 			return nil, nil, err
 		}
+		budget = gate.budget
 		if budget.Counts().Capacity != limits.Connections {
 			finish()
 			return nil, nil, storage.ErrRemoteChanged

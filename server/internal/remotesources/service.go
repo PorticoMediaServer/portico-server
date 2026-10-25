@@ -414,9 +414,97 @@ type sourceOpsGate struct {
 	generation string
 	revision   int64
 	budget     *remotemedia.OperationBudget
+	pacer      *sourceRatePacer
 	cancel     context.CancelFunc
 	stopping   chan struct{}
 	retired    bool
+}
+
+// sourceRatePacer spaces direct WebDAV provider requests at the source's saved
+// requests-per-second and bytes-per-second. Only direct callers use it: the
+// rclone serve applies the same saved limits with its own options, and nobody
+// claims the two independent pacers add up to one aggregate rate. Every wait
+// uses the caller's original context, so cancellation, retirement and the
+// connection-test hold end it exactly as they end the provider request.
+type sourceRatePacer struct {
+	requests *sourceRateBucket
+	bytes    *sourceRateBucket
+}
+
+const directPacedChunk = 64 << 10
+
+func newSourceRatePacer(limits ReadLimits) *sourceRatePacer {
+	return &sourceRatePacer{
+		requests: newSourceRateBucket(float64(limits.RequestsPerSecond), 1),
+		bytes:    newSourceRateBucket(float64(limits.BytesPerSecond), directPacedChunk),
+	}
+}
+
+// waitRequest takes one request token. Its burst is exactly one request, so a
+// direct operation starts immediately and later ones are spaced.
+func (p *sourceRatePacer) waitRequest(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+	return p.requests.take(ctx, 1)
+}
+
+// waitBytes takes n byte tokens before those bytes are delivered. Its burst is
+// one bounded directPacedChunk, so the first buffer cannot bypass a slow rate
+// with an arbitrarily large read; pacedReader caps each read to that chunk.
+func (p *sourceRatePacer) waitBytes(ctx context.Context, n int64) error {
+	if p == nil || n <= 0 {
+		return nil
+	}
+	return p.bytes.take(ctx, float64(n))
+}
+
+// sourceRateBucket is a cancellable token bucket with no reserved future
+// timestamps: a wait that is cancelled never deducts tokens, so an abandoned
+// caller cannot accumulate debt that starves later legitimate ones. Rate zero
+// means unlimited.
+type sourceRateBucket struct {
+	mu     sync.Mutex
+	tokens float64
+	last   time.Time
+	rate   float64
+	burst  float64
+}
+
+func newSourceRateBucket(rate, burst float64) *sourceRateBucket {
+	return &sourceRateBucket{tokens: burst, rate: rate, burst: burst}
+}
+
+func (b *sourceRateBucket) take(ctx context.Context, n float64) error {
+	if b == nil || b.rate <= 0 || n <= 0 {
+		return nil
+	}
+	for {
+		b.mu.Lock()
+		now := time.Now()
+		if !b.last.IsZero() {
+			b.tokens = min(b.burst, b.tokens+now.Sub(b.last).Seconds()*b.rate)
+		}
+		b.last = now
+		if b.tokens >= n {
+			b.tokens -= n
+			b.mu.Unlock()
+			return nil
+		}
+		wait := time.Duration((n - b.tokens) / b.rate * float64(time.Second))
+		b.mu.Unlock()
+		if wait <= 0 {
+			wait = time.Millisecond
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		}
+		timer.Stop()
+	}
 }
 
 // sourceOperations gives a caller the source's shared operation budget, but
@@ -424,14 +512,14 @@ type sourceOpsGate struct {
 // the existing test registration and stopping barrier rather than starting a
 // second gate while an exclusive hold is still cleaning up, and re-checks after
 // resolving so a test that registered meanwhile cannot be bypassed.
-func (s *Service) sourceOperations(ctx context.Context, source, generation string) (*remotemedia.OperationBudget, error) {
+func (s *Service) sourceOperations(ctx context.Context, source, generation string) (*sourceOpsGate, error) {
 	for {
 		if waited, err := s.waitSourceTest(ctx, source); err != nil {
 			return nil, err
 		} else if waited {
 			continue
 		}
-		budget, err := s.sourceOperationsNow(ctx, source, generation)
+		gate, err := s.sourceOperationsNow(ctx, source, generation)
 		if err != nil {
 			return nil, err
 		}
@@ -440,14 +528,14 @@ func (s *Service) sourceOperations(ctx context.Context, source, generation strin
 		} else if waited {
 			continue
 		}
-		return budget, nil
+		return gate, nil
 	}
 }
 
 // sourceOperationsNow resolves or rebuilds the gate, waiting for any stopping
 // test on it to finish its physical stop first. The test that owns the current
 // registration reaches this before marking itself stopping.
-func (s *Service) sourceOperationsNow(ctx context.Context, source, generation string) (*remotemedia.OperationBudget, error) {
+func (s *Service) sourceOperationsNow(ctx context.Context, source, generation string) (*sourceOpsGate, error) {
 	if s == nil || s.db == nil || source == "" || generation == "" {
 		return nil, storage.ErrRemoteConfig
 	}
@@ -482,9 +570,8 @@ func (s *Service) sourceOperationsNow(ctx context.Context, source, generation st
 			}
 		}
 		if gate != nil && !gate.retired && gate.generation == generation && gate.revision == profile.Revision {
-			budget := gate.budget
 			s.opsMu.Unlock()
-			return budget, nil
+			return gate, nil
 		}
 		life, cancel := context.WithCancel(context.Background())
 		budget := remotemedia.NewOperationBudget(life, profile.Limits.Connections)
@@ -499,9 +586,10 @@ func (s *Service) sourceOperationsNow(ctx context.Context, source, generation st
 		if s.opsGates == nil {
 			s.opsGates = map[string]*sourceOpsGate{}
 		}
-		s.opsGates[source] = &sourceOpsGate{generation: generation, revision: profile.Revision, budget: budget, cancel: cancel}
+		gate = &sourceOpsGate{generation: generation, revision: profile.Revision, budget: budget, pacer: newSourceRatePacer(profile.Limits), cancel: cancel}
+		s.opsGates[source] = gate
 		s.opsMu.Unlock()
-		return budget, nil
+		return gate, nil
 	}
 }
 
