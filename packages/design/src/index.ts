@@ -25,6 +25,8 @@ export const colors = {
   raisedSoft: "#0c1a25",
   /** Player notices; the approved Undo and Up next contexts apply their own alpha. */
   playerNotice: "#0c1923",
+  /** owner-server message log inset well. */
+  messageLog: "#050d14",
   /** The dark player-side panel used by the live programme and DVR sheets. */
   panel: "#0b1822",
   /**
@@ -129,6 +131,8 @@ const handheldType = {
   // owner-server frames 3–7: exact type metrics of the drawn Troubleshooting panels.
   troubleshootingHeading: type(18, 'normal', 800, -.02), troubleshootingLede: type(14, 20.3, 400),
   troubleshootingPermissionLede: type(13, 18.85, 400),
+  troubleshootingMessagesLede: type(14, 21, 400), troubleshootingMessagesLog: type(12.5, 18.75, 400),
+  troubleshootingMessagesText: type(13.5, 19.575, 500),
   troubleshootingLog: type(13, 19.5, 400), troubleshootingReason: type(13, 18.2, 400),
   troubleshootingMessage: type(15, 22.5, 400), troubleshootingCheck: type(15, 18, 400),
   troubleshootingLevel: type(12, 'normal', 800, .02),
