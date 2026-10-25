@@ -460,13 +460,20 @@ export class CastController {
     return this.current()&&this.state.phase==='casting'&&!this.stopping&&(!expected||sameCastRemote(expected,this.state.remoteIdentity));
   }
   private targetFields(expected?:CastRemoteIdentity){const target=expected??this.state.remoteIdentity;return target?{target}:{};}
-  play(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.send({type:'play',...this.targetFields(expected)});if(!this.state.remoteIdentity)this.publish({paused:false}); }
-  pause(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.send({type:'pause',...this.targetFields(expected)});if(!this.state.remoteIdentity)this.publish({paused:true}); }
+  private sendControl(message:CastCommand,expected?:CastRemoteIdentity){
+    const transport=this.transport,generation=this.startGeneration,target=expected??this.state.remoteIdentity;
+    if(!transport)return;
+    void transport.send(message).catch(()=>{
+      if(this.transport===transport&&this.startGeneration===generation&&target&&sameCastRemote(target,this.state.remoteIdentity))this.redacted(transport,generation,this.statusRevision);
+    });
+  }
+  play(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.sendControl({type:'play',...this.targetFields(expected)},expected);if(!this.state.remoteIdentity)this.publish({paused:false}); }
+  pause(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.sendControl({type:'pause',...this.targetFields(expected)},expected);if(!this.state.remoteIdentity)this.publish({paused:true}); }
   toggle(expected?:CastRemoteIdentity) { if(this.state.paused)this.play(expected);else this.pause(expected); }
-  seek(positionSeconds:number,expected?:CastRemoteIdentity) { if(!this.controlTarget(expected)||!Number.isFinite(positionSeconds))return;this.send({type:'seek',positionSeconds:Math.max(0,positionSeconds),...this.targetFields(expected)}); }
-  setAudioTrack(trackId:number,expected?:CastRemoteIdentity) { if(this.controlTarget(expected)&&Number.isSafeInteger(trackId))this.send({type:'audio',trackId,...this.targetFields(expected)}); }
+  seek(positionSeconds:number,expected?:CastRemoteIdentity) { if(!this.controlTarget(expected)||!Number.isFinite(positionSeconds))return;this.sendControl({type:'seek',positionSeconds:Math.max(0,positionSeconds),...this.targetFields(expected)},expected); }
+  setAudioTrack(trackId:number,expected?:CastRemoteIdentity) { if(this.controlTarget(expected)&&Number.isSafeInteger(trackId))this.sendControl({type:'audio',trackId,...this.targetFields(expected)},expected); }
   /** `null` turns subtitles off. */
-  setSubtitleTrack(trackId:number|null,expected?:CastRemoteIdentity) { if(this.controlTarget(expected))this.send({type:'subtitles',trackIds:trackId===null?[]:[trackId],...this.targetFields(expected)}); }
+  setSubtitleTrack(trackId:number|null,expected?:CastRemoteIdentity) { if(this.controlTarget(expected))this.sendControl({type:'subtitles',trackIds:trackId===null?[]:[trackId],...this.targetFields(expected)},expected); }
   stop(expected?:CastRemoteIdentity) {
     if(expected&&!sameCastRemote(expected,this.state.remoteIdentity))return;
     if(this.adopting){this.release(false,false);return;}

@@ -257,3 +257,15 @@ test('scoped loadACK before first status never downgrades controls or Stop to la
  tv.reply({type:'status',controller:controllerStamp,occurrence:{sessionId:'successor',generation:9,itemId:'later'},itemId:'later',positionSeconds:3,durationSeconds:60});
  controller.stop();controller.pause();assert.equal(tv.sent.length,before);assert.equal(tv.ended,undefined);assert.equal(controller.getSnapshot().remoteIdentity,undefined);controller.dispose();
 });
+
+test('late scoped transport refusal cannot detach a reported successor occurrence',async()=>{
+ const h=returning(),tv=receiver('TV','tv-a');let refuse!:(e:Error)=>void;
+ const held=new Promise<void>((_resolve,reject)=>{refuse=reject;});
+ const transport={...tv.transport,send:(message:CastCommand)=>message.type==='pause'?held:tv.transport.send(message)};
+ const adopted=h.controller.adopt(transport);await settle();const command=tv.sent[0];if(command.type!=='adopt')throw new Error('no adoption');
+ const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:8,durationSeconds:60,paused:false};
+ tv.reply({...status,attemptId:command.attemptId});assert.equal(await adopted,true);
+ h.controller.pause(h.controller.getSnapshot().remoteIdentity);
+ tv.reply({...status,occurrence:{...occurrence,sessionId:'successor',generation:8}});await settle();refuse(new Error('attachment retired'));await settle();
+ assert.equal(h.controller.getSnapshot().remoteIdentity?.occurrence.sessionId,'successor');assert.equal(h.controller.getSnapshot().phase,'casting');assert.equal(tv.ended,undefined);h.controller.dispose();
+});
