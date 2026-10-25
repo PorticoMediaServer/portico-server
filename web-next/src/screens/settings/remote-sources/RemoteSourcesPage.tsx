@@ -101,7 +101,7 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
     return () => service.dispose();
   }, [service]);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
-  const sources = snapshot.sources.filter(source => source.kind === 'webdav');
+  const sources = snapshot.sources.filter(source => source.kind === 'webdav' || source.kind === 'rclone');
   const [notice, setNotice] = useState('');
   const refresh = () => {if (!isCurrent()) return;setNotice('');void service.load();};
   const recover = () => {if (!isCurrent()) return;setNotice('');void service.recover().catch(error => {if (isCurrent()) setNotice(remoteErrorText(error));});};
@@ -113,8 +113,8 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
       {snapshot.loading && !sources.length && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
       {!snapshot.loading && !sources.length && !snapshot.error && <div className={styles.empty}><b>{t('next.remoteSources.empty')}</b><p>{t('next.remoteSources.emptyHelp')}</p></div>}
       {sources.map(source => <SettingsRow key={source.id} label={<><Icon name="i-globe" size={18} /> {source.name}</>}
-        help={<>{t('next.remoteSources.kindWebdav')}{source.origin ? ` · ${source.origin}` : ''}{problemId(source) ? ` · ${t(problemId(source)!)}` : ''}</>}>
-        <span className={styles.rowActions}><SourceStatus source={source}/><Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button></span>
+        help={<>{t(source.kind === 'rclone' ? 'web.storage.rcloneRemote' : 'next.remoteSources.kindWebdav')}{source.origin ? ` · ${source.origin}` : ''}{problemId(source) ? ` · ${t(problemId(source)!)}` : ''}</>}>
+        <span className={styles.rowActions}><SourceStatus source={source}/>{source.kind === 'webdav' && <Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button>}</span>
       </SettingsRow>)}
       {!snapshot.loading && <p className={styles.note}>{t('next.remoteSources.foldersBlocked')}</p>}
     </SettingsGroup>
