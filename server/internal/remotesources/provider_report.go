@@ -15,13 +15,14 @@ func (s *Service) sourcePacerBackoff(source, generation string) bool {
 	return process != nil && process.PacerObservation().Backoff
 }
 
-// sourceOperationInUse is the live serve process's measured admitted-operation
-// count for this exact source generation. One permit is one admitted provider
-// operation on the process's shared source budget (a listing, stat or range),
-// never a physical socket and never a distinct viewer. The snapshot is fenced
-// against the same slot, generation and process before it is returned, so a
-// replacement or retirement during the read reports not-ok rather than a stale
-// count; no process for this generation means it has no admitted serve work.
+// sourceOperationInUse samples the shared source operation budget through the
+// current serve process for this exact generation. The budget also admits
+// direct WebDAV requests and saved-source listings; it is not a serve-only
+// count. Mounted media reads outside that budget are not measured here. One
+// permit is one admitted operation, never a socket or a distinct viewer.
+// Re-fencing the slot, generation and process rejects replacement/retirement
+// during the sample. Without that live process handle the count is unknown,
+// even when direct reads hold permits on the source budget.
 func (s *Service) sourceOperationInUse(source, generation string) (int, bool) {
 	if s == nil || source == "" || generation == "" {
 		return 0, false

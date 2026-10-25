@@ -47,14 +47,15 @@ type SourceStatus struct {
 	CacheUsedBytes  int64  `json:"cacheUsedBytes"`
 	Remote          string `json:"remote,omitempty"`
 	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
-	// ServeOperationsInUse is the live serve process's admitted provider
-	// operations for this generation: listings, stats and ranges holding one
-	// permit each on the source's saved operation budget. They are admissions,
-	// never physical sockets and never distinct viewers. Absent when no process
-	// holds this generation, which is the honest signal that this counter is
-	// unknown; a present zero is measured idleness. ConnectionsInUse keeps its
-	// shipped meaning (admitted media read objects, which may share a stream);
-	// no complete per-source upstream connection count exists.
+	// ServeOperationsInUse samples the saved source's shared operation budget
+	// through its current live serve process. Despite the historical field name,
+	// this includes direct WebDAV requests and saved-source listings on the same
+	// budget; mounted media reads outside it are not measured. These are admitted
+	// operations, never sockets or distinct viewers. Absent means no live process
+	// handle could supply a current sample, not that no direct work exists; a
+	// present zero is measured idleness of this budget. ConnectionsInUse retains
+	// its shipped meaning (admitted media read objects, which may share a stream).
+	// No complete per-source upstream connection count exists.
 	ServeOperationsInUse *int `json:"serveOperationsInUse,omitempty"`
 }
 
