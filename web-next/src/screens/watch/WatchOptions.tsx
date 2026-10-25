@@ -93,7 +93,9 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
  // desktop-player f7: the sheet's own "Up next" row carries the queue's real remaining count.
  const remaining=context.snapshot.queueView?.remainingCount,upNext=typeof remaining==='number'&&Number.isInteger(remaining)&&remaining>0?i18n.number(remaining):undefined;
  const titleActions:readonly Readonly<{id:string;label:string;icon:IconName;action:()=>void|Promise<void>;value?:string}>[]=[
-  ...(context.available?.includes('episodes')?[{id:'episodes',label:t('next.dock.queue'),icon:'i-queue' as const,...(upNext?{value:upNext}:{}),action:()=>context.show('episodes')}]:[]),
+  // A show keeps its authored Episodes drawer; any other queue opens the real queue list.
+  ...(context.available?.includes('episodes')?[{id:'episodes',label:t('next.dock.queue'),icon:'i-queue' as const,...(upNext?{value:upNext}:{}),action:()=>context.show('episodes')}]
+    :context.available?.includes('queue')?[{id:'queue',label:t('next.dock.queue'),icon:'i-queue' as const,...(upNext?{value:upNext}:{}),action:()=>context.show('queue')}]:[]),
   ...(info?[{id:'info',label:t('next.info.title'),icon:'i-info' as const,action:()=>context.show('info')}]:[]),
   ...(context.reportProblem?[{id:'report',label:context.reportProblem.label,icon:'i-flag' as const,action:context.reportProblem.action}]:[]),
  ];
