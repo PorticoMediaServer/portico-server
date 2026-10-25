@@ -18,6 +18,7 @@ OUT=""
 CREDS=/home/justin/projects/Portico/.private/demo-testing/active-credentials.json
 SERVER=https://demo.getportico.tv
 PLAYBACK=yes
+OVERRIDE=yes
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -26,6 +27,7 @@ while [ $# -gt 0 ]; do
     --creds) CREDS="$2"; shift 2 ;;
     --server) SERVER="$2"; shift 2 ;;
     --skip-playback) PLAYBACK=no; shift ;;
+    --native-display) OVERRIDE=no; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -55,9 +57,19 @@ for _ in $(seq 1 60); do
   sleep 5
 done
 [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] || { say FAIL "the AVD did not finish booting"; exit 1; }
-adb shell wm size 393x852 >/dev/null 2>&1
-adb shell wm density 160 >/dev/null 2>&1
-say PASS "booted at 393x852, density 160"
+if [ "$OVERRIDE" = "yes" ]; then
+  adb shell wm size 393x852 >/dev/null 2>&1
+  adb shell wm density 160 >/dev/null 2>&1
+  say PASS "booted with the drawn-size override 393x852 at density 160"
+else
+  say PASS "booted at the AVD's native display"
+fi
+
+STAMP=$({ curl -sS --max-time 15 "$SERVER/v1/system" || true; } | python3 -c "import json,sys;
+try:
+ d=json.load(sys.stdin); print(d.get('version'), d.get('id'))
+except Exception: print('unreadable')" 2>/dev/null)
+say INFO "server before UI: $STAMP"
 
 SHELL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cleanup() {
@@ -81,6 +93,11 @@ CORE=$?
 say "$([ $CORE -eq 0 ] && echo PASS || echo FAIL)" "core flows exit=$CORE"
 
 # 3. Owner Settings evidence: row order, Troubleshooting pair, Storage and Integrations when drawn.
+STAMP_AFTER=$({ curl -sS --max-time 15 "$SERVER/v1/system" || true; } | python3 -c "import json,sys;
+try:
+ d=json.load(sys.stdin); print(d.get('version'), d.get('id'))
+except Exception: print('unreadable')" 2>/dev/null)
+say INFO "server after core flows: $STAMP_AFTER"
 python3 "$SHELL_DIR/smoke/android/settings-capture.py" --serial "$SERIAL" --apk "$ARTIFACT" \
   --out "$OUT/settings" --creds "$CREDS" --server "$SERVER" --build "$PIN" >> "$LOG" 2>&1
 SETTINGS=$?

@@ -175,13 +175,14 @@ class Checks:
         print(f"{status.upper():7} {name}" + (f" | {detail}" if detail else ""))
 
     def run(self, name, fn):
+        started = time.time()
         try:
             detail, evidence = fn()
-            self.record(name, "pass", detail or "", evidence)
+            self.record(name, "pass", detail or "", {**(evidence or {}), "seconds": round(time.time() - started, 2)})
         except AssertionError as error:
-            self.record(name, "fail", str(error)[:600])
+            self.record(name, "fail", str(error)[:600], {"seconds": round(time.time() - started, 2)})
         except Exception as error:  # noqa: BLE001 - every failure must reach the report
-            self.record(name, "fail", f"{type(error).__name__}: {error}"[:600])
+            self.record(name, "fail", f"{type(error).__name__}: {error}"[:600], {"seconds": round(time.time() - started, 2)})
 
     def blocked(self, name, reason):
         self.record(name, "blocked", reason)
