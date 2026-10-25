@@ -113,6 +113,12 @@ export class MetadataRepairService {
   try{const raw=await this.request(target,'GET');if(epoch!==this.epoch||this.disposed)return;this.accept(raw,target);}
   catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,false);}
  }
+ async refresh(expectedData:RepairData):Promise<void>{
+  const target=this.target;if(this.disposed||!target||this.state.phase!=='ready'||this.state.data!==expectedData)return;
+  const epoch=++this.epoch;
+  try{const raw=await this.request(target,'GET');if(epoch!==this.epoch||this.disposed||this.target!==target||this.state.data!==expectedData)return;this.accept(raw,target);}
+  catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,false);}
+ }
  private accept(raw:unknown,target:RepairTarget){const data=validateRepair(raw,this.options.scope,target);if(this.fence&&this.fence!==data.viewerFence)throw Object.assign(new Error('Owner access changed.'),{status:403});this.fence=data.viewerFence;this.publish({phase:'ready',data,error:null,preview:null});}
  async command(command:RepairCommand,expectedData?:RepairData):Promise<boolean>{
   const data=this.state.data,target=this.target;if(this.state.phase!=='ready'||!data||!target||expectedData!==undefined&&expectedData!==data)throw Error('Load current metadata before making another change.');
