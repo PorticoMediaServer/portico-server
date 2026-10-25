@@ -593,6 +593,19 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			args = append([]string{"-progress", "pipe:1", "-stats_period", "1", "-nostats"}, args...)
 			progress = vod.NewConversionProgressWriter(observe)
 		}
+		// One reservation per hardware converter, taken before the child starts and
+		// released only after it has been waited or cancelled and reaped. A slot
+		// this adapter cannot give right now returns to the existing fallback: the
+		// same path a refused hardware encoder already takes.
+		releasePermit := func() {}
+		if conversionJobHardware(plan, stages) && plan != nil {
+			var reserved bool
+			releasePermit, reserved = decoder.HardwarePermits().Reserve(decoder.ConversionPermitIdentity(), decoder.HardwareBackend(plan.HardwareBackend), plan.HardwareDevice)
+			if !reserved {
+				return errHardwarePermitUnavailable, ""
+			}
+		}
+		defer releasePermit()
 		cmd, err := mediaexec.CommandContext(processCtx, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: conversionJobHardware(plan, stages)})
 		if err != nil {
 			return err, ""

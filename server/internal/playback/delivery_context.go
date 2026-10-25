@@ -117,6 +117,10 @@ func (s *Service) HardwareTest(ctx context.Context) {
 		return
 	}
 	cfg := s.DeliveryConfiguration()
+	// A re-test retires every ceiling measured for this runtime and adapter set
+	// before it probes again: an old maximum must not outlive the configuration it
+	// was measured on. Reservations held by live children are untouched.
+	decoder.HardwarePermits().Retire(decoder.ConversionPermitIdentity(), "", "")
 	devices := s.HardwareDevices(ctx)
 	if len(devices) == 0 {
 		for _, backend := range decoder.HardwareBackends {
