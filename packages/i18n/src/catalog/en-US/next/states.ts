@@ -53,6 +53,8 @@ export const statesMessages = {
   'next.states.backedUp': 'Backed up the database',
   'next.states.updatingDatabase': 'Updating the database',
   'next.states.starting': 'Starting up',
+  'next.states.serverStarting': 'Portico is starting up',
+  'next.states.serverStartingBody': 'The server is finishing its startup checks. Portico will reconnect when it is ready.',
   'next.states.secondsLeft': 'about {seconds, plural, one {# second} other {# seconds}} left',
   'next.states.whatsNew': "What's new in {version}",
   'next.states.playbackStopped': 'Playback stopped',
