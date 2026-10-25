@@ -113,6 +113,8 @@ export const ownerLibrariesMessages = {
   'next.ownerLibraries.explorer.noFolders': 'No folders inside this one',
   'next.ownerLibraries.explorer.more': 'Show more folders',
   'next.ownerLibraries.explorer.truncated': 'This folder has more entries than are shown. Type the start of a name to narrow the list.',
+  'next.ownerLibraries.explorer.writable': 'Portico can save files in this folder.',
+  'next.ownerLibraries.explorer.notWritable': 'Portico cannot save files in this folder. Give the account running Portico write permission.',
   'next.ownerLibraries.explorer.chosen': 'Chosen',
   'next.ownerLibraries.explorer.removeChosen': 'remove',
   'next.ownerLibraries.explorer.disksOnly': 'This server’s own disks. A network share needs a remote source.',
