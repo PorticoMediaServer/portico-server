@@ -257,6 +257,18 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 			return composeErr
 		}
 		browseRequest := catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: viewer.Profile, ViewerFence: viewer.Fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: viewer.EffectiveRestrictions(), RowSources: rows}
+		if identity.CanUsePersonalState(p) {
+			browseRequest.ReadingPersonalAuthorize = func(tx *sql.Tx) error {
+				live, err := d.Identity.PrincipalByDigestTx(cat.Context(), tx, p.Hash)
+				if err != nil {
+					return err
+				}
+				if live.Viewer != p.Viewer || live.Epoch != p.Epoch || live.Grant != p.Grant || !identity.CanUsePersonalState(live) {
+					return identity.ErrForbidden
+				}
+				return d.allowedLibraryTx(cat.Context(), live, r.PathValue("id"), tx)
+			}
+		}
 		out, composeErr = cat.BrowseEntities(viewer, browseRequest)
 		if composeErr != nil {
 			return composeErr

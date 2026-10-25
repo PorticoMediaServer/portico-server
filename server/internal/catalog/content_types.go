@@ -88,6 +88,12 @@ func (ReadingPublicationType) JSONSchema() map[string]any {
 }
 
 type ContentEntry struct {
+	// ReadingMark is an explicit current-profile choice, never inferred from
+	// progression. Absent for ineligible viewers or an unrecorded mark.
+	ReadingMark *ReadingMark `json:"readingMark,omitempty"`
+	// PageCount is a recorded fact of the selected primary publication. It is
+	// absent when the current source has no validated count.
+	PageCount       *int                   `json:"pageCount,omitempty"`
 	PublicationType ReadingPublicationType `json:"publicationType,omitempty"`
 	Removed         bool                   `json:"removed,omitempty"`
 	YearMin         *int                   `json:"yearMin,omitempty"`

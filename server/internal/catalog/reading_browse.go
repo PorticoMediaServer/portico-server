@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"portico.local/server/internal/readingpaths"
+	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -125,19 +126,42 @@ func (s *Service) BrowseCapabilitiesForViewer(viewer Viewer, library, pivot stri
 	return out, nil
 }
 
-func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEntry, error) {
+func (r *readingBrowseScope) project(s *Service, rows []browseRow, profile string, authorizePersonal func(*sql.Tx) error) ([]ContentEntry, error) {
 	ids := make([]any, len(rows))
 	for i, row := range rows {
 		ids[i] = row.entity
 	}
 	formats := r.sourceFormatsSQL()
-	query := `SELECT m.item_id,l.library_id,m.publication_type,COALESCE(m.author_value,''),
+	// Every fact comes from this ready membership and the same canonical
+	// primary publication as the row. Page counts also require the exact
+	// current inventory observation; a prior file's count is never reused.
+	pageCount := `(SELECT c.page_count FROM reading_publications p
+ JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
+ JOIN catalog_assets a ON a.id=p.asset_id
+ JOIN reading_text_counts c ON c.item_id=p.item_id AND c.asset_id=p.asset_id
+ JOIN inventory_objects o ON o.id=c.inventory_object_id AND o.asset_id=a.token AND o.revision=c.source_revision
+ JOIN library_sources source ON source.id=o.source_id AND source.library_id=m.library_id AND source.incarnation=o.root_incarnation
+ WHERE p.item_id=m.item_id AND p.asset_id=` + r.primaryPublicationSQL("m.item_id") + `
+ AND p.format='pdf' AND c.rule_version=1 AND c.page_rule_version=1 AND c.page_count BETWEEN 1 AND 4096
+ AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.size=a.size AND o.modified_ns=a.modified_ns
+ AND source.enabled=1 AND source.health NOT IN('offline','root_changed','removing') ORDER BY o.id LIMIT 1)`
+	mark, markRevision := "NULL", "NULL"
+	queryArgs := []any{}
+	if authorizePersonal != nil && profile != "" {
+		if err := authorizePersonal(dbwork.Snapshot(s.Context())); err != nil {
+			return nil, err
+		}
+		mark = `(SELECT watched FROM personal_watched_intents WHERE profile_id=? AND item_id=m.item_id)`
+		markRevision = `(SELECT revision FROM personal_items WHERE profile_id=? AND item_id=m.item_id)`
+		queryArgs = append(queryArgs, profile, profile)
+	}
+	query := `SELECT m.item_id,l.library_id,m.publication_type,COALESCE(m.author_value,''),m.series_value,m.numbered_order,m.number_value,d.added_text,` + pageCount + `,` + mark + `,` + markRevision + `,
  EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_asset_links selected_link ON selected_link.entity_id=p.item_id AND selected_link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id JOIN inventory_item_availability available ON available.item_id=p.item_id AND available.asset_id=a.token
  WHERE p.item_id=m.item_id AND p.format IN(` + formats + `) AND p.asset_id=` + r.primaryPublicationSQL("m.item_id") + ` AND available.available=1)
- FROM reading_attribution_members m JOIN catalog_libraries l ON l.id=m.library_id
+ FROM reading_attribution_members m JOIN catalog_libraries l ON l.id=m.library_id LEFT JOIN catalog_item_details d ON d.entity_id=m.item_id
  WHERE ` + r.memberScope() + ` AND m.item_id IN(` + placeholders(len(ids)) + `)`
-	read, err := s.read().Query(query, ids...)
+	read, err := s.read().Query(query, append(queryArgs, ids...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +171,12 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 		var id int64
 		var entry ContentEntry
 		var available bool
-		var publicationType sql.NullString
-		if err = read.Scan(&id, &entry.LibraryID, &publicationType, &entry.Author, &available); err != nil {
+		var publicationType, series, added sql.NullString
+		var numbered int
+		var number float64
+		var pages, revision sql.NullInt64
+		var finished sql.NullBool
+		if err = read.Scan(&id, &entry.LibraryID, &publicationType, &entry.Author, &series, &numbered, &number, &added, &pages, &finished, &revision, &available); err != nil {
 			return nil, err
 		}
 		if publicationType.Valid {
@@ -158,6 +186,24 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 			default:
 				return nil, ErrReadingProjectionChanged
 			}
+		}
+		if series.Valid {
+			value := AudioSeries{Name: series.String}
+			if numbered == 0 {
+				value.Position = strconv.FormatFloat(number, 'f', -1, 64)
+			}
+			entry.Series = []AudioSeries{value}
+		}
+		if added.Valid && added.String != "" {
+			value := added.String
+			entry.AddedAt = &value
+		}
+		if pages.Valid {
+			value := int(pages.Int64)
+			entry.PageCount = &value
+		}
+		if finished.Valid && revision.Valid {
+			entry.ReadingMark = &ReadingMark{Read: finished.Bool, Revision: revision.Int64}
 		}
 		entry.Subtitle = entry.Author
 		entry.Available = &available
@@ -181,6 +227,9 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 			return nil, ErrStaleContinuation
 		}
 		entry.ID = row.id
+		if entry.ReadingMark != nil {
+			entry.ReadingMark.ItemID = row.id
+		}
 		if digest := covers[row.entity]; digest != "" {
 			entry.PosterURL = "/v1/items/" + url.PathEscape(row.id) + "/art/cover?v=" + digest
 		}

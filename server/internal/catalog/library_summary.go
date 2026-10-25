@@ -11,12 +11,15 @@ import (
 // LibrarySummary is a viewer-safe bounded catalogue projection. It contains no
 // paths, account details, scan percentages or current-file information.
 type LibrarySummary struct {
-	Counts        []LibraryKindCount `json:"counts"`
-	CoverURLs     []string           `json:"coverUrls"`
-	LatestArtwork string             `json:"latestArtwork"`
-	FirstScan     bool               `json:"firstScan"`
-	EmptyKnown    bool               `json:"emptyKnown"`
-	Empty         bool               `json:"empty"`
+	// PublicationCounts counts only explicitly classified, visible Reading
+	// titles. It is separate from Counts so ebook totals are never doubled.
+	PublicationCounts []LibraryKindCount `json:"publicationCounts,omitempty"`
+	Counts            []LibraryKindCount `json:"counts"`
+	CoverURLs         []string           `json:"coverUrls"`
+	LatestArtwork     string             `json:"latestArtwork"`
+	FirstScan         bool               `json:"firstScan"`
+	EmptyKnown        bool               `json:"emptyKnown"`
+	Empty             bool               `json:"empty"`
 }
 type LibraryKindCount struct {
 	Kind    string `json:"kind"`
@@ -72,6 +75,7 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 	out := LibrarySummary{Counts: []LibraryKindCount{}, CoverURLs: []string{}, Empty: true}
 	kinds := summaryKinds(library.Kind)
 	clause, args := EntityRestrictionSQL("e.id", viewer.Restrictions)
+	publicationTypeSQL := "NULL"
 	if isReadingLibrary(library.Kind) {
 		reading, err := s.readingBrowseScope(library.ID)
 		if err != nil {
@@ -83,6 +87,9 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 		// does not exclude an otherwise eligible Reading title.
 		clause = "(" + clause + ") AND " + reading.eligibleSQL("e.id") +
 			" AND EXISTS(SELECT 1 FROM reading_attribution_members m WHERE " + reading.memberScope() + " AND m.item_id=e.id)"
+		if library.Kind == "book" {
+			publicationTypeSQL = `(SELECT m.publication_type FROM reading_attribution_members m WHERE ` + reading.memberScope() + ` AND m.item_id=e.id)`
+		}
 	}
 	selections := []string{}
 	values := []any{}
@@ -99,11 +106,12 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 	// index. Sorting the union and applying live visibility is bounded even for
 	// a cold restriction class and a catalogue with millions of titles.
 	rows, err := s.read().QueryContext(ctx, `WITH candidates AS (`+strings.Join(selections, " UNION ALL ")+`)
- SELECT pid(e.public_id),k.name,COALESCE(d.poster_url,''),COALESCE(d.backdrop_url,''),(`+clause+`) FROM candidates e JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_item_details d ON d.entity_id=e.id ORDER BY e.added_ms DESC,e.id DESC`, values...)
+ SELECT pid(e.public_id),k.name,COALESCE(d.poster_url,''),COALESCE(d.backdrop_url,''),(`+clause+`),`+publicationTypeSQL+` FROM candidates e JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_item_details d ON d.entity_id=e.id ORDER BY e.added_ms DESC,e.id DESC`, values...)
 	if err != nil {
 		return out, err
 	}
 	counts := map[string]int{}
+	publicationCounts := map[string]int{}
 	visited := map[string]int{}
 	coverKind := kinds[0]
 	if library.Kind == "music" {
@@ -115,7 +123,8 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 	for rows.Next() {
 		var id, kind, poster, backdrop string
 		var visible bool
-		if err = rows.Scan(&id, &kind, &poster, &backdrop, &visible); err != nil {
+		var publicationType sql.NullString
+		if err = rows.Scan(&id, &kind, &poster, &backdrop, &visible, &publicationType); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -127,6 +136,15 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 			continue
 		}
 		counts[kind]++
+		if publicationType.Valid {
+			switch publicationType.String {
+			case "book", "magazine", "newspaper":
+				publicationCounts[publicationType.String]++
+			default:
+				rows.Close()
+				return out, ErrReadingProjectionChanged
+			}
+		}
 		for _, countKind := range kinds {
 			if kind == countKind {
 				out.Empty = false
@@ -186,6 +204,11 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 	}
 	for _, kind := range kinds {
 		out.Counts = append(out.Counts, LibraryKindCount{Kind: kind, Count: counts[kind], AtLeast: visited[kind] > librarySummaryCap})
+	}
+	if library.Kind == "book" {
+		for _, kind := range []string{"book", "magazine", "newspaper"} {
+			out.PublicationCounts = append(out.PublicationCounts, LibraryKindCount{Kind: kind, Count: publicationCounts[kind], AtLeast: visited["ebook"] > librarySummaryCap})
+		}
 	}
 	err = s.read().QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE j.library_id=? AND j.status IN('complete','complete_with_warnings')) AND EXISTS(SELECT 1 FROM jobs WHERE library_id=? AND status IN('queued','running','paused'))`, library.ID, library.ID).Scan(&out.FirstScan)
 	return out, err

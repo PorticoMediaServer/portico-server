@@ -79,18 +79,22 @@ type BrowseResult struct {
 // authorization facts into the revision so a permission change invalidates a
 // range the same way a catalog change does.
 type BrowseRequest struct {
-	ServerID       string
-	Library        string
-	Profile        string
-	ViewerFence    string
-	HomeRowDisplay string
-	Pivot          string
-	Query          *BrowseNode
-	Sort           []BrowseSortSelection
-	Limit          int
-	Cursor         string
-	Range          *BrowseRange
-	Seek           *BrowseSeek
+	// The HTTP boundary sets this only after admitting the original ordinary
+	// selected viewer in the same Reading snapshot. Browse alone grants no
+	// personal state to internal or narrowed-session callers.
+	ReadingPersonalAuthorize func(*sql.Tx) error
+	ServerID                 string
+	Library                  string
+	Profile                  string
+	ViewerFence              string
+	HomeRowDisplay           string
+	Pivot                    string
+	Query                    *BrowseNode
+	Sort                     []BrowseSortSelection
+	Limit                    int
+	Cursor                   string
+	Range                    *BrowseRange
+	Seek                     *BrowseSeek
 	// Restrictions is the viewer's content restriction. The browse engine applies
 	// it in browseSelect; see restrictions.go for the predicate it compiles.
 	Restrictions identity.ContentRestrictions
@@ -392,8 +396,10 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		return result, err
 	}
 	out, rows, err := s.browseSelect(request)
-	if errors.Is(err,ErrVisibilityBuilding)||errors.Is(err,ErrStaleContinuation) {
-		if lib,lookupErr:=s.library(request.Library);lookupErr==nil&&isReadingLibrary(lib.Kind) {return out,ErrReadingProjectionChanged}
+	if errors.Is(err, ErrVisibilityBuilding) || errors.Is(err, ErrStaleContinuation) {
+		if lib, lookupErr := s.library(request.Library); lookupErr == nil && isReadingLibrary(lib.Kind) {
+			return out, ErrReadingProjectionChanged
+		}
 	}
 	if errors.Is(err, ErrVisibilityBuilding) {
 		out.Entries = []ContentEntry{}
@@ -409,7 +415,7 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 	if len(rows) > 0 {
 		var entries []ContentEntry
 		if readingScope != nil {
-			entries, err = readingScope.project(s, rows)
+			entries, err = readingScope.project(s, rows, request.Profile, request.ReadingPersonalAuthorize)
 		} else {
 			entries, err = s.browseProjection(request.Profile, rows)
 		}
