@@ -16,6 +16,8 @@ fi
 status=0
 $list | xargs -0 -I{} sh -c '
 	f=$1; limit=$2
+	# Root21: only this official generated text may grow to 2 MiB.
+	[ "$f" != packages/contracts/src/types.ts ] || limit=2097152
 	[ -f "$f" ] || exit 0
 	case "$f" in
 	fixtures/*|third_party/*|packages/contracts/src/schemas.ts|server/api/portico.openapi.json|server/internal/persistence/migrations/0001_baseline.sql|server/internal/mediaexec/fonts/NotoSansCJKjp-Regular.otf) allowed=1 ;;
@@ -26,6 +28,6 @@ $list | xargs -0 -I{} sh -c '
 	case "$magic" in
 	7f454c46|cffaedfe|cefaedfe|feedfacf|feedface|cafebabe|4d5a*) echo "built executable in Git: $f" >&2; exit 1 ;;
 	esac
-	if [ "$allowed" = 0 ] && [ "$size" -gt "$limit" ]; then echo "file over 1 MB in Git: $f ($size bytes)" >&2; exit 1; fi
+	if [ "$allowed" = 0 ] && [ "$size" -gt "$limit" ]; then echo "file exceeds Git size limit: $f ($size bytes; limit $limit)" >&2; exit 1; fi
 ' _ {} "$limit" || status=1
 exit $status
