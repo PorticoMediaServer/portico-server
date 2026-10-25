@@ -1,4 +1,5 @@
 import {defaultI18n} from '@i18n';
+import {generatedCoverTint} from '@design';
 import type {CSSProperties} from 'react';
 import type {ContentEntry} from '@core/library-content.ts';
 import {shapeFor} from '@core/presentation/card-shape.ts';
@@ -6,7 +7,7 @@ import {homeCardSubject} from '../home/model';
 import {cardText} from '@portico/client-core/kit-model';
 import type {TextEnvironment} from '@portico/client-core/kit-model';
 import {GeneratedArt} from '../../kit/artwork';
-import {CircleCard, CollectionTile, GenreTile, PosterCard, SquareCard, type CardSelection} from '../../kit/cards';
+import {CircleCard, CollectionTile, CoverCard, GenreTile, PosterCard, SquareCard, type CardSelection} from '../../kit/cards';
 import type {ShellArtwork} from '../../shell/artwork';
 import {collectionWatchedCount, collectionWatchedProgress} from './collection-card';
 
@@ -46,5 +47,10 @@ export function BrowseEntryCard({entry, actions, artwork, env, width, family, mi
     ambient={backdrops ? artwork.ambient(entry.backdropUrl, {group, order}) : undefined}
     covers={(entry.artworkPaths ?? []).slice(0, 4).flatMap((path, index) => {const cover = artwork.foreground(path, 90 * devicePixelRatio, 2 / 3, {group, order: order * 4 + index});return cover ? [cover] : [];})}/>;
   if (entry.kind === 'artist' || shape === 'circle') return <CircleCard {...props} covers={(entry.artworkPaths?.length ? entry.artworkPaths : entry.posterUrl ? [entry.posterUrl] : []).slice(0, 4).flatMap(path => {const cover = artwork.foreground(path, width * devicePixelRatio, 1, {group, order});return cover ? [cover] : [];})} initials={title.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] ?? '').join('')} variant={entry.kind === 'artist' ? 'artist' : 'person'}/>;
+  // desktop-read 2/2c: a Reading title is drawn as a book cover — 2:3, its own left spine, and
+  // the typographic generated cover when the file carries no artwork. It never takes a play
+  // action: an ebook or comic has no playback, and opening it is the detail page's own action.
+  if (entry.kind === 'ebook' || entry.kind === 'comic') return <CoverCard {...props} onPlay={undefined} kind={entry.kind === 'comic' ? 'comic' : 'book'} artwork={source}
+    generated={{title, glyph: Array.from(title.trim())[0] ?? '', tint: generatedCoverTint(title)}}/>;
   return shape === 'square' ? <SquareCard {...props} artwork={source} ambient={backdrops ? artwork.ambient(entry.posterUrl, {group, order}) : undefined} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'}/> : <PosterCard {...props} artwork={source}/>;
 }
