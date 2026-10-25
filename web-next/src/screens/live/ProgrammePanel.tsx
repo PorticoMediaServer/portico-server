@@ -119,11 +119,11 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
     {snapshot.error && <Banner className={styles.programmeBanner}>{snapshot.error}</Banner>}
     {notice && <Banner className={styles.programmeBanner}>{notice}</Banner>}
     <div className={styles.programmeActions}>
-      {onWatch && <Button className={styles.programmeAction} variant="primary" icon="i-play" onClick={onWatch} disabled={!channel.tuneAvailable}>{watchLabel}</Button>}
+      {onWatch && !future && <Button className={styles.programmeAction} variant="primary" icon="i-play" onClick={onWatch} disabled={!channel.tuneAvailable}>{watchLabel}</Button>}
       {canRecord && (recordingFact
         ? <Menu open={recordingOpen} onOpenChange={open => setRecordingOpen(open)} trigger={<Button className={styles.programmeAction} variant="glass" aria-label={t('next.live.recordingOptions')} aria-haspopup="menu" disabled={busy || !snapshot.recording}><span className={styles.recordingDot} aria-hidden="true"/>{t('next.kit.recording')}</Button>}
           title={t('next.live.recordingOptions')} items={recordingMenu}/>
-        : <Button className={styles.programmeAction} variant="glass" icon="i-rec" onClick={onRecord} disabled={busy} loading={snapshot.busy === 'record'}>{t('guide.record')}</Button>)}
+        : <Button className={styles.programmeAction} variant={future ? "primary" : "glass"} icon="i-rec" onClick={onRecord} disabled={busy} loading={snapshot.busy === 'record'}>{t('guide.record')}</Button>)}
       {canRecord && <Button className={`${styles.programmeAction} ${seriesOpen ? styles.programmeActionOpen : ''}`} variant="glass"
         icon="i-series" aria-expanded={seriesOpen} disabled={busy} onClick={() => onSeriesOpenChange(!seriesOpen)}>{t('guide.recordSeries')}</Button>}
       {future && onProgrammeReminder && <Button className={styles.programmeAction} variant="glass" icon={reminders.includes(programme.id) ? 'i-bell-f' : 'i-bell'}
