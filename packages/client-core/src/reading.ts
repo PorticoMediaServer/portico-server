@@ -170,8 +170,17 @@ function scopedByteStream(source: ByteSource): ReadingByteStream {
   });
 }
 
+/** Selected cover identity is a versioned local artwork route for this exact Reading item. */
+function validReadingCover(itemId: string, value: unknown): boolean {
+  if (value === undefined) return true;
+  if (typeof value !== 'string') return false;
+  const prefix = routePath('get_items_id_art_kind', {id: itemId, kind: 'cover'}) + '?v=';
+  return value.startsWith(prefix) && /^[a-f0-9]{64}$/.test(value.slice(prefix.length));
+}
+
 function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSessionsRequest) {
   if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !format(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
+  if (!validReadingCover(m.itemId, m.metadata.coverUrl)) fail('invalid_manifest');
   if (m.sequential === true && m.format !== 'pdf') fail('invalid_manifest');
   if (m.metadata.direction !== undefined && !['ltr', 'rtl', 'vertical'].includes(m.metadata.direction)) fail('invalid_manifest');
   const resources = m.resources ?? [], pages = m.pageNames ?? [], spine = m.spine ?? [];
@@ -276,7 +285,7 @@ export class ReadingClient {
   async list(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingItemsResponse> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_items'), options), 'GET', undefined, signal, decodeGetReadingItemsResponse, 256 << 10);
-    if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format))) fail('invalid_document');
+    if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format) || !validReadingCover(row.id, row.coverUrl))) fail('invalid_document');
     return out;
   }
   async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
@@ -285,7 +294,7 @@ export class ReadingClient {
     if (out.rows.length < 1 || out.rows.length > 2 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
     const seen = new Set<string>();
     const checkItem = (item: ReadingItem, libraryId?: string) => {
-      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
     };
     for (const item of out.rows[0].items) {
       checkItem(item,options.libraryId);
@@ -316,7 +325,7 @@ export class ReadingClient {
     if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(out.nextCursor))) fail('invalid_document');
     const seen = new Set<string>();
     for (const item of out.items) {
-      if (!id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
     return out;
@@ -328,7 +337,7 @@ export class ReadingClient {
     const seen = new Set<string>();
     for (const {item, progress} of out.items) {
       const location = progress.location;
-      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || progress.sourceId !== item.sourceId || !revision(progress.sourceRevision) || !integer(progress.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(progress.observedAt, 1, Number.MAX_SAFE_INTEGER) || !format(location.format) || (!progress.stale && location.format !== item.format) || !Number.isFinite(location.progression) || location.progression < 0 || location.progression >= 1) fail('invalid_progress');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || progress.sourceId !== item.sourceId || !revision(progress.sourceRevision) || !integer(progress.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(progress.observedAt, 1, Number.MAX_SAFE_INTEGER) || !format(location.format) || (!progress.stale && location.format !== item.format) || !Number.isFinite(location.progression) || location.progression < 0 || location.progression >= 1) fail('invalid_progress');
       if (location.format === 'epub') {
         if (location.pageIndex !== undefined || !location.cfi?.startsWith('epubcfi(/') || !location.cfi.endsWith(')') || new TextEncoder().encode(location.cfi).length > 4096 || /[\p{Cc}<>]/u.test(location.cfi) || (location.section !== undefined && !member(location.section))) fail('invalid_progress');
       } else if (location.cfi !== undefined || location.section !== undefined || !integer(location.pageIndex ?? -1, 0, 2147483647)) fail('invalid_progress');
