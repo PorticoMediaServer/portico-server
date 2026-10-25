@@ -60,7 +60,7 @@ func repairSchema(kind, itemKind string) []RepairFieldSpec {
 	case "item":
 		switch itemKind {
 		case "ebook", "comic":
-			return []RepairFieldSpec{textSpec("title", "Title", "general", false), multilineSpec("description", "Description"), yearSpec, readingAttributionSpec("author", "Author"), readingAttributionSpec("series", "Series"), readingAttributionSpec("seriesNumber", "Series number")}
+			return []RepairFieldSpec{textSpec("title", "Title", "general", false), multilineSpec("description", "Description"), yearSpec, readingAttributionSpec("author", "Author"), readingAttributionSpec("series", "Series"), readingAttributionSpec("seriesNumber", "Series number"), {Field: "publicationType", Label: "Publication type", Group: "general", Type: "enum", Allowed: []string{"", "book", "magazine", "newspaper"}, Bulk: true}}
 		case "movie":
 			return []RepairFieldSpec{
 				textSpec("title", "Title", "general", false),

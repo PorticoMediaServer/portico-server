@@ -207,6 +207,16 @@ CREATE TABLE reading_source_values(
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
  CHECK((field IN('author','series') AND text_value IS NOT NULL AND length(text_value) BETWEEN 1 AND 4096 AND number_value IS NULL)
     OR (field='seriesNumber' AND text_value IS NULL AND number_value IS NOT NULL AND number_value>=0 AND number_value<=1.7976931348623157e308))) WITHOUT ROWID, STRICT;
+-- Explicit recognized file type, separate from ebook/comic entity and owner metadata.
+CREATE TABLE reading_publication_types(
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ publication_type TEXT NOT NULL CHECK(publication_type IN('book','magazine','newspaper')),
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
+ classifier_version INTEGER NOT NULL CHECK(classifier_version>0),
+ PRIMARY KEY(item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_progress(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
@@ -8420,6 +8430,15 @@ END;
 CREATE TRIGGER reading_attribution_reading_source_values_update BEFORE UPDATE ON reading_source_values BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
 END;
+CREATE TRIGGER reading_attribution_reading_publication_types_insert BEFORE INSERT ON reading_publication_types BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_publication_types_delete BEFORE DELETE ON reading_publication_types BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_publication_types_update BEFORE UPDATE ON reading_publication_types BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
 CREATE TRIGGER reading_attribution_catalog_asset_links_insert BEFORE INSERT ON catalog_asset_links BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
@@ -8429,13 +8448,13 @@ END;
 CREATE TRIGGER reading_attribution_catalog_asset_links_update BEFORE UPDATE ON catalog_asset_links BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
-CREATE TRIGGER reading_attribution_metadata_owner_fields_insert BEFORE INSERT ON metadata_owner_fields WHEN (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber')) BEGIN
+CREATE TRIGGER reading_attribution_metadata_owner_fields_insert BEFORE INSERT ON metadata_owner_fields WHEN (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber','publicationType')) BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
-CREATE TRIGGER reading_attribution_metadata_owner_fields_delete BEFORE DELETE ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber')) BEGIN
+CREATE TRIGGER reading_attribution_metadata_owner_fields_delete BEFORE DELETE ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber','publicationType')) BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id));
 END;
-CREATE TRIGGER reading_attribution_metadata_owner_fields_update BEFORE UPDATE OF kind,entity_id,field,value,locked ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber')) OR (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber')) BEGIN
+CREATE TRIGGER reading_attribution_metadata_owner_fields_update BEFORE UPDATE OF kind,entity_id,field,value,locked ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber','publicationType')) OR (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber','publicationType')) BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
 CREATE TRIGGER reading_attribution_inventory_objects_insert BEFORE INSERT ON inventory_objects BEGIN

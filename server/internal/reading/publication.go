@@ -11,13 +11,14 @@ import (
 )
 
 type Publication struct {
-	Sequential bool
-	Selection  Selection
-	Metadata   Metadata
-	Resources  []Resource
-	Spine      []string
-	PageNames  []string
-	Contents   []ContentsEntry
+	Sequential      bool
+	Selection       Selection
+	Metadata        Metadata
+	Resources       []Resource
+	Spine           []string
+	PageNames       []string
+	Contents        []ContentsEntry
+	PublicationType *compactcatalog.ReadingValue
 }
 
 // Inspect returns only actual, bounded package/archival facts. PDF page count
@@ -31,6 +32,7 @@ func Inspect(f *Source) (Publication, error) {
 			return out, err
 		}
 		out.Metadata.Direction = e.Metadata.Direction
+		out.Metadata.ExplicitPublicationType = e.Metadata.ExplicitPublicationType
 		out.Resources = e.Resources
 		out.Spine = e.Spine
 		out.Contents, err = e.Contents(f.ctx)
@@ -43,6 +45,7 @@ func Inspect(f *Source) (Publication, error) {
 			return out, err
 		}
 		out.Metadata.Direction = c.Metadata.Direction
+		out.Metadata.ExplicitPublicationType = c.Metadata.ExplicitPublicationType
 		out.PageNames = c.Names
 	case "pdf":
 		if err := f.CheckPDF(); err != nil {
@@ -67,9 +70,10 @@ type LibraryRow struct {
 	CoverURL                               string
 	InventoryAvailable                     bool
 	// Catalogue facts, distinct from package identity and read availability.
-	Author *compactcatalog.ReadingValue
-	Series *SeriesValue
-	entity int64
+	Author          *compactcatalog.ReadingValue
+	PublicationType *compactcatalog.ReadingValue
+	Series          *SeriesValue
+	entity          int64
 }
 
 type SeriesValue struct {
