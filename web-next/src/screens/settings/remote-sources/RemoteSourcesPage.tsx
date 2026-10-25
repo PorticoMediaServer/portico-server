@@ -2,7 +2,7 @@ import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useS
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, sourceReadPreset, sourceReadPresetName,
-  type DAVConnectionResult, type RemoteFolder, type RemoteSource, type RemoteSourceStatus, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  type DAVConnectionResult, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type RemoteSourceStatus, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -19,6 +19,13 @@ import {ReadingChoices} from './ReadingChoices';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
+type SourceKind = 'webdav' | 'rclone';
+type RcloneDraft = {name: string; remote: string; config: string};
+const emptyRclone: RcloneDraft = {name: '', remote: '', config: ''};
+const kindOptions = [
+  {value: 'webdav', label: t('next.remoteSources.connectWebdav')},
+  {value: 'rclone', label: t('next.remoteSources.connectRclone')},
+];
 const presetLabels: Readonly<Record<SourceReadPreset, MessageId>> = {
   list: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.0.label',
   once: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.1.label',
@@ -96,6 +103,12 @@ function attachFailure(error: unknown): string {
   return t('next.remoteSources.attachFailed');
 }
 
+function ProgramNote({program}: {program?: RcloneProgram}) {
+  if (!program) return <p className={styles.note}>{t('next.remoteSources.bundledProgram')}</p>;
+  if (!program.available) return <p className={styles.notice} role="status">{t('next.remoteSources.bundledUnavailable')}</p>;
+  return <p className={styles.note}>{program.version ? t('next.remoteSources.bundledVersion', {version: program.version}) : t('next.remoteSources.bundledProgram')}</p>;
+}
+
 export type RemoteSourcesPageProps = Readonly<{
   api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean; reportError: (error: unknown) => void;
 }>;
@@ -126,11 +139,13 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
       {!snapshot.loading && !sources.length && !snapshot.error && <div className={styles.empty}><b>{t('next.remoteSources.empty')}</b><p>{t('next.remoteSources.emptyHelp')}</p></div>}
       {sources.map(source => <SettingsRow key={source.id} label={<><Icon name="i-globe" size={18} /> {source.name}</>}
         help={<>{t(source.kind === 'rclone' ? 'web.storage.rcloneRemote' : 'next.remoteSources.kindWebdav')}{source.origin ? ` · ${source.origin}` : ''}{problemId(source) ? ` · ${t(problemId(source)!)}` : ''}</>}>
-        <span className={styles.rowActions}><SourceStatus source={source}/>{source.kind === 'webdav' && <Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button>}{source.kind === 'rclone' && <Button size="small" variant="glass" onClick={() => setReading(source)}>{t('next.remoteSources.reading')}</Button>}</span>
+        <span className={styles.rowActions}><SourceStatus source={source}/><Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button>{source.kind === 'rclone' && <Button size="small" variant="glass" onClick={() => setReading(source)}>{t('next.remoteSources.reading')}</Button>}</span>
       </SettingsRow>)}
     </SettingsGroup>
     <AddSourceDialog service={service} api={api} serverId={serverId} viewerId={viewerId} open={adding} isCurrent={isCurrent} reportError={reportError} onClose={() => setAdding(false)} onCreated={source => {setAdding(false);setManaging(source);}}/>
-    {managing && <ManageSourceDialog key={managing.id} service={service} source={managing} api={api} serverId={serverId} viewerId={viewerId} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>}
+    {managing && (managing.kind === 'rclone'
+      ? <ManageRcloneDialog key={managing.id} service={service} source={managing} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>
+      : <ManageSourceDialog key={managing.id} service={service} source={managing} api={api} serverId={serverId} viewerId={viewerId} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>)}
     {reading && <SourceReadingDialog key={`${reading.id}:${reading.generation}`} service={service} source={reading} isCurrent={isCurrent} reportError={reportError} onClose={() => setReading(undefined)}/>}
     {snapshot.loading && sources.length > 0 && <Button size="xs" variant="text" onClick={refresh}>{t('next.remoteSources.refresh')}</Button>}
   </div>;
@@ -157,8 +172,13 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onCreated: (source: RemoteSource) => void;
 }>) {
   const [step, setStep] = useState<WizardStep>('connection');
+  const [sourceKind, setSourceKind] = useState<SourceKind>('webdav');
   const [draft, setDraft] = useState<WebDavDraft>(emptyDraft);
+  const [rclone, setRclone] = useState<RcloneDraft>(emptyRclone);
+  const [program, setProgram] = useState<RcloneProgram>();
+  const [providers, setProviders] = useState<readonly string[]>([]);
   const [result, setResult] = useState<DAVConnectionResult>();
+  const [rcloneResult, setRcloneResult] = useState<RcloneTestResult>();
   const [error, setError] = useState('');
   const [created, setCreated] = useState<RemoteSource>();
   const nextSourceId = useRef('');
@@ -187,15 +207,19 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [formToken, setFormToken] = useState(0);
   // A saved handler belongs to its rendered form, even if invoked after reopen.
   const attemptGuard = () => () => active.current && lifetime.current === formToken && isCurrent();
+  /** A refused owner retires this form before Settings hears about it. */
+  const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
-    setStep('connection'); setDraft(emptyDraft); setResult(undefined); setError(''); setCreated(undefined);
+    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]);
+    setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
     testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
-  useEffect(() => {active.current=open;if(open)reset();else{lifetime.current++;pending.current=false;setDraft(emptyDraft);setResult(undefined);setError('');}}, [open]);
+  const updateRclone = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setRclone(current => ({...current, ...patch}));};
+  useEffect(() => {active.current=open;if(open)reset();else{lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
   useEffect(() => () => {active.current=false;lifetime.current++;}, []);
   const test = async () => {
     const guard = attemptGuard();
@@ -207,6 +231,61 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       if (guard() && attempt === testAttempt.current) setResult(next);}
     catch (value) {if (guard() && attempt === testAttempt.current) setError(remoteErrorText(value));}
     finally {if (guard() && attempt === testAttempt.current) {pending.current=false;setBusy(false);}}
+  };
+  const loadProgram = async () => {
+    const guard = attemptGuard();
+    if (pending.current || !guard()) return;
+    pending.current = true;
+    try {
+      const [status, names] = await Promise.all([service.rcloneProgram(), service.rcloneProviders()]);
+      if (guard()) {setProgram(status);setProviders(names);}
+    } catch (value) {
+      // The generic note stays for an ordinary failure; a refusal retires the form.
+      if (guard() && authFailure(value)) refuse(value);
+    }
+    finally {if (guard()) pending.current = false;}
+  };
+  const chooseSourceKind = (next: SourceKind) => {
+    if (next === sourceKind) return;
+    testAttempt.current++;setResult(undefined);setRcloneResult(undefined);setError('');setSourceKind(next);
+    if (next === 'rclone' && !program) void loadProgram();
+  };
+  const testRclone = async () => {
+    const guard = attemptGuard();
+    if (pending.current || !guard()) return;
+    pending.current = true;
+    const attempt = ++testAttempt.current, captured = {...rclone};
+    setError('');setRcloneResult(undefined);setBusy(true);
+    try {const next = await service.testRclone({remote: captured.remote.trim(), config: captured.config}, guard);
+      if (guard() && attempt === testAttempt.current) setRcloneResult(next);}
+    catch (value) {
+      if (!guard() || attempt !== testAttempt.current) return;
+      if (authFailure(value)) {refuse(value);return;}
+      setError(remoteErrorText(value));
+    }
+    finally {if (guard() && attempt === testAttempt.current) {pending.current=false;setBusy(false);}}
+  };
+  const createRclone = async () => {
+    const guard = attemptGuard();
+    if (pending.current || !guard() || !rcloneResult) return;
+    pending.current = true;
+    setError('');setBusy(true);
+    const outgoing = {name: rclone.name.trim(), remote: rclone.remote.trim(), config: rclone.config};
+    // The configuration leaves the form as the mutation starts; only the request holds it now.
+    setRclone(current => ({...current, config: ''}));
+    try {
+      const receipt = await service.configureRclone(null, outgoing, undefined, guard);
+      if (!guard()) return;
+      const state = service.getSnapshot();
+      if (!receipt) {
+        if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
+        setError(state.error || t('next.remoteSources.unconfirmed'));return;
+      }
+      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      catch (value) {if (guard()) setError(remoteErrorText(value));}
+      finally {if (guard()) setLoadingProfile(false);}
+    } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const create = async () => {
     const guard = attemptGuard();
@@ -306,8 +385,9 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     <Button size="compact" variant="glass" onClick={reset}>{t('next.remoteSources.addAnother')}</Button>
     {sourceNow && <Button size="compact" variant="primary" onClick={() => {active.current=false;onCreated(sourceNow);}}>{t('next.remoteSources.openSource', {name: sourceNow.name})}</Button>}
   </>;
+  const canContinue = sourceKind === 'webdav' ? !!result : !!rcloneResult && !!rclone.name.trim();
   const footer = step === 'connection'
-    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !result} onClick={create}>{t('next.remoteSources.saveAndContinue')}</Button></>
+    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : createRclone())}>{t('next.remoteSources.saveAndContinue')}</Button></>
     : step === 'reading'
       ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
       : step === 'folders' ? foldersFooter : doneFooter;
@@ -316,17 +396,39 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     {error && <p className={styles.error} role="alert">{error}</p>}
     {finishError && <p className={styles.error} role="alert">{finishError}</p>}
     {step === 'connection' && <>
-      <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
-      <p className={styles.note}>{t('next.remoteSources.kindsBlocked')}</p>
-      <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
-      <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.0.control.placeholder')} disabled={busy}
-        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({root: event.target.value})}/>
-      <TextField label={t('next.remoteSources.username')} value={draft.username} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.1.control.placeholder')} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => updateDraft({username: event.target.value})}/>
-      <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.2.control.placeholder')} disabled={busy} onChange={event => updateDraft({password: event.target.value})}/>
-      <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
-      <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.name.trim() || !draft.root.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
-        {result && <span className={styles.testCard} data-tone={result.rangeSupport === 'unsupported' ? 'warning' : 'good'}><Icon name="i-check" size={18}/>{t(result.rangeSupport === 'unsupported' ? 'next.remoteSources.testedLimited' : 'next.remoteSources.tested', {origin: result.origin})}</span>}
+      <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.whatToConnect')}>
+        {kindOptions.map(option => <button key={option.value} type="button" role="radio" aria-checked={sourceKind === option.value} className={styles.kindTile}
+          data-picked={sourceKind === option.value || undefined} disabled={busy} onClick={() => chooseSourceKind(option.value as SourceKind)}>
+          <Icon name={option.value === 'rclone' ? 'i-storage' : 'i-globe'} size={22}/>{option.label}</button>)}
       </div>
+      {sourceKind === 'webdav' ? <>
+        <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
+        <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
+        <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.0.control.placeholder')} disabled={busy}
+          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({root: event.target.value})}/>
+        <TextField label={t('next.remoteSources.username')} value={draft.username} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.1.control.placeholder')} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => updateDraft({username: event.target.value})}/>
+        <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.2.control.placeholder')} disabled={busy} onChange={event => updateDraft({password: event.target.value})}/>
+        <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
+        <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.name.trim() || !draft.root.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
+          {result && <span className={styles.testCard} data-tone={result.rangeSupport === 'unsupported' ? 'warning' : 'good'}><Icon name="i-check" size={18}/>{t(result.rangeSupport === 'unsupported' ? 'next.remoteSources.testedLimited' : 'next.remoteSources.tested', {origin: result.origin})}</span>}
+        </div>
+      </> : <>
+        <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectRclone')}</b><small>{t('next.remoteSources.connectRcloneHint')}</small></span></div>
+        <TextField label={t('next.remoteSources.name')} value={rclone.name} maxLength={100} disabled={busy} onChange={event => updateRclone({name: event.target.value})}/>
+        <TextField label={t('next.remoteSources.remoteName')} description={t('next.remoteSources.remoteNameHelp')} value={rclone.remote} placeholder={t('next.remoteSources.remoteNamePlaceholder')} maxLength={200} disabled={busy}
+          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateRclone({remote: event.target.value})}/>
+        <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.configuration')}</span>
+          <textarea className={styles.config} aria-label={t('next.remoteSources.configuration')} value={rclone.config} placeholder={t('next.remoteSources.configurationPlaceholder')} maxLength={65536}
+            disabled={busy} spellCheck={false} rows={8} onChange={event => updateRclone({config: event.target.value})}/>
+          <small className={styles.note}>{t('next.remoteSources.configurationHelp')}</small>
+        </label>
+        <ProgramNote program={program}/>
+        {providers.length > 0 && <p className={styles.note}>{t('next.remoteSources.providers', {providers: providers.join(', ')})}</p>}
+        <p className={styles.note}>{t('next.remoteSources.rcloneKindsNote')}</p>
+        <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !rclone.remote.trim() || !rclone.config.trim()} onClick={() => void testRclone()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
+          {rcloneResult && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{rcloneResult.version ? t('next.remoteSources.testedRclone', {version: rcloneResult.version}) : t('next.remoteSources.testedRcloneUnknown')}</span>}
+        </div>
+      </>}
     </>}
     {step === 'reading' && <>
       <p className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.label')}</p>
@@ -442,7 +544,9 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
   useEffect(() => () => libraries.dispose(), [libraries]);
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {
-    const guard = attemptGuard();
+    // The guard belongs to this rendered dialog, not to a later one.
+    const captured = lifetime.current;
+    const guard = () => active.current && lifetime.current === captured && isCurrent();
     service.readProfile(source.id, String(source.generation), guard).then(next => {
       if (!guard()) return;
       setProfile(next);
@@ -450,7 +554,7 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
     }).catch(value => {if (guard()) setError(remoteErrorText(value));});
     service.readStatus(source.id, guard).then(next => {if (guard()) setStatus(next);}).catch(() => {});
     void libraries.loadLibraries();
-  }, [service, source.id, isCurrent, libraries]);
+  }, [service, source.id, source.generation, isCurrent, libraries]);
   useEffect(() => {if (!attachTo && status?.libraries.length) setAttachTo(status.libraries[0].libraryId);}, [attachTo, status]);
   useEffect(() => {if (!attachTo && librarySnapshot.directory.data?.items.length) setAttachTo(librarySnapshot.directory.data.items[0].id);}, [attachTo, librarySnapshot.directory.data]);
   const attach = async (folders: readonly RemoteFolder[]) => {
@@ -586,7 +690,147 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
       <ReadingChoices values={pendingValues} origin={source.origin} rangeSupport={source.rangeSupport} disabled={false} onChange={setPendingValues}/>
     </Dialog>
     {picking && <RemoteFolderPicker service={service} sourceId={source.id} sourceName={source.name} open={picking}
-      onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}
+      onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}    <section className={styles.danger}><h3>{t('next.remoteSources.disconnect')}</h3><p>{t('next.remoteSources.disconnectBody')}</p>
+      {!confirming ? <Button size="compact" variant="text" onClick={() => setConfirming(true)}>{t('next.remoteSources.disconnect')}</Button> : <>
+        <p>{t('next.remoteSources.disconnectConfirm')}</p>
+        <TextField label={t('next.remoteSources.name')} value={typed} disabled={busy} onChange={event => setTyped(event.target.value)}/>
+        <div className={styles.actions}><Button size="compact" variant="glass" disabled={busy} onClick={() => {setConfirming(false);setTyped('');}}>{t('next.remoteSources.cancel')}</Button>
+          <Button size="compact" variant="primary" disabled={busy || typed.trim() !== source.name} onClick={() => void disconnect()}>{t('next.remoteSources.disconnect')}</Button></div>
+      </>}
+    </section>
+  </Dialog>;
+}
+
+/** An imported source is replaced whole: the server needs its configuration
+ * again and never reads the stored one back to the page. */
+function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, onRemoved}: Readonly<{
+  service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onRemoved: () => void;
+}>) {
+  const [draft, setDraft] = useState<RcloneDraft>({name: source.name, remote: '', config: ''});
+  const [program, setProgram] = useState<RcloneProgram>();
+  const [result, setResult] = useState<RcloneTestResult>();
+  const [profile, setProfile] = useState<SourceReadSettings>();
+  const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('list'));
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const testAttempt = useRef(0), pending = useRef(false), retired = useRef(false);
+  // A lease binds every handler and read to this exact rendered source and service.
+  const leaseSeq = useRef(0);
+  const lease = useMemo(() => ({token: ++leaseSeq.current, service, sourceId: source.id, generation: source.generation}), [service, source.id, source.generation]);
+  const leaseRef = useRef(lease); leaseRef.current = lease;
+  const reportRef = useRef(reportError); reportRef.current = reportError;
+  const held = (captured: typeof lease) => () => !retired.current && leaseRef.current === captured && isCurrent();
+  const retire = () => {retired.current = true;pending.current = false;};
+  const refuse = (error: unknown) => {retire();reportRef.current(error);};
+  /** A command may only start against the exact row the owner is looking at. */
+  const stillListed = (captured: typeof lease) => service.getSnapshot().sources.some(row => row.id === captured.sourceId && row.generation === captured.generation);
+  useEffect(() => () => {retired.current = true;}, []);
+  const updateDraft = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
+  useEffect(() => {
+    // The guard stays with this lease, not with a later source or service.
+    const captured = lease;
+    const guard = () => !retired.current && leaseRef.current === captured && isCurrent();
+    service.readProfile(source.id, String(source.generation), guard).then(next => {
+      if (!guard()) return;
+      setProfile(next);
+      setValues(next.saved ? next.values : sourceReadPreset('list'));
+    }).catch(value => {
+      if (!guard()) return;
+      if (authFailure(value)) {retired.current=true;pending.current=false;reportRef.current(value);return;}
+      setError(remoteErrorText(value));
+    });
+    service.rcloneProgram().then(next => {if (guard()) setProgram(next);}).catch(value => {
+      if (guard() && authFailure(value)) {retired.current=true;pending.current=false;reportRef.current(value);}
+    });
+  }, [service, source.id, source.generation, isCurrent, lease]);
+  const test = async () => {
+    const guard = held(lease);
+    if (pending.current || !guard()) return;
+    pending.current = true;
+    const attempt = ++testAttempt.current, captured = {...draft};
+    setError('');setResult(undefined);setBusy(true);
+    try {const next = await service.testRclone({remote: captured.remote.trim(), config: captured.config}, guard);
+      if (guard() && attempt === testAttempt.current) setResult(next);}
+    catch (value) {
+      if (!guard() || attempt !== testAttempt.current) return;
+      if (authFailure(value)) {refuse(value);return;}
+      setError(remoteErrorText(value));
+    }
+    finally {if (guard() && attempt === testAttempt.current) {pending.current=false;setBusy(false);}}
+  };
+  const saveConnection = async () => {
+    const guard = held(lease);
+    if (pending.current || !guard()) return;
+    if (!stillListed(lease)) {setError(remoteErrorText({code: 'revision_mismatch'}));return;}
+    pending.current = true;
+    setError('');setBusy(true);
+    const outgoing = {name: draft.name.trim(), remote: draft.remote.trim(), config: draft.config};
+    // The configuration leaves the form as the mutation starts; only the request holds it now.
+    setDraft(current => ({...current, config: ''}));
+    try {
+      const receipt = await service.configureRclone(source.id, outgoing, source, guard);
+      if (!guard()) return;
+      const state = service.getSnapshot();
+      if (!receipt) {
+        if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
+        setError(state.error || t('next.remoteSources.unconfirmed'));return;
+      }
+      done();
+    } finally {if (guard()) {pending.current=false;setBusy(false);}}
+  };
+  const saveReading = async () => {
+    const guard = held(lease);
+    if (pending.current || !guard() || !profile) return;
+    pending.current = true;
+    setError('');setBusy(true);
+    try {const next = await service.saveProfile(profile, values, guard);if (!guard()) return;if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}setProfile(next);}
+    catch (value) {if (!guard()) return;if (authFailure(value)) {refuse(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
+    finally {if (guard()) {pending.current=false;setBusy(false);}}
+  };
+  const disconnect = async () => {
+    const guard = held(lease);
+    if (pending.current || !guard() || typed.trim() !== source.name) return;
+    const current = service.getSnapshot().sources.find(value => value.id === lease.sourceId && value.generation === lease.generation);
+    if (!current) {setError(remoteErrorText({code: 'revision_mismatch'}));return;}
+    pending.current = true;setError('');setBusy(true);
+    try {const receipt = await service.removeRclone(current, guard);if (!guard()) return;const state = service.getSnapshot();
+      if (!receipt) {if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}setError(state.error || t('next.remoteSources.unconfirmed'));return;}
+      retire();onRemoved();}
+    finally {if (guard()) {pending.current=false;setBusy(false);}}
+  };
+  const done = () => {retire();setDraft(current => ({...current, config: ''}));setTyped('');onClose();};
+  const close = () => {if (busy || pending.current) return;done();};
+  return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
+    {error && <p className={styles.error} role="alert">{error}</p>}
+    <section className={styles.group}><h3>{t('next.remoteSources.connection')}</h3>
+      <p className={styles.note}><SourceStatus source={source}/> {t('next.remoteSources.kindRclone')}</p>
+      <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
+      <TextField label={t('next.remoteSources.remoteName')} description={t('next.remoteSources.remoteNameHelp')} value={draft.remote} placeholder={t('next.remoteSources.remoteNamePlaceholder')} maxLength={200} disabled={busy}
+        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({remote: event.target.value})}/>
+      <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.configuration')}</span>
+        <textarea className={styles.config} aria-label={t('next.remoteSources.configuration')} value={draft.config} placeholder={t('next.remoteSources.replaceConfiguration')} maxLength={65536}
+          disabled={busy} spellCheck={false} rows={8} onChange={event => updateDraft({config: event.target.value})}/>
+        <small className={styles.note}>{t('next.remoteSources.configurationHelp')}</small>
+      </label>
+      <ProgramNote program={program}/>
+      <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.remote.trim() || !draft.config.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
+        {result && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{result.version ? t('next.remoteSources.testedRclone', {version: result.version}) : t('next.remoteSources.testedRcloneUnknown')}</span>}
+      </div>
+      <Button size="compact" variant="primary" disabled={busy || !draft.name.trim() || !draft.remote.trim() || !draft.config.trim()} onClick={() => void saveConnection()}>{t('next.remoteSources.save')}</Button>
+    </section>
+    <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>
+      <ReadingChoices values={values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={busy} onChange={setValues}/>
+      <div className={styles.limits}>
+        <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
+        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
+        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
+      </div>
+      <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
+      <Button size="compact" variant="primary" disabled={busy || !profile} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
+    </section>
+
   </Dialog>;
 }
 
@@ -599,7 +843,7 @@ function SourceReadingDialog({service, source, isCurrent, reportError, onClose}:
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('list'));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const scope = useMemo(() => ({}), [service, source, isCurrent]);
+  const scope = useMemo(() => ({service, source, isCurrent}), [service, source, isCurrent]);
   const token = useRef<object | null>(scope), flight = useRef(false);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const listed = useCallback(() => service.getSnapshot().sources.some(row => row === source), [service, source]);

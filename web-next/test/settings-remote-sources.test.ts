@@ -29,7 +29,7 @@ test('the Remote sources page draws the add action and its empty state', () => {
   }));
   assert.match(markup, /Add remote source/);
   assert.match(markup, /No remote sources yet/);
-  assert.match(markup, /Folder browsing inside a remote source is not available yet/);
+  assert.match(markup, /give Portico a folder on another computer/);
 });
 
 test('the source states and the blocked sentence have their drawn words', () => {
@@ -86,4 +86,13 @@ test('saved Add handlers cannot adopt a reopened form lifetime', async () => {
   assert.equal(io, before.io, 'old form sends no provider test or mutation');
   assert.equal(completions, before.completions, 'old form cannot close or complete successor');
   assert.equal(JSON.stringify(slots), before.state, 'successor hook state stays unchanged');
+});
+
+test('the imported rclone kind has its drawn words and its bound program error', () => {
+  assert.equal(defaultI18n.t('next.remoteSources.kindRclone'), 'Imported rclone source');
+  assert.match(defaultI18n.t('next.remoteSources.connectRclone'), /Paste a configuration/);
+  assert.match(defaultI18n.t('next.remoteSources.configurationHelp'), /never shows it again/);
+  assert.match(defaultI18n.t('next.remoteSources.bundledProgram'), /comes with Portico Server/);
+  assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'administration_unavailable'})), defaultI18n.t('next.remoteSources.problem.administration_unavailable'));
+  assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'remote_administration_unavailable'})), defaultI18n.t('next.remoteSources.problem.administration_unavailable'));
 });

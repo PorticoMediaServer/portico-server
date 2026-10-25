@@ -325,3 +325,141 @@ test('a retired dialog conflict read cannot publish sources or retry a mutation'
  open=false;held.resolve(list([source({name:'Stale dialog read'})]));await pending;
  assert.equal(writes,1);assert.equal(service.getSnapshot().sources,before);service.dispose();
 });
+
+const rcloneConfig='[archive]\ntype = s3\nprovider = AWS\naccess_key_id = public-key\nsecret_access_key = private-secret\n';
+const rcloneInput={name:'Archive',remote:'archive',config:rcloneConfig};
+const rcloneSource=(extra:Record<string,unknown>={})=>({id:'rclone',kind:'rclone',name:'Archive',rootPath:'/server/remote/rclone',generation:1,state:'ready',rangeSupport:'sequential',insecureLocal:false,credentialPresent:true,mountId:'mount',...extra});
+const rcloneReceipt=(extra:Record<string,unknown>={})=>({scope:wire,receipt:{operationId:op,accepted:true,sourceId:'rclone',generation:1,...extra}});
+
+test('an imported rclone source is tested, saved and recovered on its own routes without keeping its configuration',async()=>{
+ const calls:{path:string,method:string,body:unknown}[]=[];let saveFails=true;
+ const service=new RemoteSourceService(api(async(path,method,body)=>{
+  calls.push({path,method,body});
+  if(path.endsWith('/storage/sources/rclone/test'))return {scope:wire,result:{version:'1.75.2'}};
+  if(path.endsWith('/storage/sources/rclone')&&method==='POST'){if(saveFails)throw Object.assign(new Error('lost response'),{code:'internal'});return rcloneReceipt();}
+  if(path.includes('/storage/sources/rclone/operations/'))return rcloneReceipt();
+  return list([rcloneSource()]);
+ }),scope,async()=>op);
+ assert.deepEqual(await service.testRclone({remote:'archive',config:rcloneConfig}),{version:'1.75.2'});
+ assert(!JSON.stringify(service.getSnapshot()).includes('private-secret'));
+ await service.configureRclone(null,rcloneInput);
+ assert.equal(service.getSnapshot().ambiguous,true);
+ assert.equal(service.getSnapshot().operationKind,'rclone');
+ assert(!JSON.stringify(service.getSnapshot()).includes('private-secret'));
+ assert(!JSON.stringify(service.getSnapshot()).includes('public-key'));
+ assert.equal(calls.filter(c=>c.method==='POST'&&c.path.endsWith('/storage/sources/rclone')).length,1);
+ await service.recover();
+ assert.equal(service.getSnapshot().ambiguous,false);
+ assert.equal(service.getSnapshot().rclone?.sourceId,'rclone');
+ assert.equal(service.getSnapshot().rclone?.generation,1);
+ assert(calls.some(c=>c.path.endsWith('/storage/sources/rclone/operations/'+op)));
+ assert(!calls.some(c=>c.path.endsWith('/storage/source-operations/'+op)));
+ service.dispose();
+ assert.equal(service.getSnapshot().rclone,null);assert.equal(service.getSnapshot().operationKind,'');
+});
+
+test('an imported source test refuses secrets in the reply and keeps only the version fact',async()=>{
+ for(const result of [{version:'1.75.2',config:rcloneConfig},{version:7},{password:'x'}]){
+  const service=new RemoteSourceService(api(async()=>({scope:wire,result})),scope,async()=>op);
+  await assert.rejects(service.testRclone({remote:'archive',config:rcloneConfig}));
+  assert(!JSON.stringify(service.getSnapshot()).includes('private-secret'));service.dispose();
+ }
+ const empty=new RemoteSourceService(api(async()=>({scope:wire,result:{version:'1.75.2'}})),scope,async()=>op);
+ await assert.rejects(empty.testRclone({remote:'',config:rcloneConfig}));await assert.rejects(empty.testRclone({remote:'archive',config:'[bad]\u0000'}));empty.dispose();
+});
+
+test('an imported source edit never replays itself onto a changed generation',async()=>{
+ const puts:any[]=[];let rows=[rcloneSource()];
+ const service=new RemoteSourceService(api(async(path,method,body)=>{
+  if(method==='PUT'){puts.push({path,body});rows=[rcloneSource({generation:2})];throw Object.assign(new Error('conflict'),{code:'storage_command_conflict'});}
+  return list(rows);
+ }),scope,async()=>op);
+ await service.load();
+ const held=await service.configureRclone('rclone',rcloneInput,rcloneSource());
+ assert.equal(held,undefined);
+ assert.equal(puts.length,1,'the conflict is not replayed');
+ assert.equal((puts[0].body as any).expectedGeneration,1);
+ assert.equal(service.getSnapshot().errorCode,'storage_command_conflict');
+ assert(puts.every(p=>p.path.endsWith('/storage/sources/rclone/rclone')));
+ // A new explicit save uses the generation the owner was shown again.
+ rows=[rcloneSource({generation:2})];
+ const next=await service.configureRclone('rclone',rcloneInput,rcloneSource({generation:2}));
+ assert.equal(next?.generation,2);
+ assert.equal(puts.length,2);
+ assert.equal((puts[1].body as any).expectedGeneration,2);
+ service.dispose();
+});
+
+test('an imported source receipt must answer the exact command it was made for',async()=>{
+ const rows=[rcloneSource({generation:1})];
+ const make=(response:Record<string,unknown>)=>new RemoteSourceService(api(async(path,method)=>method==='POST'||method==='PUT'?response:list(rows)),scope,async()=>op);
+ for(const response of [
+  rcloneReceipt({sourceId:'other'}),
+  rcloneReceipt({removed:true,generation:1}),
+  rcloneReceipt({generation:0}),
+  {scope:wire,receipt:{operationId:'1788580000001-12345678-1234-1234-1234-123456789012',accepted:true,sourceId:'rclone',generation:1}},
+ ]){
+  const service=make(response);
+  const receipt=await service.configureRclone('rclone',rcloneInput,rcloneSource({generation:1}));
+  assert.equal(receipt,undefined);
+  assert(service.getSnapshot().error);
+  assert.equal(service.getSnapshot().rclone,null,'a foreign receipt is never published');
+  service.dispose();
+ }
+ const missing=new RemoteSourceService(api(async(path,method)=>method==='PUT'?rcloneReceipt({generation:2}):list([])),scope,async()=>op);
+ await missing.load();
+ const absent=await missing.configureRclone('rclone',rcloneInput,rcloneSource({generation:1}));
+ assert.equal(absent,undefined,'a receipt the fresh list does not agree with is unconfirmed');
+ assert.equal(missing.getSnapshot().errorCode,'remote_source_not_listed');
+ missing.dispose();
+});
+
+test('the bundled program and the accepted backend types are read as server facts only',async()=>{
+ const service=new RemoteSourceService(api(async(path)=>{
+  if(path.endsWith('/storage/rclone/bundled'))return {included:true,available:true,version:'1.75.2',minimumVersion:'1.71.1',errorCode:''};
+  if(path.endsWith('/storage/sources/rclone/providers'))return {scope:wire,providers:['s3','b2','sftp']};
+  return list();
+ }),scope,async()=>op);
+ assert.deepEqual(await service.rcloneProgram(),{included:true,available:true,version:'1.75.2',minimumVersion:'1.71.1',errorCode:''});
+ assert.deepEqual(await service.rcloneProviders(),['s3','b2','sftp']);
+ service.dispose();
+ for(const raw of [{included:true,available:'yes',version:'1.75.2',minimumVersion:'1.71.1',errorCode:''},{included:true,available:true,version:1,minimumVersion:'1.71.1',errorCode:''}]){
+  const bad=new RemoteSourceService(api(async()=>raw),scope,async()=>op);
+  await assert.rejects(bad.rcloneProgram());bad.dispose();
+ }
+ for(const providers of [['s3',''],['s3',7],'s3']){
+  const bad=new RemoteSourceService(api(async()=>({scope:wire,providers})),scope,async()=>op);
+  await assert.rejects(bad.rcloneProviders());bad.dispose();
+ }
+});
+
+test('an imported removal conflict is returned for a fresh look, never replayed',async()=>{
+ const calls:string[]=[];let rows=[rcloneSource()],deletes=0;
+ const service=new RemoteSourceService(api(async(path,method)=>{calls.push(method+' '+path);
+  if(method==='DELETE'){deletes++;if(deletes===1)throw Object.assign(new Error('gone elsewhere'),{code:'storage_command_conflict'});return rcloneReceipt({generation:2,removed:true});}
+  return list(rows);
+ }),scope,async()=>op);
+ await service.load();
+ const receipt=await service.removeRclone(rcloneSource());
+ assert.equal(receipt,undefined);
+ assert.equal(calls.filter(call=>call.startsWith('DELETE')).length,1);
+ assert.equal(service.getSnapshot().errorCode,'storage_command_conflict');
+ assert.equal(service.getSnapshot().alreadyDone,false);
+ // The same removal at the generation the owner is shown now is accepted, and the fresh list is authoritative.
+ rows=[];const accepted=await service.removeRclone(rcloneSource({generation:2}));
+ assert.equal(accepted?.removed,true);
+ assert.equal(service.getSnapshot().alreadyDone,false);
+ assert.deepEqual(service.getSnapshot().sources,[]);
+ service.dispose();
+});
+
+test('an owner refusal from the imported routes keeps its own code',async()=>{
+ for(const [rawCode,expected] of [['not_permitted','not_permitted'],['forbidden','forbidden'],['unauthorized','unauthorized']] as const){
+  const service=new RemoteSourceService(api(async()=>{throw Object.assign(new Error('refused'),{code:rawCode});}),scope,async()=>op);
+  await assert.rejects(service.testRclone({remote:'archive',config:rcloneConfig}),error=>{
+   assert.equal((error as {code?:string}).code,expected);return true;
+  });
+  assert.equal(service.getSnapshot().errorCode,expected);
+  service.dispose();
+ }
+});
