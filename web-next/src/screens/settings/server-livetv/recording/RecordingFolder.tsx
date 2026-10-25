@@ -19,6 +19,7 @@ export function RecordingFolder({controller, api}: {controller: RecordingRootCon
       <span style={{minWidth: 0, overflowWrap: 'anywhere'}}>{state.draft || t('web.liveTv.recordingFolderUnset')}</span>
       <Button ref={opener} size="small" variant="text" disabled={!state.status || state.loading || state.saving || state.uncertain || state.status.operatorControlled} onClick={() => setOpen(true)}>{t('server.live.choose')}</Button>
     </SettingsRow>
+    {state.terminalRequest && <p role="status">{t('web.liveTv.recordingFolderRequestRetired')}</p>}
     {state.loading && <p role="status">{t('status.loading')}</p>}
     {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
     {!!state.error && !state.uncertain && <Button size="small" variant="text" onClick={() => void controller.load(true)}>{t('action.tryAgain')}</Button>}

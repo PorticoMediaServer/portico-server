@@ -1850,6 +1850,7 @@ export const webMessages = {
   'web.liveTv.recordingFolderHelp': 'Changes take effect after a restart. Existing recordings aren’t moved.',
   'web.liveTv.recordingFolderUnset': 'Not selected',
   'web.liveTv.recordingFolderEffective': 'In use now: {path}',
+  'web.liveTv.recordingFolderRequestRetired': 'That request can’t be retried. Review the current folder and choose again.',
   'web.liveTv.recordingFolderPending': 'The saved folder will take effect after a restart.',
   'web.liveTv.recordingFolderOperator': 'This folder is controlled by the server’s operator configuration.',
   'web.liveTv.notWritable': 'The recordings folder is not writable right now. New recordings will fail until this is fixed.',
