@@ -11,6 +11,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/storage"
 )
 
 type RcloneSourceResponse struct {
@@ -30,7 +31,9 @@ func rcloneSourceErrorDefinitions() []apierror.Definition {
 func rcloneSourceFailure(err error) error {
 	code := ""
 	switch {
-	case errors.Is(err, mounts.ErrSourceInUse):
+	case errors.Is(err, mounts.ErrSourceInUse), errors.Is(err, storage.ErrBusy):
+		// A live source's Test returns Busy when its admitted operations do not
+		// drain in five seconds (§40); present it as the existing busy retry.
 		code = "request_in_progress"
 	case errors.Is(err, sql.ErrNoRows):
 		code = "not_found"
@@ -73,7 +76,7 @@ func registerRcloneSourceSave(registry *apikit.Registry, d Dependencies) {
 		}
 		return RcloneSourceResponse{Scope: scope, Receipt: receipt}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "create_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone", Summary: "Save an imported rclone source using the bundled program", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "storage_allocation_recovery_required", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceInput) (RcloneSourceResponse, error) {
+	v1Route(registry, apikit.Metadata{ID: "create_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone", Summary: "Save an imported rclone source using the bundled program", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "storage_allocation_recovery_required", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceInput) (RcloneSourceResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneSourceResponse{}, rcloneSourceFailure(err)

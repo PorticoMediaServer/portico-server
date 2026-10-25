@@ -10,6 +10,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/storage"
 )
 
 type RcloneConnectionResponse struct {
@@ -23,6 +24,10 @@ func rcloneConnectionFailure(err error) error {
 		return &apierror.Error{Code: "invalid_request"}
 	case errors.Is(err, mounts.ErrExecutableInvalid), errors.Is(err, mounts.ErrCommandCapacity):
 		return &apierror.Error{Code: "administration_unavailable"}
+	case errors.Is(err, storage.ErrBusy):
+		// The same existing busy retry a saved source's Test uses when its
+		// admitted operations do not drain (§40).
+		return &apierror.Error{Code: "request_in_progress"}
 	default:
 		// This projection deliberately discards transport/credential causes.
 		return davConnectionFailure(err)
@@ -30,7 +35,7 @@ func rcloneConnectionFailure(err error) error {
 }
 
 func registerRcloneConnectionTest(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "test_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone/test", Summary: "Test an unsaved imported rclone source configuration", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneConnectionInput) (RcloneConnectionResponse, error) {
+	v1Route(registry, apikit.Metadata{ID: "test_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone/test", Summary: "Test an unsaved imported rclone source configuration", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneConnectionInput) (RcloneConnectionResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneConnectionResponse{}, rcloneConnectionFailure(err)
