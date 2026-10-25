@@ -40,6 +40,8 @@ export const overlaysMessages = {
   'next.overlays.discTitle': 'Title {number}',
   'next.overlays.discChapters': '{count, plural, one {# chapter} other {# chapters}}',
   'next.overlays.discTitlesNote': 'The disc’s own titles, in the order the scan stored them. Playing a disc image plays its main title.',
+  'next.overlays.discMainTitle': 'Main title',
+  'next.overlays.discMakeMain': 'Make main title',
   'next.overlays.editMetadata': 'Edit metadata…',
   'next.overlays.editMetadataPhone': 'Edit metadata',
   'next.overlays.refreshMetadata': 'Refresh metadata',

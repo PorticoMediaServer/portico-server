@@ -136,4 +136,12 @@ export const readerMessages = {
   'next.reader.directionFile': 'From the file',
   'next.reader.directionLtr': 'Left to right',
   'next.reader.directionRtl': 'Right to left',
+  'next.reader.editDetails': 'Edit details',
+  'next.reader.readFileAgain': 'Read the file again',
+  'next.reader.startOver': 'Start over',
+  'next.reader.ownerOnly': 'Owner only',
+  'next.reader.sourceFileMetadata': 'From the file’s metadata',
+  'next.reader.sourceFileName': 'From the file name',
+  'next.reader.sourceFolder': 'From the folder',
+  'next.reader.sourceOwner': 'Edited on this server',
 } as const satisfies Record<`next.reader.${string}`, string>;
