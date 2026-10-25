@@ -30,10 +30,10 @@ const KINDS: readonly {id: Kind; label: string; hint: string}[] = [
 ];
 
 
-export function AddLibrary({open, onOpenChange, api, service, onError}: Readonly<{
-  open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; service: LibraryManagementService; onError: (error: unknown) => void;
+export function AddLibrary({open, onOpenChange, api, service, onError, initialKind = 'movie'}: Readonly<{
+  initialKind?: Kind; open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; service: LibraryManagementService; onError: (error: unknown) => void;
 }>) {
-  const [kind, setKind] = useState<Kind>('movie'), [name, setName] = useState(KINDS[0].label), [touched, setTouched] = useState(false);
+  const [kind, setKind] = useState<Kind>(initialKind), [name, setName] = useState(KINDS.find(value => value.id === initialKind)!.label), [touched, setTouched] = useState(false);
   const [path, setPath] = useState(''), [source, setSource] = useState<'online' | 'local'>('online');
   const [picking, setPicking] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   const choose = (next: Kind) => { setKind(next); if (!touched) setName(KINDS.find(value => value.id === next)!.label); };
