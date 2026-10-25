@@ -2,8 +2,6 @@ import {musicSignal, type MusicSignalInput, type MusicSignalModel} from '@core/m
 import type {EqualizerSettings} from '../../../platform/playback/audio/equalizer';
 import type {WebPlaybackRuntimeSnapshot} from '../../../platform/playback';
 
-const LOSSLESS = new Set(['flac', 'alac', 'pcm', 'wavpack', 'truehd', 'dts_hd']);
-
 /** The drawn signal path for this song, from the server's own committed comparison,
  * the renderer's own observation and the device's EQ setting. Nothing is guessed:
  * an unreadable source has no line, and processing is only "applied" when the
@@ -21,10 +19,10 @@ export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer
     return musicSignal({source: {}, output: {platform: 'browser', device: 'browser'}, eqOn, eqApplied: false, normalization: 'off', levelingApplied: false, fallback});
   }
   const source: MusicSignalInput['source'] = {codec: sourceAudio.codec, bitDepth: sourceAudio.bitDepth, sampleRate: sourceAudio.sampleRate,
-    channels: sourceAudio.channels, layout: sourceAudio.layout, lossless: LOSSLESS.has(sourceAudio.codec), atmos: sourceAudio.objectAudio === 'atmos'};
+    channels: sourceAudio.channels, layout: sourceAudio.layout, lossless: sourceAudio.lossless, atmos: sourceAudio.objectAudio === 'atmos'};
   const delivered = info.delivered.audio;
   const server: MusicSignalInput['server'] = {route: info.route,
-    ...(delivered ? {delivered: {codec: delivered.codec, bitDepth: delivered.bitDepth, sampleRate: delivered.sampleRate, channels: delivered.channels, layout: delivered.layout}} : {}),
+    ...(delivered ? {delivered: {codec: delivered.codec, bitDepth: delivered.bitDepth, sampleRate: delivered.sampleRate, channels: delivered.channels, layout: delivered.layout, lossless: delivered.lossless}} : {}),
     ...(info.losses.some(loss => loss.feature === 'atmos' || loss.feature === 'dtsx') ? {atmosLost: true} : {}),
     ...(session.presentation.audio && typeof session.presentation.audio.loudnessAppliedDb === 'number' ? {loudnessAppliedDb: session.presentation.audio.loudnessAppliedDb} : {})};
   const resampled = !!(observed?.sampleRate && sourceAudio.sampleRate && observed.sampleRate !== sourceAudio.sampleRate);
@@ -33,5 +31,5 @@ export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer
     ...(observed?.handling === 'passthrough' ? {passthrough: true} : observed?.layout ? {decodedLayout: observed.layout} : {}),
     ...(resampled ? {resampledBy: 'browser' as const} : {})};
   return musicSignal({source, server, output, eqOn, eqApplied: effects.eqApplied,
-    normalization: effects.settings.normalization, levelingApplied: effects.levelingApplied, ...(fallback ? {fallback} : {})});
+    normalization: effects.settings.normalization, levelingApplied: effects.levelingApplied, levelingGainDb: effects.levelingGainDb, ...(fallback ? {fallback} : {})});
 }
