@@ -46,3 +46,34 @@ func TestSegmentConfidenceSavedPolicyAndOlderDocumentPreservation(t *testing.T) 
 		}
 	}
 }
+
+func TestSegmentConfidenceReceiptDistinguishesOmissionFromExplicitDefaults(t *testing.T) {
+	s, owner, auth := consoleFixture(t)
+	ctx := context.Background()
+	doc, err := s.Settings(ctx, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := doc.Requested
+	values.SegmentViewerConfidencePercent, values.SegmentAutomaticConfidencePercent = 70, 95
+	saved, err := s.ApplySettings(ctx, owner, auth, SettingsChange{doc.Revision, "confidence-initial", values})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values = saved.Requested
+	values.SegmentViewerConfidencePercent, values.SegmentAutomaticConfidencePercent = 0, 0
+	omitted := SettingsChange{saved.Revision, "confidence-omitted", values}
+	result, err := s.ApplySettings(ctx, owner, auth, omitted)
+	if err != nil || result.Requested.SegmentViewerConfidencePercent != 70 || result.Requested.SegmentAutomaticConfidencePercent != 95 {
+		t.Fatal(result, err)
+	}
+	replay, err := s.ApplySettings(ctx, owner, auth, omitted)
+	if err != nil || replay.Revision != result.Revision {
+		t.Fatal(replay, err)
+	}
+	explicit := omitted
+	explicit.Values.SegmentViewerConfidencePercent, explicit.Values.SegmentAutomaticConfidencePercent = 50, 85
+	if _, err = s.ApplySettings(ctx, owner, auth, explicit); err == nil {
+		t.Fatal("explicit defaults reused omission receipt")
+	}
+}

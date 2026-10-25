@@ -513,7 +513,8 @@ func validateSettings(v *Settings) error {
 func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange) (out SettingsDocument, e error) {
 	omittedViewer := c.Values.SegmentViewerConfidencePercent == 0
 	omittedAutomatic := c.Values.SegmentAutomaticConfidencePercent == 0
-	if e = validateSettings(&c.Values); e != nil {
+	normalized := c.Values
+	if e = validateSettings(&normalized); e != nil {
 		return out, e
 	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
@@ -532,7 +533,7 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		if current.Revision != c.ExpectedRevision {
 			return &ConflictError{current.Revision}
 		}
-		values := c.Values
+		values := normalized
 		if omittedViewer {
 			values.SegmentViewerConfidencePercent = current.Requested.SegmentViewerConfidencePercent
 		}

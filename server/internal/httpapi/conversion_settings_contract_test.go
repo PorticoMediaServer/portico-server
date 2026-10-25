@@ -86,3 +86,35 @@ func TestConversionSettingsCompleteDocumentRejectsOmissionAndNull(t *testing.T) 
 		t.Fatal("retired independent conversion gate accepted")
 	}
 }
+
+func TestSegmentConfidenceExplicitValuesAreClosedChoices(t *testing.T) {
+	raw, _ := json.Marshal(operations.SettingsChange{ExpectedRevision: 1, IdempotencyKey: "confidence", Values: operations.DefaultSettings()})
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(body["values"], &values); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"segments.viewerConfidencePercent", "segments.automaticConfidencePercent"} {
+		original := values[key]
+		for _, invalid := range []string{"0", "-0", "null", "49", "100", "50.0", "\"50\""} {
+			values[key] = json.RawMessage(invalid)
+			body["values"], _ = json.Marshal(values)
+			encoded, _ := json.Marshal(body)
+			var request ConsoleSettingsChange
+			if json.Unmarshal(encoded, &request) == nil {
+				t.Fatalf("accepted %s=%s", key, invalid)
+			}
+		}
+		delete(values, key)
+		body["values"], _ = json.Marshal(values)
+		encoded, _ := json.Marshal(body)
+		var request ConsoleSettingsChange
+		if err := json.Unmarshal(encoded, &request); err != nil {
+			t.Fatal("omission rejected", key, err)
+		}
+		values[key] = original
+	}
+}
