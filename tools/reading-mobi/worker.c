@@ -1,4 +1,5 @@
-/* Portico's fixed, unencrypted-only adapter to the pinned LGPL libmobi tool.
+/* SPDX-License-Identifier: LGPL-3.0-or-later
+ * Portico's fixed, unencrypted-only adapter to the pinned LGPL libmobi tool.
  * This source does not implement or expose DRM/key extraction/decryption.
  * Release builds the pinned tools/mobitool.c with main renamed to
  * portico_mobitool_main and encryption compiled out; see DEPENDENCY.md.
@@ -23,6 +24,13 @@ int main(void) {
     if (limit(RLIMIT_CORE, 0) || limit(RLIMIT_AS, 768ULL << 20) ||
         limit(RLIMIT_CPU, 30) || limit(RLIMIT_FSIZE, 128ULL << 20) ||
         limit(RLIMIT_NOFILE, 32) || limit(RLIMIT_NPROC, 0)) return 70;
+    /* Capture the publication sink, then discard ALL parser diagnostics,
+     * including header preflight before entering the upstream CLI. */
+    int publication = dup(STDOUT_FILENO);
+    int nullfd = open("/dev/null", O_WRONLY);
+    if (publication < 0 || nullfd < 0 || dup2(nullfd, STDOUT_FILENO) < 0 ||
+        dup2(nullfd, STDERR_FILENO) < 0) return 73;
+    close(nullfd);
     FILE *input = fopen("/input/book.mobi", "rb");
     if (!input) return 71;
     MOBIData *book = mobi_init();
@@ -45,12 +53,6 @@ int main(void) {
     }
     mobi_free(book);
     if (!allowed) return 72;
-    /* Converter diagnostics never become publication bytes or expose names. */
-    int publication = dup(STDOUT_FILENO);
-    int nullfd = open("/dev/null", O_WRONLY);
-    if (publication < 0 || nullfd < 0 || dup2(nullfd, STDOUT_FILENO) < 0 ||
-        dup2(nullfd, STDERR_FILENO) < 0) return 73;
-    close(nullfd);
     char *args[] = {"portico-mobi", "-e", "-o", "/output", "/input/book.mobi", NULL};
     if (portico_mobitool_main(5, args) != 0) return 74;
     fflush(NULL);
