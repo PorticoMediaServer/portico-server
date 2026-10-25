@@ -21,7 +21,7 @@ export function ReadingGroupCard({card, service, runtime, operations, artwork, w
   open?: (card: Extract<SavedReadingGroupCard, {hidden: false}>) => void; reportError: (error: unknown) => void;
 }) {
   const inputs = useRef({card, service, runtime, operations, open, reportError});inputs.current = {card, service, runtime, operations, open, reportError};
-  const held = useRef<Opening>(), [view, setView] = useState<View>({}), currentView = useRef(view), [menu, setMenu] = useState(false), anchor = useRef<HTMLButtonElement>(null);
+  const held = useRef<Opening | undefined>(undefined), [view, setView] = useState<View>({}), currentView = useRef(view), [menu, setMenu] = useState(false), anchor = useRef<HTMLButtonElement>(null);
   const publish = useCallback((next: View) => {currentView.current = next;setView(next);}, []);
   const current = useCallback((opening: Opening) => opening.live && held.current === opening && !opening.controller.signal.aborted
     && inputs.current.card === opening.card && inputs.current.service === opening.service && inputs.current.runtime === opening.runtime && inputs.current.operations === opening.operations && opening.operations.current
