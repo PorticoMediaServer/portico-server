@@ -25,7 +25,9 @@ func ReadingIssueDate(relative string) string {
 		return ""
 	}
 	start, end := found[0][0], found[0][1]
-	boundary := func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '-' }
+	boundary := func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r) && !unicode.IsMark(r) && r != '-'
+	}
 	if start > 0 {
 		r, _ := utf8.DecodeLastRuneInString(stem[:start])
 		if !boundary(r) {
