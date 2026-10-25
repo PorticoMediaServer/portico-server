@@ -354,7 +354,8 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
     {data.candidates.map(candidate => {
       const key = `${candidate.provider}:${candidate.id}`;
       const candidateIdentity = candidate.identityId ?? (identity?.engine === 'screen' ? undefined : candidate.id);
-      const currentIdentity = identity?.provider === candidate.provider && identity.id === candidateIdentity;
+      const currentIdentity = identity?.provider === candidate.provider && identity.id === candidateIdentity
+        && (identity.engine !== 'screen' || candidate.identityType !== undefined && identity.type === candidate.identityType);
       const stored = readTmdbOrder(identity?.order ?? ''), offered = candidate.orders ?? [];
       const fallback = {order: currentIdentity && offered.some(item => item.id === stored.base) ? stored.base : offered[0]?.id ?? '', offset: String(currentIdentity ? stored.offset : 0)};
       const draftOrder = orders[key];

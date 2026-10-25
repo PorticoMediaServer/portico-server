@@ -54,15 +54,16 @@ type RepairIdentity struct {
 	Locked   bool   `json:"locked"`
 }
 type RepairCandidate struct {
-	IdentityID string                         `json:"identityId,omitempty"`
-	Orders     []metadataprovider.ScreenOrder `json:"orders,omitempty"`
-	ID         string                         `json:"id"`
-	Provider   string                         `json:"provider"`
-	Title      string                         `json:"title"`
-	Subtitle   string                         `json:"subtitle"`
-	Observed   string                         `json:"observedAt"`
-	PreviewURL string                         `json:"previewUrl,omitempty"`
-	Year       int                            `json:"year,omitempty"`
+	IdentityType string                         `json:"identityType,omitempty"`
+	IdentityID   string                         `json:"identityId,omitempty"`
+	Orders       []metadataprovider.ScreenOrder `json:"orders,omitempty"`
+	ID           string                         `json:"id"`
+	Provider     string                         `json:"provider"`
+	Title        string                         `json:"title"`
+	Subtitle     string                         `json:"subtitle"`
+	Observed     string                         `json:"observedAt"`
+	PreviewURL   string                         `json:"previewUrl,omitempty"`
+	Year         int                            `json:"year,omitempty"`
 }
 type RepairHistory struct {
 	ID       int64  `json:"id"`

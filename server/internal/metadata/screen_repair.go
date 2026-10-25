@@ -73,6 +73,7 @@ func repairScreenCandidates(ctx context.Context, tx *sql.Tx, t RepairTarget) ([]
 			return out, err
 		}
 		c.IdentityID = r.Identity.ID
+		c.IdentityType = r.Identity.Type
 		c.Title = r.Title
 		c.Year = r.Year
 		c.Subtitle = fmt.Sprintf("%s · %s", r.Identity.Type, r.Identity.ID)
