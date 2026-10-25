@@ -19,6 +19,9 @@ func (s *Service) lookupContext(ctx context.Context) context.Context {
 	if captured, ok := ctx.Value(lookupServiceKey{}).(lookupCapture); ok && captured.service == s {
 		return ctx
 	}
+	// ReadHandle returns a *sql.DB pool, not the caller's Snapshot transaction.
+	// Calling its QueryRowContext directly keeps these live IO fences outside any
+	// caller-held read snapshot; dbwork.QueryRow would deliberately join it.
 	allowed, epoch, capturedErr := localonly.Online(ctx, dbwork.ReadHandle(ctx, s.db))
 	check := func() error {
 		if capturedErr != nil {
