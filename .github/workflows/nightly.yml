@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: Full checkpoint, or only a previously failed server module
+        description: Full checkpoint, or a Go component continuation of that checkpoint
         type: choice
-        options: [all, server, server-residual]
+        options: [all, go, server, server-residual]
         default: all
 permissions:
   contents: read
@@ -29,8 +29,9 @@ jobs:
     timeout-minutes: 60
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        module: ${{ fromJSON(inputs.scope == 'all' && '["apikit","server"]' || '["server"]') }}
+        module: ${{ fromJSON((inputs.scope == 'all' || inputs.scope == 'go') && '["apikit","server"]' || '["server"]') }}
     services:
       postgres:
         image: postgres:17
@@ -83,7 +84,7 @@ jobs:
           fi
           echo "exit=$status"
           tail -n 20 "$RUNNER_TEMP/checkpoint-go/tests.log"
-          exit "$status
+          exit "$status"
         working-directory: ${{ matrix.module }}
       - name: Go test capacity after tests
         if: ${{ !cancelled() }}
