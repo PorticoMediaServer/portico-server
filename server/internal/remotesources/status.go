@@ -37,6 +37,12 @@ type SourceStatus struct {
 	// LibrariesTruncated says the source is used by more libraries than the
 	// bounded list returns; the page shows the first ones and says so.
 	LibrariesTruncated bool `json:"librariesTruncated"`
+	// A mounted source's program and remote are the mount's own facts; the
+	// background speed is the server-wide Schedule value that applies to it.
+	Program         string `json:"program,omitempty"`
+	ProgramVersion  string `json:"programVersion,omitempty"`
+	Remote          string `json:"remote,omitempty"`
+	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
 }
 
 // ReadSourceStatus is a bounded read of one source's present state. It lists
@@ -99,6 +105,16 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		out.LibrariesTruncated = true
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE remote_source_id=?`, row.ID).Scan(&out.ScanIntervalSecs); err != nil {
+		return SourceStatus{}, err
+	}
+	if row.MountID != "" {
+		var executable, version, remote string
+		if err = snapshot.Tx().QueryRowContext(ctx, `SELECT executable,version,remote FROM managed_mounts WHERE id=?`, row.MountID).Scan(&executable, &version, &remote); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return SourceStatus{}, err
+		}
+		out.Program, out.ProgramVersion, out.Remote = executable, version, remote
+	}
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT background_speed FROM maintenance_settings WHERE singleton=1`).Scan(&out.BackgroundSpeed); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return SourceStatus{}, err
 	}
 	return out, nil

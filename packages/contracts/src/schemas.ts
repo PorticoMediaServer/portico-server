@@ -18795,6 +18795,12 @@ export const schemas = {
             "id": {
               "type": "string"
             },
+            "identityId": {
+              "type": "string"
+            },
+            "identityType": {
+              "type": "string"
+            },
             "observedAt": {
               "type": "string"
             },
@@ -114205,6 +114211,9 @@ export const schemas = {
               },
               "type": "array"
             },
+            "artworkUrl": {
+              "type": "string"
+            },
             "candidates": {
               "items": {
                 "properties": {
@@ -114574,6 +114583,12 @@ export const schemas = {
         "items": {
           "properties": {
             "id": {
+              "type": "string"
+            },
+            "identityId": {
+              "type": "string"
+            },
+            "identityType": {
               "type": "string"
             },
             "observedAt": {
@@ -136819,6 +136834,9 @@ export const schemas = {
               },
               "type": "array"
             },
+            "artworkUrl": {
+              "type": "string"
+            },
             "candidates": {
               "items": {
                 "properties": {
@@ -149900,6 +149918,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "backgroundSpeed": {
+            "type": "string"
+          },
           "connectionsInUse": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -149950,7 +149971,16 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "program": {
+            "type": "string"
+          },
+          "programVersion": {
+            "type": "string"
+          },
           "rangeSupport": {
+            "type": "string"
+          },
+          "remote": {
             "type": "string"
           },
           "scanIntervalSeconds": {
@@ -178550,6 +178580,12 @@ export const schemas = {
             "id": {
               "type": "string"
             },
+            "identityId": {
+              "type": "string"
+            },
+            "identityType": {
+              "type": "string"
+            },
             "observedAt": {
               "type": "string"
             },
@@ -179229,6 +179265,12 @@ export const schemas = {
         "items": {
           "properties": {
             "id": {
+              "type": "string"
+            },
+            "identityId": {
+              "type": "string"
+            },
+            "identityType": {
               "type": "string"
             },
             "observedAt": {

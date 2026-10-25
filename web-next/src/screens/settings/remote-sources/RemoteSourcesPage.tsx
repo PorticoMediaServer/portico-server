@@ -772,6 +772,11 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.foldersSection')}</h3>
       <p className={styles.note}>{t('next.remoteSources.foldersNote')}</p>
+      {status?.program && <dl className={styles.statusRows}>
+        <div><dt>{t('next.remoteSources.program')}</dt><dd>{status.program}{status.programVersion ? ` · ${status.programVersion}` : ''}</dd></div>
+        {status.remote && <div><dt>{t('next.remoteSources.remote')}</dt><dd className={styles.mono}>{status.remote}</dd></div>}
+        {status.backgroundSpeed && <div><dt>{t('next.remoteSources.backgroundSpeed')}</dt><dd>{status.backgroundSpeed} · {t('next.remoteSources.backgroundSpeedHelp')}</dd></div>}
+      </dl>}
       {!!status?.libraries.length && <ul className={styles.usedList}>{status.libraries.map(use => <li key={use.libraryId}>
         <Icon name="i-library" size={18}/><span>{use.name}<small>{t('next.remoteSources.foldersInLibrary', {count: use.folders})}</small></span></li>)}</ul>}
       {librarySnapshot.directory.data?.items.length

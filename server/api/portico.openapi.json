@@ -20461,6 +20461,12 @@
                 "id": {
                   "type": "string"
                 },
+                "identityId": {
+                  "type": "string"
+                },
+                "identityType": {
+                  "type": "string"
+                },
                 "observedAt": {
                   "type": "string"
                 },
@@ -118309,6 +118315,9 @@
                   },
                   "type": "array"
                 },
+                "artworkUrl": {
+                  "type": "string"
+                },
                 "candidates": {
                   "items": {
                     "properties": {
@@ -118684,6 +118693,12 @@
             "items": {
               "properties": {
                 "id": {
+                  "type": "string"
+                },
+                "identityId": {
+                  "type": "string"
+                },
+                "identityType": {
                   "type": "string"
                 },
                 "observedAt": {
@@ -141419,6 +141434,9 @@
                   },
                   "type": "array"
                 },
+                "artworkUrl": {
+                  "type": "string"
+                },
                 "candidates": {
                   "items": {
                     "properties": {
@@ -154806,6 +154824,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "backgroundSpeed": {
+                "type": "string"
+              },
               "connectionsInUse": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -154856,7 +154877,16 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "program": {
+                "type": "string"
+              },
+              "programVersion": {
+                "type": "string"
+              },
               "rangeSupport": {
+                "type": "string"
+              },
+              "remote": {
                 "type": "string"
               },
               "scanIntervalSeconds": {
@@ -197208,6 +197238,12 @@
                 "id": {
                   "type": "string"
                 },
+                "identityId": {
+                  "type": "string"
+                },
+                "identityType": {
+                  "type": "string"
+                },
                 "observedAt": {
                   "type": "string"
                 },
@@ -197893,6 +197929,12 @@
             "items": {
               "properties": {
                 "id": {
+                  "type": "string"
+                },
+                "identityId": {
+                  "type": "string"
+                },
+                "identityType": {
                   "type": "string"
                 },
                 "observedAt": {
@@ -273425,6 +273467,9 @@
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "artworkUrl": {
+                            "type": "string"
                           },
                           "candidates": {
                             "items": {
@@ -415116,6 +415161,9 @@
                             },
                             "type": "array"
                           },
+                          "artworkUrl": {
+                            "type": "string"
+                          },
                           "candidates": {
                             "items": {
                               "properties": {
@@ -429202,6 +429250,12 @@
                           "id": {
                             "type": "string"
                           },
+                          "identityId": {
+                            "type": "string"
+                          },
+                          "identityType": {
+                            "type": "string"
+                          },
                           "observedAt": {
                             "type": "string"
                           },
@@ -429967,6 +430021,12 @@
                       "items": {
                         "properties": {
                           "id": {
+                            "type": "string"
+                          },
+                          "identityId": {
+                            "type": "string"
+                          },
+                          "identityType": {
                             "type": "string"
                           },
                           "observedAt": {
@@ -430760,6 +430820,12 @@
                           "id": {
                             "type": "string"
                           },
+                          "identityId": {
+                            "type": "string"
+                          },
+                          "identityType": {
+                            "type": "string"
+                          },
                           "observedAt": {
                             "type": "string"
                           },
@@ -431411,6 +431477,12 @@
                       "items": {
                         "properties": {
                           "id": {
+                            "type": "string"
+                          },
+                          "identityId": {
+                            "type": "string"
+                          },
+                          "identityType": {
                             "type": "string"
                           },
                           "observedAt": {
@@ -504977,6 +505049,9 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "backgroundSpeed": {
+                          "type": "string"
+                        },
                         "connectionsInUse": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -505027,7 +505102,16 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "program": {
+                          "type": "string"
+                        },
+                        "programVersion": {
+                          "type": "string"
+                        },
                         "rangeSupport": {
+                          "type": "string"
+                        },
+                        "remote": {
                           "type": "string"
                         },
                         "scanIntervalSeconds": {
