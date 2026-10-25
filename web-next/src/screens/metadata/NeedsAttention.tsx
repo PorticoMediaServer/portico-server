@@ -17,7 +17,7 @@ const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
  * why, up to three closest matches, and only the actions the server names for it. The list is
  * the library's own; the server stays the authority on what each row offers.
  */
-export function NeedsAttention({libraryId, libraryName, api, onOpen}: {libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void}) {
+export function NeedsAttention({libraryId, libraryName, api, onOpen, onEdit}: {libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void; onEdit?: (entry: AttentionEntry, anchor: HTMLElement) => void}) {
   const service = useMemo(() => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId), [api, libraryId]);
   const [page, setPage] = useState<AttentionPage>(), [cursors, setCursors] = useState<readonly string[]>([]), [cursor, setCursor] = useState('');
   const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>();
@@ -66,7 +66,7 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen}: {libraryId
       onIdentify={() => {setTyped(''); setProvider('tmdb'); setIdentifying(entry);}}
       onRetry={() => void send(entry, {action: 'retry'}, t('server.attention.lookingUp'))}
       onKeep={() => void send(entry, {action: 'dismiss'}, t('metadata.attention.kept'))}
-      onOpen={onOpen ? () => onOpen(entry) : undefined} />)}</div>
+      onOpen={onOpen ? () => onOpen(entry) : undefined} onEdit={onEdit && entry.kind === 'item' && ['movie', 'episode', 'song', 'audiobook_file'].includes(entry.itemKind) ? anchor => onEdit(entry, anchor) : undefined} />)}</div>
     {!loading && !error && page && !page.entries.length ? <div className={styles.empty}>
       <span className={styles.emptyIcon}><Icon name="i-check" size={28}/></span><b>{t('metadata.attention.empty')}</b><p>{libraryName ? t('metadata.attention.emptyLibraryBody', {library: libraryName}) : t('metadata.attention.emptyBody')}</p>
     </div> : null}
@@ -96,9 +96,9 @@ export function NeedsAttention({libraryId, libraryName, api, onOpen}: {libraryId
   </section>;
 }
 
-function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}: {
+function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen, onEdit}: {
   entry: AttentionEntry; busy: boolean; onUse: (candidateKey: string, order?: string) => void;
-  onSearch: () => void; onIdentify: () => void; onRetry: () => void; onKeep: () => void; onOpen?: () => void;
+  onSearch: () => void; onIdentify: () => void; onRetry: () => void; onKeep: () => void; onOpen?: () => void; onEdit?: (anchor: HTMLElement) => void;
 }) {
   const [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
   const music = entry.kind === 'album' || entry.kind === 'song' || entry.kind === 'book';
@@ -111,7 +111,7 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
   return <article className={styles.row} data-busy={working || undefined}>
     <header className={styles.rowHead}>
       <span className={styles.kindTile}><Icon name={kindIcon} size={24} /></span>
-      <div><h3>{onOpen ? <button type="button" onClick={onOpen}>{entry.title || t('server.attention.untitled')}</button> : entry.title || t('server.attention.untitled')}<span className={styles.kindChip}>{t(`metadata.attention.kind.${kind}`)}</span></h3>
+      <div><h3>{onEdit ? <button type="button" disabled={busy} onClick={event => onEdit(event.currentTarget)}>{entry.title || t('server.attention.untitled')}</button> : onOpen ? <button type="button" onClick={onOpen}>{entry.title || t('server.attention.untitled')}</button> : entry.title || t('server.attention.untitled')}<span className={styles.kindChip}>{t(`metadata.attention.kind.${kind}`)}</span></h3>
       {subtitle ? <small>{subtitle}</small> : null}
       <p>{attentionReason(t, has, entry.reason, entry.kind)}</p>
       {music && entry.candidates.length ? <ul className={styles.candidatesOnly}>{entry.candidates.map(candidate => <li key={candidate.key}>{candidateLine(candidate)}</li>)}</ul> : null}

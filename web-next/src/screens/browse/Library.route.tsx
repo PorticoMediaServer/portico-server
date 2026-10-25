@@ -24,6 +24,7 @@ import {createLibrarySelection} from './selection';
 import {useMusicMixes} from './music-mixes-hook';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
 import {NeedsAttention} from '../metadata/NeedsAttention';
+import type {AttentionEntry} from '@core/metadata-attention.ts';
 import {LibraryDiscoveryScreen} from './Discovery';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
 import {useScreenAppearance} from './screen-preferences';
@@ -172,6 +173,13 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
   const unmatched = requested?.shows === 'unmatched';
+  const editAttention = (entry: AttentionEntry, anchor: HTMLElement) => {
+    if (!resources.life.current() || entry.libraryId !== library.id || entry.kind !== 'item') return;
+    const kind = entry.itemKind;
+    if (kind !== 'movie' && kind !== 'episode' && kind !== 'song' && kind !== 'audiobook_file') return;
+    const edit = context.effects.editMetadata;
+    if (edit) void edit({libraryId: library.id, itemId: entry.entityId, kind, title: entry.title}, anchor).catch(context.effects.reportError);
+  };
   const openAttention = (entry: {kind: string; itemKind: string; entityId: string; parentId: string}) => {
     if (entry.kind === 'show' || entry.itemKind === 'episode') navigate({view: 'show', entityId: entry.kind === 'show' ? entry.entityId : entry.parentId});
     else if (entry.kind === 'album') navigate({view: 'album', entityId: entry.entityId});
@@ -181,7 +189,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   };
   if (library.kind === 'audiobook' && width < 1024 && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
-  return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention}/></>
+  return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
     : view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
