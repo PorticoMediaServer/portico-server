@@ -434,6 +434,14 @@
   --type-troubleshooting-level-line: normal;
   --type-troubleshooting-level-weight: 800;
   --type-troubleshooting-level-tracking: 0.02em;
+  --type-integration-key-name-size: 0.96875rem;
+  --type-integration-key-name-line: normal;
+  --type-integration-key-name-weight: 700;
+  --type-integration-key-name-tracking: -0.005em;
+  --type-integration-key-facts-size: 0.84375rem;
+  --type-integration-key-facts-line: 1.22344rem;
+  --type-integration-key-facts-weight: 400;
+  --type-integration-key-facts-tracking: 0em;
   --type-stop-body-size: 0.9375rem;
   --type-stop-body-line: 1.45313rem;
   --type-stop-body-weight: 500;
