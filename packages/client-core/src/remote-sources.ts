@@ -60,6 +60,9 @@ export type S3SourceFields=Readonly<{endpoint:string;region:string;accessKey:str
 export type S3SourceDraft=Readonly<{remote:string;config:string}>;
 const s3Value=(value:string,max:number):boolean=>value.length>=1&&value.length<=max&&!/[\r\n\u0000]/.test(value);
 const s3FolderPart=/^[^\\/\r\n\u0000]{1,255}$/;
+// Root-only grammar: scheme and authority, an optional bare slash, nothing that
+// could normalise into a path, query, fragment or userinfo.
+const s3EndpointShape=/^https:\/\/(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9a-fA-F:.]+\])(?::([0-9]{1,5}))?\/?$/i;
 /**
  * One S3-compatible source as the exact section the server's own validator and
  * candidate test accept. Undefined means a field is not usable; nothing is
@@ -67,10 +70,12 @@ const s3FolderPart=/^[^\\/\r\n\u0000]{1,255}$/;
  */
 export function s3SourceDraft(fields:S3SourceFields):S3SourceDraft|undefined{
  const endpoint=fields.endpoint.trim();
+ const shape=s3EndpointShape.exec(endpoint);
+ if(!shape)return undefined;
+ if(shape[1]!==undefined){const port=Number(shape[1]);if(port<1||port>65535)return undefined;}
  let url:URL;
  try{url=new URL(endpoint);}catch{return undefined;}
- if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.search||url.hash||url.pathname!=='/')return undefined;
- if(!/^https:\/\/[^\s]+$/i.test(endpoint))return undefined;
+ if(url.protocol!=='https:'||!url.hostname||url.pathname!=='/'||url.search||url.hash||url.username||url.password)return undefined;
  const region=fields.region.trim();
  if(region&&!/^[a-z0-9-]{1,32}$/i.test(region))return undefined;
  const accessKey=fields.accessKey.trim();
@@ -86,7 +91,7 @@ export function s3SourceDraft(fields:S3SourceFields):S3SourceDraft|undefined{
 
 /** The drawn Google Drive form: the owner's own service-account key and where
  * the files are. Portico writes the rclone section; the key is never shown back. */
-export type DriveKeyFields=Readonly<{name:string;keyJson:string;location:'folder'|'drive';locationId:string}>;
+export type DriveKeyFields=Readonly<{keyJson:string;location:'folder'|'drive';locationId:string}>;
 export type DriveKeyDraft=Readonly<{remote:string;config:string;email:string}>;
 export type DriveKeyResult=Readonly<{ok:true;draft:DriveKeyDraft}|{ok:false;reason:'json'|'oauth'|'type'|'email'|'key'|'location'}>;
 const driveLocationId=/^[A-Za-z0-9_-]{1,200}$/;

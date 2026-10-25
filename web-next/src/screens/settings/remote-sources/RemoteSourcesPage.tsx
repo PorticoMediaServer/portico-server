@@ -23,9 +23,10 @@ const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
 type SourceKind = 'webdav' | 'rclone' | 'config' | 's3' | 'drive';
 type RcloneDraft = {name: string; remote: string; config: string};
+type Tested = Readonly<{revision: number; result: RcloneTestResult}>;
 const emptyRclone: RcloneDraft = {name: '', remote: '', config: ''};
-const emptyS3: S3SourceFields = {name: '', endpoint: '', region: '', accessKey: '', secretKey: '', bucket: '', folder: ''};
-const emptyDrive: DriveKeyFields = {name: '', keyJson: '', location: 'folder', locationId: ''};
+const emptyS3: S3SourceFields = {endpoint: '', region: '', accessKey: '', secretKey: '', bucket: '', folder: ''};
+const emptyDrive: DriveKeyFields = {keyJson: '', location: 'folder', locationId: ''};
 const kindOptions = [
   {value: 'webdav', label: t('next.remoteSources.connectWebdav')},
   {value: 'rclone', label: t('next.remoteSources.connectRclone')},
@@ -198,7 +199,16 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [configRemote, setConfigRemote] = useState('');
   const [configName, setConfigName] = useState('');
   const [s3, setS3] = useState<S3SourceFields>(emptyS3);
+  const [s3Name, setS3Name] = useState('');
   const [drive, setDrive] = useState<DriveKeyFields>(emptyDrive);
+  const [driveName, setDriveName] = useState('');
+  // A test belongs to the exact rendered tuple; the revision changes with it.
+  const [s3Revision, setS3Revision] = useState(0);
+  const [driveRevision, setDriveRevision] = useState(0);
+  const [s3Tested, setS3Tested] = useState<Tested>();
+  const [driveTested, setDriveTested] = useState<Tested>();
+  const s3RevisionRef = useRef(0); s3RevisionRef.current = s3Revision;
+  const driveRevisionRef = useRef(0); driveRevisionRef.current = driveRevision;
   const keyFile = useRef<HTMLInputElement>(null);
   const driveResult = driveServiceAccountDraft(drive);
   const [result, setResult] = useState<DAVConnectionResult>();
@@ -236,7 +246,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   /** A refused owner retires this form before Settings hears about it. */
   const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
-    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive);
+    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setS3Revision(v => v + 1); setDriveRevision(v => v + 1);
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
@@ -291,7 +301,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const chooseSourceKind = (next: SourceKind) => {
     if (next === sourceKind) return;
-    testAttempt.current++;setResult(undefined);setRcloneResult(undefined);setError('');setSourceKind(next);
+    testAttempt.current++;setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setS3Revision(v => v + 1);setDriveRevision(v => v + 1);setError('');setSourceKind(next);
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
@@ -301,7 +311,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         : reason === 'email' ? 'next.remoteSources.driveKeyEmail'
           : reason === 'key' ? 'next.remoteSources.driveKeyUnreadable'
             : 'next.remoteSources.driveLocationInvalid';
-  const updateDrive = (patch: Partial<DriveKeyFields>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setDrive(current => ({...current, ...patch}));};
+  const updateDrive = (patch: Partial<DriveKeyFields>) => {testAttempt.current++;setRcloneResult(undefined);setDriveTested(undefined);setDriveRevision(v => v + 1);setError('');setDrive(current => ({...current, ...patch}));};
   const readKeyFile = async (file: File | undefined) => {
     if (!file) return;
     if (file.size > 64 * 1024) {setError(t('next.remoteSources.driveKeyTooLarge'));return;}
@@ -311,13 +321,15 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const copyEmail = (email: string) => {const clipboard = navigator.clipboard;if (!clipboard) return;void clipboard.writeText(email).catch(() => undefined);};
   const testDrive = async () => {
     const guard = attemptGuard();
-    if (pending.current || !guard()) return;
-    if (!driveResult.ok) {setError(t(driveReason(driveResult.reason)));return;}
+    const revision = driveRevision, fields = {...drive};
+    if (pending.current || !guard() || revision !== driveRevisionRef.current) return;
+    const result = driveServiceAccountDraft(fields);
+    if (!result.ok) {setError(t(driveReason(result.reason)));return;}
     pending.current = true;
-    const attempt = ++testAttempt.current, built = driveResult.draft;
+    const attempt = ++testAttempt.current, built = result.draft;
     setError('');setRcloneResult(undefined);setBusy(true);
     try {const next = await service.testRclone({remote: built.remote, config: built.config}, guard);
-      if (guard() && attempt === testAttempt.current) setRcloneResult(next);}
+      if (guard() && attempt === testAttempt.current && revision === driveRevisionRef.current) {setRcloneResult(next);setDriveTested({revision, result: next});}}
     catch (value) {
       if (!guard() || attempt !== testAttempt.current) return;
       if (authFailure(value)) {refuse(value);return;}
@@ -327,13 +339,16 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const createDrive = async () => {
     const guard = attemptGuard();
-    if (pending.current || !guard() || !rcloneResult || !drive.name.trim() || !driveResult.ok) return;
+    const revision = driveRevision, fields = {...drive}, name = driveName.trim(), tested = driveTested;
+    if (pending.current || !guard() || !tested || tested.revision !== revision || revision !== driveRevisionRef.current || !name) return;
+    const result = driveServiceAccountDraft(fields);
+    if (!result.ok) {setError(t(driveReason(result.reason)));return;}
     pending.current = true;setError('');setBusy(true);
-    const built = driveResult.draft;
-    // The key leaves the form as the save starts; only the request holds it now.
-    setDrive(current => ({...current, keyJson: ''}));
+    const built = result.draft;
+    // The submitted tuple is captured; the key leaves the form and this witness is spent.
+    setDrive(current => ({...current, keyJson: ''}));setDriveTested(undefined);setDriveRevision(v => v + 1);
     try {
-      const receipt = await service.configureRclone(null, {name: drive.name.trim(), remote: built.remote, config: built.config}, undefined, guard);
+      const receipt = await service.configureRclone(null, {name, remote: built.remote, config: built.config}, undefined, guard);
       if (!guard()) return;
       const state = service.getSnapshot();
       if (!receipt) {
@@ -346,17 +361,18 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
-  const updateS3 = (patch: Partial<S3SourceFields>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setS3(current => ({...current, ...patch}));};
+  const updateS3 = (patch: Partial<S3SourceFields>) => {testAttempt.current++;setRcloneResult(undefined);setS3Tested(undefined);setS3Revision(v => v + 1);setError('');setS3(current => ({...current, ...patch}));};
   const testS3 = async () => {
     const guard = attemptGuard();
-    if (pending.current || !guard()) return;
-    const built = s3SourceDraft(s3);
+    const revision = s3Revision, fields = {...s3};
+    if (pending.current || !guard() || revision !== s3RevisionRef.current) return;
+    const built = s3SourceDraft(fields);
     if (!built) {setError(t('next.remoteSources.s3Invalid'));return;}
     pending.current = true;
     const attempt = ++testAttempt.current;
     setError('');setRcloneResult(undefined);setBusy(true);
     try {const next = await service.testRclone({remote: built.remote, config: built.config}, guard);
-      if (guard() && attempt === testAttempt.current) setRcloneResult(next);}
+      if (guard() && attempt === testAttempt.current && revision === s3RevisionRef.current) {setRcloneResult(next);setS3Tested({revision, result: next});}}
     catch (value) {
       if (!guard() || attempt !== testAttempt.current) return;
       if (authFailure(value)) {refuse(value);return;}
@@ -419,14 +435,15 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const createS3 = async () => {
     const guard = attemptGuard();
-    if (pending.current || !guard() || !rcloneResult || !s3.name.trim()) return;
-    const built = s3SourceDraft(s3);
+    const revision = s3Revision, fields = {...s3}, name = s3Name.trim(), tested = s3Tested;
+    if (pending.current || !guard() || !tested || tested.revision !== revision || revision !== s3RevisionRef.current || !name) return;
+    const built = s3SourceDraft(fields);
     if (!built) {setError(t('next.remoteSources.s3Invalid'));return;}
     pending.current = true;setError('');setBusy(true);
-    // The secret leaves the fields as the save starts; only the request holds it now.
-    setS3(current => ({...current, secretKey: ''}));
+    // The submitted tuple is captured; the secret leaves the form and this witness is spent.
+    setS3(current => ({...current, secretKey: ''}));setS3Tested(undefined);setS3Revision(v => v + 1);
     try {
-      const receipt = await service.configureRclone(null, {name: s3.name.trim(), remote: built.remote, config: built.config}, undefined, guard);
+      const receipt = await service.configureRclone(null, {name, remote: built.remote, config: built.config}, undefined, guard);
       if (!guard()) return;
       const state = service.getSnapshot();
       if (!receipt) {
@@ -551,8 +568,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   </>;
   const canContinue = sourceKind === 'webdav' ? !!result
     : sourceKind === 'rclone' ? !!rcloneResult && !!rclone.name.trim()
-      : sourceKind === 's3' ? !!rcloneResult && !!s3.name.trim()
-        : sourceKind === 'drive' ? !!rcloneResult && !!drive.name.trim() && driveResult.ok
+      : sourceKind === 's3' ? !!s3Tested && s3Tested.revision === s3Revision && !!s3Name.trim()
+        : sourceKind === 'drive' ? !!driveTested && driveTested.revision === driveRevision && !!driveName.trim() && driveResult.ok
           : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
   const footer = step === 'connection'
     ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : sourceKind === 'drive' ? createDrive() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
@@ -582,7 +599,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         </div>
       </> : sourceKind === 'drive' ? <>
         <div className={styles.kind}><Icon name="i-google" size={22} /><span><b>{t('next.remoteSources.connectDrive')}</b><small>{t('next.remoteSources.connectDriveHint')}</small></span></div>
-        <TextField label={t('next.remoteSources.name')} value={drive.name} maxLength={200} disabled={busy} onChange={event => updateDrive({name: event.target.value})}/>
+        <TextField label={t('next.remoteSources.name')} value={driveName} maxLength={200} disabled={busy} onChange={event => setDriveName(event.target.value)}/>
         <div className={styles.lab2}>{t('next.remoteSources.driveSignIn')}</div>
         <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.driveSignIn')}>
           <button type="button" role="radio" aria-checked={true} className={styles.kindTile} data-picked><Icon name="i-key" size={22}/>{t('next.remoteSources.driveServiceAccount')}</button>
@@ -621,7 +638,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         </div>
       </> : sourceKind === 's3' ? <>
         <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectS3')}</b><small>{t('next.remoteSources.connectS3Hint')}</small></span></div>
-        <TextField label={t('next.remoteSources.name')} value={s3.name} maxLength={200} disabled={busy} onChange={event => updateS3({name: event.target.value})}/>
+        <TextField label={t('next.remoteSources.name')} value={s3Name} maxLength={200} disabled={busy} onChange={event => setS3Name(event.target.value)}/>
         <TextField label={t('next.remoteSources.s3Endpoint')} description={t('next.remoteSources.s3EndpointHelp')} value={s3.endpoint} placeholder={t('next.remoteSources.s3EndpointPlaceholder')} maxLength={2048} disabled={busy}
           autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateS3({endpoint: event.target.value})}/>
         <TextField label={t('next.remoteSources.s3Region')} description={t('next.remoteSources.s3RegionHelp')} value={s3.region} maxLength={32} disabled={busy}

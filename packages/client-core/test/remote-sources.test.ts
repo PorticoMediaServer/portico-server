@@ -563,6 +563,8 @@ test('the drawn S3 fields build the section and remote the server validates',()=
  assert(bare!.config.startsWith('[portico]\ntype = s3\nprovider = Other\n'));
  for(const patch of [
   {endpoint:'http://s3.example'},{endpoint:'https://user:pw@s3.example'},{endpoint:'https://s3.example/path'},{endpoint:'s3.example'},
+  {endpoint:'https://s3.example/.'},{endpoint:'https://s3.example/foo/..'},{endpoint:'https://s3.example//'},{endpoint:'https://s3.example/%2e%2e/'},
+  {endpoint:'https://s3.example:99999'},{endpoint:'https://s3.example?x=1'},{endpoint:'https://s3.example#'},
   {bucket:'media/archive'},{bucket:''},{folder:'../etc'},{folder:'a//b'},{accessKey:''},{secretKey:'a\nb'},{secretKey:''},{region:'eu central'},
  ]){
   assert.equal(s3SourceDraft({...fields,...patch}),undefined,JSON.stringify(patch));
@@ -573,7 +575,7 @@ test('the drawn Google service-account key is parsed, never authored',()=>{
  const key={type:'service_account',project_id:'portico-media-4821',private_key_id:'abc',
   private_key:'-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n-----END PRIVATE KEY-----\n',
   client_email:'portico-reader@portico-media-4821.iam.gserviceaccount.com',client_id:'1234567890',token_uri:'https://oauth2.googleapis.com/token'};
- const fields={name:'Drive archive',keyJson:JSON.stringify(key,undefined,2),location:'folder' as const,locationId:'1xYz9aBcDeFgHiJkLmNoPqRsTuVwXyZ0a'};
+ const fields={keyJson:JSON.stringify(key,undefined,2),location:'folder' as const,locationId:'1xYz9aBcDeFgHiJkLmNoPqRsTuVwXyZ0a'};
  const result=driveServiceAccountDraft(fields);
  assert(result.ok,'a real key builds');
  assert.equal(result.draft.email,'portico-reader@portico-media-4821.iam.gserviceaccount.com');
