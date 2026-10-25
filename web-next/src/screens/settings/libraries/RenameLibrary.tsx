@@ -5,8 +5,8 @@ import {Dialog} from '../../../kit/overlays/Dialog';
 import styles from './libraries.module.css';
 
 /** The drawn explicit rename form, backed by the current library command. */
-export function RenameLibrary({name, disabled, rename}: Readonly<{
-  name: string; disabled: boolean; rename: (name: string) => Promise<boolean>;
+export function RenameLibrary({name, disabled, rename, request = 0, hideTrigger = false}: Readonly<{
+  request?: number; hideTrigger?: boolean; name: string; disabled: boolean; rename: (name: string) => Promise<boolean>;
 }>) {
   const [open, setOpen] = useState(false), [draft, setDraft] = useState(name);
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
@@ -15,6 +15,8 @@ export function RenameLibrary({name, disabled, rename}: Readonly<{
     const capture = {running: false}; lifetime.current = capture;
     return () => {if (lifetime.current === capture) lifetime.current = undefined;};
   }, []);
+  const handledRequest = useRef(0);
+  useEffect(() => {if (request > handledRequest.current) {handledRequest.current = request;setDraft(name);setFailed(false);setOpen(true);}}, [request, name]);
   const close = (next: boolean) => {if (!lifetime.current?.running) setOpen(next);};
   const save = async () => {
     const capture = lifetime.current;
@@ -28,8 +30,8 @@ export function RenameLibrary({name, disabled, rename}: Readonly<{
     finally {if (lifetime.current === capture) {capture.running = false;setBusy(false);}}
   };
   return <>
-    <span>{name}</span>
-    <Button variant="glass" size="small" disabled={disabled} onClick={() => {setDraft(name);setFailed(false);setOpen(true);}}>{defaultI18n.t('next.ownerLibraries.rename')}</Button>
+    {!hideTrigger && <><span>{name}</span>
+    <Button variant="glass" size="small" disabled={disabled} onClick={() => {setDraft(name);setFailed(false);setOpen(true);}}>{defaultI18n.t('next.ownerLibraries.rename')}</Button></>}
     <Dialog open={open} onOpenChange={close} size="sm" title={defaultI18n.t('next.ownerLibraries.renameTitle')}
       footer={<><Button disabled={busy} onClick={() => close(false)}>{defaultI18n.t('next.settings.cancel')}</Button>
         <Button variant="primary" disabled={busy || disabled || !draft.trim()} loading={busy} onClick={() => {void save();}}>{defaultI18n.t('next.ownerLibraries.rename')}</Button></>}>
