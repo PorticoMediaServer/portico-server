@@ -48,9 +48,20 @@ export function checkedHostedOwnerClaimLink(value: HostedOwnerClaimLink, expecte
   return captureLink(value);
 }
 function captureReview(value: HostedOwnerClaimReview): HostedOwnerClaimReview {
+  // The reason and the previous-owner pair are part of the claim this decision
+  // re-checks against, so they are copied exactly and only when the claim carried
+  // them; dropping them would make every later sameClaim differ.
+  const reason = value.reason === 'change-owner' ? 'change-owner' as const : 'switch' as const;
+  const previousOwnerRole = value.previousOwnerRole === 'admin' || value.previousOwnerRole === 'member' || value.previousOwnerRole === 'remove'
+    ? value.previousOwnerRole : undefined;
+  const currentOwnerUsername = typeof value.currentOwnerUsername === 'string' && value.currentOwnerUsername &&
+    new TextEncoder().encode(value.currentOwnerUsername).length <= 64 ? value.currentOwnerUsername : undefined;
+  if ((previousOwnerRole === undefined) !== (currentOwnerUsername === undefined) || (reason === 'change-owner') !== (previousOwnerRole !== undefined)) throw invalid();
   return Object.freeze({request: captureLink(value.request), identity: Object.freeze({accountId: value.identity.accountId, familyId: value.identity.familyId}),
     serverId: value.serverId, name: value.name, address: value.address, transactionId: value.transactionId,
-    requestedAt: value.requestedAt, expiresAt: value.expiresAt, status: value.status,
+    requestedAt: value.requestedAt, expiresAt: value.expiresAt, status: value.status, reason,
+    ...(previousOwnerRole === undefined ? {} : {previousOwnerRole}),
+    ...(currentOwnerUsername === undefined ? {} : {currentOwnerUsername}),
     ...(value.otherPeopleCount === undefined ? {} : {otherPeopleCount: value.otherPeopleCount}),
     ...(value.registration ? {registration: Object.freeze({id: value.registration.id, origin: value.registration.origin})} : {})});
 }
