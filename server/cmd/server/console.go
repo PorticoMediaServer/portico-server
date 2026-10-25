@@ -51,7 +51,13 @@ func initializeConsole(db *sql.DB, scan *ingestion.Service, player *playback.Ser
 		kind string
 		run  func(context.Context, string) error
 	}{
-		{"retention-cleanup", func(ctx context.Context, id string) error { return store.Prune(ctx) }},
+		{"retention-cleanup", func(ctx context.Context, id string) error {
+			if e := store.Prune(ctx); e != nil {
+				return e
+			}
+			// Root §23: app-log payloads expire on their own schedule, not only on access.
+			return httpapi.PurgeExpiredAppReports(ctx, db)
+		}},
 		// The notification tick raises the conditions that are continuously true
 		// rather than momentary: free space on the state volume and a certificate
 		// running out. Measuring a volume is a platform call, so the path is passed

@@ -8700,7 +8700,9 @@ CREATE TABLE app_reports(
  device_id TEXT NOT NULL,
  created_ms INTEGER NOT NULL,
  expires_ms INTEGER NOT NULL,
- entry_count INTEGER NOT NULL
+ entry_count INTEGER NOT NULL,
+ operation_id TEXT NOT NULL,
+ intent_sha TEXT NOT NULL
 );
 CREATE TABLE app_report_entries(
  report_id TEXT NOT NULL,
@@ -8713,3 +8715,5 @@ CREATE TABLE app_report_entries(
 );
 CREATE INDEX app_reports_receipt ON app_reports(authority,created_ms);
 CREATE INDEX app_report_entries_report ON app_report_entries(report_id);
+CREATE INDEX app_reports_expiry ON app_reports(expires_ms);
+CREATE UNIQUE INDEX app_reports_operation ON app_reports(authority,account_id,profile_id,device_id,operation_id);
