@@ -1,0 +1,54 @@
+name: Hosted checkpoint generation
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact published private checkpoint source
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: checkpoint-hosted-generation
+  cancel-in-progress: false
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Verify immutable source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p "$RUNNER_TEMP/hosted-generation"
+          git rev-parse HEAD > "$RUNNER_TEMP/hosted-generation/source-sha.log"
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: hosted-services/hosted/go.mod
+          cache-dependency-path: hosted-services/hosted/go.sum
+      - name: Official Hosted API generation
+        working-directory: hosted-services/hosted
+        run: |
+          set -euo pipefail
+          go run ./cmd/apigen -root ../.. 2>&1 | tee "$RUNNER_TEMP/hosted-generation/apigen.log"
+      - name: Preserve exact generated output
+        if: ${{ always() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/hosted-generation"
+          git add -N .
+          git diff --binary > "$RUNNER_TEMP/hosted-generation/generation.patch"
+          git diff --name-only > "$RUNNER_TEMP/hosted-generation/changed-paths.log"
+          git diff --stat > "$RUNNER_TEMP/hosted-generation/summary.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: checkpoint-hosted-generation-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/hosted-generation/
+          if-no-files-found: error
+          retention-days: 14
