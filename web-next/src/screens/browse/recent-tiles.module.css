@@ -6,6 +6,8 @@
 .heading h2 { margin: 0; font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); letter-spacing: var(--type-row-heading-tracking); }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 0 0; }
 .item { position: relative; min-width: 0; }
+/* The shared hold feedback draws at the pointer; the tile only layers it. */
+.holdFeedback { z-index: 5; }
 /* collections.html/select.html's one circle: top-left, revealed by hover or focus
    while the surface is not selecting; it starts selection on that exact row. */
 .tileSelection { position: absolute; z-index: 4; top: 6px; left: 6px; display: inline-flex; appearance: none; margin: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; opacity: 0; transition: opacity 200ms cubic-bezier(.2,.7,.2,1); }

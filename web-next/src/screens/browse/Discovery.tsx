@@ -11,7 +11,8 @@ import {useShellWidth} from '../../shell/viewport';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
 import {CatalogueSelectionEntry, type CatalogueDocumentSelection} from './document-selection';
 import {useLibraryCardMenu} from './use-card-menu';
-import {SelectionCircle} from '../../kit/selection';
+import {SelectionCircle, SelectionHoldFeedback} from '../../kit/selection';
+import {useCardHold} from '../../kit/cards/useCardHold';
 import {Icon} from '../../kit/Icon';
 import type {CardSelection} from '../../kit/cards';
 import {useDiscoverySelection, discoveryEntries, discoverySections, type DiscoverySelectionInput} from './discovery-selection';
@@ -107,28 +108,46 @@ function RecentTiles({section, actions, artwork, nowPlayingAlbumId, selection, w
   selection?: CatalogueDocumentSelection; wrapCard: (base: BrowseItemActions, entry: ContentEntry) => BrowseItemActions; base: number}) {
   const artSize = (useShellWidth() >= 1024 ? 76 : 52) * devicePixelRatio;
   const heading = serverTextLabel(defaultI18n, {code: section.heading.key, fallback: section.heading.fallback, params: section.heading.params});
-  const tile = (entry: ContentEntry, index: number, cardSelection: CardSelection | undefined) => {
-    const action = wrapCard({...actions(section, entry, index), ...(cardSelection ? {selection: cardSelection} : {})}, entry);
-    const art = artwork.foreground(entry.posterUrl, artSize, 1), playing = entry.id === nowPlayingAlbumId, title = entry.kind === 'radio' ? defaultI18n.t('music.radioNamed', {name: entry.displayTitle ?? entry.title}) : entry.displayTitle ?? entry.title;
-    return <div key={entry.id} role="listitem" className={styles.item} data-selecting={cardSelection?.active || undefined} data-selected={cardSelection?.checked || undefined}>
-      <button type="button" className={styles.tile} data-playing={playing || undefined} onClick={action.onOpen}>
-        <span className={styles.art}>{art && <Artwork source={art} alt="" />}</span>
-        <span className={styles.copy}><span className={styles.title}>{playing && <span className={styles.levels} role="img" aria-label={defaultI18n.t('next.browse.playing')}><i/><i/><i/></span>}{title}</span>
-          <small className={styles.artist}>{entry.artist?.name ?? (entry.kind === 'radio' ? defaultI18n.t('music.radio') : undefined)}</small></span>
-      </button>
-      {cardSelection && <button type="button" className={styles.tileSelection} aria-label={defaultI18n.t('card.select', {title})} aria-pressed={cardSelection.checked}
-        onClick={event => {event.stopPropagation(); cardSelection.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}>
-        <SelectionCircle interactive={false} selected={cardSelection.checked} selecting={cardSelection.active} accessibilityLabel={title} />
-      </button>}
-      {action.onMore && <button type="button" className={styles.tileMore} aria-label={defaultI18n.t('next.browse.moreFor', {title})} aria-haspopup="menu"
-        onClick={event => action.onMore!(event.currentTarget)}><Icon name="i-more" size={18} /></button>}
-    </div>;
-  };
   return <section className={styles.section} aria-label={heading}>
     <header className={styles.heading}><h2>{heading}</h2></header>
     <div className={styles.grid} role="list">
-      {section.entries.map((entry, index) => entry.kind === 'radio' ? tile(entry, index, undefined)
-        : <CatalogueSelectionEntry key={entry.id} selection={selection} entry={entry} position={base + index}>{cardSelection => tile(entry, index, cardSelection)}</CatalogueSelectionEntry>)}
+      {section.entries.map((entry, index) => entry.kind === 'radio'
+        ? <RecentTile key={entry.id} entry={entry} index={index} section={section} actions={actions} artwork={artwork} nowPlayingAlbumId={nowPlayingAlbumId} wrapCard={wrapCard} artSize={artSize}/>
+        : <CatalogueSelectionEntry key={entry.id} selection={selection} entry={entry} position={base + index}>{cardSelection =>
+          <RecentTile entry={entry} index={index} section={section} actions={actions} artwork={artwork} nowPlayingAlbumId={nowPlayingAlbumId} cardSelection={cardSelection} wrapCard={wrapCard} artSize={artSize}/>}</CatalogueSelectionEntry>)}
     </div>
   </section>;
+}
+
+/** One custom Recent tile. The circle, ⋯ and artwork are the drawn ones; the
+ * shared hold gesture is added for touch and pen so a held tile opens the same
+ * menu the card's long-press intent does, through wrapCard. */
+function RecentTile({entry, index, section, actions, artwork, nowPlayingAlbumId, cardSelection, wrapCard, artSize}: {
+  entry: ContentEntry; index: number; section: ContentSection; actions: DiscoveryBindings['actions']; artwork: ShellArtwork; nowPlayingAlbumId?: string;
+  cardSelection?: CardSelection; wrapCard: (base: BrowseItemActions, entry: ContentEntry) => BrowseItemActions; artSize: number;
+}) {
+  // One wrapped action for this exact tile: the long-press routing lives in
+  // wrapCard, and a new object per render would mint a new hold admission each
+  // time. Same inputs, same object.
+  const action = useMemo(() => wrapCard({...actions(section, entry, index), ...(cardSelection ? {selection: cardSelection} : {})}, entry),
+    [actions, section, entry, index, cardSelection, wrapCard]);
+  const hold = useCardHold({selection: action.selection, row: entry});
+  const art = artwork.foreground(entry.posterUrl, artSize, 1), playing = entry.id === nowPlayingAlbumId, title = entry.kind === 'radio' ? defaultI18n.t('music.radioNamed', {name: entry.displayTitle ?? entry.title}) : entry.displayTitle ?? entry.title;
+  return <div role="listitem" className={styles.item} data-selecting={cardSelection?.active || undefined} data-selected={cardSelection?.checked || undefined}>
+    <button type="button" className={styles.tile} data-playing={playing || undefined} {...hold.handlers}
+      onBlur={() => hold.cancel()}
+      onKeyDown={event => { if (event.key !== 'Escape') return; hold.cancel(); if (action.selection?.active) { event.preventDefault(); event.stopPropagation(); action.selection.onExit(); } }}
+      onClick={event => { if (hold.consumeClick()) {event.preventDefault(); return;} action.onOpen(); }}>
+      <span className={styles.art}>{art && <Artwork source={art} alt="" />}</span>
+      <span className={styles.copy}><span className={styles.title}>{playing && <span className={styles.levels} role="img" aria-label={defaultI18n.t('next.browse.playing')}><i/><i/><i/></span>}{title}</span>
+        <small className={styles.artist}>{entry.artist?.name ?? (entry.kind === 'radio' ? defaultI18n.t('music.radio') : undefined)}</small></span>
+    </button>
+    {cardSelection && <button type="button" className={styles.tileSelection} aria-label={defaultI18n.t('card.select', {title})} aria-pressed={cardSelection.checked}
+      onClick={event => {event.stopPropagation(); cardSelection.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}>
+      <SelectionCircle interactive={false} selected={cardSelection.checked} selecting={cardSelection.active} accessibilityLabel={title} />
+    </button>}
+    {action.onMore && <button type="button" className={styles.tileMore} aria-label={defaultI18n.t('next.browse.moreFor', {title})} aria-haspopup="menu"
+      onClick={event => action.onMore!(event.currentTarget)}><Icon name="i-more" size={18} /></button>}
+    {hold.hold && <SelectionHoldFeedback active progress={hold.hold.progress} className={styles.holdFeedback} style={{left: hold.hold.x - 31, top: hold.hold.y - 31}} />}
+  </div>;
 }

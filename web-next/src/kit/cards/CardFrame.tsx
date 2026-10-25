@@ -5,6 +5,7 @@ import type {FactPart} from '@portico/client-core/kit-model';
 import {Icon} from '../Icon';
 import {SelectionCircle, SelectionHoldFeedback} from '../selection';
 import {activateCard, boundedProgress} from './interaction';
+import {useCardHold} from './useCardHold';
 import type {CardFactPresentation, CardProps, CardTextRun} from './types';
 import styles from './cards.module.css';
 
@@ -60,54 +61,16 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   const rangeInteraction = useSelectionRangePreview(selection, disabled);
   const selectionHintId = useId();
   const selectionHint = selection?.hint ?? (selection && !selection.active ? {text: defaultI18n.t('next.selection.select')} : undefined);
-  const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const origin = useRef<{x: number; y: number} | undefined>(undefined);
-  const held = useRef(false);
-  const animation = useRef<number | undefined>(undefined);
-  const [hold, setHold] = useState<{x: number; y: number; progress: number} | null>(null);
-  const cancelHold = () => {
-    if (pending.current !== undefined) clearTimeout(pending.current);
-    if (animation.current !== undefined) cancelAnimationFrame(animation.current);
-    pending.current = undefined; animation.current = undefined; origin.current = undefined;
-    setHold(null);
-  };
-  useEffect(() => {
-    const interrupt = () => { cancelHold(); held.current = false; };
-    window.addEventListener('blur', interrupt);
-    window.addEventListener('scroll', interrupt, true);
-    document.addEventListener('visibilitychange', interrupt);
-    return () => {
-      window.removeEventListener('blur', interrupt);
-      window.removeEventListener('scroll', interrupt, true);
-      document.removeEventListener('visibilitychange', interrupt);
-      if (pending.current !== undefined) clearTimeout(pending.current);
-      if (animation.current !== undefined) cancelAnimationFrame(animation.current);
-    };
-  }, []);
-  useEffect(() => { cancelHold(); }, [disabled, selection?.active]);
+  const holdGesture = useCardHold({selection, disabled, row: model});
   const click = (event: MouseEvent<HTMLButtonElement>) => {
-    if (held.current) { held.current = false; event.preventDefault(); return; }
+    if (holdGesture.consumeClick()) { event.preventDefault(); return; }
     activateCard(onNavigate, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
   };
-  return <article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
+  return <article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!holdGesture.hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
     {...rangeInteraction}>
-    <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={event => {cancelHold(); props.onBlur?.(event);}}
-      onKeyDown={event => { if (event.key === 'Escape') { cancelHold(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}
-      onPointerDown={event => {
-        if (!event.isPrimary || event.button !== 0) return;
-        cancelHold();
-        held.current = false;
-        if (event.pointerType === 'mouse' || !selection || selection.active) return;
-        origin.current = {x: event.clientX, y: event.clientY};
-        const anchor = event.currentTarget, bounds = anchor.parentElement!.getBoundingClientRect();
-        const x = event.clientX - bounds.left, y = event.clientY - bounds.top, started = performance.now();
-        const tick = () => { setHold({x, y, progress: Math.min(1, (performance.now() - started) / 500)}); animation.current = requestAnimationFrame(tick); };
-        tick();
-        pending.current = setTimeout(() => { cancelHold(); held.current = true; selection.onToggle({range: false, source: 'long-press', anchor}); }, 500);
-      }}
-      onPointerMove={event => { const start = origin.current; if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) cancelHold(); }}
-      onPointerUp={cancelHold} onPointerCancel={() => {cancelHold(); held.current = false;}} onPointerLeave={cancelHold} onLostPointerCapture={cancelHold}
-      onContextMenu={event => { if (selection && held.current) event.preventDefault(); }}>
+    <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={event => {holdGesture.cancel(); props.onBlur?.(event);}}
+      onKeyDown={event => { if (event.key === 'Escape') { holdGesture.cancel(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}
+      {...holdGesture.handlers}>
       {children}
     </button>
     {hasAuxiliary && <span className={cx(styles.auxiliary, !!artworkRef && styles.artAligned)}><span ref={auxiliaryRef} className={artworkRef ? styles.artAuxiliary : styles.cardAuxiliary}>
@@ -117,7 +80,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     {selection && <button type="button" disabled={disabled} className={styles.selection} aria-label={defaultI18n.t('card.select', {title: model.title})} aria-describedby={selectionHint ? selectionHintId : undefined} aria-pressed={selection.checked} onClick={event => {event.stopPropagation(); selection.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}>{selection.control ?? <SelectionCircle interactive={false} selected={selection.checked} selecting={selection.active} accessibilityLabel={model.title} />}</button>}
     {selectionHint && <span className={styles.selectionHint} id={selectionHintId} role="tooltip">{'shortcut' in selectionHint && selectionHint.shortcut && <kbd>{selectionHint.shortcut}</kbd>}{selectionHint.text}</span>}
     </span></span>}
-    {hold && <SelectionHoldFeedback active progress={hold.progress} className={styles.holdFeedback} style={{left: hold.x - 31, top: hold.y - 31}} />}
+    {holdGesture.hold && <SelectionHoldFeedback active progress={holdGesture.hold.progress} className={styles.holdFeedback} style={{left: holdGesture.hold.x - 31, top: holdGesture.hold.y - 31}} />}
     {overlay}{footer}
   </article>;
 }
