@@ -216,7 +216,7 @@ func convertedRate(c AudioDecodeCap, source int) int {
 	if capAllowsRate(c, source) {
 		return source
 	}
-	rates := []int{768000, 384000, 192000, 96000, 48000, 24000, 12000, 8000}
+	rates := []int{768000, 384000, 192000, 96000, 48000, 32000, 24000, 16000, 12000, 8000}
 	if source%11025 == 0 {
 		rates = []int{705600, 352800, 176400, 88200, 44100, 22050, 11025}
 	}
