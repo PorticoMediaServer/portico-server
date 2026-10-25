@@ -34,7 +34,7 @@ func seedArtworkCandidate(ctx context.Context, tx *sql.Tx, t RepairTarget, role,
 	if err != nil {
 		return err
 	}
-	occupied, err := automaticArtworkOccupied(ctx, tx, t, entity, role, subject, provider, fence, true)
+	occupied, err := automaticArtworkOccupied(ctx, tx, t, entity, role, subject, provider, id, fence, true)
 	if err != nil {
 		return err
 	}

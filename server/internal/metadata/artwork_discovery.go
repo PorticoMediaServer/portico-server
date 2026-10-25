@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	languageTag "golang.org/x/text/language"
+
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
@@ -114,11 +116,11 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 					continue
 				}
 				attribution := artworkAttribution(provider)
-				id, e := insertArtworkCandidate(ctx, tx, t, role, "", provider, publicationDigest(origin), origin, "", attribution, fence, now, 0)
+				id, e := insertArtworkCandidate(ctx, tx, t, role, "", provider, publicationDigest(origin), origin, "und", attribution, fence, now, 0)
 				if e != nil {
 					return e
 				}
-				selected, e := automaticArtworkOccupied(ctx, tx, t, entity, role, "", provider, fence, true)
+				selected, e := automaticArtworkOccupied(ctx, tx, t, entity, role, "", provider, id, fence, true)
 				if e != nil {
 					return e
 				}
@@ -161,7 +163,7 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 				if e != nil {
 					return e
 				}
-				occupied, e := automaticArtworkOccupied(ctx, tx, t, entity, "cover", "", "local", fence, true)
+				occupied, e := automaticArtworkOccupied(ctx, tx, t, entity, "cover", "", "local", id, fence, true)
 				if e != nil {
 					return e
 				}
@@ -343,7 +345,20 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	defer cancel()
 	locale := "en"
 	_ = dbwork.QueryRow(ctx, s.db, `SELECT p.language FROM screen_metadata_policies p JOIN catalog_entities e ON e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=p.library_id) WHERE e.id=?`, entity).Scan(&locale)
+	var artworkLanguage string
+	if err = dbwork.QueryRow(ctx, s.db, `SELECT artwork_language FROM metadata_runtime_settings WHERE singleton=1`).Scan(&artworkLanguage); err != nil {
+		return err
+	}
+	switch artworkLanguage {
+	case "en":
+		locale = "en"
+	case "textless":
+		locale = ""
+	}
 	images, problem := s.discoverArtworkFor(work, provider, id, t.Kind, locale)
+	sort.SliceStable(images, func(i, j int) bool {
+		return artworkLanguageRank(images[i].locale, locale) < artworkLanguageRank(images[j].locale, locale)
+	})
 	var gated3 *dbwork.Write
 	gated3, err = dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -405,7 +420,7 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 			if queued[key] {
 				continue
 			}
-			exists, e := automaticArtworkOccupied(ctx, tx, t, entity, im.role, im.subject, provider, fence, true)
+			exists, e := automaticArtworkOccupied(ctx, tx, t, entity, im.role, im.subject, provider, candidate, fence, true)
 			if e != nil {
 				return e
 			}
@@ -629,8 +644,19 @@ func (s *Service) discoverCAA(ctx context.Context, id string) ([]discoveredArtwo
 }
 
 func artworkLanguageRank(language, preferred string) int {
-	language = strings.ToLower(language)
-	preferred = strings.ToLower(strings.Split(preferred, "-")[0])
+	normalize := func(value string) string {
+		if value == "" {
+			return ""
+		}
+		tag, err := languageTag.Parse(value)
+		if err != nil {
+			return strings.ToLower(value)
+		}
+		base, _, _ := tag.Raw()
+		return base.String()
+	}
+	language = normalize(language)
+	preferred = normalize(preferred)
 	if language == preferred {
 		return 0
 	}
