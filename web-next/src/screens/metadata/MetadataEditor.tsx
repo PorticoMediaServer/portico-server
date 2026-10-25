@@ -435,8 +435,8 @@ function People({data, target, busy, onCommit, onLock}: {
       <TextField label={t('web.metadata.field.name')} value={row.label} disabled={busy || !editable(row)} maxLength={300} onChange={event => change(index, {label: event.currentTarget.value})}/>
       <TextField label={t('web.metadata.field.department')} value={row.department ?? ''} disabled={busy || !editable(row)} maxLength={200} onChange={event => change(index, {department: event.currentTarget.value})}/>
       <TextField label={t(row.department?.toLowerCase() === 'acting' ? 'web.metadata.creditCharacter' : 'web.metadata.creditRole')} value={row.role ?? ''} disabled={busy || !editable(row)} maxLength={500} onChange={event => change(index, {role: event.currentTarget.value})}/>
-      {row.sourceStatus === 'missing' || row.sourceStatus === 'replaced' ? <small>{t(row.sourceStatus === 'missing' ? 'web.metadata.creditSourceMissing' : 'web.metadata.creditSourceReplaced')}</small> : null}
       <Button size="small" disabled={busy || !editable(row)} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
+      {row.sourceStatus === 'missing' || row.sourceStatus === 'replaced' ? <small className={styles.creditStatus}>{t(row.sourceStatus === 'missing' ? 'web.metadata.creditSourceMissing' : 'web.metadata.creditSourceReplaced')}</small> : null}
     </div>)}
     <footer className={styles.editorFooter}>
       <Button size="small" disabled={busy || draft === null} onClick={() => setDraft(null)}>{t('action.discard')}</Button>
