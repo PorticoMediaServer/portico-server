@@ -14,7 +14,7 @@ const DefaultLocalArtworkLimitBytes int64 = 2 << 30
 // MetadataSettings exposes credential presence only. Submitted keys never return
 // in JSON or provider failures; blank keys restore Portico's application key.
 type MetadataSettings struct {
-	LibrariesComplete        bool                      `json:"librariesComplete"`
+	LibrariesComplete        *bool                     `json:"librariesComplete,omitempty"`
 	Libraries                []MetadataLibrarySettings `json:"libraries,omitempty"`
 	LocalArtworkUsedBytes    int64                     `json:"localArtworkUsedBytes"`
 	Revision                 int64                     `json:"revision"`
@@ -93,7 +93,9 @@ type subtitleCredentials struct{ key, username, password string }
 func readMetadataSettings(ctx context.Context, tx *sql.Tx) (MetadataSettings, string, string, error) {
 	out, tmdb, tvdb, _, err := readMetadataSettingsWithSubtitles(ctx, tx)
 	if err == nil {
-		out.Libraries, out.LibrariesComplete, err = readMetadataLibraries(ctx, tx)
+		var complete bool
+		out.Libraries, complete, err = readMetadataLibraries(ctx, tx)
+		out.LibrariesComplete = &complete
 	}
 	return out, tmdb, tvdb, err
 }
