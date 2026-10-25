@@ -26,7 +26,11 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
   }, [api]);
   // While a server is offline, Portico checks again by itself; the drawn line
   // counts the real seconds down and every row keeps its own Try again.
-  const offline = Boolean(servers?.items.some(server => server.status !== 'active'));
+  const items = servers?.items ?? [], offline = items.some(server => server.status !== 'active');
+  // Connect 28 draws its calm explanation only when the account has servers and
+  // none answers; one that is merely asleep is not an error.
+  const allOffline = items.length > 0 && items.every(server => server.status !== 'active');
+  const ownsOffline = allOffline && items.some(server => server.ownedByMe);
   useEffect(() => {
     if (!offline) { setSeconds(0); return; }
     setSeconds(30);
@@ -60,6 +64,7 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
   };
   return <>{error ? <HostedError error={error} /> : null}
     {offline && seconds > 0 ? <p className={styles.recheck}>{t('web.hostedAccount.recheckingIn', {time: seconds})}</p> : null}
+    {ownsOffline ? <p className={styles.offlineHint}>{t('web.hostedAccount.offlineOwnerHint')}</p> : null}
     {servers && <ServicesGroup>{servers.items.length ? servers.items.map(server => {
       const copy = servicesServerDirectoryCopy(server, i18n);
       return <ServicesWorkspaceRow key={server.id} icon="i-server" title={server.name}
@@ -69,6 +74,17 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
       {server.ownedByMe ? <ServicesQuiet>{t('web.hostedAccount.leaveOwner')}</ServicesQuiet> : <Button size="small" disabled={busy} onClick={() => setLeaving(server)}>{t('web.hostedAccount.leaveServer')}</Button>}
     </ServicesWorkspaceRow>;}) : <ServicesEmpty title={t('services.workspace.emptyServers')} description={t('services.workspace.emptyServersBody')}
       actions={<><Button size="small" variant="primary" onClick={() => location.assign('/#join')}>{t('services.start.join')}</Button><Button size="small" onClick={() => location.assign('/#setup')}>{t('services.start.setup')}</Button></>} />}</ServicesGroup>}
+    {allOffline ? <ServicesGroup title={t('web.hostedAccount.stillWorks')}>
+      <ServicesWorkspaceRow icon="i-person" title={t('web.hostedAccount.stillWorksAccount')} help={t('web.hostedAccount.stillWorksAccountBody')}>
+        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksAccount')} onClick={() => location.assign('/account')} />
+      </ServicesWorkspaceRow>
+      <ServicesWorkspaceRow icon="i-link" title={t('web.hostedAccount.stillWorksJoin')} help={t('web.hostedAccount.stillWorksJoinBody')}>
+        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksJoin')} onClick={() => location.assign('/#join')} />
+      </ServicesWorkspaceRow>
+      <ServicesWorkspaceRow icon="i-server" title={t('web.hostedAccount.stillWorksSetup')} help={t('web.hostedAccount.stillWorksSetupBody')}>
+        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksSetup')} onClick={() => location.assign('/#setup')} />
+      </ServicesWorkspaceRow>
+    </ServicesGroup> : null}
     <Dialog open={Boolean(leaving)} onOpenChange={open => { if (!open && !busy) setLeaving(undefined); }} title={t('web.hostedAccount.leaveTitle', {server: leaving?.name ?? ''})}
       description={t('web.hostedAccount.leaveBody', {server: leaving?.name ?? ''})} footer={<><Button size="small" disabled={busy} onClick={() => setLeaving(undefined)}>{t('action.cancel')}</Button><Button size="small" loading={busy} onClick={() => void leave()}>{t('web.hostedAccount.leaveServer')}</Button></>}><></></Dialog>
   </>;
