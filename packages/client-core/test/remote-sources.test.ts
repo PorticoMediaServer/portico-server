@@ -411,6 +411,7 @@ test('an imported source receipt must answer the exact command it was made for',
  const absent=await missing.configureRclone('rclone',rcloneInput,rcloneSource({generation:1}));
  assert.equal(absent,undefined,'a receipt the fresh list does not agree with is unconfirmed');
  assert.equal(missing.getSnapshot().errorCode,'remote_source_not_listed');
+ assert.equal(missing.getSnapshot().rclone,null,'an unconfirmed receipt is never published');
  missing.dispose();
 });
 

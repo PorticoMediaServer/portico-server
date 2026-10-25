@@ -304,12 +304,13 @@ export class RemoteSourceService{
    if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;
    const receipt=intent.kind==='rclone'?this.parseRcloneReceipt(raw,bound):this.parseReceipt(raw,op);
    if(guard&&!guard())return;
-   this.publish(intent.kind==='rclone'?{rclone:receipt as RcloneReceipt,receipt:null,ambiguous:false}:{receipt:receipt as RemoteReceipt,rclone:null,ambiguous:false});
+   if(intent.kind==='source')this.publish({receipt:receipt as RemoteReceipt,rclone:null,ambiguous:false});
    await this.load();
    if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;
-   if(intent.kind==='rclone'&&!this.rcloneListed(bound,receipt as RcloneReceipt)){
-    this.publish({error:safeError({code:'remote_source_not_listed'}),errorCode:'remote_source_not_listed'});
-    return;
+   if(intent.kind==='rclone'){
+    // The fresh list is read first: a receipt the list cannot account for is not published.
+    if(!this.rcloneListed(bound,receipt as RcloneReceipt)){this.publish({error:safeError({code:'remote_source_not_listed'}),errorCode:'remote_source_not_listed',ambiguous:false,rclone:null});return;}
+    this.publish({rclone:receipt as RcloneReceipt,receipt:null,ambiguous:false});
    }
    return receipt;
   }catch(e){
@@ -330,10 +331,13 @@ export class RemoteSourceService{
    const raw=await this.request(path);
    if(!this.live()||epoch!==this.epoch)return;
    const receipt=intent.kind==='rclone'?this.parseRcloneReceipt(raw,intent):this.parseReceipt(raw,op);
-   this.publish(intent.kind==='rclone'?{rclone:receipt as RcloneReceipt,receipt:null,ambiguous:false}:{receipt:receipt as RemoteReceipt,rclone:null,ambiguous:false});
+   if(intent.kind==='source')this.publish({receipt:receipt as RemoteReceipt,rclone:null,ambiguous:false});
    await this.load();
    if(!this.live()||epoch!==this.epoch)return;
-   if(intent.kind==='rclone'&&!this.rcloneListed(intent,receipt as RcloneReceipt))this.publish({error:safeError({code:'remote_source_not_listed'}),errorCode:'remote_source_not_listed'});
+   if(intent.kind==='rclone'){
+    if(!this.rcloneListed(intent,receipt as RcloneReceipt)){this.publish({error:safeError({code:'remote_source_not_listed'}),errorCode:'remote_source_not_listed',ambiguous:false,rclone:null});return;}
+    this.publish({rclone:receipt as RcloneReceipt,receipt:null,ambiguous:false});
+   }
   }catch(e){if(epoch===this.epoch)this.publish({ambiguous:true,error:safeError(e)});}
   finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
  }
