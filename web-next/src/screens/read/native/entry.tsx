@@ -1,6 +1,6 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {connectReadingHost, type ReadingGuest} from '@portico/client-core';
+import {connectReadingHost, ReadingError, validReadingIndexedSearchQuery, type ReadingGuest} from '@portico/client-core';
 import {createReadingPublication, createEpubAdapter, createPdfAdapter, createComicAdapter} from '@portico/reader-core';
 import {defaultI18n} from '@i18n';
 import '../../../kit/tokens.css';
@@ -26,10 +26,39 @@ const connection = connectReadingHost({
   subscribe(listener) {messages.add(listener); return () => {messages.delete(listener);};},
 });
 
+type SearchAllAdmission = {guest: ReadingGuest; book: ReaderBookState; live: boolean;
+  search: NonNullable<ReadingGuest['searchAll']>; pending?: AbortController};
+
+/** Optional trusted-host action, owned by this exact visible reader. Hiding or
+ * replaying the view retires its command without failing the retained book. */
+function useNativeSearchAll(guest: ReadingGuest, book: ReaderBookState | undefined, active: boolean, reportError: () => void) {
+  const [published, publish] = useState<SearchAllAdmission>();
+  useLayoutEffect(() => {
+    if (!book || !active || !guest.searchAll) return;
+    const own: SearchAllAdmission = {guest, book, search: guest.searchAll, live: true};
+    publish(own);
+    return () => {own.live = false;own.pending?.abort();publish(current => current === own ? undefined : current);};
+  }, [guest, book, active]);
+  const own = published?.live && published.guest === guest && published.book === book && active ? published : undefined;
+  if (!own) return undefined;
+  const current = () => own.live && own.book.authority.isCurrent() && !own.book.publication.signal.aborted && !own.guest.session.signal.aborted;
+  return (query: string) => {
+    if (!current() || own.pending || !validReadingIndexedSearchQuery(query)) return;
+    const operation = new AbortController();own.pending = operation;
+    const signal = AbortSignal.any([operation.signal, own.book.publication.signal, own.guest.session.signal]);
+    void own.search(query, signal).catch(error => {
+      if (own.pending !== operation || !current() || signal.aborted) return;
+      if ((error instanceof ReadingError && error.code === 'cancelled') || (error instanceof DOMException && error.name === 'AbortError')) return;
+      reportError();
+    }).finally(() => {if (own.pending === operation) own.pending = undefined;});
+  };
+}
+
 function NativeReading({guest}: {guest: ReadingGuest}) {
   const [book, setBook] = useState<ReaderBookState>(), [failed, setFailed] = useState(false), [active, setActive] = useState(true), [crease, setCrease] = useState(guest.crease);
   const reportError = useCallback(() => setFailed(true), []);
   const progressRef = useRef<ReturnType<typeof bindReadingProgress>>(undefined);
+  const onSearchAll = useNativeSearchAll(guest, book, active && !failed, reportError);
   useEffect(() => {
     let alive = true, fonts: ReadFonts | undefined;
     let publication: Awaited<ReturnType<typeof createReadingPublication>> | undefined;
@@ -55,7 +84,7 @@ function NativeReading({guest}: {guest: ReadingGuest}) {
   }, [guest]);
   if (failed) return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
   return <div className={styles.host} hidden={!active} aria-hidden={!active} inert={!active}>{book
-    ? <ReaderBook environment="native" saveHighlights={guest.saveHighlights} book={book} active={active} crease={crease} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
+    ? <ReaderBook environment="native" onSearchAll={onSearchAll} saveHighlights={guest.saveHighlights} book={book} active={active} crease={crease} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
     : <Skeleton height="100dvh"/>}</div>;
 }
 function NativeReaderEntry() {
