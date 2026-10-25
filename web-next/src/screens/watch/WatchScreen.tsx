@@ -14,6 +14,7 @@ import {ScrubPreview} from './ScrubPreview';
 import {watchPreviewFrame} from './preview';
 import {useCoarsePointer} from '../../kit/theme';
 import {WatchPictureInput} from './picture';
+import {watchQueueNeighbours} from './queue-neighbours';
 import {LiveChrome} from '../live/LiveChrome';
 import type {LiveChromePort} from '../live/live-chrome-types';
 
@@ -207,14 +208,22 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     ? new Intl.DateTimeFormat(binding.environment.locale ?? 'en-US', {hour: 'numeric', minute: '2-digit'}).format(new Date(Date.now() + (duration - position) / presentation.rate * 1000)) : undefined;
   const mainKind = presentation?.finished ? 'replay' : presentation?.playing ? 'pause' : 'play';
   const episode = identity?.subtitle.some(part => part.id === 'episode-label');
+  // desktop-player f1: Previous and Next follow the queue and name the title they would play.
+  const neighbours = watchQueueNeighbours(snapshot);
+  const neighbourLabel = (kind: 'previous' | 'next') => {
+    if (episode) return t(kind === 'previous' ? 'next.dock.previousEpisode' : 'next.dock.nextEpisode');
+    const named = neighbours[kind];
+    return named ? t(kind === 'previous' ? 'next.dock.previousNamed' : 'next.dock.nextNamed', {title: named})
+      : t(kind === 'previous' ? 'next.dock.previous' : 'next.dock.next');
+  };
   const skip = (delta: number) => { const seconds = watchSeek(snapshot, position + delta); if (seconds !== null) send({kind: 'seek', seconds}); };
   const panelButton = (name: WatchPanel, icon: IconName, label: string, large = false) => surfaces?.available.includes(name) ? <Control icon={icon} label={label} large={large} active={panel === name} action={button => showPanel(name, button)} /> : null;
   const transport = <div className={styles.transport}>
-    <Control icon="i-prev" label={t(episode ? 'next.dock.previousEpisode' : 'next.dock.previous')} disabled={!can('previous')} action={() => send({kind: 'previous'})} />
+    <Control icon="i-prev" label={neighbourLabel('previous')} disabled={!can('previous')} action={() => send({kind: 'previous'})} />
     <Control icon={portrait ? 'i-rew' : 'i-back'} label={t('next.dock.back', {seconds: binding.skips.back})} skip={binding.skips.back} disabled={!can('seek')} action={() => skip(-binding.skips.back)} />
     <Control main icon={mainKind === 'replay' ? 'i-back' : mainKind === 'pause' ? 'i-pause' : 'i-play'} label={t(mainKind === 'replay' ? 'next.dock.replay' : mainKind === 'pause' ? 'next.dock.pause' : 'next.dock.play')} disabled={!can(mainKind)} action={() => send({kind: mainKind})} />
     <Control icon={portrait ? 'i-ffw' : 'i-fwd'} label={t('next.dock.forward', {seconds: binding.skips.forward})} skip={binding.skips.forward} disabled={!can('seek') || presentation?.finished} action={() => skip(binding.skips.forward)} />
-    <Control icon="i-next" label={t(episode ? 'next.dock.nextEpisode' : 'next.dock.next')} disabled={!can('next')} action={() => send({kind: 'next'})} />
+    <Control icon="i-next" label={neighbourLabel('next')} disabled={!can('next')} action={() => send({kind: 'next'})} />
   </div>;
   const quality = surfaces?.quality && fence && sameFence(surfaces.quality.fence, fence) ? surfaces.quality : undefined;
   const tracks = surfaces?.tracks && fence && sameFence(surfaces.tracks.fence, fence) ? surfaces.tracks : undefined;
