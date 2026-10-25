@@ -101,7 +101,13 @@ export function createReadingHost({session, channel, preferences, initialProgres
   };
   const receive = (message: string) => {
     let data: RecordValue;
-    try {data = packet(message, 16384);} catch {return;}
+    try {
+      data = packet(message, 65536);
+      if (data.kind === 'request' && data.method === 'annotation-save') {
+        if (Object.keys(data).some(key => !['v','kind','channel','id','method','args'].includes(key)) || !record(data.args)
+          || new TextEncoder().encode(JSON.stringify(data.args)).byteLength > 32768) fail();
+      } else if (message.length > 16384) fail();
+    } catch {return;}
     if (data.kind === 'ready') {
       if (started || !valid()) return;
       if (capturedContentsTarget && data.contentsTarget !== true) {dispose(); onUnavailable?.(); return;}
@@ -319,6 +325,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
             annotations: async (cursor = '', revision?: number, signal?: AbortSignal) => parseReadingAnnotations(await call('annotations',{cursor,...revision === undefined ? {} : {revision}},signal),manifest,location=>validateReadingLocation(location,manifest),cursor),
             mutateAnnotation: async (input: Parameters<ReadingSession['mutateAnnotation']>[0], signal?: AbortSignal) => {
               const captured=captureReadingAnnotationMutation(input,location=>validateReadingLocation(location,manifest));
+              if (new TextEncoder().encode(JSON.stringify(captured)).byteLength > 32768) fail('annotation_limit');
               return parseReadingAnnotationSaved(await call('annotation-save',captured,signal),captured.expectedRevision);
             },
           } : {}),
