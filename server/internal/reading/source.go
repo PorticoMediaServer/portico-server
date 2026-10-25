@@ -100,7 +100,7 @@ func (s *Service) selectionValid(v Selection) error {
 	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
 		return ErrInvalid
 	}
-	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" {
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "cbr" && v.Format != "cb7" {
 		return ErrInvalid
 	}
 	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {

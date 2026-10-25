@@ -27,7 +27,10 @@ type Page struct {
 	Image Image
 }
 type Comic struct {
-	archive  *archive
+	archive *archive
+	// members is the classic-archive reader (CBR/CB7); exactly one of archive
+	// and members is set, so ZIP behaviour remains the existing path.
+	members  memberArchive
 	Names    []string
 	Metadata Metadata
 }
@@ -102,6 +105,31 @@ func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
 	return c, nil
 }
 
+// readMember serves one page through whichever bounded archive backs this comic.
+func (c *Comic) readMember(ctx context.Context, name string, limit int64) ([]byte, error) {
+	if c.archive != nil {
+		return c.archive.read(ctx, name, limit)
+	}
+	if c.members == nil {
+		return nil, ErrInvalid
+	}
+	for _, member := range c.members.Members() {
+		if member.Name != name {
+			continue
+		}
+		var expanded int64
+		out, err := boundedMemberRead(ctx, member, &expanded)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(out)) > limit {
+			return nil, ErrLimit
+		}
+		return out, nil
+	}
+	return nil, ErrInvalid
+}
+
 func inspectImage(b []byte) (Image, error) {
 	c, kind, err := image.DecodeConfig(bytes.NewReader(b))
 	if err != nil {
@@ -125,7 +153,7 @@ func (c *Comic) Page(ctx context.Context, index, width int) (Page, error) {
 		return Page{}, ErrInvalid
 	}
 	name := c.Names[index]
-	b, err := c.archive.read(ctx, name, MaxMember)
+	b, err := c.readMember(ctx, name, MaxMember)
 	if err != nil {
 		return Page{}, err
 	}
