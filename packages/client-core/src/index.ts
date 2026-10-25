@@ -1507,6 +1507,8 @@ export class PlaybackService {
     const s=this.snapshot;
     return this.failedRecovery?.positionSeconds??s.pendingSeek?.positionSeconds??s.failedSeek?.positionSeconds??(this.hasObserved?s.positionSeconds:s.session?.resumeSeconds);
   }
+  /** The intent before the current failure paused its error surface. */
+  recoveryIntent(): "playing" | "paused" { return this.failedRecovery?.intent ?? this.snapshot.intent; }
   /** Error retry preserves the requested target and intent; ordinary Play starts playing. */
   retry(): Promise<void> {
     if(this.snapshot.channel){
