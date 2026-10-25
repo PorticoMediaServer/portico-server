@@ -148253,6 +148253,89 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetStorageSourceFoldersRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceFoldersResponse": {
+    "properties": {
+      "folders": {
+        "properties": {
+          "entries": {
+            "items": {
+              "properties": {
+                "hidden": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "relative": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "path",
+                "relative",
+                "hidden"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "relative": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation",
+          "path",
+          "relative",
+          "entries",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "folders"
+    ],
+    "type": "object"
+  },
   "GetStorageSourceOperationsIdRequest": {
     "properties": {},
     "required": [],

@@ -8104,6 +8104,37 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_storage_source_folders",
+    "method": "GET",
+    "path": "/v1/storage/sources/{id}/folders",
+    "summary": "List one folder inside a saved remote source, folders only",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "path",
+      "cursor",
+      "limit",
+      "showHidden"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "request_in_progress",
+      "source_credentials_required",
+      "source_unavailable",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_storage_source_operations_id",
     "method": "GET",
     "path": "/v1/storage/source-operations/{id}",
@@ -18856,6 +18887,7 @@ export const routePaths = {
   "get_storage_mounts": "/v1/storage/mounts",
   "get_storage_operations_id": "/v1/storage/operations/{id}",
   "get_storage_rclone_bundled": "/v1/storage/rclone/bundled",
+  "get_storage_source_folders": "/v1/storage/sources/{id}/folders",
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
   "get_storage_source_rclone_operation": "/v1/storage/sources/rclone/operations/{id}",
   "get_storage_source_rclone_providers": "/v1/storage/sources/rclone/providers",

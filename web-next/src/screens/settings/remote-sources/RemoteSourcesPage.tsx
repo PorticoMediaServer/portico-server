@@ -2,16 +2,19 @@ import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react'
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, sourceReadPreset, sourceReadPresetName,
-  type DAVConnectionResult, type RemoteSource, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  type DAVConnectionResult, type RemoteFolder, type RemoteSource, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
+import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
+import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
 import {davConfiguration, stableStorageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {Button, RichSelect, Switch, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {SettingsGroup, SettingNumber} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
-import {Icon} from '../../../kit/Icon';
+import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
+import {RemoteFolderPicker} from './RemoteFolderPicker';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
@@ -84,6 +87,15 @@ function authFailure(error: unknown): boolean {
 function refreshFailure(error: unknown): boolean {
   return !!error && typeof error === 'object' && (error as {code?: string}).code === 'refresh_failed';
 }
+/** A folder attachment failure names the one thing the owner can act on: the
+ * folders are saved on the source either way, so this never reads as data loss. */
+function attachFailure(error: unknown): string {
+  const code = error && typeof error === 'object' && typeof (error as {code?: unknown}).code === 'string' ? (error as {code: string}).code : '';
+  if (code === 'source_already_configured') return t('next.remoteSources.folderAlreadyAdded');
+  if (code === 'library_configuration_conflict' || code === 'revision_mismatch') return t('next.remoteSources.error.changed');
+  if (code === 'unauthorized' || code === 'forbidden' || code === 'not_permitted') return t('next.remoteSources.error.forbidden');
+  return t('next.remoteSources.attachFailed');
+}
 
 export type RemoteSourcesPageProps = Readonly<{
   api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean; reportError: (error: unknown) => void;
@@ -116,18 +128,34 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
         help={<>{t(source.kind === 'rclone' ? 'web.storage.rcloneRemote' : 'next.remoteSources.kindWebdav')}{source.origin ? ` · ${source.origin}` : ''}{problemId(source) ? ` · ${t(problemId(source)!)}` : ''}</>}>
         <span className={styles.rowActions}><SourceStatus source={source}/>{source.kind === 'webdav' && <Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button>}</span>
       </SettingsRow>)}
-      {!snapshot.loading && <p className={styles.note}>{t('next.remoteSources.foldersBlocked')}</p>}
     </SettingsGroup>
-    <AddSourceDialog service={service} open={adding} isCurrent={isCurrent} reportError={reportError} onClose={() => setAdding(false)} onCreated={source => {setAdding(false);setManaging(source);}}/>
+    <AddSourceDialog service={service} api={api} serverId={serverId} viewerId={viewerId} open={adding} isCurrent={isCurrent} reportError={reportError} onClose={() => setAdding(false)} onCreated={source => {setAdding(false);setManaging(source);}}/>
     {managing && <ManageSourceDialog key={managing.id} service={service} source={managing} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>}
     {snapshot.loading && sources.length > 0 && <Button size="xs" variant="text" onClick={refresh}>{t('next.remoteSources.refresh')}</Button>}
   </div>;
 }
 
-export function AddSourceDialog({service, open, isCurrent, reportError, onClose, onCreated}: Readonly<{
-  service: RemoteSourceService; open: boolean; isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onCreated: (source: RemoteSource) => void;
+type WizardStep = 'connection' | 'reading' | 'folders' | 'done';
+type AttachMode = 'new' | 'existing';
+type LibraryKind = ManagedLibrary['kind'];
+
+/** The seven drawn kinds, named and hinted from the catalogue (owner-libraries.html#8). */
+const libraryKinds: readonly {id: LibraryKind; icon: IconName; label: MessageId; hint: MessageId}[] = [
+  {id: 'movie', icon: 'i-film', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.0.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.0.hint'},
+  {id: 'tv', icon: 'i-tvlib', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.1.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.1.hint'},
+  {id: 'anime', icon: 'i-tvlib', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.2.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.2.hint'},
+  {id: 'music', icon: 'i-music', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.3.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.3.hint'},
+  {id: 'audiobook', icon: 'i-headph', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.4.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.4.hint'},
+  {id: 'book', icon: 'i-sbook', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.5.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.5.hint'},
+  {id: 'comic', icon: 'i-page', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.6.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.6.hint'},
+];
+const SIX_HOURS = 21_600;
+
+export function AddSourceDialog({service, api, serverId, viewerId, open, isCurrent, reportError, onClose, onCreated}: Readonly<{
+  service: RemoteSourceService; api: LibraryContentApi; serverId: string; viewerId: string; open: boolean;
+  isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onCreated: (source: RemoteSource) => void;
 }>) {
-  const [step, setStep] = useState<'connection'|'reading'>('connection');
+  const [step, setStep] = useState<WizardStep>('connection');
   const [draft, setDraft] = useState<WebDavDraft>(emptyDraft);
   const [result, setResult] = useState<DAVConnectionResult>();
   const [error, setError] = useState('');
@@ -137,11 +165,30 @@ export function AddSourceDialog({service, open, isCurrent, reportError, onClose,
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('once'));
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  // The folders step: chosen folders, the library they join, and what the done step reports.
+  const libraries = useMemo(() => new LibraryManagementService({api, scope: {serverId, viewerId}}), [api, serverId, viewerId]);
+  useEffect(() => () => libraries.dispose(), [libraries]);
+  const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
+  const [chosen, setChosen] = useState<readonly RemoteFolder[]>([]);
+  const [picking, setPicking] = useState(false);
+  const [attachMode, setAttachMode] = useState<AttachMode>('new');
+  const [libraryName, setLibraryName] = useState('');
+  const [kind, setKind] = useState<LibraryKind>('movie');
+  const [existingId, setExistingId] = useState('');
+  const [finishBusy, setFinishBusy] = useState(false);
+  const [finishError, setFinishError] = useState('');
+  const [summary, setSummary] = useState<Readonly<{library?: string; folders: number}>>({folders: 0});
   const testAttempt = useRef(0), active = useRef(false), pending = useRef(false), lifetime = useRef(0);
   const [formToken, setFormToken] = useState(0);
   // A saved handler belongs to its rendered form, even if invoked after reopen.
   const attemptGuard = () => () => active.current && lifetime.current === formToken && isCurrent();
-  const reset = () => {setStep('connection');setDraft(emptyDraft);setResult(undefined);setError('');setCreated(undefined);setProfile(undefined);setValues(sourceReadPreset('once'));setBusy(false);setLoadingProfile(false);testAttempt.current++;lifetime.current++;setFormToken(lifetime.current);pending.current=false;};
+  const reset = () => {
+    setStep('connection'); setDraft(emptyDraft); setResult(undefined); setError(''); setCreated(undefined);
+    setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
+    setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
+    setFinishBusy(false); setFinishError(''); setSummary({folders: 0});
+    testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
+  };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {active.current=open;if(open)reset();else{lifetime.current++;pending.current=false;setDraft(emptyDraft);setResult(undefined);setError('');}}, [open]);
   useEffect(() => () => {active.current=false;lifetime.current++;}, []);
@@ -182,24 +229,70 @@ export function AddSourceDialog({service, open, isCurrent, reportError, onClose,
       if (!guard()) return;
       if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
       setProfile(next);
-      const saved = created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId);
-      active.current=false;
-      if (saved) onCreated(saved); else onClose();
+      setStep('folders');
+      setLibraryName(current => current || (created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId))?.name || '');
+      void libraries.loadLibraries();
     } catch (value) {
       if (!guard()) return;
       const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
       if (authFailure(value)) { active.current=false; reportError(value); return; }
-      if (refreshFailure(value) && saved) {active.current=false;onCreated(saved);} else setError(remoteErrorText(value));
+      if (refreshFailure(value) && saved) {active.current=false;setCreated(saved);setStep('folders');void libraries.loadLibraries();} else setError(remoteErrorText(value));
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
-  const close = () => {if (busy || pending.current) return;active.current=false;pending.current=false;lifetime.current++;setDraft(emptyDraft);setResult(undefined);setError('');onClose();};
+  /** Attaches the chosen folders to a new or existing library; the source is
+   * already saved, so a failure here leaves the source in place. */
+  const finish = async () => {
+    if (finishBusy || pending.current) return;
+    setFinishBusy(true);setFinishError('');
+    try {
+      if (!chosen.length) {setSummary({folders: 0});setStep('done');return;}
+      if (attachMode === 'new') {
+        const name = libraryName.trim() || created?.name || '';
+        if (!name) {setFinishError(t('next.remoteSources.attachFailed'));return;}
+        await libraries.createLibrary({name, kind, folders: chosen.map(folder => folder.path)});
+        if (libraries.getSnapshot().mutation.phase !== 'complete') {setFinishError(t('next.remoteSources.attachFailed'));return;}
+        setSummary({library: name, folders: chosen.length});
+      } else {
+        const target = librarySnapshot.directory.data?.items.find(library => library.id === existingId);
+        if (!target) {setFinishError(t('next.remoteSources.existingLibraryMissing'));return;}
+        for (const folder of chosen) {
+          const config = await readLibraryInventoryConfig(api, {serverId, viewerId}, target.id);
+          await saveLibraryFolder(api, target.id, undefined, {name: folder.name, path: folder.path, classification: 'local', followSymlinks: false, intervalSeconds: SIX_HOURS, expectedRevision: config.revision, acceptReplacement: false});
+        }
+        setSummary({library: target.name, folders: chosen.length});
+      }
+      setStep('done');
+    } catch (value) {
+      if (isCurrent()) setFinishError(attachFailure(value));
+    } finally {if (isCurrent()) setFinishBusy(false);}
+  };
+  const close = () => {
+    if (busy || pending.current || finishBusy) return;
+    active.current=false;pending.current=false;lifetime.current++;setDraft(emptyDraft);setResult(undefined);setError('');setChosen([]);onClose();
+  };
+  useEffect(() => {if (attachMode === 'existing' && !existingId && librarySnapshot.directory.data?.items.length) setExistingId(librarySnapshot.directory.data.items[0].id);}, [attachMode, existingId, librarySnapshot.directory.data]);
+  const sourceNow = created ?? (step === 'folders' || step === 'done' ? service.getSnapshot().sources.find(source => source.id === nextSourceId.current) : undefined);
+  const presetName = sourceReadPresetName(values);
+  const stepLabel = step === 'done' ? undefined : t('next.remoteSources.stepOf', {step: step === 'connection' ? 1 : step === 'reading' ? 2 : 3});
+  const foldersFooter = <>
+    <Button size="compact" variant="glass" disabled={finishBusy} onClick={() => {setFinishError('');setStep('reading');}}>{t('next.remoteSources.back')}</Button>
+    <Button size="compact" variant="primary" loading={finishBusy} disabled={finishBusy || (!!chosen.length && attachMode === 'new' && !libraryName.trim())} onClick={() => void finish()}>{t('next.remoteSources.finish')}</Button>
+  </>;
+  const doneFooter = <>
+    <Button size="compact" variant="glass" onClick={close}>{t('next.remoteSources.done')}</Button>
+    <Button size="compact" variant="glass" onClick={reset}>{t('next.remoteSources.addAnother')}</Button>
+    {sourceNow && <Button size="compact" variant="primary" onClick={() => {active.current=false;onCreated(sourceNow);}}>{t('next.remoteSources.openSource', {name: sourceNow.name})}</Button>}
+  </>;
   const footer = step === 'connection'
     ? <><Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !result} onClick={create}>{t('next.remoteSources.saveAndContinue')}</Button></>
-    : <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>;
-  return <Dialog open={open} onOpenChange={value => {if (!value) close();}} title={t('next.settingsSpec.server.remote-sources.panels.newSource.newTitle')} width={720}
-    description={step === 'connection' ? t('next.remoteSources.step', {step: 1}) : t('next.remoteSources.step', {step: 2})} footer={footer}>
+    : step === 'reading'
+      ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
+      : step === 'folders' ? foldersFooter : doneFooter;
+  return <Dialog open={open} onOpenChange={value => {if (!value) close();}} title={t('next.settingsSpec.server.remote-sources.panels.newSource.newTitle')} width={760}
+    description={stepLabel} footer={footer}>
     {error && <p className={styles.error} role="alert">{error}</p>}
-    {step === 'connection' ? <>
+    {finishError && <p className={styles.error} role="alert">{finishError}</p>}
+    {step === 'connection' && <>
       <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
       <p className={styles.note}>{t('next.remoteSources.kindsBlocked')}</p>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
@@ -211,7 +304,8 @@ export function AddSourceDialog({service, open, isCurrent, reportError, onClose,
       <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.name.trim() || !draft.root.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
         {result && <span className={styles.testCard} data-tone={result.rangeSupport === 'unsupported' ? 'warning' : 'good'}><Icon name="i-check" size={18}/>{t(result.rangeSupport === 'unsupported' ? 'next.remoteSources.testedLimited' : 'next.remoteSources.tested', {origin: result.origin})}</span>}
       </div>
-    </> : <>
+    </>}
+    {step === 'reading' && <>
       <p className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.label')}</p>
       <RichSelect aria-label={t('next.remoteSources.readingMode')} value={sourceReadPresetName(values) ?? 'custom'} options={[...presetOptions, ...(sourceReadPresetName(values) ? [] : [{value: 'custom', label: t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label'), disabled: true}])]}
         onValueChange={value => {if (value !== 'custom') setValues(sourceReadPreset(value as SourceReadPreset));}}/>
@@ -221,10 +315,61 @@ export function AddSourceDialog({service, open, isCurrent, reportError, onClose,
         <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
       </div>
       <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
-      <p className={styles.note}>{t('next.remoteSources.foldersBlocked')}</p>
     </>}
+    {step === 'folders' && <>
+      <p className={styles.note}>{t('next.remoteSources.foldersOnlyHint')}</p>
+      <div className={styles.lab2}>{t('next.remoteSources.foldersHeader', {name: sourceNow?.name ?? ''})}</div>
+      <ul className={styles.pickedList}>
+        {chosen.map(folder => <li key={folder.relative} className={styles.pickedRow}>
+          <Icon name="i-folder" size={20}/><span className={styles.pickedPath}>{folder.relative ? `/${folder.relative}` : '/'}<small>{t('next.remoteSources.checksEverySixHours')}</small></span>
+          <Button size="xs" variant="text" onClick={() => setChosen(chosen.filter(value => value.relative !== folder.relative))} aria-label={t('next.remoteSources.removeFolder', {name: folder.name})}><Icon name="i-x" size={16}/></Button>
+        </li>)}
+        <li className={styles.pickedRow} data-empty={!chosen.length || undefined}>
+          {!chosen.length && <span className={styles.pickedPath}>{t('next.remoteSources.noFoldersChosen')}</span>}
+          <Button size="small" variant="glass" icon="i-folder" onClick={() => setPicking(true)}>{t('next.remoteSources.chooseFolders')}</Button>
+        </li>
+      </ul>
+      <div className={styles.lab2}>{t('next.remoteSources.addThemTo')}</div>
+      <div className={styles.segment} role="group">
+        <Button size="small" variant={attachMode === 'new' ? 'primary' : 'glass'} aria-pressed={attachMode === 'new'} onClick={() => setAttachMode('new')}>{t('next.remoteSources.newLibrary')}</Button>
+        <Button size="small" variant={attachMode === 'existing' ? 'primary' : 'glass'} aria-pressed={attachMode === 'existing'} onClick={() => setAttachMode('existing')}>{t('next.remoteSources.existingLibrary')}</Button>
+      </div>
+      {attachMode === 'new' ? <>
+        <TextField label={t('next.remoteSources.libraryName')} value={libraryName} maxLength={100} disabled={finishBusy} onChange={event => setLibraryName(event.currentTarget.value)}/>
+        <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.libraryKind')}>
+          {libraryKinds.map(value => <button key={value.id} type="button" role="radio" aria-checked={kind === value.id} className={styles.kindTile}
+            data-picked={kind === value.id || undefined} onClick={() => setKind(value.id)}><Icon name={value.icon} size={22}/>{t(value.label)}</button>)}
+        </div>
+        <p className={styles.note}>{t(libraryKinds.find(value => value.id === kind)!.hint)}</p>
+      </> : (librarySnapshot.directory.data?.items.length
+        ? <RichSelect aria-label={t('next.remoteSources.existingLibrary')} value={existingId} disabled={finishBusy}
+          options={librarySnapshot.directory.data.items.map(library => ({value: library.id, label: library.name, description: t(libraryKinds.find(value => value.id === library.kind)?.label ?? libraryKinds[0].label)}))}
+          onValueChange={setExistingId}/>
+        : <p className={styles.note} role="status">{librarySnapshot.directory.phase === 'loading' ? t('next.remoteSources.loading') : t('next.remoteSources.existingLibraryMissing')}</p>)}
+      <div className={styles.switchRow}><span>{t('next.remoteSources.scanWhenFinished')}<small className={styles.note}>{t('next.remoteSources.scanWhenFinishedHelp')}</small></span>
+        <span className={styles.staticValue}>{t('next.remoteSources.on')}</span></div>
+    </>}
+    {step === 'done' && <div className={styles.doneList}>
+      <div className={styles.doneHead}><Icon name="i-okc" size={34}/><h3>{t('next.remoteSources.doneTitle', {name: sourceNow?.name ?? ''})}</h3></div>
+      <p className={styles.note}>{summary.library ? t('next.remoteSources.doneLede', {name: summary.library}) : t('next.remoteSources.summaryNoLibraryHelp')}</p>
+      <ul className={styles.doneRows}>
+        <li><b>{t('next.remoteSources.summaryConnected')}</b><small>{t('next.remoteSources.summaryConnectedHelp')}</small></li>
+        <li><b>{t('next.remoteSources.summaryLimits', {connections: values.connections, requests: values.requestsPerSecond})}</b>
+          <small>{values.bytesPerSecond ? t('next.remoteSources.downloadSpeed') + ': ' + (values.bytesPerSecond / 1_000_000) + ' ' + t('next.remoteSources.megabytesPerSecond') + '. ' : t('next.remoteSources.noLimit') + '. '}{t('next.remoteSources.summaryLimitsHelp', {name: sourceNow?.name ?? ''})}</small></li>
+        <li><b>{t('next.remoteSources.summaryTreatment', {preset: presetName ? t(presetLabel(presetName)) : t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label')})}</b>
+          <small>{t('next.remoteSources.summaryTreatmentHelp', {name: sourceNow?.name ?? ''})}</small></li>
+        {summary.library
+          ? <li><b>{t('next.remoteSources.summaryLibrary', {library: summary.library})}</b>
+            <small>{t(summary.folders === 1 ? 'next.remoteSources.summaryLibraryOne' : 'next.remoteSources.summaryLibraryMany', {count: summary.folders, source: sourceNow?.name ?? ''})}</small></li>
+          : <li><b>{t('next.remoteSources.summaryNoLibrary')}</b><small>{t('next.remoteSources.summaryNoLibraryHelp')}</small></li>}
+        {summary.library && <li><b>{t('next.remoteSources.summaryScan')}</b><small>{t('next.remoteSources.summaryScanHelp')}</small></li>}
+      </ul>
+    </div>}
+    {picking && sourceNow && <RemoteFolderPicker service={service} sourceId={sourceNow.id} sourceName={sourceNow.name} open={picking}
+      onOpenChange={setPicking} onChoose={folders => setChosen(current => [...current, ...folders.filter(folder => !current.some(value => value.relative === folder.relative))])}/>}
   </Dialog>;
 }
+
 
 function ManageSourceDialog({service, source, isCurrent, reportError, onClose, onRemoved}: Readonly<{
   service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onRemoved: () => void;

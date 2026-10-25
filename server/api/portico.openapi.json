@@ -153135,6 +153135,89 @@
         ],
         "type": "object"
       },
+      "GetStorageSourceFoldersRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetStorageSourceFoldersResponse": {
+        "properties": {
+          "folders": {
+            "properties": {
+              "entries": {
+                "items": {
+                  "properties": {
+                    "hidden": {
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "relative": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "path",
+                    "relative",
+                    "hidden"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "nextCursor": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "relative": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "path",
+              "relative",
+              "entries",
+              "nextCursor"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "folders"
+        ],
+        "type": "object"
+      },
       "GetStorageSourceOperationsIdRequest": {
         "properties": {},
         "required": [],
@@ -499370,6 +499453,188 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/{id}/folders": {
+      "get": {
+        "operationId": "get_storage_source_folders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "showHidden",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "folders": {
+                      "properties": {
+                        "entries": {
+                          "items": {
+                            "properties": {
+                              "hidden": {
+                                "type": "boolean"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "relative": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "path",
+                              "relative",
+                              "hidden"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "generation": {
+                          "type": "string"
+                        },
+                        "nextCursor": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "relative": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "generation",
+                        "path",
+                        "relative",
+                        "entries",
+                        "nextCursor"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "folders"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "List one folder inside a saved remote source, folders only",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "revision_mismatch",
+          "request_in_progress",
+          "source_credentials_required",
+          "source_unavailable",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
         "x-scope": "admin"
       }
     },

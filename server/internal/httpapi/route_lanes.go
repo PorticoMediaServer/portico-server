@@ -384,6 +384,7 @@ var routeLanes = map[string]string{
 	"GET /v1/storage/sources":                                                    "default",
 	"GET /v1/storage/sources/rclone/operations/{id}":                             "browsing",
 	"GET /v1/storage/sources/rclone/providers":                                   "browsing",
+	"GET /v1/storage/sources/{id}/folders":                                       "admin",
 	"GET /v1/storage/sources/{id}/settings/read-profile":                         "admin",
 	"GET /v1/subtitle-fonts/cjk":                                                 "media-body",
 	"GET /v1/suggestions":                                                        "expensive",

@@ -17,6 +17,10 @@ export type AnalysisPolicy=Readonly<{libraryId:string;enabled:boolean;revision:n
 export type SourceReadValues=Readonly<{scanDepth:'file_list_only'|'basic'|'complete';wholeFileReads:boolean;connections:number;requestsPerSecond:number;bytesPerSecond:number}>;
 export type SourceReadSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;values:SourceReadValues}>;
 export type SourceReadPreset='list'|'once'|'everything'|'ask';
+/** One folder inside a saved source during browsing: its display name, the
+ * absolute path the catalog uses for it, and the path inside the source. */
+export type RemoteFolder=Readonly<{name:string;path:string;relative:string;hidden:boolean}>;
+export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:string;relative:string;entries:readonly RemoteFolder[];nextCursor:string}>;
 const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
  list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
  once:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0},
@@ -40,6 +44,14 @@ function sourceReadValues(raw:unknown):SourceReadValues{
 function sourceReadSettings(raw:unknown):SourceReadSettings{
  if(!record(raw)||!text(raw.sourceId,256)||!raw.sourceId||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean')invalid();
  return Object.freeze({sourceId:raw.sourceId,generation:raw.generation,revision:raw.revision,saved:raw.saved,values:sourceReadValues(raw.values)});
+}
+function remoteFolder(raw:unknown):RemoteFolder{
+ if(!record(raw)||!text(raw.name,255)||!raw.name||!text(raw.path)||!raw.path||!text(raw.relative)||typeof raw.hidden!=='boolean')invalid();
+ return Object.freeze({name:raw.name,path:raw.path,relative:raw.relative,hidden:raw.hidden});
+}
+function remoteFolderPage(raw:unknown,id:string):RemoteFolderPage{
+ if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.path)||!text(raw.relative)||!Array.isArray(raw.entries)||!text(raw.nextCursor,255))invalid();
+ return Object.freeze({sourceId:id,generation:raw.generation,path:raw.path,relative:raw.relative,entries:Object.freeze(raw.entries.map(remoteFolder)),nextCursor:raw.nextCursor});
 }
 /** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere). */
 export type RemoteState=Readonly<{sources:readonly RemoteSource[];loading:boolean;busy:boolean;error:string;errorCode:string;operationId:string|null;ambiguous:boolean;receipt:RemoteReceipt|null;alreadyDone:boolean;mountSupported:boolean}>;
@@ -216,7 +228,23 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
 
 async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_network_roots", {"id": encodeURIComponent(libraryId)}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==libraryId||!integer(raw.policy.revision)||!Array.isArray(raw.policy.origins)||raw.policy.origins.length>8||!raw.policy.origins.every(origin=>text(origin,8192)))invalid();return Object.freeze({libraryId,revision:raw.policy.revision,origins:Object.freeze(raw.policy.origins as string[])});}
  async setNetworkPolicy(policy:NetworkPolicy,roots:readonly string[]):Promise<NetworkPolicy>{if(roots.length>8||roots.some(root=>!text(root,8192)))throw new Error('Invalid network roots.');const epoch=this.epoch;await this.request(encodedRoutePath("post_libraries_id_network_roots", {"id": encodeURIComponent(policy.libraryId)}),'POST',routeBody("post_libraries_id_network_roots", {roots,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.networkPolicy(policy.libraryId);}
-
+ /** One folder of a saved source, folders only, read when the owner opens it.
+  * Nothing is listed in advance, downloaded or cached by this call. */
+ async listFolders(id:string,options:Readonly<{path?:string;cursor?:string;showHidden?:boolean;limit?:number}>={},guard?:()=>boolean):Promise<RemoteFolderPage>{
+  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  if(!text(id,256)||!id)throw new Error('Invalid source.');
+  const limit=options.limit??200;
+  if(!Number.isInteger(limit)||limit<1||limit>500)throw new Error('Invalid folder query.');
+  const query=new URLSearchParams({limit:String(limit)});
+  for(const key of ['path','cursor'] as const){const value=options[key];if(value!==undefined){if(!text(value)||!value)throw new Error('Invalid folder path.');query.set(key,value);}}
+  if(options.showHidden!==undefined)query.set('showHidden',options.showHidden?'1':'0');
+  const epoch=this.epoch;
+  const raw=await this.request(encodedRoutePath('get_storage_source_folders',{id:encodeURIComponent(id)})+'?'+query,'GET',undefined,guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!record(raw.folders))invalid();
+  return remoteFolderPage(raw.folders,id);
+ }
 }
 export type SourceAvailability='ready'|'unavailable'|'changed'|'unsupported'|'resolve_on_play';
 export async function readSourceAvailability(api:LibraryContentApi,itemId:string,signal:AbortSignal):Promise<SourceAvailability>{

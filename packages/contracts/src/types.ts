@@ -695,6 +695,8 @@ export type GetStorageOperationsIdRequest = {  };
 export type GetStorageOperationsIdResponse = { "accepted": boolean; "controlRevision": number; "deleted": boolean; "mount"?: { "actions": Array<string>; "backendRevision": number; "cacheBytes": number; "cacheFloor": number; "controlRevision": number; "desiredState": string; "error"?: string; "executable": string; "executableDigest": string; "executableVersion": string; "id": string; "mountPath": string; "name": string; "observedState": string; "removalPending": boolean }; "mountId": string; "operationId": string; "scope": { "serverId": string; "viewerFence": string } };
 export type GetStorageRcloneBundledRequest = {  };
 export type GetStorageRcloneBundledResponse = { "available": boolean; "errorCode": string; "included": boolean; "minimumVersion": string; "version": string };
+export type GetStorageSourceFoldersRequest = {  };
+export type GetStorageSourceFoldersResponse = { "folders": { "entries": Array<{ "hidden": boolean; "name": string; "path": string; "relative": string }>; "generation": string; "nextCursor": string; "path": string; "relative": string; "sourceId": string }; "scope": { "serverId": string; "viewerFence": string } };
 export type GetStorageSourceOperationsIdRequest = {  };
 export type GetStorageSourceOperationsIdResponse = { "receipt": { "accepted": boolean; "operationId": string; "readSettings"?: { "generation": string; "revision": number; "saved": boolean; "sourceId": string; "values": { "bytesPerSecond": number | number; "connections": number; "requestsPerSecond": number; "scanDepth": string; "wholeFileReads": boolean } }; "removed": boolean; "source": { "credentialPresent": boolean; "errorCode"?: string; "generation": number; "id": string; "insecureLocal": boolean; "kind": string; "mountId"?: string; "name": string; "origin"?: string; "rangeSupport": string; "rootPath": string; "state": string } }; "scope": { "serverId": string; "viewerFence": string } };
 export type GetStorageSourceRcloneOperationRequest = {  };
@@ -1810,6 +1812,7 @@ export type RouteContracts = {
 "get_storage_mounts": { request: GetStorageMountsRequest; response: GetStorageMountsResponse };
 "get_storage_operations_id": { request: GetStorageOperationsIdRequest; response: GetStorageOperationsIdResponse };
 "get_storage_rclone_bundled": { request: GetStorageRcloneBundledRequest; response: GetStorageRcloneBundledResponse };
+"get_storage_source_folders": { request: GetStorageSourceFoldersRequest; response: GetStorageSourceFoldersResponse };
 "get_storage_source_operations_id": { request: GetStorageSourceOperationsIdRequest; response: GetStorageSourceOperationsIdResponse };
 "get_storage_source_rclone_operation": { request: GetStorageSourceRcloneOperationRequest; response: GetStorageSourceRcloneOperationResponse };
 "get_storage_source_rclone_providers": { request: GetStorageSourceRcloneProvidersRequest; response: GetStorageSourceRcloneProvidersResponse };
