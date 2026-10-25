@@ -7,6 +7,7 @@
  * subtitle on a 1920×800 picture) keeps its scale and is centred, so lines that sat in the black
  * bars still sit there: the canvas covers the whole player for this reason.
  */
+import {defaultI18n} from '@i18n';
 import type {FrameRect, ImageWorkerReply, ImageWorkerRequest} from './image-protocol.ts';
 import {inputBytes, decodeSubtitleText, subtitleFileLimits, type DrawnSubtitleRenderer, type DrawnSubtitleSource, type OverlayClock, type OverlayGeometry, type RendererContext} from './types.ts';
 
@@ -78,7 +79,7 @@ export class ImageSubtitleRenderer implements DrawnSubtitleRenderer {
       worker.onmessage = event => {
         const reply = event.data;
         if (reply.type === 'ready') { clearTimeout(timer); this.track = {width: reply.width, height: reply.height, starts: reply.starts, ends: reply.ends, forced: reply.forced ?? new Uint8Array(reply.starts.length)}; resolve(); }
-        else if (reply.type === 'failed') { clearTimeout(timer); if (this.track) { if (!this.disposed) context.failed(new Error(reply.message)); } else reject(new Error(reply.message)); }
+        else if (reply.type === 'failed') { clearTimeout(timer); const text = reply.code === 'no_pictures' ? defaultI18n.t('next.subtitles.image.noPictures') : defaultI18n.t('next.subtitles.image.unreadable'); if (this.track) { if (!this.disposed) context.failed(new Error(text)); } else reject(new Error(text)); }
         else this.arrived(reply.index, reply.rects);
       };
       worker.postMessage({type: 'load', kind: source.kind, data, ...(index === undefined ? {} : {index})}, [data]);

@@ -50,7 +50,7 @@ scope.onmessage = event => {
     if (message.type === 'load') {
       const data = new Uint8Array(message.data);
       track = message.kind === 'pgs' ? parsePgs(data) : message.kind === 'vobsub' ? parseVobSub(message.index ?? '', data) : parseDvb(data);
-      if (!track.cues.length || !track.width || !track.height) { scope.postMessage({type: 'failed', message: 'This subtitle has no pictures that can be shown.'}); return; }
+      if (!track.cues.length || !track.width || !track.height) { scope.postMessage({type: 'failed', code: 'no_pictures'}); return; }
       const starts = Float64Array.from(track.cues, cue => cue.startMs), ends = Float64Array.from(track.cues, cue => cue.endMs);
       // Which cues the disc marks forced (foreign dialogue, signs), for the viewer's "Forced only".
       const forced = Uint8Array.from(track.cues, cue => (cue.forced ? 1 : 0));
@@ -63,6 +63,6 @@ scope.onmessage = event => {
       void drain();
     }
   } catch (error) {
-    scope.postMessage({type: 'failed', message: error instanceof Error ? error.message : 'This subtitle could not be read.'});
+    scope.postMessage({type: 'failed', code: 'unreadable', ...(error instanceof Error ? {message: error.message} : {})});
   }
 };
