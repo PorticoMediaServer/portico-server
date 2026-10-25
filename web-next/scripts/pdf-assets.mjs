@@ -21,7 +21,7 @@ export function readerPdfAssets() {
   return {
     name: 'portico-reader-pdf-codecs',
     generateBundle() {
-      for (const [name, source] of files) this.emitFile({type: 'asset', fileName: `assets/pdfjs/wasm/${name}`, source});
+      for (const [name, source] of files) this.emitFile({type: 'asset', fileName: `assets/pdfjs/${manifest.version}/wasm/${name}`, source});
     },
     configureServer(server) {
       server.middlewares.use((request, response, next) => {

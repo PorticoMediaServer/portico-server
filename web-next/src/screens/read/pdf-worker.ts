@@ -10,5 +10,5 @@ export const readerPdfWorkerUrl: string = workerUrl;
 export const readerPdfAdapterOptions = Object.freeze({
   workerUrl: readerPdfWorkerUrl,
   wasmUrl: import.meta.env.DEV ? new URL('/__portico_pdf_codecs__/', import.meta.url).href
-    : new URL('./pdfjs/wasm/', new URL(readerPdfWorkerUrl, import.meta.url)).href,
+    : new URL('./pdfjs/6.4.299/wasm/', new URL(readerPdfWorkerUrl, import.meta.url)).href,
 });
