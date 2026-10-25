@@ -17,6 +17,20 @@ test('security responses cannot be applied to another account or family',()=>{
  assert.throws(()=>parseSecurityResult({...scope,status:'pending',otpAuthUri:'javascript:alert(1)'},scope));
  assert.equal(parseSecurityResult({...scope,status:'pending',otpAuthUri:'otpauth://totp/Portico:alice?secret=AAAA'},scope).status,'pending');
 });
+test('email-change resend retains the original challenge and checked account scope',async()=>{
+ const scope={accountId:'acct_A',familyId:'family_A'};
+ const result={...scope,status:'contact_pending',challengeId:'email_A',maskedAddress:'a***@example.test',resendsRemaining:4,expiresAt:'2030-01-01T00:00:00Z'};
+ let response:unknown=result;
+ const calls:{path:string;body:unknown;token?:string;signal?:AbortSignal}[]=[];
+ const client=new HostedAccountClient('https://accounts.example.test','browser',async(path,_method,body,signal,token)=>{calls.push({path,body,signal,token});return response;});
+ const controller=new AbortController();
+ assert.equal((await client.resendEmailChange('email_A','resend_operation',scope,'token_A',controller.signal)).resendsRemaining,4);
+ assert.deepEqual(calls[0],{path:'/v1/account/security/email/resend',body:{challengeId:'email_A',operationId:'resend_operation'},token:'token_A',signal:controller.signal});
+ for(const patch of [{familyId:'family_B'},{accountId:'acct_B'},{challengeId:'email_B'},{status:'updated'},{signOut:true},{maskedAddress:undefined},{expiresAt:undefined},{resendsRemaining:undefined},{resendsRemaining:-1},{resendsRemaining:6},{resendsRemaining:1.5}]){
+  response={...result,...patch};
+  await assert.rejects(client.resendEmailChange('email_A','resend_operation',scope,'token_A'));
+ }
+});
 test('native return carries only the expected public transaction ID',()=>{
  assert.equal(nativeAccountReturn('portico://account-return?transactionId=tx_A','tx_A'),'tx_A');
  for(const url of ['portico://account-return?transactionId=tx_B','portico://account-return/?transactionId=tx_A','portico://account-return?transactionId=tx_A&token=secret','portico://account-return?transactionId=tx_A&transactionId=tx_A','https://account-return?transactionId=tx_A','portico://evil@account-return?transactionId=tx_A','portico://account-return?transactionId=tx_A#secret'])assert.throws(()=>nativeAccountReturn(url,'tx_A'));

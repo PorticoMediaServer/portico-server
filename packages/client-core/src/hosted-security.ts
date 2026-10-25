@@ -22,7 +22,7 @@ export type AccountScope = {accountId:string;familyId:string};
 export type RecentProof = AccountScope & {proof:string;expiresAt:string};
 export type SecurityState = AccountScope & {contactAddress:string;privateEmail:boolean;hasPassword:boolean;mfaEnabled:boolean;recoveryCodesRemaining:number;providers:{id:string;provider:IdentityProvider}[]};
 export type DeletionPreview = {deletionToken:string;expiresAt:string;ownedServers:{id:string;name:string}[];affectedServers:{id:string;name:string}[];canDelete:boolean};
-export type SecurityResult = AccountScope & {status:string;signOut?:boolean;challengeId?:string;expiresAt?:string;secret?:string;otpAuthUri?:string;recoveryCodes?:string[];deletionPreview?:DeletionPreview};
+export type SecurityResult = AccountScope & {status:string;signOut?:boolean;challengeId?:string;maskedAddress?:string;resendsRemaining?:number;expiresAt?:string;secret?:string;otpAuthUri?:string;recoveryCodes?:string[];deletionPreview?:DeletionPreview};
 export type OIDCStart = {transactionId:string;expiresAt:string;mode:'login'|'reauthenticate'|'link';authorizationUrl?:string;nativeNonce?:string};
 export type SecurityCompletion = {recentProof?:RecentProof;securityResult?:SecurityResult};
 /** `completion` is a native provider return's completion code (SEC-01), sent as `X-Portico-Completion`. */
@@ -82,6 +82,8 @@ export function parseSecurityResult(v:unknown,expected:AccountScope):SecurityRes
  for(const k of ['challengeId','secret','otpAuthUri'] as const)if(v[k]!==undefined)result[k]=text(v[k],2048);
  if(result.otpAuthUri){const uri=new URL(result.otpAuthUri);if(uri.protocol!=='otpauth:'||uri.hostname!=='totp'||uri.username||uri.password||uri.hash)return invalid();}
  if(v.expiresAt!==undefined)result.expiresAt=timestamp(v.expiresAt);
+ if(v.maskedAddress!==undefined)result.maskedAddress=text(v.maskedAddress,320);
+ if(v.resendsRemaining!==undefined){if(!Number.isSafeInteger(v.resendsRemaining)||Number(v.resendsRemaining)<0||Number(v.resendsRemaining)>5)return invalid();result.resendsRemaining=Number(v.resendsRemaining);}
  if(v.recoveryCodes!==undefined){if(!Array.isArray(v.recoveryCodes)||v.recoveryCodes.length!==10)return invalid();result.recoveryCodes=v.recoveryCodes.map(c=>text(c,80));}
  // Deletion's existing public projection is validated before rendering or accepting it.
  if(v.deletionPreview!==undefined)result.deletionPreview=parseDeletionPreview(v.deletionPreview);
@@ -200,6 +202,13 @@ export class HostedAccountClient {
  async deletionPreview(operationId:string,token:string,signal?:AbortSignal):Promise<DeletionPreview>{return parseDeletionPreview(await this.request(hostedRoutePath("account_deletion_preview"),'POST',hostedRouteBody("account_deletion_preview", {purpose:'account_deletion_preview',target:'',operationId}),signal,token));}
  /** A80: the final deletion is confirmed by the account's email (its username without one), typed by the person. */
  async acceptDeletion(preview:DeletionPreview,confirmation:string,token:string,signal?:AbortSignal):Promise<DeletionReceipt>{const confirm=confirmation.trim();if(!confirm||confirm.length>320)throw new Error('Type your account email to confirm.');return parseDeletionReceipt(await this.request(hostedRoutePath("account_deletion_accept"),'POST',hostedRouteBody("account_deletion_accept", {deletionToken:preview.deletionToken,disposition:'',confirmation:confirm}),signal,token));}
+ /** Rotate only the original family's pending code; no address or fresh proof is supplied. */
+ async resendEmailChange(challengeId:string,operationId:string,scope:AccountScope,token:string,signal?:AbortSignal){
+  identifier(challengeId);
+  const result=parseSecurityResult(await this.request(hostedRoutePrefix("account_security_action",3)+'email/resend','POST',{challengeId,operationId},signal,token),scope);
+  if(result.status!=='contact_pending'||result.signOut||result.challengeId!==challengeId||!result.maskedAddress||!result.expiresAt||result.resendsRemaining===undefined)return invalid();
+  return result;
+ }
  async confirm(kind:'mfa'|'email',challengeId:string,code:string,operationId:string,scope:AccountScope,token:string,signal?:AbortSignal){return parseSecurityResult(await this.request(hostedRoutePrefix("account_security_action", 3)+kind+'/confirm','POST',{challengeId,code,operationId},signal,token),scope);}
 }
 
