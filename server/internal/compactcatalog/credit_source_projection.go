@@ -40,11 +40,7 @@ func creditRecordReference(ctx context.Context, tx *sql.Tx, entity int64, provid
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
-	head, err := ReadCreditSourceHead(ctx, tx, entity, provider)
-	if err == nil {
-		return head.RecordReference, nil
-	}
-	return "", err
+	return "", sql.ErrNoRows
 }
 func captureCreditProviderTx(ctx context.Context, tx *sql.Tx, entity int64, provider, record, observed string) error {
 	rows, err := ReadEffectiveCredits(ctx, tx, entity)
@@ -84,8 +80,39 @@ func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string
 		}
 		return setCreditProjectionProviderTx(ctx, tx, entity, provider, credits)
 	}
+	if len(credits) > CreditSourcePublicationMax {
+		var decided bool
+		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM credit_owner_families WHERE entity_id=?)`, entity).Scan(&decided); e != nil {
+			return e
+		}
+		if decided {
+			return errors.New("credit source publication exceeds bound")
+		}
+		return creditProjectionChange(ctx, tx, func() error {
+			if _, e := tx.ExecContext(ctx, `DELETE FROM credit_source_heads WHERE entity_id=? AND provider=?`, entity, provider); e != nil {
+				return e
+			}
+			return setCreditProjectionProviderTx(ctx, tx, entity, provider, credits)
+		})
+	}
 	record, err := creditRecordReference(ctx, tx, entity, provider)
 	if errors.Is(err, sql.ErrNoRows) {
+		if len(credits) == 0 {
+			head, e := ReadCreditSourceHead(ctx, tx, entity, provider)
+			if e == nil {
+				return SetCreditsFromRecordTx(ctx, tx, entity, provider, head.RecordReference, time.Now().UTC().Format(time.RFC3339Nano), credits)
+			}
+			if !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
+			var rows int
+			if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_credits WHERE entity_id=? AND provider=?`, entity, provider).Scan(&rows); e != nil {
+				return e
+			}
+			if rows == 0 {
+				return nil
+			}
+		}
 		var count int
 		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM credit_owner_families WHERE entity_id=?`, entity).Scan(&count); err != nil {
 			return err
@@ -95,7 +122,12 @@ func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string
 		}
 		// Old catalogue/fixture seams with no accepted source record stay legacy;
 		// they are not advertised as editable normalized provider references.
-		return setCreditProjectionProviderTx(ctx, tx, entity, provider, credits)
+		return creditProjectionChange(ctx, tx, func() error {
+			if _, e := tx.ExecContext(ctx, `DELETE FROM credit_source_heads WHERE entity_id=? AND provider=?`, entity, provider); e != nil {
+				return e
+			}
+			return setCreditProjectionProviderTx(ctx, tx, entity, provider, credits)
+		})
 	}
 	if err != nil {
 		return err
@@ -171,5 +203,16 @@ func CanCaptureCreditProviderTx(ctx context.Context, tx *sql.Tx, entity int64, p
 	if err != nil {
 		return false, err
 	}
-	return creditCustodyText(reference, 256, true), nil
+	return creditCustodyText(reference, CreditSourceRecordReferenceMax, true), nil
+}
+
+// CaptureCreditProviderFromReferenceTx is used only after the metadata layer's
+// canonical accepted local-source resolver has supplied the exact record.
+func CaptureCreditProviderFromReferenceTx(ctx context.Context, tx *sql.Tx, entity int64, provider, reference, observed string) error {
+	return creditProjectionChange(ctx, tx, func() error {
+		if err := captureCreditProviderTx(ctx, tx, entity, provider, reference, observed); err != nil {
+			return err
+		}
+		return RebuildEffectiveCreditsTx(ctx, tx, entity)
+	})
 }

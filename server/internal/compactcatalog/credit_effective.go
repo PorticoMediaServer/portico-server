@@ -261,7 +261,7 @@ func rebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) er
 // window of stale credit membership while the ordinary dirty queue catches up.
 func publishOwnerCreditDerivationsTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 	ids := []int64{entity}
-	rows, err := tx.QueryContext(ctx, `SELECT show_id FROM catalog_episodes WHERE entity_id=? UNION SELECT album_id FROM catalog_songs WHERE entity_id=? UNION SELECT book_id FROM catalog_book_files WHERE entity_id=?`, entity, entity, entity)
+	rows, err := tx.QueryContext(ctx, `SELECT show_id FROM catalog_episodes WHERE entity_id=? AND show_id IS NOT NULL UNION SELECT album_id FROM catalog_songs WHERE entity_id=? AND album_id IS NOT NULL UNION SELECT book_id FROM catalog_book_files WHERE entity_id=? AND book_id IS NOT NULL`, entity, entity, entity)
 	if err != nil {
 		return err
 	}
