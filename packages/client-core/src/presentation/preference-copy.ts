@@ -58,7 +58,7 @@ export function preferenceValueLabel(key: string, value: string | number): strin
     if (value === 'original' || value === 'automatic') return text(`settings.quality.limit.${value}`)!;
     return (savedQualities as readonly string[]).includes(value)?qualityPresentation(value as SavedQuality).label:value;
   }
-  if ((key === 'music.qualityAway' || key === 'music.qualityMobile') && typeof value === 'string' && (savedMusicQualities as readonly string[]).includes(value)) return musicQualityPresentation(value as SavedMusicQuality).label;
+  if ((key === 'music.qualityHome' || key === 'music.qualityAway' || key === 'music.qualityMobile' || key === 'music.qualityDownloads') && typeof value === 'string' && (savedMusicQualities as readonly string[]).includes(value)) return musicQualityPresentation(value as SavedMusicQuality).label;
   if (typeof value === 'number') {
     if (key.endsWith('Seconds')) return text('pref.unit.seconds', {count: value})!;
     // Registry durations are stored in milliseconds; a value newer than this build's drawn
