@@ -208,29 +208,39 @@ export class CredentialSessionService<Authority = string> {
       if(this.record.active){await this.logoutInside(false);if(this.record.revocations.length)throw new CodedError('account_signout_pending',"Reconnect to finish signing out before switching accounts.");}
       if(generation!==this.generation)throw new CodedError('cancelled',"Sign-in was cancelled.");
       let session:HostedSession;
-      try{session=await this.bounded(signal=>callback(signal).then(value=>{if(generation!==this.generation)void this.compensate(this.api.authorityFromSession(value));return value}));}
+      try{session=await this.bounded(signal=>callback(signal).then(value=>{if(generation!==this.generation)void this.compensate(value);return value}));}
       catch(e){if(generation===this.generation)++this.generation;throw e;}
       if(generation!==this.generation)throw new CodedError('cancelled',"Sign-in was cancelled.");
       await this.adoptInside(session,context);return this.publicSession(session);
     });
   }
   /** Automatic approval polling cannot replace a family adopted in another tab. */
-  async authenticateIfSignedOut(callback:(signal:AbortSignal)=>Promise<HostedSession>,context:CredentialContext={}) {
+  async authenticateIfSignedOut(callback:(signal:AbortSignal)=>Promise<HostedSession>,context:CredentialContext={},callerCurrent:()=>boolean=()=>true) {
+    // A form's lifetime is separate from the singleton credential service. Keep
+    // its result visible to this owner so an abandoned grant can be retired.
+    const admitted=()=>{try{return callerCurrent()===true;}catch{return false;}};
     await this.ready;
     return this.coordinator.runExclusive(async()=>{
       await this.reload(false);
+      if(!admitted())throw new CodedError('cancelled',"Sign-in was cancelled.");
       if(this.record.active)throw new ApiError(409,"account_changed","Another account session is already active. Start approval again after signing out.",false);
       if(this.record.revocations.length){await this.retryInside();if(this.record.revocations.length)throw new ApiError(409,"revocation_pending","Reconnect to finish signing out before approving another account.",false);}
       const generation=++this.generation;
+      const current=()=>generation===this.generation&&admitted();
+      let compensated=false;
+      const abandon=(value:HostedSession)=>{if(!compensated){compensated=true;void this.compensate(value);}};
       let session:HostedSession;
-      try{session=await this.bounded(signal=>callback(signal).then(value=>{if(generation!==this.generation)void this.compensate(this.api.authorityFromSession(value));return value;}));}
+      try{session=await this.bounded(signal=>{
+        if(!current())throw new CodedError('cancelled',"Sign-in was cancelled.");
+        return callback(signal).then(value=>{if(!current())abandon(value);return value;});
+      });}
       catch(e){if(generation===this.generation)++this.generation;throw e;}
-      if(generation!==this.generation)throw new CodedError('cancelled',"Sign-in was cancelled.");
-      await this.adoptInside(session,context);return this.publicSession(session);
+      if(!current()){abandon(session);throw new CodedError('cancelled',"Sign-in was cancelled.");}
+      await this.adoptInside(session,context,admitted);return this.publicSession(session);
     });
   }
   async adopt(session:HostedSession,context:CredentialContext={}){const generation=++this.generation;await this.ready;return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation)throw new CodedError('cancelled',"Sign-in was cancelled.");await this.adoptInside(session,context)});}
-  private async adoptInside(session: HostedSession, context: CredentialContext = {}) {
+  private async adoptInside(session: HostedSession, context: CredentialContext = {}, callerCurrent:()=>boolean=()=>true) {
     if (!session.familyId || !session.refreshExpiresAt)
       throw new Error(
         "This account service does not support secure session renewal."
@@ -244,6 +254,10 @@ export class CredentialSessionService<Authority = string> {
       await this.retryInside();
       if (this.record.revocations.length >= 16)
         throw new CodedError('account_signout_pending',"Reconnect to finish signing out previous sessions.");
+    }
+    if(!callerCurrent()){
+      void this.compensate(session);
+      throw new CodedError('cancelled',"Sign-in was cancelled.");
     }
     const authority = this.api.authorityFromSession(session);
     const generation = ++this.generation;
@@ -267,6 +281,15 @@ export class CredentialSessionService<Authority = string> {
     }
     if (generation !== this.generation)
       throw new CodedError('cancelled',"Sign-in was cancelled.");
+    if(!callerCurrent()){
+      // The coordinator still owns the storage turn. Restore the prior record
+      // and queue only this unaccepted family before releasing it.
+      this.record=previous;
+      this.addRevocation(authority);
+      try{await this.persist();}catch{/* Still attempt exact-family retirement if storage failed. */}
+      await this.retryInside();
+      throw new CodedError('cancelled',"Sign-in was cancelled.");
+    }
     this.publish();
     await this.retryInside();
   }
@@ -307,7 +330,7 @@ export class CredentialSessionService<Authority = string> {
           .refresh(authority, pending.pendingRequestId!, signal)
           .then((value) => {
             if (generation !== this.generation)
-              void this.compensate(this.api.authorityFromSession(value));
+              void this.compensate(value);
             return value;
           })
       );
@@ -356,8 +379,15 @@ export class CredentialSessionService<Authority = string> {
     )
       this.record.revocations.push(authority);
   }
-  private async compensate(authority:Authority){
-    await this.coordinator.runExclusive(async()=>{await this.reload(false);this.addRevocation(authority);try{await this.persist();await this.retryInside()}catch{this.publish(this.record.active?"error":"signedOut","Session revocation is waiting for secure storage.")}});
+  private async compensate(session:HostedSession){
+    await this.coordinator.runExclusive(async()=>{
+      await this.reload(false);
+      // A replay can return the same family another current flow already
+      // accepted. Cleanup of an abandoned response must not revoke that family.
+      if(this.record.active?.session.familyId===session.familyId)return;
+      this.addRevocation(this.api.authorityFromSession(session));
+      try{await this.persist();await this.retryInside()}catch{this.publish(this.record.active?"error":"signedOut","Session revocation is waiting for secure storage.")}
+    });
   }
   async logout(){
     ++this.generation;const authority=this.record.active?.authority;this.record.active=undefined;this.publish("signedOut");

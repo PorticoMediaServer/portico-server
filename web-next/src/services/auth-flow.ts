@@ -76,7 +76,8 @@ export class ServicesAuthFlow {
     } finally { if (this.operation === controller) this.operation = undefined; if (!controller.signal.aborted) this.publish({busy: false}); }
   }
   private async authenticate(work: Parameters<ServicesAccount['service']['authenticateIfSignedOut']>[0], gesture = false) {
-    await this.account.service.authenticateIfSignedOut(work);
+    const operation = this.operation;
+    await this.account.service.authenticateIfSignedOut(work, {}, () => !this.disposed && this.operation === operation && !operation?.signal.aborted);
     this.ids.clear();
     if (!this.disposed) this.signedIn(gesture);
   }
@@ -145,7 +146,7 @@ export class ServicesAuthFlow {
       let accepted: Awaited<ReturnType<ServicesAccount['service']['authenticateIfSignedOut']>>;
       try {
         accepted = await this.account.service.authenticateIfSignedOut(inner => this.account.client.complete(transaction.transactionId,
-          {username: username.trim(), displayName: displayName.trim(), ...(transaction.onboardingToken ? {onboardingToken: transaction.onboardingToken} : {})}, AbortSignal.any([inner, signal])));
+          {username: username.trim(), displayName: displayName.trim(), ...(transaction.onboardingToken ? {onboardingToken: transaction.onboardingToken} : {})}, AbortSignal.any([inner, signal])), {}, () => !this.disposed && !signal.aborted && this.transaction === transaction);
       } catch (error) {
         if (error instanceof ApiError && error.status === 409 && error.code === 'username_unavailable' && !signal.aborted && this.transaction === transaction) {
           this.providerRefresh = transaction; await this.refreshProvider(transaction, signal);

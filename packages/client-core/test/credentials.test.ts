@@ -4,6 +4,52 @@ const uuid=async()=>crypto.randomUUID();const delay=()=>new Promise(r=>setTimeou
 const session=(token='one'):HostedSession=>({accessToken:'access-'+token,refreshToken:'refresh-'+token,familyId:'family',expiresAt:new Date(Date.now()+3600000).toISOString(),refreshExpiresAt:new Date(Date.now()+86400000).toISOString(),account:{id:'a',username:'a',displayName:'A'}});
 function store(){let value:CredentialRecord|undefined;return{load:async()=>structuredClone(value),save:async(v:CredentialRecord)=>{value=structuredClone(v)},value:()=>value}}
 const api=(refresh:any,revoke=async(_token:string)=>{})=>({authorityFromSession:(s:HostedSession)=>s.refreshToken!,refresh,revoke});
+function held<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(r=>{resolve=r});return{promise,resolve};}
+test('a retired authentication caller cannot begin credential work',async()=>{
+ const storage=store();let calls=0;
+ const service=new CredentialSessionService(api(async()=>session()),storage,uuid);
+ await assert.rejects(service.authenticateIfSignedOut(async()=>{calls++;return session();},{},()=>false));
+ assert.equal(calls,0);assert.equal(storage.value()?.active,undefined);
+});
+test('a known grant returned after its caller retires is revoked without adoption',async()=>{
+ const storage=store(),entered=held<void>(),answer=held<HostedSession>();let current=true;
+ const revoked:string[]=[],seen:string[]=[];
+ const service=new CredentialSessionService(api(async()=>session(),async token=>{revoked.push(token)}),storage,uuid);
+ service.subscribe(()=>{if(service.getSnapshot().session)seen.push(service.getSnapshot().session!.familyId!)});
+ const result=service.authenticateIfSignedOut(()=>{entered.resolve();return answer.promise},{},()=>current);
+ await entered.promise;current=false;answer.resolve({...session('abandoned'),familyId:'abandoned'});
+ await assert.rejects(result);await service.synchronize();
+ assert.deepEqual(seen,[]);assert.equal(storage.value()?.active,undefined);assert.deepEqual(revoked,['refresh-abandoned']);
+});
+test('authentication caller retirement during storage cannot publish that family',async()=>{
+ const storage=store(),writing=held<void>(),release=held<void>();let current=true,first=true;
+ const revoked:string[]=[],seen:string[]=[];
+ const service=new CredentialSessionService(api(async()=>session(),async token=>{revoked.push(token)}),{
+  load:storage.load,save:async value=>{if(first&&value.active){first=false;writing.resolve();await release.promise}await storage.save(value)},
+ },uuid);
+ service.subscribe(()=>{if(service.getSnapshot().session)seen.push(service.getSnapshot().session!.familyId!)});
+ const result=service.authenticateIfSignedOut(async()=>({...session('abandoned'),familyId:'abandoned'}),{},()=>current);
+ await writing.promise;current=false;release.resolve();await assert.rejects(result);
+ assert.deepEqual(seen,[]);assert.equal(storage.value()?.active,undefined);assert.deepEqual(revoked,['refresh-abandoned']);
+});
+test('late authentication cleanup preserves the same family already accepted by a current flow',async()=>{
+ const storage=store(),entered=held<void>(),answer=held<HostedSession>(),revoked:string[]=[];
+ const service=new CredentialSessionService(api(async()=>session(),async token=>{revoked.push(token)}),storage,uuid);
+ const old=service.authenticateIfSignedOut(()=>{entered.resolve();return answer.promise});
+ await entered.promise;
+ // The current explicit adoption queues ahead of compensation for the late
+ // response, whose one-time replay names this very same server-issued family.
+ const accepted=service.adopt(session('accepted'));
+ answer.resolve(session('late-replay'));await assert.rejects(old);await accepted;await service.synchronize();
+ assert.equal(storage.value()?.active?.session.refreshToken,'refresh-accepted');assert.deepEqual(revoked,[]);
+});
+test('intentional form retirement from successful session publication keeps the accepted family',async()=>{
+ const storage=store(),revoked:string[]=[];let current=true;
+ const service=new CredentialSessionService(api(async()=>session(),async token=>{revoked.push(token)}),storage,uuid);
+ service.subscribe(()=>{if(service.getSnapshot().session)current=false});
+ await service.authenticateIfSignedOut(async()=>session(),{},()=>current);
+ assert.equal(storage.value()?.active?.session.familyId,'family');assert.deepEqual(revoked,[]);
+});
 test('refresh is single flight, stores receipt before request, hides refresh secret',async()=>{const storage=store();let calls=0;const service=new CredentialSessionService(api(async()=>{calls++;assert.ok(storage.value()?.active?.pendingRequestId);await delay();return session('two')}),storage,uuid);await service.adopt(session(),{profileId:'p'});assert.equal('refreshToken' in service.getSnapshot().session!,false);const [a,b]=await Promise.all([service.accessSession(true),service.accessSession(true)]);assert.equal(calls,1);assert.equal(a.accessToken,b.accessToken);assert.equal(storage.value()?.active?.pendingRequestId,undefined);assert.equal(service.getSnapshot().context?.profileId,'p')});
 test('ambiguous rotation survives restart with exact receipt',async()=>{const storage=store();const ids:string[]=[];const first=new CredentialSessionService(api(async(_token:string,id:string)=>{ids.push(id);throw new Error('network')}),storage,uuid);await first.adopt(session());await assert.rejects(first.accessSession(true));const second=new CredentialSessionService(api(async(_token:string,id:string)=>{ids.push(id);return session('two')}),storage,uuid);await second.accessSession();assert.equal(ids[0],ids[1]);assert.equal(ids.length,2)});
 test('logout fences a late refresh and revokes without restoring session',async()=>{const storage=store();let resolve:any;const revoked:string[]=[];const service=new CredentialSessionService(api(()=>new Promise(r=>resolve=r),async token=>{revoked.push(token)}),storage,uuid);await service.adopt(session());const pending=service.accessSession(true);await delay();const logout=service.logout();assert.equal(service.getSnapshot().phase,'signedOut');resolve(session('two'));await assert.rejects(pending);await logout;await delay();assert.equal(service.getSnapshot().phase,'signedOut');assert.equal(storage.value()?.active,undefined);assert.ok(revoked.includes('refresh-two'))});
