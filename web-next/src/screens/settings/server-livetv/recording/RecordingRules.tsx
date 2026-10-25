@@ -1,4 +1,4 @@
-import {useEffect, useState, useSyncExternalStore} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {recordingAllowed, recordingOwnerKey, recordingOwnerLabel} from '@core/server-admin/recording-policy.ts';
 import {errorMessage} from '@core/presentation/errors.ts';
@@ -14,6 +14,7 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const policy = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot, permissions.getSnapshot);
   const [remove, setRemove] = useState<OwnerRule>();
+  const editor = useRef<HTMLDivElement>(null);
   useEffect(() => {void controller.load();}, [controller]);
   const draft = state.draft;
   const newDraft = !!draft && !draft.id;
@@ -38,8 +39,8 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
     {state.cursor && <Button size="small" disabled={busy || !!draft} loading={state.loading} onClick={() => void controller.load(true)}>{t('action.showMore')}</Button>}
     <Button size="small" variant="text" disabled={state.loading || busy || !!draft} onClick={() => void controller.load()}>{t('action.refresh')}</Button>
     {draft && <Dialog open title={t(draft.id ? 'web.recordingRules.editTitle' : 'web.recordingRules.newTitle')} width={520} onOpenChange={open => {if (!open) controller.close(draft);}}
-      footer={<><Button size="small" variant="text" disabled={busy} onClick={() => controller.close(draft)}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={state.saving} disabled={!valid || state.saving} onClick={() => void controller.save(draft)}>{t(state.uncertain ? 'action.tryAgain' : 'action.save')}</Button></>}>
-      <div className={fields.fields}>
+      footer={<><Button size="small" variant="text" disabled={busy} onClick={() => controller.close(draft)}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={state.saving} disabled={!valid || state.saving} onClick={() => {if (editor.current && [...editor.current.querySelectorAll<HTMLInputElement>('input')].every(input => input.reportValidity())) void controller.save(draft);}}>{t(state.uncertain ? 'action.tryAgain' : 'action.save')}</Button></>}>
+      <div className={fields.fields} ref={editor}>
         {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
         <TextField label={t('web.recordingRules.ruleName')} maxLength={160} value={draft.name} disabled={busy} onChange={event => controller.edit(draft, {name: event.currentTarget.value})}/>
         <Select label={t('web.recordingRules.recordFor')} value={draft.owner.accountId ? recordingOwnerKey(draft.owner) : ''} disabled={busy || !!draft.id} options={[{value: '', label: t('web.recordingRules.chooseProfile')}, ...owners.map(row => ({value: recordingOwnerKey(row.owner), label: recordingOwnerLabel(row)}))]} onValueChange={key => {const row = owners.find(row => recordingOwnerKey(row.owner) === key);if (row) controller.edit(draft, {owner: row.owner});}}/>
