@@ -1302,6 +1302,7 @@ export const enUS = {
   'action.finish': 'Finish',
   'action.removeShort': 'Remove',
   'action.startOver': 'Start over',
+  'action.startSeriesOver': 'Start the series over',
 
   // ── Sign-in, account help and activation (F-apple screens/auth) ──
   'auth.signIn': 'Sign in',
