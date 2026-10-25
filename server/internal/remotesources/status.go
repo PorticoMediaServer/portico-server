@@ -256,7 +256,7 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		}
 		out.Program, out.ProgramVersion, out.Remote, out.ProgramRevision = executable, version, remote, control
 	}
-	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, row.ID).Scan(&out.CacheUsedBytes); err != nil {
+	if out.CacheUsedBytes, err = sourceCacheUsedTx(ctx, snapshot.Tx(), row.ID); err != nil {
 		return SourceStatus{}, err
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT background_speed FROM maintenance_settings WHERE singleton=1`).Scan(&out.BackgroundSpeed); err != nil && !errors.Is(err, sql.ErrNoRows) {

@@ -373,7 +373,7 @@ func (s *Service) ReadSourceAdvanced(ctx context.Context, identities *identity.S
 	}
 	out := advancedSettings(row, settings, "")
 	out.CacheSupported = true
-	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&out.CacheUsedBytes); err != nil {
+	if out.CacheUsedBytes, err = sourceCacheUsedTx(ctx, snapshot.Tx(), source); err != nil {
 		return SourceAdvancedSettings{}, err
 	}
 	return out, nil
