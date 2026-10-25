@@ -1,6 +1,8 @@
+import {SelectionEditorSurface, type LibraryEditorSession} from './SelectionEditorSurface';
+import type {SelectionEditorOptions} from './selection-editor';
 import {defaultI18n} from '@i18n';
 import type {HomeSelectionProgress} from '@core/home-selection/types.ts';
-import {useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useSyncExternalStore, type ReactNode} from 'react';
 import type {BrowseWholeSelection} from '@core/browse.ts';
 import type {BrowseSelectionContext, SelectionOperation, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
 import {selectionQuerySelector} from '@core/selection-model/index.ts';
@@ -42,6 +44,7 @@ export type LibrarySelectionOptions = Readonly<{
   descriptor?: () => BrowseWholeSelection | undefined;
   /** The real job ports. Absent means the bar offers no personal action at all. */
   actions?: SelectionActionsOptions;
+  editor?: SelectionEditorOptions;
   enqueue?: (input: LibraryEnqueueInput) => Promise<unknown>;
   destinations?: LibraryDestinations;
   reportError: (error: unknown) => void;
@@ -93,7 +96,7 @@ function personalOffers(selection: BrowseSelection | undefined, actions: Selecti
 type PersonalProgress = Readonly<{operation: SelectionOperation<BrowseSelectionContext>; value: HomeSelectionProgress}>;
 type ProgressStore = Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => PersonalProgress | undefined}>;
 
-function LibrarySelectionToolbar(props: LibrarySelectionOptions & {progress: ProgressStore; personal: (action: PersonalSelectionAction) => Promise<void>; queue: (placement: 'next' | 'end') => Promise<void>; addToPlaylist: (anchor: HTMLElement) => Promise<void>; addToCollection: (anchor: HTMLElement) => Promise<void>}) {
+function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openEditor: (anchor: HTMLElement) => void; progress: ProgressStore; personal: (action: PersonalSelectionAction) => Promise<void>; queue: (placement: 'next' | 'end') => Promise<void>; addToPlaylist: (anchor: HTMLElement) => Promise<void>; addToCollection: (anchor: HTMLElement) => Promise<void>}) {
   const {playSelection, descriptor, actions, enqueue, destinations, personal, queue, addToPlaylist, addToCollection, reportError} = props;
   const progress = useSyncExternalStore(props.progress.subscribe, props.progress.getSnapshot, props.progress.getSnapshot);
   const current = useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
@@ -114,6 +117,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {progress: Pro
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
+      ...(props.editor && summary.every.edit && summary.types.length === 1 && current.selection.target?.mode === 'explicit' && queueLease ? {onEdit: props.openEditor} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
       ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
@@ -133,7 +137,21 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {progress: Pro
     sticky />;
 }
 
-export function createLibrarySelection({playSelection, descriptor, actions, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
+export function createLibrarySelection({playSelection, descriptor, actions, editor, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
+  const editorListeners = new Set<() => void>();
+  let editorSession: LibraryEditorSession | undefined;
+  const closeEditor = () => {editorSession?.lifetime.abort(); editorSession = undefined; for (const listener of editorListeners) listener();};
+  const editorStore = {subscribe: (listener: () => void) => {editorListeners.add(listener); return () => {editorListeners.delete(listener);};}, getSnapshot: () => editorSession};
+  const openEditor = (anchor: HTMLElement) => {
+    const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
+    if (!editor || !editor.signal || !editor.isCurrent() || !selection || !operation || operation.target !== selection.target || operation.target.mode !== 'explicit'
+      || !selection.summary.every.edit || selection.summary.types.length !== 1 || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-editor-unavailable');
+    closeEditor();
+    const lifetime = new AbortController();
+    const current = () => !lifetime.signal.aborted && !editor.signal!.aborted && editor.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;
+    editorSession = Object.freeze({operation, anchor, lifetime, current});
+    for (const listener of editorListeners) listener();
+  };
   const leafItems = () => {
     const items = explicitLeafItems(playSelection.getSnapshot().selection);
     if (!items) throw new Error('leaf-explicit-selection-required');
@@ -197,7 +215,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     }
   };
   return {
-    toolbar: <LibrarySelectionToolbar progress={progress} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />,
+    toolbar: <><LibrarySelectionToolbar editor={editor} openEditor={openEditor} progress={progress} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>}</>,
     entry: (member, index) => {
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
@@ -213,4 +231,14 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     personal, queue, addToPlaylist, addToCollection,
     playSelection,
   };
+}
+
+
+function LibraryEditorHost({playSelection, store, options, close}: {playSelection: LibrarySelectionHost; store: Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => LibraryEditorSession | undefined}>; options: SelectionEditorOptions; close: () => void}) {
+  const session = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
+  const valid = !!session?.current();
+  useEffect(() => {if (session && !valid) close();}, [session, valid, close]);
+  useEffect(() => {const abort = () => close(); options.signal?.addEventListener('abort', abort, {once: true}); return () => {options.signal?.removeEventListener('abort', abort); close();};}, [options, close]);
+  return session && valid ? <SelectionEditorSurface session={session} options={options} onClose={close}/> : null;
 }
