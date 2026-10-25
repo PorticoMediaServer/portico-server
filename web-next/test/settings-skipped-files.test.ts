@@ -18,3 +18,11 @@ test('unknown reasons use known category copy and never render arbitrary server 
   const result = await skippedFiles(api({...page, items: [{...page.items[0], category: 'not-media', reason: 'new_reason', messageKey: 'not.a.catalogue.key'}]}), 'library', 'job', 0, new AbortController().signal);
   assert.equal(result.items[0].reason, 'scan.issue.not_media');
 });
+
+test('prototype property names cannot escape the known category and reason catalogue', async () => {
+  for (const key of ['__proto__', 'constructor', 'toString']) {
+    await assert.rejects(skippedFiles(api({...page, items: [{...page.items[0], category: key}]}), 'library', 'job', 0, new AbortController().signal));
+    const result = await skippedFiles(api({...page, items: [{...page.items[0], reason: key}]}), 'library', 'job', 0, new AbortController().signal);
+    assert.equal(result.items[0].reason, 'scan.issue.damaged');
+  }
+});

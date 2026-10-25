@@ -22,9 +22,9 @@ export async function skippedFiles(api: LibraryContentApi, libraryId: string, jo
   let previous = after;
   for (const row of raw.items) {
     if (!object(row) || !integer(row.sequence) || row.sequence <= previous || row.sequence > raw.nextSequence || typeof row.path !== 'string' ||
-        row.path.length > 8192 || /[\x00-\x1f\x7f]/.test(row.path) || typeof row.category !== 'string' || !categories[row.category]) throw new Error('invalid_skipped_file');
+        row.path.length > 8192 || /[\x00-\x1f\x7f]/.test(row.path) || typeof row.category !== 'string' || !Object.hasOwn(categories, row.category)) throw new Error('invalid_skipped_file');
     previous = row.sequence;
-    items.push({sequence: row.sequence, path: row.path, reason: typeof row.reason === 'string' && reasons[row.reason] || categories[row.category]});
+    items.push({sequence: row.sequence, path: row.path, reason: typeof row.reason === 'string' && Object.hasOwn(reasons, row.reason) ? reasons[row.reason] : categories[row.category]});
   }
   return {items, count: raw.count, hasMore: raw.hasMore, next: raw.nextSequence};
 }
