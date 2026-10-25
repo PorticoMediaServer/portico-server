@@ -774,7 +774,8 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	}
 	var role string
 	var revision int64
-	if e = tx.QueryRowContext(ctx, `SELECT role,revision FROM direct_memberships WHERE account_id=?`, id).Scan(&role, &revision); e != nil {
+	var wasDisabled bool
+	if e = tx.QueryRowContext(ctx, `SELECT role,revision,disabled FROM direct_memberships WHERE account_id=?`, id).Scan(&role, &revision, &wasDisabled); e != nil {
 		return e
 	}
 	if !ManagesTier(c.account.Role, role) {
@@ -792,6 +793,11 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	// library applies to their next request and signs nobody out: every request
 	// reads the live library list.
 	if q.Disabled {
+		if !wasDisabled {
+			if e = s.recordOwnerMembershipEndingTx(ctx, tx, id); e != nil {
+				return e
+			}
+		}
 		reason := RevokedPasswordChange
 		if q.Disabled {
 			reason = RevokedMembershipRemoved

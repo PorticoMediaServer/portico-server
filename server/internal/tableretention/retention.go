@@ -21,6 +21,7 @@ type Policy struct {
 // predicate is rechecked under the writer gate, so an active resource is never
 // removed merely because it was created long ago.
 var Policies = []Policy{
+	{"hosted_membership_endings", 30, `expires_ms<=CAST(unixepoch('subsec')*1000 AS INTEGER)`},
 	{"metadata_owner_history", 30, `(kind='person' AND NOT EXISTS(SELECT 1 FROM catalog_people p WHERE p.id=d.entity_id)) OR (kind<>'person' AND NOT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=d.entity_id))`},
 	{"analysis_probe_bindings", 1, `NOT EXISTS(SELECT 1 FROM inventory_objects o WHERE o.id=d.object_id AND o.revision=d.source_revision)`},
 	{"analysis_marker_sets", 30, `NOT EXISTS(SELECT 1 FROM inventory_objects o WHERE o.id=d.object_id AND o.revision=d.source_revision) AND NOT EXISTS(SELECT 1 FROM analysis_markers m WHERE m.object_id=d.object_id AND m.source_revision=d.source_revision)`},

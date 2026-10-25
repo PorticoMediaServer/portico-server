@@ -114,6 +114,9 @@ func (s *Service) DeleteDirectMember(ctx context.Context, bearer, id string, q M
 	if target.Revision != q.ExpectedRevision {
 		return ErrProfileChanged
 	}
+	if e = s.recordOwnerMembershipEndingTx(ctx, tx, id); e != nil {
+		return e
+	}
 	if e = s.EraseMemberTx(ctx, tx, id); e != nil {
 		return e
 	}
@@ -131,6 +134,9 @@ func (s *Service) EraseMemberTx(ctx context.Context, tx *sql.Tx, account string)
 	}
 	if role == TierOwner {
 		return ErrForbidden
+	}
+	if e := s.recordMembershipEndingTx(ctx, tx, account, "", false); e != nil {
+		return e
 	}
 	// The person's API keys and personal access tokens end first. Each is
 	// marked ended before the sessions are, because a key that is still live

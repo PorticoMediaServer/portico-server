@@ -3169,6 +3169,7 @@ CREATE TABLE dvr_recording_grants(
 CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL,live_tuner_conflict TEXT NOT NULL DEFAULT 'keep-watching' CHECK(live_tuner_conflict IN('keep-watching','stop-watching')),show_folder_template TEXT NOT NULL DEFAULT '',movie_folder_template TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+ incarnation TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))) CHECK(length(incarnation)=32 AND incarnation NOT GLOB '*[^0-9a-f]*'),
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),
  access_tokens INTEGER NOT NULL DEFAULT 1 CHECK(access_tokens IN(0,1)),max_profiles INTEGER NOT NULL DEFAULT 8 CHECK(max_profiles BETWEEN 1 AND 8),
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
@@ -3879,6 +3880,15 @@ CREATE TABLE account_portico_links(
 CREATE TABLE hosted_membership_journal(
  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
  hosted_account_id TEXT NOT NULL) STRICT;
+-- Explicit access-ending evidence survives account deletion, and is never inferred
+-- from the standing journal or an invitation deadline. Latest transition per recipient.
+CREATE TABLE hosted_membership_endings(
+ hosted_account_id TEXT PRIMARY KEY, incarnation TEXT NOT NULL CHECK(length(incarnation)=32 AND incarnation NOT GLOB '*[^0-9a-f]*'),
+ sequence INTEGER NOT NULL UNIQUE CHECK(sequence>0 AND sequence<=9007199254740991),
+ cause TEXT NOT NULL CHECK(cause IN('','owner_removed')),
+ ended_ms INTEGER NOT NULL CHECK(ended_ms>0), expires_ms INTEGER NOT NULL CHECK(expires_ms=ended_ms+2592000000)
+) STRICT;
+CREATE INDEX hosted_membership_endings_expiry ON hosted_membership_endings(expires_ms);
 CREATE TABLE hosted_membership_sync(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
  acked INTEGER NOT NULL DEFAULT 0 CHECK(acked>=0),
@@ -5067,6 +5077,7 @@ CREATE TRIGGER hosted_member_link_delete AFTER DELETE ON account_portico_links B
 END;
 CREATE TRIGGER direct_membership_disabled AFTER UPDATE OF disabled ON direct_memberships WHEN OLD.disabled IS NOT NEW.disabled BEGIN
  UPDATE direct_memberships SET
+  incarnation=CASE WHEN NEW.disabled=0 THEN lower(hex(randomblob(16))) ELSE NEW.incarnation END,
   disabled_ms=CASE WHEN NEW.disabled=0 THEN 0 WHEN NEW.disabled_ms>0 THEN NEW.disabled_ms ELSE CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) END,
   disabled_reason=CASE WHEN NEW.disabled=0 THEN '' WHEN NEW.disabled_reason<>'' THEN NEW.disabled_reason ELSE 'owner' END
   WHERE account_id=NEW.account_id;
@@ -8893,3 +8904,7 @@ CREATE INDEX app_report_entries_report ON app_report_entries(report_id);
 CREATE INDEX app_reports_expiry ON app_reports(expires_ms);
 CREATE UNIQUE INDEX app_reports_operation ON app_reports(authority,account_id,profile_id,device_id,operation_id);
 CREATE INDEX app_reports_recipient ON app_reports(recipient_account_id,created_ms,id);
+
+CREATE TRIGGER hosted_membership_endings_retention_insert AFTER INSERT ON hosted_membership_endings BEGIN INSERT INTO maintenance_retention_rows(table_name,record_key,created_ms) VALUES('hosted_membership_endings',CAST(NEW.rowid AS TEXT),NEW.ended_ms) ON CONFLICT(table_name,record_key) DO UPDATE SET created_ms=excluded.created_ms; END;
+CREATE TRIGGER hosted_membership_endings_retention_update AFTER UPDATE OF sequence ON hosted_membership_endings BEGIN UPDATE maintenance_retention_rows SET created_ms=NEW.ended_ms WHERE table_name='hosted_membership_endings' AND record_key=CAST(NEW.rowid AS TEXT); END;
+CREATE TRIGGER hosted_membership_endings_retention_delete AFTER DELETE ON hosted_membership_endings BEGIN DELETE FROM maintenance_retention_rows WHERE table_name='hosted_membership_endings' AND record_key=CAST(OLD.rowid AS TEXT); END;

@@ -33,11 +33,20 @@ import (
 // backup, or a Hosted restored from one, converges without a heartbeat.
 
 // MemberStanding is one Portico Account's standing here, as Hosted indexes it.
+type MembershipEnding struct {
+	Sequence  int64     `json:"sequence"`
+	Cause     string    `json:"cause"`
+	EndedAt   time.Time `json:"endedAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
 type MemberStanding struct {
-	AccountID string          `json:"accountId"`
-	Role      string          `json:"role"`
-	Active    bool            `json:"active"`
-	Consent   json.RawMessage `json:"consent,omitempty"`
+	MembershipID string            `json:"membershipId,omitempty"`
+	Ending       *MembershipEnding `json:"ending,omitempty"`
+	AccountID    string            `json:"accountId"`
+	Role         string            `json:"role"`
+	Active       bool              `json:"active"`
+	Consent      json.RawMessage   `json:"consent,omitempty"`
 }
 
 // MemberPush is POST /v1/servers/{id}/members. A full list is sent in pages:
@@ -80,7 +89,7 @@ const (
 
 // standingSize is what one member adds to a push body, near enough.
 func standingSize(m MemberStanding) int {
-	return len(m.AccountID) + len(m.Role) + len(m.Consent) + 64
+	return len(m.AccountID) + len(m.Role) + len(m.Consent) + 512
 }
 
 // MembershipChanged asks the control loop to push now instead of at its next
@@ -115,7 +124,7 @@ func (s *Service) memberSyncState(ctx context.Context) (memberSync, error) {
 	return q, nil
 }
 
-const standingColumns = `l.hosted_account_id,m.role,m.disabled=0,l.consent`
+const standingColumns = `l.hosted_account_id,m.role,m.disabled=0,l.consent,m.incarnation`
 
 func scanStandings(rows *sql.Rows) ([]MemberStanding, error) {
 	defer rows.Close()
@@ -123,7 +132,7 @@ func scanStandings(rows *sql.Rows) ([]MemberStanding, error) {
 	for rows.Next() {
 		var m MemberStanding
 		var consent string
-		if e := rows.Scan(&m.AccountID, &m.Role, &m.Active, &consent); e != nil {
+		if e := rows.Scan(&m.AccountID, &m.Role, &m.Active, &consent, &m.MembershipID); e != nil {
 			return nil, e
 		}
 		if m.Active && consent != "" && json.Valid([]byte(consent)) {
@@ -189,12 +198,32 @@ func (s *Service) buildMemberPush(ctx context.Context, q memberSync) (MemberPush
 		if q.fullPage > 0 {
 			through = q.fullThrough
 		}
-		rows, e := s.db.QueryContext(ctx, `SELECT `+standingColumns+` FROM account_portico_links l JOIN direct_memberships m ON m.account_id=l.account_id WHERE m.disabled=0 AND l.hosted_account_id>? ORDER BY l.hosted_account_id LIMIT ?`, q.fullCursor, memberPushPage+1)
+		rows, e := s.db.QueryContext(ctx, `SELECT hosted_account_id FROM (
+ SELECT l.hosted_account_id FROM account_portico_links l JOIN direct_memberships m ON m.account_id=l.account_id WHERE m.disabled=0
+ UNION SELECT hosted_account_id FROM hosted_membership_endings WHERE sequence<=? AND expires_ms>?
+ ) WHERE hosted_account_id>? ORDER BY hosted_account_id LIMIT ?`, through, time.Now().UnixMilli(), q.fullCursor, memberPushPage+1)
 		if e != nil {
 			return MemberPush{}, e
 		}
-		members, e := scanStandings(rows)
+		var accounts []string
+		for rows.Next() {
+			var account string
+			if e = rows.Scan(&account); e != nil {
+				rows.Close()
+				return MemberPush{}, e
+			}
+			accounts = append(accounts, account)
+		}
+		e = rows.Err()
+		rows.Close()
 		if e != nil {
+			return MemberPush{}, e
+		}
+		members, e := namedStandings(ctx, s.db, accounts)
+		if e != nil {
+			return MemberPush{}, e
+		}
+		if e = attachMembershipEndings(ctx, s.db, members, through); e != nil {
 			return MemberPush{}, e
 		}
 		keep, size := 0, 0
@@ -265,6 +294,9 @@ func (s *Service) buildMemberPush(ctx context.Context, q memberSync) (MemberPush
 		if included[m.AccountID] {
 			members = append(members, m)
 		}
+	}
+	if e = attachMembershipEndings(ctx, s.db, members, through); e != nil {
+		return MemberPush{}, e
 	}
 	return MemberPush{After: q.acked, Through: through, Members: members}, nil
 }
