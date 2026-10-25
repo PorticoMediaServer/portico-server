@@ -11,6 +11,10 @@ import type {HlsModule, VideoLike, WebMediaPlayerOptions} from './web-media-play
  * session, item-listening or capability route, and it mints no viewer fence: the only
  * authority it knows is the download scope the app already validated. Anything the
  * platform cannot report locally stays unknown here; nothing is borrowed from a server.
+ *
+ * One element, one active queue. A replacement retires the exact queue and awaits its
+ * owned preparation release before the slot is used again; dispose returns the same task
+ * until it finishes, and a failed cleanup keeps custody so a retry can finish it.
  */
 export type LocalRuntimeEnvironment = Readonly<{
   createPlayer?: (video: VideoLike, options: WebMediaPlayerOptions) => PlaybackMediaPort;
@@ -24,84 +28,176 @@ export type LocalRuntimeOptions = Readonly<{
   environment: LocalRuntimeEnvironment;
   /** False once the persisted authority is spent or the window is leaving. */
   isCurrent: () => boolean;
-  /** Retires the app-owned preparation when this runtime lets go of it. */
+  /** Retires the app-owned preparation this runtime let go of. */
   release: () => Promise<void>;
   reportError: (error: unknown) => void;
+}>;
+
+type Active = Readonly<{
+  token: number;
+  queue: WebLocalQueue;
+  resource: WebLocalQueueResource;
+  /** The actual owned preparation release; the queue's own release path shares it. */
+  release: () => Promise<void>;
+  off: () => void;
 }>;
 
 export class LocalPlaybackRuntime {
   readonly slot = new PlayerSlot();
   private player?: PlaybackMediaPort;
   private video?: VideoLike;
-  private queue?: WebLocalQueue;
+  private attachment?: Readonly<{video: VideoLike; token: number}>;
+  private attachmentSerial = 0;
+  private active?: Active;
+  private serial = 0;
   private run = 0;
   private disposed = false;
+  private retirement?: Promise<void>;
+  private readonly listeners = new Set<() => void>();
   private readonly scope: LocalPlaybackScope;
 
   constructor(private readonly options: LocalRuntimeOptions) {
     this.scope = localPlaybackScope(options.scope);
   }
 
-  /** The one element this runtime plays into. A second element is refused, not shared. */
+  /** The one element this runtime plays into. Repeating the same element is idempotent;
+   * a different element while one is attached is refused, not replaced. */
   mount(video: VideoLike): () => void {
-    if (this.disposed || !this.options.isCurrent()) throw new Error('local_playback_unavailable');
-    if (this.video && this.video !== video) throw new Error('playback-element-replaced');
+    this.assertAlive();
+    if (this.attachment) {
+      if (this.attachment.video !== video) throw new Error('playback-element-replaced');
+      return () => {};
+    }
     const create = this.options.environment.createPlayer;
     if (!create) throw new Error('local_playback_unavailable');
+    const token = ++this.attachmentSerial;
     this.video = video;
     this.player = create(video, {loadHls: this.options.environment.loadHls, nativeHls: this.options.environment.nativeHls, timers: this.options.environment.playerTimers});
     this.slot.mount(this.player);
-    return () => { if (this.video !== video) return; this.video = undefined; this.slot.unmount(); this.player = undefined; };
+    this.attachment = {video, token};
+    return () => {
+      if (this.attachment?.token !== token) return;
+      this.attachment = undefined;
+      this.video = undefined;
+      this.player = undefined;
+      this.slot.unmount();
+    };
   }
 
-  get mounted(): boolean { return !!this.video && !this.disposed; }
+  get mounted(): boolean { return !!this.attachment && !this.disposed; }
 
-  /** Start one receipt-verified preparation. The runtime takes custody of `resource`. */
-  async play(resource: WebLocalQueueResource, lifetime: Readonly<{signal: AbortSignal; isCurrent(): boolean}>): Promise<void> {
-    if (this.disposed || !this.mounted || !this.options.isCurrent()) { await resource.release().catch(() => {}); throw new Error('local_playback_unavailable'); }
-    if (lifetime.signal.aborted || !lifetime.isCurrent()) { await resource.release().catch(() => {}); throw new DOMException('Local selection retired', 'AbortError'); }
-    if (!sameLocalScope(resource.preparation.scope, this.scope) || !this.slot.canLoadLocal) {
-      await resource.release().catch(() => {});
-      throw new Error('local_playback_unavailable');
-    }
-    const preparation: WebLocalQueuePreparation = captureLocalQueue(resource.preparation, this.scope);
-    const current = () => !this.disposed && this.options.isCurrent() && lifetime.isCurrent() && !lifetime.signal.aborted;
-    const queue = new WebLocalQueue({
-      scope: this.scope, run: ++this.run, port: this.slot, preparation,
-      isCurrent: current,
-      release: async () => { await resource.release().catch(() => {}); },
-      reportError: error => { if (current()) this.options.reportError(error); },
-    });
-    this.queue = queue;
+  /** Start one receipt-verified preparation. Any previous queue is retired first and
+   * its preparation release awaited, so two queues never share the slot. */
+  async play(resource: WebLocalQueueResource, admission: Readonly<{signal: AbortSignal; isCurrent(): boolean}>): Promise<void> {
+    const alive = () => this.alive();
+    if (!alive() || !this.mounted || !this.slot.canLoadLocal) { await this.releaseQuiet(resource); throw new Error('local_playback_unavailable'); }
+    if (admission.signal.aborted || !admission.isCurrent()) { await this.releaseQuiet(resource); throw new DOMException('Local selection retired', 'AbortError'); }
+    if (!sameLocalScope(resource.preparation.scope, this.scope)) { await this.releaseQuiet(resource); throw new Error('local_playback_unavailable'); }
+    const token = ++this.serial;
+    let preparation: WebLocalQueuePreparation;
     try {
-      await queue.start({signal: lifetime.signal, isCurrent: current}, {autoplay: true});
-      if (!current()) throw new DOMException('Local selection retired', 'AbortError');
+      preparation = captureLocalQueue(resource.preparation, this.scope);
     } catch (error) {
-      if (this.queue === queue) this.queue = undefined;
+      await this.releaseQuiet(resource);
+      throw error;
+    }
+    // Retire the exact previous queue and wait for its owned release before adopting.
+    await this.retireActive();
+    if (token !== this.serial || !alive()) { await this.releaseQuiet(resource); throw new Error('local_playback_unavailable'); }
+    let queue: WebLocalQueue;
+    const owned = once(() => resource.release());
+    try {
+      queue = new WebLocalQueue({
+        scope: this.scope, run: ++this.run, port: this.slot, preparation,
+        // The action's lifetime only admits the start; the runtime's own scope life keeps it.
+        isCurrent: alive,
+        release: owned.call,
+        reportError: error => { if (alive()) this.options.reportError(error); },
+      });
+    } catch (error) {
+      await this.releaseQuiet(resource);
+      throw error;
+    }
+    const off = queue.subscribe(() => this.notify());
+    const active = {token, queue, resource, release: owned.call, off};
+    this.active = active;
+    this.notify();
+    try {
+      await queue.start({signal: admission.signal, isCurrent: () => alive() && admission.isCurrent()}, {autoplay: true});
+      if (token !== this.serial || !alive()) throw new Error('local_playback_unavailable');
+    } catch (error) {
+      if (this.active?.token === token) await this.retireActive().catch(report => this.options.reportError(report));
+      else await this.releaseQuiet(resource);
       throw error;
     }
   }
 
-  getSnapshot(): WebLocalQueueSnapshot | undefined { return this.queue?.getSnapshot(); }
+  /** Local engine commands only, fenced by the queue's own snapshot. */
+  resume(): void { const active = this.active, fence = active?.queue.getSnapshot().fence; if (active && fence) active.queue.resume(fence); }
+  pause(): void { const active = this.active, fence = active?.queue.getSnapshot().fence; if (active && fence) active.queue.pause(fence); }
+  seek(seconds: number): void { const active = this.active, fence = active?.queue.getSnapshot().fence; if (active && fence) active.queue.seek(fence, seconds); }
 
-  subscribe(listener: () => void): () => void { return this.queue?.subscribe(listener) ?? (() => {}); }
+  getSnapshot(): WebLocalQueueSnapshot | undefined { return this.active?.queue.getSnapshot(); }
 
-  /** Stop local sound before anything else may own the element. */
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
-    const queue = this.queue;
-    this.queue = undefined;
-    try { queue?.dispose(); } catch { /* already retired */ }
-    try { this.slot.unmount(); } catch { /* no mounted player */ }
-    this.video = undefined;
-    this.player = undefined;
-    await this.options.release().catch(() => {});
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
-  /** Pause/play/seek/stop are local engine commands only. */
-  play(): void { this.slot.play(); }
-  pause(): void { this.slot.pause(); }
-  seek(positionMs: number): void { this.slot.seek(positionMs); }
-  stop(): Promise<void> { return this.dispose(); }
+  /** Stop local sound and await the actual preparation release. Repeated calls return the
+   * same task; a failed cleanup keeps its custody and may be retried. */
+  dispose(): Promise<void> {
+    if (this.retirement) return this.retirement;
+    this.disposed = true;
+    const task = (async () => {
+      try {
+        await this.retireActive();
+        this.attachment = undefined;
+        this.video = undefined;
+        this.player = undefined;
+        try { this.slot.unmount(); } catch { /* already unmounted */ }
+      } catch (error) {
+        // Keep custody of the unreleased preparation so a later dispose can finish it.
+        this.retirement = undefined;
+        this.disposed = false;
+        this.options.reportError(error);
+        throw error;
+      }
+    })();
+    this.retirement = task;
+    return task;
+  }
+
+  async stop(): Promise<void> { await this.dispose(); }
+
+  private alive(): boolean { return !this.disposed && this.options.isCurrent(); }
+
+  private assertAlive(): void { if (!this.alive()) throw new Error('local_playback_unavailable'); }
+
+  private async retireActive(): Promise<void> {
+    const active = this.active;
+    if (!active) return;
+    this.active = undefined;
+    try { active.off(); } catch { /* no longer subscribed */ }
+    try { active.queue.dispose(); } catch { /* release below still runs */ }
+    try {
+      await active.release();
+    } catch (error) {
+      // Retain the exact custody for a retry rather than pretending it was retired.
+      if (!this.active) this.active = active;
+      throw error;
+    }
+    this.notify();
+  }
+
+  private async releaseQuiet(resource: WebLocalQueueResource): Promise<void> {
+    try { await resource.release(); } catch (error) { this.options.reportError(error); }
+  }
+
+  private notify(): void { for (const listener of [...this.listeners]) listener(); }
+}
+
+function once(run: () => Promise<void>): {call: () => Promise<void>} {
+  let task: Promise<void> | undefined;
+  return {call: () => task ??= run()};
 }
