@@ -4,6 +4,7 @@ import {parseMediaItem} from '@core/media-item.ts';
 import type {CastMetadata} from '@core/cast/index.ts';
 import {WebCastSender} from '../../platform/cast';
 import {PlayOnController, mediaAirPlayPort} from '../../platform/playback/play-on';
+import {WatchReceivers, watchLinkTv} from './receivers';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import type {WatchBindings} from './types';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
@@ -51,13 +52,15 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
     return {title: item.title, kind: item.kind, artworkPath: item.posterUrl ?? item.backdropUrl,
       ...(raw.episode ? {seriesTitle: raw.episode.showTitle, season: raw.episode.seasonNumber, episode: raw.episode.number} : {})};
   };
+  const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: binding.environment.t, isCurrent, reportError: binding.reportError});
+  const linkTv = watchLinkTv({request: (path, method, body, signal) => api.request(path, method, body, signal)});
   const sender = new WebCastSender({api, serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
     describe: async itemId => (await describeItem(itemId)).title});
-  const controller = new PlayOnController({sender, runtime: binding.runtime, airPlay: mediaAirPlayPort(video, undefined, {
+  const controller = new PlayOnController({sender, receivers, runtime: binding.runtime, airPlay: mediaAirPlayPort(video, undefined, {
     isCurrent: () => {const shown = binding.runtime.getSnapshot();return isCurrent() && !!shown.fence && remotePictureKeepsCaptions(shown) && binding.runtime.browserMediaReady(shown.fence);},
     subscribe: binding.runtime.subscribe,
   }), isCurrent, describeItem, reportError: binding.reportError});
-  return {controller, item: (id: string) => isCurrent() ? items.get(id) : undefined,
-    dispose: () => {life.abort();controller.dispose();items.clear();}};
+  return {controller, receivers, linkTv, item: (id: string) => isCurrent() ? items.get(id) : undefined,
+    dispose: () => {life.abort();controller.dispose();receivers.dispose();items.clear();}};
 }
 export type WatchPlayOnBinding = ReturnType<typeof createWatchPlayOn>;

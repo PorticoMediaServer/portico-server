@@ -158,7 +158,9 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const cast = castOwner && castOwner.runtime === runtime && castOwner.context === context ? castOwner.value : undefined;
   const remoteState = useSyncExternalStore<PlayOnSnapshot | undefined>(cast?.controller.subscribe ?? noSubscription, cast?.controller.getSnapshot ?? noSnapshot, noSnapshot);
   // AirPlay also lifts only the video; page-drawn captions keep the picture on the page.
-  const castAvailable = !!cast && (remoteState?.airPlayAvailable || remoteState?.cast.available && snapshot?.fence?.kind === 'queue');
+  // The panel also lists the server's Portico televisions, so a queue run offers Play on
+  // even when the browser itself has no Cast or AirPlay transport.
+  const castAvailable = !!cast && (remoteState?.airPlayAvailable || snapshot?.fence?.kind === 'queue' && (remoteState?.cast.available || !!cast.receivers));
   const remotePlaying = remoteState?.remote?.phase === 'playing';
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
@@ -315,7 +317,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       surfaces={drawnSurfaces} geometry={geometry} live={live}
       windowPort={windowPort} />}
-    {cast && binding && visuals && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} /></div>}
+    {cast && binding && visuals && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} receivers={cast.receivers} linkTv={cast.linkTv} /></div>}
   </div>;
 }
 function playbackIdentityLabel(presentations: readonly DockPresentation[], key: string | undefined) { return presentations.find(value => fenceKey(value.fence) === key)?.identity.title ?? defaultI18n.t('next.dock.nowPlaying'); }
