@@ -1,4 +1,5 @@
 import type {BrowserDownloadPort} from '../../platform/browser-download';
+import type {EntryActionTarget} from '../../shell/entry-actions';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {ContentScope} from '@core/library-content.ts';
 import type {SearchEntry} from '@core/search.ts';
@@ -29,6 +30,9 @@ export type ScreenContext = Readonly<{
     playSeason?: (seasonId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
     chooseVersion?: (request: WatchVersionRequest) => Promise<void>;
     download?: BrowserDownloadPort;
+    addToPlaylist?: (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
+    addToCollection?: (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
+    deleteTitle?: (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
     reportError: (error: unknown) => void;
   }>;
 }>;

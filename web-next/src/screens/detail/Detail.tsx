@@ -239,6 +239,11 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   };
   const differentVersion = versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1;
   const personal = (phone && offered('watched')) || offered('favorite') || offered('rating');
+  const leaf = ['movie', 'episode', 'song', 'audiobook_file'].includes(data.item.kind);
+  const entryTarget = {libraryId: data.scope.libraryId, itemId: data.item.id, kind: data.item.kind, title: data.item.title};
+  const destination = (effect: typeof binding.context.effects.addToPlaylist) => runScreenCommand(binding.context, () => {
+    binding.current(data); if (leaf && effect && trigger.current) return effect(entryTarget, trigger.current);
+  });
   return <>
     <Menu open={open} onOpenChange={setOpen} title={data.item.title} width={280} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} className={open ? styles.moreOpen : undefined} />}>
       {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
@@ -247,6 +252,9 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       {personal && <MenuSeparator />}
       {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
       {downloadAvailable && <MenuItem icon="i-download" onSelect={() => runScreenCommand(binding.context, openDownload)}>{t('next.detail.downloadAction')}</MenuItem>}
+      {leaf && offered('add_to_playlist') && binding.context.effects.addToPlaylist && <MenuItem icon="i-listadd" onSelect={() => destination(binding.context.effects.addToPlaylist)}>{t('next.selection.addToPlaylist')}</MenuItem>}
+      {leaf && offered('add_to_collection') && binding.context.effects.addToCollection && <MenuItem icon="i-layers" onSelect={() => destination(binding.context.effects.addToCollection)}>{t('next.selection.addToCollection')}</MenuItem>}
+      {leaf && owner && detailActions(data, {platform: 'web'}).more.some(group => group.actions.some(action => action.id === 'delete')) && binding.context.effects.deleteTitle && <MenuItem icon="i-trash" onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('next.selection.deleteMenu')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
       {refreshPath && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly><MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem></MenuGroup></>}
     </Menu>
