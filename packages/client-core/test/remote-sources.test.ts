@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RemoteSourceService,driveServiceAccountDraft,readSourceAvailability,s3SourceDraft,sourceAvailabilityMessage} from '../src/remote-sources.ts';
+import {RemoteSourceService,cloudTokenDraft,driveServiceAccountDraft,readSourceAvailability,s3SourceDraft,sourceAvailabilityMessage} from '../src/remote-sources.ts';
 import type {LibraryContentApi} from '../src/library-content.ts';
 const scope={serverId:'server',viewerId:'owner'},wire={serverId:'server',viewerFence:'fence'};
 const op='1788580000000-12345678-1234-1234-1234-123456789012';
@@ -594,4 +594,25 @@ test('the drawn Google service-account key is parsed, never authored',()=>{
  assert.equal(reason(driveServiceAccountDraft({...fields,keyJson:JSON.stringify({...key,client_email:'not-an-email'})})),'email');
  assert.equal(reason(driveServiceAccountDraft({...fields,keyJson:JSON.stringify({...key,private_key:'short'})})),'key');
  assert.equal(reason(driveServiceAccountDraft({...fields,locationId:'has space'})),'location');
+});
+
+test('the drawn OneDrive or Dropbox token builds the cloud section and tells other files apart',()=>{
+ const token={access_token:'access',token_type:'Bearer',refresh_token:'refresh',expiry:'2026-10-25T06:00:00Z'};
+ const fields={provider:'onedrive' as const,token:JSON.stringify(token,undefined,2),folder:'Media/TV'};
+ const result=cloudTokenDraft(fields);
+ assert(result.ok,'a real token builds');
+ assert.equal(result.draft.remote,'portico:Media/TV');
+ assert.match(result.draft.config,/^\[portico\]\ntype = onedrive\ntoken = \{/);
+ assert.equal(result.draft.config.split('\n').filter(line=>line.startsWith('token = ')).length,1);
+ assert(!result.draft.config.includes('\n"access_token"'),'the token is one INI value');
+ const dropbox=cloudTokenDraft({...fields,provider:'dropbox',folder:''});
+ assert(dropbox.ok);
+ assert.match(dropbox.draft.config,/^\[portico\]\ntype = dropbox\n/);
+ assert.equal(dropbox.draft.remote,'portico:');
+ const reason=(value:ReturnType<typeof cloudTokenDraft>)=>value.ok?'':value.reason;
+ assert.equal(reason(cloudTokenDraft({...fields,token:'nope'})),'json');
+ assert.equal(reason(cloudTokenDraft({...fields,token:JSON.stringify({access_token:'a'})})),'token');
+ assert.equal(reason(cloudTokenDraft({...fields,token:JSON.stringify({installed:{client_id:'x'}})})),'client');
+ assert.equal(reason(cloudTokenDraft({...fields,token:JSON.stringify({type:'service_account'})})),'google');
+ assert.equal(reason(cloudTokenDraft({...fields,folder:'a/../b'})),'folder');
 });

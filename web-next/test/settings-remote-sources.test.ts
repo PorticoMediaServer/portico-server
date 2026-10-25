@@ -119,3 +119,12 @@ test('the Google Drive service-account kind has its drawn words', () => {
   assert.match(defaultI18n.t('next.remoteSources.driveCannotSee'), /shared with the address above/);
   assert.match(defaultI18n.t('next.remoteSources.driveOAuthUnavailable'), /not available on this server yet/);
 });
+
+test('the OneDrive/Dropbox token kind has its drawn words', () => {
+  assert.equal(defaultI18n.t('next.remoteSources.connectCloud'), 'OneDrive or Dropbox');
+  assert.equal(defaultI18n.t('next.remoteSources.cloudOneDrive'), 'OneDrive');
+  assert.equal(defaultI18n.t('next.remoteSources.cloudDropbox'), 'Dropbox');
+  assert.match(defaultI18n.t('next.remoteSources.cloudTokenHelp'), /never shows it back/);
+  assert.match(defaultI18n.t('next.remoteSources.cloudTokenClient'), /not a signed-in token/);
+  assert.match(defaultI18n.t('next.remoteSources.cloudTokenGoogle'), /Google credential file/);
+});

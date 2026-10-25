@@ -119,6 +119,33 @@ export function driveServiceAccountDraft(fields:DriveKeyFields):DriveKeyResult{
  return Object.freeze({ok:true,draft:Object.freeze({remote:'portico:',config,email})});
 }
 
+/** The drawn cloud-drive token form: a drive signed in on another computer and
+ * the token that sign-in produced. Portico never starts that sign-in itself. */
+export type CloudTokenFields=Readonly<{provider:'onedrive'|'dropbox';token:string;folder:string}>;
+export type CloudTokenDraft=Readonly<{remote:string;config:string}>;
+export type CloudTokenResult=Readonly<{ok:true;draft:CloudTokenDraft}|{ok:false;reason:'json'|'token'|'client'|'google'|'folder'}>;
+const cloudFolderPart=/^[^\\/\r\n\u0000]{1,255}$/;
+/**
+ * One OneDrive or Dropbox source from the token rclone produced on another
+ * computer. The token is parsed and must hold a real access and refresh token;
+ * an OAuth client file or a Google key is told apart, never accepted as one.
+ */
+export function cloudTokenDraft(fields:CloudTokenFields):CloudTokenResult{
+ let parsed:unknown;
+ try{parsed=JSON.parse(fields.token);}catch{return Object.freeze({ok:false,reason:'json'});}
+ if(!record(parsed))return Object.freeze({ok:false,reason:'json'});
+ if(record(parsed.installed)||record(parsed.web))return Object.freeze({ok:false,reason:'client'});
+ if(typeof parsed.type==='string')return Object.freeze({ok:false,reason:'google'});
+ if(!text(parsed.access_token,8192)||!parsed.access_token||!text(parsed.refresh_token,8192)||!parsed.refresh_token)return Object.freeze({ok:false,reason:'token'});
+ const folder=fields.folder.trim().replace(/^\/+|\/+$/g,'');
+ if(folder&&(folder.length>1024||!folder.split('/').every(part=>part!=='.'&&part!=='..'&&cloudFolderPart.test(part))))return Object.freeze({ok:false,reason:'folder'});
+ const compact=JSON.stringify(parsed);
+ if(compact.length>8192||/[\r\n]/.test(compact))return Object.freeze({ok:false,reason:'token'});
+ const kind=fields.provider==='dropbox'?'dropbox':'onedrive';
+ const config=['[portico]',`type = ${kind}`,`token = ${compact}`].join('\n')+'\n';
+ return Object.freeze({ok:true,draft:Object.freeze({remote:`portico:${folder}`,config})});
+}
+
 /** The four drawn choices, exactly the server's own SourceReadPreset values. */
 export function sourceReadPreset(name:SourceReadPreset):SourceReadValues{return Object.freeze({...sourceReadPresets[name]});}
 export function sourceReadPresetName(values:SourceReadValues):SourceReadPreset|undefined{

@@ -1,8 +1,8 @@
 import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {
-  RemoteSourceService, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
-  type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  RemoteSourceService, cloudTokenDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
+  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -21,18 +21,20 @@ import {ProgramPicker} from './ProgramPicker';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
-type SourceKind = 'webdav' | 'rclone' | 'config' | 's3' | 'drive';
+type SourceKind = 'webdav' | 'rclone' | 'config' | 's3' | 'drive' | 'cloud';
 type RcloneDraft = {name: string; remote: string; config: string};
 type Tested = Readonly<{revision: number; result: RcloneTestResult}>;
 const emptyRclone: RcloneDraft = {name: '', remote: '', config: ''};
 const emptyS3: S3SourceFields = {endpoint: '', region: '', accessKey: '', secretKey: '', bucket: '', folder: ''};
 const emptyDrive: DriveKeyFields = {keyJson: '', location: 'folder', locationId: ''};
+const emptyCloud: CloudTokenFields = {provider: 'onedrive', token: '', folder: ''};
 const kindOptions = [
   {value: 'webdav', label: t('next.remoteSources.connectWebdav')},
   {value: 'rclone', label: t('next.remoteSources.connectRclone')},
   {value: 'config', label: t('next.remoteSources.connectFromConfig')},
   {value: 's3', label: t('next.remoteSources.connectS3')},
   {value: 'drive', label: t('next.remoteSources.connectDrive')},
+  {value: 'cloud', label: t('next.remoteSources.connectCloud')},
 ];
 const presetLabels: Readonly<Record<SourceReadPreset, MessageId>> = {
   list: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.0.label',
@@ -203,15 +205,24 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [s3Name, setS3Name] = useState('');
   const [drive, setDrive] = useState<DriveKeyFields>(emptyDrive);
   const [driveName, setDriveName] = useState('');
+  const [cloud, setCloud] = useState<CloudTokenFields>(emptyCloud);
+  const [cloudName, setCloudName] = useState('');
   // A test belongs to the exact rendered tuple; the revision changes with it.
   const [s3Revision, setS3Revision] = useState(0);
   const [driveRevision, setDriveRevision] = useState(0);
   const [s3Tested, setS3Tested] = useState<Tested>();
   const [driveTested, setDriveTested] = useState<Tested>();
-  const s3RevisionRef = useRef(0); s3RevisionRef.current = s3Revision;
-  const driveRevisionRef = useRef(0); driveRevisionRef.current = driveRevision;
+  const [cloudRevision, setCloudRevision] = useState(0);
+  const [cloudTested, setCloudTested] = useState<Tested>();
+  // The refs are the invalidation truth and move before the state is published,
+  // so a retained handler cannot use the tuple a finished render still shows.
+  const s3RevisionRef = useRef(0), driveRevisionRef = useRef(0), cloudRevisionRef = useRef(0);
+  const invalidateS3 = () => {const next = ++s3RevisionRef.current;setS3Revision(next);return next;};
+  const invalidateDrive = () => {const next = ++driveRevisionRef.current;setDriveRevision(next);return next;};
+  const invalidateCloud = () => {const next = ++cloudRevisionRef.current;setCloudRevision(next);return next;};
   const keyFile = useRef<HTMLInputElement>(null);
   const driveResult = driveServiceAccountDraft(drive);
+  const cloudResult = cloudTokenDraft(cloud);
   const [result, setResult] = useState<DAVConnectionResult>();
   const [rcloneResult, setRcloneResult] = useState<RcloneTestResult>();
   const [error, setError] = useState('');
@@ -247,7 +258,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   /** A refused owner retires this form before Settings hears about it. */
   const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
-    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setS3Revision(v => v + 1); setDriveRevision(v => v + 1);
+    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); invalidateS3(); invalidateDrive(); invalidateCloud();
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
@@ -302,7 +313,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const chooseSourceKind = (next: SourceKind) => {
     if (next === sourceKind) return;
-    testAttempt.current++;setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setS3Revision(v => v + 1);setDriveRevision(v => v + 1);setError('');setSourceKind(next);
+    testAttempt.current++;setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
@@ -312,12 +323,18 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         : reason === 'email' ? 'next.remoteSources.driveKeyEmail'
           : reason === 'key' ? 'next.remoteSources.driveKeyUnreadable'
             : 'next.remoteSources.driveLocationInvalid';
-  const updateDrive = (patch: Partial<DriveKeyFields>) => {testAttempt.current++;setRcloneResult(undefined);setDriveTested(undefined);setDriveRevision(v => v + 1);setError('');setDrive(current => ({...current, ...patch}));};
+  const updateDrive = (patch: Partial<DriveKeyFields>) => {testAttempt.current++;setRcloneResult(undefined);setDriveTested(undefined);invalidateDrive();setError('');setDrive(current => ({...current, ...patch}));};
   const readKeyFile = async (file: File | undefined) => {
-    if (!file) return;
+    const guard = attemptGuard();
+    const opening = driveRevisionRef.current;
+    if (!file || !guard()) return;
     if (file.size > 64 * 1024) {setError(t('next.remoteSources.driveKeyTooLarge'));return;}
-    try {const body = await file.text();updateDrive({keyJson: body});}
-    catch {setError(t('next.remoteSources.driveKeyUnreadable'));}
+    let body = '';
+    try {body = await file.text();}
+    catch {if (guard() && opening === driveRevisionRef.current) setError(t('next.remoteSources.driveKeyUnreadable'));return;}
+    // The key applies only to the form that opened the file and did not change since.
+    if (!guard() || opening !== driveRevisionRef.current) return;
+    updateDrive({keyJson: body});
   };
   const copyEmail = (email: string) => {const clipboard = navigator.clipboard;if (!clipboard) return;void clipboard.writeText(email).catch(() => undefined);};
   const testDrive = async () => {
@@ -347,7 +364,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     pending.current = true;setError('');setBusy(true);
     const built = result.draft;
     // The submitted tuple is captured; the key leaves the form and this witness is spent.
-    setDrive(current => ({...current, keyJson: ''}));setDriveTested(undefined);setDriveRevision(v => v + 1);
+    setDrive(current => ({...current, keyJson: ''}));setDriveTested(undefined);invalidateDrive();
     try {
       const receipt = await service.configureRclone(null, {name, remote: built.remote, config: built.config}, undefined, guard);
       if (!guard()) return;
@@ -362,7 +379,55 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
-  const updateS3 = (patch: Partial<S3SourceFields>) => {testAttempt.current++;setRcloneResult(undefined);setS3Tested(undefined);setS3Revision(v => v + 1);setError('');setS3(current => ({...current, ...patch}));};
+  const cloudReason = (reason: 'json'|'token'|'client'|'google'|'folder'): MessageId => reason === 'json' ? 'next.remoteSources.cloudTokenNotJson'
+    : reason === 'token' ? 'next.remoteSources.cloudTokenMissing'
+      : reason === 'client' ? 'next.remoteSources.cloudTokenClient'
+        : reason === 'google' ? 'next.remoteSources.cloudTokenGoogle'
+          : 'next.remoteSources.cloudFolderInvalid';
+  const updateCloud = (patch: Partial<CloudTokenFields>) => {testAttempt.current++;setRcloneResult(undefined);setCloudTested(undefined);invalidateCloud();setError('');setCloud(current => ({...current, ...patch}));};
+  const testCloud = async () => {
+    const guard = attemptGuard();
+    const revision = cloudRevision, fields = {...cloud};
+    if (pending.current || !guard() || revision !== cloudRevisionRef.current) return;
+    const result = cloudTokenDraft(fields);
+    if (!result.ok) {setError(t(cloudReason(result.reason)));return;}
+    pending.current = true;
+    const attempt = ++testAttempt.current, built = result.draft;
+    setError('');setRcloneResult(undefined);setBusy(true);
+    try {const next = await service.testRclone({remote: built.remote, config: built.config}, guard);
+      if (guard() && attempt === testAttempt.current && revision === cloudRevisionRef.current) {setRcloneResult(next);setCloudTested({revision, result: next});}}
+    catch (value) {
+      if (!guard() || attempt !== testAttempt.current) return;
+      if (authFailure(value)) {refuse(value);return;}
+      setError(remoteErrorText(value));
+    }
+    finally {if (guard() && attempt === testAttempt.current) {pending.current=false;setBusy(false);}}
+  };
+  const createCloud = async () => {
+    const guard = attemptGuard();
+    const revision = cloudRevision, fields = {...cloud}, name = cloudName.trim(), tested = cloudTested;
+    if (pending.current || !guard() || !tested || tested.revision !== revision || revision !== cloudRevisionRef.current || !name) return;
+    const result = cloudTokenDraft(fields);
+    if (!result.ok) {setError(t(cloudReason(result.reason)));return;}
+    pending.current = true;setError('');setBusy(true);
+    const built = result.draft;
+    // The submitted tuple is captured; the token leaves the form and this witness is spent.
+    setCloud(current => ({...current, token: ''}));setCloudTested(undefined);invalidateCloud();
+    try {
+      const receipt = await service.configureRclone(null, {name, remote: built.remote, config: built.config}, undefined, guard);
+      if (!guard()) return;
+      const state = service.getSnapshot();
+      if (!receipt) {
+        if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
+        setError(state.error || t('next.remoteSources.unconfirmed'));return;
+      }
+      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      catch (value) {if (guard()) setError(remoteErrorText(value));}
+      finally {if (guard()) setLoadingProfile(false);}
+    } finally {if (guard()) {pending.current=false;setBusy(false);}}
+  };
+  const updateS3 = (patch: Partial<S3SourceFields>) => {testAttempt.current++;setRcloneResult(undefined);setS3Tested(undefined);invalidateS3();setError('');setS3(current => ({...current, ...patch}));};
   const testS3 = async () => {
     const guard = attemptGuard();
     const revision = s3Revision, fields = {...s3};
@@ -442,7 +507,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     if (!built) {setError(t('next.remoteSources.s3Invalid'));return;}
     pending.current = true;setError('');setBusy(true);
     // The submitted tuple is captured; the secret leaves the form and this witness is spent.
-    setS3(current => ({...current, secretKey: ''}));setS3Tested(undefined);setS3Revision(v => v + 1);
+    setS3(current => ({...current, secretKey: ''}));setS3Tested(undefined);invalidateS3();
     try {
       const receipt = await service.configureRclone(null, {name, remote: built.remote, config: built.config}, undefined, guard);
       if (!guard()) return;
@@ -571,9 +636,10 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     : sourceKind === 'rclone' ? !!rcloneResult && !!rclone.name.trim()
       : sourceKind === 's3' ? !!s3Tested && s3Tested.revision === s3Revision && !!s3Name.trim()
         : sourceKind === 'drive' ? !!driveTested && driveTested.revision === driveRevision && !!driveName.trim() && driveResult.ok
+          : sourceKind === 'cloud' ? !!cloudTested && cloudTested.revision === cloudRevision && !!cloudName.trim() && cloudResult.ok
           : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
   const footer = step === 'connection'
-    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : sourceKind === 'drive' ? createDrive() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
+    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : sourceKind === 'drive' ? createDrive() : sourceKind === 'cloud' ? createCloud() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
     : step === 'reading'
       ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
       : step === 'folders' ? foldersFooter : doneFooter;
@@ -597,6 +663,27 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
         <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.name.trim() || !draft.root.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
           {result && <span className={styles.testCard} data-tone={result.rangeSupport === 'unsupported' ? 'warning' : 'good'}><Icon name="i-check" size={18}/>{t(result.rangeSupport === 'unsupported' ? 'next.remoteSources.testedLimited' : 'next.remoteSources.tested', {origin: result.origin})}</span>}
+        </div>
+      </> : sourceKind === 'cloud' ? <>
+        <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectCloud')}</b><small>{t('next.remoteSources.connectCloudHint')}</small></span></div>
+        <TextField label={t('next.remoteSources.name')} value={cloudName} maxLength={200} disabled={busy} onChange={event => setCloudName(event.target.value)}/>
+        <div className={styles.lab2}>{t('next.remoteSources.cloudProvider')}</div>
+        <div className={styles.segment} role="group">
+          <Button size="small" variant={cloud.provider === 'onedrive' ? 'primary' : 'glass'} aria-pressed={cloud.provider === 'onedrive'} disabled={busy} onClick={() => updateCloud({provider: 'onedrive'})}>{t('next.remoteSources.cloudOneDrive')}</Button>
+          <Button size="small" variant={cloud.provider === 'dropbox' ? 'primary' : 'glass'} aria-pressed={cloud.provider === 'dropbox'} disabled={busy} onClick={() => updateCloud({provider: 'dropbox'})}>{t('next.remoteSources.cloudDropbox')}</Button>
+        </div>
+        <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.cloudToken')}</span>
+          <textarea className={styles.config} aria-label={t('next.remoteSources.cloudToken')} value={cloud.token} placeholder={'{"access_token": "…", "refresh_token": "…"}'} maxLength={8192}
+            disabled={busy} spellCheck={false} rows={5} onChange={event => updateCloud({token: event.target.value})}/>
+          <small className={styles.note}>{t('next.remoteSources.cloudTokenHelp')}</small>
+        </label>
+        {!cloud.token.trim() ? <p className={styles.note}>{t('next.remoteSources.cloudTokenEmpty')}</p>
+          : !cloudResult.ok ? <p className={styles.error} role="alert">{t(cloudReason(cloudResult.reason))}</p> : null}
+        <TextField label={t('next.remoteSources.cloudFolder')} description={t('next.remoteSources.cloudFolderHelp')} value={cloud.folder} maxLength={1024} disabled={busy}
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateCloud({folder: event.target.value})}/>
+        <p className={styles.note}>{t('next.remoteSources.cloudChecks')}</p>
+        <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !cloudResult.ok} onClick={() => void testCloud()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
+          {rcloneResult && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{rcloneResult.version ? t('next.remoteSources.testedRclone', {version: rcloneResult.version}) : t('next.remoteSources.testedRcloneUnknown')}</span>}
         </div>
       </> : sourceKind === 'drive' ? <>
         <div className={styles.kind}><Icon name="i-google" size={22} /><span><b>{t('next.remoteSources.connectDrive')}</b><small>{t('next.remoteSources.connectDriveHint')}</small></span></div>
