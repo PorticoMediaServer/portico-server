@@ -456,8 +456,6 @@ index notification_records_page
 index notification_records_resume
 index personal_activity_receipts_expiry
 index personal_batch_receipts_expiry
-index personal_chapter_completions_asset_id_fk
-index personal_chapter_completions_file_entity_id_fk
 index personal_completed_plays_item
 index personal_conflict_open
 index personal_conflicts_item_id_fk
@@ -1165,7 +1163,6 @@ table owner_reset_file
 table personal_activity_receipts
 table personal_activity_revisions
 table personal_batch_receipts
-table personal_chapter_completions
 table personal_completed_plays
 table personal_conflicts
 table personal_device_sequences
