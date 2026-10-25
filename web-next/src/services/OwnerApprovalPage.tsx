@@ -9,8 +9,9 @@ import {OwnerApprovalFlow, type OwnerApprovalDisplay, type OwnerApprovalSnapshot
 import {servicesI18n} from './i18n';
 import {servicesRelativeTime} from './time';
 
-/** The four drawn reasons, each with its own title and consequence sentence. The
- * reason is the signed claim's own fact; this only chooses the drawn words. */
+/** The three reasons this page draws (setup keeps its own page), each with its own
+ * title and consequence sentence. The reason is the signed claim's own fact; this
+ * only chooses the drawn words. */
 export function claimApprovalCopy(reason: 'switch' | 'change-owner' | 'start-over'): {title: MessageId; lead: MessageId} {
   return reason === 'start-over'
     ? {title: 'services.claim.startOverTitle', lead: 'services.claim.startOverLead'}
