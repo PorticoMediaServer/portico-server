@@ -104,7 +104,7 @@
 .hostBody { display: flex; flex-direction: column; overflow: hidden !important; }
 .editor { flex: 1; min-height: 0; max-width: none; gap: 0; padding: 0; border-radius: 0; box-shadow: none; background: var(--color-raised); overflow: hidden; }
 .editorHead { display: block; flex: none; }
-.editorHead h2 { font-size: 32px; line-height: 1.1; font-weight: 800; }
+.editorHead h2 { margin: 16px 0 6px; font-size: 32px; line-height: 1.1; font-weight: 800; }
 .editorTabs { flex: none; margin: 0; padding: 0 32px; overflow-x: auto; white-space: nowrap; }
 .editorTabs button { padding: 16px 0 14px; }
 .editor > .fields, .editor > .generalFields, .editor > .artwork { flex: 1; min-height: 0; overflow: auto; padding: 22px 32px 18px; }
