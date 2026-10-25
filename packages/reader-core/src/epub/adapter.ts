@@ -217,8 +217,8 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
             for(let node=walker.nextNode();node;node=walker.nextNode()) {nodes.push(node as Text);offsets.push(text.length);text+=node.textContent??'';if(text.length>8*1024*1024)throw new ReaderError('limit_exceeded');}
             // Locale-neutral lowercase preserves UTF-16 offsets for common text;
             // search compares slices to avoid length-changing case mappings.
-            const folded=text.toLowerCase(),useFolded=folded.length===text.length;
-            const haystack=useFolded?folded:text,needle=useFolded?query.toLowerCase():query;
+            const folded=text.toLowerCase(),foldedQuery=query.toLowerCase(),useFolded=folded.length===text.length&&foldedQuery.length===query.length;
+            const haystack=useFolded?folded:text,needle=useFolded?foldedQuery:query;
             for(let at=haystack.indexOf(needle);at>=0;at=haystack.indexOf(needle,at+Math.max(1,query.length))) {
               throwIfAborted(searchSignal);unchanged();
               let start=offsets.length-1,end=start;
@@ -226,7 +226,8 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
               while(end+1<offsets.length&&offsets[end+1]<at+query.length)end++;
               const range=doc.createRange();range.setStart(nodes[start],at-offsets[start]);range.setEnd(nodes[end],at+query.length-offsets[end]);
               const cfi=cfiAt(b,index,range),chapter=chapterAt(b,index,range,tocBySection);
-              yield {id:cfi,excerpt:text.slice(Math.max(0,at-60),Math.min(text.length,at+query.length+60)),
+              const excerptStart=Math.max(0,at-60);
+              yield {id:cfi,excerpt:text.slice(excerptStart,Math.min(text.length,at+query.length+60)),match:{start:at-excerptStart,length:query.length},
                 location:{format:'epub',cfi,section:b.sections[index].id,progression:progression(b,index,text.length?at/text.length:0),chapter},chapter};
               if(++count>=search.limit)return;
             }

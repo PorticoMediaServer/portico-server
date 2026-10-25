@@ -88,13 +88,14 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
           const view={...fixed,dispose(){life.abort();scope.dispose();style.remove();views.delete(view);return fixed.dispose();}};views.add(view);return view;
         },
         async *search(query,searchOptions){
-          if(closed)throw new PdfInputError('closed');const needle=query.trim().toLowerCase();if(!needle||needle.length>256)throw new PdfInputError('pdf_limit');
+          if(closed)throw new PdfInputError('closed');const term=query.trim(),foldedTerm=term.toLowerCase();if(!term||term.length>256)throw new PdfInputError('pdf_limit');
           if(searchOptions.limit!==undefined&&(!Number.isInteger(searchOptions.limit)||searchOptions.limit<1||searchOptions.limit>1000))throw new PdfInputError('pdf_limit');
           const limit=searchOptions.limit??100;let found=0;
           for(let index=0;index<engine.document.numPages&&found<limit;index++){
             const page=await engine.page(index,searchOptions.signal);
-            try{const text=await pdfText(engine,page,searchOptions.signal),folded=text.toLowerCase();let from=0,offset:number;
-              while(found<limit&&(offset=folded.indexOf(needle,from))>=0){throwIfAborted(searchOptions.signal);yield {id:`pdf-${index}-${offset}`,excerpt:text.slice(Math.max(0,offset-100),Math.min(text.length,offset+needle.length+100)),location:position(index,engine.document.numPages)};found++;from=offset+Math.max(1,needle.length);}
+            try{const text=await pdfText(engine,page,searchOptions.signal),folded=text.toLowerCase(),canFold=folded.length===text.length&&foldedTerm.length===term.length;
+              const haystack=canFold?folded:text,needle=canFold?foldedTerm:term;let from=0,offset:number;
+              while(found<limit&&(offset=haystack.indexOf(needle,from))>=0){throwIfAborted(searchOptions.signal);const excerptStart=Math.max(0,offset-100);yield {id:`pdf-${index}-${offset}`,excerpt:text.slice(excerptStart,Math.min(text.length,offset+needle.length+100)),match:{start:offset-excerptStart,length:needle.length},location:position(index,engine.document.numPages)};found++;from=offset+Math.max(1,needle.length);}
             }finally{page.cleanup();}
           }
         },page(index,pageOptions){return preview(engine,index,pageOptions.width,pageOptions.signal);},

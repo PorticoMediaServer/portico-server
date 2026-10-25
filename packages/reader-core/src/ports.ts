@@ -47,6 +47,8 @@ export type ReaderSelection = Readonly<{
 }>;
 export type ReaderSearchResult = Readonly<{
   id: string; excerpt: string; location: ReaderLocation; chapter?: string;
+  /** UTF-16 range of this actual hit within its literal excerpt; absent means unknown. */
+  match?: Readonly<{start: number; length: number}>;
 }>;
 export type ReaderPageImage = Readonly<{mime: 'image/jpeg' | 'image/png' | 'image/webp'; bytes: Uint8Array; width: number; height: number}>;
 export type ReaderSearchOptions = Readonly<{signal: AbortSignal; limit: number}>;
