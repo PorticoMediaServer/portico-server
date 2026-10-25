@@ -2270,3 +2270,5 @@ export type {PlaybackInfo, PlaybackRoute, PlaybackPictureFacts, PlaybackSoundFac
 export {playbackInfoProjection} from './playback-info-projection.ts';
 export type {PlaybackInfoWords, PlaybackComparisonProjection, PlaybackInfoRow, PlaybackInfoField} from './playback-info-projection.ts';
 export {videoAudioChannelName} from './video-track-labels.ts';
+
+export type {ReadingSavedGroupTarget, ReadingSavedGroupKind, ReadingSavedGroupMembership, ReadingSavedGroupCommand, SavedReadingGroupCard} from './reading-saved-group.ts';

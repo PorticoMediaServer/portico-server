@@ -1,3 +1,4 @@
+import {readingSavedReferencePath, parseReadingSavedReferenceReceipt, validReadingSavedReferenceCommand, type ReadingSavedReferenceCommand} from '@core/reading-saved-group.ts';
 import {SavedService, type SavedApi, type SavedRestore, type SavedRoute} from '@core/saved.ts';
 import {PersonalSavedService, isPersonalSavedRoute} from '@core/personal-saved.ts';
 import {DownloadsService} from '@core/downloads-service.ts';
@@ -36,6 +37,15 @@ export function createSavedRuntime(input: Readonly<{api: SavedApi; scope: SavedD
   if (input.deviceId) downloads.followDevice(input.deviceId);
   return {
     scope, operations, saved, posters, squares, personal, downloads, summary,
+    canRemoveReadingGroup(referenceId: string): boolean {return operations.current && readingSavedReferencePath(referenceId) !== undefined;},
+    async removeReadingGroup(referenceId: string, command: ReadingSavedReferenceCommand, signal: AbortSignal) {
+      const path = readingSavedReferencePath(referenceId), captured = Object.freeze({...command});
+      if (!path || !validReadingSavedReferenceCommand(captured)) throw new Error('invalid_reading_saved_group');
+      const value = await api.request<unknown>(path, 'DELETE', captured, signal);
+      signal.throwIfAborted();
+      if (!operations.current) throw abort();
+      return parseReadingSavedReferenceReceipt(value, scope.serverId, referenceId, captured);
+    },
     /** Install once for this captured parent lifetime. Route unmounts do not
      * cancel an accepted native queue; parent retirement closes the observer. */
     installReadyDownloads(save: SaveReadyPreparation, reportError: (error: unknown) => void): void {
