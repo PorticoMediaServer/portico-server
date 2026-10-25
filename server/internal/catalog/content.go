@@ -521,6 +521,7 @@ func (s *Service) Content(request ContentRequest) (ContentEnvelope, error) {
 	if err = s.EnrichListeningEntries(request.Viewer, pages...); err != nil {
 		return out, err
 	}
+	applyAuthorSeriesEntityFacts(&out, request)
 	return out, s.attachViewerRatings(request.Viewer.Profile, pages...)
 }
 
