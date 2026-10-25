@@ -55,6 +55,7 @@ export class ReaderController<P extends object> {
     this.snapshot = Object.freeze({...this.snapshot, ...patch});
     for (const listener of this.listeners) listener();
   }
+  private readonly searchResults = new WeakMap<ReaderSearchResult, {session: Session<P>; signal: AbortSignal}>();
   private current(session: Session<P>) { return this.session === session && !session.abort.signal.aborted; }
   private effective(): Readonly<P> { return copy({...this.base, ...this.overrides}); }
   private publishPreferences() {
@@ -181,6 +182,27 @@ export class ReaderController<P extends object> {
       return Promise.reject(new ReaderError('invalid_location'));
     return this.enqueue((view, signal) => view.navigate(target, signal));
   }
+  /** Only an actual result of this exact session/query can request a search mark. */
+  navigateSearchResult(result: ReaderSearchResult, callerSignal?: AbortSignal): Promise<void> {
+    const grant = this.searchResults.get(result);
+    if (!grant || !this.current(grant.session) || grant.signal.aborted) return Promise.reject(new ReaderError('invalid_location'));
+    const location = copy(result.location);
+    return this.enqueue(async (view, signal) => {
+      const task = abortScope([signal, grant.signal, ...(callerSignal ? [callerSignal] : [])]);
+      try {
+        throwIfAborted(task.signal);
+        if (!this.current(grant.session)) throw new ReaderError('closed');
+        await view.navigate({kind: 'location', location}, task.signal);
+        throwIfAborted(task.signal);
+        if (!this.current(grant.session)) throw new ReaderError('closed');
+        await view.showSearchResult?.(location, grant.signal);
+        throwIfAborted(task.signal);
+      } finally {task.dispose();}
+    });
+  }
+  clearSearchResult(): Promise<void> {
+    return this.enqueue(async (view, signal) => {await view.showSearchResult?.(null, signal);});
+  }
   navigateContents(target: ReaderContentsTarget, callerSignal?: AbortSignal): Promise<void> {
     const session = this.session, document = session?.document;
     const captured = Object.freeze({...target});
@@ -278,7 +300,9 @@ export class ReaderController<P extends object> {
       if (!this.current(session)) throw new ReaderError('aborted');
       const result = next.value;
       validateLocation(result.location, session.document.format);
-      yield Object.freeze({...result, location: copy(result.location)});
+      const captured = Object.freeze({...result, location: copy(result.location)});
+      this.searchResults.set(captured, {session, signal: options.signal});
+      yield captured;
       if (++count >= options.limit) return;
     }
     } finally {
