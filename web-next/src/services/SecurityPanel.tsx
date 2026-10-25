@@ -5,7 +5,7 @@ import {ApiError} from '@core/index.ts';
 import {runAccountExport} from '@core/account-notifications.ts';
 import {AuthCodeBoxes, AuthPasswordField} from '../kit/accounts';
 import {ServicesAuthenticator, ServicesBadge, ServicesDangerAction, ServicesGroup, ServicesRecoveryCodes, ServicesRowNote, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
-import {HostedError, ServicesNotice, ServicesQuiet, ServicesStrength} from '../kit/accounts/ServicesAuth';
+import {HostedError, ServicesLabel, ServicesNotice, ServicesQuiet, ServicesStrength} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import {currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
@@ -103,7 +103,7 @@ export function SecurityPanel({account, api, identity, username, error: parentEr
       </ServicesGroup>
       <ServicesGroup title={t('services.security.yourData')}><ServicesWorkspaceRow phoneIcon="i-file" title={t('web.account.export.button')} help={t('web.account.export.help')}><Button size="small" icon="i-download" loading={exporting} onClick={() => void download()}>{t('web.account.export.button')}</Button></ServicesWorkspaceRow></ServicesGroup>
       {exportPending && <ServicesQuiet>{t('web.account.export.preparing')}</ServicesQuiet>}
-      <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')}><ServicesDangerAction compact onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
+      <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')} help={t('web.deleteAccount.help')}><ServicesDangerAction compact icon="i-trash" onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
       {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
       {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onClose={() => setDeleting(false)} />}
     </>}
@@ -153,7 +153,7 @@ function SecurityTask({account, identity, state, task, onClose}: {account: Servi
         {task === 'mfa_disable' && <ServicesQuiet>{t('services.security.disableBody')}</ServicesQuiet>}
         {task === 'email_change' && <ServicesQuiet>{t('services.security.emailPending')}</ServicesQuiet>}
         <AuthPasswordField label={t(task === 'password_set_or_change' ? 'account.currentPassword' : 'web.password')} autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} />
-        {task === 'password_set_or_change' && <><AuthPasswordField label={t('auth.newPassword')} autoComplete="new-password" value={value} onChange={event => setValue(event.currentTarget.value)} disabled={busy} /><ServicesStrength password={value} id="security-strength" /></>}
+        {task === 'password_set_or_change' && <><AuthPasswordField label={<ServicesLabel detail={t('services.password.minimum')}>{t('auth.newPassword')}</ServicesLabel>} autoComplete="new-password" value={value} onChange={event => setValue(event.currentTarget.value)} disabled={busy} /><ServicesStrength password={value} id="security-strength" /></>}
         {task === 'email_change' && <TextField label={t('web.hostedSecurity.newEmail')} type="email" autoComplete="email" value={value} onChange={event => setValue(event.currentTarget.value)} description={t('services.security.emailCode')} disabled={busy} />}
         {state.mfaEnabled && <TextField label={t('services.security.authenticatorCode')} autoComplete="one-time-code" value={factor} onChange={event => setFactor(event.currentTarget.value)} disabled={busy} />}
       </form>}
@@ -176,8 +176,8 @@ function DeleteAccount({account, identity, target, onClose}: {account: ServicesA
     catch (value) { if (!signal.aborted) setError(value); }
     finally { if (!signal.aborted) setBusy(false); }
   };
-  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={t('web.deleteAccount.confirmTitle')} showCloseButton={false}
-    footer={<><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{preview?.canDelete && <ServicesDangerAction loading={busy} disabled={!target || typed.trim().toLowerCase() !== target.toLowerCase()} onClick={() => void remove()}>{t('web.deleteAccount.confirmAction')}</ServicesDangerAction>}</>}>
+  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={t('web.deleteAccount.confirmTitle')} description={t('web.deleteAccount.help')} showCloseButton={false}
+    footer={<><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{preview?.ownedServers.length ? <Button size="small" variant="primary" onClick={() => location.assign('/account?tab=servers')}>{t('account.delete.manageServers')}</Button> : null}{preview?.canDelete && <ServicesDangerAction icon="i-trash" loading={busy} disabled={!target || typed.trim().toLowerCase() !== target.toLowerCase()} onClick={() => void remove()}>{t('web.deleteAccount.confirmAction')}</ServicesDangerAction>}</>}>
     {error ? <HostedError error={error} /> : null}
     {!preview && !error && <ServicesQuiet>{t('web.deleteAccount.checking')}</ServicesQuiet>}
     {preview?.ownedServers.length ? <ServicesNotice tone="info">{t('services.security.stillOwn', {servers: preview.ownedServers.map(server => server.name).join(', ')})}</ServicesNotice> : preview?.canDelete ? <><ServicesQuiet>{t('web.deleteAccount.member', {count: preview.affectedServers.length})}</ServicesQuiet><TextField label={t('web.deleteAccount.typeLabel', {value: target})} value={typed} onChange={event => setTyped(event.currentTarget.value)} disabled={busy} /></> : preview ? <ServicesNotice>{t('web.deleteAccount.cannot')}</ServicesNotice> : null}

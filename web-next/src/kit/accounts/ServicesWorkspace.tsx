@@ -66,8 +66,8 @@ export function ServicesRecoveryCodes({codes, onCopy, onDownload}: {codes: reado
   </div><div className={styles.recoveryActions}><Button size="small" icon="i-copy" onClick={onCopy}>{t('web.twoStep.copy')}</Button><Button size="small" icon="i-download" onClick={onDownload}>{t('action.download')}</Button></div></>;
 }
 
-export function ServicesDangerAction({children, onClick, disabled = false, loading = false, compact = false}: {children: ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean; compact?: boolean}) {
-  return <Button className={styles.dangerAction} size={compact ? 'xs' : 'small'} onClick={onClick} disabled={disabled} loading={loading}>{children}</Button>;
+export function ServicesDangerAction({children, onClick, disabled = false, loading = false, compact = false, icon}: {children: ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean; compact?: boolean; icon?: IconName}) {
+  return <Button className={styles.dangerAction} size={compact ? 'xs' : 'small'} icon={icon} onClick={onClick} disabled={disabled} loading={loading}>{children}</Button>;
 }
 
 export function ServicesWorkspace({header, account, section, onSection, onSignOut, description, actions, phoneActions, unread = 0, children}: {
