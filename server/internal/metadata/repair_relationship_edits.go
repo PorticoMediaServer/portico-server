@@ -118,6 +118,11 @@ func applyRelationshipSet(ctx context.Context, tx *sql.Tx, t RepairTarget, class
 	if err != nil {
 		return err
 	}
+	// This writer replaces only the manual family. A provider edit must not
+	// be acknowledged when the published provider row would remain unchanged.
+	if !restore && class == "credit" && !providerCreditsUnchanged(current, values) {
+		return ErrRepairInput
+	}
 	known := map[string]RepairRelationship{}
 	for _, v := range current {
 		known[v.Provider+":"+v.RecordID] = v
@@ -181,6 +186,36 @@ func applyRelationshipSet(ctx context.Context, tx *sql.Tx, t RepairTarget, class
 	raw, _ := json.Marshal(values)
 	_, err = tx.ExecContext(ctx, `INSERT INTO metadata_relationship_decisions(kind,entity_id,relationship,value_json,source,locked,actor,observed_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,relationship) DO UPDATE SET value_json=excluded.value_json,source=excluded.source,locked=excluded.locked,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, class, string(raw), "manual", locked, actor, now)
 	return err
+}
+
+// Provider identity and published content are immutable on the manual-family
+// command. Source/lock/observed are decision metadata, not provider identity.
+// A new row without a record ID is deliberately excluded: it becomes a scoped
+// manual credit below, regardless of any supplied provider hint.
+func providerCreditsUnchanged(current, values []RepairRelationship) bool {
+	type credit struct {
+		provider, record, targetKind, target, label, role, department string
+		ordinal                                                    int
+	}
+	collect := func(rows []RepairRelationship) []credit {
+		out := []credit{}
+		for _, row := range rows {
+			if row.Kind == "credit" && row.Provider != "manual" && row.RecordID != "" {
+				out = append(out, credit{row.Provider, row.RecordID, row.TargetKind, row.TargetID, row.Label, row.Role, row.Department, row.Ordinal})
+			}
+		}
+		return out
+	}
+	before, after := collect(current), collect(values)
+	if len(before) != len(after) {
+		return false
+	}
+	for n := range before {
+		if before[n] != after[n] {
+			return false
+		}
+	}
+	return true
 }
 
 // writeOwnerCredits replaces one item's manual credit family. Provider
