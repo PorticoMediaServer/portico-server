@@ -5,5 +5,5 @@ export type ImageWorkerRequest =
 export type FrameRect = {x: number; y: number; width: number; height: number; bitmap?: ImageBitmap; rgba?: ArrayBuffer};
 export type ImageWorkerReply =
   | {type: 'ready'; width: number; height: number; starts: Float64Array; ends: Float64Array; forced: Uint8Array; skipped: number}
-  | {type: 'failed'; code: 'no_pictures' | 'unreadable'; message?: string}
+  | {type: 'failed'; code: 'no_pictures' | 'unreadable'}
   | {type: 'frame'; index: number; rects: FrameRect[]};

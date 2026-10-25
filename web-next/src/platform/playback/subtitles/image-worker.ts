@@ -62,7 +62,7 @@ scope.onmessage = event => {
       pending.push(message.index);
       void drain();
     }
-  } catch (error) {
-    scope.postMessage({type: 'failed', code: 'unreadable', ...(error instanceof Error ? {message: error.message} : {})});
+  } catch {
+    scope.postMessage({type: 'failed', code: 'unreadable'});
   }
 };
