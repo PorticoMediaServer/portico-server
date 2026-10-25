@@ -9,7 +9,7 @@ export const readerMessages = {
   'next.reader.annotationEmpty': 'Nothing saved here yet.',
   'next.reader.annotationFailed': 'Your reading notes could not be loaded or saved. Reload before trying again.',
   'next.reader.annotationReload': 'Reload notes',
-  'next.reader.annotationMore': 'Show older',
+  'next.reader.annotationMore': 'Show more',
   'next.reader.annotationDelete': 'Remove',
   'next.reader.annotationEdit': 'Edit note',
   'next.reader.annotationSave': 'Save note',
