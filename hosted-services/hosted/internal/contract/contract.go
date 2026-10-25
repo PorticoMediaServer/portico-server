@@ -63,11 +63,11 @@ const (
 // response type of a route that answers 204 No Content.
 type NoBody struct{}
 
-// Options is how cmd/apigen generates the Hosted contract. Hosted answers errors
-// with its own {"error":{"code","message","retryable"}} envelope (the claim
-// protocol with {"code"}), not apikit's catalogue, so no catalogue is published.
+// Options is how cmd/apigen generates the Hosted contract. The catalogue names
+// explicit semantic codes; it does not classify an HTTP status on its own or
+// replace Hosted's {"error":{"code","message","retryable"}} envelope.
 func Options() apikit.Options {
-	return apikit.Options{Title: Title, Errors: []apierror.Definition{}}
+	return apikit.Options{Title: Title, Errors: []apierror.Definition{{Code: "username_unavailable", Status: 409, Message: "That username is already taken. Choose another.", Retry: apierror.Never}}}
 }
 
 type entry apikit.Definition
@@ -81,7 +81,8 @@ func route[Request, Response any](method, path, id, summary string, a apikit.Acc
 	}
 	return entry{Metadata: apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: a, Requires: scope, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: limit, Errors: []string{}, Status: status}, Request: reflect.TypeFor[Request](), Response: reflect.TypeFor[Response]()}
 }
-func (e entry) lane(l apikit.Lane) entry { e.Lane = l; return e }
+func (e entry) lane(l apikit.Lane) entry     { e.Lane = l; return e }
+func (e entry) errors(codes ...string) entry { e.Errors = append([]string{}, codes...); return e }
 func (e entry) paged(query ...string) entry {
 	e.Cost = apikit.PageSized
 	e.Query = query
@@ -104,12 +105,12 @@ func Definitions() []apikit.Definition {
 		route[NoBody, httpapi.IdentityOptions]("GET", "/v1/identity/options", "identity_options_get", "List the sign-in methods this deployment offers.", Public, apikit.ScopeOpen, 200).lane(security),
 		// contract: an MFA-enrolled account answers 202 with identity.MFAChallenge instead.
 		route[httpapi.SignInRequest, identity.Session]("POST", "/v1/sessions", "session_create", "Sign in with a username and password.", Public, apikit.ScopeSession, 200).lane(security),
-		route[postgres.RegistrationInput, identity.Registration]("POST", "/v1/accounts", "account_create", "Start an email registration (alias of registration_create).", Public, apikit.ScopeSession, 202).lane(security),
-		route[postgres.RegistrationInput, identity.Registration]("POST", "/v1/registrations", "registration_create", "Start an email registration.", Public, apikit.ScopeSession, 202).lane(security),
+		route[postgres.RegistrationInput, identity.Registration]("POST", "/v1/accounts", "account_create", "Start an email registration (alias of registration_create).", Public, apikit.ScopeSession, 202).lane(security).errors("username_unavailable"),
+		route[postgres.RegistrationInput, identity.Registration]("POST", "/v1/registrations", "registration_create", "Start an email registration.", Public, apikit.ScopeSession, 202).lane(security).errors("username_unavailable"),
 		// contract: answers JSON null when the caller has no continuation.
 		route[NoBody, identity.Registration]("GET", "/v1/registrations/current", "registration_current", "Read the caller's pending registration.", Public, apikit.ScopeSession, 200).lane(security),
 		route[NoBody, identity.Registration]("GET", "/v1/registrations/{id}", "registration_get", "Read a pending registration.", Public, apikit.ScopeSession, 200).lane(security),
-		route[httpapi.RegistrationVerifyRequest, identity.Session]("POST", "/v1/registrations/{id}/verify", "registration_verify", "Verify a registration code and create the account.", Public, apikit.ScopeSession, 201).lane(security),
+		route[httpapi.RegistrationVerifyRequest, identity.Session]("POST", "/v1/registrations/{id}/verify", "registration_verify", "Verify a registration code and create the account.", Public, apikit.ScopeSession, 201).lane(security).errors("username_unavailable"),
 		route[httpapi.RequestIDRequest, identity.Registration]("POST", "/v1/registrations/{id}/resend", "registration_resend", "Resend a registration code.", Public, apikit.ScopeSession, 202).lane(security),
 		route[NoBody, NoBody]("POST", "/v1/registrations/cancel", "registration_cancel", "Cancel the caller's pending registration.", Public, apikit.ScopeSession, 204).lane(security),
 		route[httpapi.TokenRequest, postgres.EmailLinkResult]("POST", "/v1/email-links/confirm", "email_link_confirm", "Confirm a mailed verification link.", Public, apikit.ScopeSession, 200).lane(security),
