@@ -1,4 +1,4 @@
-import {useEffect, useId, useMemo, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
 import {EditorHeader} from '../../kit/shell';
@@ -60,6 +60,10 @@ export function MetadataEditor({api, scope, target, onClose}: {
     if (!saved) setError(service.getSnapshot().error ?? new Error(t('web.metadata.saveChanges')));
     return saved;
   };
+  const currentRepairData = useCallback((expected: RepairData) => service.getSnapshot().data === expected, [service]);
+  const removeUpload = useCallback(async (role: string, candidateId: string, expectedData: RepairData) => {
+    try {return await service.removeUploadedArtwork(role, candidateId, expectedData);} catch (value) {setError(value); return false;}
+  }, [service]);
   const set = (field: string, patch: Partial<MetadataFieldDraft>) => {
     setDraft(current => ({...current, [field]: patchMetadataDraft(data, field, current[field], patch)}));
   };
@@ -95,7 +99,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
-        onRemove={async (role, candidateId) => {try {return await service.removeUploadedArtwork(role, candidateId);} catch (value) {setError(value); return false;}}}
+        onRemove={removeUpload} isDataCurrent={currentRepairData}
         onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
@@ -202,15 +206,31 @@ function TagList({spec, values, locked, onValues, onLock, busy}: {spec: RepairFi
   </section>;
 }
 
-function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove}: {
-  onRemove: (role: string, candidateId: string) => Promise<boolean>;
+function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove, isDataCurrent}: {
+  isDataCurrent: (data: RepairData) => boolean;
+  onRemove: (role: string, candidateId: string, expectedData: RepairData) => Promise<boolean>;
   onUpload?: (role: string, file: File) => Promise<boolean>;
   data: RepairData; busy: boolean; onUse: (role: string, candidateId: string) => void;
   onLock: (role: string, subject: string, locked: boolean) => void; onFindMore: (role: string) => void; onRefetch: (role: string) => void;
 }) {
   const rolesId = useId();
   const [selected, setSelected] = useState(''), [uploadError, setUploadError] = useState('');
-  const [removing, setRemoving] = useState<{role: string; id: string}>(), [removeFailed, setRemoveFailed] = useState(false);
+  type Removal = {data: RepairData; candidate: RepairData['artwork']['candidates'][number]; handler: typeof onRemove; live: boolean; started: boolean};
+  const removal = useRef<Removal | null>(null);
+  const [removing, setRemoving] = useState<Removal>(), [removeFailed, setRemoveFailed] = useState(false);
+  // A replaced document/handler retires the confirmation before its next event can run.
+  if (removal.current && (removal.current.data !== data || removal.current.handler !== onRemove || !isDataCurrent(removal.current.data))) {removal.current.live = false; removal.current = null;}
+  const retireRemoval = () => {if (removal.current) removal.current.live = false; removal.current = null; setRemoving(undefined);};
+  useLayoutEffect(() => () => {if (removal.current) removal.current.live = false; removal.current = null;}, []);
+  const currentRemoval = (attempt: Removal) => removal.current === attempt && attempt.live && attempt.data === data && attempt.handler === onRemove && isDataCurrent(attempt.data) && data.artwork.candidates.includes(attempt.candidate);
+  const confirmRemoval = async () => {
+    const attempt = removal.current;
+    if (!attempt || attempt.started || busy || !currentRemoval(attempt)) return;
+    attempt.started = true;
+    const saved = await attempt.handler(attempt.candidate.role, attempt.candidate.id, attempt.data);
+    if (!currentRemoval(attempt)) return;
+    if (saved) retireRemoval(); else setRemoveFailed(true);
+  };
   const upload = async (file: File | undefined) => {
     if (!file || busy || !role || !onUpload) return;
     if (!['image/jpeg', 'image/png'].includes(file.type) || file.size < 1 || file.size > 10 * 1024 * 1024) {setUploadError(t('web.metadata.uploadImageLimit')); return;}
@@ -244,7 +264,7 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, on
         <figcaption><small>{providerName(candidate.provider)}{candidate.locale ? ` · ${candidate.locale}` : ''}{candidate.votes != null ? ` · ${t('web.metadata.votes', {count: candidate.votes})}` : ''}</small></figcaption>
         {candidate.current ? <span className={styles.badge}>{t('web.metadata.inUse')}</span>
           : <Button size="small" disabled={busy} onClick={() => onUse(role, candidate.id)}>{t('web.liveSource.useThis')}</Button>}
-        {candidate.provider === 'upload' ? <Button size="small" disabled={busy} onClick={() => {setRemoveFailed(false); setRemoving({role, id: candidate.id});}}>{t('web.metadata.removeUpload')}</Button> : null}
+        {candidate.provider === 'upload' ? <Button size="small" disabled={busy} onClick={() => {retireRemoval(); const attempt: Removal = {data, candidate, handler: onRemove, live: true, started: false}; removal.current = attempt; setRemoveFailed(false); setRemoving(attempt);}}>{t('web.metadata.removeUpload')}</Button> : null}
       </figure>)}</div> : <p className={styles.working}>{t('web.metadata.noCandidates')}</p>}
       {onUpload ? <div className={styles.uploadTile} onDragOver={event => {if (!busy) event.preventDefault();}} onDrop={event => {event.preventDefault(); if (!busy) void upload(event.dataTransfer.files[0]);}}>
         <b>{t('web.metadata.uploadImage')}</b><p>{t('web.metadata.uploadImageHelp')}</p>
@@ -253,9 +273,9 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, on
       </div> : null}
       {data.artwork.jobs.filter(job => job.role === role).map(job => <p key={job.id} role="status">{t('web.metadata.artJob', {role: t('web.metadata.artRole', {role}), state: job.status})}</p>)}
     </section> : null}
-    <Dialog open={Boolean(removing)} title={t('web.metadata.removeUploadTitle')} description={t('web.metadata.removeUploadBody')} onOpenChange={open => {if (!open && !busy) setRemoving(undefined);}}
+    <Dialog open={Boolean(removing && currentRemoval(removing))} title={t('web.metadata.removeUploadTitle')} description={t('web.metadata.removeUploadBody')} onOpenChange={open => {if (!open) retireRemoval();}}
       dismissOnOutsidePress={!busy} dismissOnBack={!busy} showCloseButton={!busy}
-      footer={<><Button size="small" disabled={busy} onClick={() => setRemoving(undefined)}>{t('action.cancel')}</Button><Button size="small" disabled={busy} onClick={() => {if (removing) void onRemove(removing.role, removing.id).then(saved => {if (saved) setRemoving(undefined); else setRemoveFailed(true);});}}>{t('web.metadata.removeUpload')}</Button></>}>{removeFailed ? <p role="alert">{t('web.metadata.removeUploadFailed')}</p> : null}</Dialog>
+      footer={<><Button size="small" disabled={busy} onClick={retireRemoval}>{t('action.cancel')}</Button><Button size="small" disabled={busy} onClick={() => void confirmRemoval()}>{t('web.metadata.removeUpload')}</Button></>}>{removeFailed ? <p role="alert">{t('web.metadata.removeUploadFailed')}</p> : null}</Dialog>
   </div>;
 }
 

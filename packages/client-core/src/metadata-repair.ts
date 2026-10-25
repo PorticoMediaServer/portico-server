@@ -131,9 +131,10 @@ export class MetadataRepairService {
   try{const raw=await this.request(target,'POST',body,path,true);if(epoch!==this.epoch||this.disposed)return false;this.accept(raw,target);return true;}
   catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,true);return false;}
  }
- async removeUploadedArtwork(role:string,candidateId:string):Promise<boolean>{
+ async removeUploadedArtwork(role:string,candidateId:string,expectedData?:RepairData):Promise<boolean>{
   const data=this.state.data,target=this.target;
   if(this.state.phase!=='ready'||!data||!target)throw Error('Load current metadata before removing artwork.');
+  if(expectedData&&data!==expectedData)throw Error('The artwork confirmation belongs to an old document.');
   if(!data.artwork.candidates.some(candidate=>candidate.id===candidateId&&candidate.role===role&&candidate.provider==='upload'))throw Error('Select an uploaded image.');
   const path=encodedRoutePath('delete_metadata_kind_id_art_role_upload_candidateId',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id),role:encodeURIComponent(role),candidateId:encodeURIComponent(candidateId)})+'?expectedRevision='+encodeURIComponent(data.revision);
   const epoch=++this.epoch;this.publish({...this.state,phase:'saving',error:null});
