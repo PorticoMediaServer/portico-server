@@ -79,10 +79,13 @@ type DriveOAuthCancelResponse struct {
 // driveOAuthActor binds a sign-in to the verified owner session, not only to the
 // account: the viewer fence carries the identity epoch, so another same-owner
 // session cannot take over or read this one.
-// sameOwnerSession proves the rechecked principal is the exact verified session
-// that started this request, not merely another session for the same account.
+// sameOwnerSession proves the rechecked principal is the exact verified
+// authorization that started this request: the verified authorization hash
+// (never a token), its expiry and the viewer fence must all match. A replacement
+// token intentionally ends the operation.
 func sameOwnerSession(first identity.Principal, firstScope catalog.AdminScope, again identity.Principal, againScope catalog.AdminScope) bool {
-	return first.Authority == again.Authority && first.AccountID == again.AccountID && first.ProfileID == again.ProfileID &&
+	return first.Hash != "" && first.Hash == again.Hash && first.ExpiresAt.Equal(again.ExpiresAt) &&
+		first.Authority == again.Authority && first.AccountID == again.AccountID && first.ProfileID == again.ProfileID &&
 		first.Epoch == again.Epoch && firstScope.ViewerFence == againScope.ViewerFence
 }
 
@@ -103,7 +106,7 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		if r.URL.RawQuery != "" {
 			return DriveOAuthStartResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		authorizationURL, state, err := d.DriveOAuth.Start(driveOAuthActor(p, scope.ViewerFence), in.ClientID, in.ClientSecret)
+		authorizationURL, state, err := d.DriveOAuth.Start(driveOAuthActor(p, scope.ViewerFence), in.ClientID, in.ClientSecret, p.ExpiresAt)
 		if err != nil {
 			return DriveOAuthStartResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
