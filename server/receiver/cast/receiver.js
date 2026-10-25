@@ -590,7 +590,7 @@
   function audioKind(kind) { return AUDIO_KINDS[kind] === 1; }
   function castMetadata(m, image) {
     if (!m) return undefined;
-    var images = image ? [{url: image}] : [];
+    var sharedImage=displayImage(image),images=sharedImage?[{url:sharedImage}]:[];
     if (m.kind === 'episode') return {metadataType: 2, title: m.title, seriesTitle: m.seriesTitle || m.subtitle, season: m.season, episode: m.episode, images: images};
     if (m.kind === 'movie') return {metadataType: 1, title: m.title, subtitle: m.subtitle, images: images};
     // Structured catalogue fields are facts; the old joined subtitle is not an artist.
@@ -1049,7 +1049,7 @@
   // Root51: this is deliberately shared Cast/Google Home presentation. It
   // has no recipient authority. Only a fixed active-item display allow-list
   // leaves CAF; private Portico state stays on the validated custom channel.
-  function displayImage(value){return typeof value==='string'&&value.length<=4194500&&/^data:image\/(?:png|jpeg|webp|gif|avif|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(value)?value:'';}
+  function displayImage(value){return typeof value==='string'&&value.length<=40960&&/^data:image\/(?:png|jpeg|webp|gif|avif|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(value)?value:'';}
   function platformMetadata(value){
     if(!value||typeof value!=='object')return;
     var out={};
@@ -1066,12 +1066,34 @@
     if(['SUBTITLES','CAPTIONS','DESCRIPTIONS','CHAPTERS','METADATA'].indexOf(track.subtype)>=0)out.subtype=track.subtype;
     return out;
   });}
-  function platformStatus(status){
+  function utf8Size(text){var size=0;for(var i=0;i<text.length;i++){var cp=text.codePointAt(i);size+=cp<=127?1:cp<=2047?2:cp<=65535?3:4;if(cp>65535)i++;}return size;}
+  function platformEnvelopeSize(status,kind){
+    // Count the whole encoded status + documented media-status envelope and
+    // even an escaped outer payload, not string.length or the image alone.
+    // A 48 KiB ceiling leaves 16 KiB of the 64 KiB transport limit for SDK
+    // routing/protobuf overhead; no recipient fields are guessed or inferred.
+    return utf8Size(JSON.stringify({namespace:'urn:x-cast:com.google.cast.media',payloadUtf8:JSON.stringify({type:kind,requestId:Number.MAX_SAFE_INTEGER,status:[status]})}));
+  }
+  function fitPlatformStatus(status,kind){
+    var limit=48*1024,media=status.media;
+    if(platformEnvelopeSize(status,kind)<=limit)return status;
+    if(media&&media.metadata)delete media.metadata.images;
+    while(media&&media.tracks&&media.tracks.length&&platformEnvelopeSize(status,kind)>limit){media.tracks.pop();if(status.activeTrackIds)status.activeTrackIds=status.activeTrackIds.filter(function(id){return media.tracks.some(function(track){return track.trackId===id;});});}
+    if(media&&media.metadata)['albumArtist','albumName','artist','subtitle','seriesTitle','discNumber','trackNumber','season','episode'].forEach(function(key){if(platformEnvelopeSize(status,kind)>limit)delete media.metadata[key];});
+    // Keep a final measured bound as well as the per-field limits. Optional
+    // display fields are omitted individually; ordinary status is not disabled.
+    if(media&&media.metadata&&platformEnvelopeSize(status,kind)>limit)delete media.metadata;
+    if(media&&media.tracks&&platformEnvelopeSize(status,kind)>limit){delete media.tracks;delete status.activeTrackIds;}
+    if(media&&platformEnvelopeSize(status,kind)>limit)delete status.media;
+    return status;
+  }
+  function platformStatus(status,kind){
+    kind=kind==='CLOUD_STATUS'?'CLOUD_STATUS':'MEDIA_STATUS';
     if(!status||typeof status!=='object')return null;
-    var out={type:'MEDIA_STATUS'};
+    var out={type:['MEDIA_STATUS','CLOUD_STATUS'].indexOf(status.type)>=0?status.type:kind};
     if(Number.isSafeInteger(status.mediaSessionId)&&status.mediaSessionId>=0)out.mediaSessionId=status.mediaSessionId;
     if(Number.isSafeInteger(status.requestId)&&status.requestId>=0)out.requestId=status.requestId;
-    if(!playback){out.playerState='IDLE';return out;}
+    if(!playback){out.playerState='IDLE';return fitPlatformStatus(out,kind);}
     var occurrence=platformOccurrence,media=status.media||(manager&&manager.getMediaInformation());
     if(!occurrence||occurrence.id!==playback.id||occurrence.generation!==playback.generation||!media||media.contentId!==occurrence.contentId||!/^portico-[a-f0-9]{32}$/.test(media.contentId))return null;
     var safe={contentId:media.contentId};
@@ -1088,7 +1110,7 @@
     if(Number.isSafeInteger(status.supportedMediaCommands)&&status.supportedMediaCommands>=0)out.supportedMediaCommands=status.supportedMediaCommands;
     if(['CANCELLED','INTERRUPTED','FINISHED','ERROR'].indexOf(status.idleReason)>=0)out.idleReason=status.idleReason;
     if(Array.isArray(status.activeTrackIds))out.activeTrackIds=status.activeTrackIds.slice(0,32).filter(function(id){return tracks.some(function(track){return track.trackId===id;});});
-    return out;
+    return fitPlatformStatus(out,kind);
   }
 
   // --- Cast framework wiring ------------------------------------------------
@@ -1100,7 +1122,8 @@
     // CAF's documented resolver keeps grant-bearing URLs out of its public media/queue status.
     manager.setMediaUrlResolver(mediaAddress);
     var types=cast.framework.messages.MessageType;
-    if(types.MEDIA_STATUS)manager.setMessageInterceptor(types.MEDIA_STATUS,platformStatus);
+    if(types.MEDIA_STATUS)manager.setMessageInterceptor(types.MEDIA_STATUS,function(status){return platformStatus(status,'MEDIA_STATUS');});
+    if(types.CLOUD_STATUS)manager.setMessageInterceptor(types.CLOUD_STATUS,function(status){return platformStatus(status,'CLOUD_STATUS');});
     // Media-channel commands from a sender that isn't the controller: pause and stop are allowed
     // (anyone in the room can do that with the remote); load, play and seek are not.
     function fromOther(request) { return !request || !isController(request.senderId); }

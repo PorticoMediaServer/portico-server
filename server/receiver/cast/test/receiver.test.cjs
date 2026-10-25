@@ -3,11 +3,11 @@ const source=fs.readFileSync(require('node:path').join(__dirname,'../receiver.js
 async function harness(fixture={}){
  const calls=[],loads=[],metadataUpdates=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener,urlResolver;
  // The real SDK exposes QUEUE_NEXT/PREV enum values but rejects them as interceptors.
- const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','MEDIA_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
+ const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
  const manager={setMediaUrlResolver:fn=>urlResolver=fn,getMediaInformation:()=>loads.at(-1)?.media,setMediaInformation:(media,broadcast)=>metadataUpdates.push({media,broadcast}),getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');if(fixture.localInterceptors&&interceptors.LOAD){x=await interceptors.LOAD(x);if(!x)return;}loads.push(x);if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},sendLocalMediaRequest:x=>{assert(Number.isSafeInteger(x.requestId)&&x.requestId>0);const handle=()=>{if(x.type==='PLAY')state='PLAYING';if(x.type==='PAUSE')state='PAUSED';if(x.type==='STOP')state='IDLE';if(x.type==='SEEK')at=x.currentTime;};if(fixture.localInterceptors&&interceptors[x.type])Promise.resolve(interceptors[x.type](x)).then(y=>{if(y)handle();});else handle();},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,getSender:id=>({id,userAgent:fixture.senderUA||'Browser'}),start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
- const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','MEDIA_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
+ const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1;
  const presentation=(start,mediaUrl)=>{
   const url=mediaUrl===undefined?(fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
@@ -422,7 +422,7 @@ test('decoded multichannel and rate declarations require exact positive output c
 
 test('standard CAF queue reads and mutations cannot bypass controller authority',async()=>{
  const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});
- for(const kind of ['GET_STATUS','MEDIA_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']){
+ for(const kind of ['GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']){
   assert.equal(h.interceptors[kind]({senderId:'stranger'}),null);
   assert.deepEqual(h.interceptors[kind]({senderId:'phone'}),{senderId:'phone'});
  }
@@ -691,4 +691,17 @@ test('discarding a refused replay cannot revoke an already installed identical t
  const replay=h.message('late-replay',{type:'pair',code:'ABC123',origin:'https://server.test'});await entered.promise;
  h.ctxEvents.disconnect({senderId:'late-replay'});gate.resolve();await replay;await h.message('observer',{type:'status'});
  assert.equal(h.calls.some(x=>x.url==='https://server.test/v1/cast/devices/cdv_ABC123'&&x.method==='DELETE'),false);
+});
+
+test('Root51 standard and cloud status fit a complete UTF-8 envelope and keep only genuine small safe artwork',async()=>{
+ const h=await harness({direct:true});await h.receiver.redeem('ABC123');await h.receiver.startPlayback('movie',0,{title:'Film',kind:'movie'});
+ const media=h.loads.at(-1).media,small='data:image/png;base64,'+Buffer.from('actual fixture image bytes').toString('base64');
+ const envelopeSize=(status,type)=>Buffer.byteLength(JSON.stringify({namespace:'urn:x-cast:com.google.cast.media',payloadUtf8:JSON.stringify({type,requestId:Number.MAX_SAFE_INTEGER,status:[status]})}),'utf8');
+ for(const type of ['MEDIA_STATUS','CLOUD_STATUS']){
+  const raw={type,mediaSessionId:1,currentTime:1,playerState:'PLAYING',customData:{controller:'private'},queueData:{items:[{id:'future'}]},media:{...media,metadata:{title:'曲'.repeat(200),images:[{url:small}]},tracks:[{trackId:1,type:'TEXT',name:'日本語',language:'ja',trackContentId:'/private/subtitle'}]}};
+  const safe=h.interceptors[type](raw);assert.equal(safe.media.metadata.images[0].url,small);assert(envelopeSize(safe,type)<=48*1024);assert(!JSON.stringify(safe).includes('private'));assert(!JSON.stringify(safe).includes('future'));
+  raw.media.metadata.images=[{url:'data:image/png;base64,'+'a'.repeat(4*1024*1024)}];
+  raw.media.tracks=Array.from({length:32},(_,i)=>({trackId:i,type:'TEXT',name:'音'.repeat(100),language:'ja'}));
+  const bounded=h.interceptors[type](raw);assert(envelopeSize(bounded,type)<=48*1024);assert.equal(bounded.media.metadata.images,undefined);assert.equal(bounded.media.metadata.title,'曲'.repeat(200));
+ }
 });
