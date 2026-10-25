@@ -365,6 +365,7 @@ export const webMessages = {
   'web.search.recent': 'Recent searches',
   'web.search.clearRecent': 'Clear',
   'web.search.clearFailed': 'Your recent searches couldn’t be cleared. Try again.',
+  'web.search.removeRecent': 'Remove “{query}” from recent searches',
   'web.home.details': 'Details',
   'web.home.serverFallback': 'Portico',
   'web.empty.ownerTitle': 'Add your first library',

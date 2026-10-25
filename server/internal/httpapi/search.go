@@ -95,7 +95,24 @@ func (d Dependencies) searchRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).ClearSearchHistory(p.Viewer)
+		// No query clears all, exactly as before. One `query` names the retained entry,
+		// by the query text the viewer was shown; the catalogue resolves the same
+		// canonical identity RecordSearch stored, never a list position.
+		values, named := r.URL.Query()["query"]
+		var out catalog.SearchHistoryPage
+		if named {
+			if len(r.URL.Query()) != 1 || len(values) != 1 || strings.TrimSpace(values[0]) == "" || len(values[0]) > 512 {
+				failure(w, catalog.ErrSearchQuery)
+				return
+			}
+			out, e = d.Catalog.WithContext(r.Context()).DeleteSearchHistory(p.Viewer, values[0])
+		} else {
+			if len(r.URL.Query()) != 0 {
+				failure(w, catalog.ErrSearchQuery)
+				return
+			}
+			out, e = d.Catalog.WithContext(r.Context()).ClearSearchHistory(p.Viewer)
+		}
 		if e != nil {
 			failure(w, e)
 			return

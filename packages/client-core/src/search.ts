@@ -22,7 +22,7 @@ export type SearchCapabilities=Readonly<{groups:readonly SearchGroupCapability[]
 export type SearchData=Readonly<{scope:Readonly<{serverId:string;libraryId:'';libraryKind:'mixed';view:'search';entityId:'';viewerFence:string}>;revision:Readonly<{catalog:number;viewer:number}>;heading:ContentHeading;query:Readonly<{q:string;sort:SearchSort;direction:SearchDirection;group:SearchGroup|'';groups:readonly SearchGroup[];libraryIds:readonly string[];limit:number;searchMode:'normalized_prefix';recorded:boolean}>;groups:readonly SearchGroupResult[];capabilities:SearchCapabilities;empty?:ContentHeading}>;
 export type SearchSnapshot=Readonly<{generation:number;scope:ContentScope;query:SearchQuery|null;phase:'idle'|'loading'|'ready'|'error'|'refresh-required';data:SearchData|null;groups:readonly SearchGroupResult[];pagination:Readonly<{cursor:string|null;canPrevious:boolean}>;error:Readonly<{code:string;message:string;retryable:boolean}>|null}>;
 export type SearchHistoryEntry=Readonly<{q:string;updatedAt:string;uses:number}>;
-export type SearchHistoryPage=Readonly<{serverId:string;viewerFence:string;entries:readonly SearchHistoryEntry[];maxEntries:number}>;
+export type SearchHistoryPage=Readonly<{serverId:string;/** The viewer's own fence, present only when the server's page names one. */viewerFence?:string;/** The server's own remembering switch; absent on older pages. False exposes no entries. */remembered?:boolean;entries:readonly SearchHistoryEntry[];maxEntries:number}>;
 const groups:readonly SearchGroup[]=['movies','shows','episodes','artists','albums','songs','books','reading','collections','authors','people','live-tv'];
 const sorts:readonly SearchSort[]=['relevance','title','releaseYear','dateAdded'];
 const directions:readonly SearchDirection[]=['asc','desc'];
@@ -150,15 +150,26 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
  let empty:ContentHeading|undefined;if(raw.empty!==undefined&&raw.empty!==null){try{empty=heading(raw.empty);}catch{noteSkipped('search','empty');}}
  return Object.freeze({scope:Object.freeze({serverId:s.serverId,libraryId:'' as const,libraryKind:'mixed' as const,view:'search' as const,entityId:'' as const,viewerFence:scope.viewerFence}),revision:Object.freeze({catalog:r.catalog,viewer:r.viewer}),heading:headingOr(raw.heading,'search'),query:Object.freeze({q:q.q,sort,direction,group:q.group as SearchGroup|'',groups:echoedGroups,libraryIds,limit,searchMode:'normalized_prefix' as const,recorded:q.recorded===true}),groups:Object.freeze(results),capabilities:published,...(empty?{empty}:{})});
 }
-/** Recent searches are the viewer's own, bounded and separately erasable. */
+/** Recent searches are the viewer's own, bounded and separately erasable. The page is
+ * the server's own: it names each retained query and when it was last used; a page that
+ * names another server is still refused. Older pages that also carry the viewer fence,
+ * a depth and `q` remain readable. */
 export function parseSearchHistory(raw:unknown,scope:ContentScope):SearchHistoryPage{
- if(!object(raw)||raw.serverId!==scope.serverId||!id(raw.viewerFence)||!count(raw.maxEntries)||!raw.maxEntries)invalid();
+ if(!object(raw)||!Array.isArray(raw.entries))invalid();
+ if(raw.serverId!==undefined&&raw.serverId!==scope.serverId)invalid();
+ if(raw.remembered!==undefined&&typeof raw.remembered!=='boolean')invalid();
+ const viewerFence=raw.viewerFence===undefined?undefined:id(raw.viewerFence)?raw.viewerFence:invalid();
+ const maxEntries=raw.maxEntries===undefined?20:count(raw.maxEntries)&&raw.maxEntries?raw.maxEntries:invalid();
+ // A page whose remembering switch is off exposes no entry at all, whatever it carries.
+ const readable=raw.remembered===false?[]:raw.entries;
  // An entry that cannot be read is left out alone; a repeated search keeps its first appearance.
- const entries=firstOfEach('search-history','entries',keepReadable('search-history','entries',array(raw.entries,raw.maxEntries),v=>{
-  if(!object(v)||!text(v.q,512)||!v.q||!text(v.updatedAt??'',128))invalid();
-  return Object.freeze({q:v.q,updatedAt:(v.updatedAt??'') as string,uses:count(v.uses)&&v.uses?v.uses:1});
+ const entries=firstOfEach('search-history','entries',keepReadable('search-history','entries',array(readable,maxEntries),v=>{
+  if(!object(v))invalid();
+  const q=text(v.query,512)?String(v.query):text(v.q,512)?String(v.q):'';
+  if(!q||!text(v.updatedAt??'',128))invalid();
+  return Object.freeze({q,updatedAt:(v.updatedAt??'') as string,uses:count(v.uses)&&v.uses?v.uses:1});
  }),e=>e.q);
- return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,entries:Object.freeze(entries),maxEntries:raw.maxEntries});
+ return Object.freeze({serverId:scope.serverId,...(viewerFence?{viewerFence}:{}),...(typeof raw.remembered==='boolean'?{remembered:raw.remembered}:{}),entries:Object.freeze(entries),maxEntries});
 }
 /** The profile's recent searches, newest first, as the server keeps them (it keeps none while the profile has history turned off). */
 export async function readSearchHistory(api:LibraryContentApi,scope:ContentScope,signal?:AbortSignal):Promise<SearchHistoryPage>{
@@ -167,6 +178,14 @@ export async function readSearchHistory(api:LibraryContentApi,scope:ContentScope
 /** Forgets every search the server kept for this profile. */
 export async function clearSearchHistory(api:LibraryContentApi,signal?:AbortSignal):Promise<void>{
  await api.request<RouteResponse<"delete_search_history">>(routePath("delete_search_history"),'DELETE',undefined,signal);
+}
+/** Removes the one retained query the viewer named, at the server's own canonical identity,
+ * and answers with the page the server now holds. Nothing is inferred locally. */
+export async function deleteSearchHistoryEntry(api:LibraryContentApi,scope:ContentScope,query:string,signal?:AbortSignal):Promise<SearchHistoryPage>{
+ const named=query.trim();
+ if(!named)throw new Error('invalid_search_history_query');
+ const namedQuery=new URLSearchParams({query:named}).toString();
+ return parseSearchHistory(await api.request<RouteResponse<"delete_search_history">>(routePath("delete_search_history")+'?'+namedQuery,'DELETE',undefined,signal),bound(scope));
 }
 export function searchPath(q:SearchQuery,limit:number,cursor?:string|null):string{
  const params=new URLSearchParams({q:q.q,limit:String(limit)});

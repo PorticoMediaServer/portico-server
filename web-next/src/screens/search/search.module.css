@@ -217,3 +217,9 @@
 @media (max-width: 599px) {
   .phoneSearchTitle { margin: 0 0 12px; font-size: 2rem; line-height: 1.15; font-weight: 800; letter-spacing: -.035em; }
 }
+
+/* Phone-app 7: each recent search keeps its own remove control beside the row. */
+.recentItem { position: relative; }
+.recentItem + .recentItem .recentRow::before { content: ''; position: absolute; top: 0; left: 56px; right: 0; height: 1px; background: var(--color-line); }
+.recent[data-compact] .recentRow { padding-right: 48px; }
+.recentRemove { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--color-text-tertiary); }

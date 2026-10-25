@@ -1,4 +1,4 @@
-import {SearchService, readSearchHistory, clearSearchHistory, type SearchEntry, type SearchGroup, type SearchQuery} from '@core/search.ts';
+import {SearchService, readSearchHistory, clearSearchHistory, deleteSearchHistoryEntry, type SearchEntry, type SearchGroup, type SearchQuery} from '@core/search.ts';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {guideWindow, parseChannelGuide, type GuideChannel} from '@core/channel-guide.ts';
 import {nowNext, type GuideProgram} from '@core/guide/index.ts';
@@ -165,8 +165,9 @@ export function createSearchBindings(context: ScreenContext) {
       const state = service.getSnapshot(), data = state.data;
       return life.current() && state.phase === 'ready' && data && summary?.key === summaryKey(data) ? summary.groups : [];
     },
-    recent: () => readSearchHistory(life.api, context.scope, life.signal()),
+    recent: (signal?: AbortSignal) => readSearchHistory(life.api, context.scope, life.signal(signal)),
     clearRecent: () => { life.assert(); return clearSearchHistory(life.api, life.signal()); },
+    removeRecent: (query: string) => { life.assert(); return deleteSearchHistoryEntry(life.api, context.scope, query, life.signal()); },
     open(entry: SearchEntry) {
       life.assert();
       if (service.getSnapshot().phase !== 'ready' || !visible.has(entry)) throw new DOMException('Search result changed', 'AbortError');

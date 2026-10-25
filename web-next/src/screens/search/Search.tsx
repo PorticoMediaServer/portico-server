@@ -2,9 +2,9 @@ import {generatedCoverTint} from '@design';
 import type {SearchSelection} from './selection';
 import {SelectionCircle} from '../../kit/selection';
 import {t, locale} from '../detail/text';
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
-import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult} from '@core/search.ts';
+import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult, type SearchHistoryPage} from '@core/search.ts';
 import {SEARCH_CHIPS, orderedSearchGroups, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
 import {Button, Chip, TextField} from '../../kit/controls';
 import {useSelectionRangePreview, PosterCard, SquareCard, CircleCard, EpisodeTile, GenreTile, LiveCard, CoverCard} from '../../kit/cards';
@@ -35,6 +35,8 @@ import {defaultI18n} from '@i18n';
 import {formatSignalText, musicFormatBadges} from '@core/music-signal.ts';
 
 type ChipId = SearchGroup | 'all';
+type HistoryLease = {retired: boolean; pending: boolean};
+type HistoryView = {lease: HistoryLease; page?: SearchHistoryPage};
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
 const searchTimezone = () => defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 const onNowTime = (at: number) => new Intl.DateTimeFormat(locale(), {hour: 'numeric', minute: '2-digit', timeZone: searchTimezone()}).format(new Date(at));
@@ -57,7 +59,12 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   useFreshDocument([dependsOn.libraries, ...titlesWithPersonalState(), dependsOn.settings('preferences'), dependsOn.event('stream.resync')], refresh => service.revalidate(refresh), () => service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(context.preferences.subscribe, context.preferences.getSnapshot, context.preferences.getSnapshot);
   const [text, setText] = useState(linkedQuery ?? initial.text), [chip, setChip] = useState<ChipId>(initial.group ?? 'all');
-  const [recent, setRecent] = useState<readonly string[]>([]), [clearFailed, setClearFailed] = useState(false);
+  const [historyView, setHistoryView] = useState<HistoryView>(), [clearFailed, setClearFailed] = useState(false);
+  // The history row the viewer is looking at belongs to this exact mount (or replay) and
+  // to the page it was rendered from; the rendered callbacks close over that state, and a
+  // retained one cannot write into a successor.
+  const activeLease = useRef<HistoryLease | undefined>(undefined), historyPage = useRef<SearchHistoryPage | undefined>(undefined);
+  const recent = historyView?.page ? historyView.page.entries.slice(0, 8).map(item => item.q) : [];
   const [now, setNow] = useState(() => Date.now());
   const genres = useSyncExternalStore(binding.genres.subscribe, binding.genres.getSnapshot, binding.genres.getSnapshot);
   const onNow = useSyncExternalStore(binding.onNow.subscribe, binding.onNow.getSnapshot, binding.onNow.getSnapshot);
@@ -77,12 +84,36 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     return () => clearTimeout(timer);
   }, [binding, service, text, group, problem, context.effects.reportError, snapshot.query?.q, snapshot.query?.group]);
   useEffect(() => { input.current?.focus(); }, [binding]);
+  useLayoutEffect(() => {
+    const lease: HistoryLease = {retired: false, pending: false};
+    activeLease.current = lease;
+    historyPage.current = undefined;
+    setHistoryView({lease});
+    return () => {
+      lease.retired = true;
+      if (activeLease.current === lease) activeLease.current = undefined;
+    };
+  }, [binding]);
   useEffect(() => {
+    const lease = historyView?.lease;
+    if (!lease) return;
+    if (!remember) {
+      historyPage.current = undefined;
+      setHistoryView(current => current && current.lease === lease && current.page ? {lease} : current);
+      return;
+    }
+    const controller = new AbortController();
     let active = true;
-    if (!remember) { setRecent([]); return; }
-    void binding.recent().then(page => { if (active && context.isCurrent()) setRecent(page.entries.slice(0, 8).map(item => item.q)); }, () => {});
-    return () => { active = false; };
-  }, [binding, context, remember]);
+    void binding.recent(controller.signal).then(page => {
+      if (!active || !context.isCurrent() || lease.retired || lease.pending || activeLease.current !== lease) return;
+      historyPage.current = page;
+      setHistoryView(current => current && current.lease === lease ? {lease, page} : current);
+    }, () => {});
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [binding, context, remember, historyView?.lease]);
   useEffect(() => {
     if (text.trim() || context.identity?.liveAvailable !== true) return;
     if (binding.onNow.getSnapshot().phase === 'idle') void binding.onNow.load().catch(() => {});
@@ -93,6 +124,47 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     return () => clearInterval(timer);
   }, [text]);
   const commit = () => { if (remember && text.trim() && !problem && committed.current !== text.trim()) { committed.current = text.trim(); submit(true); } };
+  // The rendered callbacks carry their own lease and page from state. Before any write they
+  // compare the live lease and page refs with those exact objects, so a retained callback
+  // never adopts a successor. One synchronous pending flag on that lease serialises remove
+  // and clear; only the server's answer for the same lease and page replaces the list.
+  const historyNow = historyView?.page ? {lease: historyView.lease, page: historyView.page} : undefined;
+  const removeRecent = historyNow ? (query: string) => {
+    const {lease, page} = historyNow;
+    if (!context.isCurrent() || lease.retired || lease.pending || activeLease.current !== lease || historyPage.current !== page || !recent.includes(query)) return;
+    lease.pending = true;
+    try {
+      void binding.removeRecent(query).then(next => {
+        lease.pending = false;
+        if (!context.isCurrent() || lease.retired || activeLease.current !== lease || historyPage.current !== page) return;
+        historyPage.current = next;
+        setHistoryView(current => current && current.lease === lease ? {lease, page: next} : current);
+        setClearFailed(false);
+      }, () => {
+        lease.pending = false;
+        if (!context.isCurrent() || lease.retired || activeLease.current !== lease || historyPage.current !== page) return;
+        setClearFailed(true);
+      });
+    } catch (error) { lease.pending = false; context.effects.reportError(error); }
+  } : undefined;
+  const clearRecentHistory = historyNow ? () => {
+    const {lease, page} = historyNow;
+    if (!context.isCurrent() || lease.retired || lease.pending || activeLease.current !== lease || historyPage.current !== page) return;
+    lease.pending = true;
+    try {
+      void binding.clearRecent().then(() => {
+        lease.pending = false;
+        if (!context.isCurrent() || lease.retired || activeLease.current !== lease || historyPage.current !== page) return;
+        historyPage.current = undefined;
+        setHistoryView(current => current && current.lease === lease ? {lease} : current);
+        setClearFailed(false);
+      }, () => {
+        lease.pending = false;
+        if (!context.isCurrent() || lease.retired || activeLease.current !== lease || historyPage.current !== page) return;
+        setClearFailed(true);
+      });
+    } catch (error) { lease.pending = false; context.effects.reportError(error); }
+  } : undefined;
   const showing = snapshot.data?.query.q === text.trim() && snapshot.data.query.group === (group ?? '') ? snapshot.data : null;
   const groups = showing ? snapshot.groups : [], top = !group && !selection?.isActive() ? topSearchResult(text, groups) : undefined;
   // Frame 4: a photo-less artist's circle is cut from one of their own albums in this answer.
@@ -107,11 +179,9 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     if (text.trim() && !empty) return;
     if (binding.genres.getSnapshot().phase === 'idle') void binding.genres.load().catch(() => {});
   }, [binding, text, empty]);
-  const recentBlock = <RecentSearches queries={recent} compact={compact}
+  const recentBlock = <RecentSearches queries={recent} compact={compact} onRemove={removeRecent}
     onSelect={query => {if (context.isCurrent()) {setText(query);setChip('all');committed.current = '';}}}
-    onClear={() => {
-      void binding.clearRecent().then(() => {if (context.isCurrent()) {setRecent([]);setClearFailed(false);}}, () => {if (context.isCurrent()) setClearFailed(true);});
-    }}/>;
+    onClear={() => {clearRecentHistory?.();}}/>;
   const videoKinds = new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format([
     t('web.libraryKind.plural', {kind: 'movie'}), t('web.libraryKind.plural', {kind: 'tv'}), t('web.libraryKind.plural', {kind: 'anime'})]);
   const liveSourceCount = new Set(onNow.cards.map(card => card.channel.sourceId)).size;

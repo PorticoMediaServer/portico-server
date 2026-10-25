@@ -224,7 +224,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/search.go:80
-	if err := apikit.RegisterHTTP[struct{}, catalog.SearchHistoryPage](registry, apikit.Metadata{ID: "delete_search_history", Method: "DELETE", Path: "/v1/search/history", Summary: "Remove search history", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneExpensive, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SearchHistoryPage](registry, apikit.Metadata{ID: "delete_search_history", Method: "DELETE", Path: "/v1/search/history", Summary: "Remove search history", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneExpensive, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"query"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/show_workspace.go:11

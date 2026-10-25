@@ -79,6 +79,21 @@ func (s *Service) SearchHistory(v identity.Viewer) (SearchHistoryPage, error) {
 	return out, rows.Err()
 }
 
+// DeleteSearchHistory removes the one retained query whose canonical identity the
+// viewer named: the same whitespace-collapsed, lowercased key RecordSearch stores, so
+// no array position or name substring decides which row goes. It answers with the
+// page the server now holds.
+func (s *Service) DeleteSearchHistory(v identity.Viewer, query string) (SearchHistoryPage, error) {
+	normalized := strings.ToLower(strings.Join(strings.Fields(query), " "))
+	if normalized != "" {
+		if _, e := dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive),
+			`DELETE FROM search_history WHERE profile_key=? AND normalized=?`, identity.PersonalKey(v), normalized); e != nil {
+			return SearchHistoryPage{Entries: []SearchHistoryEntry{}}, e
+		}
+	}
+	return s.SearchHistory(v)
+}
+
 // ClearSearchHistory removes every retained query for this viewer.
 func (s *Service) ClearSearchHistory(v identity.Viewer) (SearchHistoryPage, error) {
 	if _, e := dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `DELETE FROM search_history WHERE profile_key=?`, identity.PersonalKey(v)); e != nil {
