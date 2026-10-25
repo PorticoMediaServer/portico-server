@@ -136,14 +136,14 @@ func TestAccountConfigReportsItsOwnListBound(t *testing.T) {
 
 func TestAccountConfigReceiptIdentityIgnoresMutableContent(t *testing.T) {
 	service := &Service{}
-	one := Command{OperationID: "1788580000000-12345678-1234-1234-1234-123456789012", Action: "create", Name: "Archive", Remote: "archive:", Config: "first", ReceiptKey: accountConfigReceiptKey}
+	one := Command{OperationID: "1788580000000-12345678-1234-1234-1234-123456789012", Action: "create", Name: "Archive", Remote: "archive:", Config: "first", receiptKey: accountConfigReceiptKey}
 	two := one
 	two.Config = "second"
 	if service.fingerprint("actor", "", one) != service.fingerprint("actor", "", two) {
 		t.Fatal("a receipt with an identity key must not depend on configuration content")
 	}
 	plain := one
-	plain.ReceiptKey = ""
+	plain.receiptKey = ""
 	other := plain
 	other.Config = "second"
 	if service.fingerprint("actor", "", plain) == service.fingerprint("actor", "", other) {

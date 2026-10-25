@@ -4,9 +4,10 @@ package mounts
 
 import "os"
 
-// openConfigFile has no non-blocking flag on this platform. The caller still
-// checks the opened descriptor's mode before reading, which refuses a device or
-// directory; a named pipe may open normally here.
-func openConfigFile(path string) (*os.File, error) {
-	return os.Open(path)
+// openConfigFile refuses on platforms without a non-blocking open: a named pipe
+// or device on the fixed path could block before any descriptor check. The
+// account-configuration read is therefore unavailable there rather than
+// pretending to be bounded.
+func openConfigFile(string) (*os.File, error) {
+	return nil, ErrConfigInvalid
 }

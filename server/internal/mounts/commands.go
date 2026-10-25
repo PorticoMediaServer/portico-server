@@ -33,10 +33,12 @@ type Command struct {
 	Executable       string   `json:"executable,omitempty"`
 	Remote           string   `json:"remote,omitempty"`
 	Config           string   `json:"config,omitempty"`
-	// ReceiptKey, when set, binds this operation's receipt to the request
-	// identity instead of the configuration text. Use it only when the
-	// configuration is read on the server and may change between retries.
-	ReceiptKey string `json:"receiptKey,omitempty"`
+	// receiptKey, when set, binds this operation's receipt to the request
+	// identity instead of the configuration text. It is private on purpose: a
+	// wire caller cannot set it, so no decoded command can drop its body from
+	// the fingerprint. Only a package method that reads the configuration
+	// itself may use it.
+	receiptKey string
 	// Only the narrow source editor can set this. It is not a wire command or
 	// a replacement for the legacy lifecycle control revision.
 	sourceGeneration int64
@@ -74,7 +76,7 @@ func freshOperation(id string) error {
 	return nil
 }
 func (s *Service) fingerprint(actor, id string, c Command) string {
-	if c.ReceiptKey != "" {
+	if c.receiptKey != "" {
 		// The receipt identifies the request, not mutable configuration content.
 		c.Config = ""
 	}

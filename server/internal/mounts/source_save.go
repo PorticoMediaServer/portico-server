@@ -116,7 +116,7 @@ func (s *Service) rcloneConfigSourceReceipt(actor string, input RcloneConfigSour
 	if input.OperationID == "" || strings.TrimSpace(input.Name) == "" || !configSectionName(input.Remote) {
 		return RcloneSourceReceipt{}, false, ErrConfigInvalid
 	}
-	identityCommand := Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path, Remote: input.Remote + ":", ReceiptKey: accountConfigReceiptKey}
+	identityCommand := Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path, Remote: input.Remote + ":", receiptKey: accountConfigReceiptKey}
 	hash := s.fingerprint(actor, "", identityCommand)
 	s.commands.Lock()
 	existing, err := s.receipt(s.db, actor, input.OperationID, hash)
@@ -161,7 +161,7 @@ func (s *Service) SaveRcloneConfigSource(ctx context.Context, actor string, inpu
 		return RcloneSourceReceipt{}, ErrConfigInvalid
 	}
 	receipt, err := s.Command(ctx, actor, "", Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path,
-		Remote: input.Remote + ":", Config: section, ReceiptKey: accountConfigReceiptKey}, authorize)
+		Remote: input.Remote + ":", Config: section, receiptKey: accountConfigReceiptKey}, authorize)
 	if err != nil {
 		return RcloneSourceReceipt{}, err
 	}
