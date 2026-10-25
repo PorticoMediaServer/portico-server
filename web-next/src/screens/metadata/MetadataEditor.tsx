@@ -8,12 +8,13 @@ import {Button, TextField} from '../../kit/controls';
 import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
+import {SongLyricsEditor} from './SongLyricsEditor';
 import {metadataDraftValue, patchMetadataDraft, type MetadataFieldDraft} from './draft-value';
 
 const t = defaultI18n.t;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>; requestMetadataUpload?: <T>(path: string, body: FormData, signal?: AbortSignal) => Promise<T>}>;
 type Draft = Readonly<Record<string, MetadataFieldDraft>>;
-type Tab = 'general' | 'artwork' | 'tags' | 'people' | 'matching' | 'history';
+type Tab = 'general' | 'artwork' | 'tags' | 'people' | 'matching' | 'lyrics' | 'history';
 
 /** Only the tabs this type really has: no list fields means no Tags tab, no roles means no Artwork. */
 function tabsFor(data: RepairData | null | undefined): readonly Tab[] {
@@ -25,6 +26,7 @@ function tabsFor(data: RepairData | null | undefined): readonly Tab[] {
   // Frame 9: credits exist only where the type carries them; an empty list is not a tab.
   if (data && (data.snapshot.relationships.some(row => row.kind === 'credit') || Object.hasOwn(data.snapshot.relationshipLocks, 'credit'))) tabs.push('people');
   if (data && (data.snapshot.identity || data.candidates.length)) tabs.push('matching');
+  if (data?.schema.some(field => field.field === 'trackNumber')) tabs.push('lyrics');
   tabs.push('history');
   return tabs;
 }
@@ -71,6 +73,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
   const makeThumbnail = useCallback(async (expectedData: RepairData) => {
     try {await service.command({action: 'make_episode_thumbnail'}, expectedData);} catch (value) {setError(value);}
   }, [service]);
+  const currentRepairGrant = useCallback((expected: RepairData) => service.getSnapshot().phase === 'ready' && service.getSnapshot().data === expected, [service]);
   const currentRepairData = useCallback((expected: RepairData) => service.getSnapshot().data === expected, [service]);
   const removeUpload = useCallback(async (role: string, candidateId: string, expectedData: RepairData) => {
     try {return await service.removeUploadedArtwork(role, candidateId, expectedData);} catch (value) {setError(value); return false;}
@@ -93,7 +96,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={onClose} className={styles.editorHead}/>
     <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
       {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => setTab(id)}>
-        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : 'web.metadata.tabHistory')}</button>)}
+        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : id === 'lyrics' ? 'web.metadata.tabLyrics' : 'web.metadata.tabHistory')}</button>)}
     </nav>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
     {state.error ? <HostedError error={state.error} /> : null}
@@ -115,6 +118,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
         onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'discover_artwork', role})} onRefetch={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'repair_assets', role})} /> : null}
+      {shown === 'lyrics' ? <SongLyricsEditor api={api} scope={scope} target={target} repairData={data} isCurrent={currentRepairGrant}/> : null}
       {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
       {shown === 'general' || shown === 'tags' ? <footer className={styles.editorFooter}>
