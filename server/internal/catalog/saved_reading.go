@@ -2,8 +2,10 @@ package catalog
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"portico.local/server/internal/identity"
 
 	"portico.local/server/internal/dbwork"
 
@@ -11,15 +13,17 @@ import (
 )
 
 type savedReadingScope struct {
-	libraries        map[string]*readingBrowseScope
-	predicate, fence string
-	args             []any
+	personalAdmission SavedGroupAdmission
+	viewer            Viewer
+	libraries         map[string]*readingBrowseScope
+	predicate, fence  string
+	args              []any
 }
 
 // Only libraries with this viewer's actually saved, visible Reading leaves
 // participate. Other Saved requests keep their previous cursor domain.
 func (s *Service) savedReading(r ContentRequest, libraries []string, flag string) (savedReadingScope, error) {
-	out := savedReadingScope{libraries: map[string]*readingBrowseScope{}, predicate: "0"}
+	out := savedReadingScope{personalAdmission: r.ReadingPersonalAdmission, viewer: r.Viewer, libraries: map[string]*readingBrowseScope{}, predicate: "0"}
 	visibility, args := r.Viewer.itemVisibilitySQL("i.id")
 	query := `SELECT DISTINCT cl.library_id,cl.id,lib.kind,COALESCE(a.namespace,0),COALESCE(a.input_generation,0),COALESCE(a.ready_generation,0),COALESCE(a.publication_rule_version,0) FROM personal_items p
  JOIN catalog_entities i ON i.id=p.item_id JOIN catalog_libraries cl ON cl.id=i.library_id
@@ -139,7 +143,23 @@ func (s *Service) savedEntries(profile string, ids []string, scope savedReadingS
 		byID[entry.ID] = entry
 	}
 	for library, selected := range reading {
-		projected, err := scope.libraries[library].project(s, selected)
+		// Re-admit the original selected viewer in this same accepting snapshot.
+		// A newly restricted or removed library cannot receive marks read under
+		// the earlier ceiling; the caller refreshes the whole saved page.
+		authorize := func(tx *sql.Tx) error {
+			if scope.personalAdmission == nil {
+				return identity.ErrForbidden
+			}
+			current, err := scope.personalAdmission(s.Context(), tx)
+			if err != nil {
+				return err
+			}
+			if current.Profile != profile || current.Fence != scope.viewer.Fence || !current.AllowsLibrary(library) || RestrictionFence(current.EffectiveRestrictions()) != RestrictionFence(scope.viewer.EffectiveRestrictions()) {
+				return ErrReadingProjectionChanged
+			}
+			return nil
+		}
+		projected, err := scope.libraries[library].project(s, selected, profile, authorize)
 		if err != nil {
 			return nil, err
 		}

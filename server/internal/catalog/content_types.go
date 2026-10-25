@@ -258,6 +258,9 @@ type ContentEnvelope struct {
 	Empty            *ContentHeading   `json:"empty,omitempty"`
 }
 type ContentRequest struct {
+	// Saved's authenticated edge supplies the original-principal admission;
+	// a Viewer alone cannot authorize per-book personal marks.
+	ReadingPersonalAdmission SavedGroupAdmission
 	// ResumeRewindMs is a validated, server-private effective profile value.
 	// The authenticated edge supplies it; no query or body controls this field.
 	ResumeRewindMs                                                                                int

@@ -18,6 +18,7 @@ import (
 type SavedGroupAdmission func(context.Context, *sql.Tx) (Viewer, error)
 
 func (s *Service) SavedWithReadingGroups(r ContentRequest, libraries []string, admit SavedGroupAdmission) (SavedContentEnvelope, error) {
+	r.ReadingPersonalAdmission = admit
 	if dbwork.Snapshot(s.Context()) == nil {
 		var out SavedContentEnvelope
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
