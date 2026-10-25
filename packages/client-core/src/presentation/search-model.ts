@@ -18,6 +18,7 @@ export const SEARCH_CHIPS: readonly SearchChip[] = [
   {id: 'albums', label: 'search.chip.albums'},
   {id: 'songs', label: 'search.chip.songs'},
   {id: 'books', label: 'search.chip.audiobooks'},
+  {id: 'reading', label: 'search.chip.reading'},
   {id: 'live-tv', label: 'search.chip.liveTV'},
 ];
 
