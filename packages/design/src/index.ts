@@ -15,6 +15,10 @@ export const colors = {
   shadow: "#000000",
   collection: "#0a2233",
   generatedGreen: "#1e5b52",
+  /** states#14 library-kind tiles. */
+  libraryKindAnime: "#4b4f8f",
+  libraryKindMusic: "#6a3f73",
+  libraryKindAudiobook: "#8c4a32",
   dim: "#03080c",
   raised: "#10212d",
   /** Hover, focus and selected surfaces (blue slate, never grey — X-07). */
@@ -127,6 +131,7 @@ const handheldType = {
   liveChromeTitle: type(34, 36.72, 800, -.035), liveChromeTabletTitle: type(24, 25.92, 800, -.035),
   liveChromePhoneTitle: type(18, 19.44, 800, -.035), liveChromeNumber: type(11, 'normal', 800, -.01),
   liveMiniTitle: type(15.5, 'normal', 700),
+  libraryKindTitle: type(20, 'normal', 800, -.02),
   liveOwnerSourceTitle: type(16.5, 'normal', 700),
   // owner-dashboard phone composition: preserve the drawn metrics when lifting raw CSS.
   dashboardPhoneBarTitle: type(16.5, 19.8, 800, -.015), dashboardPhoneBarDetail: type(12, 14.4, 600),
