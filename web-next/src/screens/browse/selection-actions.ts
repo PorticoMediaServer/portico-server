@@ -106,7 +106,7 @@ export function createSelectionActions({api, events, requestId, isCurrent, repor
         if (rejected) attempts.delete(key); else captured.status = 'uncertain';
         throw error;
       } finally {
-        if (captured.promise === promise) captured.promise = undefined;
+        captured.promise = undefined;
       }
     })();
     captured.promise = promise;
