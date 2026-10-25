@@ -122,7 +122,7 @@ func (s *Service) episodeThumbnailVideoTx(ctx context.Context, tx *sql.Tx, targe
 // It captures owner/artwork/source state in a read snapshot, closes that snapshot,
 // lazily reads and decodes, then uses the ordinary artwork writer with fresh CAS.
 func (s *Service) MakeEpisodeThumbnail(ctx context.Context, target RepairTarget, command RepairCommand, owner identity.Principal, authorize func(*sql.Tx) error) (RepairState, error) {
-	if command.Action != "make_episode_thumbnail" || !artDigest(command.ExpectedRevision) || command.Query != "" || command.Year != 0 || len(command.Relationships) != 0 || len(command.Fields) != 0 || command.CandidateID != "" || command.Provider != "" || command.Order != "" || command.HistoryID != 0 || command.Confirm || command.Role != "" || command.Subject != "" || command.Locked != nil || command.Intent != "" || command.OperationID != "" || owner.Authority != "local" || owner.AccountID == "" || owner.ProfileID == "" || owner.Hash == "" || authorize == nil {
+	if command.Action != "make_episode_thumbnail" || command.EffectiveCredits || !artDigest(command.ExpectedRevision) || command.Query != "" || command.Year != 0 || len(command.Relationships) != 0 || len(command.Fields) != 0 || command.CandidateID != "" || command.Provider != "" || command.Order != "" || command.HistoryID != 0 || command.Confirm || command.Role != "" || command.Subject != "" || command.Locked != nil || command.Intent != "" || command.OperationID != "" || owner.Authority != "local" || owner.AccountID == "" || owner.ProfileID == "" || owner.Hash == "" || authorize == nil {
 		return RepairState{}, ErrRepairInput
 	}
 	if !s.EpisodeThumbnails.ready() {
