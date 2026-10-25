@@ -1,4 +1,4 @@
-import {useEffect, useState, useSyncExternalStore} from 'react';
+import {type ReactNode, useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {ConsoleClient} from '@core/console.ts';
@@ -58,7 +58,7 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
     subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}, dispose};
 }
 export type OwnerSources = ReturnType<typeof createOwnerSources>;
-export function OwnerSourcesPage({source}: {source: OwnerSources}) {
+export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSources; libraryChannels?: ReactNode}) {
   const snapshot = useSyncExternalStore(source.sources.subscribe, source.sources.getSnapshot, source.sources.getSnapshot);
   const defaults = useSyncExternalStore(source.defaults.subscribe, source.defaults.getSnapshot, source.defaults.getSnapshot);
   const active = useSyncExternalStore(source.subscribe, source.current, () => false);
@@ -76,9 +76,9 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
   const saved = () => {if (source.current()) {setModal(undefined);void source.sources.load();}};
   return <>
     <Tabs value={tab} onValueChange={value => {if (source.current()) {setModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
-      {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')},
+      {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')}, ...(libraryChannels ? [{value: 'library-channels', label: t('channels.custom.name')}] : []),
     ]}/>
-    {tab === 'recording' ? <RecordingPage source={source} sources={snapshot.document?.sources ?? []}/> : <>
+    {tab === 'library-channels' && libraryChannels ? libraryChannels : tab === 'recording' ? <RecordingPage source={source} sources={snapshot.document?.sources ?? []}/> : <>
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
     <SourceList snapshot={snapshot} refresh={() => void source.sources.load()} add={kind => {
       if (!source.current()) return;
