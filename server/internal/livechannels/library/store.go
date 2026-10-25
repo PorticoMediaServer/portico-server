@@ -315,12 +315,20 @@ func (s *Store) enqueueTx(ctx context.Context, tx *sql.Tx, c Config, revision in
 	if e != nil {
 		return e
 	}
+	var historyFence int64
 	id := digest(c.ID, fmt.Sprint(revision), fence, fmt.Sprint(boundary), fmt.Sprint(end), base, c.Seed)[:48]
+	if hasLeastPlayed(c) {
+		historyFence, e = playHistoryFence(ctx, tx)
+		if e != nil {
+			return unavailable(e)
+		}
+		id = digest(id, fmt.Sprint(historyFence))[:48]
+	}
 	phase := "candidates"
 	if base != "" {
 		phase = "copying"
 	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO lc_generations(id,channel_id,config_revision,config_json,catalog_fence,seed,status,phase,base_generation,start_ms,end_ms,boundary_ms,cursor_ms,created_ms) VALUES(?,?,?,?,?,?,'pending',?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=CASE WHEN lc_generations.status IN('failed','superseded') THEN 'pending' ELSE lc_generations.status END,error_code=''`, id, c.ID, revision, encode(c), fence, c.Seed, phase, base, start, end, boundary, boundary, s.now().UnixMilli())
+	_, e = tx.ExecContext(ctx, `INSERT INTO lc_generations(id,channel_id,config_revision,config_json,catalog_fence,seed,status,phase,base_generation,start_ms,end_ms,boundary_ms,cursor_ms,created_ms,play_history_fence) VALUES(?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=CASE WHEN lc_generations.status IN('failed','superseded') THEN 'pending' ELSE lc_generations.status END,error_code=''`, id, c.ID, revision, encode(c), fence, c.Seed, phase, base, start, end, boundary, boundary, s.now().UnixMilli(), historyFence)
 	if e != nil {
 		return unavailable(e)
 	}
