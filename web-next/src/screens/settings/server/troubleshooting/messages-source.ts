@@ -18,6 +18,10 @@ export function messageRetryMs(attempt: number, retryAfter: string|null, now = D
   }
   return 1000 * 2 ** Math.min(Math.max(attempt, 1), 6);
 }
+function terminalMessageError(error: unknown): boolean {
+  const {status, code} = (error && typeof error === 'object' ? error : {}) as {status?: number; code?: string};
+  return status === 401 || status === 403 || ['unauthorized', 'forbidden', 'not_permitted', 'scope_changed', 'viewer_changed', 'settings_scope_changed'].includes(code || '');
+}
 /** One captured server/viewer lifetime, bounded to 500 redacted server records. */
 export class SettingsMessagesSource {
   private state: MessagesSnapshot = empty;
@@ -27,11 +31,21 @@ export class SettingsMessagesSource {
   private tail?: AbortController;
   private timer?: ReturnType<typeof setTimeout>;
   private lastId = '';
-  constructor(private readonly transport: ReportTransport, private readonly connection: MessageConnection|undefined, private readonly isCurrent: () => boolean) {}
-  private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
+  private generation = 0;
+  private retired = false;
+  private detailIntent?: Readonly<{operationId: string; minutes: number}>;
+  constructor(private readonly transport: ReportTransport, private readonly connection: MessageConnection|undefined, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void = () => {}) {}
+  private current() {return !this.retired && !this.lifetime.signal.aborted && this.isCurrent();}
   getSnapshot = (): MessagesSnapshot => this.current() ? this.state : empty;
   subscribe = (listener: () => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
   private publish(patch: Partial<MessagesSnapshot>) {if (this.current()) {this.state = Object.freeze({...this.state, ...patch});for (const listener of this.listeners) listener();}}
+  private failure(error: unknown) {
+    if (terminalMessageError(error)) {
+      this.pause();this.retired = true;this.state = empty;this.lifetime.abort();
+      for (const listener of this.listeners) listener();
+    }
+    this.reportError(error);
+  }
   load = async (): Promise<void> => {
     if (!this.current()) return;
     this.read?.abort(); const read = new AbortController();this.read = read;
@@ -43,31 +57,33 @@ export class SettingsMessagesSource {
         this.transport.request<unknown>(routePath('get_admin_logs') + '?' + query, 'GET', undefined, read.signal).then(parseLogPage),
         this.transport.request<unknown>(routePath('get_admin_logs_settings'), 'GET', undefined, read.signal).then(parseLogSettings),
       ]);
-      if (read.signal.aborted || !this.current()) return;
+      if (this.read !== read || read.signal.aborted || !this.current()) return;
       this.publish({phase: 'ready', lines: [...page.items].reverse(), settings, readAt: Date.now()});
-    } catch {if (!read.signal.aborted) this.publish({phase: 'error'});}
+    } catch (error) {if (this.read === read && !read.signal.aborted && this.current()) {this.publish({phase: 'error'});this.failure(error);}}
   };
   select = async (level: LogLevel|'', category: LogCategory|'') => {
-    const live = this.state.live;this.stopTail();this.lastId = '';
+    if (!this.current()) return;
+    const generation = ++this.generation;this.stopTail();this.lastId = '';
     this.publish({level, category, lines: []});await this.load();
-    if (live && this.current()) this.startTail();
+    if (generation === this.generation && this.current() && this.state.phase === 'ready') this.startTail();
   };
-  setLive = (live: boolean) => {this.stopTail();this.publish({live, reconnecting: false});if (live) this.startTail();};
+  setLive = (live: boolean) => {if (!this.current()) return;++this.generation;this.stopTail();this.publish({live, reconnecting: false});if (live) this.startTail();};
   private stopTail() {this.tail?.abort();this.tail = undefined;clearTimeout(this.timer);}
   private startTail() {
     if (!this.current() || !this.connection || !this.state.live) return;
     const controller = new AbortController();this.tail = controller;let attempt = 0;
-    const active = () => this.current() && !controller.signal.aborted && this.state.live;
+    const active = () => this.current() && this.tail === controller && !controller.signal.aborted && this.state.live;
     const connect = async () => {
       let retryAfter: string|null = null;
+      let response: Response|undefined;
       try {
-        const response = await this.connection!.open({Accept: 'text/event-stream', ...(this.lastId ? {'Last-Event-ID': this.lastId} : {})}, controller.signal);
+        response = await this.connection!.open({Accept: 'text/event-stream', ...(this.lastId ? {'Last-Event-ID': this.lastId} : {})}, controller.signal);
         if (!active()) {await response.body?.cancel();return;}
         if (!response.ok) {
           if (response.status === 429) retryAfter = response.headers.get('Retry-After');
           await response.body?.cancel();
           // Authentication/permission failures need a fresh user action, never an endless retry.
-          if (response.status === 401 || response.status === 403) {this.publish({live: false, reconnecting: false, phase: 'error'});return;}
+          if (response.status === 401 || response.status === 403) {this.failure(Object.assign(new Error('Stream permission refused.'), {status: response.status}));return;}
           throw new Error('Stream refused.');
         }
         this.publish({reconnecting: false});attempt = 0;
@@ -81,7 +97,9 @@ export class SettingsMessagesSource {
           if (category && record.category !== category || level && logLevels.indexOf(record.level) > logLevels.indexOf(level)) return;
           this.publish({lines: appendMessage(this.state.lines, record)});
         }, controller.signal);
-      } catch {if (!active()) return;}
+      } catch (error) {if (!active()) return;
+        if (terminalMessageError(error)) {this.failure(error);return;}
+      } finally {try {await response?.body?.cancel();} catch { /* The fetch transport may already have cancelled it. */ }}
       if (!active()) return;
       this.publish({reconnecting: true});attempt++;
       this.timer = setTimeout(() => {void connect();}, messageRetryMs(attempt, retryAfter));
@@ -90,12 +108,25 @@ export class SettingsMessagesSource {
   }
   detail = async (on: boolean): Promise<void> => {
     if (!this.current() || this.state.changing) return;
-    this.publish({changing: true});
+    // An uncertain write keeps its original intent, including its operation ID. Read it
+    // back before another POST: the server's runtime window is not revisioned.
+    const pending = this.detailIntent;
+    const intent = pending ?? Object.freeze({operationId: randomId(), minutes: on ? 30 : 0});
+    this.detailIntent = intent;this.publish({changing: true});
     try {
-      await this.transport.request(routePath('post_admin_logs_debug_window'), 'POST', {operationId: randomId(), minutes: on ? 30 : 0}, this.lifetime.signal);
-      if (this.current()) await this.load();
-    } finally {this.publish({changing: false});}
+      if (pending) {
+        const settings = parseLogSettings(await this.transport.request(routePath('get_admin_logs_settings'), 'GET', undefined, this.lifetime.signal));
+        if (!this.current()) return;
+        this.publish({settings});
+        const active = !!settings.debugWindowUntil && Date.parse(settings.debugWindowUntil) > Date.now();
+        if (active === (intent.minutes > 0)) {this.detailIntent = undefined;return;}
+      }
+      await this.transport.request(routePath('post_admin_logs_debug_window'), 'POST', intent, this.lifetime.signal);
+      if (!this.current()) return;
+      this.detailIntent = undefined;await this.load();
+    } catch (error) {if (this.current()) this.failure(error);throw error;}
+    finally {this.publish({changing: false});}
   };
-  pause = () => {this.stopTail();this.read?.abort();this.publish({live: false, reconnecting: false});};
+  pause = () => {++this.generation;this.stopTail();this.read?.abort();this.read = undefined;this.publish({live: false, reconnecting: false});};
   dispose = () => {this.pause();this.lifetime.abort();this.state = empty;this.listeners.clear();};
 }
