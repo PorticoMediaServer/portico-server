@@ -10,7 +10,7 @@ import styles from './profile.module.css';
 const t = defaultI18n.t;
 
 /** owner-people frame14: Name, eight colors, limit, Cancel and Save.
- * The source rereads actual account admission at submission; opening this
+ * The source rechecks actual account admission at submission; opening this
  * surface never creates a profile or borrows another profile's permissions. */
 export function AddProfileDialog({source, isCurrent, onClose, onFailure, returnFocusRef}: {
   source: ProfileSettingsSource; isCurrent: () => boolean; onClose: () => void; onFailure: () => void;
@@ -29,7 +29,9 @@ export function AddProfileDialog({source, isCurrent, onClose, onFailure, returnF
     }
   }, [snapshot, document, isCurrent, onClose, onFailure]);
   if (!isCurrent() || !document?.canManage || !document.capabilities.manageAccount || document.profiles.length >= 8) return null;
-  return <AddProfileForm source={source} busy={snapshot.busy} isCurrent={isCurrent} onClose={onClose} onFailure={onFailure} returnFocusRef={returnFocusRef} />;
+  return <AddProfileForm source={source} busy={snapshot.busy} isCurrent={isCurrent} onClose={() => {
+    if (!finished.current) {finished.current = true;onClose();}
+  }} onFailure={onFailure} returnFocusRef={returnFocusRef} />;
 }
 
 function AddProfileForm({source, busy, isCurrent, onClose, onFailure, returnFocusRef}: {
