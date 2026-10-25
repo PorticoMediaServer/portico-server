@@ -311,7 +311,7 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 
 // savedQuality is the viewer's saved default quality for the connection a
 // request arrives on: quality.home inside the owner's home networks,
-// quality.remote outside them.
+// quality.remote outside them, or quality.mobile on actual cellular transport.
 func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (string, error) {
 	if d.DB == nil {
 		return playback.QualityOriginal, nil
@@ -326,7 +326,7 @@ func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (strin
 		return "", err
 	}
 	class, _ := playback.NetworkClassOf(d.requestIsRemote(q))
-	return playback.SavedQualityPreference(playback.WithPreferenceSources(values, sources), class), nil
+	return playback.SavedQualityPreference(playback.WithPreferenceSources(values, sources), class, d.deliveryContext(q).TransportClass), nil
 }
 
 func (d Dependencies) savedMusicQuality(q *http.Request, p identity.Principal) (string, error) {

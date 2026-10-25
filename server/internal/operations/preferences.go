@@ -120,20 +120,22 @@ var (
 	audiobookSpeeds = []float64{0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3}
 )
 
-// SavedQualities is the domain of the two saved quality defaults: the
+// SavedQualities is the domain of the saved quality defaults: the
 // original file, automatic (starts at the original and moves down and back up
 // as the connection requires), and each step of the server's quality ladder.
 // It mirrors playback.SavedQualities; a test holds the two together.
 var SavedQualities = qualityladder.IDs()
 
 // qualityFields are a viewer's saved default qualities, one for the owner's
-// home networks and one for everywhere else. Both default to the original. A
-// start that names no quality gets the one for where it comes from; the
+// home networks, one for everywhere else, and one for actual cellular transport.
+// Home/remote default to Original; cellular defaults to 720p-high. A
+// start that names no quality gets the applicable saved choice; the
 // player can still choose another for the session.
 func qualityFields() []PreferenceField {
 	return []PreferenceField{
 		prefEnum("quality.home", "original", SavedQualities, ScopeDeviceClass),
 		prefEnum("quality.remote", "original", SavedQualities, ScopeDeviceClass),
+		prefEnum("quality.mobile", "720p-high", SavedQualities, ScopeDeviceClass),
 	}
 }
 
