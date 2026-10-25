@@ -25,6 +25,7 @@ import {accountMessages} from './en-US/accounts.ts';
 import {secureConnectionMessages} from './en-US/secure-connection.ts';
 import {tvMoreMessages} from './en-US/tv-more.ts';
 import {servicesMessages} from './en-US/services.ts';
+import {liveOwnerMessages} from './en-US/live-owner.ts';
 import {savedViewSummaryMessages} from './en-US/saved-view.ts';
 
 export const enUS = {
@@ -2221,6 +2222,7 @@ export const enUS = {
   ...tvMoreMessages,
   ...servicesMessages,
   ...savedViewSummaryMessages,
+  ...liveOwnerMessages,
   ...nextMessages,
   ...musicMixMessages,
 } as const satisfies Record<string, string>;
