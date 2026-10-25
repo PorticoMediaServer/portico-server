@@ -7,6 +7,52 @@ import (
 
 // ReshapesDolbyVision agrees with the graph BuildConversion actually builds:
 // true exactly when the tone mapper is libplacebo (COMPAT-04).
+func TestProfile5ReshapesOnSoftwareForAGPUHost(t *testing.T) {
+	facts := &ToolchainFacts{Identity: "unit", VulkanAvailable: true,
+		Filters:  map[string]bool{"zscale": true, "tonemap": true, "libplacebo": true},
+		Encoders: map[string]bool{"libx264": true}}
+	probe := HardwareProbe{Backend: BackendVAAPI, Available: true, NativeFilters: true, Device: "/dev/dri/renderD128", Identity: "unit"}
+	target := ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", SourceRange: "dolby_vision", DolbyVisionProfile: 5, ToneMap: true, Packaging: "mpegts_hls"}
+	graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, ToneMap: true, Target: &target, Probe: probe, Toolchain: facts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graph.Backend != BackendSoftware || !strings.Contains(strings.Join(graph.Video, " "), "libplacebo") {
+		t.Fatalf("profile 5 did not reshape on the software pipeline: %s %v", graph.Backend, graph.Video)
+	}
+}
+
+func TestProfile5KeepsHDR10ThroughReshapingOnly(t *testing.T) {
+	facts := &ToolchainFacts{Identity: "unit", VulkanAvailable: true,
+		Filters:  map[string]bool{"zscale": true, "tonemap": true, "libplacebo": true},
+		Encoders: map[string]bool{"libx265": true}}
+	probe := HardwareProbe{Backend: BackendSoftware, Identity: "unit"}
+	target := ConversionTarget{VideoCodec: "hevc", BitDepth: 10, DynamicRange: "hdr10", SourceRange: "dolby_vision", DolbyVisionProfile: 5, Packaging: "fmp4_hls"}
+	graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, Target: &target, Probe: probe, Toolchain: facts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(graph.Video, " ")
+	if !strings.Contains(joined, "libplacebo=") || !strings.Contains(joined, "color_trc=smpte2084") || strings.Contains(joined, "tonemapping=") {
+		t.Fatalf("profile 5 did not reshape into HDR10 without tone mapping: %s", joined)
+	}
+}
+
+func TestProfile5HDR10RefusesWithoutReshapeQualification(t *testing.T) {
+	target := ConversionTarget{VideoCodec: "hevc", BitDepth: 10, DynamicRange: "hdr10", SourceRange: "dolby_vision", DolbyVisionProfile: 5, Packaging: "fmp4_hls"}
+	for name, facts := range map[string]*ToolchainFacts{
+		"no Vulkan device":     {Identity: "unit", Filters: map[string]bool{"libplacebo": true}, Encoders: map[string]bool{"libx265": true}},
+		"no libplacebo filter": {Identity: "unit", VulkanAvailable: true, Filters: map[string]bool{"zscale": true, "tonemap": true}, Encoders: map[string]bool{"libx265": true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := BuildConversion(ConversionRequest{ConvertVideo: true, Target: &target, Probe: HardwareProbe{Backend: BackendSoftware, Identity: "unit"}, Toolchain: facts})
+			if err == nil || !strings.Contains(err.Error(), "dolby_vision_reshaping_unavailable") {
+				t.Fatalf("an unqualified profile 5 HDR10 reshape was admitted: %v", err)
+			}
+		})
+	}
+}
+
 func TestReshapesDolbyVisionMatchesTheConversionGraph(t *testing.T) {
 	filters := map[string]bool{"zscale": true, "tonemap": true, "libplacebo": true, "tonemap_vaapi": true, "tonemap_cuda": true, "vpp_qsv": true, "scale_vaapi": true, "scale_cuda": true, "scale": true}
 	probes := []HardwareProbe{

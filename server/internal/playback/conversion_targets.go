@@ -55,6 +55,12 @@ func keptRange(v *SourceVideo, client ClientProfile, codec *ClientVideoCodec) st
 	}
 	if r == assets.RangeDolbyVision {
 		r = dolbyVisionFallback(v)
+		if r == "" && v.DolbyVisionProfile == 5 {
+			// Profile 5 has no base layer, so a conversion is the only route.
+			// A display that shows HDR10 gets a reshaped HDR10 picture, not SDR
+			// (VIDEO §3 VS-1e).
+			r = assets.RangeHDR10
+		}
 	}
 	if r != assets.RangeHDR10 && r != assets.RangeHLG {
 		return ""

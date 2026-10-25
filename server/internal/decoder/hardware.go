@@ -300,7 +300,15 @@ func probeCommand(ctx context.Context, executable string, args []string, librari
 // cast (COMPAT-04). It mirrors BuildConversion's choice of tone mapper; a test
 // holds the two together.
 func ReshapesDolbyVision(r ConversionRequest) bool {
-	if !r.ConvertVideo || !r.ToneMap && (r.Target == nil || !r.Target.ToneMap) {
+	if !r.ConvertVideo {
+		return false
+	}
+	reshapes := r.ToneMap || r.Target != nil && r.Target.ToneMap
+	if !reshapes && r.Target != nil && r.Target.DolbyVisionProfile > 0 && DolbyVisionBaseRange(r.Target.DolbyVisionProfile, r.Target.DolbyVisionCompatibility) == "" && r.Target.DynamicRange != "sdr" {
+		// An HDR target keeps the picture's range; only the reshaping remains.
+		reshapes = true
+	}
+	if !reshapes {
 		return false
 	}
 	graph, err := BuildConversion(r)
@@ -767,6 +775,13 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 	if target.BitDepth == 10 {
 		pixel, surface = "yuv420p10le", "p010le"
 	}
+	// A Dolby Vision profile without a base layer is only converted correctly
+	// through libplacebo's reshaping, which runs on system frames. Force the
+	// software pipeline for that picture so a GPU host does not hold device
+	// frames the filter cannot take (VS-1e; hardware tone mapping is HW-3).
+	if r.ConvertVideo && target.DolbyVisionProfile > 0 && DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) == "" {
+		r.Probe = HardwareProbe{Backend: BackendSoftware, Identity: r.Probe.Identity}
+	}
 
 	if r.CopyVideo && r.ConvertVideo || r.CopyAudio && r.ConvertAudio || target.CopyDolbyVision && !r.CopyVideo {
 		return out, ErrInvalidConfiguration
@@ -896,7 +911,16 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if target.DolbyVisionProfile > 0 {
 			compatible := DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) != ""
 			if !compatible {
-				if !r.ToneMap || r.Toolchain == nil || !r.Toolchain.VulkanAvailable || spec.upload != "" {
+				// A profile without a base layer needs libplacebo's reshaping.
+				// The HDR-to-HDR reshape runs that filter without any tone
+				// mapping, so it needs the Vulkan device and the filter itself;
+				// every other conversion is judged by its tone-map route.
+				reshapeOnly := !r.ToneMap && target.DynamicRange != "sdr"
+				if reshapeOnly {
+					if r.Toolchain == nil || !r.Toolchain.VulkanAvailable || !r.Toolchain.Filters["libplacebo"] {
+						return out, errors.New("dolby_vision_reshaping_unavailable")
+					}
+				} else if !r.ToneMap || r.Toolchain == nil || !r.Toolchain.VulkanAvailable {
 					return out, errors.New("dolby_vision_reshaping_unavailable")
 				}
 				native = false
@@ -983,6 +1007,18 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				} else {
 					filters = append(filters, SoftwareToneMap(algorithm))
 				}
+			}
+			// A Dolby Vision profile without a base layer keeps its HDR range
+			// through libplacebo's reshaping alone; there is no tone mapping
+			// to apply when the target range is HDR10 or HLG.
+			if !r.ToneMap && target.DolbyVisionProfile > 0 && DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) == "" && target.DynamicRange != "sdr" && r.Toolchain != nil && r.Toolchain.VulkanAvailable && r.Toolchain.Filters["libplacebo"] {
+				transfer := "smpte2084"
+				if target.DynamicRange == "hlg" {
+					transfer = "arib-std-b67"
+				}
+				out.Input = append(out.Input, "-init_hw_device", "vulkan=tone", "-filter_hw_device", "tone")
+				filters = append(filters, "format=yuv420p10le,hwupload,libplacebo=colorspace=bt2020nc:color_primaries=bt2020:color_trc="+transfer+":format=yuv420p10le,hwdownload,format=yuv420p10le")
+				toneExecution = ExecutionHardware
 			}
 			if r.BurnIn != nil {
 				burnInput := *r.BurnIn

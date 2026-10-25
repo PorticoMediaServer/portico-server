@@ -115,7 +115,10 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if base := DolbyVisionBaseRange(t.DolbyVisionProfile, t.DolbyVisionCompatibility); !t.CopyDolbyVision && base != "" && t.SourceRange == "dolby_vision" {
 		t.SourceRange = base
 	}
-	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") {
+	// Profile 5 has no base layer. A reshaped conversion can deliver HDR10
+	// from its IPT-PQ picture, so that source/target pair is valid.
+	reshapedProfile5 := !t.CopyDolbyVision && t.DolbyVisionProfile == 5 && t.SourceRange == "dolby_vision" && t.DynamicRange == "hdr10"
+	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") && !reshapedProfile5 {
 		return t, errors.New("dynamic_range_conversion_unavailable")
 	}
 	if t.CopyDolbyVision && (t.VideoCodec != "hevc" || t.BitDepth != 10 || t.DynamicRange != "dolby_vision" || t.SourceRange != "dolby_vision" || t.DolbyVisionProfile == 0 || t.Packaging != "fmp4_hls") {
