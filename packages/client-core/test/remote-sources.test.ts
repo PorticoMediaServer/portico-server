@@ -574,7 +574,10 @@ test('the drawn S3 fields build the section and remote the server validates',()=
 
 test('the drawn Google service-account key is parsed, never authored',()=>{
  const key={type:'service_account',project_id:'portico-media-4821',private_key_id:'abc',
-  private_key:'-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n-----END PRIVATE KEY-----\n',
+  // Synthetic, nonfunctional specimen: a clearly labelled placeholder body, not a
+  // credential and not a decodable key. The builder only requires a PEM-shaped
+  // private key of bounded length, which this exercises.
+  private_key:'-----BEGIN PRIVATE KEY-----\nSYNTHETIC-TEST-SPECIMEN-NOT-A-CREDENTIAL\n-----END PRIVATE KEY-----\n',
   client_email:'portico-reader@portico-media-4821.iam.gserviceaccount.com',client_id:'1234567890',token_uri:'https://oauth2.googleapis.com/token'};
  const fields={keyJson:JSON.stringify(key,undefined,2),location:'folder' as const,locationId:'1xYz9aBcDeFgHiJkLmNoPqRsTuVwXyZ0a'};
  const result=driveServiceAccountDraft(fields);
