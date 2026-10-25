@@ -277,15 +277,21 @@
 
   // Each command keeps its original SDK connection, adoption and credential.
   // A queued job never borrows whichever receiver happens to be current later.
-  var controllerGeneration=0,adoptionGeneration=0,senderConnections=new Map(),connectionSequence=0;
-  function bumpConnection(senderId){senderConnections.delete(senderId);senderConnections.set(senderId,++connectionSequence);while(senderConnections.size>64)senderConnections.delete(senderConnections.keys().next().value);}
+  var controllerGeneration=0,adoptionGeneration=0,senderConnections=new Map(),disconnectedSenders=new Set(),connectionSequence=0;
+  function bumpConnection(senderId){senderConnections.delete(senderId);senderConnections.set(senderId,++connectionSequence);while(senderConnections.size>64){var oldest=senderConnections.keys().next().value;senderConnections.delete(oldest);disconnectedSenders.delete(oldest);}}
   function connectionGeneration(senderId){if(!senderConnections.has(senderId))bumpConnection(senderId);return senderConnections.get(senderId);}
+  function capturePairConnection(senderId){
+    // senderId is supplied by the SDK channel event, never by message JSON.
+    if(disconnectedSenders.has(senderId)||!castContext||typeof castContext.getSender!=='function'||!castContext.getSender(senderId))return null;
+    return Object.freeze({senderId:senderId,generation:connectionGeneration(senderId)});
+  }
+  function pairConnectionCurrent(witness){return !!witness&&!disconnectedSenders.has(witness.senderId)&&connectionGeneration(witness.senderId)===witness.generation;}
   function captureController(senderId,adoption){return Object.freeze({senderId:senderId,adoption:!!adoption,
     connection:connectionGeneration(senderId),controllerGeneration:controllerGeneration,adoptionGeneration:adoptionGeneration,
     owner:controllerSender,binding:controllerBinding,proof:controllerToken,session:session,bearer:session&&session.accessToken,scope:scope,origin:base,occurrence:playback});}
   function leaseCurrent(lease){return !lease||!shuttingDown&&lease.origin===base&&!!session&&lease.session===session&&lease.bearer===session.accessToken&&lease.scope===scope&&lease.binding===controllerBinding&&lease.proof===controllerToken&&
-    lease.connection===connectionGeneration(lease.senderId)&&lease.controllerGeneration===controllerGeneration&&lease.adoptionGeneration===adoptionGeneration&&
-    (lease.adoption?lease.owner===controllerSender:controllerPresent&&lease.senderId===controllerSender);}
+    lease.connection===connectionGeneration(lease.senderId)&&lease.controllerGeneration===controllerGeneration&&
+    (lease.adoption?lease.adoptionGeneration===adoptionGeneration&&lease.owner===controllerSender:controllerPresent&&lease.senderId===controllerSender);}
   function requireLease(lease){if(!leaseCurrent(lease)){var e=new Error('controller_retired');e.retired=true;throw e;}}
   function commandQueue(lease,work){return serial(function(){requireLease(lease);if(lease&&playback!==lease.occurrence)throw new Error('occurrence_replaced');return work();});}
   async function cleanupOccurrence(id,lease){
@@ -331,12 +337,18 @@
       requireLease(lease);
       if(!credential||(!lease&&(session!==credential||base!==origin||scope!==originalScope)))throw new Error('receiver_replaced');
       var answer=await request(path,Object.assign({},options,{origin:origin,bearer:lease?lease.bearer:credential.accessToken}));
+      if(lease&&!leaseCurrent(lease)){
+        var retired=new Error('controller_retired');retired.retired=true;
+        if(path==='/v1/playback/sessions'&&(options.method===undefined||options.method==='POST')&&answer.status!==202&&answer.body&&typeof answer.body.id==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(answer.body.id))retired.acceptedOccurrenceId=answer.body.id;
+        throw retired;
+      }
       requireLease(lease);
       if(!lease&&(session!==credential||base!==origin||scope!==originalScope))throw new Error('receiver_replaced');
       return answer;
     };
     try{return await attempt();}
     catch(e){
+      if(e.retired)throw e;
       requireLease(lease);
       // A command belongs to an exact receiver family/generation. Reconnect
       // rotates that family, so it cannot silently retry with the new one.
@@ -740,7 +752,14 @@
     }
     // 202: the server is still preparing; the identical request is repeated until it answers.
     for (;;) {
-      answer = await api('/v1/playback/sessions', {body: body, headers: {'Idempotency-Key': key}},lease);
+      try{answer = await api('/v1/playback/sessions', {body: body, headers: {'Idempotency-Key': key}},lease);}
+      catch(e){
+        // A parsed accepting response is not an unknown result. Clean up only
+        // its exact newly created occurrence under the original credential;
+        // the original Root42 transfer/receipt record is never rewritten.
+        if(lease&&e.acceptedOccurrenceId)await cleanupOccurrence(e.acceptedOccurrenceId,lease);
+        throw e;
+      }
       if (answer.status !== 202) break;
       preparing();
       var delay = Math.min(10000, Math.max(250, Number(answer.body.retryAfterMs) || 1000));
@@ -921,7 +940,7 @@
   function allowPending() {
     var p = pendingPair; if (!p) return;
     pendingPair = null; clearTimeout(p.timer); hideTakeover();
-    serial(function () { return takeControl(p.senderId, p.origin, p.result); }).catch(function (error) {
+    serial(function () { return takeControl(p.senderId, p.origin, p.result,p.connection); }).catch(function (error) {
       send(p.senderId, {type: 'pair-failed', code: error.code || '', message: pairingMessage(error)});
     });
   }
@@ -944,34 +963,37 @@
     if(owner!==playback||!isController(senderId))return;
     send(senderId,Object.assign(statusBody(),attemptId?{attemptId:attemptId}:{}));
   }
-  async function takeControl(senderId, origin, result) {
-    var previous=controllerSender,connection=connectionGeneration(senderId);
+  async function takeControl(senderId, origin, result,connection) {
+    if(!pairConnectionCurrent(connection))throw new Error('controller_retired');
+    var previous=controllerSender;
     var generation=++controllerGeneration,adoption=++adoptionGeneration;controllerPresent=false;
     await switchTo(result,origin);
-    if(connection!==connectionGeneration(senderId)||generation!==controllerGeneration||adoption!==adoptionGeneration)throw new Error('controller_retired');
+    if(!pairConnectionCurrent(connection)||generation!==controllerGeneration||adoption!==adoptionGeneration)throw new Error('controller_retired');
     var credential=session,proof=token(24),binding=null;
     controllerToken=null;controllerBinding=null;controllerAttempt=null;
     if(result.controllerBootstrapId){
       var registered=await api('/v1/cast/controllers/register',{body:{bootstrapId:result.controllerBootstrapId,controlToken:proof}});
       binding=registered.body.binding;
     }
-    if(connection!==connectionGeneration(senderId)||generation!==controllerGeneration||adoption!==adoptionGeneration||credential!==session)throw new Error('controller_retired');
+    if(!pairConnectionCurrent(connection)||generation!==controllerGeneration||adoption!==adoptionGeneration||credential!==session)throw new Error('controller_retired');
     controllerToken=proof;controllerBinding=binding;controllerSender=senderId;controllerPresent=true;
     if(previous&&previous!==senderId)send(previous,{type:'replaced'});
     send(senderId,{type:'paired',controlToken:proof,binding:binding});
   }
   /** A pair request: redeem first (keeping the current pairing), then decide whether to switch now or ask. */
-  function handlePair(senderId, message) {
+  function handlePair(senderId, message,connection) {
+    if(!pairConnectionCurrent(connection)){send(senderId,{type:'pair-failed',code:'pair_failed'});return;}
     var named = serverOrigin(message.origin);
     if (named === null) { send(senderId, {type: 'pair-failed', code: 'origin_refused', message: pairingMessage({code:'origin_refused'})}); return; }
     var requester = requesterName(message, senderId);
     var code = String(message.code || '').trim().toUpperCase();
     redeemAt(named, code).then(function (result) {
+      if(!pairConnectionCurrent(connection)){discardPair({origin:named,result:result});return;}
       var sameViewer = !!(scope && result.scope && result.scope.accountId === scope.accountId && result.scope.profileId===scope.profileId && result.scope.authority===scope.authority && named === base);
       var busy = !!playback && controllerSender !== senderId && !sameViewer;
-      if (!busy) return serial(function () { return takeControl(senderId, named, result); });
+      if (!busy) return serial(function () { return takeControl(senderId, named, result,connection); });
       if (pendingPair) denyPending('tv_busy');
-      pendingPair = {senderId: senderId, requester: requester, origin: named, result: result, timer: null};
+      pendingPair = {connection:connection,senderId: senderId, requester: requester, origin: named, result: result, timer: null};
       send(senderId, {type: 'pair-pending'});
       var here = !!controllerSender && controllerPresent;
       askTakeover(requester, here);
@@ -1076,7 +1098,7 @@
         }catch(e){if(leaseCurrent(adoptionLease))reply({type:'pair-required'});}
         return;
       }
-      if (message.type === 'pair') { handlePair(senderId, message); return; }
+      if (message.type === 'pair') { var pairConnection=capturePairConnection(senderId);handlePair(senderId, message,pairConnection); return; }
       if (message.type === 'takeover') {
         var takeoverLease=captureController(senderId,false);try{await controllerAuthority(senderId,undefined,takeoverLease);requireLease(takeoverLease);}catch(e){if(leaseCurrent(takeoverLease))reply({type:'pair-required'});return;}
         if (isController(senderId) && pendingPair) { if (message.allow === true) allowPending(); else denyPending('tv_busy'); }
@@ -1151,9 +1173,9 @@
     // A state change or a completed seek is reported at once.
     [events.PAUSE,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView(true);scheduleReport(0);broadcast();});});
     [events.TIME_UPDATE,events.DURATION_CHANGE,events.MEDIA_STATUS].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView();});});
-    context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED,function(e){if(e&&e.senderId){bumpConnection(e.senderId);if(e.senderId===controllerSender)controllerPresent=false;}});
+    context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED,function(e){if(e&&e.senderId){bumpConnection(e.senderId);disconnectedSenders.delete(e.senderId);if(e.senderId===controllerSender)controllerPresent=false;}});
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){
-      if(e&&e.senderId)bumpConnection(e.senderId);
+      if(e&&e.senderId){bumpConnection(e.senderId);disconnectedSenders.add(e.senderId);}
       if (e && e.senderId && e.senderId === controllerSender) {
         controllerPresent = false;
         // Someone was waiting for the controller's answer: with the controller gone, the TV says who is taking over, then switches.
