@@ -25,3 +25,5 @@
 .danger p { margin: 0; color: var(--color-text-tertiary); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
 .actions { display: flex; justify-content: flex-end; gap: 10px; }
 @media (max-width: 720px) { .limits { grid-template-columns: 1fr; } }
+
+.readingFields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 14px; }
