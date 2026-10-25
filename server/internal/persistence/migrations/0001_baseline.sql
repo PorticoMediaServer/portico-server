@@ -8792,5 +8792,8 @@ CREATE TRIGGER credit_source_rows_no_replace BEFORE INSERT ON credit_source_rows
 CREATE TABLE recording_root_request(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
  path TEXT NOT NULL DEFAULT '',folder_identity TEXT NOT NULL DEFAULT '',requested_by TEXT NOT NULL DEFAULT '',
- CHECK((path='' AND folder_identity='' AND requested_by='') OR (path<>'' AND folder_identity<>'' AND requested_by<>''))) STRICT;
+ requested_epoch INTEGER NOT NULL DEFAULT 0 CHECK(requested_epoch>=0),
+ applied_path TEXT NOT NULL DEFAULT '',applied_identity TEXT NOT NULL DEFAULT '',
+ CHECK((path='' AND folder_identity='' AND requested_by='' AND requested_epoch=0) OR (path<>'' AND folder_identity<>'' AND requested_by<>'' AND requested_epoch>0)),
+ CHECK((applied_path='' AND applied_identity='') OR (applied_path<>'' AND applied_identity<>''))) STRICT;
 INSERT INTO recording_root_request(singleton,revision) VALUES(1,1);

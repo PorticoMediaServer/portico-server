@@ -24,6 +24,9 @@ type RecordingRootRequest struct {
 	// Private activation pin; never projected to a client.
 	FolderIdentity string `json:"-"`
 	RequestedBy string `json:"-"`
+	RequestedEpoch int `json:"-"`
+	AppliedPath string `json:"-"`
+	AppliedIdentity string `json:"-"`
 }
 
 type RecordingRootStatus struct {
@@ -41,7 +44,7 @@ type RecordingRootChange struct {
 }
 
 func readRecordingRoot(tx *sql.Tx) (out RecordingRootRequest, err error) {
-	err = tx.QueryRow(`SELECT revision,path,folder_identity,requested_by FROM recording_root_request WHERE singleton=1`).Scan(&out.Revision, &out.Path, &out.FolderIdentity, &out.RequestedBy)
+	err = tx.QueryRow(`SELECT revision,path,folder_identity,requested_by,requested_epoch,applied_path,applied_identity FROM recording_root_request WHERE singleton=1`).Scan(&out.Revision, &out.Path, &out.FolderIdentity, &out.RequestedBy, &out.RequestedEpoch, &out.AppliedPath, &out.AppliedIdentity)
 	return
 }
 
@@ -102,13 +105,17 @@ func (s *Store) ApplyRecordingRoot(ctx context.Context, p identity.Principal, au
 		}
 		if folderIdentity == "" { return errors.New("recording root identity unavailable") }
 		saved := current
-		if current.Path != change.Path || current.FolderIdentity != folderIdentity || current.RequestedBy != ViewerKey(p) {
+		if current.Path != change.Path || current.FolderIdentity != folderIdentity || current.RequestedBy != ViewerKey(p) || current.RequestedEpoch != p.Epoch {
 			if current.Revision >= 9007199254740991 { return ErrCapacity }
-			saved = RecordingRootRequest{Revision: current.Revision + 1, Path: change.Path, FolderIdentity: folderIdentity, RequestedBy: ViewerKey(p)}
-			if _, e = tx.Exec(`UPDATE recording_root_request SET revision=?,path=?,folder_identity=?,requested_by=? WHERE singleton=1 AND revision=?`, saved.Revision, saved.Path, saved.FolderIdentity, saved.RequestedBy, current.Revision); e != nil { return e }
+			saved = RecordingRootRequest{Revision: current.Revision + 1, Path: change.Path, FolderIdentity: folderIdentity, RequestedBy: ViewerKey(p), RequestedEpoch: p.Epoch, AppliedPath: current.AppliedPath, AppliedIdentity: current.AppliedIdentity}
+			if _, e = tx.Exec(`UPDATE recording_root_request SET revision=?,path=?,folder_identity=?,requested_by=?,requested_epoch=? WHERE singleton=1 AND revision=?`, saved.Revision, saved.Path, saved.FolderIdentity, saved.RequestedBy, saved.RequestedEpoch, current.Revision); e != nil { return e }
 		}
 		out = s.recordingRootStatus(saved)
 		return SaveReceipt(tx, scope, change.IdempotencyKey, digest, saved, s.now())
 	})
 	return
 }
+
+// RecordingRootRequestTx exposes private pins only to in-process startup
+// composition; route DTOs remain RecordingRootStatus.
+func RecordingRootRequestTx(tx *sql.Tx) (RecordingRootRequest, error) { return readRecordingRoot(tx) }

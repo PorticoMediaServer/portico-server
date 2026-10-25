@@ -218,3 +218,12 @@ func (d *Driver) CheckFloor(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ValidateRootBinding is the startup-only final check before the new driver's
+// binding is published. Reuse the capture/write identity guard, including ABA
+// directory replacement detected against the driver's own pinned FileInfo.
+func (d *Driver) ValidateRootBinding() error {
+	if d == nil { return dvr.ErrStorageUnavailable }
+	if d.root == "" { return nil }
+	return d.checkRoot()
+}

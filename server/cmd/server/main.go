@@ -57,6 +57,7 @@ import (
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/recordingmedia"
+	"portico.local/server/internal/recordingroot"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/scanevents"
@@ -718,22 +719,25 @@ func run() (runErr error) {
 	if e != nil {
 		return errors.New("Library Channel storage could not be initialized")
 	}
-	recordingsRoot := os.Getenv("PORTICO_RECORDINGS_DIR")
-	if recordingsRoot != "" {
-		if e = layout.ValidateRecordings(recordingsRoot); e != nil {
-			return e
-		}
-	}
+	operatorRecordingsRoot := os.Getenv("PORTICO_RECORDINGS_DIR")
+	recordingsRoot := ""
 	doneRecording := reporter.step("recording", "Open recording storage")
-	recorder, e := recordingmedia.New(recordingsRoot, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
-	if e != nil {
-		return errors.New("private recording storage could not be initialized")
-	}
 	recordingStore, e := dvr.New(db, liveSources, recordingaccess.Policy{Cached: control}.Durable)
-	if e != nil {
-		_ = recorder.Close()
-		return e
-	}
+	if e != nil { return e }
+	var recorder *recordingmedia.Driver
+	e = recordingroot.Activate(ctx, db, adminOperations, ident, state, operatorRecordingsRoot, func(root string) (func(), func() error, error) {
+		var err error
+		recorder, err = recordingmedia.New(root, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
+		if err != nil { return nil, nil, err }
+		recordingsRoot = root
+		storeIO.RecordingRoot = root
+		storeIO.RecordingLayout = recordingStore.IsRecordingLayoutPath
+		return func() { _ = recorder.Close(); storeIO.RecordingRoot = "" }, func() error {
+			if storeIO.RecordingRoot != root { return errors.New("recording storage binding changed") }
+			return recorder.ValidateRootBinding()
+		}, nil
+	})
+	if e != nil { return errors.New("private recording storage configuration could not be accepted") }
 	recordingLocks, e := livechannels.NewPhysicalLocks(storagepaths.Path(state, "live-source-locks"))
 	if e != nil {
 		_ = recorder.Close()
@@ -744,8 +748,6 @@ func run() (runErr error) {
 		return e
 	}
 	doneRecording(nil)
-	storeIO.RecordingRoot = recordingsRoot
-	storeIO.RecordingLayout = recordingStore.IsRecordingLayoutPath
 	recordingCtx, stopRecordings := context.WithCancel(ctx)
 	recordingsDone := make(chan struct{})
 	supervise.Go("cmd.recordings", func() {
@@ -1038,6 +1040,8 @@ func run() (runErr error) {
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
+		console.RecordingRoot, e = recordingroot.Runtime(adminOperations, recordingStore, recordingsRoot, operatorRecordingsRoot != "")
+		if e != nil { return errors.New("recording folder admission could not be initialized") }
 	}
 	doneConsole(e)
 	if e != nil {

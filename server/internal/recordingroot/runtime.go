@@ -6,6 +6,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
+	"strings"
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/operations"
@@ -15,7 +17,7 @@ import (
 // Runtime captures the process's actual effective binding once. A requested
 // destination remains inert until separately reviewed startup activation.
 func Runtime(admin *administration.Service, recordings *dvr.Store, effective string, operatorControlled bool) (*operations.RecordingRootRuntime, error) {
-	if admin == nil || recordings == nil { return nil, errors.New("recording root admission unavailable") }
+	if admin == nil || recordings == nil || !validRootPath(effective) { return nil, errors.New("recording root admission unavailable") }
 	identity := ""
 	var err error
 	if effective != "" {
@@ -41,4 +43,8 @@ func Runtime(admin *administration.Service, recordings *dvr.Store, effective str
 			return chosen, release, nil
 		},
 	}, nil
+}
+
+func validRootPath(path string) bool {
+	return path == "" || operations.SafeText(path, 1024) && !strings.ContainsAny(path, "\n\t") && filepath.IsAbs(path) && filepath.Clean(path) == path
 }
