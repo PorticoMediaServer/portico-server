@@ -206,8 +206,9 @@ CREATE TABLE reading_image_folders(
  member_revision TEXT NOT NULL CHECK(length(member_revision)=64),
  member_count INTEGER NOT NULL CHECK(member_count BETWEEN 1 AND 4097),
  total_size INTEGER NOT NULL CHECK(total_size>0 AND total_size<=2147483648),
- available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1))
+ available INTEGER NOT NULL DEFAULT 0 CHECK(available IN(0,1))
 ) STRICT;
+CREATE INDEX reading_image_folders_source ON reading_image_folders(source_id,directory_path);
 CREATE UNIQUE INDEX reading_image_folders_current ON reading_image_folders(source_id,directory_path) WHERE available=1;
 CREATE TABLE reading_image_members(
  folder_asset_id INTEGER NOT NULL REFERENCES reading_image_folders(asset_id) ON DELETE CASCADE,
