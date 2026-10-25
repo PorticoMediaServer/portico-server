@@ -205,14 +205,14 @@ export function scheduledJobs(doc: Pick<MaintenanceDocument, 'tasks'>, settings:
 
 // ── Message log detail ──────────────────────────────────────────────────────────────────────
 
-export type LogsDraft = Readonly<{retention: LogSettings['retention']}>;
+export type LogsDraft = Readonly<{logLevel: LogSettings['logLevel']; retention: LogSettings['retention']}>;
 
 export function logsForm(deps: ServerFormDeps): DraftForm<LogsDraft, LogSettings> {
   const ids = createOperationIds(deps.operationId);
   return new DraftForm<LogsDraft, LogSettings>({
-    load: async signal => { const settings = parseLogSettings(await deps.api.request(routePath("get_admin_logs_settings"), 'GET', undefined, signal)); return {value: {retention: settings.retention}, status: settings}; },
+    load: async signal => { const settings = parseLogSettings(await deps.api.request(routePath("get_admin_logs_settings"), 'GET', undefined, signal)); return {value: {logLevel: settings.logLevel, retention: settings.retention}, status: settings}; },
     save: async (draft, _saved, status) => {
-      const payload = {logLevel: status?.logLevel ?? 'info', retention: draft.retention};
+      const payload = {logLevel: draft.logLevel, retention: draft.retention};
       await deps.api.request(routePath("patch_admin_logs_settings"), 'PATCH', routeBody("patch_admin_logs_settings", {expectedRevision: status?.revision ?? 0, operationId: ids.forPayload(JSON.stringify({revision: status?.revision, ...payload})), ...payload}));
       ids.release();
     },
