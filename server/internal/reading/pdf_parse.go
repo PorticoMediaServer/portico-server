@@ -11,6 +11,9 @@ import (
 	"rsc.io/pdf"
 )
 
+// pdfReadWindow bounds one random-access read of the isolated snapshot.
+const pdfReadWindow = 256 << 10
+
 // parsePDFText runs only in the isolated helper process. It first walks the
 // complete page tree itself and counts every Page leaf; the declared /Count is
 // never consulted. Then it reads the page content streams of the pinned parser;
