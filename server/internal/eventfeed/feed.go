@@ -210,6 +210,13 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 	}
 	defer gate.Rollback()
 	tx := gate.Tx()
+	capacityAudience := ""
+	if check := capacityRecipient(ctx); check != nil {
+		if err = check(ctx, tx, p); err != nil {
+			return out, err
+		}
+		capacityAudience = apievents.CapacityAudience(p.Authority, p.AccountID)
+	}
 	var minimum, maximum int64
 	if err = tx.QueryRowContext(ctx, eventBoundsSQL).Scan(&minimum, &maximum); err != nil {
 		return out, err
@@ -240,7 +247,7 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 	if administrative {
 		operationAudience = apievents.AdminAudience
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,audience,type,resource_kind,resource_id,revision,data,at_ms FROM api_events WHERE id>? AND (audience IN (?,?,?,?,'server') OR audience >= 'library:' AND audience < 'library;') ORDER BY id LIMIT ?`, after, audience, deviceAudience, adminAudience, operationAudience, PageLimit+1)
+	rows, err := tx.QueryContext(ctx, `SELECT id,audience,type,resource_kind,resource_id,revision,data,at_ms FROM api_events WHERE id>? AND (audience IN (?,?,?,?,?,'server') OR audience >= 'library:' AND audience < 'library;') ORDER BY id LIMIT ?`, after, audience, deviceAudience, adminAudience, operationAudience, capacityAudience, PageLimit+1)
 	if err != nil {
 		return out, err
 	}
@@ -257,6 +264,15 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 		}
 		examined++
 		lastExamined = id
+		// A capacity hint cannot arrive through server/admin/profile audiences,
+		// or carry even a private producer's accidental metadata fields.
+		if kind == "capacity.changed" {
+			if capacityAudience == "" || rowAudience != capacityAudience || resourceKind != "" || resource != "" || revision != "" || data != "" {
+				continue
+			}
+		} else if capacityAudience != "" && rowAudience == capacityAudience {
+			continue
+		}
 		if strings.HasPrefix(rowAudience, "library:") {
 			if h.LibraryVisible == nil {
 				continue
@@ -298,10 +314,16 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative boo
 // SubscribeFor filters private profile/device changes in memory. Library hints
 // still pass the snapshot authorization check in Read before delivery.
 func (h *Hub) SubscribeFor(p identity.Principal, administrative bool) (<-chan struct{}, func()) {
+	return h.subscribeFor(p, administrative, false)
+}
+func (h *Hub) subscribeFor(p identity.Principal, administrative, capacity bool) (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	audiences := map[string]bool{apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID): true, "server": true}
 	if p.DeviceID != "" {
 		audiences[apievents.DeviceAudience(p.DeviceID)] = true
+	}
+	if capacity {
+		audiences[apievents.CapacityAudience(p.Authority, p.AccountID)] = true
 	}
 	if administrative {
 		audiences[apievents.AdminAudience] = true

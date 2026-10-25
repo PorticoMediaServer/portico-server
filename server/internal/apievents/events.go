@@ -19,6 +19,11 @@ func ProfileAudience(authority, account, profile string) string {
 }
 func AccountAudience(authority, account string) string { return "account:" + authority + ":" + account }
 
+// CapacityAudience is distinct from account administration and profile events.
+func CapacityAudience(authority, account string) string {
+	return "capacity:" + authority + ":" + account
+}
+
 const AdminAudience = "admin"
 
 // InboxAudience translates the durable notification scope into the shared

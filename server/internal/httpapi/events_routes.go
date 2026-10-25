@@ -46,6 +46,9 @@ func (d Dependencies) eventAuthority(r *http.Request) (identity.Principal, bool,
 	if err != nil {
 		return p, false, err
 	}
+	if err = d.checkCapacityReader(r, p); err != nil {
+		return p, false, err
+	}
 	if credential, ok := identity.APICredentialFrom(r.Context()); ok {
 		granted := make([]apikit.Scope, 0, len(credential.Scopes))
 		for _, scope := range credential.Scopes {
@@ -107,10 +110,15 @@ func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 		consoleError(w, err)
 		return
 	}
+	r, err = d.withCapacityAdmission(r, p)
+	if err != nil {
+		consoleError(w, err)
+		return
+	}
 	bridgeCtx, stopBridge := context.WithCancel(r.Context())
 	defer stopBridge()
 	d.bridgeReceiverEvents(bridgeCtx, p)
-	wake, release := d.Events.SubscribeFor(p, owner)
+	wake, release := d.Events.SubscribeForContext(r.Context(), p, owner)
 	defer release()
 	page, err := d.Events.Read(r.Context(), p, owner, after, supplied)
 	if err != nil {
@@ -195,6 +203,11 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 	w.WriteHeader(200)
 	lastSent := ""
 	send := func(e eventfeed.Event) bool {
+		if e.Type == "capacity.changed" {
+			if err := d.checkCapacityReader(r.WithContext(ctx), p); err != nil {
+				return false
+			}
+		}
 		b, err := json.Marshal(e)
 		if err != nil {
 			return false
