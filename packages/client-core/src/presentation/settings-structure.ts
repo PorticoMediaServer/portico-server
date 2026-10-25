@@ -456,6 +456,14 @@ const serverPages: readonly AuthoredPage[] = [
         setting('liveDefaults', 'streamBufferMs', 'web.dvrSettings.buffer', {type: 'number', min: 0, max: 120, unit: 'settings.unit.seconds', scale: 1000}, {help: 'web.dvrSettings.bufferHelp'}),
         setting('liveDefaults', 'retryWindowMs', 'web.dvrSettings.retryWindow', {type: 'number', min: 5, max: 600, unit: 'settings.unit.seconds', scale: 1000}, {help: 'web.dvrSettings.retryWindowHelp'}),
         setting('liveDefaults', 'guideDays', 'web.dvrSettings.guideDays', {type: 'number', min: 1, max: 21, unit: 'settings.unit.days'}, {help: 'web.dvrSettings.guideDaysHelp'}),
+        // The closed rewind window, shown only when the server sends its choice: an older
+        // server that omits it keeps the row absent instead of a guessed 30-minute default.
+        setting('liveDefaults', 'timeshiftMinutes', 'next.settingsSpec.server.live.groups.1.rows.2.label', {type: 'choice', choices: [
+          {value: 10, label: 'next.settingsSpec.server.live.groups.1.rows.2.control.options.0.label'},
+          {value: 30, label: 'next.settingsSpec.server.live.groups.1.rows.2.control.options.1.label'},
+          {value: 60, label: 'next.settingsSpec.server.live.groups.1.rows.2.control.options.2.label'},
+          {value: 120, label: 'next.settingsSpec.server.live.groups.1.rows.2.control.options.3.label'},
+        ]}, {help: 'next.settingsSpec.server.live.groups.1.rows.2.help'}),
         setting('liveDefaults', 'userAgent', 'web.dvrSettings.userAgent', {type: 'text', mono: true}, {help: 'web.dvrSettings.userAgentHelp'}),
         on('liveDefaults', 'logoImport', 'web.dvrSettings.logoImport'),
         on('liveDefaults', 'discoveryEnabled', 'web.dvrSettings.discovery', 'web.dvrSettings.discoveryHelp'),
