@@ -540,6 +540,12 @@ const serverPages: readonly AuthoredPage[] = [
       setting('connectivity', 'connectionLimit', 'web.connectivity.connectionLimit', {type: 'number', min: 1, max: 65536, empty: {stores: 0, placeholder: 'settings.server.automatic'}}, {help: 'settings.server.connectionLimitHelp'}),
     ]},
   ]},
+  // The current Settings specification gives remote sources their own Server page.
+  // Native mounts its supported source editor here; the older Storage slot remains
+  // available to existing web consumers until their separate migration.
+  {id: 'remote-sources', title: 'settings.server.remoteSources', icon: 'globe', platforms: ['phone'], sections: [
+    panel('sources', 'server.remoteSources', undefined, {platforms: ['phone']}),
+  ]},
   {id: 'storage', title: 'settings.server.storage', icon: 'storage', sections: [
     panel('disk', 'server.diskUsage', 'settings.server.diskUsage'),
     {id: 'limits', rows: [
