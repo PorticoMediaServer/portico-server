@@ -19,7 +19,14 @@ type SourceLibraryUse struct {
 	LibraryID string `json:"libraryId"`
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
-	Folders   int    `json:"folders"`
+	// Folders counts exactly this library's enabled folders from the source. A
+	// disabled folder is leaving the source and is not counted.
+	Folders int `json:"folders"`
+	// LastCompleteAt is the stored last completed scan of this library's
+	// folders from the source, only when every enabled one of them agrees on one
+	// stored time. A mixed library omits it rather than picking the latest, an
+	// average or another folder's time.
+	LastCompleteAt string `json:"lastCompleteAt,omitempty"`
 }
 
 // SourceScanState is one source folder's active scan as the scanner records it.
@@ -148,15 +155,21 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		out.LastCheckedAt = time.UnixMilli(observed).UTC().Format(time.RFC3339)
 	}
 	// Ten drawn libraries are plenty for the page; the count stays bounded so a
-	// constant-cost read never grows with the owner's library list.
-	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT l.id,l.name,l.kind,COUNT(*) FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.remote_source_id=? GROUP BY l.id,l.name,l.kind ORDER BY l.name,l.id LIMIT 11`, row.ID)
+	// constant-cost read never grows with the owner's library list. Only enabled
+	// folders still come from the source; a disabled folder is leaving it and is
+	// not counted as a library that uses it.
+	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT l.id,l.name,l.kind,COUNT(*),COALESCE(MIN(s.last_complete_at),''),COALESCE(MAX(s.last_complete_at),'') FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.remote_source_id=? AND s.enabled=1 GROUP BY l.id,l.name,l.kind ORDER BY l.name,l.id LIMIT 11`, row.ID)
 	if err != nil {
 		return SourceStatus{}, err
 	}
 	for rows.Next() {
 		var use SourceLibraryUse
-		if err = rows.Scan(&use.LibraryID, &use.Name, &use.Kind, &use.Folders); err != nil {
+		var minComplete, maxComplete string
+		if err = rows.Scan(&use.LibraryID, &use.Name, &use.Kind, &use.Folders, &minComplete, &maxComplete); err != nil {
 			break
+		}
+		if minComplete != "" && minComplete == maxComplete {
+			use.LastCompleteAt = scanTime(minComplete)
 		}
 		out.Libraries = append(out.Libraries, use)
 	}

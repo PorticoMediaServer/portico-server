@@ -41,8 +41,11 @@ export type SourceReadPreset='list'|'once'|'everything'|'ask';
  * absolute path the catalog uses for it, and the path inside the source. */
 export type RemoteFolder=Readonly<{name:string;path:string;relative:string;hidden:boolean}>;
 export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:string;relative:string;entries:readonly RemoteFolder[];nextCursor:string;truncated:boolean}>;
-/** One library that uses folders from a source, and how many of its folders do. */
-export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;folders:number}>;
+/** One library that uses folders from a source: the exact count of its enabled
+ * folders from that source, and their stored last completed scan only when all
+ * of them agree on one time. A mixed library omits it; nothing is picked,
+ * averaged or inferred. */
+export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;folders:number;lastCompleteAt?:string}>;
 /** A source's folder health, published only when every enabled folder agrees
  * on the same stored code. Absence is not a healthy or idle claim. */
 export type RemoteSourceHealth='ready'|'healthy'|'degraded'|'inventory_running'|'cancelled'|'offline'|'root_changed'|'removing';
@@ -209,7 +212,8 @@ function remoteFolderPage(raw:unknown,id:string):RemoteFolderPage{
 }
 function sourceLibraryUse(raw:unknown):SourceLibraryUse{
  if(!record(raw)||!text(raw.libraryId,256)||!raw.libraryId||!text(raw.name,512)||!text(raw.kind,32)||!integer(raw.folders)||raw.folders<1)invalid();
- return Object.freeze({libraryId:raw.libraryId,name:raw.name,kind:raw.kind,folders:raw.folders});
+ const lastComplete=scanTimestamp(raw.lastCompleteAt);
+ return Object.freeze({libraryId:raw.libraryId,name:raw.name,kind:raw.kind,folders:raw.folders,...(lastComplete?{lastCompleteAt:lastComplete}:{})});
 }
 function sourceAdvanced(raw:unknown):SourceAdvanced{
  if(!record(raw))invalid();
