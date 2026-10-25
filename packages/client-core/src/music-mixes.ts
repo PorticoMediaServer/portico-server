@@ -15,15 +15,16 @@ const record = (value: unknown): value is Record<string, unknown> => typeof valu
 export function musicMixDisplayName(
   source: unknown, artists: readonly unknown[],
   t: (key: MessageId, values?: MessageValues) => string,
+  format: 'name' | 'label' = 'name',
 ): string | undefined {
   if (!record(source)) return undefined;
   if (source.kind === 'style') {
     if (Object.keys(source).length !== 4 || typeof source.tag !== 'string' || source.model !== 'musicnn-mtt' || typeof source.version !== 'string' || source.version.length === 0) return undefined;
     const key = Object.hasOwn(styleKeys, source.tag) ? styleKeys[source.tag] : undefined;
-    return key ? t('music.mix.name', {name: t(key)}) : undefined;
+    return key ? format === 'label' ? t(key) : t('music.mix.name', {name: t(key)}) : undefined;
   }
   if (source.kind !== 'artist' || Object.keys(source).length !== 2 || typeof source.artistId !== 'string') return undefined;
   const artist = artists.find(value => record(value) && value.id === source.artistId);
   if (!record(artist) || typeof artist.name !== 'string' || artist.name.trim().length === 0) return undefined;
-  return t('music.mix.name', {name: artist.name});
+  return format === 'label' ? artist.name : t('music.mix.name', {name: artist.name});
 }

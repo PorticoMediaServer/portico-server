@@ -112,10 +112,10 @@ export function createMusicMixesController(options: MusicMixesOptions) {
     getSnapshot: () => {if (!closed && (signal.aborted || !isCurrent())) retire(true);return state;},
     subscribe(listener: () => void) {if (closed) return () => {};listeners.add(listener);return () => {listeners.delete(listener);};},
     load, relabel, contains,
-    async play(row: MusicMixRow, port: Pick<V1QueuePlayer, 'playSegments'>, caller: MusicMixLifetime): Promise<QueueHeader | undefined> {
+    async play(row: MusicMixRow, port: Pick<V1QueuePlayer, 'playSegments'>, caller: MusicMixLifetime, shuffle = false): Promise<QueueHeader | undefined> {
       const command = capture(row, caller);playing?.abort();playing = command.controller;
       try {
-        const result = await port.playSegments.call(port, [{source: {container: {kind: 'mix', id: row.mix.id}}}],
+        const result = await port.playSegments.call(port, [{source: {container: {kind: 'mix', id: row.mix.id}}, ...(shuffle ? {order: {mode: 'shuffle' as const}} : {})}],
           {signal: command.signal, isCurrent: command.isCurrent});
         command.assert();return result;
       } catch (error) {if (await stale(error, command.isCurrent)) return undefined;throw error;}
