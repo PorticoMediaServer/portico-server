@@ -72,7 +72,8 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     <nav className={styles.nav}>
       {binding.context.effects.back && <Button variant="ghost" icon="i-left" iconOnly aria-label={t('action.back')} onClick={() => run(() => {binding.current(page);binding.context.effects.back?.();})}/>}
       {onMore && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entity.title})} onClick={event => run(() => {binding.current(page);onMore(entity, event.currentTarget);})}/>}
-      {!onMore && <AudiobookMore binding={binding} page={page} entry={entity}/>}
+      {/* Phones keep the drawn bar's More; the desktop page draws it in the action row. */}
+      {!onMore && phone && <AudiobookMore binding={binding} page={page} entry={entity}/>}
     </nav>
     <header className={styles.hero}>
       <div className={author ? styles.disc : styles.cover}><Artwork source={binding.context.artwork.foreground(cover, 464, 1)} alt=""/>{author && <b>{entity.title.split(/\s+/u).filter(Boolean).slice(0, 2).map(word => word[0]).join('')}</b>}</div>
@@ -88,8 +89,10 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     </header>
     <div className={styles.actions}>
       {canPlay && <Button className={styles.primary} variant="primary" icon="i-play" onClick={() => run(() => binding.primary(page))}>{label}</Button>}
+      {book && page.listening?.actions.includes('play') && <Button variant="glass" onClick={() => run(() => binding.primary(page, true))}>{t('action.startOver')}</Button>}
       {book && finished !== undefined && <Button className={styles.round} icon="i-check" iconOnly disabled={busy} aria-pressed={finished} aria-label={t(finished ? 'title.markNotFinished' : 'title.markFinished')} onClick={() => {setBusy(true);void binding.markFinished(page).then(value => setFinished(value.watched)).catch(binding.context.effects.reportError).finally(() => setBusy(false));}}/>}
       {!book && !author && primaryBook && <Button className={styles.round} icon="i-retry" iconOnly aria-label={t('action.startOver')} onClick={() => open(primaryBook)}/>}
+      {!onMore && !phone && <AudiobookMore binding={binding} page={page} entry={entity}/>}
     </div>
     {book && remaining && <div className={styles.progress}>{ratio !== undefined && <span><i style={{width: `${Math.min(1, Math.max(0, ratio)) * 100}%`}}/></span>}{t('title.resumeRemaining', {remaining})}</div>}
     {book && entity.overview && <aside className={styles.aside}><p className={styles.about} data-expanded={expanded || undefined}>{entity.overview}</p>{!expanded && <button className={styles.readMore} onClick={() => setExpanded(true)}>{t('web.person.readMore')}</button>}</aside>}
