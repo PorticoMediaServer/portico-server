@@ -71,3 +71,32 @@ test('saving subscribers cannot send an upload after retiring its attempt', asyn
     off(); service.dispose();
   }
 });
+
+test('removal accepts only an upload candidate from the current snapshot', async () => {
+  let deletes = 0;
+  const candidate = {id: 'c'.repeat(64), role: 'poster', subject: '', provider: 'tmdb', imageId: 'image', locale: '', rank: 1, attribution: 'TMDB', observedAt: '2026-10-25T00:00:00Z', current: true};
+  const value = {...state(), artwork: {candidates: [candidate], jobs: []}};
+  const service = new MetadataRepairService({scope, api: {async request<T>(_path: string, method?: string) {if (method === 'DELETE') deletes++; return value as T;}}});
+  await service.load(target);
+  await assert.rejects(service.removeUploadedArtwork('poster', candidate.id));
+  assert.equal(deletes, 0);
+  service.dispose();
+});
+
+test('removal carries revision and cannot send after saving-subscriber cancellation', async () => {
+  const candidate = {id: 'c'.repeat(64), role: 'poster', subject: '', provider: 'upload', imageId: 'image', locale: '', rank: 1, attribution: 'Owner', observedAt: '2026-10-25T00:00:00Z', current: true};
+  const value = {...state(), artwork: {candidates: [candidate], jobs: []}};
+  const calls: string[] = [];
+  const service = new MetadataRepairService({scope, api: {async request<T>(path: string, method?: string) {if (method === 'DELETE') calls.push(path); return value as T;}}});
+  await service.load(target);
+  assert.equal(await service.removeUploadedArtwork('poster', candidate.id), true);
+  assert.equal(calls[0], '/v1/metadata/item/movie/art/poster/upload/' + candidate.id + '?expectedRevision=' + 'b'.repeat(64));
+  const captured = service.getSnapshot().data!;
+  await service.load(target);
+  await assert.rejects(service.removeUploadedArtwork('poster', candidate.id, captured), /old document/);
+  assert.equal(calls.length, 1);
+  const off = service.subscribe(() => {if (service.getSnapshot().phase === 'saving') service.cancel();});
+  assert.equal(await service.removeUploadedArtwork('poster', candidate.id), false);
+  assert.equal(calls.length, 1);
+  off(); service.dispose();
+});
