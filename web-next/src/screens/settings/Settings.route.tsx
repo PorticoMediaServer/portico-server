@@ -29,6 +29,8 @@ import {createServerSettingsSurfaces} from './server';
 import {createTroubleshootingSurfaces} from './server/troubleshooting';
 import {IntegrationsPage} from './server/integrations/ApiKeys';
 import {SettingsApiKeysSource} from './server/integrations/api-keys-source';
+import {MissingTitles} from './server/MissingTitles';
+import {SettingsMissingSource} from './server/missing-source';
 import {presetEnginesAvailable} from './server/engines';
 import {LibraryFolders} from './libraries/LibraryFolders';
 import {SkippedFiles} from './libraries/SkippedFiles';
@@ -178,6 +180,8 @@ export function SettingsEntry() {
         reportError}) : undefined;
     const integrationKeys = route.section === 'integrations' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
       ? new SettingsApiKeysSource(context.api, current, reportError) : undefined;
+    const missing = route.section === 'libraries' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
+      ? new SettingsMissingSource(context.api, current, reportError) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         if (row.id === 'profile.delete' && profiles) return <ProfileDelete source={profiles} isCurrent={current} onFailure={reportError} />;
@@ -187,6 +191,7 @@ export function SettingsEntry() {
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
           requestAnimationFrame(() => {if (current()) document.getElementById('profile.name')?.querySelector<HTMLInputElement>('input')?.focus();});
         }} />;
+        if (row.id === 'storage.missingNow' && missing) return <MissingTitles source={missing} isCurrent={current} artwork={id => context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind: 'poster'}), 80, 2 / 3)} />;
         const storageControl = server?.special(row, state);
         if (storageControl !== undefined) return storageControl;
         const privacyControl = privacy.special(row, state);
@@ -241,8 +246,10 @@ export function SettingsEntry() {
       // server-section configuration read would replace that page with a failure.
       getSnapshot: section => section.scope === 'account' && section.id === 'profile' && profiles ? profiles.getSnapshot() : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'live' && !!live) ? remoteSourcesPageSnapshot : source.getSnapshot(section),
       load: section => section.scope === 'account' && section.id === 'profile' && profiles ? Promise.all([profiles.load(), source.load(section)]).then(() => undefined) : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'live' && !!live) ? Promise.resolve() : source.load(section),
-      eligible: (row, selected) => profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || row.id === 'libraries.fetchLyrics' && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      eligible: (row, selected) => row.id === 'storage.missingNow' ? !!missing && current() : row.id === 'storage.removeMissing' ? false : profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || row.id === 'libraries.fetchLyrics' && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
+        if (row.id === 'storage.missingNow') return {present: !!missing && current()};
+        if (row.id === 'storage.removeMissing') return {present: false};
         if (profiles && profileRow(row.id)) return row.id === 'profile.list' ? {present: current() && !!profiles.getSnapshot().document} : profileSettingState(profiles, row.id)!;
         const privacyState = privacy.rowState(row);
         if (privacyState !== undefined) return privacyState;
@@ -254,7 +261,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard, profiles});
-    return () => {active = false;offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();live?.dispose();integrationKeys?.dispose();controller.dispose();};
+    return () => {active = false;offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();live?.dispose();integrationKeys?.dispose();missing?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
