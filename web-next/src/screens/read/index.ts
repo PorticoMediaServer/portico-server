@@ -15,7 +15,7 @@ export {ReadReader} from './ReadReader';
 export type {ReadReaderProps, ReaderChromePresentation} from './ReadReader';
 export {ReaderDisplayControls, ReaderDisplayPopover, ReaderDisplaySheet, ReaderDisplaySidePanel} from '../../kit/reader/ReaderDisplay';
 export type {ReaderDisplayControlsProps, ReaderDisplayProps, ReaderDisplaySize, ReaderDisplayRow, ReaderThemeOption, ReaderFontOption, ReaderTwoPages} from '../../kit/reader/ReaderDisplay';
-export {readerPdfWorkerUrl} from './pdf-worker';
+export {readerPdfWorkerUrl, readerPdfAdapterOptions} from './pdf-worker';
 export {loadReadFonts} from './fonts';
 export type {ReadFonts} from './fonts';
 export {loadReadPagePreview} from './preview';

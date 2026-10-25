@@ -10,7 +10,7 @@ import {createReadBindings} from './bindings';
 import {bindReadPreferences} from './preferences';
 import {bindReadingProgress} from './progress';
 import {loadReadFonts, type ReadFonts} from './fonts';
-import {readerPdfWorkerUrl} from './pdf-worker';
+import {readerPdfAdapterOptions} from './pdf-worker';
 import type {ReaderMountAuthority} from './mount';
 import styles from './entry.module.css';
 import {takeContentsTarget, retireContentsTarget} from './contents-handoff';
@@ -70,7 +70,7 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
       if (publication.format === 'epub') fonts = await loadReadFonts({document, signal: life.signal});
       if (!alive) return;
       const adapters = publication.format === 'epub' ? [createEpubAdapter({fonts: fonts!.fonts})]
-        : publication.format === 'pdf' ? [createPdfAdapter({workerUrl: readerPdfWorkerUrl})] : [createComicAdapter({pages: publication.comicPages!})];
+        : publication.format === 'pdf' ? [createPdfAdapter(readerPdfAdapterOptions)] : [createComicAdapter({pages: publication.comicPages!})];
       reader = bindReadPreferences({adapters, preferences: bindings.preferences, authority: bindings.authority, reportError: code => reportError({code})});
       progress = bindReadingProgress({controller: reader.controller, session, initial: saved, authority: bindings.authority, reportError});
       setState({book: {session, publication, controller: reader.controller, authority: bindings.authority, location, contentsTarget}});

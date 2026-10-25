@@ -11,7 +11,7 @@ import {ReaderBook, type ReaderBookState} from '../ReaderBook';
 import {bindReadPreferences} from '../preferences';
 import {bindReadingProgress} from '../progress';
 import {loadReadFonts, type ReadFonts} from '../fonts';
-import {readerPdfWorkerUrl} from '../pdf-worker';
+import {readerPdfAdapterOptions} from '../pdf-worker';
 import styles from '../entry.module.css';
 
 type NativeWindow = Window & {ReactNativeWebView?: {postMessage: (message: string) => void}; PorticoReader?: {receive: (message: string) => void; dispose: () => void}};
@@ -42,7 +42,7 @@ function NativeReading({guest}: {guest: ReadingGuest}) {
       if (publication.format === 'epub') fonts = await loadReadFonts({document, signal: publication.signal});
       if (!authority.isCurrent()) return;
       const adapters = publication.format === 'epub' ? [createEpubAdapter({fonts: fonts!.fonts})] : publication.format === 'pdf'
-        ? [createPdfAdapter({workerUrl: readerPdfWorkerUrl})] : [createComicAdapter({pages: publication.comicPages!})];
+        ? [createPdfAdapter(readerPdfAdapterOptions)] : [createComicAdapter({pages: publication.comicPages!})];
       reader = bindReadPreferences({adapters, preferences: guest.preferences, authority, reportError: () => {if (alive) setFailed(true);}});
       progress = bindReadingProgress({controller: reader.controller, session: guest.session, initial: guest.initialProgress, authority, reportError: () => {if (alive) setFailed(true);}});
       progressRef.current = progress;
