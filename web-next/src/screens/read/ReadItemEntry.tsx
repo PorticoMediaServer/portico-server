@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import {createReadingPublication, type ReaderContentsTarget} from '@portico/reader-core';
 import {stageContentsTarget} from './contents-handoff';
-import {ReaderContents} from '../../kit/reader/ReaderPanel';
+import {ReaderContents, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
 import type {ReadingManifest, ReadingProgress} from '@portico/client-core';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -81,5 +81,19 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
         selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => setSourceId(candidate.sourceId)} description={defaultI18n.bytes(candidate.size)}>
         {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : undefined}/>
-    <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={(manifest.contents ?? []).map((entry, index) => ({id: String(index), label: entry.title, onNavigate: () => open(index)}))}/></> : <span hidden/>} details={details}/></>;
+    <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
+}
+
+/** Preserve the file's hierarchy and original index; no inferred page or progress labels. */
+function detailContents(contents: NonNullable<ReadingManifest['contents']>, navigate: (index: number) => void): readonly ReaderContentsEntry[] {
+  type Branch = {id: string; label: string; onNavigate: () => void; children: Branch[]};
+  const roots: Branch[] = [], ancestors: {depth: number; entry: Branch}[] = [];
+  contents.forEach((item, index) => {
+    while (ancestors.length && ancestors[ancestors.length - 1].depth >= item.depth) ancestors.pop();
+    const entry: Branch = {id: String(index), label: item.title, onNavigate: () => navigate(index), children: []};
+    const parent = ancestors[ancestors.length - 1];
+    (parent ? parent.entry.children : roots).push(entry);
+    ancestors.push({depth: item.depth, entry});
+  });
+  return roots;
 }
