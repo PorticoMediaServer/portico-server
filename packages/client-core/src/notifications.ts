@@ -58,6 +58,23 @@ export type Notification={
  archived:boolean;
  cursor:string;
 };
+/** Preparation state is not a completed device download (Root33). */
+export const downloadPreparationCategories = ['download.prepared', 'download.preparation_failed'] as const;
+export type DownloadPreparationCategory = (typeof downloadPreparationCategories)[number];
+export type NotificationPreparationTarget = Readonly<{preparationId: string}>;
+
+/** A navigation hint to Downloads only. It grants no transfer/offline authority,
+ * and never treats a preparation identifier as a completed local download. */
+export function notificationPreparationTarget(note: Notification, action: NotificationAction): NotificationPreparationTarget | undefined {
+ if (note.source !== 'downloads' || !(downloadPreparationCategories as readonly string[]).includes(note.category)
+  || !note.actions.includes(action) || action.kind !== 'command' || action.command !== 'open-download') return undefined;
+ const preparationId = note.arguments.preparationId, args = action.arguments;
+ if (typeof preparationId !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(preparationId)
+  || note.arguments.downloadId !== undefined || !args || Object.keys(args).length !== 1
+  || !Object.hasOwn(args, 'preparationId') || args.preparationId !== preparationId) return undefined;
+ return Object.freeze({preparationId});
+}
+
 export type NotificationCounts={unread:number;read:number;archived:number;total:number};
 export type NotificationInbox={
  revision:number;
@@ -348,14 +365,21 @@ export function parseFeedbackList(value:unknown):FeedbackList{
  return {...value,items:keepReadable('feedback-list','items',value.items,parseFeedbackReport)} as FeedbackList;
 }
 
-/** The catalogue wording of a notice whose category this build knows (the
- * owner's recording notices), so it reads in the viewer's language; any other
- * notice keeps the server's own words. */
+/** Known server notices read in the viewer's language; unknown categories keep
+ * the server's words. Preparation copy never asserts completed offline bytes. */
 const recordingConflictWords:Record<string,string>={
  'storage-floor':'storage','storage-cap':'storage',
  'tuner-in-use-live-waiting':'liveWaiting','tuner-in-use-live-late':'liveLate','tuner-in-use-live':'liveFailed',
 };
 export function noticeWords(n:Notification,i18n:{has:(id:string)=>boolean;t:(id:never,values?:Record<string,string>)=>string}):{title:string;body:string}{
+ if(n.source==='downloads'&&(downloadPreparationCategories as readonly string[]).includes(n.category)){
+  const variant=n.category==='download.prepared'?'prepared':'preparationFailed';
+  const titleKey=`notice.download.${variant}.title`,bodyKey=`notice.download.${variant}.body`,genericKey='notice.download.genericTitle';
+  if(!i18n.has(titleKey)||!i18n.has(bodyKey)||!i18n.has(genericKey))return {title:n.title,body:n.body};
+  // Persisted inbox titles cannot be rechecked against later content restrictions.
+  const values={title:i18n.t(genericKey as never)};
+  return {title:i18n.t(titleKey as never,values),body:i18n.t(bodyKey as never,values)};
+ }
  if(n.category!=='dvr.conflict')return {title:n.title,body:n.body};
  const variant=recordingConflictWords[n.arguments.reason??'']??'noTuner';
  const titleKey=`notice.recordingConflict.${variant}.title`,bodyKey=`notice.recordingConflict.${variant}.body`;
