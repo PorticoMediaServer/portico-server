@@ -264,3 +264,38 @@ test('read-profile and save transport failures never retain a hostile message',a
  await assert.rejects(save.saveProfile(before,before.values),error=>!String(error).includes('private-password'));
  assert(!JSON.stringify(save.getSnapshot()).includes('private-password'));save.dispose();
 });
+
+test('retiring the captured scope during a held operation id sends zero mutations',async()=>{
+ const held=deferred();let current=true,writes=0;
+ const service=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')writes++;return list();}),scope,()=>held.promise,()=>current);
+ const configure=service.configure(null,input);current=false;held.resolve(op);
+ await configure;assert.equal(writes,0);service.dispose();
+ current=true;const heldAgain=deferred();
+ const profile={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ const saveService=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')writes++;return list();}),scope,()=>heldAgain.promise,()=>current);
+ const save=saveService.saveProfile(profile,profile.values);current=false;heldAgain.resolve(op);
+ await assert.rejects(save);assert.equal(writes,0);saveService.dispose();
+});
+
+test('a confirmed save whose fallback read refuses auth keeps the receipt and reports the refusal',async()=>{
+ const before={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ for(const code of ['unauthorized','forbidden']){
+  let puts=0;
+  const service=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}throw Object.assign(new Error('secret https://private-user:private-password@private.example/'),{code});}),scope,async()=>op);
+  await assert.rejects(service.saveProfile(before,before.values),error=>(error as {code?:string}).code===code);
+  assert.equal(puts,1);assert.equal(service.getSnapshot().ambiguous,false);assert.equal(service.getSnapshot().errorCode,code);assert.equal(service.getSnapshot().receipt?.operationId,op);
+  assert(!JSON.stringify(service.getSnapshot()).includes('private-password'));service.dispose();
+ }
+ const foreign={sourceId:'dav',generation:'9',revision:2,saved:true,values:before.values};
+ let puts=0;
+ const mismatch=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}return {scope:wire,settings:foreign};}),scope,async()=>op);
+ await assert.rejects(mismatch.saveProfile(before,before.values),error=>(error as {code?:string}).code==='refresh_failed');
+ assert.equal(puts,1);assert.equal(mismatch.getSnapshot().ambiguous,false);assert.equal(mismatch.getSnapshot().receipt?.operationId,op);mismatch.dispose();
+});
+
+test('an arbitrary backend code is normalized and never retained',async()=>{
+ const hostile='https://private-user:private-password@private.example/media/';
+ const service=new RemoteSourceService(api(async()=>{throw Object.assign(new Error('transport'),{code:hostile});}),scope,async()=>op);
+ await assert.rejects(service.readProfile('dav'),error=>{const code=(error as {code?:string}).code;return code==='internal'&&!String(error).includes('private-password');});
+ const snapshot=JSON.stringify(service.getSnapshot());assert(!snapshot.includes('private-password'));assert(!snapshot.includes('private.example'));service.dispose();
+});

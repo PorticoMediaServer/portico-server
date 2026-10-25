@@ -25,7 +25,7 @@ test('the four reading choices are the server SourceReadPreset values', () => {
 
 test('the Remote sources page draws the add action and its empty state', () => {
   const markup = renderToStaticMarkup(createElement(RemoteSourcesPage, {
-    api: {request: async () => ({})}, serverId: 'server', viewerId: 'owner', isCurrent: () => true,
+    api: {request: async () => ({})}, serverId: 'server', viewerId: 'owner', isCurrent: () => true, reportError: () => {},
   }));
   assert.match(markup, /Add remote source/);
   assert.match(markup, /No remote sources yet/);

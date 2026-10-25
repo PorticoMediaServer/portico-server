@@ -219,7 +219,7 @@ try {
   const buildShot = resolve(output, 'build.png');
   await driver.screenshot(buildShot);
   await driver.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent?.includes('Add remote source'))?.click()`);
-  await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('WebDAV source')`, 15000);
+  await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Test connection')`, 15000);
   const addFacts = await driver.evaluate(`(() => {const dialog = document.querySelector('[role="dialog"]');return {open: !!dialog, text: dialog?.innerText.slice(0, 1200), fields: dialog?.querySelectorAll('input').length ?? 0};})()`);
   await driver.screenshot(resolve(output, 'add.png'));
   note(`Add dialog opened: ${JSON.stringify(addFacts)}`);

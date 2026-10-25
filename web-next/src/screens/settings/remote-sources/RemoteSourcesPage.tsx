@@ -77,19 +77,23 @@ export function remoteErrorText(error: unknown): string {
     default: return t('next.remoteSources.error.generic');
   }
 }
+function authFailure(error: unknown): boolean {
+  const code = error && typeof error === 'object' ? (error as {code?: string}).code : '';
+  return code === 'unauthorized' || code === 'forbidden' || code === 'not_permitted' || code === 'remote_credentials_required' || code === 'source_credentials_required';
+}
 function refreshFailure(error: unknown): boolean {
   return !!error && typeof error === 'object' && (error as {code?: string}).code === 'refresh_failed';
 }
 
 export type RemoteSourcesPageProps = Readonly<{
-  api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean;
+  api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean; reportError: (error: unknown) => void;
 }>;
 
 /** Server › Remote sources. The drawn page over the source list, the WebDAV add
  * flow and the source's reading profile; only routes the server actually has. */
-export function RemoteSourcesPage({api, serverId, viewerId, isCurrent}: RemoteSourcesPageProps) {
+export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportError}: RemoteSourcesPageProps) {
   const [ids] = useState(stableStorageOperationId);
-  const service = useMemo(() => new RemoteSourceService(api, {serverId, viewerId}, ids.next), [api, serverId, viewerId, ids]);
+  const service = useMemo(() => new RemoteSourceService(api, {serverId, viewerId}, ids.next, isCurrent), [api, serverId, viewerId, ids, isCurrent]);
   const [adding, setAdding] = useState(false);
   const [managing, setManaging] = useState<RemoteSource>();
   useEffect(() => {
@@ -114,14 +118,14 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent}: RemoteSo
       </SettingsRow>)}
       {!snapshot.loading && <p className={styles.note}>{t('next.remoteSources.foldersBlocked')}</p>}
     </SettingsGroup>
-    <AddSourceDialog service={service} open={adding} isCurrent={isCurrent} onClose={() => setAdding(false)} onCreated={source => {setAdding(false);setManaging(source);}}/>
-    {managing && <ManageSourceDialog service={service} source={managing} isCurrent={isCurrent} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>}
+    <AddSourceDialog service={service} open={adding} isCurrent={isCurrent} reportError={reportError} onClose={() => setAdding(false)} onCreated={source => {setAdding(false);setManaging(source);}}/>
+    {managing && <ManageSourceDialog key={managing.id} service={service} source={managing} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>}
     {snapshot.loading && sources.length > 0 && <Button size="xs" variant="text" onClick={refresh}>{t('next.remoteSources.refresh')}</Button>}
   </div>;
 }
 
-function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonly<{
-  service: RemoteSourceService; open: boolean; isCurrent: () => boolean; onClose: () => void; onCreated: (source: RemoteSource) => void;
+function AddSourceDialog({service, open, isCurrent, reportError, onClose, onCreated}: Readonly<{
+  service: RemoteSourceService; open: boolean; isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onCreated: (source: RemoteSource) => void;
 }>) {
   const [step, setStep] = useState<'connection'|'reading'>('connection');
   const [draft, setDraft] = useState<WebDavDraft>(emptyDraft);
@@ -133,34 +137,38 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('once'));
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
-  const testAttempt = useRef(0);
-  const reset = () => {setStep('connection');setDraft(emptyDraft);setResult(undefined);setError('');setCreated(undefined);setProfile(undefined);setValues(sourceReadPreset('once'));setBusy(false);setLoadingProfile(false);testAttempt.current++;};
+  const testAttempt = useRef(0), active = useRef(false), pending = useRef(false);
+  const reset = () => {setStep('connection');setDraft(emptyDraft);setResult(undefined);setError('');setCreated(undefined);setProfile(undefined);setValues(sourceReadPreset('once'));setBusy(false);setLoadingProfile(false);testAttempt.current++;pending.current=false;};
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
-  useEffect(() => {if (!open) reset();}, [open]);
+  useEffect(() => {active.current=open;if(open)reset();else{pending.current=false;setDraft(emptyDraft);setResult(undefined);setError('');}}, [open]);
   const test = async () => {
-    if (!isCurrent()) return;
+    if (!active.current || pending.current || !isCurrent()) return;
+    pending.current = true;
     const attempt = ++testAttempt.current, captured = {...draft};
     setError('');setResult(undefined);setBusy(true);
     try {const next = await service.testConnection({name: captured.name.trim(), root: captured.root.trim(), username: captured.username, password: captured.password, insecureLocal: captured.insecureLocal});
       if (isCurrent() && attempt === testAttempt.current) setResult(next);}
     catch (value) {if (isCurrent() && attempt === testAttempt.current) setError(remoteErrorText(value));}
-    finally {if (isCurrent() && attempt === testAttempt.current) setBusy(false);}
+    finally {if (active.current && isCurrent() && attempt === testAttempt.current) {pending.current=false;setBusy(false);}}
   };
   const create = async () => {
-    if (!isCurrent() || !result) return;
+    if (!active.current || pending.current || !isCurrent() || !result) return;
+    pending.current = true;
     setError('');setBusy(true);
     try {
       await service.configure(null, davConfiguration(null, draft));
+      if (!isCurrent()) return;
       const state = service.getSnapshot();
       if (state.error || !state.receipt) {if (isCurrent()) setError(state.error || 'The source was not confirmed.');return;}
       const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);setDraft(current => ({...current, password: ''}));
       try {const next = await service.readProfile(source.id, String(source.generation));if (isCurrent()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
       catch (value) {if (isCurrent()) setError(remoteErrorText(value));}
       finally {if (isCurrent()) setLoadingProfile(false);}
-    } finally {if (isCurrent()) setBusy(false);}
+    } finally {if (active.current && isCurrent()) {pending.current=false;setBusy(false);}}
   };
   const saveReading = async () => {
-    if (!isCurrent() || !profile) return;
+    if (!active.current || pending.current || !isCurrent() || !profile) return;
+    pending.current = true;
     setError('');setBusy(true);
     try {
       const next = await service.saveProfile(profile, values);
@@ -168,14 +176,16 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
       if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
       setProfile(next);
       const saved = created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId);
+      active.current=false;
       if (saved) onCreated(saved); else onClose();
     } catch (value) {
       if (!isCurrent()) return;
       const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
-      if (refreshFailure(value) && saved) onCreated(saved); else setError(remoteErrorText(value));
-    } finally {if (isCurrent()) setBusy(false);}
+      if (authFailure(value)) { active.current=false; reportError(value); return; }
+      if (refreshFailure(value) && saved) {active.current=false;onCreated(saved);} else setError(remoteErrorText(value));
+    } finally {if (active.current && isCurrent()) {pending.current=false;setBusy(false);}}
   };
-  const close = () => {if (busy) return;setDraft(emptyDraft);setResult(undefined);setError('');onClose();};
+  const close = () => {if (busy || pending.current) return;active.current=false;pending.current=false;setDraft(emptyDraft);setResult(undefined);setError('');onClose();};
   const footer = step === 'connection'
     ? <><Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !result} onClick={create}>{t('next.remoteSources.saveAndContinue')}</Button></>
     : <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>;
@@ -209,8 +219,8 @@ function AddSourceDialog({service, open, isCurrent, onClose, onCreated}: Readonl
   </Dialog>;
 }
 
-function ManageSourceDialog({service, source, isCurrent, onClose, onRemoved}: Readonly<{
-  service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean; onClose: () => void; onRemoved: () => void;
+function ManageSourceDialog({service, source, isCurrent, reportError, onClose, onRemoved}: Readonly<{
+  service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onRemoved: () => void;
 }>) {
   const [draft, setDraft] = useState<WebDavDraft>({name: source.name, root: '', username: '', password: '', insecureLocal: source.insecureLocal});
   const [result, setResult] = useState<DAVConnectionResult>();
@@ -220,7 +230,8 @@ function ManageSourceDialog({service, source, isCurrent, onClose, onRemoved}: Re
   const [busy, setBusy] = useState(false);
   const [typed, setTyped] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const testAttempt = useRef(0);
+  const testAttempt = useRef(0), active = useRef(true), pending = useRef(false);
+  useEffect(() => () => {active.current=false;}, []);
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {
     let active = true;
@@ -232,16 +243,18 @@ function ManageSourceDialog({service, source, isCurrent, onClose, onRemoved}: Re
     return () => {active = false;};
   }, [service, source.id, isCurrent]);
   const test = async () => {
-    if (!isCurrent()) return;
+    if (!active.current || pending.current || !isCurrent()) return;
+    pending.current = true;
     const attempt = ++testAttempt.current, captured = {...draft};
     setError('');setResult(undefined);setBusy(true);
     try {const next = await service.testConnection({name: captured.name.trim(), root: captured.root.trim(), username: captured.username, password: captured.password, insecureLocal: captured.insecureLocal});
       if (isCurrent() && attempt === testAttempt.current) setResult(next);}
     catch (value) {if (isCurrent() && attempt === testAttempt.current) setError(remoteErrorText(value));}
-    finally {if (isCurrent() && attempt === testAttempt.current) setBusy(false);}
+    finally {if (active.current && isCurrent() && attempt === testAttempt.current) {pending.current=false;setBusy(false);}}
   };
   const saveConnection = async () => {
-    if (!isCurrent()) return;
+    if (!active.current || pending.current || !isCurrent()) return;
+    pending.current = true;
     setError('');setBusy(true);
     try {
       await service.configure(source.id, davConfiguration(source, draft), source);
@@ -249,24 +262,26 @@ function ManageSourceDialog({service, source, isCurrent, onClose, onRemoved}: Re
       const state = service.getSnapshot();
       if (state.error) {setError(state.error);return;}
       close();
-    } finally {if (isCurrent()) setBusy(false);}
+    } finally {if (active.current && isCurrent()) {pending.current=false;setBusy(false);}}
   };
   const saveReading = async () => {
-    if (!isCurrent() || !profile) return;
+    if (!active.current || pending.current || !isCurrent() || !profile) return;
+    pending.current = true;
     setError('');setBusy(true);
     try {const next = await service.saveProfile(profile, values);if (!isCurrent()) return;if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}setProfile(next);}
-    catch (value) {if (!isCurrent()) return;if (refreshFailure(value)) close(); else setError(remoteErrorText(value));}
-    finally {if (isCurrent()) setBusy(false);}
+    catch (value) {if (!isCurrent()) return;if (authFailure(value)) {active.current=false;reportError(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
+    finally {if (active.current && isCurrent()) {pending.current=false;setBusy(false);}}
   };
   const disconnect = async () => {
-    if (!isCurrent() || typed.trim() !== source.name) return;
+    if (!active.current || pending.current || !isCurrent() || typed.trim() !== source.name) return;
     const current = service.getSnapshot().sources.find(value => value.id === source.id && value.generation === source.generation);
     if (!current) {setError(remoteErrorText({code: 'revision_mismatch'}));return;}
-    setError('');setBusy(true);
-    try {await service.remove(current);const state = service.getSnapshot();if (!isCurrent()) return;if (state.error) {setError(state.error);return;}onRemoved();}
-    finally {if (isCurrent()) setBusy(false);}
+    pending.current = true;setError('');setBusy(true);
+    try {await service.remove(current);const state = service.getSnapshot();if (!isCurrent()) return;if (state.error) {setError(state.error);return;}active.current=false;onRemoved();}
+    finally {if (active.current && isCurrent()) {pending.current=false;setBusy(false);}}
   };
-  const close = () => {if (busy) return;setDraft(current => ({...current, password: ''}));setTyped('');onClose();};
+  const done = () => {active.current=false;pending.current=false;setDraft(current => ({...current, password: ''}));setTyped('');onClose();};
+  const close = () => {if (busy || pending.current) return;done();};
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
     <section className={styles.group}><h3>{t('next.remoteSources.connection')}</h3>
