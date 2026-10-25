@@ -119,7 +119,7 @@ export function createProgrammeBindings(context: ScreenContext, row: GuideChanne
         if (!current()) return;
         publish({phase: 'ready', error: dvrMessage(error)});
       }
-      if (current()) await loadPreview(defaultSeriesChoice);
+      if (current()) await loadPreview({...defaultSeriesChoice, episodes: rawProgramme && ['new', 'repeat'].includes(rawProgramme.newEvidence) ? 'new' : 'all'});
     },
     preview: (choice: SeriesChoice) => { if (!current()) return Promise.resolve();return loadPreview(choice); },
     async record(): Promise<boolean> {

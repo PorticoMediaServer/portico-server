@@ -159,7 +159,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
           onSelect={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, ...(programme ? {programme} : {})});}}
           onPlay={captured.binding.playback ? play : undefined}
           onVisibleWindow={onVisibleWindow} onRetry={() => owner.store.retry()}/>}
-    {currentSelection && <ProgrammePanel captured={captured} channel={currentSelection.channel} programme={currentSelection.programme}
+    {currentSelection && <ProgrammePanel key={JSON.stringify([currentSelection.channel.sourceId, currentSelection.channel.id, currentSelection.programme?.id, currentSelection.programme?.start])} captured={captured} channel={currentSelection.channel} programme={currentSelection.programme}
       now={now} timezone={timezone} open onClose={() => setSelected(undefined)}
       onWatch={captured.binding.playback ? () => play(currentSelection.channel) : undefined} onChanged={onChanged} onViewRecordings={openRecordings}/>}
   </>;
