@@ -583,20 +583,23 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 		if e != nil {
 			return assets.Facts{}, e
 		}
-		required, optional := []string{}, []string{}
+		required, optional, directories := []string{}, []string{}, []string{}
 		for _, member := range consumed {
-			if member.Required {
+			switch {
+			case member.Directory:
+				directories = append(directories, member.Path)
+			case member.Required:
 				required = append(required, member.Path)
-			} else {
+			default:
 				optional = append(optional, member.Path)
 			}
 		}
 		req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}
 		manifest = func() ([]storage.DiscMember, error) {
 			if s.storage != nil {
-				return s.storage.DiscMemberManifest(readCtx, source.ID, req, required, optional)
+				return s.storage.DiscMemberManifest(readCtx, source.ID, req, required, optional, directories)
 			}
-			return storage.LocalDiscMemberManifest(req, required, optional)
+			return storage.LocalDiscMemberManifest(req, required, optional, directories)
 		}
 	}
 	// The consumed files are witnessed before and after the reads, and the
@@ -639,7 +642,7 @@ func sameDiscMembers(a, b []storage.DiscMember) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].Path != b[i].Path || a[i].ObjectIdentity != b[i].ObjectIdentity || a[i].Size != b[i].Size || a[i].ModifiedNS != b[i].ModifiedNS || a[i].Required != b[i].Required {
+		if a[i].Path != b[i].Path || a[i].ObjectIdentity != b[i].ObjectIdentity || a[i].Size != b[i].Size || a[i].ModifiedNS != b[i].ModifiedNS || a[i].Required != b[i].Required || a[i].Directory != b[i].Directory {
 			return false
 		}
 	}

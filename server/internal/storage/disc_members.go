@@ -24,13 +24,14 @@ type DiscMember struct {
 	Size           int64  `json:"size"`
 	ModifiedNS     int64  `json:"modifiedNs"`
 	Required       bool   `json:"required"`
+	Directory      bool   `json:"directory,omitempty"`
 }
 
 // DiscMemberManifest observes the identities of the consumed files a folder
 // disc publication and its title reads depend on, relative to the admitted
 // disc folder. Required members that are missing or not regular fail closed;
 // optional ones may be absent.
-func (c *Client) DiscMemberManifest(ctx context.Context, key string, r InventoryRequest, required, optional []string) ([]DiscMember, error) {
+func (c *Client) DiscMemberManifest(ctx context.Context, key string, r InventoryRequest, required, optional, directories []string) ([]DiscMember, error) {
 	var out []DiscMember
 	if c.Guard != nil {
 		if err := c.Guard(filepath.Join(r.Root, r.RelativePath)); err != nil {
@@ -46,7 +47,7 @@ func (c *Client) DiscMemberManifest(ctx context.Context, key string, r Inventory
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req := request{Operation: "disc-members", Path: filepath.Join(r.Root, r.RelativePath), Inventory: &r, Members: required, OptionalMembers: optional}
+	req := request{Operation: "disc-members", Path: filepath.Join(r.Root, r.RelativePath), Inventory: &r, Members: required, OptionalMembers: optional, Directories: directories}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(req.Path)
 	}
@@ -68,12 +69,12 @@ func (c *Client) DiscMemberManifest(ctx context.Context, key string, r Inventory
 }
 
 // LocalDiscMemberManifest is the in-process form for deterministic tests.
-func LocalDiscMemberManifest(r InventoryRequest, required, optional []string) ([]DiscMember, error) {
-	return discMemberManifest(r, required, optional)
+func LocalDiscMemberManifest(r InventoryRequest, required, optional, directories []string) ([]DiscMember, error) {
+	return discMemberManifest(r, required, optional, directories)
 }
 
-func discMemberManifest(r InventoryRequest, required, optional []string) ([]DiscMember, error) {
-	if len(required) == 0 || len(required) > DiscMemberManifestMax || len(optional) > DiscMemberManifestMax || len(required)+len(optional) > DiscMemberManifestMax {
+func discMemberManifest(r InventoryRequest, required, optional, directories []string) ([]DiscMember, error) {
+	if len(required) == 0 || len(required) > DiscMemberManifestMax || len(optional) > DiscMemberManifestMax || len(directories) > DiscMemberManifestMax || len(required)+len(optional)+len(directories) > DiscMemberManifestMax {
 		return nil, errors.New("invalid disc member manifest")
 	}
 	root, err := openInventoryRoot(r)
@@ -115,6 +116,22 @@ func discMemberManifest(r InventoryRequest, required, optional []string) ([]Disc
 	}
 	if err = observe(optional, false); err != nil {
 		return nil, err
+	}
+	// Structure directories are witnessed by identity and revision, so adding
+	// or removing a title-bearing member changes the manifest.
+	for _, member := range directories {
+		if len(member) > 4096 || !filepath.IsLocal(member) || member == "." {
+			return nil, errors.New("invalid disc directory path")
+		}
+		info, e := root.Stat(filepath.Join(relative, member))
+		if e != nil {
+			return nil, e
+		}
+		if !info.IsDir() {
+			return nil, errors.New("disc structure is not a directory: " + member)
+		}
+		entry := snapshot(member, info)
+		out = append(out, DiscMember{Path: member, ObjectIdentity: entry.ObjectIdentity, Size: entry.Size, ModifiedNS: entry.ModifiedNS, Required: true, Directory: true})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil

@@ -51,6 +51,7 @@ type request struct {
 	// identities a disc title manifest observes.
 	Members                []string              `json:"members,omitempty"`
 	OptionalMembers        []string              `json:"optionalMembers,omitempty"`
+	Directories            []string              `json:"directories,omitempty"`
 	LyricsRoot             string                `json:"lyricsRoot,omitempty"`
 	LyricsLanguage         string                `json:"lyricsLanguage,omitempty"`
 	LyricsProbeArgv        []string              `json:"lyricsProbeArgv,omitempty"`
@@ -280,7 +281,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		if r.Inventory == nil {
 			return errors.New("missing inventory request")
 		}
-		members, e := discMemberManifest(*r.Inventory, r.Members, r.OptionalMembers)
+		members, e := discMemberManifest(*r.Inventory, r.Members, r.OptionalMembers, r.Directories)
 		if e != nil {
 			return inventoryFailure(e, out)
 		}

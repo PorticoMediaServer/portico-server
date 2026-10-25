@@ -370,17 +370,22 @@ func TestConsumedMembersAreRelativeAndBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := map[string]bool{}
+	found := map[string]DiscMember{}
 	for _, member := range members {
-		found[member.Path] = member.Required
+		found[member.Path] = member
 	}
-	for _, want := range []string{"BDMV/PLAYLIST/00001.mpls", "BDMV/STREAM/00002.m2ts", "BDMV/CLIPINF/00002.clpi", "BDMV/index.bdmv"} {
-		required, ok := found[want]
-		if !ok || !required {
-			t.Errorf("missing required %s in %+v", want, members)
+	for _, dir := range []string{"BDMV", "BDMV/PLAYLIST", "BDMV/CLIPINF", "BDMV/STREAM"} {
+		if member, ok := found[dir]; !ok || !member.Required || !member.Directory {
+			t.Errorf("missing required directory %s in %+v", dir, members)
 		}
 	}
-	if required, ok := found["BDMV/MovieObject.bdmv"]; !ok || required {
+	for _, want := range []string{"BDMV/PLAYLIST/00001.mpls", "BDMV/STREAM/00002.m2ts", "BDMV/CLIPINF/00002.clpi", "BDMV/index.bdmv"} {
+		member, ok := found[want]
+		if !ok || !member.Required || member.Directory {
+			t.Errorf("missing required file %s in %+v", want, members)
+		}
+	}
+	if member, ok := found["BDMV/MovieObject.bdmv"]; !ok || member.Required {
 		t.Errorf("MovieObject must be an optional member: %+v", members)
 	}
 	dvd := Probe{Kind: "dvd", Packaging: "folder", Titles: []Title{{DiscOrder: 0, DurationMs: 120000, Title: 1, VTS: 3, PGC: 1}}}
@@ -388,11 +393,11 @@ func TestConsumedMembersAreRelativeAndBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	required := map[string]bool{}
+	required := map[string]DiscMember{}
 	for _, member := range members {
-		required[member.Path] = member.Required
+		required[member.Path] = member
 	}
-	if !required["VIDEO_TS/VTS_03_0.IFO"] || !required["VIDEO_TS/VTS_03_1.VOB"] || required["VIDEO_TS/VTS_03_2.VOB"] {
+	if !required["VIDEO_TS"].Directory || !required["VIDEO_TS/VTS_03_0.IFO"].Required || !required["VIDEO_TS/VTS_03_1.VOB"].Required || required["VIDEO_TS/VTS_03_2.VOB"].Required {
 		t.Fatal(members)
 	}
 	if _, err = ConsumedMembers(Probe{Kind: "bluray", Packaging: "iso"}); err == nil {

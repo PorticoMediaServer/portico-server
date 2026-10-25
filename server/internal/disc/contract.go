@@ -208,8 +208,9 @@ const MaxConsumedMembers = 256
 // consumes, relative to the admitted disc folder. Required members must exist
 // and be regular; optional structure files may be absent.
 type DiscMember struct {
-	Path     string
-	Required bool
+	Path      string
+	Required  bool
+	Directory bool
 }
 
 // ConsumedMembers names every file the published title list and its media
@@ -222,35 +223,44 @@ func ConsumedMembers(p Probe) ([]DiscMember, error) {
 	}
 	out := []DiscMember{}
 	index := map[string]int{}
-	add := func(path string, required bool) {
+	add := func(path string, required, directory bool) {
 		if i, ok := index[path]; ok {
 			out[i].Required = out[i].Required || required
+			out[i].Directory = out[i].Directory || directory
 			return
 		}
 		index[path] = len(out)
-		out = append(out, DiscMember{Path: path, Required: required})
+		out = append(out, DiscMember{Path: path, Required: required, Directory: directory})
 	}
 	switch p.Kind {
 	case "bluray":
-		add("BDMV/index.bdmv", true)
-		add("BDMV/MovieObject.bdmv", false)
+		// The title set is discovered from this directory membership, so the
+		// directories' identity and revision are part of the witness: a
+		// playlist added between observations changes the directory even
+		// though no named file changed.
+		for _, dir := range []string{"BDMV", "BDMV/PLAYLIST", "BDMV/CLIPINF", "BDMV/STREAM"} {
+			add(dir, true, true)
+		}
+		add("BDMV/index.bdmv", true, false)
+		add("BDMV/MovieObject.bdmv", false, false)
 		for _, t := range p.Titles {
-			add("BDMV/PLAYLIST/"+t.PlaylistFile, true)
+			add("BDMV/PLAYLIST/"+t.PlaylistFile, true, false)
 			for _, clip := range t.Clips {
-				add("BDMV/STREAM/"+clip.File, true)
+				add("BDMV/STREAM/"+clip.File, true, false)
 				if base, ok := strings.CutSuffix(clip.File, ".m2ts"); ok {
-					add("BDMV/CLIPINF/"+base+".clpi", true)
+					add("BDMV/CLIPINF/"+base+".clpi", true, false)
 				}
 			}
 		}
 	case "dvd":
-		add("VIDEO_TS/VIDEO_TS.IFO", true)
+		add("VIDEO_TS", true, true)
+		add("VIDEO_TS/VIDEO_TS.IFO", true, false)
 		for _, t := range p.Titles {
-			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS), true)
-			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_1.VOB", t.VTS), true)
+			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS), true, false)
+			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_1.VOB", t.VTS), true, false)
 			for n := 0; n < 10; n++ {
 				if n != 1 {
-					add(fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n), false)
+					add(fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n), false, false)
 				}
 			}
 		}
