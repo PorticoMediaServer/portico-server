@@ -103,6 +103,7 @@ export class WebShellPlaybackRuntime {
   private detachGroup?: () => void;
   private groupRate = 1;
   private localRun = 0;
+  private catalogueEnqueuing = false;
   private cataloguePort?: Pick<V1QueuePlayer, 'playSegments'>;
   private readonly localLeases = new Set<LocalQueueLease>();
   private runtimeProblem?: string;
@@ -619,34 +620,38 @@ export class WebShellPlaybackRuntime {
     this.assertCurrent();
     if (this.stack.mode !== 'server' || this.stack.local || this.stack.channel || this.group || this.dock.getSnapshot().remote) return undefined;
     return {enqueueSegments: async (segments, placement, lifetime) => {
-      const stack = this.stack, serial = this.operation;
-      let expectedQueueId = stack.queue.getSnapshot().view?.queue.id;
-      const check = () => {
-        this.assertCurrent();
-        if (stack.mode !== 'server' || stack.local || stack.channel || this.group || this.dock.getSnapshot().remote
-          || serial !== this.operation || stack.queue.getSnapshot().view?.queue.id !== expectedQueueId) problem('queue_control_unavailable');
-        if (lifetime.signal.aborted || !lifetime.isCurrent() || !this.current(stack)) problem('stale_selection_context');
-      };
-      check();
-      if (!['next', 'end'].includes(placement) || !segments.length || segments.length > 256) problem('invalid_queue_placement');
-      const signal = AbortSignal.any([lifetime.signal, stack.life.signal, this.life.signal]);
-      const client = new QueueClient({send: value => {
+      if (this.catalogueEnqueuing) problem('queue_busy');
+      this.catalogueEnqueuing = true;
+      try {
+        const stack = this.stack, serial = this.operation;
+        let expectedQueueId = stack.queue.getSnapshot().view?.queue.id;
+        const check = () => {
+          this.assertCurrent();
+          if (stack.mode !== 'server' || stack.local || stack.channel || this.group || this.dock.getSnapshot().remote
+            || serial !== this.operation || stack.queue.getSnapshot().view?.queue.id !== expectedQueueId) problem('queue_control_unavailable');
+          if (lifetime.signal.aborted || !lifetime.isCurrent() || !this.current(stack)) problem('stale_selection_context');
+        };
         check();
-        return stack.http.send({...value, signal: value.signal ? AbortSignal.any([value.signal, signal]) : signal});
-      }}, this.env.key);
-      const header = stack.queue.getSnapshot().view?.queue;
-      if (!header) {
-        if (stack.queue.getSnapshot().phase === 'preparing' || stack.service.getSnapshot().session) problem('queue_not_ready');
-        const created = await client.create(segments, {signal, retainQueueIds: this.retainedQueueIds(stack)});
-        check(); await stack.queue.open(created.queue.id, signal, () => {check(); return true;});
-        expectedQueueId = created.queue.id; check(); this.sync(); return created.queue;
-      }
-      let queue = await client.header(header.id, signal); check();
-      // Each next insertion is after current; reverse requests preserve pick order.
-      for (const segment of placement === 'next' ? [...segments].reverse() : segments) {
-        check(); queue = (await client.addSegment(queue.id, queue.revision, placement, segment)).queue; check();
-      }
-      await stack.queue.open(queue.id, signal, () => {check(); return true;}); check(); this.sync(); return queue;
+        if (!['next', 'end'].includes(placement) || !segments.length || segments.length > 256) problem('invalid_queue_placement');
+        const signal = AbortSignal.any([lifetime.signal, stack.life.signal, this.life.signal]);
+        const client = new QueueClient({send: value => {
+          check();
+          return stack.http.send({...value, signal: value.signal ? AbortSignal.any([value.signal, signal]) : signal});
+        }}, this.env.key);
+        const header = stack.queue.getSnapshot().view?.queue;
+        if (!header) {
+          if (stack.queue.getSnapshot().phase === 'preparing' || stack.service.getSnapshot().session) problem('queue_not_ready');
+          const created = await client.create(segments, {signal, retainQueueIds: this.retainedQueueIds(stack)});
+          check(); await stack.queue.open(created.queue.id, signal, () => {check(); return true;});
+          expectedQueueId = created.queue.id; check(); this.sync(); return created.queue;
+        }
+        let queue = await client.header(header.id, signal); check();
+        // Each next insertion is after current; reverse requests preserve pick order.
+        for (const segment of placement === 'next' ? [...segments].reverse() : segments) {
+          check(); queue = (await client.addSegment(queue.id, queue.revision, placement, segment)).queue; check();
+        }
+        await stack.queue.open(queue.id, signal, () => {check(); return true;}); check(); this.sync(); return queue;
+      } finally {this.catalogueEnqueuing = false;}
     }};
   }
 
