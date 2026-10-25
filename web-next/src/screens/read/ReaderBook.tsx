@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
-import type {ReadingController, ReadingPublication, ReaderErrorCode, ReaderLocation, ReaderSearchResult, ReaderTocItem} from '@portico/reader-core';
+import type {ReadingController, ReadingPublication, ReaderErrorCode, ReaderLocation, ReaderContentsTarget, ReaderSearchResult, ReaderTocItem} from '@portico/reader-core';
 import {useShellWidth} from '../../shell/viewport';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReaderContents, ReaderPanel, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
@@ -13,7 +13,7 @@ import {readingDisplayCopy} from './display-copy';
 import {readerBookPresentation, type ReaderEnvironment} from './native/tablet-presentation';
 import type {ReaderMountAuthority} from './mount';
 const {t} = defaultI18n;
-export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation}>;
+export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
 
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
   const {controller, publication, authority} = book;
@@ -21,6 +21,25 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [currentHit, setCurrentHit] = useState<string>();
   const anchor = useRef<HTMLButtonElement>(null);
+  const contentsError = useRef(reportError); contentsError.current = reportError;
+  useEffect(() => {
+    const target = book.contentsTarget;
+    if (!target) return;
+    const operation = new AbortController(); let applied = false;
+    const apply = () => {
+      if (applied || operation.signal.aborted || controller.getSnapshot().status !== 'ready' || !authority.isCurrent()) return;
+      applied = true;
+      try {
+        const current = publication.contentsTarget(target.index);
+        if (current.sourceId !== target.sourceId || current.sourceRevision !== target.sourceRevision) throw new Error('source_changed');
+        void controller.navigateContents(current, operation.signal).catch(error => {
+          if (!operation.signal.aborted && authority.isCurrent()) contentsError.current(error);
+        });
+      } catch (error) {if (authority.isCurrent()) contentsError.current(error);}
+    };
+    const off = controller.subscribe(apply); apply();
+    return () => {operation.abort(); off();};
+  }, [book.contentsTarget, publication, authority, controller]);
   const engineError = useCallback((code: ReaderErrorCode) => reportError({code}), [reportError]);
   const layout = readerBookPresentation(width, environment), {presentation} = layout;
   useEffect(() => {if (!active) setPanel(undefined);}, [active]);
