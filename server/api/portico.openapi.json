@@ -19032,6 +19032,77 @@
         ],
         "type": "object"
       },
+      "CreateStorageSourceRcloneConfigRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "remote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "name",
+          "remote"
+        ],
+        "type": "object"
+      },
+      "CreateStorageSourceRcloneConfigResponse": {
+        "properties": {
+          "receipt": {
+            "properties": {
+              "accepted": {
+                "type": "boolean"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operationId",
+              "accepted",
+              "sourceId",
+              "generation"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "receipt"
+        ],
+        "type": "object"
+      },
       "CreateStorageSourceRcloneRequest": {
         "properties": {
           "config": {
@@ -154245,6 +154316,65 @@
         "required": [
           "scope",
           "receipt"
+        ],
+        "type": "object"
+      },
+      "GetStorageSourceRcloneConfigRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetStorageSourceRcloneConfigResponse": {
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "remotes": {
+            "items": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "supported": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "kind",
+                "supported",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "path",
+          "remotes"
         ],
         "type": "object"
       },
@@ -501068,6 +501198,257 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/rclone/config": {
+      "get": {
+        "operationId": "get_storage_source_rclone_config",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "remotes": {
+                      "items": {
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "supported": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "kind",
+                          "supported",
+                          "reason"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "path",
+                    "remotes"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the server account's own rclone remotes by name and type",
+        "x-access": "owner",
+        "x-admission": "browsing",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
+      "post": {
+        "operationId": "create_storage_source_rclone_config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "remote": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name",
+                  "remote"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "generation": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "sourceId",
+                        "generation"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Save an imported source from the server account's own rclone configuration",
+        "x-access": "owner",
+        "x-admission": "admin-long",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "not_found",
+          "source_credentials_required",
+          "administration_unavailable",
+          "storage_command_conflict",
+          "storage_operation_expired",
+          "storage_command_capacity",
+          "storage_allocation_recovery_required",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
         "x-scope": "admin"
       }
     },

@@ -554,6 +554,32 @@ export const routes = [
     "admission": "admin-long"
   },
   {
+    "id": "create_storage_source_rclone_config",
+    "method": "POST",
+    "path": "/v1/storage/sources/rclone/config",
+    "summary": "Save an imported source from the server account's own rclone configuration",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
+      "source_credentials_required",
+      "administration_unavailable",
+      "storage_command_conflict",
+      "storage_operation_expired",
+      "storage_command_capacity",
+      "storage_allocation_recovery_required",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
     "id": "create_webhook",
     "method": "POST",
     "path": "/v1/admin/webhooks",
@@ -8194,6 +8220,26 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "default"
+  },
+  {
+    "id": "get_storage_source_rclone_config",
+    "method": "GET",
+    "path": "/v1/storage/sources/rclone/config",
+    "summary": "Read the server account's own rclone remotes by name and type",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_storage_source_rclone_operation",
@@ -18668,6 +18714,7 @@ export const routePaths = {
   "create_job": "/v1/jobs",
   "create_queue": "/v1/queues",
   "create_storage_source_rclone": "/v1/storage/sources/rclone",
+  "create_storage_source_rclone_config": "/v1/storage/sources/rclone/config",
   "create_webhook": "/v1/admin/webhooks",
   "delete_admin_backup": "/v1/admin/backups/{id}",
   "delete_admin_dvr_recording_groups_id": "/v1/admin/dvr/recording-groups/{id}",
@@ -18997,6 +19044,7 @@ export const routePaths = {
   "get_storage_source_advanced": "/v1/storage/sources/{id}/settings/advanced",
   "get_storage_source_folders": "/v1/storage/sources/{id}/folders",
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
+  "get_storage_source_rclone_config": "/v1/storage/sources/rclone/config",
   "get_storage_source_rclone_operation": "/v1/storage/sources/rclone/operations/{id}",
   "get_storage_source_rclone_providers": "/v1/storage/sources/rclone/providers",
   "get_storage_source_read_profile": "/v1/storage/sources/{id}/settings/read-profile",

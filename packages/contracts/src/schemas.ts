@@ -17390,6 +17390,77 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CreateStorageSourceRcloneConfigRequest": {
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "remote": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "remote"
+    ],
+    "type": "object"
+  },
+  "CreateStorageSourceRcloneConfigResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
   "CreateStorageSourceRcloneRequest": {
     "properties": {
       "config": {
@@ -149339,6 +149410,65 @@ export const schemas = {
     "required": [
       "scope",
       "receipt"
+    ],
+    "type": "object"
+  },
+  "GetStorageSourceRcloneConfigRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceRcloneConfigResponse": {
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "remotes": {
+        "items": {
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "supported": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "kind",
+            "supported",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "path",
+      "remotes"
     ],
     "type": "object"
   },
