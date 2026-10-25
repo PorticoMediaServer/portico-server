@@ -29,6 +29,7 @@ export const homeMessages = {
   'next.home.noRating': 'No rating',
   'next.home.ratingValue': '{value} out of 10',
   'next.home.customizeDescription': 'Choose which rows appear on Home, and in what order. This is only for this profile.',
+  'next.home.customizeDescriptionTV': 'Choose which rows appear on Home, and in what order.',
   'next.home.layoutChangedTitle': 'Home couldn’t be saved',
   'next.home.layoutChangedBody': 'Your Home layout changed on another device after you opened this. Nothing was overwritten. Reload it to see the latest, then make your changes again.',
   'next.home.layoutChangedBodyCompact': 'Your Home layout changed on another device after you opened this. Nothing was overwritten. Reload it, then make your changes again.',
