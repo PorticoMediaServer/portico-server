@@ -9,6 +9,7 @@ import {useSyncExternalStore} from 'react';
 export type OfflineDownloadRow = Readonly<{
   id: string;
   itemId: string;
+  revision: number;
   quality: string;
   bytes: number;
   title: string;
@@ -21,6 +22,8 @@ export type OfflineDownloadsPort = Readonly<{
   subscribe: (listener: () => void) => () => void;
   snapshot: () => Readonly<{phase: 'loading' | 'ready' | 'unavailable'; items: readonly OfflineDownloadRow[]}>;
   openFolder: () => Promise<void>;
+  /** Absent until the host's offline player surface is installed; the row then offers Play. */
+  play?: (id: string) => Promise<void>;
 }>;
 
 let installed: OfflineDownloadsPort | undefined;

@@ -61,7 +61,8 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
     </div>}
     {offline && offline.items.length > 0 && <section className={styles.offlineDownloads} data-offline-downloads aria-label={t('next.shell.downloads')}>
       <h2>{t('next.shell.downloads')}</h2>
-      <ul>{offline.items.map(row => <li key={row.id}><b>{row.title}</b>{row.artist ? <span>{row.artist}</span> : null}</li>)}</ul>
+      <ul>{offline.items.map(row => <li key={row.id}><b>{row.title}</b>{row.artist ? <span>{row.artist}</span> : null}
+        {offlinePort?.play ? <button type="button" onClick={() => { void offlinePort.play?.(row.id).catch(() => {}); }}>{t('next.controls.play')}</button> : null}</li>)}</ul>
       <button type="button" onClick={() => { void offlinePort?.openFolder().catch(() => {}); }}>{t('next.saved.folder')}</button>
     </section>}
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="warning" icon="i-srvoff"

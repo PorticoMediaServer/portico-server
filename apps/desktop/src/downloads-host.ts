@@ -95,7 +95,7 @@ export function createDesktopDownloadsHost(options:Readonly<{
         const combined=AbortSignal.any([active,actionSignal]);
         const page=await store.list(null,combined);
         return Object.freeze(page.items.filter(row=>row.state==='ready'&&row.offlineAccess==='valid').map(row=>Object.freeze({
-          id:row.id,itemId:row.itemId,quality:row.quality,bytes:row.bytes,
+          id:row.id,itemId:row.itemId,revision:row.revision,quality:row.quality,bytes:row.bytes,
           title:row.title.title,artist:row.title.artist,kind:row.title.kind,onServer:row.title.onServer,
         })));
       },
