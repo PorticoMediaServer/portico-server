@@ -1286,6 +1286,8 @@ export const webMessages = {
   'web.logs.laneAudit': 'Audit',
   'web.logs.records': 'Records',
   'web.logs.exportTitle': 'Support export',
+  'web.logs.pathsHelp': 'Includes only established library filesystem roots and managed mount points from the snapshot. Other paths and secrets stay excluded.',
+  'web.logs.pathsRequested': 'This export requested filesystem roots and managed mount points. Its manifest lists the path categories actually included.',
   'web.logs.exportLede': 'A redacted bundle you can inspect before sending. Media, credentials and raw databases are never included.',
   'web.logs.timeWindow': 'Time window',
   'web.logs.include': 'Include',

@@ -57,7 +57,10 @@ export type JobKind={kind:string;lane:string;resourceRequired:boolean};
 export type Alert={params:Readonly<Partial<Record<'title'|'channel'|'reason'|'time',string>>>;id:string;code:string;severity:string;status:string;firstAt:number;lastAt:number;occurrences:number;revision:number};
 export type Measurement={name:string;observedAt:number;freshUntil:number;facts:Record<string,{state:string;value:unknown;unit?:string;reason?:string}>};
 export type EvidenceRecord={sequence:number;at:number;lane?:string;severity?:string;component?:string;code?:string;action?:string;target?:string;hash?:string;previousHash?:string;fields?:Record<string,number>};
-export type SupportExport={id:string;expiresAt:number;manifest:{version:string;from:number;to:number;included:string[];excluded:string[];redaction:string;maxBytes:number};snapshot?:unknown;runtime?:Page<EvidenceRecord>;client?:Page<EvidenceRecord>;audit?:Page<EvidenceRecord>};
+export const SUPPORT_PATH_CATEGORIES=['library-configured-root','library-resolved-root','managed-mount-point'] as const;
+export type SupportPathCategory=typeof SUPPORT_PATH_CATEGORIES[number];
+export type SupportPathFacts=Readonly<{limit:128;hasMore:boolean;scanBudget:512;examined:number;scanTruncated:boolean;invalidAmongExamined:number;items:readonly Readonly<{category:SupportPathCategory;reference:string;value:string}>[]}>;
+export type SupportExport={id:string;expiresAt:number;manifest:{version:string;from:number;to:number;included:string[];excluded:string[];redaction:string;maxBytes:number;includePaths?:boolean;pathCategories?:SupportPathCategory[];pathsTruncated?:boolean;pathsScanTruncated?:boolean;pathsInvalidAmongExamined?:number};snapshot?:unknown;snapshotPaths?:SupportPathFacts;runtime?:Page<EvidenceRecord>;client?:Page<EvidenceRecord>;audit?:Page<EvidenceRecord>};
 const obj=(v:unknown):v is Record<string,any>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 const integer=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
 const text=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max;
@@ -240,7 +243,7 @@ export class ConsoleClient {
  acknowledge(alert:Alert){return this.mutate(encodedRoutePath("post_admin_console_alerts_id_acknowledge", {"id": encodeURIComponent(alert.id)}),'POST',{expectedRevision:alert.revision},base);}
  records(lane:'runtime'|'client'|'audit',cursor=''){return this.call(encodedRoutePath("get_admin_console_diagnostics_lane", {"lane": lane}) + "?cursor=" + (encodeURIComponent(cursor)),'GET',undefined,v=>parsePage(v,parseEvidenceRecord));}
  capture(component:string,expiresAt:number){return this.mutate(routePath("post_admin_console_diagnostics_capture"),'POST',{component,expiresAt:new Date(expiresAt).toISOString()},base);}
- createExport(from:number,to:number,components:string[]){return this.mutate(routePath("post_admin_console_exports"),'POST',{from:new Date(from).toISOString(),to:new Date(to).toISOString(),components},parseExport);}
+ createExport(from:number,to:number,components:string[],includePaths?:boolean){if(includePaths!==undefined&&typeof includePaths!=='boolean')return Promise.reject(new Error('Invalid export option.'));return this.mutate(routePath("post_admin_console_exports"),'POST',{from:new Date(from).toISOString(),to:new Date(to).toISOString(),components,...(includePaths===undefined?{}:{includePaths})},parseExport);}
  export(id:string){return this.call(encodedRoutePath("get_admin_console_exports_id", {"id": encodeURIComponent(id)}),'GET',undefined,parseExport);}
  /** Transcoding capacity, probes and dependencies as this server reports them. */
  transcodeCapacity(){return this.call(routePath("get_admin_transcode_capacity"),'GET',undefined,parseTranscodeCapacity);}
@@ -254,7 +257,23 @@ export class ConsoleClient {
  /** The export is a download, so its path is handed to the browser, not fetched. */
  playbackHistoryExportPath(period:PlaybackHistoryPeriod='24h'){return routePath("get_admin_playback_history_csv") + "?period=" + (period);}
 }
-function parseExport(v:unknown):SupportExport{const p=base(wireInstants(v,["expiresAt"]));if(obj(p.manifest))p.manifest=wireInstants(p.manifest,["from","to"]);if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
+function parseExport(v:unknown):SupportExport{
+ const p=base(wireInstants(v,['expiresAt']));if(obj(p.manifest))p.manifest=wireInstants(p.manifest,['from','to']);
+ if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();
+ const m=p.manifest;
+ for(const key of ['includePaths','pathsTruncated','pathsScanTruncated'])if(m[key]!==undefined&&typeof m[key]!=='boolean')invalid();
+ if(m.pathCategories!==undefined&&(!Array.isArray(m.pathCategories)||m.pathCategories.length>3||m.pathCategories.some((value:unknown)=>!SUPPORT_PATH_CATEGORIES.includes(value as SupportPathCategory))))invalid();
+ if(m.pathsInvalidAmongExamined!==undefined&&(!integer(m.pathsInvalidAmongExamined)||m.pathsInvalidAmongExamined>512))invalid();
+ if(p.snapshotPaths!==undefined){
+  const paths=p.snapshotPaths;
+  if(!m.includePaths||!m.included.includes('snapshot')||!obj(paths)||Object.keys(paths).some(key=>!['limit','hasMore','scanBudget','examined','scanTruncated','invalidAmongExamined','items'].includes(key))||paths.limit!==128||paths.scanBudget!==512||typeof paths.hasMore!=='boolean'||typeof paths.scanTruncated!=='boolean'||!integer(paths.examined)||paths.examined>512||!integer(paths.invalidAmongExamined)||paths.invalidAmongExamined>paths.examined||!Array.isArray(paths.items)||paths.items.length>128||paths.items.length+paths.invalidAmongExamined>paths.examined||paths.hasMore&&(paths.items.length!==128||paths.examined<paths.items.length+paths.invalidAmongExamined+1)||paths.scanTruncated&&(paths.examined!==512||paths.hasMore))invalid();
+  for(const [index,item] of paths.items.entries())if(!obj(item)||Object.keys(item).some(key=>!['category','reference','value'].includes(key))||!SUPPORT_PATH_CATEGORIES.includes(item.category)||!text(item.reference,16)||item.reference!==`path-${index+1}`||!text(item.value,4096)||!item.value||/\p{Cc}/u.test(item.value))invalid();
+  const categories=[...new Set(paths.items.map((item:{category:SupportPathCategory})=>item.category))].sort();
+  if(JSON.stringify(categories)!==JSON.stringify([...(m.pathCategories??[])].sort())||(m.pathsTruncated??false)!==paths.hasMore||(m.pathsScanTruncated??false)!==paths.scanTruncated||(m.pathsInvalidAmongExamined??0)!==paths.invalidAmongExamined)invalid();
+ }else if(m.includePaths&&m.included.includes('snapshot'))invalid();
+ if(p.snapshotPaths===undefined&&((m.pathCategories?.length??0)>0||m.pathsTruncated||m.pathsScanTruncated||m.pathsInvalidAmongExamined))invalid();
+ return p as SupportExport;
+}
 
 
 export function parseStreamOptions(value:unknown):StreamOptions{const v=base(value);for(const field of ['libraries','viewers'])if(!Array.isArray(v[field])||v[field].length>500)invalid();const rows=(field:'libraries'|'viewers')=>distinct(keepReadable('console','stream-options.'+field,v[field] as unknown[],row=>{if(!obj(row)||!text(row.id,300)||!row.id||!text(row.label,4096))invalid();return row as {id:string;label:string};}));return {...v,libraries:rows('libraries'),viewers:rows('viewers')} as StreamOptions;}
