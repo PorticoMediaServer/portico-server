@@ -68,6 +68,7 @@ export const readerMessages = {
   'next.reader.previousMatch': 'Previous match',
   'next.reader.nextMatch': 'Next match',
   'next.reader.closeSearch': 'Close search',
+  'next.reader.matchesShown': '{count, plural, one {# match shown} other {# matches shown}}',
   'next.reader.matches': '{count, plural, one {# match} other {# matches}}',
   'next.reader.version': 'Version',
   'next.reader.read': 'Read',
