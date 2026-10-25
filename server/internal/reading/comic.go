@@ -3,6 +3,7 @@ package reading
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"image"
 	_ "image/jpeg"
 	"image/png"
@@ -62,11 +63,35 @@ func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
 		if err != nil {
 			return nil, err
 		}
-		var info struct{ Title, Writer, Manga, LanguageISO string }
+		var info struct {
+			XMLName                           xml.Name
+			Title, Writer, Manga, LanguageISO string
+			Format                            []struct {
+				XMLName xml.Name
+				Value   string `xml:",chardata"`
+				Inner   string `xml:",innerxml"`
+			} `xml:"Format"`
+		}
 		if err = decodeXML(b, &info); err != nil {
 			return nil, err
 		}
 		c.Metadata.Title, c.Metadata.Author, c.Metadata.Language = info.Title, info.Writer, info.LanguageISO
+		c.Metadata.PublicationTypeField = "ComicInfo/Format"
+		if info.XMLName.Space == "" && info.XMLName.Local == "ComicInfo" {
+			values := []string{}
+			scalar := true
+			for _, field := range info.Format {
+				if field.XMLName.Space == "" && field.XMLName.Local == "Format" {
+					values = append(values, field.Value)
+					scalar = scalar && !strings.Contains(field.Inner, "<")
+				}
+			}
+			c.Metadata.PublicationTypeRaw, c.Metadata.PublicationTypeComplete = boundedTypeEvidence(values)
+			c.Metadata.PublicationTypeComplete = c.Metadata.PublicationTypeComplete && scalar
+			if c.Metadata.PublicationTypeComplete && len(values) == 1 {
+				c.Metadata.ExplicitPublicationType = explicitPublicationType(values)
+			}
+		}
 		if len(c.Metadata.Title) > 4096 || len(c.Metadata.Author) > 4096 || len(c.Metadata.Language) > 64 {
 			return nil, ErrLimit
 		}

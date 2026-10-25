@@ -207,6 +207,22 @@ CREATE TABLE reading_source_values(
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
  CHECK((field IN('author','series') AND text_value IS NOT NULL AND length(text_value) BETWEEN 1 AND 4096 AND number_value IS NULL)
     OR (field='seriesNumber' AND text_value IS NULL AND number_value IS NOT NULL AND number_value>=0 AND number_value<=1.7976931348623157e308))) WITHOUT ROWID, STRICT;
+-- Explicit recognized file type, separate from ebook/comic entity and owner metadata.
+CREATE TABLE reading_publication_types(
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ publication_type TEXT CHECK(publication_type IS NULL OR publication_type IN('book','magazine','newspaper')),
+ source_format TEXT NOT NULL CHECK(source_format IN('epub','cbz')),
+ source_field TEXT NOT NULL CHECK(length(source_field) BETWEEN 1 AND 256),
+ source_raw_json TEXT NOT NULL CHECK(json_valid(source_raw_json) AND json_type(source_raw_json)='array' AND json_array_length(source_raw_json)<=64 AND length(source_raw_json)<=262144),
+ evidence_complete INTEGER NOT NULL CHECK(evidence_complete IN(0,1)),
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
+ classifier_version INTEGER NOT NULL CHECK(classifier_version>0),
+ CHECK(publication_type IS NULL OR evidence_complete=1),
+ PRIMARY KEY(item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_publication_types_inventory_object ON reading_publication_types(inventory_object_id);
 CREATE TABLE reading_progress(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
@@ -8375,6 +8391,7 @@ INSERT INTO maintenance_window_tasks(window_id,task) VALUES('heavy','analysis'),
 -- walks titles; it only advances scope inputs. Members have no item FK: source
 -- deletion must invalidate before bounded cleanup, never cascade a ready member.
 CREATE TABLE reading_attribution_state(
+ publication_rule_version INTEGER NOT NULL DEFAULT 0 CHECK(publication_rule_version>=0),
  namespace INTEGER PRIMARY KEY AUTOINCREMENT,
  library_id INTEGER NOT NULL UNIQUE REFERENCES catalog_libraries(id) ON DELETE CASCADE,
  input_generation INTEGER NOT NULL DEFAULT 1 CHECK(input_generation>0),
@@ -8385,15 +8402,19 @@ CREATE TABLE reading_attribution_state(
  served_ms INTEGER NOT NULL DEFAULT 0,
  CHECK(phase<>'ready' OR (ready_generation=input_generation AND build_generation=input_generation))) STRICT;
 CREATE INDEX reading_attribution_pending ON reading_attribution_state((input_generation<>ready_generation),served_ms,namespace);
+CREATE INDEX reading_attribution_rule_version ON reading_attribution_state(publication_rule_version,namespace);
 CREATE TABLE reading_attribution_members(
  library_id INTEGER NOT NULL REFERENCES reading_attribution_state(library_id) ON DELETE CASCADE,
  generation INTEGER NOT NULL CHECK(generation>0),
  item_id INTEGER NOT NULL CHECK(item_id>0),
+ publication_type TEXT CHECK(publication_type IN('book','magazine','newspaper')),
+ publication_type_source TEXT CHECK(publication_type_source IN('owner','file-metadata')),
  author_value TEXT,author_key TEXT,author_source TEXT CHECK(author_source IN('owner','file-metadata','file-name','folder')),
  series_value TEXT,series_key TEXT,series_id TEXT,series_source TEXT CHECK(series_source IN('owner','file-metadata','file-name','folder')),
  numbered_order INTEGER NOT NULL CHECK(numbered_order IN(0,1)),
  number_value REAL NOT NULL CHECK(number_value>=0 AND number_value<=1.7976931348623157e308),
  sort_key TEXT NOT NULL,
+ CHECK((publication_type IS NULL)=(publication_type_source IS NULL)),
  PRIMARY KEY(library_id,generation,item_id),
  CHECK((author_value IS NULL AND author_key IS NULL AND author_source IS NULL) OR (author_value IS NOT NULL AND author_key IS NOT NULL AND author_source IS NOT NULL)),
  CHECK((series_value IS NULL AND series_key IS NULL AND series_id IS NULL AND series_source IS NULL) OR (series_value IS NOT NULL AND series_key IS NOT NULL AND series_id IS NOT NULL AND series_source IS NOT NULL)),
@@ -8449,6 +8470,15 @@ END;
 CREATE TRIGGER reading_attribution_reading_source_values_update BEFORE UPDATE ON reading_source_values BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
 END;
+CREATE TRIGGER reading_attribution_reading_publication_types_insert AFTER INSERT ON reading_publication_types BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_publication_types_delete AFTER DELETE ON reading_publication_types BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_publication_types_update AFTER UPDATE ON reading_publication_types BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
 CREATE TRIGGER reading_attribution_catalog_asset_links_insert BEFORE INSERT ON catalog_asset_links BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
@@ -8458,13 +8488,13 @@ END;
 CREATE TRIGGER reading_attribution_catalog_asset_links_update BEFORE UPDATE ON catalog_asset_links BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
-CREATE TRIGGER reading_attribution_metadata_owner_fields_insert BEFORE INSERT ON metadata_owner_fields WHEN (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber')) BEGIN
+CREATE TRIGGER reading_attribution_metadata_owner_fields_insert BEFORE INSERT ON metadata_owner_fields WHEN (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber','publicationType')) BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
-CREATE TRIGGER reading_attribution_metadata_owner_fields_delete BEFORE DELETE ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber')) BEGIN
+CREATE TRIGGER reading_attribution_metadata_owner_fields_delete BEFORE DELETE ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber','publicationType')) BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id));
 END;
-CREATE TRIGGER reading_attribution_metadata_owner_fields_update BEFORE UPDATE OF kind,entity_id,field,value,locked ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber')) OR (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber')) BEGIN
+CREATE TRIGGER reading_attribution_metadata_owner_fields_update BEFORE UPDATE OF kind,entity_id,field,value,locked ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber','publicationType')) OR (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber','publicationType')) BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
 END;
 CREATE TRIGGER reading_attribution_inventory_objects_insert BEFORE INSERT ON inventory_objects BEGIN

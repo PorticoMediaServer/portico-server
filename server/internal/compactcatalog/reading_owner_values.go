@@ -35,7 +35,7 @@ func ReadingOwnerValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (map[i
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id
  JOIN libraries lib ON lib.id=cl.library_id
  JOIN metadata_owner_fields m ON m.kind='item' AND m.entity_id=e.id
- AND m.field IN('author','series','seriesNumber')
+ AND m.field IN('author','series','seriesNumber','publicationType')
  WHERE e.id IN (` + strings.Join(marks, ",") + `) AND e.retired=0 AND cl.retired=0
  AND ((e.kind=20 AND lib.kind='book') OR (e.kind=21 AND lib.kind='comic'))
  AND EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id

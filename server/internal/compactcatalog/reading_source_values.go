@@ -100,7 +100,42 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
 		}
 		out[id] = v
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if err = rows.Close(); err != nil {
+		return nil, err
+	}
+	// Only a current explicit file fact on the canonical primary version supplies a type.
+	typeRows, err := tx.QueryContext(ctx, `SELECT e.id,v.publication_type FROM catalog_entities e
+      JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
+      JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT primary_version.asset_id FROM reading_publications primary_version WHERE primary_version.item_id=e.id ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=primary_version.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=primary_version.asset_id) AND eligible.available=1) DESC,primary_version.asset_id LIMIT 1)
+      JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=p.asset_id
+      JOIN reading_publication_types v ON v.item_id=p.item_id AND v.asset_id=p.asset_id
+      JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND o.revision=v.source_revision AND o.retired=0
+      JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id AND s.incarnation=o.root_incarnation
+      WHERE e.id IN (`+strings.Join(marks, ",")+`) AND e.retired=0 AND cl.retired=0
+      AND ((e.kind=20 AND lib.kind='book' AND p.format='epub') OR (e.kind=21 AND lib.kind='comic' AND p.format='cbz'))
+      AND v.source_format=p.format
+      AND v.publication_type IS NOT NULL AND v.evidence_complete=1 AND v.classifier_version=?`, append(append([]any(nil), args...), ReadingPublicationTypeRuleVersion)...)
+	if err != nil {
+		return nil, err
+	}
+	defer typeRows.Close()
+	for typeRows.Next() {
+		var item int64
+		var value string
+		if err = typeRows.Scan(&item, &value); err != nil {
+			return nil, err
+		}
+		if !ValidReadingPublicationType(value) {
+			return nil, ErrReadingValue
+		}
+		v := out[item]
+		v.PublicationType = &ReadingValue{Value: value, Source: ReadingFileMetadata}
+		out[item] = v
+	}
+	return out, typeRows.Err()
 }
 
 // ReadingAcceptedValuesTx composes actual stored candidates and exact owner
@@ -116,6 +151,9 @@ func ReadingAcceptedValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (ma
 	}
 	for id, owner := range owners {
 		v := automatic[id]
+		if owner.PublicationType != nil {
+			v.PublicationType = owner.PublicationType
+		}
 		if owner.Author != nil {
 			v.Author = owner.Author
 		}
