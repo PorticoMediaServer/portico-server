@@ -2,7 +2,7 @@ import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useS
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, cloudTokenDraft, driveOAuthDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
-  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type RemoteContactErrorCode, type RemoteScanMode, type RemoteScanPhase, type RemoteSourceHealth, type RemoteScanStateCode, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type SavedSourceTest, type S3SourceFields, type RemoteSourceStatus, type RemoteContactErrorCode, type RemoteScanMode, type RemoteScanPhase, type RemoteSourceHealth, type RemoteScanStateCode, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -205,6 +205,10 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
 type WizardStep = 'what' | 'remote' | 'reading' | 'folders' | 'done';
 type SourceFamily = 'webdav' | 'rclone' | 'config';
 type ReadingOpening = Readonly<{guard: () => boolean; sourceId: string; sourceGeneration: number; profileGeneration: string; profileRevision: number}>;
+/** The saved test's admission: the exact dialog owner, service, source row and
+ *  ready status object it was opened against. It is published through state and
+ *  retired as a whole when any of those is replaced. */
+type SavedTestLease = Readonly<{owner: object; service: RemoteSourceService; source: RemoteSource; status: RemoteSourceStatus; generation: string}>;
 type AttachMode = 'new' | 'existing';
 type LibraryKind = ManagedLibrary['kind'];
 
@@ -1171,6 +1175,33 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
   const [typed, setTyped] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<RemoteSourceStatus>();
+  // The saved test is admitted by a layout-published lease: the exact dialog
+  // owner, service, source row and ready status object the render was made
+  // for. A replaced source or status retires it whole.
+  const [savedTestLease, setSavedTestLease] = useState<SavedTestLease | null>(null);
+  const [savedTest, setSavedTest] = useState<Readonly<{result: SavedSourceTest; generation: string}> | null>(null);
+  const [savedTesting, setSavedTesting] = useState(false);
+  const savedTestOwner = useRef<object | null>(null);
+  const savedTestLeaseRef = useRef<SavedTestLease | null>(null);
+  const savedTestRunning = useRef<SavedTestLease | null>(null);
+  useLayoutEffect(() => {
+    const owner = {};
+    savedTestOwner.current = owner;
+    const ready = status;
+    const lease = ready && ready.sourceId === source.id && ready.generation
+      ? Object.freeze({owner, service, source, status: ready, generation: ready.generation}) : null;
+    savedTestLeaseRef.current = lease;
+    setSavedTestLease(lease);
+    // A new lease is a new admission: nothing from the old one stays displayed.
+    setSavedTesting(false);
+    setSavedTest(null);
+    return () => {
+      if (savedTestOwner.current !== owner) return;
+      savedTestOwner.current = null;
+      savedTestLeaseRef.current = null;
+      if (savedTestRunning.current?.owner === owner) savedTestRunning.current = null;
+    };
+  }, [service, source, status]);
   const [changing, setChanging] = useState(false);
   const [advanced, setAdvanced] = useState<{settings?: Awaited<ReturnType<RemoteSourceService['readAdvanced']>>; values: SourceAdvanced}>();
   const [advancedBusy, setAdvancedBusy] = useState(false);
@@ -1277,8 +1308,47 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
     try {await service.remove(current, guard);const state = service.getSnapshot();if (!guard()) return;if (state.error) {setError(state.error);return;}active.current=false;lifetime.current++;onRemoved();}
     finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
-  const done = () => {active.current=false;pending.current=false;lifetime.current++;setDraft(current => ({...current, password: ''}));setTyped('');onClose();};
+  const done = () => {
+    active.current=false;pending.current=false;lifetime.current++;
+    // Retire the test admission with the close gesture, before the unmount
+    // layout runs: a retained Test cannot be admitted in between.
+    savedTestOwner.current=null;
+    savedTestLeaseRef.current=null;
+    savedTestRunning.current=null;
+    setDraft(current => ({...current, password: ''}));setTyped('');onClose();
+  };
   const close = () => {if (busy || pending.current) return;done();};
+  /** A saved-source test is its own command; its answer names the effective
+   * observation generation, which must still be the one this page reports. */
+  /** Runs only the lease the pressed button was rendered with; never a newer one. */
+  const testSavedSource = async (lease: SavedTestLease) => {
+    // The lease itself is the single-flight claim: a second press while this
+    // one runs finds it taken.
+    if (savedTestLeaseRef.current !== lease || savedTestRunning.current || pending.current || busy) return;
+    const owns = () => savedTestLeaseRef.current === lease && savedTestOwner.current === lease.owner
+      && savedTestRunning.current === lease && isCurrent()
+      && status === lease.status && service.getSnapshot().sources.indexOf(lease.source) >= 0;
+    savedTestRunning.current = lease;
+    if (!owns()) { savedTestRunning.current = null; return; }
+    setSavedTesting(true);setSavedTest(null);setError('');
+    try {
+      const result = await service.testSaved(lease.source.id, owns);
+      if (!owns() || result.sourceId !== lease.source.id || result.generation !== lease.generation) return;
+      setSavedTest({result, generation: lease.generation});
+    } catch (value) {
+      if (!owns()) return;
+      // A failure in Portico's own local helper is not a provider answer:
+      // the server reports administration_unavailable, with no contact fact.
+      const code = value && typeof value === 'object' ? (value as {code?: unknown}).code : undefined;
+      setError(code === 'administration_unavailable' ? t('next.remoteSources.savedTestLocalFailure') : remoteErrorText(value));
+    }
+    finally {
+      if (savedTestRunning.current === lease) {
+        savedTestRunning.current = null;
+        if (savedTestLeaseRef.current === lease && isCurrent()) setSavedTesting(false);
+      }
+    }
+  };
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
     <section className={styles.statusBox} aria-label={t('next.remoteSources.status')}>
@@ -1298,6 +1368,13 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
             : t('next.remoteSources.noLibraryUses')}</dd></div>
         {!!status?.scanIntervalSeconds && <div><dt>{t('next.remoteSources.scanning')}</dt>
           <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
+        <div><dt>{t('next.remoteSources.savedTest')}</dt><dd><span className={styles.rowActions}>
+          <Button size="xs" variant="glass" loading={savedTesting} disabled={busy || savedTesting || !savedTestLease}
+            onClick={() => {if (savedTestLease) void testSavedSource(savedTestLease);}}>{t('next.remoteSources.test')}</Button>
+          {savedTest && savedTestLease?.status === status && savedTest.generation === status?.generation && <span className={styles.testCard} data-tone={savedTest.result.reachable ? 'good' : 'warning'}>{savedTest.result.reachable
+            ? t(savedTest.result.rangeSupport === 'unsupported' ? 'next.remoteSources.savedTestLimited' : 'next.remoteSources.savedTestReachable')
+            : t(contactWord(savedTest.result.errorCode!))}</span>}
+        </span></dd></div>
         {status?.lastConnectedAt && <div><dt>{t('next.remoteSources.lastConnected')}</dt><dd>{checkedWhen(status.lastConnectedAt)}</dd></div>}
         {status?.lastErrorAt && status.lastErrorCode && <div><dt>{t('next.remoteSources.lastError')}</dt><dd>{checkedWhen(status.lastErrorAt)} · {t(contactWord(status.lastErrorCode))}</dd></div>}
         {status?.health && <div><dt>{t('next.remoteSources.health')}</dt><dd>{t(healthWord(status.health))}</dd></div>}

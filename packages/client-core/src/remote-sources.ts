@@ -63,6 +63,9 @@ export type RemoteScanPhase='inventory'|'legacy_inventory'|'basic_pending'|'basi
 export type RemoteScanState=Readonly<{state:RemoteScanStateCode;mode?:RemoteScanMode;phase?:RemoteScanPhase;sourceGeneration:number;runPolicyRevision:number;processed:number;discovered:number;analyzed:number;warnings:number;queuedAt?:string;completedAt?:string;finishedAt?:string}>;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
+/** A saved source's live test: the effective observation generation and, for a
+ * completed provider failure, its closed code. No saved config changes. */
+export type SavedSourceTest=Readonly<{sourceId:string;generation:string;reachable:boolean;rangeSupport?:RemoteSource['rangeSupport'];errorCode?:RemoteContactErrorCode}>;
 export type RemoteSourceStatus=Readonly<{assignmentFenceSupported?:boolean;sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;health?:RemoteSourceHealth;lastConnectedAt?:string;lastErrorAt?:string;lastErrorCode?:RemoteContactErrorCode;lastCompleteAt?:string;scan?:RemoteScanState;program?:string;programVersion?:string;programRevision?:number;programIncluded?:boolean;remote?:string;backgroundSpeed?:string}>;
 /** The drawn Advanced page: how a source's folders are checked, the disk its
  * read cache may use, and which analysis stages run for files found through it. */
@@ -778,6 +781,26 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
   }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
  }
  /** What the source is doing now, and where its folders went; one bounded read. */
+ async testSaved(id:string,guard?:()=>boolean):Promise<SavedSourceTest>{
+  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  if(!text(id,256)||id.length===0)throw new Error('Invalid source id.');
+  const epoch=this.epoch;
+  // The generated route for this path has not reached the shared artefacts yet.
+  const raw=await this.request(`/v1/storage/sources/${encodeURIComponent(id)}/test`,'POST',undefined,guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!record(raw.result))invalid();
+  const r=raw.result;
+  if(!text(r.sourceId,256)||!r.sourceId||r.sourceId!==id||!text(r.generation,64)||!r.generation||typeof r.reachable!=='boolean')invalid();
+  const rangeSupport=r.rangeSupport===undefined?undefined:(['unknown','conditional','unsupported','sequential'] as const).find(value=>value===r.rangeSupport);
+  if(r.rangeSupport!==undefined&&!rangeSupport)invalid();
+  const errorCode=r.errorCode===undefined?undefined:(['offline','credentials_required','rate_limited','quota_exceeded'] as const).find(value=>value===r.errorCode);
+  if(r.errorCode!==undefined&&!errorCode)invalid();
+  // A completed success carries no failure code; a completed failure must name one.
+  if(r.reachable===true&&errorCode!==undefined)invalid();
+  if(r.reachable===false&&errorCode===undefined)invalid();
+  return Object.freeze({sourceId:r.sourceId,generation:r.generation,reachable:r.reachable,...(rangeSupport?{rangeSupport}:{}),...(errorCode?{errorCode}:{})});
+ }
  async readStatus(id:string,guard?:()=>boolean):Promise<RemoteSourceStatus>{
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
   if(!text(id,256)||!id)throw new Error('Invalid source.');
