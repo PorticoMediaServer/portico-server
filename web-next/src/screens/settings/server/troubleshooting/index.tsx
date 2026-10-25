@@ -4,6 +4,8 @@ import type {ReportTransport} from '@core/client-reports.ts';
 import {FeedbackPanel} from './Feedback';
 import {ReportsPanel} from './Reports';
 import {SupportPanel} from './Support';
+import {MessagesPanel} from './Messages';
+import {SettingsMessagesSource, type MessageConnection} from './messages-source';
 import {SettingsFeedbackSource} from './feedback-source';
 import {SettingsSupportSource} from './support-source';
 import {SettingsReportsSource} from './reports-source';
@@ -13,6 +15,7 @@ const t = defaultI18n.t;
 
 export type TroubleshootingSurfacesOptions = Readonly<{
   transport: ReportTransport;
+  messageConnection?: MessageConnection;
   serverId: string;
   /** The captured viewer fence, the same one the Settings controller uses. */
   viewerId: string;
@@ -29,48 +32,47 @@ export type TroubleshootingSurfaces = Readonly<{
   dispose: () => void;
 }>;
 
-type View = 'feedback' | 'reports' | 'support';
+type View = 'messages' | 'feedback' | 'reports' | 'support';
 const TABS: readonly Readonly<{id: View; label: MessageId}>[] = Object.freeze([
+  {id: 'messages', label: 'web.logs.messages'},
   {id: 'feedback', label: 'next.settings.troubleshootingFeedback'},
   {id: 'reports', label: 'next.settings.troubleshootingReports'},
   {id: 'support', label: 'server.support'},
 ]);
 
-/**
- * Owner-only Troubleshooting. The frames draw a page with four tabs; this pass draws
- * Feedback (frames 3-4) and Reports (frames 5-6), so only those two tabs are offered.
- * Messages and Support are not built yet and are not drawn as dead tabs.
- */
+/** Owner-scoped Troubleshooting with the four drawn, working tabs. */
 export type TroubleshootingPageProps = Readonly<{
-  reports: SettingsReportsSource; feedback: SettingsFeedbackSource; support: SettingsSupportSource;
+  messages: SettingsMessagesSource; reports: SettingsReportsSource; feedback: SettingsFeedbackSource; support: SettingsSupportSource;
   subscribe: (listener: () => void) => () => void; isCurrent: () => boolean; downloadBase: string; reportError: (error: unknown) => void;
-  /** Which built screen opens first; the drawn page opens on Messages, which is not built yet. */
+  /** Which built screen opens first; the drawn page opens on Messages. */
   initialView?: View;
 }>;
 
 /** The drawn tab strip, offering only the screens this pass actually draws. */
-export function TroubleshootingPage({reports, feedback, support, subscribe, isCurrent, downloadBase, reportError, initialView = 'feedback'}: TroubleshootingPageProps) {
+export function TroubleshootingPage({messages, reports, feedback, support, subscribe, isCurrent, downloadBase, reportError, initialView = 'messages'}: TroubleshootingPageProps) {
   const [view, setView] = useState<View>(initialView);
   return <div className={styles.page}>
     <div className={styles.tabs} role="tablist">{TABS.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={tab.id === view}
       className={styles.tab} onClick={() => setView(tab.id)}>{t(tab.label)}</button>)}</div>
-    {view === 'feedback' ? <FeedbackPanel source={feedback} subscribe={subscribe} reportError={reportError} />
+    {view === 'messages' ? <MessagesPanel source={messages} reportError={reportError} />
+      : view === 'feedback' ? <FeedbackPanel source={feedback} subscribe={subscribe} reportError={reportError} />
       : view === 'reports' ? <ReportsPanel source={reports} subscribe={subscribe} isCurrent={isCurrent} downloadBase={downloadBase} reportError={reportError} />
         : <SupportPanel source={support} subscribe={subscribe} reportError={reportError} />}
   </div>;
 }
 
 export function createTroubleshootingSurfaces(options: TroubleshootingSurfacesOptions): TroubleshootingSurfaces {
+  const messages = new SettingsMessagesSource(options.transport, options.messageConnection, options.isCurrent);
   const reports = new SettingsReportsSource(options.transport, options.serverId, options.viewerId, options.isCurrent);
   const feedback = new SettingsFeedbackSource(options.transport, options.serverId, options.viewerId, options.isCurrent);
   const support = new SettingsSupportSource(options.transport, options.serverId, options.viewerId, options.isCurrent);
   const subscribe = (listener: () => void) => {
-    const offs = [options.subscribe(listener), reports.subscribe(listener), feedback.subscribe(listener), support.subscribe(listener)];
+    const offs = [options.subscribe(listener), messages.subscribe(listener), reports.subscribe(listener), feedback.subscribe(listener), support.subscribe(listener)];
     return () => {for (const off of offs) off();};
   };
   return {
-    render: () => options.isCurrent() ? <TroubleshootingPage reports={reports} feedback={feedback} support={support} subscribe={subscribe} isCurrent={options.isCurrent}
+    render: () => options.isCurrent() ? <TroubleshootingPage messages={messages} reports={reports} feedback={feedback} support={support} subscribe={subscribe} isCurrent={options.isCurrent}
       downloadBase={options.downloadBase} reportError={options.reportError} /> : undefined,
-    dispose: () => {reports.dispose();feedback.dispose();support.dispose();},
+    dispose: () => {messages.dispose();reports.dispose();feedback.dispose();support.dispose();},
   };
 }
