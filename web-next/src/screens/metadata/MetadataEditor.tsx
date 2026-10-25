@@ -105,10 +105,10 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' && data.artworkRoles.includes('cover') && api.requestMetadataUpload ? renderCoverPages?.(file => service.uploadArtwork('cover', file), state.phase !== 'ready') : null}
       {shown === 'artwork' ? <Artwork portraitCover={localArtworkOnly} data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
-        onRemove={removeUpload} isDataCurrent={currentRepairData} onMakeFromVideo={data.canMakeEpisodeThumbnail ? makeThumbnail : undefined}
+        onRemove={removeUpload} isDataCurrent={currentRepairData} onMakeFromVideo={data.canMakeEpisodeThumbnail ? makeThumbnail : undefined} localOnly={target.kind === 'book'}
         onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
-        onFindMore={localArtworkOnly ? undefined : role => void run({action: 'discover_artwork', role})} onRefetch={localArtworkOnly ? undefined : role => void run({action: 'repair_assets', role})} /> : null}
+        onFindMore={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'discover_artwork', role})} onRefetch={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'repair_assets', role})} /> : null}
       {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
       {shown === 'general' || shown === 'tags' ? <footer className={styles.editorFooter}>
@@ -212,7 +212,8 @@ function TagList({spec, values, locked, onValues, onLock, busy}: {spec: RepairFi
   </section>;
 }
 
-function Artwork({data, busy, portraitCover, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove, isDataCurrent, onMakeFromVideo}: {
+function Artwork({data, busy, portraitCover, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove, isDataCurrent, onMakeFromVideo, localOnly}: {
+  localOnly: boolean;
   isDataCurrent: (data: RepairData) => boolean;
   onMakeFromVideo?: (expectedData: RepairData) => Promise<void>;
   onRemove: (role: string, candidateId: string, expectedData: RepairData) => Promise<boolean>;
@@ -247,6 +248,7 @@ function Artwork({data, busy, portraitCover, onUse, onLock, onFindMore, onRefetc
   const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
   const chosen = data.snapshot.artwork.find(choice => choice.role === role);
   return <div className={styles.artwork}>
+    {localOnly ? <p className={styles.lockHelp}>{t('web.metadata.localArtworkHelp')}</p> : null}
     <div className={styles.artRoles} role="tablist" aria-label={t('web.metadata.tabArtwork')}>{data.artworkRoles.map((value, index) =>
       <button key={value} id={rolesId + '-' + value} type="button" role="tab" tabIndex={role === value ? 0 : -1} aria-selected={role === value} aria-controls={rolesId + '-panel'} onClick={() => setSelected(value)}
         onKeyDown={event => {
