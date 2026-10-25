@@ -31,3 +31,8 @@
 .storageWarning { color: var(--color-amber); }
 
 .restoreStatus { display: grid; gap: 12px; margin-bottom: 16px; }
+
+@media (max-width:600px) {
+  .backupFolder .storagePath { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .backupNow .backupProgress { flex-basis: 100%; max-width: none; }
+}
