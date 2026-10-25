@@ -110,6 +110,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		c.Remote = r.location == "remote" || r.location == "cellular"
 	}
 	stored := r.stored()
+	if stored.DiscTitle != nil && change.Subtitles != nil && change.Subtitles.TrackID != TrackOff && change.Subtitles.TrackID != "" {
+		return SessionView{}, &FieldError{Path: "subtitles.trackId"}
+	}
 	next := stored
 	if change.State != "" {
 		next.State = change.State
@@ -118,6 +121,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	bytes := change.Replan
 	if change.VersionID != "" && change.VersionID != r.version {
 		next.VersionID, bytes = change.VersionID, true
+		next.DiscTitle = nil
 	}
 	if change.Audio != nil && (stored.Audio == nil || !reflect.DeepEqual(*change.Audio, *stored.Audio)) {
 		next.Audio, bytes = change.Audio, true

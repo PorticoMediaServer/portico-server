@@ -8429,11 +8429,40 @@ CREATE TABLE inventory_disc_media_members(
  required INTEGER NOT NULL CHECK(required IN(0,1)), directory INTEGER NOT NULL CHECK(directory IN(0,1)),
  PRIMARY KEY(object_id,path)
 ) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_disc_title_media(
+ object_id TEXT NOT NULL, title_key TEXT NOT NULL,
+ source_revision TEXT NOT NULL, fingerprint TEXT NOT NULL, revision TEXT NOT NULL,
+ container TEXT NOT NULL, video_codec TEXT NOT NULL, audio_codec TEXT NOT NULL,
+ width INTEGER NOT NULL,height INTEGER NOT NULL,duration_ms INTEGER NOT NULL,
+ PRIMARY KEY(object_id,title_key),
+ FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_disc_title_media_streams(
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,stream_index INTEGER NOT NULL,
+ type TEXT NOT NULL,codec TEXT NOT NULL,language TEXT NOT NULL,title TEXT NOT NULL,
+ channels INTEGER NOT NULL,channel_layout TEXT NOT NULL,is_default INTEGER NOT NULL,is_forced INTEGER NOT NULL,
+ color_transfer TEXT NOT NULL,color_primaries TEXT NOT NULL,detail_json TEXT NOT NULL,breadth_json TEXT NOT NULL,
+ PRIMARY KEY(object_id,title_key,stream_index),
+ FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_title_media(object_id,title_key) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_disc_title_media_members(
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,path TEXT NOT NULL,object_identity TEXT NOT NULL,
+ size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,required INTEGER NOT NULL,directory INTEGER NOT NULL,
+ PRIMARY KEY(object_id,title_key,path),
+ FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_title_media(object_id,title_key) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_disc_title_requests(
+ job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,object_id TEXT NOT NULL,
+ title_key TEXT NOT NULL,source_revision TEXT NOT NULL,fingerprint TEXT NOT NULL,
+ PRIMARY KEY(job_id,object_id),
+ FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
 CREATE TABLE playback_disc_pins(
  session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
  object_id TEXT NOT NULL,
  title_key TEXT NOT NULL, source_revision TEXT NOT NULL, fingerprint TEXT NOT NULL,
  stream_revision INTEGER NOT NULL, chapter_revision INTEGER NOT NULL,
+ title_facts_revision TEXT NOT NULL DEFAULT '',
  timeline TEXT NOT NULL DEFAULT ''
 ) STRICT;
 

@@ -218,7 +218,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	if !enabled {
 		return nil, ErrTranscodingDisabled
 	}
-	source, err := loadDeliverySource(ctx, tx, plan.SourceID)
+	source, err := loadSessionDeliverySource(ctx, tx, id, plan.SourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +252,10 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	for _, route := range []DeliveryStrategy{DeliveryOriginal, DeliveryCopyRemux, DeliveryAudioConversion} {
 		excluded[route] = RouteRejection{Code: ReasonCopyTimelineUnavailable}
 	}
+	discInput, err := hasDiscSessionTx(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
 	var next DeliveryPlan
 	richReplacement := len(replacement) > 0 && replacement[0] && plan.VideoAction == "convert" && plan.ConversionTarget != nil
 	if richReplacement {
@@ -284,7 +288,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 		next.TargetWidth, next.TargetHeight, next.VideoBitrateBPS, next.AudioBitrateBPS = t.Width, t.Height, t.VideoBitrateBPS, t.AudioBitrateBPS
 		next.ReasonCodes = append(append([]string{}, plan.ReasonCodes...), ReasonHardwareFailedSoftware)
 	} else {
-		next, err = planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: client, Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, FMP4Output: h.fragmentedOutput(), BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
+		next, err = planDelivery(DeliveryInput{Disc: discInput, SourceID: source.ID, Source: &source, Client: client, Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, FMP4Output: h.fragmentedOutput(), BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
 		if err != nil {
 			return nil, err
 		}

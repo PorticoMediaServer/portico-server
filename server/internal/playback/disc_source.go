@@ -17,12 +17,15 @@ import (
 	"portico.local/server/internal/storage"
 )
 
-func discPlanInputTx(ctx context.Context, tx *sql.Tx, input *DeliveryInput) error {
+func discPlanInputTx(ctx context.Context, tx *sql.Tx, input *DeliveryInput, ref *catalog.DiscTitleRef) error {
 	var known bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=?)`, input.SourceID).Scan(&known); err != nil {
 		return err
 	}
 	if !known {
+		if ref != nil {
+			return ErrStaleOffer
+		}
 		return nil
 	}
 	d, err := catalog.ReadDiscSelection(ctx, tx, input.SourceID)
@@ -32,8 +35,18 @@ func discPlanInputTx(ctx context.Context, tx *sql.Tx, input *DeliveryInput) erro
 	if d == nil {
 		return ErrIncompatible
 	}
-	if err = d.Ready(ctx, tx); err != nil {
-		return err
+	if ref == nil {
+		if err = d.Ready(ctx, tx); err != nil {
+			return err
+		}
+	} else {
+		_, facts, _, e := catalog.ResolveDiscTitleTx(ctx, tx, d, *ref)
+		if e != nil {
+			return e
+		}
+		source := discSourceFacts(d.Asset, facts)
+		input.Source = &source
+		input.Container, input.VideoCodec, input.AudioCodec, input.Duration, input.Height = facts.Container, facts.VideoCodec, facts.AudioCodec, facts.Duration, facts.Height
 	}
 	input.Disc = true
 	// An ISO contains several titles; dividing its size by one title's duration
@@ -56,15 +69,32 @@ func discPlanInputTx(ctx context.Context, tx *sql.Tx, input *DeliveryInput) erro
 	}
 	return nil
 }
-func pinDiscSessionTx(ctx context.Context, tx *sql.Tx, id, asset string) error {
+func pinDiscSessionTx(ctx context.Context, tx *sql.Tx, id, asset string, ref *catalog.DiscTitleRef) error {
 	d, err := catalog.ReadDiscSelection(ctx, tx, asset)
-	if err != nil || d == nil {
+	if err != nil {
 		return err
 	}
-	if err = d.Ready(ctx, tx); err != nil {
-		return err
+	if d == nil {
+		if ref != nil {
+			return ErrStaleOffer
+		}
+		return nil
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO playback_disc_pins(session_id,object_id,title_key,source_revision,fingerprint,stream_revision,chapter_revision) VALUES(?,?,?,?,?,?,?)`, id, d.Object, d.MediaKey, d.Revision, d.Fingerprint, d.StreamRevision, d.ChapterRevision)
+	key, streamRevision, chapterRevision, factsRevision := d.MediaKey, d.StreamRevision, d.ChapterRevision, ""
+	if ref == nil {
+		if err = d.Ready(ctx, tx); err != nil {
+			return err
+		}
+	} else {
+		title, _, revision, e := catalog.ResolveDiscTitleTx(ctx, tx, d, *ref)
+		if e != nil {
+			return e
+		}
+		key = title.Key(d.Structure.Kind)
+		factsRevision = revision
+		streamRevision, chapterRevision = 0, 0
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO playback_disc_pins(session_id,object_id,title_key,source_revision,fingerprint,stream_revision,chapter_revision,title_facts_revision) VALUES(?,?,?,?,?,?,?,?)`, id, d.Object, key, d.Revision, d.Fingerprint, streamRevision, chapterRevision, factsRevision)
 	return err
 }
 
@@ -78,8 +108,9 @@ func checkDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) error {
  JOIN catalog_assets a ON a.token=d.asset_id
  JOIN asset_stream_facts st ON st.asset_id=d.asset_id AND st.size=a.size AND st.modified_ns=a.modified_ns
  JOIN asset_chapter_facts ch ON ch.asset_id=d.asset_id AND ch.size=a.size AND ch.modified_ns=a.modified_ns
- WHERE d.object_id=p.object_id AND d.media_title_key=p.title_key AND d.fingerprint=p.fingerprint AND d.source_revision=p.source_revision
- AND d.media_stream_revision=p.stream_revision AND d.media_chapter_revision=p.chapter_revision AND st.revision=p.stream_revision AND ch.revision=p.chapter_revision
+ WHERE d.object_id=p.object_id AND d.fingerprint=p.fingerprint AND d.source_revision=p.source_revision
+ AND ((p.title_facts_revision='' AND d.media_title_key=p.title_key AND d.media_stream_revision=p.stream_revision AND d.media_chapter_revision=p.chapter_revision AND st.revision=p.stream_revision AND ch.revision=p.chapter_revision)
+ OR (p.title_facts_revision<>'' AND EXISTS(SELECT 1 FROM inventory_disc_title_media m WHERE m.object_id=p.object_id AND m.title_key=p.title_key AND m.source_revision=p.source_revision AND m.fingerprint=p.fingerprint AND m.revision=p.title_facts_revision)))
  AND d.encryption='none' AND o.revision=d.source_revision AND o.retired=0 AND o.state='available' AND s.enabled=1 AND s.kind='local'
  AND d.source_generation=s.generation AND d.root_incarnation=s.incarnation AND o.root_incarnation=s.incarnation))`, id).Scan(&bad)
 	if err != nil {
@@ -95,8 +126,8 @@ func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInp
 	if err != nil {
 		return nil, true, err
 	}
-	var asset string
-	err = tx.QueryRowContext(ctx, `SELECT ps.asset_id FROM playback_sessions ps JOIN playback_disc_pins p ON p.session_id=ps.id WHERE ps.id=?`, id).Scan(&asset)
+	var asset, titleKey, factsRevision string
+	err = tx.QueryRowContext(ctx, `SELECT ps.asset_id,p.title_key,p.title_facts_revision FROM playback_sessions ps JOIN playback_disc_pins p ON p.session_id=ps.id WHERE ps.id=?`, id).Scan(&asset, &titleKey, &factsRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		done()
 		return nil, false, nil
@@ -114,23 +145,48 @@ func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInp
 		done()
 		return nil, true, ErrIncompatible
 	}
+	title, ok := d.MainTitle()
 	members := []storage.DiscMember{}
-	rows, err := tx.QueryContext(ctx, `SELECT path,object_identity,size,modified_ns,required,directory FROM inventory_disc_media_members WHERE object_id=? ORDER BY path LIMIT ?`, d.Object, disc.MaxConsumedMembers+1)
-	if err != nil {
-		done()
-		return nil, true, err
-	}
-	for rows.Next() {
-		var m storage.DiscMember
-		if err = rows.Scan(&m.Path, &m.ObjectIdentity, &m.Size, &m.ModifiedNS, &m.Required, &m.Directory); err != nil {
-			break
+	if factsRevision != "" {
+		facts, revision, e := catalog.ReadDiscTitleMedia(ctx, tx, d, titleKey)
+		if e != nil || revision != factsRevision {
+			done()
+			return nil, true, ErrStaleOffer
 		}
-		members = append(members, m)
+		members = facts.DiscSelection.Members
+		ok = false
+		for _, candidate := range d.Structure.Titles {
+			if candidate.Key(d.Structure.Kind) == titleKey {
+				title = candidate
+				ok = true
+				break
+			}
+		}
 	}
-	if err == nil {
-		err = rows.Err()
+	if !ok {
+		done()
+		return nil, true, ErrStaleOffer
 	}
-	rows.Close()
+
+	var rows *sql.Rows
+	if factsRevision == "" {
+		rows, err = tx.QueryContext(ctx, `SELECT path,object_identity,size,modified_ns,required,directory FROM inventory_disc_media_members WHERE object_id=? ORDER BY path LIMIT ?`, d.Object, disc.MaxConsumedMembers+1)
+		if err != nil {
+			done()
+			return nil, true, err
+		}
+		for rows.Next() {
+			var m storage.DiscMember
+			if err = rows.Scan(&m.Path, &m.ObjectIdentity, &m.Size, &m.ModifiedNS, &m.Required, &m.Directory); err != nil {
+				break
+			}
+			members = append(members, m)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+	}
 	done()
 	if err != nil {
 		return nil, true, err
@@ -209,8 +265,7 @@ func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInp
 	if !reflect.DeepEqual(actual, d.Structure) {
 		return failed(ErrStaleOffer)
 	}
-	title, ok := d.MainTitle()
-	if !ok || title.Key(d.Structure.Kind) != d.MediaKey {
+	if !ok || title.Key(d.Structure.Kind) != titleKey {
 		return failed(ErrStaleOffer)
 	}
 	input.InputAt = func(check context.Context, ms int64) ([]string, string, int64, error) {
@@ -291,4 +346,76 @@ func (h *HLS) storeDiscTimeline(ctx context.Context, id string, t *copyTimeline)
 		return
 	}
 	_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_disc_pins SET timeline=? WHERE session_id=?`, string(raw), id)
+}
+
+func discSourceFacts(asset string, f assets.Facts) DeliverySource {
+	out := DeliverySource{ID: asset, Container: f.Container, Duration: f.Duration, DetailKnown: true}
+	for _, st := range f.Streams {
+		if observed := st.Detail.ObservedInterlaced(); observed != nil {
+			st.Detail.Interlaced = *observed
+		}
+		if st.Type == "video" && out.Video == nil {
+			out.Video = &SourceVideo{Index: st.Index, Codec: videoFamily(st.Codec), StreamDetail: st.Detail}
+			if out.Video.DynamicRange == "" {
+				out.Video.DynamicRange = assets.DynamicRangeOf(st.ColorTransfer, 0)
+			}
+		}
+		if st.Type == "audio" {
+			variant := st.Detail.AudioVariant
+			if variant == "" {
+				variant = assets.AudioVariant(st.Codec, st.Detail.Profile, st.Detail.ObjectAudio)
+			}
+			st.Detail.AudioVariant = variant
+			out.Audio = append(out.Audio, SourceAudio{Lossless: knownAudioEncodingLossless(st.Codec, st.Detail.Profile, variant), Index: st.Index, Ordinal: len(out.Audio), Codec: audioFamily(st.Codec), NativeCodec: st.Codec, Title: publicAudioText(st.Title, 96), Channels: st.Channels, Layout: st.ChannelLayout, Language: st.Language, Default: st.Default, Commentary: st.Commentary, AudioDescription: st.Detail.AudioDescription, StreamDetail: st.Detail})
+		}
+	}
+	known := true
+	if out.Video != nil {
+		out.BitRate = out.Video.BitRate
+		out.MaxBitRate = out.Video.MaxBitRate
+		known = out.Video.BitRate > 0
+	}
+	for _, a := range out.Audio {
+		out.BitRate += a.BitRate
+		known = known && a.BitRate > 0
+		if out.MaxBitRate > 0 {
+			out.MaxBitRate += max(a.BitRate, a.MaxBitRate)
+		}
+	}
+	if !known {
+		out.BitRate = 0
+	}
+
+	return out
+}
+func loadSessionDeliverySource(ctx context.Context, tx *sql.Tx, session, asset string) (DeliverySource, error) {
+	var key, revision string
+	err := tx.QueryRowContext(ctx, `SELECT title_key,title_facts_revision FROM playback_disc_pins WHERE session_id=?`, session).Scan(&key, &revision)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && revision == "" {
+		return loadDeliverySource(ctx, tx, asset)
+	}
+	if err != nil {
+		return DeliverySource{}, err
+	}
+	if err = checkDiscSessionTx(ctx, tx, session); err != nil {
+		return DeliverySource{}, err
+	}
+	d, err := catalog.ReadDiscSelection(ctx, tx, asset)
+	if err != nil || d == nil {
+		return DeliverySource{}, ErrStaleOffer
+	}
+	f, current, err := catalog.ReadDiscTitleMedia(ctx, tx, d, key)
+	if err != nil {
+		return DeliverySource{}, err
+	}
+	if current != revision {
+		return DeliverySource{}, ErrStaleOffer
+	}
+	return discSourceFacts(asset, f), nil
+}
+
+func hasDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+	var found bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_pins WHERE session_id=?)`, id).Scan(&found)
+	return found, err
 }

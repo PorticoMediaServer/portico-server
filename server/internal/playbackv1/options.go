@@ -49,6 +49,8 @@ type OptionsResume struct {
 	UpdatedAt  string `json:"updatedAt,omitempty"`
 }
 type Version struct {
+	DiscTitle   *catalog.DiscTitleRef   `json:"discTitle,omitempty"`
+	DiscTitles  *catalog.DiscTitles     `json:"discTitles,omitempty"`
 	Disc        *catalog.DiscMediaFacts `json:"disc,omitempty"`
 	ID          string                  `json:"id"`
 	Label       string                  `json:"label"`
@@ -169,6 +171,7 @@ type PlanStream struct {
 
 // Preview is what the options query asks "what if" about (plan §7 item 15).
 type Preview struct {
+	DiscTitle      *catalog.DiscTitleRef
 	VersionID      string
 	PartID         string // one part of a multi-part version (plans that file)
 	AudioID        string
@@ -473,19 +476,27 @@ func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Vers
 		facts := stored.Detail
 		facts.StreamBreadth = breadth[index]
 
-		lower := strings.ToLower(title)
-		switch kind {
-		case "video":
-			v.Video = append(v.Video, VideoStream{Interlaced: facts.ObservedInterlaced(), ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
-		case "audio":
-			v.Audio = append(v.Audio, AudioStream{Profile: facts.Profile, Variant: facts.AudioVariant, ObjectAudio: facts.ObjectAudio, SampleRate: facts.SampleRate, BitDepth: facts.BitsPerSample, DTSX: facts.ObjectAudio == "dtsx", ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: facts.AudioDescription})
-		case "subtitle":
-			if s.Subtitles == nil {
-				v.Subtitles = append(v.Subtitles, SubStream{ID: streamID("s", index), Format: codec, Source: "embedded", Language: language, Title: title, Forced: forced, SDH: strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: isDefault})
-			}
-		}
+		stored.Index, stored.Type, stored.Codec, stored.Language, stored.Title, stored.Channels, stored.ChannelLayout, stored.Default, stored.Forced, stored.ColorTransfer, stored.Detail = index, kind, codec, language, title, channels, layout, isDefault, forced, transfer, facts
+		s.appendStream(v, stored)
 	}
 	return rows.Err()
+}
+
+func (s *Service) appendStream(v *Version, st assets.Stream) {
+	index, kind, codec, language, title, channels, layout, isDefault, forced, transfer, facts := st.Index, st.Type, st.Codec, st.Language, st.Title, st.Channels, st.ChannelLayout, st.Default, st.Forced, st.ColorTransfer, st.Detail
+	detail := st.EncodeDetail()
+
+	lower := strings.ToLower(title)
+	switch kind {
+	case "video":
+		v.Video = append(v.Video, VideoStream{Interlaced: facts.ObservedInterlaced(), ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
+	case "audio":
+		v.Audio = append(v.Audio, AudioStream{Profile: facts.Profile, Variant: facts.AudioVariant, ObjectAudio: facts.ObjectAudio, SampleRate: facts.SampleRate, BitDepth: facts.BitsPerSample, DTSX: facts.ObjectAudio == "dtsx", ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: facts.AudioDescription})
+	case "subtitle":
+		if s.Subtitles == nil {
+			v.Subtitles = append(v.Subtitles, SubStream{ID: streamID("s", index), Format: codec, Source: "embedded", Language: language, Title: title, Forced: forced, SDH: strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: isDefault})
+		}
+	}
 }
 
 func subtitleSource(origin string) string {
@@ -543,6 +554,10 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			return Options{}, err
 		}
 	}
+	if preview.DiscTitle != nil && (preview.VersionID == "" || preview.PartID != "" || preview.SubtitleID != "" && preview.SubtitleID != "none") {
+		return Options{}, &FieldError{Path: "discTitleId"}
+	}
+	var discChapters []Chapter
 	renderers, formats := map[string]string{}, map[string]string{}
 	for _, group := range versionsOf(assets) {
 		first := group[0]
@@ -555,6 +570,13 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		if !audioOnly && len(group) == 1 {
 			if v.Disc, err = catalog.ReadDiscMediaFacts(ctx, tx, first.id); err != nil {
 				return Options{}, err
+			}
+			if v.Disc != nil {
+				choices, _, e := catalog.DiscTitlesTx(ctx, tx, item, first.id)
+				if e != nil {
+					return Options{}, e
+				}
+				v.DiscTitles = &choices
 			}
 		}
 		for _, a := range group {
@@ -573,6 +595,16 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			if r.SourceID == first.id && r.Enabled {
 				lower := strings.ToLower(r.Title)
 				v.Subtitles = append(v.Subtitles, SubStream{Deliveries: r.Deliveries, ID: r.ID, Format: r.Format, Source: subtitleSource(r.Origin), Language: r.Language, Title: r.Title, Forced: r.Forced, SDH: r.HearingImpaired || strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: r.Default})
+			}
+		}
+		if preview.DiscTitle != nil && v.ID == preview.VersionID {
+			discChapters, err = s.discVersion(ctx, tx, &v, *preview.DiscTitle)
+			if err != nil {
+				return Options{}, err
+			}
+			first.container = v.Container
+			if len(v.Video) > 0 {
+				first.height = v.Video[0].Height
 			}
 		}
 		label := []string{}
@@ -597,6 +629,9 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		out.Resume = &OptionsResume{PositionMs: positionMS}
 	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Options{}, err
+	}
+	if preview.DiscTitle != nil {
+		out.Resume = nil
 	}
 	if len(out.Versions) == 0 {
 		return out, nil
@@ -670,38 +705,42 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	}
 	// Chapters and markers are the chosen version's, part after part on one
 	// timeline (each part's starts offset by the parts before it).
-	offset := int64(0)
-	for _, part := range version.Parts {
-		rows, err := tx.QueryContext(ctx, `SELECT title,start_seconds FROM asset_chapters WHERE asset_id=? ORDER BY chapter_index`, part.ID)
-		if err != nil {
-			return Options{}, err
-		}
-		for rows.Next() {
-			var c Chapter
-			var start float64
-			if err = rows.Scan(&c.Title, &start); err != nil {
-				rows.Close()
-				return Options{}, err
-			}
-			c.StartMs = offset + int64(start*1000)
-			out.Chapters = append(out.Chapters, c)
-		}
-		if err = rows.Err(); err != nil {
-			rows.Close()
-			return Options{}, err
-		}
-		rows.Close()
-		if markersFor != nil {
-			markers, err := markersFor(ctx, tx, p, item, part.ID)
+	if preview.DiscTitle != nil {
+		out.Chapters = discChapters
+	} else {
+		offset := int64(0)
+		for _, part := range version.Parts {
+			rows, err := tx.QueryContext(ctx, `SELECT title,start_seconds FROM asset_chapters WHERE asset_id=? ORDER BY chapter_index`, part.ID)
 			if err != nil {
 				return Options{}, err
 			}
-			for _, m := range markers {
-				m.StartMs, m.EndMs = m.StartMs+offset, m.EndMs+offset
-				out.Markers = append(out.Markers, m)
+			for rows.Next() {
+				var c Chapter
+				var start float64
+				if err = rows.Scan(&c.Title, &start); err != nil {
+					rows.Close()
+					return Options{}, err
+				}
+				c.StartMs = offset + int64(start*1000)
+				out.Chapters = append(out.Chapters, c)
 			}
+			if err = rows.Err(); err != nil {
+				rows.Close()
+				return Options{}, err
+			}
+			rows.Close()
+			if markersFor != nil {
+				markers, err := markersFor(ctx, tx, p, item, part.ID)
+				if err != nil {
+					return Options{}, err
+				}
+				for _, m := range markers {
+					m.StartMs, m.EndMs = m.StartMs+offset, m.EndMs+offset
+					out.Markers = append(out.Markers, m)
+				}
+			}
+			offset += part.DurationMs
 		}
-		offset += part.DurationMs
 	}
 	done()
 	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: defaultQuality(reach.SavedQuality, reach.SavedMusicQuality, reach.TransportClass, kind)}
@@ -775,7 +814,7 @@ func (s *Service) choice(o Options, preview Preview, reach Reach) (playback.V1Ch
 			return playback.V1Choice{}, Version{}, &FieldError{Path: "versionId"}
 		}
 	}
-	c := playback.V1Choice{AssetID: version.ID, Remote: reach.Remote}
+	c := playback.V1Choice{DiscTitle: preview.DiscTitle, AssetID: version.ID, Remote: reach.Remote}
 	if preview.PartID != "" {
 		found := false
 		for _, part := range version.Parts {

@@ -245,6 +245,11 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		}
 		basicNeeded = basicNeeded || !found
 	}
+	var discRequested bool
+	if err = s.db.QueryRowContext(parent, `SELECT EXISTS(SELECT 1 FROM inventory_disc_title_requests WHERE job_id=? AND object_id=? AND source_revision=?)`, job, object, revision).Scan(&discRequested); err != nil {
+		return err
+	}
+	basicNeeded = basicNeeded || discRequested
 	deep := false
 	for _, op := range catalog.DeepScanOperations {
 		deep = deep || policy.Allows(op)
@@ -395,6 +400,16 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		if err == nil {
 			probe.AnalyzePlayback(readContext("probe"), path, &f)
 		}
+	}
+	if err == nil && f.DiscAlternate {
+		after, e := stat()
+		if e != nil || !matches(after) {
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "source_revision_changed")
+		}
+		if err = s.catalog.CommitDiscAlternate(ctx, job, object, revision, policy.Revision, f); err != nil {
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "probe_or_sidecar_failed")
+		}
+		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, false, "")
 	}
 	if err == nil && f.InventoryOnly {
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "remote_probe_unavailable")
@@ -576,6 +591,29 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 		return assets.Facts{}, disc.ErrEncrypted
 	}
 	title, ok, err := s.catalog.InventoryDiscMainTitle(ctx, object, revision, structure)
+	var requestedKey, requestedFingerprint string
+	requestErr := s.db.QueryRowContext(ctx, `SELECT title_key,fingerprint FROM inventory_disc_title_requests WHERE job_id=? AND object_id=? AND source_revision=?`, job, object, revision).Scan(&requestedKey, &requestedFingerprint)
+	if requestErr != nil && !errors.Is(requestErr, sql.ErrNoRows) {
+		return assets.Facts{}, requestErr
+	}
+	if requestedKey != "" {
+		raw, e := json.Marshal(structure)
+		if e != nil {
+			return assets.Facts{}, e
+		}
+		sum := sha256.Sum256(append([]byte("disc_structure_v1\x00"), raw...))
+		if hex.EncodeToString(sum[:]) != requestedFingerprint {
+			return assets.Facts{}, catalog.ErrDiscSelectionChanged
+		}
+		ok = false
+		for _, candidate := range structure.Titles {
+			if candidate.Key(structure.Kind) == requestedKey {
+				title = candidate
+				ok = true
+				break
+			}
+		}
+	}
 	if err != nil {
 		return assets.Facts{}, err
 	}
@@ -642,6 +680,7 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 		return assets.Facts{}, err
 	}
 	digest := sha256.Sum256(append([]byte("disc_structure_v1\x00"), raw...))
+	facts.DiscAlternate = requestedKey != ""
 	facts.DiscSelection = &assets.DiscMediaSelection{TitleKey: title.Key(again.Kind), StructureFingerprint: hex.EncodeToString(digest[:]), Members: before}
 	return facts, nil
 }

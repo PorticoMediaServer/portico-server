@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/qualityladder"
 	"time"
@@ -18,6 +19,7 @@ import (
 // their saved default for where the request comes from); the owner's ceilings,
 // the member's remote cap and the upload budget always narrow it.
 type V1Choice struct {
+	DiscTitle *catalog.DiscTitleRef
 	// UseStoredResume is server-private intent, set only for an initial stored
 	// resume. Replans, transfers and already chosen positions leave it false.
 	UseStoredResume bool

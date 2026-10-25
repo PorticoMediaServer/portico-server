@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
@@ -69,8 +70,9 @@ type SubtitleRequest struct {
 
 // StartRequest is POST /v1/playback/sessions (spec §5.1).
 type StartRequest struct {
-	ItemID    string `json:"itemId,omitempty"`
-	ChannelID string `json:"channelId,omitempty"`
+	DiscTitle *catalog.DiscTitleRef `json:"discTitle,omitempty"`
+	ItemID    string                `json:"itemId,omitempty"`
+	ChannelID string                `json:"channelId,omitempty"`
 	// ChannelGeneration is the guide generation the viewer tuned from (a fence
 	// against a lineup that changed since); absent: the current one.
 	ChannelGeneration string           `json:"channelGeneration,omitempty"`
@@ -135,17 +137,18 @@ type StopRequest struct {
 
 // SessionView is the session resource (spec §5.1).
 type SessionView struct {
-	ID           string       `json:"id"`
-	Revision     string       `json:"revision"`
-	Kind         string       `json:"kind"`
-	Role         string       `json:"role"`
-	State        string       `json:"state"`
-	ItemID       string       `json:"itemId,omitempty"`
-	VersionID    string       `json:"versionId,omitempty"`
-	ChannelID    string       `json:"channelId,omitempty"`
-	Queue        *QueueRef    `json:"queue,omitempty"`
-	Lease        Lease        `json:"lease"`
-	Presentation Presentation `json:"presentation"`
+	DiscTitle    *catalog.DiscTitleRef `json:"discTitle,omitempty"`
+	ID           string                `json:"id"`
+	Revision     string                `json:"revision"`
+	Kind         string                `json:"kind"`
+	Role         string                `json:"role"`
+	State        string                `json:"state"`
+	ItemID       string                `json:"itemId,omitempty"`
+	VersionID    string                `json:"versionId,omitempty"`
+	ChannelID    string                `json:"channelId,omitempty"`
+	Queue        *QueueRef             `json:"queue,omitempty"`
+	Lease        Lease                 `json:"lease"`
+	Presentation Presentation          `json:"presentation"`
 	// RetryAfterMs is set only on a 202 while the presentation is prepared; the
 	// client replays the same start (spec §17.2).
 	RetryAfterMs int `json:"retryAfterMs,omitempty"`
@@ -356,13 +359,14 @@ func (c *Caller) admitChannel(ctx context.Context, channel string) error {
 
 // storedRequest is what a session keeps of its request for re-planning.
 type storedRequest struct {
-	State            string           `json:"state,omitempty"`
-	VersionID        string           `json:"versionId,omitempty"`
-	Quality          Quality          `json:"quality"`
-	Audio            *AudioRequest    `json:"audio,omitempty"`
-	Subtitles        *SubtitleRequest `json:"subtitles,omitempty"`
-	SubtitleOffsetMs int64            `json:"subtitleOffsetMs,omitempty"`
-	Network          string           `json:"network,omitempty"`
+	DiscTitle        *catalog.DiscTitleRef `json:"discTitle,omitempty"`
+	State            string                `json:"state,omitempty"`
+	VersionID        string                `json:"versionId,omitempty"`
+	Quality          Quality               `json:"quality"`
+	Audio            *AudioRequest         `json:"audio,omitempty"`
+	Subtitles        *SubtitleRequest      `json:"subtitles,omitempty"`
+	SubtitleOffsetMs int64                 `json:"subtitleOffsetMs,omitempty"`
+	Network          string                `json:"network,omitempty"`
 	// Carry is the audio and subtitle choice this playback carries from the
 	// queue entry before (nil: none; the Settings decide).
 	Carry *TrackCarry `json:"carry,omitempty"`
@@ -448,7 +452,7 @@ func (s *Service) reportEvery(state string) time.Duration {
 }
 
 func (s *Service) view(r row) SessionView {
-	v := SessionView{ID: r.id, Revision: strconv.Itoa(r.revision), Kind: r.kind, Role: r.role, State: r.state, ItemID: r.item, VersionID: r.version, ChannelID: r.channel}
+	v := SessionView{DiscTitle: r.stored().DiscTitle, ID: r.id, Revision: strconv.Itoa(r.revision), Kind: r.kind, Role: r.role, State: r.state, ItemID: r.item, VersionID: r.version, ChannelID: r.channel}
 	if r.ended > 0 {
 		v.State = "ended"
 		v.End = &SessionEnd{Reason: r.endReason, Message: r.message}
@@ -685,10 +689,18 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	video := kind != "song" && kind != "track" && kind != "audiobook_file"
 	request := t.request.normalized()
+	if request.DiscTitle != nil {
+		if t.version == "" || t.part != 0 || !video {
+			return playback.Session{}, Presentation{}, &FieldError{Path: "discTitle"}
+		}
+		if request.Subtitles != nil && request.Subtitles.TrackID != "" && request.Subtitles.TrackID != TrackOff {
+			return playback.Session{}, Presentation{}, &FieldError{Path: "subtitles.trackId"}
+		}
+	}
 	if !video && request.Quality.Mode == QualityFixed || video && request.Quality.Mode == QualityCD {
 		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
 	}
-	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume}
+	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume && request.DiscTitle == nil, DiscTitle: request.DiscTitle}
 	request.Quality.apply(&base)
 	version := t.version
 	if version == "" && video && t.part == 0 {
@@ -724,6 +736,9 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	// engine cannot draw itself costs a converted picture, which decides the
 	// engine.
 	subtitle := request.Subtitles
+	if request.DiscTitle != nil {
+		subtitle = &SubtitleRequest{TrackID: TrackOff}
+	}
 	var resources []subtitles.Resource
 	if video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && carry != nil && carry.SubtitleMode == "on") {
 		resources = s.subtitleResources(ctx, c.Principal, t.item, asset)
@@ -915,6 +930,10 @@ func (s *Service) readyWait() time.Duration {
 // session; the same key with another body is ErrIdempotencyMismatch (422
 // idempotency_key_reused, the one API-wide code; spec §17.1).
 func (s *Service) Start(ctx context.Context, c Caller, key string, req StartRequest) (SessionView, bool, error) {
+	if req.DiscTitle != nil && (req.ItemID == "" || req.VersionID == "" || req.PartIndex != 0 || req.Queue != nil || req.ChannelID != "" || req.TransferID != "" || len(req.DiscTitle.ID) != 64 || len(req.DiscTitle.Revision) != 64) {
+		return SessionView{}, false, &FieldError{Path: "discTitle"}
+	}
+
 	if key == "" {
 		return SessionView{}, false, ErrKeyRequired
 	}
@@ -1042,7 +1061,7 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 	if kind == "song" || kind == "audiobook_file" || kind == "track" {
 		sessionKind = "audio"
 	}
-	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, kind), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
+	stored := storedRequest{DiscTitle: req.DiscTitle, VersionID: req.VersionID, Quality: c.defaultQuality(ctx, kind), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}
@@ -1112,7 +1131,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		stored.Quality = *view.Quality
 	}
 	stored.State = req.State
-	if base.kind == "vod" {
+	if base.kind == "vod" && stored.DiscTitle == nil {
 		// A track picked with the start is carried to the queue's next entry.
 		stored.Carry = s.carryChoice(ctx, c.Principal, base.item, media.ID, view, req.Audio != nil, req.Subtitles != nil, stored.Carry)
 	}

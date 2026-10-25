@@ -117,7 +117,7 @@ func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p ide
 		return err
 	}
 	input.Source = &source
-	if err = discPlanInputTx(ctx, tx, input); err != nil {
+	if err = discPlanInputTx(ctx, tx, input, nil); err != nil {
 		return err
 	}
 	input.ExcludedByEngine, err = routeFailuresTx(ctx, tx, p, input.SourceID)
@@ -212,6 +212,11 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.CarriedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.CarriedAudioLanguage
 	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio); e != nil {
 		return planInputs{}, e
+	}
+	if v1.DiscTitle != nil {
+		if err := discPlanInputTx(ctx, tx, &input, v1.DiscTitle); err != nil {
+			return planInputs{}, err
+		}
 	}
 	if rung, ok := LadderPreset(strings.TrimPrefix(v1.QualityID, "automatic:")); ok && input.Source.Video != nil {
 		rate := input.Source.BitRate
@@ -417,6 +422,9 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			delivery.TargetReach = reachRemote
 		}
 	}
+	if v1.DiscTitle != nil {
+		duration = delivery.Duration
+	}
 	mode = delivery.Mode
 	if mode == "hls" {
 		if s.hls == nil {
@@ -507,7 +515,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if pinRows != 1 {
 		return Session{}, ErrStaleOffer
 	}
-	if e = pinDiscSessionTx(ctx, tx, id, aid); e != nil {
+	if e = pinDiscSessionTx(ctx, tx, id, aid, v1.DiscTitle); e != nil {
 		return Session{}, e
 	}
 	if mode == "remote" && prepared.subtitleEvidence != "" {
@@ -515,8 +523,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, e
 		}
 	}
-	if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
-		return Session{}, e
+	if v1.DiscTitle == nil {
+		if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
+			return Session{}, e
+		}
 	}
 
 	if mode == "hls" {

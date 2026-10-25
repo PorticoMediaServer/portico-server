@@ -25,6 +25,8 @@ type DiscTitles struct {
 	Titles    []DiscTitleOption `json:"titles"`
 }
 type DiscTitleOption struct {
+	Ready        bool   `json:"ready"`
+	Revision     string `json:"revision,omitempty"`
 	ID           string `json:"id"`
 	Number       int    `json:"number"`
 	DurationMs   int64  `json:"durationMs"`
@@ -139,18 +141,22 @@ func DiscTitlesTx(ctx context.Context, tx *sql.Tx, item, asset string) (DiscTitl
 		return DiscTitles{}, nil, readyErr
 	}
 	out := DiscTitles{VersionID: asset, Revision: d.PublicRevision(), Kind: FileInfoDiscKind(d.Structure.Kind), Packaging: DiscPackaging(d.Structure.Packaging), Ready: readyErr == nil, Titles: []DiscTitleOption{}}
-	rows, err := tx.QueryContext(ctx, `SELECT selection_token,title_key,title_number,duration_ms,(SELECT COUNT(*) FROM inventory_disc_chapters c WHERE c.object_id=t.object_id AND c.title_key=t.title_key) FROM inventory_disc_titles t WHERE object_id=? ORDER BY title_number LIMIT ?`, d.Object, disc.MaxTitles+1)
+	rows, err := tx.QueryContext(ctx, `SELECT t.selection_token,t.title_key,t.title_number,t.duration_ms,(SELECT COUNT(*) FROM inventory_disc_chapters c WHERE c.object_id=t.object_id AND c.title_key=t.title_key),COALESCE(m.revision,'') FROM inventory_disc_titles t LEFT JOIN inventory_disc_title_media m ON m.object_id=t.object_id AND m.title_key=t.title_key AND m.source_revision=? AND m.fingerprint=? WHERE t.object_id=? ORDER BY t.title_number LIMIT ?`, d.Revision, d.Fingerprint, d.Object, disc.MaxTitles+1)
 	if err != nil {
 		return DiscTitles{}, nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var token, key string
+		var token, key, mediaRevision string
 		var t DiscTitleOption
-		if err = rows.Scan(&token, &key, &t.Number, &t.DurationMs, &t.ChapterCount); err != nil {
+		if err = rows.Scan(&token, &key, &t.Number, &t.DurationMs, &t.ChapterCount, &mediaRevision); err != nil {
 			return DiscTitles{}, nil, err
 		}
 		t.ID = discPublicID(token)
+		t.Ready = mediaRevision != ""
+		if t.Ready {
+			t.Revision = discTitleRevision(d.PublicRevision(), token, mediaRevision)
+		}
 		t.Main = key == main.Key(d.Structure.Kind)
 		out.Titles = append(out.Titles, t)
 		if len(out.Titles) > disc.MaxTitles {
@@ -225,4 +231,41 @@ func (s *Service) InventoryDiscMainTitle(ctx context.Context, object, revision s
 	}
 	t, ok := p.MainTitle()
 	return t, ok, nil
+}
+
+// RequestDiscTitleTx captures one checked alternate probe under the real job.
+func RequestDiscTitleTx(ctx context.Context, tx *sql.Tx, item, job string, in DiscMainTitleRequest) error {
+	out, d, err := DiscTitlesTx(ctx, tx, item, in.VersionID)
+	if err != nil {
+		return err
+	}
+	if out.Revision != in.Revision {
+		return ErrDiscSelectionChanged
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT selection_token,title_key FROM inventory_disc_titles WHERE object_id=? LIMIT ?`, d.Object, disc.MaxTitles+1)
+	if err != nil {
+		return err
+	}
+	var key string
+	for rows.Next() {
+		var token, k string
+		if err = rows.Scan(&token, &k); err != nil {
+			break
+		}
+		if discPublicID(token) == in.TitleID {
+			key = k
+		}
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		return sql.ErrNoRows
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_disc_title_requests(job_id,object_id,title_key,source_revision,fingerprint) VALUES(?,?,?,?,?)`, job, d.Object, key, d.Revision, d.Fingerprint)
+	return err
 }

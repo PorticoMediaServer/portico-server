@@ -119,6 +119,8 @@ func v1Error(err error) error {
 	}
 	code := ""
 	switch {
+	case errors.Is(err, catalog.ErrDiscSelectionChanged):
+		code = "revision_mismatch"
 	case errors.Is(err, catalog.ErrSourceBusy):
 		code = "source_unavailable"
 	case errors.Is(err, catalog.ErrDiscPreparing):

@@ -141,7 +141,7 @@ func persistDiscMediaSelectionTx(ctx context.Context, tx *sql.Tx, source Library
 		}
 	}
 
-	return nil
+	return persistDiscTitleMediaTx(ctx, tx, object, revision, selection.StructureFingerprint, facts)
 }
 
 func writeDiscTitlesTx(ctx context.Context, tx *sql.Tx, object string, probe disc.Probe) error {

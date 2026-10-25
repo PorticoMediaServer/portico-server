@@ -521,7 +521,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "get_playback_options", Method: "GET", Path: "/v1/items/{itemId}/playback-options", Summary: "Read what a title offers and what this device would get",
 		Access: apikit.ViewerItem, Requires: apikit.ScopeRead, Lane: apikit.Media, Cost: apikit.Constant, Status: 200,
-		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "qualityId", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps", "throughputKbps"},
+		Query:  []string{"discTitleId", "discTitleRevision", "versionId", "partId", "audioId", "subtitleId", "quality", "qualityId", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps", "throughputKbps"},
 		Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.Options, error) {
 			c := callerFrom(ctx)
@@ -537,6 +537,13 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 func previewFrom(q *http.Request) (playbackv1.Preview, error) {
 	v := q.URL.Query()
 	p := playbackv1.Preview{VersionID: v.Get("versionId"), PartID: v.Get("partId"), AudioID: v.Get("audioId"), SubtitleID: v.Get("subtitleId"), Quality: playbackv1.Quality{Mode: v.Get("quality"), ID: v.Get("qualityId")}}
+	if v.Get("discTitleId") != "" || v.Get("discTitleRevision") != "" {
+		if len(v.Get("discTitleId")) != 64 || len(v.Get("discTitleRevision")) != 64 || p.VersionID == "" {
+			return p, &playbackv1.FieldError{Path: "discTitleId"}
+		}
+		p.DiscTitle = &catalog.DiscTitleRef{ID: v.Get("discTitleId"), Revision: v.Get("discTitleRevision")}
+	}
+
 	number := func(key string) (int, error) {
 		raw := v.Get(key)
 		if raw == "" {
