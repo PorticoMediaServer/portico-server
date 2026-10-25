@@ -1,11 +1,12 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
+import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {Icon, type IconName} from '../../kit/Icon';
 import {StateLayout} from '../../kit/states';
 import {router} from '../../router';
-import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
-import {screenLifetime} from '../detail/context';
+import {useCommittedLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
+import {screenLifetime, type ScreenContext} from '../detail/context';
 import {AddLibrary} from '../settings/libraries/AddLibrary';
 import {useShellWidth} from '../../shell/viewport';
 import styles from './first-library-state.module.css';
@@ -20,25 +21,57 @@ const kinds = [
   {id: 'audiobook', icon: 'i-book', title: 'next.states.kindAudiobook', hint: 'next.states.kindAudiobookHint'},
 ] as const;
 
+type Assembly = ProtectedLibraryScreen['context'];
+type HomeOpening = typeof router.state.location;
+type FirstLibraryLease = Readonly<{context: ScreenContext; assembly: Assembly; identity: Assembly['facts']['identity']; opening: HomeOpening;
+  runtime: NonNullable<ProtectedLibraryScreen['binding']['playback']>['runtime'] | undefined; key: number; current: () => boolean; serverName: string}>;
+type AddOpening = {kind: Kind; key: number; live: boolean};
+type AddLease = Readonly<{page: FirstLibraryLease; opening: AddOpening; life: ReturnType<typeof screenLifetime>; service: LibraryManagementService; key: number; current: () => boolean}>;
+
+function admittedEmptyHome(assembly: Assembly, identity: Assembly['facts']['identity']) {
+  return assembly.isCurrent() && assembly.facts.identity === identity && assembly.session().viewer.role === 'owner'
+    && identity.primaryProfile === true && identity.capabilities?.manageServer === true
+    && identity.libraries.length === 0 && identity.liveAvailable === false;
+}
+
 /** states#14: the confirmed owner's empty server, using the real library form. */
 export function FirstLibraryState({captured}: {captured: ProtectedLibraryScreen}) {
-  const context = useLibraryScreenContext(captured), width = useShellWidth();
-  const resources = useMemo(() => {
-    const current = () => context.isCurrent() && captured.context.session().viewer.role === 'owner'
-      && captured.context.facts.identity.primaryProfile === true && captured.context.facts.identity.capabilities?.manageServer === true;
-    const life = screenLifetime({...context, isCurrent: current});
-    const service = new LibraryManagementService({api: life.api, scope: context.scope});
-    return {life, service};
-  }, [context, captured.context]);
-  useEffect(() => () => {resources.life.dispose(); resources.service.dispose();}, [resources]);
-  const [kind, setKind] = useState<Kind>();
-  const add = (value: Kind) => {if (resources.life.current()) setKind(value);};
+  const opening = useLocation({select: value => value}), href = opening.href;
+  const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.pathname === '/' && router.state.location.href === href);
+  const assembly = captured.context, identity = assembly.facts.identity, runtime = captured.binding.playback?.runtime;
+  const [published, publish] = useState<FirstLibraryLease>(), generation = useRef(0);
+  useLayoutEffect(() => {
+    if (!context || !admittedEmptyHome(assembly, identity)) return;
+    let live = true;
+    const current = () => live && context.isCurrent() && opening.pathname === '/' && router.state.location === opening
+      && admittedEmptyHome(assembly, identity);
+    if (!current()) return;
+    publish({context, assembly, identity, opening, runtime, key: ++generation.current, current, serverName: assembly.facts.serverName});
+    return () => {live = false;};
+  }, [context, assembly, identity, opening, runtime]);
+  const owned = published && published.context === context && published.assembly === assembly && published.identity === identity
+    && published.opening === opening && published.runtime === runtime && published.current() ? published : undefined;
+  return owned ? <FirstLibraryBody key={owned.key} page={owned}/> : null;
+}
+function FirstLibraryBody({page}: {page: FirstLibraryLease}) {
+  const width = useShellWidth(), [opening, setOpening] = useState<AddOpening>(), generation = useRef(0);
+  const add = (kind: Kind) => {
+    if (!page.current()) return;
+    const next: AddOpening = {kind, key: ++generation.current, live: true};
+    setOpening(held => held?.live ? held : next);
+  };
+  const close = (original: AddOpening) => {
+    if (!page.current() || !original.live) return;
+    original.live = false;
+    setOpening(held => held === original ? undefined : held);
+  };
   const setupLive = () => {
-    if (resources.life.current()) void router.navigate({to: '/settings', search: {scope: 'server', section: 'live'}}).catch(context.effects.reportError);
+    if (page.current()) void router.navigate({to: '/settings', search: {scope: 'server', section: 'live'}})
+      .catch(error => {if (page.current()) page.context.effects.reportError(error);});
   };
   return <>
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} contentStyle={{top: width >= 1024 ? 330 : 200}}
-      eyebrow={<><span className={styles.ready}/>{t('next.states.ready', {server: captured.context.facts.serverName})}</>}
+      eyebrow={<><span className={styles.ready}/>{t('next.states.ready', {server: page.serverName})}</>}
       title={t('next.states.firstLibrary')} body={t('next.states.firstLibraryBody')}
       primary={{id: 'add', label: t('next.states.addLibrary'), icon: 'i-plus', onPress: () => add('movie')}}
       secondary={{id: 'live', label: t('next.states.setupLive'), icon: 'i-live', onPress: setupLive}}
@@ -48,7 +81,21 @@ export function FirstLibraryState({captured}: {captured: ProtectedLibraryScreen}
           <Icon name={value.icon satisfies IconName} size={26}/><b>{t(value.title)}</b><small>{t(value.hint)}</small>
         </button>)}</div>
       </section>}/>
-    {kind && <AddLibrary key={kind} initialKind={kind} open onOpenChange={open => {if (!open) setKind(undefined);}}
-      api={resources.life.api} service={resources.service} onError={context.effects.reportError} serverName={captured.context.facts.serverName}/>}
+    {opening?.live && <FirstLibraryAdd key={opening.key} page={page} opening={opening} close={close}/>}
   </>;
+}
+function FirstLibraryAdd({page, opening, close}: {page: FirstLibraryLease; opening: AddOpening; close: (opening: AddOpening) => void}) {
+  const [published, publish] = useState<AddLease>(), generation = useRef(0);
+  useLayoutEffect(() => {
+    if (!page.current() || !opening.live) return;
+    let live = true;
+    const current = () => live && opening.live && page.current();
+    const life = screenLifetime({...page.context, isCurrent: current});
+    const service = new LibraryManagementService({api: life.api, scope: page.context.scope});
+    publish({page, opening, life, service, key: ++generation.current, current});
+    return () => {live = false;life.dispose();service.dispose();};
+  }, [page, opening]);
+  const owned = published?.page === page && published.opening === opening && published.current() ? published : undefined;
+  return owned ? <AddLibrary key={owned.key} initialKind={opening.kind} open onOpenChange={open => {if (!open && owned.current()) close(opening);}}
+    api={owned.life.api} service={owned.service} onError={error => {if (owned.current()) page.context.effects.reportError(error);}} serverName={page.serverName}/> : null;
 }
