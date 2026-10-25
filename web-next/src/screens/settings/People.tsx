@@ -234,7 +234,9 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
       onClick={event => { if (!bindings.authority.isCurrent()) return; if (bindings.invite) bindings.invite(event.currentTarget); else void openInvite(event.currentTarget); }}>{t(table.addLabel!)}</Button>}>
     {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => peopleTableRow(row, bindings.actor))} columns={table.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
-      query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false, options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))}
+      query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false,
+        options: [...filter.options.map(option => ({value: option.value, label: t(option.label)})),
+          ...(filter.id === 'status' && !filter.options.some(option => option.value === 'waiting') ? [{value: 'waiting', label: t('next.settings.personStatus.waiting')}] : [])]}))}
       searchLabel={t(table.search!)} countLabel={page ? t(filtered ? 'next.settings.peopleCount' : 'next.settings.peopleTotal', {matched: page.matchedCount, total: page.totalCount}) : undefined} emptyLabel={t(table.empty!)} loading={loading}
       matchedCount={page?.matchedCount} hasMore={!!page?.nextCursor} onLoadMore={more} selected={selected} onSelectionChange={setSelected}
       rowAction={{label: t(table.rowAction!.label), onAction: (row, element) => {opener.current = element; setPersonId(row.id); setTab(personSpec.tabs![0].id);}}}
