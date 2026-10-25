@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackFailure} from '../../../../web/src/player/failure';
 import {Button} from '../controls';
@@ -8,6 +8,7 @@ const t = defaultI18n.t;
 export function PlaybackFailure({error, onRetry, onVersions, onReport, onClose, onError, closeLabel}: Readonly<{
   error?: string; onRetry?: () => Promise<void>; onVersions?: () => void; onReport?: () => void; onClose: () => void; onError: (error: unknown) => void;
   /** The drawn owner variant names the setting this card closes to; absent keeps "Close". */ closeLabel?: string;
+  /** The drawn state's own body content, e.g. the account's other playbacks; no layout changes. */ children?: ReactNode;
 }>) {
   const failure = playbackFailure(error), [busy, setBusy] = useState(false);
   const running = useRef(false), alive = useRef(true);
@@ -15,6 +16,7 @@ export function PlaybackFailure({error, onRetry, onVersions, onReport, onClose, 
   const retry = async () => {if (running.current || !onRetry) return;running.current = true;setBusy(true);try {await onRetry();} catch (error) {if (alive.current) onError(error);} finally {running.current = false;if (alive.current) setBusy(false);}};
   return <section className={styles.failure} role="alert">
     <h2>{t(failure.title)}</h2><p>{failure.body ? t(failure.body) : failure.text}</p>
+    {children}
     <div>{!failure.permanent && onRetry && <Button variant="primary" disabled={busy} loading={busy} onClick={() => {void retry();}}>{t('next.states.tryAgain')}</Button>}
       {onVersions && <Button variant="glass" onClick={onVersions}>{t('browse.field.versions')}</Button>}
       {onReport && <Button variant="glass" onClick={onReport}>{t('web.player.error.report')}</Button>}

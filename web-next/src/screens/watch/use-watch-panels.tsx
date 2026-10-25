@@ -7,6 +7,7 @@ import type {WebPlaybackRuntimeSnapshot,WebQueueListPort} from '../../platform/p
 import {fenceKey} from '../../shell/playback-model';
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
 import {playbackFailure} from '../../../../web/src/player/failure';
+import {WatchStreamLimitSessions} from './StreamLimitSessions';
 import type {WatchBindings,WatchSurfaces,WatchPanel} from './types';
 import {watchPanelModel} from './panel-model';
 import {WatchOptions} from './WatchOptions';
@@ -36,7 +37,7 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
  // action belongs to the exact failed attempt it was drawn for; the click re-checks that attempt
  // and the same owner/main-profile/manage-server gate before it goes anywhere.
  const identity=context?.facts.identity,viewer=identity?.viewer,ownerContext=context?.isCurrent()?context:undefined;
- const runtime=binding?.runtime,failedFence=snapshot?.fence,failedRun=snapshot?.playback.playbackRun,failedIntent=snapshot?.playback.intentId;
+ const runtime=binding?.runtime,failedFence=snapshot?.fence,failedKey=failedFence?fenceKey(failedFence):'',failedRun=snapshot?.playback.playbackRun,failedIntent=snapshot?.playback.intentId;
  const failureBody=snapshot?.playback.phase==='error'?playbackFailure(snapshot.playback.error).body:undefined;
  const canManage=viewer?.role==='owner'&&identity?.primaryProfile===true&&identity?.capabilities?.manageServer===true;
  const convertingOwnerAction=!!snapshot&&!!runtime&&failureBody==='web.player.error.conversionOff'&&canManage&&ownerContext
@@ -47,6 +48,17 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
     ||!live.fence||!failedFence||live.fence.kind!=='queue'||!sameFence(live.fence,failedFence))return;
    void router.navigate({to:'/settings',search:()=>({scope:'server' as const,section:'streaming'})});
   }:undefined;
+ // states f9: the stream-limit list belongs to this exact failed attempt, never to a later one.
+ const failedCurrent=useMemo(()=>()=>{
+  if(!binding||!context?.isCurrent()||!failedKey)return false;
+  const live=binding.runtime.getSnapshot();
+  // The same live stream-limit failure, not merely the same fence: a later unrelated error
+  // on this run must not list sessions under this card. Keys, never a fence object, so this
+  // predicate is stable while the failure stands.
+  return !live.disposed&&live.playback.phase==='error'&&playbackFailure(live.playback.error).body==='web.player.error.streamLimit'
+   &&!!live.fence&&live.fence.kind==='queue'&&failedKey===fenceKey(live.fence)
+   &&live.playback.intentId===failedIntent&&live.playback.playbackRun===failedRun;
+ },[binding,context,failedKey,failedIntent,failedRun]);
  // desktop-player f1: Watch Together is listed only when this playback has no room yet.
  const canStartRoom=!!together&&!!snapshot&&!snapshot.disposed&&snapshot.fence?.kind==='queue'&&snapshot.presentation?.kind==='video'
   &&!(room?.group&&(room.phase==='live'||room.phase==='reconnecting'));
@@ -80,6 +92,8 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
   tracks:model?{fence:model.fence,audio:model.audioLabel,subtitles:model.subtitleLabel}:undefined,
   ...(queue?{queue}:{}),
   ...(convertingOwnerAction?{convertingOwnerAction}:{}),
+  ...(failureBody==='web.player.error.streamLimit'
+    ?{streamLimit:<WatchStreamLimitSessions api={context.api} isCurrent={failedCurrent} excludeSessionId={snapshot.session?.id} reportError={binding.reportError}/>}:{}),
   ...(loss?{loss:{notice:loss,enabled:deviceDocument?.values['lossNotices']!==false}}:{}),
   together:<WatchRoomPill binding={together} runtime={binding.runtime} snapshot={snapshot} reportError={binding.reportError}/>,
   more:canStartRoom&&together?[{id:'watch-together',label:i18n.t('web.settings.together'),action:()=>setStartRoom(true)}]:[],

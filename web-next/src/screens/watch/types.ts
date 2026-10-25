@@ -58,6 +58,8 @@ export type WatchSurfaces = Readonly<{
   /** Actual title/authority identity; layout and source generation never enter this key. */
   bodyIdentity?: string;
   myList?: Readonly<{selected: boolean; pending?: boolean; toggle: () => void | Promise<void>}>;
+  /** states f9: the account's own other playbacks, only for the stream-limit failure. */
+  streamLimit?: ReactNode;
   /** states f9: the owner's real way to turn converting back on, when this card is that failure. */
   convertingOwnerAction?: () => void;
   /** f1q: the live queue's own captured run and rows, only while this fence is current. */
