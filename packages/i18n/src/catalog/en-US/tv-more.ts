@@ -19,6 +19,7 @@ export const tvMoreMessages = {
   'music.playAlbum': 'Play {album}',
   // music-plus (MC-9): the first music action in a song, album or artist menu.
   'music.startRadio': 'Start radio',
+  'music.mixesForYou': 'Mixes for you',
   'music.noSongs': 'No songs here',
   'music.noSongsBody': 'This release has no playable songs on the server.',
   'music.noAlbums': 'No albums here',
