@@ -99,7 +99,7 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
   entry: AttentionEntry; busy: boolean; onUse: (candidateKey: string, order?: string) => void;
   onSearch: () => void; onIdentify: () => void; onRetry: () => void; onKeep: () => void; onOpen?: () => void;
 }) {
-  const [order, setOrder] = useState<string>();
+  const [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
   const music = entry.kind === 'album' || entry.kind === 'song' || entry.kind === 'book';
   // Frame 5: a release is chosen on the album's own Matching tab, never from this list.
   const candidates = attentionOffers(entry, 'accept') && !music ? entry.candidates : [];
@@ -120,11 +120,11 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
     {working ? <p className={styles.working}>{t(entry.reason.includes('search') ? 'metadata.attention.rowSearching' : 'metadata.attention.rowMatching')}</p> : <>
       {candidates.map(candidate => {
         const facts = candidateFacts(t, has, candidate);
-        const selected = order ?? candidate.orders[0]?.id;
+        const selected = candidate.orders.find(item => item.id === orders[candidate.key])?.id ?? candidate.orders[0]?.id;
         return <div key={candidate.key} className={styles.candidate}>
           <div><b>{candidateLine(candidate)}</b>{facts.length ? <small>{facts.join(' · ')}</small> : null}
             {candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
-              <select value={selected} onChange={event => setOrder(event.currentTarget.value)}>
+              <select value={selected} onChange={event => {const value = event.currentTarget.value; setOrders(current => ({...current, [candidate.key]: value}));}}>
                 {candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select></label> : null}</div>
           <Button size="small" disabled={busy} onClick={() => onUse(candidate.key, candidate.orders.length ? selected : undefined)}>{t('metadata.attention.useMatch')}</Button>
