@@ -12,8 +12,10 @@ const PLATFORMS: Readonly<Record<string, string>> = {appletv: 'Apple TV', tvos: 
 
 type LinkState = Readonly<{phase: 'closed' | 'code' | 'busy' | 'preview' | 'done' | 'failed'; code: string; preview?: PlayOnLinkPreview}>;
 const closedLink: LinkState = {phase: 'closed', code: ''};
-/** One rendered opening. Its id, not a ref read at invocation, identifies it. */
-type Opening = {id: number; preview?: PlayOnLinkPreview};
+/** One rendered opening. Its id, not a ref read at invocation, identifies it, and its
+ * stage is the only live authority for a decision: a preview that is not the review
+ * stage can never be approved. */
+type Opening = {id: number; stage: 'code' | 'review' | 'busy' | 'done' | 'failed'; preview?: PlayOnLinkPreview};
 
 function Receivers({port, t, onSend, sending, failed}: {port: PlayOnReceiversPort; t: CastPlayerTranslate; onSend(id: string): void; sending?: string; failed?: string}) {
   const snapshot = useSyncExternalStore(port.subscribe, port.getSnapshot, noReceivers);
@@ -68,7 +70,10 @@ export function PlayOnPanel({controller, snapshot, phone, anchorRef, reportError
   const opening = useRef<Opening | null>(null), seq = useRef(0), flight = useRef<AbortController | null>(null);
   // Retires the rendered opening, aborts its request and clears its display. Called
   // synchronously on close, on a controller or port replacement, and on unmount.
-  const retire = useCallback(() => { seq.current++; opening.current = null; flight.current?.abort(); flight.current = null; setLink(closedLink); }, []);
+  const retire = useCallback((id?: number) => {
+    if (id !== undefined && opening.current?.id !== id) return false;
+    seq.current++; opening.current = null; flight.current?.abort(); flight.current = null; setLink(closedLink); return true;
+  }, []);
   useLayoutEffect(() => { retire(); }, [controller, linkTv, retire]);
   useLayoutEffect(() => { if (!open) retire(); }, [open, retire]);
   useLayoutEffect(() => () => { retire(); }, [retire]);
@@ -84,46 +89,60 @@ export function PlayOnPanel({controller, snapshot, phone, anchorRef, reportError
   const beginLink = () => {
     retire();
     const id = ++seq.current;
-    opening.current = {id};
+    opening.current = {id, stage: 'code'};
     setLink({phase: 'code', code: ''});
     return id;
   };
   const live = (id: number) => opening.current?.id === id ? opening.current : null;
-  const settle = (id: number, next: LinkState) => { if (live(id)) setLink(next); };
+  const settle = (id: number, next: LinkState) => { const current = live(id); if (current && current.stage !== 'done') setLink(next); };
   // The rendered id is captured by this render's handlers, so a retained old control
   // can only ever act on the opening it was drawn for.
   const renderedId = opening.current?.id ?? 0;
   const preview = (id: number, code: string) => {
-    if (!linkTv || !live(id) || flight.current) return;
-    if (code.length < 4) { settle(id, {phase: 'failed', code}); return; }
+    const current = live(id);
+    if (!linkTv || !current || current.stage === 'done' || flight.current) return;
+    if (code.length < 4) { current.preview = undefined; current.stage = 'failed'; settle(id, {phase: 'failed', code}); return; }
     const life = new AbortController();
+    current.preview = undefined;
+    current.stage = 'code';
     flight.current = life;
     settle(id, {phase: 'busy', code});
     void linkTv.preview(code, {signal: life.signal}).then(result => {
       if (life.signal.aborted) return;
-      const current = live(id);
-      if (!current) return;
-      current.preview = result;
+      const live = opening.current;
+      if (!live || live.id !== id || live.stage !== 'code') return;
+      live.preview = result;
+      live.stage = 'review';
       setLink({phase: 'preview', code, preview: result});
-    }).catch(() => { if (!life.signal.aborted) settle(id, {phase: 'failed', code}); })
-      .finally(() => { if (flight.current === life) flight.current = null; });
+    }).catch(() => {
+      if (life.signal.aborted) return;
+      const live = opening.current;
+      if (!live || live.id !== id) return;
+      live.preview = undefined; live.stage = 'failed';
+      setLink({phase: 'failed', code});
+    }).finally(() => { if (flight.current === life) flight.current = null; });
   };
   const decide = (id: number, shown: PlayOnLinkPreview, code: string, decision: 'approve' | 'deny') => {
     const current = live(id);
-    // The exact preview this control was drawn with must still be the live one.
-    if (!linkTv || !current || current.preview !== shown || flight.current) return;
+    // Only the review stage this control was drawn for may decide, and the decision is
+    // claimed synchronously so no second control can spend the same consent.
+    if (!linkTv || !current || current.stage !== 'review' || current.preview !== shown || flight.current) return;
     const life = new AbortController();
+    current.stage = 'busy';
     flight.current = life;
     setLink({phase: 'busy', code, preview: shown});
     void linkTv.decide(shown.requestId, code, decision, {signal: life.signal}).then(() => {
       if (life.signal.aborted) return;
       const live = opening.current;
       if (!live || live.id !== id || live.preview !== shown) return;
-      if (decision === 'approve') { setLink({phase: 'done', code, preview: shown}); return; }
-      retire(); controller.closePanel();
+      if (decision === 'approve') { live.stage = 'done'; setLink({phase: 'done', code, preview: shown}); return; }
+      retire(id); controller.closePanel();
     }).catch(error => {
       if (life.signal.aborted) return;
-      settle(id, {phase: 'failed', code});
+      const live = opening.current;
+      if (!live || live.id !== id || live.preview !== shown) return;
+      live.stage = 'failed';
+      setLink({phase: 'failed', code});
       reportError(error);
     }).finally(() => { if (flight.current === life) flight.current = null; });
   };
@@ -140,11 +159,11 @@ export function PlayOnPanel({controller, snapshot, phone, anchorRef, reportError
         <Icon name="i-tv" size={20} /><span>{t('next.cast.linkTv')}<small>{t('next.cast.linkTvHint')}</small></span><Icon name="i-right" size={18} /></button>
     </div>}
     {linkTv && <LinkTv t={t} state={link}
-      onCode={value => settle(renderedId, {phase: 'code', code: value})}
+      onCode={value => { const current = live(renderedId); if (!current || current.stage === 'done') return; current.preview = undefined; current.stage = 'code'; settle(renderedId, {phase: 'code', code: value}); }}
       onLookup={() => preview(renderedId, link.code.trim().toUpperCase())}
       onDecide={(shown, decision) => decide(renderedId, shown, link.code.trim().toUpperCase(), decision)}
-      onRetry={() => settle(renderedId, {phase: 'code', code: link.code})}
-      onClose={() => { if (!live(renderedId)) return; retire(); controller.closePanel(); }} />}
+      onRetry={() => { const current = live(renderedId); if (!current || current.stage === 'done') return; current.preview = undefined; current.stage = 'code'; settle(renderedId, {phase: 'code', code: link.code}); }}
+      onClose={() => { if (retire(renderedId)) controller.closePanel(); }} />}
     <div className={styles.separator} role="separator" /><p className={styles.footnote}>{t('next.cast.browserFootnote')}</p>
   </>;
   if (phone) return <BottomSheet open={open} onOpenChange={close} title={t('next.dock.playOnDevice')} fitContent returnFocusRef={anchorRef} showCloseButton={false}
