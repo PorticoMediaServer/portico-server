@@ -2,6 +2,7 @@ import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {formatClock} from '@core/presentation/content.ts';
 import type {ContentEntry, ContentProjection} from '@core/library-content.ts';
+import {Menu, MenuItem} from '../../../kit/overlays';
 import {Artwork, AmbientArt} from '../../../kit/artwork';
 import {Button} from '../../../kit/controls';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
@@ -26,10 +27,11 @@ const duration = (value: number | undefined) => value === undefined ? undefined 
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
   const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [busy, setBusy] = useState(false);
+  const [more, setMore] = useState<Readonly<{entry: ContentEntry; page: ContentProjection; anchor: HTMLElement}>>();
   const page = state.projection, entity = page?.entity;
   useFreshDocument(() => [dependsOn.libraries, ...titlesWithPersonalState(page?.scope.libraryId), dependsOn.event('stream.resync')], refresh => binding.service.revalidate(refresh), () => binding.service.getSnapshot().phase === 'ready');
   useEffect(() => {
-    setExpanded(false);setFinished(undefined);
+    setExpanded(false);setFinished(undefined);setMore(undefined);
     if (page?.scope.view === 'book') {let active = true;void binding.finished(page).then(value => {if (active) setFinished(value.watched);}, error => {if (active) binding.context.effects.reportError(error);});return () => {active = false;};}
   }, [binding, page]);
   if (!page || !entity) return state.phase === 'error' || state.phase === 'refresh-required'
@@ -48,6 +50,19 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
   const canPlay = book ? page.listening?.actions.includes('play') && !page.listening.resumeUnavailable && (!!resume || !!files?.entries.some(entry => entry.playback)) : !!primaryBook;
   const label = book ? resume ? progress?.chapter ? t('title.resumeChapter', {chapter: t('next.kit.chapter', {number: progress.chapter.index})}) : t('entry.resume') : t('entry.play') : t('next.browse.resume', {title: primaryBook?.title ?? ''});
   const cover = entity.posterUrl ?? rows?.entries[0]?.posterUrl;
+  const leafMore = (entry: ContentEntry, anchor: HTMLElement) => {
+    binding.current(page);
+    if (entry.kind !== 'audiobook_file' || entry.available === false || entry.missing || !state.appended.some(section => section.entries.includes(entry))) return;
+    setMore({entry, page, anchor});
+  };
+  const localOwner = binding.context.identity?.viewer.authority === 'local' && binding.context.identity.viewer.role === 'owner';
+  const effects = binding.context.effects;
+  const hasLeafActions = !!(effects.addToPlaylist || effects.addToCollection || localOwner && effects.deleteTitle);
+  const invoke = (effect: typeof effects.addToPlaylist) => run(() => {
+    binding.current(page);
+    if (!more || more.page !== page || !effect || more.entry.available === false || more.entry.missing || !binding.service.getSnapshot().appended.some(section => section.entries.includes(more.entry))) return;
+    return effect({libraryId: page.scope.libraryId, itemId: more.entry.id, kind: more.entry.kind, title: more.entry.title}, more.anchor);
+  });
   const open = (entry: ContentEntry) => run(() => binding.open(page, entry));
   return <article className={styles.page} data-audiobook-view={page.scope.view}>
     <AmbientArt className={styles.ambient} treatment="phone" source={binding.context.artwork.ambient(cover)}/>
@@ -76,10 +91,15 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     {book && entity.overview && <><p className={styles.about} data-expanded={expanded || undefined}>{entity.overview}</p>{!expanded && <button className={styles.readMore} onClick={() => setExpanded(true)}>{t('web.person.readMore')}</button>}</>}
     {state.error && <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/>}
     {rows && <section><div className={styles.sectionHead}><h2>{t(book ? 'next.browse.chapters' : 'library.tab.books')}</h2><span>{rows.totalCount}</span></div>
-      {rows.entries.map((entry, index) => book ? <Chapter key={entry.id} entry={entry} index={index} page={page} binding={binding}/>
+      {rows.entries.map((entry, index) => book ? <div key={entry.id}><Chapter entry={entry} index={index} page={page} binding={binding}/>{entry.kind === 'audiobook_file' && hasLeafActions && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => leafMore(entry, event.currentTarget))}/>}</div>
         : <div className={styles.bookRow} key={entry.id}><button onClick={() => open(entry)}><span className={styles.thumb}><Artwork source={binding.context.artwork.foreground(entry.posterUrl, 132, 1)} alt=""/></span><span><b>{entry.displayTitle ?? entry.title}</b>{entry.narrators?.length ? <small>{t('next.kit.readBy', {name: serviceI18n().list(entry.narrators)})}</small> : null}{entry.bookProgress?.remainingMs !== undefined && <small>{t('title.resumeRemaining', {remaining: duration(entry.bookProgress.remainingMs / 1000)!})}</small>}</span></button>{onMore && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => {binding.current(page);onMore(entry, event.currentTarget);})}/>}</div>)}
       {rows.nextCursor && <Button size="small" onClick={() => run(() => {binding.current(page);return binding.service.next(rows.id);})}>{t('title.nextPage')}</Button>}
     </section>}
+    {more?.page === page && <Menu open onOpenChange={value => {if (!value) setMore(undefined);}} title={more.entry.title} anchorRef={{current: more.anchor}}>
+      {effects.addToPlaylist && <MenuItem onSelect={() => invoke(effects.addToPlaylist)}>{t('entry.addToPlaylist')}</MenuItem>}
+      {effects.addToCollection && <MenuItem onSelect={() => invoke(effects.addToCollection)}>{t('entry.addToCollection')}</MenuItem>}
+      {localOwner && effects.deleteTitle && <MenuItem onSelect={() => invoke(effects.deleteTitle)}>{t('entry.delete')}</MenuItem>}
+    </Menu>}
     {!book && <section><div className={styles.sectionHead}><h2>{t('next.controls.details')}</h2></div><dl className={styles.details}>{entity.narrators?.length ? <><dt>{t('filter.field.narrator')}</dt><dd>{serviceI18n().list(entity.narrators)}</dd></> : null}{entity.duration !== undefined && <><dt>{t('next.kit.length')}</dt><dd>{duration(entity.duration)}</dd></>}</dl></section>}
   </article>;
 }
