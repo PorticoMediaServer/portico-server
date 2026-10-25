@@ -993,9 +993,33 @@ func New(d Dependencies) http.Handler {
 			failure(w, err)
 			return
 		}
-		summaries, err := d.Catalog.SummarizeLibraries(r.Context(), viewer, visible)
+		summaries := map[string]catalog.LibrarySummary{}
+		err = dbwork.WithReadSnapshot(r.Context(), d.DB, func(ctx context.Context) error {
+			for _, library := range visible {
+				current := viewer
+				if library.Kind == "book" || library.Kind == "comic" {
+					var err error
+					current, err = d.readingBrowseViewer(ctx, p, library.ID, viewer)
+					if err != nil {
+						return err
+					}
+				}
+				values, err := d.Catalog.SummarizeLibraries(ctx, current, []catalog.Library{library})
+				if err != nil {
+					return err
+				}
+				if summary, ok := values[library.ID]; ok {
+					summaries[library.ID] = summary
+				}
+			}
+			return nil
+		})
 		if err != nil {
-			failure(w, err)
+			if errors.Is(err, catalog.ErrReadingProjectionChanged) {
+				policyError(w, "revision_mismatch")
+			} else {
+				failure(w, err)
+			}
 			return
 		}
 		for i := range visible {
