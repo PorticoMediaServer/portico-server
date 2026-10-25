@@ -1155,7 +1155,9 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			}
 			out.Stages = append(out.Stages, HardwareStage{StageDeinterlace, execution})
 		}
-		if r.ToneMap {
+		if r.ToneMap || toneExecution == ExecutionHardware {
+			// A tone map or a Dolby Vision reshape that ran on the Vulkan
+			// device is a hardware stage, whatever the decoder and encoder do.
 			out.Stages = append(out.Stages, HardwareStage{StageToneMap, toneExecution})
 		}
 		if (r.MaxHeight > 0 || r.MaxWidth > 0) && len(hdr10PlusOptions) == 0 {
