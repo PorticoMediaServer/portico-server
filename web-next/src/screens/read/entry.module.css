@@ -1,4 +1,6 @@
-.loading { min-height: 100dvh; background: var(--color-ink); }
+.loading { position: relative; min-height: 100dvh; background: var(--color-ink); }
+/* A reader that is still opening, or that could not open, keeps the drawn way back. */
+.escape { position: absolute; top: 16px; left: 16px; z-index: 2; }
 .host { position: fixed; inset: 0; z-index: var(--layer-menu); background: var(--color-ink); }
 .host[hidden] { display: none; }
 
