@@ -17,16 +17,20 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const request = useRef<AbortController | undefined>(undefined);
-  const read = useCallback(async (path?: string, hidden = false) => {
+  const read = useCallback(async (path?: string, hidden = false, cursor?: string) => {
     request.current?.abort();
     const active = new AbortController();
     request.current = active;
     // A pending or failed destination must never leave the previous folder choosable.
-    setPage(undefined); setTyped(path ?? ''); setBusy(true); setFailed(false);
+    if (!cursor) { setPage(undefined); setTyped(path ?? ''); }
+    setBusy(true); setFailed(false);
     try {
-      const next = await browseServerFilesystem(api, {...(path ? {path} : {}), includeFiles: false, showHidden: hidden, limit: 200}, active.signal);
+      const next = await browseServerFilesystem(api, {...(path ? {path} : {}), includeFiles: false, showHidden: hidden, limit: 200, ...(cursor ? {cursor} : {})}, active.signal);
       if (active.signal.aborted || request.current !== active) return;
-      setPage(next); setTyped(next.path);
+      setPage(previous => cursor && previous?.path === next.path
+        ? {...next, entries: [...previous.entries, ...next.entries.filter(entry => !previous.entries.some(value => value.path === entry.path))]}
+        : next);
+      setTyped(next.path);
     } catch {
       if (!active.signal.aborted && request.current === active) setFailed(true);
     } finally {
@@ -66,6 +70,7 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
           <button type="button" className={styles.pickerRow} disabled={!entry.readable} onClick={() => go(entry.path)}>
             <span>{entry.name}</span>{!entry.readable && <small>{t('next.settings.folderUnreadable')}</small>}</button></li>)}</ul>
         : <p className={styles.pickerNote}>{t('next.settings.noFolders')}</p>)}
+      {page?.nextCursor && <Button disabled={busy} onClick={() => { void read(page.path, showHidden, page.nextCursor); }}>{t('next.settings.loadMore')}</Button>}
     </div>
   </Dialog>;
 }
