@@ -131,11 +131,16 @@ func (v sourcedPreferences) List(key string) []string {
 
 // SavedQualityPreference returns only an explicit saved choice, retaining its
 // provenance rather than mistaking the registry's Original for a stored value.
-func SavedQualityPreference(values DeliveryPreferenceReader, class NetworkClass) string {
+func SavedQualityPreference(values DeliveryPreferenceReader, class NetworkClass, transport ...string) string {
 	if values == nil {
 		return ""
 	}
 	key := "quality." + class.qualityLane()
+	// Cellular is independent of server reach. With no transport supplied,
+	// retain the existing home/remote API for non-transport callers.
+	if len(transport) > 0 && NormalizeTransportClass(transport[0]) == "cellular" {
+		key = "quality.mobile"
+	}
 	if source, ok := values.(interface{ PreferenceSource(string) string }); ok && source.PreferenceSource(key) == "default" {
 		return ""
 	}
@@ -193,7 +198,7 @@ func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, 
 		DirectPlay:     "prefer",
 		DirectStream:   "allow",
 		Transcode:      "allow",
-		QualityMode:    DefaultSavedQuality(SavedQualityPreference(values, class), transport, false),
+		QualityMode:    DefaultSavedQuality(SavedQualityPreference(values, class, transport), transport, false),
 		AllowHDR:       true,
 		PlanningPolicy: cfg.PlanningPolicy,
 		Clamps:         []DeliveryClamp{},

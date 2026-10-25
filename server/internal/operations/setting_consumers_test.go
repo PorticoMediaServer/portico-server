@@ -293,6 +293,7 @@ var preferenceRuntimeSources = map[string][2]string{
 	// invocation that feeds QualityMode, not the key prefix in a local assignment.
 	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
 	"quality.remote":                      {"server/internal/httpapi/playback_v1_routes.go", "function:SavedQualityPreference"},
+	"quality.mobile":                      {"server/internal/httpapi/playback_v1_routes.go", "function:SavedQualityPreference"},
 	"appearance.cardSizePercent":          {"web/src/shell/Shell.tsx", "appearance.cardSizePercent"},
 	"appearance.showBackdrops":            {"web/src/shell/Shell.tsx", "appearance.showBackdrops"},
 	"audiobooks.skipBackMs":               {"packages/client-core/src/audiobook-preferences.ts", "audiobooks.skipBackMs"},
