@@ -91,6 +91,10 @@ test('removal carries revision and cannot send after saving-subscriber cancellat
   await service.load(target);
   assert.equal(await service.removeUploadedArtwork('poster', candidate.id), true);
   assert.equal(calls[0], '/v1/metadata/item/movie/art/poster/upload/' + candidate.id + '?expectedRevision=' + 'b'.repeat(64));
+  const captured = service.getSnapshot().data!;
+  await service.load(target);
+  await assert.rejects(service.removeUploadedArtwork('poster', candidate.id, captured), /old document/);
+  assert.equal(calls.length, 1);
   const off = service.subscribe(() => {if (service.getSnapshot().phase === 'saving') service.cancel();});
   assert.equal(await service.removeUploadedArtwork('poster', candidate.id), false);
   assert.equal(calls.length, 1);
