@@ -151,15 +151,19 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 			if existingIntent != intent {
 				return AppReportReceipt{}, &apierror.Error{Code: "revision_mismatch"}
 			}
-			// An expired receipt is purged and refused, never replayed.
-			if _, e := tx.ExecContext(ctx, `DELETE FROM app_reports WHERE id=? AND expires_ms<=?`, existingID, now); e != nil {
+			// An expired receipt is purged and refused, never replayed. The terminal
+			// deletion is committed before the refusal, so it is not rolled back.
+			purged, e := tx.ExecContext(ctx, `DELETE FROM app_reports WHERE id=? AND expires_ms<=?`, existingID, now)
+			if e != nil {
 				return AppReportReceipt{}, e
 			}
-			receipt, e := loadAppReport(ctx, tx, existingID)
-			if e == sql.ErrNoRows {
+			if removed, _ := purged.RowsAffected(); removed > 0 {
+				if e = tx.Commit(); e != nil {
+					return AppReportReceipt{}, e
+				}
 				return AppReportReceipt{}, &apierror.Error{Code: "not_permitted"}
 			}
-			return receipt, e
+			return loadAppReport(ctx, tx, existingID)
 		}
 		if err != sql.ErrNoRows {
 			return AppReportReceipt{}, err
