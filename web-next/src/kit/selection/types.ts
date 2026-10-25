@@ -68,6 +68,8 @@ export type BulkEditorProps = SelectionSurface & Readonly<{
   values: Readonly<Record<string, BulkFieldValues>>;
   draft: BulkEditorDraft;
   onDraftChange: (draft: BulkEditorDraft) => void;
+  /** Optional caller-owned controls attached to an actual offered field. */
+  fieldAdditions?: Readonly<Record<string, ReactNode>>;
   onSave: (draft: BulkEditorDraft) => void;
   onRetry: (failedTargetIds: readonly string[], draft: BulkEditorDraft) => void;
   /** Include a title/art projection for every returned result id; never display internal ids. */

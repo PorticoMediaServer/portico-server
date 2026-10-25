@@ -1,4 +1,4 @@
-import {useEffect, useId, useRef, useState} from 'react';
+import {Fragment, useEffect, useId, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {RepairFieldSpec} from '@core/metadata-repair';
 import {Button, Select, Switch, TextField} from '../controls';
@@ -65,7 +65,7 @@ function BulkResults({result, targets, resultDescriptions, onRetry, draft, busy}
 
 /** Controlled metadata fields and receipts; the caller supplies the real schema and aggregate read. */
 export function BulkEditor(props: BulkEditorProps) {
-  const {selection, schema, singleItemFields, values, draft, onDraftChange, onSave, onRetry, targets, resultDescriptions, result, busy = false, error, ownerTag, description, ...surface} = props;
+  const {selection, schema, singleItemFields, values, draft, onDraftChange, fieldAdditions, onSave, onRetry, targets, resultDescriptions, result, busy = false, error, ownerTag, description, ...surface} = props;
   const phone = usePhone(), [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 844 : window.visualViewport?.height ?? window.innerHeight);
   const focus = useRef<HTMLElement | null>(null);
   useEffect(() => { const update = () => setViewport(window.visualViewport?.height ?? window.innerHeight); window.visualViewport?.addEventListener('resize', update); window.addEventListener('resize', update); return () => { window.visualViewport?.removeEventListener('resize', update); window.removeEventListener('resize', update); }; }, []);
@@ -84,7 +84,7 @@ export function BulkEditor(props: BulkEditorProps) {
   const body = <>
     {error && <div className={styles.resultBanner} role="alert"><Icon name="i-warn" size={20} /><p>{error}</p></div>}
     {result ? <BulkResults result={result} targets={targets} resultDescriptions={resultDescriptions} onRetry={onRetry} draft={draft} busy={busy} /> : <>
-      <div className={styles.fieldGrid} ref={element => { focus.current = element?.querySelector<HTMLElement>('input,button') ?? null; }}>{fields.map((spec, index) => <BulkField key={spec.field} spec={spec} aggregate={values[spec.field]!} count={selection.count} draft={draft} onChange={onDraftChange} busy={busy} phone={phone} showListHelp={!phone && selection.kind === 'movie'} initial={index === 0} />)}</div>
+      <div className={styles.fieldGrid} ref={element => { focus.current = element?.querySelector<HTMLElement>('input,button') ?? null; }}>{fields.map((spec, index) => <Fragment key={spec.field}><BulkField spec={spec} aggregate={values[spec.field]!} count={selection.count} draft={draft} onChange={onDraftChange} busy={busy} phone={phone} showListHelp={!phone && selection.kind === 'movie'} initial={index === 0} />{fieldAdditions?.[spec.field]}</Fragment>)}</div>
       <div className={styles.singleItemNote}><Icon name="i-info" size={18} /><div><b>{text(phone ? 'next.selection.oneAtATime' : selection.kind === 'episode' ? 'next.selection.episodeOneAtATime' : selection.kind === 'song' ? 'next.selection.trackOneAtATime' : 'next.selection.editedOneAtATime')}</b> {defaultI18n.list(singleItemFields.filter(field => !field.bulk).map(field => field.label.toLocaleLowerCase(defaultI18n.region.uiLocale)))}. {!phone && text(selection.kind === 'episode' ? 'next.selection.episodeOneHelp' : selection.kind === 'song' ? 'next.selection.trackOneHelp' : 'next.selection.titleOneHelp')}</div></div>
       {fields.length === 0 && <p className={styles.fieldHelp}>{text('next.selection.noSeasonFields')}</p>}
       <label className={styles.lockRow}><span>{text('next.selection.lock')}<small>{text('next.selection.lockHelp')}</small></span><Switch checked={draft.lockEdited} disabled={busy} onCheckedChange={value => onDraftChange({...draft, lockEdited: value})} aria-label={text('next.selection.lock')} /></label>
