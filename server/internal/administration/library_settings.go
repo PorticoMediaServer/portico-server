@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
+	"reflect"
 	"sort"
+	"strings"
 )
 
 // AnalysisOperation is one thing the server can do to a file after it has been
@@ -170,6 +173,336 @@ type LibrarySettings struct {
 	// (mediaanalysis.SegmentLibraryChoices): "server" follows the server's
 	// mode; off, standard or thorough decide for this library alone.
 	SegmentDetection string `json:"segmentDetection"`
+
+	// sent records which members the write body carried, so an explicit save
+	// writes only the controls the owner actually sent. A member a client does
+	// not send keeps the value the library has now instead of being replaced by
+	// a zero. It is unexported on purpose: it is not published and not stored,
+	// and it reaches a digest only through the canonical mask below. A caller
+	// that never decoded a body leaves it nil, which means the whole document
+	// was sent.
+	sent sentMembers
+}
+
+// sentMembers records which members a write body carried. A member that maps to
+// nil was applied whole: a scalar, a list, or an array of objects. A member that
+// maps to a set of its own is an object applied member by member, so an object
+// that names one control cannot reset the rest.
+type sentMembers map[string]sentMembers
+
+func (p sentMembers) has(name string) bool {
+	_, ok := p[name]
+	return ok
+}
+
+// object reports an object member the body carried, with the members it carried
+// inside it.
+func (p sentMembers) object(name string) (sentMembers, bool) {
+	nested, ok := p[name]
+	return nested, ok && nested != nil
+}
+
+// paths lists the controls this body carried as dotted paths, in the order the
+// caller sorts. An object with no members changes nothing, so it contributes
+// none.
+func (p sentMembers) paths(prefix string) []string {
+	out := []string{}
+	for name, nested := range p {
+		if nested == nil {
+			out = append(out, prefix+name)
+			continue
+		}
+		out = append(out, nested.paths(prefix+name+".")...)
+	}
+	return out
+}
+
+// publishedFields is the exact wire vocabulary of one document type: the member
+// names this build publishes, with the type each one carries.
+func publishedFields(typ reflect.Type) map[string]reflect.Type {
+	fields := make(map[string]reflect.Type, typ.NumField())
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		fields[name] = field.Type
+	}
+	return fields
+}
+
+// readSentMembers walks one decoded object against its published type and
+// records what it carried. The request decoder applies its exact-member rule by
+// walking these types, and stops at a type that decodes itself, so the rule is
+// repeated here: an unknown or case-mismatched member is refused at any depth,
+// and null is refused unless the member publishes a choice (only the premiere
+// toggle does, where null means the client sent no value rather than false).
+func readSentMembers(value any, typ reflect.Type) (sentMembers, error) {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	object, ok := value.(map[string]any)
+	if !ok || typ.Kind() != reflect.Struct {
+		return nil, nil
+	}
+	fields := publishedFields(typ)
+	sent := sentMembers{}
+	for name, child := range object {
+		field, ok := fields[name]
+		if !ok {
+			return nil, errors.New("unknown or case-mismatched library setting: " + name)
+		}
+		if child == nil {
+			if field.Kind() != reflect.Pointer {
+				return nil, errors.New("library setting cannot be null: " + name)
+			}
+			continue
+		}
+		target := field
+		for target.Kind() == reflect.Pointer {
+			target = target.Elem()
+		}
+		if target.Kind() == reflect.Struct {
+			nested, err := readSentMembers(child, target)
+			if err != nil {
+				return nil, err
+			}
+			sent[name] = nested
+			continue
+		}
+		if err := refuseUnknownElements(child, target); err != nil {
+			return nil, err
+		}
+		sent[name] = nil
+	}
+	return sent, nil
+}
+
+// refuseUnknownElements applies the same member rule to the objects inside a
+// list, which is written whole and therefore checked as it arrived.
+func refuseUnknownElements(value any, typ reflect.Type) error {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != reflect.Slice && typ.Kind() != reflect.Array {
+		return nil
+	}
+	element := typ.Elem()
+	for element.Kind() == reflect.Pointer {
+		element = element.Elem()
+	}
+	if element.Kind() != reflect.Struct {
+		return nil
+	}
+	array, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	for _, item := range array {
+		if _, err := readSentMembers(item, element); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// completeProviderEntries refuses a provider entry that omits a field this
+// server applies. The list is written whole, so an entry that named only its
+// provider would clear the locale the library has now instead of keeping it.
+func completeProviderEntries(value any) error {
+	array, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	for _, item := range array {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, name := range []string{"mediaKind", "provider", "language", "region"} {
+			if _, ok := entry[name]; !ok {
+				return errors.New("library provider entry must name " + name)
+			}
+		}
+	}
+	return nil
+}
+
+// wholeDocumentMask is every control this document publishes, sorted. A caller
+// that never decoded a body sends all of them.
+func wholeDocumentMask() []string {
+	out := []string{}
+	var walk func(typ reflect.Type, prefix string)
+	walk = func(typ reflect.Type, prefix string) {
+		for typ.Kind() == reflect.Pointer {
+			typ = typ.Elem()
+		}
+		if typ.Kind() != reflect.Struct {
+			return
+		}
+		for name, field := range publishedFields(typ) {
+			target := field
+			for target.Kind() == reflect.Pointer {
+				target = target.Elem()
+			}
+			if target.Kind() == reflect.Struct {
+				walk(target, prefix+name+".")
+				continue
+			}
+			out = append(out, prefix+name)
+		}
+	}
+	walk(reflect.TypeFor[LibrarySettings](), "")
+	sort.Strings(out)
+	return out
+}
+
+// storedLibrarySettings is the stored document without the write document's
+// member rule and mask, so a body an older build wrote still reads.
+type storedLibrarySettings LibrarySettings
+
+// UnmarshalJSON records which members arrived, so a save writes only the
+// controls the owner sent. The request decoder stops checking a type that
+// decodes itself, so this keeps its exact-member, null and nested-object rules
+// too, rather than bypassing them.
+func (v *LibrarySettings) UnmarshalJSON(raw []byte) error {
+	type document LibrarySettings
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	object, ok := decoded.(map[string]any)
+	if !ok {
+		return errors.New("library settings must be one object")
+	}
+	sent, err := readSentMembers(object, reflect.TypeFor[LibrarySettings]())
+	if err != nil {
+		return err
+	}
+	if providers, ok := object["providers"]; ok {
+		if err = completeProviderEntries(providers); err != nil {
+			return err
+		}
+	}
+	var out document
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	*v = LibrarySettings(out)
+	v.sent = sent
+	return nil
+}
+
+// mergeLibrarySettings fills every control the write body did not carry with the
+// value the library has now, at the granularity the owner edits: a member the
+// body omitted keeps its stored value, and so does a Continue Watching or
+// navigation member an object did not name. A missing control is not a request
+// to reset it: the page saves one control at a time and a client built against
+// an older document sends only the members it knows.
+func mergeLibrarySettings(request, current LibrarySettings) LibrarySettings {
+	sent := request.sent
+	if sent == nil {
+		return request
+	}
+	value := request
+	value.sent = nil
+	if !sent.has("scanDepth") {
+		value.ScanDepth = current.ScanDepth
+	}
+	if !sent.has("groupCollections") {
+		value.GroupCollections = current.GroupCollections
+	}
+	if !sent.has("localTags") {
+		value.LocalTags = current.LocalTags
+	}
+	if !sent.has("lyricsSource") {
+		value.LyricsSource = current.LyricsSource
+	}
+	if !sent.has("titleSource") {
+		value.TitleSource = current.TitleSource
+	}
+	if !sent.has("episodeNumbering") {
+		value.EpisodeNumbering = current.EpisodeNumbering
+	}
+	if !sent.has("findExtras") {
+		value.FindExtras = current.FindExtras
+	}
+	if !sent.has("sortIgnoreArticles") {
+		value.SortIgnoreArticles = current.SortIgnoreArticles
+	}
+	if !sent.has("refreshMode") {
+		value.RefreshMode = current.RefreshMode
+	}
+	if !sent.has("acoustidEnabled") {
+		value.AcoustIDEnabled = current.AcoustIDEnabled
+	}
+	if !sent.has("monitorChanges") {
+		value.MonitorChanges = current.MonitorChanges
+	}
+	if !sent.has("allowMediaDeletion") {
+		value.AllowMediaDeletion = current.AllowMediaDeletion
+	}
+	if !sent.has("segmentDetection") {
+		value.SegmentDetection = current.SegmentDetection
+	}
+	if !sent.has("analysis") {
+		value.Analysis = current.Analysis
+	}
+	if !sent.has("providers") {
+		value.Providers = current.Providers
+	}
+	if watched, ok := sent.object("continueWatching"); !ok {
+		value.ContinueWatching = current.ContinueWatching
+	} else {
+		// All five Continue Watching controls keep their stored values unless
+		// this body named them.
+		if !watched.has("weeks") {
+			value.ContinueWatching.Weeks = current.ContinueWatching.Weeks
+		}
+		if !watched.has("maximumItems") {
+			value.ContinueWatching.MaximumItems = current.ContinueWatching.MaximumItems
+		}
+		if !watched.has("videoPlayedThreshold") {
+			value.ContinueWatching.VideoPlayedThreshold = current.ContinueWatching.VideoPlayedThreshold
+		}
+		if !watched.has("videoCompletion") {
+			value.ContinueWatching.VideoCompletion = current.ContinueWatching.VideoCompletion
+		}
+		// A null premiere choice means the client did not send it, not false.
+		if !watched.has("includeSeasonPremieres") || value.ContinueWatching.IncludeSeasonPremieres == nil {
+			value.ContinueWatching.IncludeSeasonPremieres = current.ContinueWatching.IncludeSeasonPremieres
+		}
+	}
+	if navigation, ok := sent.object("navigation"); !ok {
+		value.Navigation = current.Navigation
+	} else {
+		if !navigation.has("trickplayIntervalMs") {
+			value.Navigation.TrickplayIntervalMs = current.Navigation.TrickplayIntervalMs
+		}
+		if !navigation.has("trickplayTileWidth") {
+			value.Navigation.TrickplayTileWidth = current.Navigation.TrickplayTileWidth
+		}
+		if !navigation.has("trickplayMaxTiles") {
+			value.Navigation.TrickplayMaxTiles = current.Navigation.TrickplayMaxTiles
+		}
+		if !navigation.has("chapterThumbnailMode") {
+			value.Navigation.ChapterThumbnailMode = current.Navigation.ChapterThumbnailMode
+		}
+		if !navigation.has("videoPreviewEnabled") {
+			value.Navigation.VideoPreviewEnabled = current.Navigation.VideoPreviewEnabled
+		}
+		if !navigation.has("videoPreviewMs") {
+			value.Navigation.VideoPreviewMs = current.Navigation.VideoPreviewMs
+		}
+	}
+	return value
 }
 
 // ChapterThumbnailModes is the published choice list for chapter images.
@@ -373,6 +706,17 @@ func libraryDefaults(context.Context, *sql.Tx) (LibrarySettings, error) {
 	return DefaultLibrarySettings(), nil
 }
 
+// readLibraryDocument reads the stored library document through the shared
+// document reader. The body is decoded as the stored shape, so the write
+// document's member rule and mask never apply to storage: a member an older
+// build wrote still reads, and a body this build cannot read still falls back to
+// the caller's defaults at the stored revision, exactly as every other
+// configuration document does.
+func readLibraryDocument(ctx context.Context, tx *sql.Tx, scope string, defaults LibrarySettings) (LibrarySettings, int64, error) {
+	value, revision, err := readDocument(ctx, tx, scope, storedLibrarySettings(defaults))
+	return LibrarySettings(value), revision, err
+}
+
 func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (LibraryDocument, error) {
 	out := LibraryDocument{LibraryID: id, Matrix: Matrix(), Modes: map[string][]string{"chapterThumbnailMode": ChapterThumbnailModes, "videoCompletion": {"earliest", "threshold", "credits"}, "segmentDetection": mediaanalysis.SegmentLibraryChoices}}
 	name, kind, managed, err := librarySettingsIdentity(ctx, tx, id)
@@ -435,7 +779,7 @@ func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (L
 	if err != nil {
 		return out, err
 	}
-	settings, revision, err := readDocument(ctx, tx, libraryScope(id), defaults)
+	settings, revision, err := readLibraryDocument(ctx, tx, libraryScope(id), defaults)
 	if err != nil {
 		return out, err
 	}
@@ -490,17 +834,40 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 	if !validOperationID(change.OperationID) {
 		return out, ErrInput
 	}
-	value := change.Settings
-	normalizeLibrarySettings(&value)
-	if err := validateLibrarySettings(&value); err != nil {
+	// The body as sent is the write's identity: the same identifier with the same
+	// body replays, and the same identifier with a different body is refused. The
+	// body alone is not enough. A save that omits allowMediaDeletion keeps the
+	// stored value while one that sends false changes it, and both decode to the
+	// same document, so the identity also carries the canonical mask of the
+	// controls the body named.
+	sent := change.Settings
+	normalizeLibrarySettings(&sent)
+	mask := wholeDocumentMask()
+	if sent.sent != nil {
+		mask = sent.sent.paths("")
+		sort.Strings(mask)
+	}
+	// A member the save omits is replaced with the library's stored value inside
+	// the transaction, which cannot be read here. Refuse the members that were
+	// sent now, against factory defaults for the rest, so a bad body never takes
+	// a write lock or leaves a receipt.
+	check := mergeLibrarySettings(change.Settings, DefaultLibrarySettings())
+	normalizeLibrarySettings(&check)
+	if err := validateLibrarySettings(&check); err != nil {
 		return out, err
 	}
 	scope := libraryScope(id)
 	digest := digestOf(struct {
 		Expected int64           `json:"expected"`
+		Present  []string        `json:"present"`
 		Settings LibrarySettings `json:"settings"`
-	}{change.ExpectedRevision, value})
+	}{change.ExpectedRevision, mask, sent})
 	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		// A receipt written before the mask carries a digest over the sent document
+		// alone. It cannot say which controls its first attempt named, so it must
+		// never answer this one: the masks differ in shape, so such a receipt can
+		// never match, and the receipt helper refuses the identifier rather than
+		// replaying it or writing again.
 		stored, replayed, err := receipt[LibraryDocument](ctx, tx, scope, change.OperationID, digest)
 		if err != nil {
 			return err
@@ -517,7 +884,7 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		if err != nil {
 			return err
 		}
-		current, revision, err := readDocument(ctx, tx, scope, defaults)
+		current, revision, err := readLibraryDocument(ctx, tx, scope, defaults)
 		if err != nil {
 			return err
 		}
@@ -527,6 +894,13 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		}
 		if effective != change.ExpectedRevision {
 			return ErrConflict
+		}
+		// Write the document the owner sent, with every control they did not send
+		// left exactly as this library has it now.
+		value := mergeLibrarySettings(change.Settings, current)
+		normalizeLibrarySettings(&value)
+		if err = validateLibrarySettings(&value); err != nil {
+			return err
 		}
 		if err = applyLibraryPolicy(ctx, tx, id, kind, value); err != nil {
 			return err
@@ -563,7 +937,7 @@ func deletionPolicy(ctx context.Context, tx *sql.Tx, library string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	settings, _, err := readDocument(ctx, tx, libraryScope(library), defaults)
+	settings, _, err := readLibraryDocument(ctx, tx, libraryScope(library), defaults)
 	if err != nil {
 		return false, err
 	}
@@ -638,7 +1012,7 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 			return err
 		}
 		for i := range out.Items {
-			settings, revision, err := readDocument(ctx, tx, libraryScope(out.Items[i].ID), defaults)
+			settings, revision, err := readLibraryDocument(ctx, tx, libraryScope(out.Items[i].ID), defaults)
 			if err != nil {
 				return err
 			}
