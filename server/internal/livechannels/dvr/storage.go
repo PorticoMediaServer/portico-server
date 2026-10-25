@@ -33,14 +33,16 @@ type StorageMeasurement struct {
 	MeasuredAt    string `json:"measuredAt"`
 }
 type StorageStatus struct {
-	Policy              StoragePolicy      `json:"policy"`
-	Measurement         StorageMeasurement `json:"measurement"`
-	PendingDeleteBytes  int64              `json:"pendingDeleteBytes"`
-	ForecastBytes       int64              `json:"forecastBytes"`
-	ForecastHours       int                `json:"forecastHours"`
-	ForecastDescription string             `json:"forecastDescription"`
-	CaptureAvailable    bool               `json:"captureAvailable"`
-	Warning             string             `json:"warning"`
+	Policy      StoragePolicy      `json:"policy"`
+	Measurement StorageMeasurement `json:"measurement"`
+	// PendingDeleteBytes is the recorded size of rows queued for deletion. It is
+	// a logical catalogue sum, not a measured physical reclaim count.
+	PendingDeleteBytes  int64  `json:"pendingDeleteBytes"`
+	ForecastBytes       int64  `json:"forecastBytes"`
+	ForecastHours       int    `json:"forecastHours"`
+	ForecastDescription string `json:"forecastDescription"`
+	CaptureAvailable    bool   `json:"captureAvailable"`
+	Warning             string `json:"warning"`
 }
 type Usage struct {
 	Bytes              int64 `json:"bytes"`
@@ -138,6 +140,10 @@ func (s *Store) StorageStatus(ctx context.Context, a livechannels.Authority) (St
 	}
 	now := s.now()
 	horizon := now.Add(forecastWindow)
+	// Conservative row estimate: every queued row is counted, and an established
+	// shared capture may appear on both its leader and follower. The state list
+	// also omits a cancelled/pending-delete leader the worker still keeps capturing
+	// for live followers, so this can overstate but is not a physical byte claim.
 	rows, e := tx.QueryContext(ctx, `SELECT source_id,SUM(max(0,(min(end_ms,?)-max(start_ms,?))/1000)) FROM dvr_recordings WHERE state IN('scheduled','conflicted','waiting-source','waiting-guide','preparing','recording') AND start_ms<? AND end_ms>? GROUP BY source_id`, horizon.UnixMilli(), now.UnixMilli(), horizon.UnixMilli(), now.UnixMilli())
 	if e != nil {
 		return out, e
@@ -174,6 +180,8 @@ func (s *Store) StorageStatus(ctx context.Context, a livechannels.Authority) (St
 }
 func usageTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner) (Usage, error) {
 	var u Usage
+	// Per-owner usage is a logical catalogue sum: one row's recorded size, even
+	// when the capture is hard-linked to another profile.
 	e := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(bytes),0),COALESCE(SUM(CASE WHEN state='pending-delete' THEN bytes ELSE 0 END),0),COUNT(*) FROM dvr_recordings WHERE owner_key=? AND state!='deleted'`, o.Key()).Scan(&u.Bytes, &u.PendingDeleteBytes, &u.Recordings)
 	return u, e
 }
