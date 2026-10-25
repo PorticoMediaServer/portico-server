@@ -16,6 +16,7 @@ export const defaultInviteChoices: InviteChoices = Object.freeze({role: 'member'
 /** What the server gets: admin is the existing wire word for Administrator, and
  * private notes stay a create-only field (never a card or a link). */
 export function inviteBody(choices: InviteChoices) {
+  if (!choices.allLibraries && !choices.libraryIds.length) throw new Error('invite_library_required');
   return Object.freeze({role: choices.role === 'admin' ? 'admin' : 'member',
     allowedLibraries: Object.freeze([...(choices.allLibraries ? [] : choices.libraryIds)]),
     expiresInHours: choices.expiresInHours,
@@ -63,6 +64,8 @@ export class InviteAttempts {
 
   /** Retired workspaces never send, reuse or publish anything again. */
   retire(): void { this.retired = true; this.running = false; this.attempt = undefined; }
+
+  get busy(): boolean { return this.running; }
 
   get pending(): InviteAttempt | undefined { return this.retired ? undefined : this.attempt; }
 }

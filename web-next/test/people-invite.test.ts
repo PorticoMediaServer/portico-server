@@ -78,3 +78,13 @@ test('the drawn form choices become one body with wire words, all-libraries and 
     {role: 'admin', allowedLibraries: ['films', 'shows'], expiresInHours: 72, notes: 'private'});
   assert.deepEqual(inviteBody({...defaultInviteChoices, porticoUsername: ' justin '}), {role: 'member', allowedLibraries: [], expiresInHours: 168, porticoUsername: 'justin'});
 });
+
+
+test('a non-All empty subset refuses before allocating an operation', () => {
+  let ids = 0;
+  const attempts = new InviteAttempts(() => String(++ids));
+  assert.throws(() => attempts.begin(inviteBody({...defaultInviteChoices, allLibraries: false})), /invite_library_required/);
+  assert.equal(ids, 0);
+  assert.equal(attempts.pending, undefined);
+  assert.deepEqual(inviteBody(defaultInviteChoices).allowedLibraries, []);
+});

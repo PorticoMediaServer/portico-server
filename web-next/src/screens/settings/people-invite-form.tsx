@@ -1,4 +1,3 @@
-import {useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button, RichSelect, TextField} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
@@ -19,7 +18,6 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
   busy: boolean; error: unknown; retained?: InviteAttempt;
   onCreate: () => void; onRetry: () => void;
 }>) {
-  const [allChecked, setAllChecked] = useState(choices.allLibraries);
   const locked = !!retained && !busy;
   const shown: InviteChoices = retained
     ? {role: retained.body.role === 'admin' ? 'admin' : 'member', allLibraries: retained.body.allowedLibraries.length === 0,
@@ -27,12 +25,13 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
        ...(retained.body.notes === undefined ? {} : {notes: retained.body.notes}),
        ...(retained.body.porticoUsername === undefined ? {} : {porticoUsername: retained.body.porticoUsername})}
     : choices;
+  const allChecked = shown.allLibraries;
   const set = (patch: Partial<InviteChoices>) => onChoices({...choices, ...patch});
   return <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t('next.settings.people.inviteTitle')}
     footer={<><Button onClick={() => onOpenChange(false)} disabled={busy}>{t(retained ? 'next.settings.people.dismiss' : 'next.settings.cancel')}</Button>
       {retained
-        ? <Button variant="primary" loading={busy} onClick={onRetry}>{t('next.settings.people.retryCreate')}</Button>
-        : <Button variant="primary" loading={busy} onClick={onCreate}>{t('next.settings.people.create')}</Button>}</>}>
+        ? <Button variant="primary" loading={busy} disabled={busy} onClick={onRetry}>{t('next.settings.people.retryCreate')}</Button>
+        : <Button variant="primary" loading={busy} disabled={busy || (!shown.allLibraries && !shown.libraryIds.length)} onClick={onCreate}>{t('next.settings.people.create')}</Button>}</>}>
     <div className={styles.form}>
       {retained && <p role="alert">{t('next.settings.people.unsureCreate')}</p>}
       {!retained && error ? <p role="alert">{t('next.settings.people.createFailed')}</p> : null}
@@ -47,7 +46,6 @@ export function PeopleInviteForm({open, onOpenChange, choices, onChoices, librar
         <legend>{t('next.settings.people.libraries')}</legend>
         <label className={styles.choice}>
           <input type="checkbox" checked={allChecked} onChange={event => {
-            setAllChecked(event.currentTarget.checked);
             set({allLibraries: event.currentTarget.checked, ...(event.currentTarget.checked ? {libraryIds: []} : {})});
           }} />
           <span>{t('next.settings.people.allLibraries')}</span>

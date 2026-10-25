@@ -52,11 +52,15 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
   const [formBusy, setFormBusy] = useState(false), [formError, setFormError] = useState<unknown>(), [retained, setRetained] = useState<InviteAttempt>();
   const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null), alive = useRef(true);
+  const formSession = useRef(0), formActive = useRef(false);
+  const formToken = formSession.current;
   const attempts = useRef<InviteAttempts | undefined>(undefined);
   if (!attempts.current) attempts.current = new InviteAttempts(randomId);
   useEffect(() => () => { alive.current = false; attempts.current?.retire(); inviteLife.current.abort(); }, []);
   /** Opening the form writes nothing; Create is the explicit command. */
   const openInvite = (opener: HTMLElement) => {
+    if (!alive.current || !bindings.authority.isCurrent() || attempts.current?.busy) return;
+    ++formSession.current; formActive.current = true;
     inviteOpener.current = opener;
     setFormError(undefined);
     setFormOpen(true);
@@ -67,22 +71,25 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
     ...(attempt.body.porticoUsername === undefined ? {} : {porticoUsername: attempt.body.porticoUsername})});
   const submitInvite = async (nextChoices: InviteChoices) => {
     const invitations = bindings.invitations, owner = attempts.current!;
-    if (!invitations || !bindings.authority.isCurrent()) return;
+    const currentForm = () => alive.current && bindings.authority.isCurrent() && formActive.current && formSession.current === formToken;
+    if (!invitations || !currentForm()) return;
     let attempt: InviteAttempt | undefined;
-    try { attempt = owner.begin(inviteBody(nextChoices)); } catch (error) { bindings.reportError(error); return; }
+    try { attempt = owner.begin(inviteBody(nextChoices)); } catch (error) { if (currentForm()) setFormError(error); return; }
     if (!attempt) return;
     setFormBusy(true); setFormError(undefined);
     try {
       const created = await invitations.create({...attempt.body, allowedLibraries: [...attempt.body.allowedLibraries]},
-        {signal: inviteLife.current.signal, isCurrent: () => alive.current && bindings.authority.isCurrent()});
-      owner.created();
-      if (!alive.current || !bindings.authority.isCurrent()) return;
+        {signal: inviteLife.current.signal, isCurrent: currentForm});
+      if (!currentForm()) return;
       if (!invitationState(created.state)) throw new Error('invitation_state_unknown');
+      owner.created(); formActive.current = false;
       setRetained(undefined); setFormOpen(false); setIssued(created); setInviteOpen(true);
     } catch (error) {
+      if (!currentForm()) return;
+      const status = (error as {status?: number})?.status;
+      if (status === 401 || status === 403) { owner.retire(); formActive.current = false; inviteLife.current.abort(); failure(error); return; }
       owner.failed(error); setFormError(error); setRetained(owner.pending);
-      if (alive.current && bindings.authority.isCurrent()) bindings.reportError(error);
-    } finally { setFormBusy(false); }
+    } finally { if (currentForm()) setFormBusy(false); }
   };
   const live = useSyncExternalStore(bindings.authority.subscribe, bindings.authority.isCurrent, () => false);
   const [denied, setDenied] = useState(false);
@@ -232,7 +239,7 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
       {command.action === 'access' ? <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.awayAccess', 'bulk.maxRating'].includes(row.id) || row.id === 'bulk.maxStreams' && !!bindings.streamLimits, value: row.id === 'bulk.maxStreams' ? bindings.streamLimits?.readBulk(bulk) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none'})}
         change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
     </Dialog>}
-    <PeopleInviteForm open={formOpen} onOpenChange={open => { setFormOpen(open); if (!open) setFormError(undefined); }}
+    <PeopleInviteForm open={formOpen} onOpenChange={open => { if (formSession.current !== formToken || !formActive.current || attempts.current?.busy) return; if (!open) { formActive.current = false; ++formSession.current; setFormError(undefined); } setFormOpen(open); }}
       choices={choices} onChoices={setChoices} libraries={bindings.libraries} signIn={bindings.signIn}
       busy={formBusy} error={formError} retained={retained}
       onCreate={() => { void submitInvite(choices); }}
