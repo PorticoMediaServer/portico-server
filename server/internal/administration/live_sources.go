@@ -363,10 +363,9 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 type ChannelMapEntry struct {
 	ChannelID string `json:"channelId"`
 	Name      string `json:"name"`
-	// SourceNumber is the accepted generation's number. Number is what the
-	// server serves: that accepted number unless an owner override exists.
-	// Numbering-mode changes are applied by the next import, so this read must
-	// not preview a value the channel directory does not serve yet.
+	// SourceNumber is the provider's number captured before configuration, empty
+	// when the source did not publish one. Number is what the server serves: the
+	// accepted generation's number unless an owner override exists.
 	SourceNumber   string `json:"sourceNumber"`
 	Number         string `json:"number"`
 	Group          string `json:"group"`
@@ -397,7 +396,7 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 	if out.Generation == "" {
 		return out, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT v.channel_id,v.name,v.number,v.group_name,v.position,COALESCE(n.number,''),COALESCE(n.guide_channel_id,''),COALESCE(n.hidden,0) FROM live_channel_versions v LEFT JOIN admin_channel_numbers n ON n.source_id=? AND n.channel_id=v.channel_id WHERE v.generation_id=? AND v.position>? ORDER BY v.position LIMIT ?`, id, out.Generation, after, size+1)
+	rows, err := tx.QueryContext(ctx, `SELECT v.channel_id,v.name,COALESCE(v.source_number,''),v.number,v.group_name,v.position,COALESCE(n.number,''),COALESCE(n.guide_channel_id,''),COALESCE(n.hidden,0) FROM live_channel_versions v LEFT JOIN admin_channel_numbers n ON n.source_id=? AND n.channel_id=v.channel_id WHERE v.generation_id=? AND v.position>? ORDER BY v.position LIMIT ?`, id, out.Generation, after, size+1)
 	if err != nil {
 		return out, err
 	}
@@ -406,11 +405,10 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 		var e ChannelMapEntry
 		var override string
 		var hidden int
-		if err = rows.Scan(&e.ChannelID, &e.Name, &e.SourceNumber, &e.Group, &e.Position, &override, &e.GuideChannelID, &hidden); err != nil {
+		if err = rows.Scan(&e.ChannelID, &e.Name, &e.SourceNumber, &e.Number, &e.Group, &e.Position, &override, &e.GuideChannelID, &hidden); err != nil {
 			return out, err
 		}
 		e.Hidden = hidden != 0
-		e.Number = e.SourceNumber
 		if override != "" {
 			e.Number, e.Overridden = override, true
 		}

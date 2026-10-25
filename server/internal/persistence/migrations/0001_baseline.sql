@@ -3272,7 +3272,7 @@ CREATE TABLE mount_revision(id INTEGER PRIMARY KEY,revision INTEGER NOT NULL) ST
 CREATE TABLE live_source_identities(id TEXT PRIMARY KEY) STRICT;
 CREATE TABLE live_sources(id TEXT PRIMARY KEY REFERENCES live_source_identities(id),name TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),state TEXT NOT NULL CHECK(state IN ('active','disabled')),tuner_count INTEGER NOT NULL CHECK(tuner_count>=0),active_generation TEXT NOT NULL,published_at TEXT NOT NULL) STRICT;
 CREATE TABLE live_generations(id TEXT PRIMARY KEY,source_id TEXT NOT NULL REFERENCES live_source_identities(id),name TEXT NOT NULL,tuner_count INTEGER NOT NULL,channel_count INTEGER NOT NULL,programme_count INTEGER NOT NULL,created_at TEXT NOT NULL) STRICT;
-CREATE TABLE live_channel_versions(generation_id TEXT NOT NULL REFERENCES live_generations(id),channel_id TEXT NOT NULL,provider_key TEXT NOT NULL,name TEXT NOT NULL,number TEXT NOT NULL,group_name TEXT NOT NULL,position INTEGER NOT NULL,locator_sealed BLOB NOT NULL,available_start TEXT NOT NULL,available_end TEXT NOT NULL,PRIMARY KEY(generation_id,channel_id),UNIQUE(generation_id,position)) STRICT;
+CREATE TABLE live_channel_versions(generation_id TEXT NOT NULL REFERENCES live_generations(id),channel_id TEXT NOT NULL,provider_key TEXT NOT NULL,name TEXT NOT NULL,number TEXT NOT NULL,source_number TEXT,group_name TEXT NOT NULL,position INTEGER NOT NULL,locator_sealed BLOB NOT NULL,available_start TEXT NOT NULL,available_end TEXT NOT NULL,PRIMARY KEY(generation_id,channel_id),UNIQUE(generation_id,position)) STRICT;
 CREATE TABLE live_channel_logos(
  generation_id TEXT NOT NULL,
  channel_id TEXT NOT NULL,

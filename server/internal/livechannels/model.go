@@ -210,7 +210,7 @@ type Guide struct {
 // predicate denies every channel. Generated media needs a stronger per-item adapter.
 type Authority func(context.Context, *sql.Tx, bool) (fence string, allowed func(sourceID, channelID string) bool, err error)
 
-type parsedChannel struct{ key, guideKey, name, number, group, country, locator, logo, catchup, catchupSource, catchupDays string }
+type parsedChannel struct{ key, guideKey, name, number, sourceNumber, group, country, locator, logo, catchup, catchupSource, catchupDays string }
 type parsedProgramme struct {
 	key, channel, title, lineage              string
 	series, episode, newEvidence, description string
