@@ -63,6 +63,17 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot): Set
   const hardware = snapshot.capacity.hardware;
   const devices = hardware.devices.length > 0;
   switch (rowId) {
+    case 'streaming.transcodeStatus': {
+      // The drawn status line: where conversions are written and whether this
+      // server can write there, from the same capacity read the rest of the page
+      // uses. A directory with no measured free space says the path only.
+      const directory = snapshot.capacity.temporaryDirectory;
+      if (!directory.path) return {present: false};
+      if (!directory.ready) return {present: true, displayValue: t('next.settings.streaming.spaceNotWritable', {path: directory.path}), statusTone: 'warn'};
+      return {present: true, statusTone: 'ok', displayValue: directory.freeBytes === null
+        ? t('next.settings.streaming.space', {path: directory.path})
+        : t('next.settings.streaming.spaceFree', {path: directory.path, free: defaultI18n.bytes(directory.freeBytes)})};
+    }
     case 'streaming.hwError': {
       const text = faultText(snapshot);
       return text ? {present: true, displayValue: text, statusTone: 'warn'} : {present: false};
@@ -93,7 +104,7 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot): Set
 
 /** The rows this page answers itself, so eligibility asks the same facts the
  * row does instead of looking for a settings binding these rows do not have. */
-export const hardwareRowIds: readonly string[] = ['streaming.hwError', 'streaming.hwDevices', 'streaming.hwLimit', 'streaming.hwFormats', 'streaming.hwToneMapping', 'streaming.hwTest'];
+export const hardwareRowIds: readonly string[] = ['streaming.transcodeStatus', 'streaming.hwError', 'streaming.hwDevices', 'streaming.hwLimit', 'streaming.hwFormats', 'streaming.hwToneMapping', 'streaming.hwTest'];
 
 export function hardwareEligible(rowId: string, snapshot: HardwareSnapshot): boolean {
   return hardwareRowIds.includes(rowId) && hardwareRowState(rowId, snapshot) !== undefined;
