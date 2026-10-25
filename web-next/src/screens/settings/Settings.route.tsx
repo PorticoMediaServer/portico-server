@@ -191,6 +191,9 @@ export function SettingsEntry() {
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
         invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
         devicesApi: context.api,
+        signOutPerson: async account => {
+          await context.api.request(encodedRoutePath('post_direct_member_devices_sign_out', {id: encodeURIComponent(account)}), 'POST', {}, undefined);
+        },
         signOutDevice: async (account, deviceId) => {
           // The existing per-device revocation path owns what signing out means;
           // this only names the device and waits for its answer.

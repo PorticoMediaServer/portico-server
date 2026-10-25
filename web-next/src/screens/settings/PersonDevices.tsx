@@ -75,3 +75,28 @@ export function PersonDevices({account, api, isCurrent, onSignOut}: {account: st
     {state.result && <p role="status">{state.result}</p>}
   </div>;
 }
+
+/** The drawn "Sign out everywhere" action for one person: every device this
+ * person signed in on, through the same revocation path as one device, behind a
+ * confirmation that names the person it applies to. */
+export function PersonSignOutAll({account, isCurrent, onSignOut}: {account: string; isCurrent: () => boolean; onSignOut?: (account: string) => Promise<void>}) {
+  const [busy, setBusy] = useState(false), [confirming, setConfirming] = useState(false), [result, setResult] = useState<string>();
+  const alive = useRef(true);
+  useEffect(() => () => {alive.current = false;}, []);
+  if (!onSignOut || !account) return null;
+  const current = () => alive.current && isCurrent();
+  return <div>
+    {confirming ? <>
+      <p>{t('next.people.device.confirmSignOutAll')}</p>
+      <SettingsAction appearance="danger" loading={busy} onClick={() => {
+        if (!current() || busy) return;
+        setBusy(true); setResult(undefined);
+        void onSignOut(account).then(() => {if (current()) {setConfirming(false); setResult(t('next.people.device.signedOutAll'));}})
+          .catch(() => {if (current()) setResult(t('next.people.device.signOutAllFailed'));})
+          .finally(() => {if (current()) setBusy(false);});
+      }}>{t('next.people.device.signOutAll')}</SettingsAction>
+      <SettingsAction onClick={() => setConfirming(false)}>{t('action.cancel')}</SettingsAction>
+    </> : <SettingsAction appearance="danger" onClick={() => setConfirming(true)}>{t('next.people.device.signOutAll')}</SettingsAction>}
+    {result && <p role="status">{result}</p>}
+  </div>;
+}

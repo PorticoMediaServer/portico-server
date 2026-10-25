@@ -48,6 +48,8 @@ export type PeopleBindings = Readonly<{
   devicesApi?: Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>;
   /** Sign one device out through the existing per-device revocation route. */
   signOutDevice?: (account: string, deviceId: string) => Promise<void>;
+  /** Sign one person out of every device, through the same revocation path. */
+  signOutPerson?: (account: string) => Promise<void>;
   streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; signIn?: 'local' | 'portico'; openHome: () => void; reportError: (error: unknown) => void;
 }>;
 
@@ -221,6 +223,7 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const filtered = !!query.search.trim() || Object.values(query.filters).some(value => value !== 'all');
   const special = (row: SettingsRow) => {
     if (!person) return null;
+    if (row.id === 'people.signOutPerson' && personId) return <PersonSignOutAll account={personId} isCurrent={bindings.authority.isCurrent} onSignOut={bindings.signOutPerson} />;
     if (row.id === 'people.devices' && bindings.devicesApi && personId) return <PersonDevices account={personId} api={bindings.devicesApi}
       isCurrent={bindings.authority.isCurrent} onSignOut={bindings.signOutDevice ? device => bindings.signOutDevice!(personId, device.id) : undefined} />;
     if (row.id === 'people.libraryList') return <SettingsSelectionList label={label(row.id)} minimum={1} items={bindings.libraries.map(library => ({id: library.id, label: library.name}))} selected={person.allowedLibraries} disabled={!canEdit || saving} onChange={ids => {void run(() => libraryAccess(ids));}} />;
