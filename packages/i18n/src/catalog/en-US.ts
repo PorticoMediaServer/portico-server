@@ -1972,6 +1972,7 @@ export const enUS = {
   'player.opt.origin': '{origin, select, embedded {In the file} sidecar {Beside the file} provider {Downloaded} other {Uploaded}}',
   'player.opt.forced': 'Forced',
   'player.opt.add': 'Add',
+  'player.opt.notAdded': 'Not added yet',
   'player.opt.noSubtitles': 'This title has no subtitles yet.',
   'player.opt.lookingForSubtitles': 'Looking for subtitles…',
   'player.opt.noSubtitlesFound': 'No subtitles found in this language.',
