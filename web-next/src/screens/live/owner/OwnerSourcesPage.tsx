@@ -21,6 +21,8 @@ import {ChannelMapController} from '../../settings/server-livetv/channel-map-con
 import {SourceSettingsDialog} from '../../settings/server-livetv/SourceSettingsDialog';
 import {ChannelMapDialog} from '../../settings/server-livetv/ChannelMapDialog';
 import {terminal} from './lifetime';
+import {RecordingRulesController} from '../../settings/server-livetv/recording/rules-controller';
+import {RecordingRules} from '../../settings/server-livetv/recording/RecordingRules';
 import {RecordingPermissionsController} from '../../settings/server-livetv/recording/permissions-controller';
 import {RecordingPermissions} from '../../settings/server-livetv/recording/RecordingPermissions';
 import {TunerController} from '../../settings/server-livetv/recording/tuner-controller';
@@ -50,10 +52,11 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
   const defaults = liveDefaultsForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
   const recording = recordingForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
   const permissions = new RecordingPermissionsController(api, options.serverId, current, reportError);
+  const rules = new RecordingRulesController(api, options.serverId, permissions, current, reportError);
   const tuners = new TunerController(api, options.serverId, current, reportError);
   const storage = new RecordingStorageController(api, options.serverId, current, reportError);
-  children.add(sources);children.add(defaults);children.add(recording);children.add(storage);children.add(tuners);children.add(permissions);
-  return {sources, defaults, recording, storage, tuners, permissions, api, current, reportError, serverId: options.serverId,
+  children.add(sources);children.add(defaults);children.add(recording);children.add(storage);children.add(tuners);children.add(permissions);children.add(rules);
+  return {sources, defaults, recording, storage, tuners, permissions, rules, api, current, reportError, serverId: options.serverId,
     track<T extends {dispose: () => void}>(child: T): T {if (!current()) child.dispose();else children.add(child);return child;},
     release(child: {dispose: () => void}) {children.delete(child);child.dispose();},
     subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}, dispose};
@@ -79,7 +82,7 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
     <Tabs value={tab} onValueChange={value => {if (source.current()) {setModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
       {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')},
     ]}/>
-    {tab === 'recording' ? <><Tuners controller={source.tuners}/><RecordingPermissions controller={source.permissions}/><RecordingDefaults form={source.recording} current={source.current} reportError={source.reportError}/><RecordingStorage controller={source.storage}/></> : <>
+    {tab === 'recording' ? <><Tuners controller={source.tuners}/><RecordingPermissions controller={source.permissions}/><RecordingRules controller={source.rules} permissions={source.permissions} sources={snapshot.document?.sources ?? []}/><RecordingDefaults form={source.recording} current={source.current} reportError={source.reportError}/><RecordingStorage controller={source.storage}/></> : <>
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
     <SourceList snapshot={snapshot} refresh={() => void source.sources.load()} add={kind => {
       if (!source.current()) return;
