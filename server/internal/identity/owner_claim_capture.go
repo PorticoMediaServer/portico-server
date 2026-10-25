@@ -95,6 +95,19 @@ func (s *Service) CaptureOwnerClaimTx(ctx context.Context, tx *sql.Tx, expected 
 	if err != nil {
 		return err
 	}
+	// The signed start's mode must match the server's own confirmed move; a legacy
+	// v1 start has no mode and is therefore an ordinary switch only.
+	var startOver bool
+	if err = tx.QueryRowContext(ctx, `SELECT start_over FROM identity_moves WHERE id=?`, move).Scan(&startOver); err != nil {
+		return ErrUnauthorized
+	}
+	want := "switch"
+	if startOver {
+		want = "start-over"
+	}
+	if start.TransitionMode != want && !(start.TransitionMode == "" && !startOver) {
+		return ErrUnauthorized
+	}
 	caller := directCaller{account: DirectAccount{ID: expected.AccountID, PrimaryProfileID: expected.ProfileID, Revision: memberRevision, Role: TierOwner}, epoch: expected.Epoch, familyID: family.ID}
 	if _, err = s.confirmMoveTx(ctx, tx, caller, MoveConfirmRequest{MoveID: move, ExpectedRevision: revision, Confirmation: confirmation}, SignInPortico); err != nil {
 		return err
