@@ -8790,7 +8790,7 @@ CREATE TRIGGER credit_source_rows_no_replace BEFORE INSERT ON credit_source_rows
 
 -- Owner-requested recording root; effective binding belongs to startup only.
 CREATE TABLE recording_root_request(
- singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>0),
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
  path TEXT NOT NULL DEFAULT '',folder_identity TEXT NOT NULL DEFAULT '',requested_by TEXT NOT NULL DEFAULT '',
  CHECK((path='' AND folder_identity='' AND requested_by='') OR (path<>'' AND folder_identity<>'' AND requested_by<>''))) STRICT;
 INSERT INTO recording_root_request(singleton,revision) VALUES(1,1);

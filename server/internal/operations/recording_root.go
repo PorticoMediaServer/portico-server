@@ -86,6 +86,7 @@ func (s *Store) ApplyRecordingRoot(ctx context.Context, p identity.Principal, au
 			out = s.recordingRootStatus(saved)
 			return nil
 		}
+		if change.ExpectedRevision < 1 || change.ExpectedRevision > 9007199254740991 { return invalidFields("expectedRevision") }
 		if change.Path == "" || !validTemporaryDirectory(change.Path) { return invalidFields("path") }
 		current, e := readRecordingRoot(tx)
 		if e != nil { return e }
@@ -102,6 +103,7 @@ func (s *Store) ApplyRecordingRoot(ctx context.Context, p identity.Principal, au
 		if folderIdentity == "" { return errors.New("recording root identity unavailable") }
 		saved := current
 		if current.Path != change.Path || current.FolderIdentity != folderIdentity || current.RequestedBy != ViewerKey(p) {
+			if current.Revision >= 9007199254740991 { return ErrCapacity }
 			saved = RecordingRootRequest{Revision: current.Revision + 1, Path: change.Path, FolderIdentity: folderIdentity, RequestedBy: ViewerKey(p)}
 			if _, e = tx.Exec(`UPDATE recording_root_request SET revision=?,path=?,folder_identity=?,requested_by=? WHERE singleton=1 AND revision=?`, saved.Revision, saved.Path, saved.FolderIdentity, saved.RequestedBy, current.Revision); e != nil { return e }
 		}
