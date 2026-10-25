@@ -63,11 +63,6 @@ func Inspect(f *Source) (Publication, error) {
 	return out, nil
 }
 
-// primaryPublicationSQL is the one availability-first primary-version rule
-// the List and Discover producers share.
-const primaryPublicationSQL = `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=e.id
- ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=candidate.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND eligible.available=1) DESC,candidate.asset_id LIMIT 1)`
-
 type LibraryRow struct {
 	ID, LibraryID, Title, Format, SourceID string
 	IssueDate                              string
@@ -125,11 +120,11 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
 	query := `SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
- JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
+ JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + s.primaryPublicationSQL() + `
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
  WHERE e.retired=0 AND cl.retired=0
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf')))
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `)) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf')))
  AND e.id>? AND (?='' OR cl.library_id=?) AND (` + filter + `) ORDER BY e.id LIMIT ?`
 	values := append([]any{after, library, library}, args...)
 	values = append(values, limit+1)
@@ -186,7 +181,7 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
 	if err = s.Authorize(ctx, tx, p, library, item); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) ORDER BY a.id LIMIT 129`, item)
+	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) AND p.format IN(`+s.sourceFormatsSQL()+`) ORDER BY a.id LIMIT 129`, item)
 	if err != nil {
 		return nil, err
 	}

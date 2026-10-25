@@ -68,6 +68,9 @@ func NewMobiConverter(bundle MobiBundle, supervisor *storage.Supervisor) (*MobiC
 			return nil, ErrUnavailable
 		}
 	}
+	if err := validateMobiBundle(bundle); err != nil {
+		return nil, err
+	}
 	return &MobiConverter{bundle: bundle, supervisor: supervisor, slot: make(chan struct{}, 1), retained: make(chan struct{}, 2)}, nil
 }
 
