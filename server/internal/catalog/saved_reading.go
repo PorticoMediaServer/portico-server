@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"portico.local/server/internal/dbwork"
+
 	"portico.local/server/internal/compactcatalog"
 )
 
@@ -97,6 +99,7 @@ func (s *Service) savedEntries(profile string, ids []string, scope savedReadingS
 	}
 	reading := map[string][]browseRow{}
 	var ordinary []string
+	var readingIDs []int64
 	for rows.Next() {
 		var row browseRow
 		var library string
@@ -110,12 +113,17 @@ func (s *Service) savedEntries(profile string, ids []string, scope savedReadingS
 				return nil, ErrReadingProjectionChanged
 			}
 			reading[library] = append(reading[library], row)
+			readingIDs = append(readingIDs, row.entity)
 		} else {
 			ordinary = append(ordinary, row.id)
 		}
 	}
 	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	states, err := readPersonalBatch(s.Context(), dbwork.Snapshot(s.Context()), profile, readingIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +140,13 @@ func (s *Service) savedEntries(profile string, ids []string, scope savedReadingS
 		if err != nil {
 			return nil, err
 		}
-		for _, entry := range projected {
+		for index, entry := range projected {
+			state, ok := states[selected[index].entity]
+			if !ok {
+				return nil, ErrStaleContinuation
+			}
+			listed, favorite, read := state.Watchlisted, state.Favorite, state.Watched
+			entry.Watchlisted, entry.Favorite, entry.Watched = &listed, &favorite, &read
 			byID[entry.ID] = entry
 		}
 	}

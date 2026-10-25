@@ -2,9 +2,7 @@ package reading
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +16,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/readingidentity"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/sourceaccess"
 	"portico.local/server/internal/storage"
@@ -105,9 +104,7 @@ func selectionColumns(v *Selection) []any {
 }
 
 func (v Selection) fence() string {
-	b, _ := json.Marshal([]any{v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence})
-	h := sha256.Sum256(append([]byte("portico.reading.observation.v1\x00"), b...))
-	return hex.EncodeToString(h[:])
+	return readingidentity.Revision(v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence)
 }
 func (s *Service) Resolve(ctx context.Context, p identity.Principal, item, sourceID string) (Selection, error) {
 	if s == nil || s.DB == nil || s.Storage == nil {
