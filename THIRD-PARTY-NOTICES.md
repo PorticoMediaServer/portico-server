@@ -21,6 +21,7 @@ module. Go itself and copied Go image-scaling code use BSD-3-Clause terms.
 | modernc.org/libc | v1.75.6 | BSD-3-Clause; generated/ported code retains its source notices |
 | modernc.org/mathutil | v1.7.1 | BSD-3-Clause |
 | modernc.org/memory | v1.12.1 | BSD-3-Clause |
+| rsc.io/pdf | v0.1.1 | BSD-3-Clause (Go Authors) |
 | github.com/dustin/go-humanize | v1.0.1 | MIT |
 | github.com/google/uuid | v1.6.0 | BSD-3-Clause |
 | github.com/mattn/go-isatty | v0.0.24 | MIT |

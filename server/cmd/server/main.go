@@ -101,6 +101,11 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) == 3 && os.Args[1] == reading.PDFTextHelperArg {
+		// The isolated PDF text worker: hard child limits, one private input
+		// path and JSON stdout. It never starts the server.
+		os.Exit(reading.RunPDFTextHelper(os.Args[2]))
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--health-check" {
 		os.Exit(healthCheck())
 	}

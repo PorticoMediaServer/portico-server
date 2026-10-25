@@ -37,10 +37,11 @@ const (
 const textCountCanonicalObject = `o.id=(SELECT o2.id FROM inventory_objects o2 INDEXED BY inventory_objects_asset WHERE o2.asset_id=a.token AND o2.retired=0 AND o2.state='available' AND o2.unsupported_reason='' AND o2.root_incarnation=s.incarnation AND o2.size=a.size AND o2.modified_ns=a.modified_ns ORDER BY o2.id LIMIT 1)`
 
 // The worker's own domain, used by both the pending selection and the fresh
-// resolver/accepting transaction. It is narrower than a viewer selection:
-// book EPUB only, and only a local source. Enabled/healthy/current inventory is
-// still enforced by publicationEligible below.
-const textCountWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format='epub' AND s.kind='local'`
+// resolver/accepting transaction. It is narrower than a viewer selection: book
+// EPUB or PDF only, and only a local source. Each format keeps its own extractor
+// branch; this widening does not remove the approved EPUB branch. Enabled/
+// healthy/current inventory is still enforced by publicationEligible below.
+const textCountWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf') AND s.kind='local'`
 
 // Bounded, indexed order by item id. Remote sources are excluded rather than
 // approximating a full-file read through a viewer session: an unadmitted remote
@@ -265,18 +266,19 @@ func (s *Service) OpenBackground(ctx context.Context, v Selection) (*Source, err
 	return f, nil
 }
 
-// PrepareTextCount counts one canonical unopened EPUB with the existing
-// complete counter and adopts it under the same row/revision/rule custody as an
-// open. Bytes that cannot be acquired completely write no row; complete but
-// unextractable/partial text records the existing determined NULL (unknown),
-// not zero. The fresh resolver repeats the worker's exact local EPUB/book
-// domain and the observed source fence before acceptance.
+// PrepareTextCount counts one canonical unopened EPUB or supported PDF with the
+// existing complete counters and adopts it under the same row/revision/rule
+// custody as an open. Each format has its own explicit extractor branch. Bytes
+// that cannot be acquired completely write no row; complete but unsupported/
+// partial text records the existing determined NULL (unknown), not zero. The
+// fresh resolver repeats the worker's exact local book EPUB/PDF domain and the
+// observed source fence before acceptance.
 func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset string) error {
 	v, err := s.ResolveBackground(ctx, library, item, asset)
 	if err != nil {
 		return err
 	}
-	if v.Format != "epub" {
+	if v.Format != "epub" && v.Format != "pdf" {
 		return nil
 	}
 	cached, err := s.textCountCached(ctx, v)
@@ -288,11 +290,18 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 		return err
 	}
 	defer f.Close()
-	e, err := f.epub()
-	if err != nil {
-		return err
+	var count *int64
+	var opening string
+	switch v.Format {
+	case "epub":
+		e, epubErr := f.epub()
+		if epubErr != nil {
+			return epubErr
+		}
+		count, opening, err = inspectEPUBText(ctx, e)
+	case "pdf":
+		count, opening, err = countPDFText(ctx, f, v.Size)
 	}
-	count, opening, err := inspectEPUBText(ctx, e)
 	if err != nil {
 		return err
 	}

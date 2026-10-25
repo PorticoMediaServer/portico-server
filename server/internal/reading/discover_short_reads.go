@@ -23,7 +23,7 @@ func (s *Service) discoverShortReadsTx(ctx context.Context, tx *sql.Tx, library 
  JOIN reading_text_counts c ON c.item_id=p.item_id AND c.asset_id=p.asset_id
  JOIN inventory_objects o ON o.id=c.inventory_object_id AND o.asset_id=a.token AND o.revision=c.source_revision AND o.retired=0
  JOIN library_sources source ON source.id=o.source_id AND source.library_id=cl.library_id AND source.incarnation=o.root_incarnation
- WHERE e.retired=0 AND cl.retired=0 AND e.kind=20 AND lib.kind='book' AND p.format='epub'
+ WHERE e.retired=0 AND cl.retired=0 AND e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf')
  AND cl.library_id=? AND c.rule_version=? AND c.word_count>0 AND c.word_count<45000 AND (` + visible + `)
  ORDER BY e.added_ms DESC,e.id DESC LIMIT ?`
 	args := append([]any{library, readingTextRuleVersion}, visibleArgs...)
