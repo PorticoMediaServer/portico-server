@@ -157,6 +157,19 @@ func (s *Service) adoptEmbeddedFacts(ctx context.Context, p identity.Principal, 
 	if current.Revision != selected.Revision || current.object != selected.object || current.inventory != selected.inventory || current.inventoryRow != selected.inventoryRow {
 		return ErrChanged
 	}
+	if err = adoptFileMetadataTx(ctx, tx, current, author, series, number); err != nil {
+		return err
+	}
+	return gate.Commit()
+}
+
+// adoptFileMetadataTx publishes normalized file-metadata facts for the exact
+// current observation. The caller holds the gate transaction and has already
+// rechecked the observed item/asset/object/revision tuple, and it commits after
+// this returns. Only author, series and seriesNumber are written; the writer
+// rechecks the same current object at insertion and refuses a changed one.
+// Owner overrides keep their existing precedence over these automatic values.
+func adoptFileMetadataTx(ctx context.Context, tx *sql.Tx, current Selection, author, series string, number *float64) error {
 	type stored struct {
 		text, object, revision string
 		number                 sql.NullFloat64
@@ -245,7 +258,7 @@ func (s *Service) adoptEmbeddedFacts(ctx context.Context, p identity.Principal, 
 			return err
 		}
 	}
-	return gate.Commit()
+	return nil
 }
 
 type LibraryRow struct {

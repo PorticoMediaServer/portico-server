@@ -332,6 +332,7 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 	defer f.Close()
 	var count *int64
 	var opening string
+	var author string
 	var pageCount *int64
 	switch v.Format {
 	case "epub":
@@ -341,7 +342,7 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 		}
 		count, opening, err = inspectEPUBText(ctx, e)
 	case "pdf":
-		count, opening, pageCount, err = countPDFText(ctx, f, v.Size)
+		count, opening, author, pageCount, err = countPDFText(ctx, f, v.Size)
 	}
 	if err != nil {
 		return err
@@ -372,6 +373,15 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 	}
 	if err = adoptTextCountRow(ctx, gate.Tx(), current, count, opening, pageCount, pageRule); err != nil {
 		return err
+	}
+	if v.Format == "pdf" {
+		// The helper's exact Info/Author is file-metadata evidence for this same
+		// observation. The writer rechecks the current object and keeps owner
+		// overrides; an absent or unstorable value publishes nothing instead of
+		// a guess, and no title, outline or filename substitutes for it.
+		if err = adoptFileMetadataTx(ctx, gate.Tx(), current, author, "", nil); err != nil {
+			return err
+		}
 	}
 	return gate.Commit()
 }
