@@ -1,5 +1,9 @@
 import {routes} from '../../contracts/src/index.ts';
 
+// Older published contracts intentionally withhold this action. Read their common
+// descriptor shape so that absence remains a runtime check across generated cohorts.
+const publishedOperations: readonly Readonly<{id:string;method:string;path:string}>[] = routes;
+
 export type ReadingMarkAllPair = Readonly<{catalog: number; viewer: number}>;
 export type ReadingMarkAllProjection = Readonly<{serverId: string; libraryId: string; viewerFence: string; revision: ReadingMarkAllPair; count: number}>;
 export type ReadingMarkAllCommand = Readonly<{operationId: string; viewerFence: string; expectedRevision: ReadingMarkAllPair}>;
@@ -20,7 +24,7 @@ const samePair = (a: ReadingMarkAllPair, b: ReadingMarkAllPair) => a.catalog ===
 export function readingMarkAllPath(method: 'GET' | 'POST', libraryId: string): string | undefined {
   if (!identifier(libraryId)) return undefined;
   const operation: string = method === 'GET' ? 'get_libraries_libraryId_reading_mark_all' : 'post_libraries_libraryId_reading_mark_all';
-  const descriptor = routes.find(route => route.id === operation);
+  const descriptor = publishedOperations.find(route => route.id === operation);
   if (!descriptor || descriptor.method !== method || descriptor.path !== '/v1/libraries/{libraryId}/reading/mark-all') return undefined;
   return descriptor.path.replace('{libraryId}', encodeURIComponent(libraryId));
 }
