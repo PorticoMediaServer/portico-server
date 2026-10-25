@@ -1266,6 +1266,12 @@ func run() (runErr error) {
 	} else {
 		readingService.Mobi = mobiConverter
 	}
+	pdfRaster, pdfRasterErr := configuredReadingPDFRaster(storeIO, cache)
+	if pdfRasterErr != nil {
+		log.Printf("warn: PDF raster rendering is unavailable; the configured bundle was not admitted")
+	} else {
+		readingService.PDFRaster = pdfRaster
+	}
 	cat.ConfigureReadingMobi(readingService.Mobi != nil)
 	defer readingService.Close()
 	apiDependencies.Reading = readingService

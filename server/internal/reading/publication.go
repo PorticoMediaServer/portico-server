@@ -77,6 +77,11 @@ func Inspect(f *Source) (Publication, error) {
 		if err := f.CheckPDF(); err != nil {
 			return out, err
 		}
+		if f.service != nil && f.service.PDFRaster != nil && f.LocalArchiveStaging() {
+			out.cover = func() ([]byte, error) {
+				return f.service.PDFRaster.RenderCoverPNG(f.ctx, f, f.Size)
+			}
+		}
 	default:
 		return out, ErrInvalid
 	}
