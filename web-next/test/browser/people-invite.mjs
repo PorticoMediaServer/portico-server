@@ -8,16 +8,16 @@ const source = `import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {PeopleScreen} from './src/screens/settings/People';
 const calls = [], waiting = [];
-let reports = 0, retirements = 0, current = true;
+let reports = 0, retirements = 0, issues = 0, current = true;
 const bindings = {
  client: {read: async () => ({items: [], totalCount: 0, matchedCount: 0, nextCursor: '', limit: 40}), dispose() {}},
  serverName: 'Test server', libraries: [], actor: {accountId: 'owner', role: 'owner'},
  authority: {scope: {serverId: 'server', authority: 'local', accountId: 'owner', profileId: 'main', sessionFamilyId: 'session'},
  isCurrent: () => current, subscribe: () => () => {}, onAuthorityChanged: () => {retirements++; current = false;}},
  openHome() {}, reportError() {reports++;},
- invitations: {create: (body) => {calls.push(body);return new Promise((resolve, reject) => waiting.push({resolve, reject}));}}
+ invitations: {shortCode: async () => {issues++;throw new Error('test issue refusal');}, create: (body) => {calls.push(body);return new Promise((resolve, reject) => waiting.push({resolve, reject}));}}
 };
-window.probe = {calls, get reports() {return reports;}, get retirements() {return retirements;},
+window.probe = {calls, get reports() {return reports;}, get retirements() {return retirements;}, get issues() {return issues;},
  reject: (status) => waiting.shift().reject({status}), resolve: (state) => waiting.shift().resolve({id: 'invite', revision: 1, state}),
  mount: () => root.render(<PeopleScreen bindings={bindings}/>), unmount: () => root.render(null)};
 const root = createRoot(document.getElementById('root'));
@@ -38,9 +38,19 @@ try {
  assert.equal(await page.getByRole('button', {name: 'Create invitation', exact: true}).isDisabled(), true);
  assert.equal(await page.evaluate(() => probe.calls.length), 0);
  await all.check();
+ await page.getByRole('button', {name: 'Create invitation', exact: true}).evaluate(node => {
+   const key = Object.keys(node).find(key => key.startsWith('__reactProps$'));
+   window.staleCreate = node[key].onClick;
+ });
+ await page.keyboard.press('Escape');
+ await page.waitForTimeout(200);
+ await page.evaluate(() => window.staleCreate({}));
+ assert.equal(await page.evaluate(() => probe.calls.length), 0, 'closed form handler performs zero I/O');
+ await invite.click();
  await page.getByRole('button', {name: 'Create invitation', exact: true}).click();
  await page.waitForFunction(() => probe.calls.length === 1);
  await page.keyboard.press('Escape');
+ await page.mouse.click(1, 1);
  assert.equal(await page.getByRole('dialog', {name: 'Invite someone', exact: true}).count(), 1);
  await page.getByRole('button', {name: 'Close', exact: true}).click();
  assert.equal(await page.getByRole('dialog', {name: 'Invite someone', exact: true}).count(), 1);
@@ -57,12 +67,28 @@ try {
  await page.getByRole('button', {name: /Retry/}).click();
  await page.waitForFunction(() => probe.calls.length === 3);
  assert.deepEqual(await page.evaluate(() => probe.calls[0]), await page.evaluate(() => probe.calls[2]));
+ // A valid receipt clears the operation; another explicit invite gets a new id.
+ await page.evaluate(() => probe.resolve('pending'));
+ await page.waitForFunction(() => probe.issues === 1);
+ await page.getByRole('button', {name: 'Close', exact: true}).first().click();
+ await invite.click();
+ await page.getByRole('button', {name: 'Create invitation', exact: true}).click();
+ await page.waitForFunction(() => probe.calls.length === 4);
+ assert.notEqual(await page.evaluate(() => probe.calls[3].operationId), await page.evaluate(() => probe.calls[0].operationId));
  // A retired workspace cannot publish a late success or start a code issue.
  await page.evaluate(() => probe.unmount());
  await page.evaluate(() => probe.resolve('pending'));
  await page.waitForTimeout(200);
  assert.equal(await page.getByRole('dialog').count(), 0);
  assert.equal(await page.evaluate(() => probe.reports), 0);
+ assert.equal(await page.evaluate(() => probe.issues), 1);
+ await page.evaluate(() => probe.mount());
+ await invite.click();
+ await page.getByRole('button', {name: 'Create invitation', exact: true}).click();
+ await page.waitForFunction(() => probe.calls.length === 5);
+ await page.evaluate(() => probe.reject(401));
+ await page.waitForFunction(() => probe.retirements === 1);
+ assert.equal(await page.getByRole('dialog').count(), 0);
  console.log('PASS: empty subset, busy Escape/X, deferred retry, invalid receipt, unmount fence');
 } finally {
  await browser?.close(); await server?.close(); await rm(entry, {force: true});
