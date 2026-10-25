@@ -33,6 +33,12 @@ func validateAdministration(v *Settings) []string {
 			v.AdvertiseURL = normalized
 		}
 	}
+	if v.LogDetailMinutes == 0 {
+		v.LogDetailMinutes = 30
+	}
+	if !validLogDetailMinutes(v.LogDetailMinutes) {
+		fields = append(fields, "values.logDetailMinutes")
+	}
 	if v.LogLevel == "" {
 		v.LogLevel = "info"
 	}
