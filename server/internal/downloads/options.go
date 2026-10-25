@@ -143,6 +143,28 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 		return out, err
 	}
 	out.Kind = found.Kind
+	if readingKind(found.Kind) {
+		out.DefaultQuality = QualityOriginal
+		reader := s.readingService()
+		available := allowed && reader != nil
+		if available {
+			selected, selectionError := reader.SelectOfflineTx(ctx, tx, p, item, found.Asset)
+			available = selectionError == nil
+			if available {
+				found.Container = selected.Format
+			}
+		}
+		out.Source = SourceDescription{Container: found.Container, Bytes: found.Size, Available: available}
+		option := QualityOption{Quality: QualityOriginal, Label: "Original", Kind: "source", Bytes: found.Size, Available: available, EffectiveQuality: QualityOriginal}
+		if !available {
+			option.Reason = ReasonSourceMissing
+		}
+		if !allowed {
+			option.Reason = ReasonNotAllowed
+		}
+		out.Options = []QualityOption{option}
+		return out, nil
+	}
 	out.Source = SourceDescription{Container: found.Container, VideoCodec: found.VideoCodec, AudioCodec: found.AudioCodec, Height: found.Height, DurationSeconds: found.Duration, Bytes: found.Size, Available: sourceReason(found, nil) == ""}
 	transcoding := false
 	if e = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&transcoding); e != nil && !errors.Is(e, sql.ErrNoRows) {

@@ -73,6 +73,7 @@ export type DownloadBundleAudio = Readonly<{index: number; language: string; tit
 /** Everything a download needs besides its media file, so the title can be listed, shown and
  * played properly with no server in reach. */
 export type DownloadBundle = Readonly<{
+  publication?: string;
   preparationId: string; itemId: string; quality: string; qualityLabel: string; title: DownloadTitle; overview: string;
   media: Readonly<{container: string; videoCodec: string; audioCodec: string; width: number; height: number}>;
   artwork: readonly Readonly<{role: string; path: string; contentType: string}>[];
@@ -92,7 +93,9 @@ export type DownloadOptionsView = Readonly<{
   itemId: string; kind: string; source: DownloadSource; options: readonly DownloadQualityOption[];
   policy: Readonly<{allowDownloads: boolean; reason: string}>; storage: DownloadStorage;
 }>;
+export type DownloadPublicationReceipt = Readonly<{sourceId: string; revision: string; format: 'epub' | 'pdf' | 'cbz'; documentSha256: string}>;
 export type ReceiptClaims = Readonly<{
+  publication?: DownloadPublicationReceipt;
   kind: 'portico.download-receipt'; version: '1'; receiptId: string; keyId: string;
   viewer: Readonly<{authority: string; accountId: string; profileId: string; serverId: string}>;
   itemId: string; preparationId: string; quality: string; qualityLabel: string;
@@ -261,6 +264,7 @@ function chapterImage(v: unknown): {image?: DownloadBundleFile} {
 }
 
 export function parseDownloadBundle(raw: unknown, preparationId: string): DownloadBundle {
+  if (object(raw) && raw.publication !== undefined && (!text(raw.publication, 2 << 20) || unescape(encodeURIComponent(raw.publication)).length > 2 << 20)) invalid();
   if (!object(raw) || raw.preparationId !== preparationId || !id(raw.itemId) || !id(raw.quality) || !text(raw.qualityLabel ?? '', 128) || !text(raw.overview ?? '', 65536)) invalid();
   const media = raw.media;
   if (!object(media) || !text(media.container ?? '', 64) || !text(media.videoCodec ?? '', 64) || !text(media.audioCodec ?? '', 64)) invalid();
@@ -306,6 +310,7 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     return Object.freeze({id: v.id, revision: v.revision, language: String(v.language ?? ''), title: String(v.title ?? ''), default: v.default, forced: v.forced, files: Object.freeze(files), ...(lines ? {lines} : {})});
   });
   return Object.freeze({
+    ...(typeof raw.publication === 'string' ? {publication: raw.publication} : {}),
     preparationId, itemId: raw.itemId, quality: raw.quality, qualityLabel: String(raw.qualityLabel ?? ''), title: parseDownloadTitle(raw.title), overview: String(raw.overview ?? ''),
     media: Object.freeze({container: String(media.container ?? ''), videoCodec: String(media.videoCodec ?? ''), audioCodec: String(media.audioCodec ?? ''), width: Number(media.width ?? 0), height: Number(media.height ?? 0)}),
     artwork: Object.freeze(artwork), chapters: Object.freeze(chapters), markers: Object.freeze(markers), audio: Object.freeze(audio), subtitles: Object.freeze(subtitles),
@@ -388,6 +393,12 @@ export function decodeDownloadReceipt(raw: unknown): {receipt: DownloadReceipt; 
   return {receipt: Object.freeze({receiptId: raw.receiptId, algorithm: 'ed25519', keyId: raw.keyId, payload: raw.payload, signature: raw.signature, claims, revision: raw.revision}), signedBytes, signatureBytes};
 }
 
+function publicationReceipt(raw: unknown): DownloadPublicationReceipt {
+  if (!object(raw) || !id(raw.sourceId) || raw.sourceId.length > 128 || !digest(raw.revision) || !digest(raw.documentSha256)) invalid();
+  const format = raw.format;
+  if (format !== 'epub' && format !== 'pdf' && format !== 'cbz') invalid();
+  return Object.freeze({sourceId: raw.sourceId, revision: raw.revision, format, documentSha256: raw.documentSha256});
+}
 export function parseReceiptClaims(raw: unknown): ReceiptClaims {
   if (!object(raw) || raw.kind !== 'portico.download-receipt' || raw.version !== '1') invalid();
   if (!id(raw.receiptId) || !id(raw.keyId) || !id(raw.itemId) || !id(raw.preparationId)) invalid();
@@ -395,10 +406,12 @@ export function parseReceiptClaims(raw: unknown): ReceiptClaims {
   if (!instant(raw.issuedAt) || !instant(raw.expiresAt) || Date.parse(raw.expiresAt) <= Date.parse(raw.issuedAt)) invalid();
   const viewer = raw.viewer;
   if (!object(viewer) || !['local','hosted'].includes(String(viewer.authority)) || !id(viewer.accountId) || !id(viewer.profileId) || !id(viewer.serverId)) invalid();
+  const publication = raw.publication === undefined ? undefined : publicationReceipt(raw.publication);
   const bytes = raw.artifact;
   if (!object(bytes) || !digest(bytes.sha256) || !count(bytes.bytes) || bytes.bytes < 1) invalid();
   return Object.freeze({
     kind: 'portico.download-receipt', version: '1', receiptId: raw.receiptId, keyId: raw.keyId,
+    ...(publication ? {publication} : {}),
     viewer: Object.freeze({authority: String(viewer.authority), accountId: viewer.accountId, profileId: viewer.profileId, serverId: viewer.serverId}),
     itemId: raw.itemId, preparationId: raw.preparationId, quality: String(raw.quality), qualityLabel: String(raw.qualityLabel ?? ''),
     artifact: Object.freeze({sha256: bytes.sha256, bytes: bytes.bytes}), issuedAt: raw.issuedAt, expiresAt: raw.expiresAt,

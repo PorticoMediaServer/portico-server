@@ -145,7 +145,17 @@ type BundleMedia struct {
 	Height     int    `json:"height,omitempty"`
 }
 
+// Source and schema share the 2MiB UTF-8 byte ceiling. JSON Schema's
+// maxLength is supplemented by this explicit byte constraint and source parser.
+type PublicationJSON string
+
+func (PublicationJSON) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "maxLength": 2 << 20, "x-maxUtf8Bytes": 2 << 20, "contentMediaType": "application/json"}
+}
+
 type Bundle struct {
+	// Exact stored UTF-8 descriptor; its digest is bound by the signed receipt.
+	Publication   PublicationJSON  `json:"publication,omitempty"`
 	PreparationID string           `json:"preparationId"`
 	ItemID        string           `json:"itemId"`
 	Quality       string           `json:"quality"`
@@ -230,6 +240,11 @@ func (s *Service) Bundle(ctx context.Context, p identity.Principal, id string) (
 		return out, e
 	}
 	out.ItemID, out.Quality, out.QualityLabel = current.ItemID, current.Quality, qualityLabel(current.Quality)
+	if doc, err := publicationTx(ctx, tx, id); err != nil {
+		return out, err
+	} else if doc != nil {
+		out.Publication = PublicationJSON(doc.raw)
+	}
 	if out.Title, e = readTitle(ctx, tx, entity); e != nil {
 		return out, e
 	}

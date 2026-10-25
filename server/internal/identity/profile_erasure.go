@@ -101,6 +101,12 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 		if e = run(`DELETE FROM download_requests WHERE profile_key=?`, viewerKey); e != nil {
 			return e
 		}
+		// The immutable Reading descriptor may include this profile's initial
+		// location. Deliberate erasure retires the WHOLE descriptor, in every state;
+		// it is never edited into a fresh document under an old receipt digest.
+		if e = run(`UPDATE download_preparations SET publication_json='' WHERE profile_key=? AND authority=? AND account_id=? AND profile_id=?`, viewerKey, v.Authority, v.AccountID, v.ProfileID); e != nil {
+			return e
+		}
 		if e = run(`DELETE FROM download_preparation_authority WHERE preparation_id IN(SELECT id FROM download_preparations WHERE profile_key=?)`, viewerKey); e != nil {
 			return e
 		}

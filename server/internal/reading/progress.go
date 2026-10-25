@@ -138,7 +138,25 @@ func (s *Service) SaveProgress(ctx context.Context, p identity.Principal, item, 
 
 // SaveProgress retains the same observed source through format validation and
 // the location writer. This also avoids nested source leases on cap-1 remotes.
+type OfflineValidator func(context.Context, *sql.Tx, identity.Principal) error
+type OfflineObservation struct {
+	Validate              OfflineValidator
+	ObservedAt, StartedAt int64
+	Outcome               string
+}
+
+func (f *Source) SaveOfflineProgress(expected int64, location Location, observed, started int64, validate OfflineValidator) (*Progress, bool, string, error) {
+	if validate == nil || observed <= 0 || started <= 0 || observed < started || observed > time.Now().Add(time.Minute).UnixMilli() {
+		return nil, false, "", ErrInvalid
+	}
+	observation := &OfflineObservation{ObservedAt: observed, StartedAt: started, Validate: validate}
+	progress, saved, err := f.saveProgress(expected, location, observation)
+	return progress, saved, observation.Outcome, err
+}
 func (f *Source) SaveProgress(expected int64, location Location) (*Progress, bool, error) {
+	return f.saveProgress(expected, location, nil)
+}
+func (f *Source) saveProgress(expected int64, location Location, offline *OfflineObservation) (*Progress, bool, error) {
 	s, ctx, p := f.service, f.ctx, f.p
 	if expected < 0 {
 		return nil, false, ErrInvalid
@@ -202,6 +220,11 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 			return nil, false, err
 		}
 	}
+	if offline != nil {
+		if err = offline.Validate(ctx, tx, p); err != nil {
+			return nil, false, err
+		}
+	}
 	owner := identity.PersonalKey(p.Viewer)
 	current, err := progressTx(ctx, tx, owner, v)
 	if err != nil {
@@ -212,13 +235,25 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 		return nil, false, err
 	}
 	if preferences.Bool("privacy.pauseWatchHistory") {
+		if offline != nil {
+			offline.Outcome = "history_paused"
+		}
 		return current, false, nil
 	}
 	var revision int64
 	if current != nil {
 		revision = current.Revision
 	}
-	if revision != expected {
+	if offline != nil {
+		if current != nil && current.ObservedAt >= offline.ObservedAt {
+			offline.Outcome = "stale_observation"
+			return current, false, nil
+		}
+		if revision != expected {
+			offline.Outcome = "superseded_online"
+			return current, false, nil
+		}
+	} else if revision != expected {
 		return nil, false, ErrConflict
 	}
 	var cfi, section, page any
@@ -231,6 +266,10 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 		page = *location.PageIndex
 	}
 	observed := time.Now().UnixMilli()
+	if offline != nil {
+		observed = offline.ObservedAt
+		offline.Outcome = "applied"
+	}
 	revision++
 	_, err = tx.ExecContext(ctx, `INSERT INTO reading_progress(owner_key,item_id,asset_id,source_revision,format,cfi,section,page_index,progression,revision,observed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_key,item_id,asset_id) DO UPDATE SET source_revision=excluded.source_revision,format=excluded.format,cfi=excluded.cfi,section=excluded.section,page_index=excluded.page_index,progression=excluded.progression,revision=excluded.revision,observed_at=excluded.observed_at`, owner, v.Entity, v.Asset, v.Revision, location.Format, cfi, section, page, location.Progression, revision, observed)
 	if err != nil {

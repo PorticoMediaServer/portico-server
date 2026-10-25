@@ -138,6 +138,9 @@ func sourceReason(s source, e error) string {
 // or when the conversion code reports it can make one; a rung that is only a
 // name in the ladder is refused before a claim that could only fail is made.
 func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, found source) string {
+	if readingKind(found.Kind) && quality != QualityOriginal {
+		return ReasonNotOptimized
+	}
 	if quality == QualityOriginal && !found.Cue || sameAsSource(quality, found) {
 		return ""
 	}
@@ -253,6 +256,12 @@ func artifactDelivery(container, preparation string) (string, string) {
 		kind, extension = "video/x-matroska", "mkv"
 	case "webm":
 		kind, extension = "video/webm", "webm"
+	case "epub":
+		kind, extension = "application/epub+zip", "epub"
+	case "pdf":
+		kind, extension = "application/pdf", "pdf"
+	case "cbz":
+		kind, extension = "application/vnd.comicbook+zip", "cbz"
 	case "mp3":
 		kind, extension = "audio/mpeg", "mp3"
 	case "flac":
@@ -530,6 +539,9 @@ func sameAsSource(quality string, s source) bool {
 // resolvedQuality is frozen before admission. A source-equivalent step stores
 // an original-file claim, so neither the worker nor a retry can create work.
 func resolvedQuality(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, quality string, s source) string {
+	if readingKind(s.Kind) {
+		return QualityOriginal
+	}
 	if sameAsSource(quality, s) {
 		return QualityOriginal
 	}
