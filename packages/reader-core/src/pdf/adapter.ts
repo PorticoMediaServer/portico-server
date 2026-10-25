@@ -82,14 +82,21 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
             const element=selection.anchorNode?.parentElement?.closest<HTMLElement>('[data-reader-text]');
             if(!element||!mountOptions.container.contains(element)||!element.contains(selection.focusNode)){mountOptions.onSelection(null);return;}
             const page=Number(element.dataset.readerText),text=selection.toString();if(!text||text.length>65536){mountOptions.onSelection(null);return;}
-            const rects=Array.from(selection.getRangeAt(0).getClientRects()).slice(0,1024).map(r=>({x:r.x,y:r.y,width:r.width,height:r.height}));
+            const range=selection.getRangeAt(0),raw=range.getClientRects();
+            // A quote is anchored only when its entire range has supported geometry.
+            // Never persist a sampled prefix as the anchor for the complete quote.
+            const supported=selection.rangeCount===1&&element.contains(range.startContainer)&&element.contains(range.endContainer)&&raw.length>0&&raw.length<=128;
+            const rects=supported?Array.from(raw,r=>({x:r.x,y:r.y,width:r.width,height:r.height})):[];
             const bounds=element.getBoundingClientRect();
-            const pageRects=bounds.width>0&&bounds.height>0?rects.map(r=>{
+            const pageRects=Number.isFinite(bounds.x)&&Number.isFinite(bounds.y)&&Number.isFinite(bounds.width)&&Number.isFinite(bounds.height)&&bounds.width>0&&bounds.height>0?rects.map(r=>{
+              if(![r.x,r.y,r.width,r.height].every(Number.isFinite)||r.width<=0||r.height<=0)return undefined;
               const x=Math.max(0,Math.min(1,(r.x-bounds.x)/bounds.width)),y=Math.max(0,Math.min(1,(r.y-bounds.y)/bounds.height));
               const right=Math.max(0,Math.min(1,(r.x+r.width-bounds.x)/bounds.width)),bottom=Math.max(0,Math.min(1,(r.y+r.height-bounds.y)/bounds.height));
-              return {x,y,width:right-x,height:bottom-y};
-            }).filter(r=>r.width>0&&r.height>0&&r.x+r.width<=1&&r.y+r.height<=1).slice(0,128):[];
-            mountOptions.onSelection?.({text,location:position(page,engine.document.numPages),rects,...pageRects.length?{pageRects}: {}});
+              const width=right-x,height=bottom-y;
+              return width>0&&height>0&&x+width<=1&&y+height<=1?{x,y,width,height}:undefined;
+            }):[];
+            const complete=pageRects.length>0&&pageRects.every((rect):rect is NonNullable<typeof rect>=>rect!==undefined);
+            mountOptions.onSelection?.({text,location:position(page,engine.document.numPages),rects,...complete?{pageRects}: {}});
           };owner.addEventListener('selectionchange',onSelection,{signal:combined});
           const view={...fixed,dispose(){life.abort();scope.dispose();style.remove();views.delete(view);return fixed.dispose();}};views.add(view);return view;
         },
