@@ -64,7 +64,7 @@ func readMetadataLibrary(ctx context.Context, tx *sql.Tx, id string) (MetadataLi
 	out.EpisodeThumbnailMode = episode.Mode
 	out.ScrubPreviews = scan.Allows("trickplay")
 	out.CanScrub = scan.Allows("probe") && (out.Kind == "movie" || out.Kind == "tv" || out.Kind == "anime") && !out.Managed
-	out.Revision = publicationDigest([]any{id, out.Kind, out.Managed, agent.Revision, prefs.Revision, scan.Revision})
+	out.Revision = publicationDigest([]any{id, out.Kind, out.Managed, agent.Revision, agent.Agent, prefs, scan, episode.Mode})
 	return out, nil
 }
 func readMetadataLibraries(ctx context.Context, tx *sql.Tx) ([]MetadataLibrarySettings, bool, error) {

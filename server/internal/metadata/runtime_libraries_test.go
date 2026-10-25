@@ -3,6 +3,8 @@ package metadata
 import (
 	"context"
 	"errors"
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"testing"
 )
 
@@ -42,5 +44,45 @@ func TestOptionalMetadataLibraryProjectionCannotDisableLegacyGlobalSettings(t *t
 	after, err := svc.UpdateMetadataSettings(ctx, MetadataSettingsUpdate{ExpectedRevision: before.Revision, LocalArtworkLimitBytes: before.LocalArtworkLimitBytes, IncludeAdult: !before.IncludeAdult}, nil)
 	if err != nil || after.IncludeAdult == before.IncludeAdult || after.LibrariesComplete == nil || *after.LibrariesComplete {
 		t.Fatal("legacy global write blocked", after, err)
+	}
+}
+
+func TestMetadataLibraryCASNoticesFirstPreferenceMaterialization(t *testing.T) {
+	svc, db, _ := screenFixture(t)
+	ctx := context.Background()
+	initial, err := svc.MetadataSettings(ctx)
+	if err != nil || len(initial.Libraries) == 0 {
+		t.Fatal(initial, err)
+	}
+	id := initial.Libraries[0].ID
+	publicationExec(t, db, `DELETE FROM library_preferences WHERE library_id=?`, id)
+	before, err := svc.MetadataSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, err := dbwork.Begin(ctx, db, dbwork.ClassInteractive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Rollback()
+	prefs, err := catalog.LibraryPreferencesTx(ctx, gate.Tx(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefs.SortIgnoreArticles = !prefs.SortIgnoreArticles
+	if err = catalog.ApplyLibraryPreferencesTx(ctx, gate.Tx(), id, prefs); err != nil {
+		t.Fatal(err)
+	}
+	if err = gate.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := svc.MetadataSettings(ctx)
+	if err != nil || after.Libraries[0].Revision == before.Libraries[0].Revision {
+		t.Fatal("first preference insert did not retire row CAS", after, err)
+	}
+	local := AgentLocal
+	_, err = svc.UpdateMetadataSettings(ctx, MetadataSettingsUpdate{ExpectedRevision: before.Revision, LocalArtworkLimitBytes: before.LocalArtworkLimitBytes, Libraries: []MetadataLibraryChange{{ID: id, ExpectedRevision: before.Libraries[0].Revision, Agent: &local}}}, nil)
+	if !errors.Is(err, ErrScreenConflict) {
+		t.Fatal("first insert survived stale metadata row", err)
 	}
 }
