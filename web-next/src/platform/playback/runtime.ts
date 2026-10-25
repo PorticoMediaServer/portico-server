@@ -39,7 +39,7 @@ import {documentVisibility} from './page-visibility.ts';
 import {SubtitleSurface, type SubtitleHost} from './subtitle-surface.ts';
 import {createImageSubtitleSurface, type ImageSubtitleSurface} from './subtitles/image-surface.ts';
 import type {DrawnSubtitleSource, ReadSubtitleFile} from './subtitles/types.ts';
-import {forcedChoiceOf, parseSubtitleLines, selectedSubtitleOriginal, type SubtitleLines} from '@core/subtitle-originals.ts';
+import {forcedChoiceOf, parseSubtitleLines, readSubtitleFile, selectedSubtitleOriginal, type SubtitleLines} from '@core/subtitle-originals.ts';
 import {entrySubject, itemSubject} from './subject.ts';
 import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
@@ -71,9 +71,11 @@ type Stack = {
   imageSurface?: ImageSubtitleSurface;
   imageKey?: string;
   imageAbort?: AbortController;
-  /** This playback's temporary forced-only choice, gated by the offered lines of the exact revision. */
+  /** This playback's temporary forced-only choice, gated by the offered lines of one image load. */
   forcedOnly?: boolean;
-  forcedLines?: SubtitleLines;
+  forcedLines?: Readonly<{lines: SubtitleLines; key: string; epoch: number}>;
+  imageEpoch?: number;
+  imageFailed?: boolean;
   /** A style change made in the options panel, for the one playback run it belongs to. */
   subtitleStyle?: Partial<Pick<SubtitlePreferences,'size'|'background'>> & Readonly<{run: number}>;
   /** The drawn sleep timer: one playback run's record, with the token that armed it. */
@@ -108,6 +110,8 @@ export class WebShellPlaybackRuntime {
   private stack: Stack;
   private video?: VideoLike;
   private surface?: SubtitleSurface;
+  /** The player's one canonical subtitle offset, replayed to a surface created later. */
+  private subtitleTimeline: number | null = 0;
   private snapshot!: WebPlaybackRuntimeSnapshot;
   private disposed = false;
   private replacing = false;
@@ -272,8 +276,8 @@ export class WebShellPlaybackRuntime {
   private bindElement(stack: Stack): void {
     if (this.video && !stack.unmount) stack.unmount = stack.web.mount(this.video, {
       // One timeline for both drawn paths: the page's text cues and the image overlay.
-      timeline: offset => { this.surface?.timeline(offset); stack.imageSurface?.timeline(offset); },
-      reset: () => { this.surface?.reset(); stack.imageSurface?.timeline(null); },
+      timeline: offset => { this.subtitleTimeline = offset; this.surface?.timeline(offset); stack.imageSurface?.timeline(offset); },
+      reset: () => { this.subtitleTimeline = null; this.surface?.reset(); stack.imageSurface?.timeline(null); },
     });
   }
 
@@ -318,8 +322,7 @@ export class WebShellPlaybackRuntime {
   private retire(stack: Stack): void {
     if (stack.retired) return;
     this.clearSleepTimer(stack);
-    stack.imageAbort?.abort(); stack.imageSurface?.dispose(); stack.imageSurface = undefined;
-    stack.imageKey = undefined; stack.forcedLines = undefined; stack.forcedOnly = undefined;
+    this.clearImageSubtitles(stack);
     // Pause before releasing the actual media and checkpoint its real position. The accepted
     // dock retains only the bookmark, never a second live or hidden media session.
     if (stack.mode === 'local') stack.web.slot.pause();else stack.service.pause();
@@ -1021,6 +1024,7 @@ export class WebShellPlaybackRuntime {
     stack.offSubtitles?.(); stack.offSubtitles = undefined; stack.subtitles?.stop(); stack.subtitles = undefined;
     stack.sessionKey = undefined; stack.offerBinding = undefined; stack.subtitleKey = undefined; stack.documentKey = undefined; stack.options = null;
     if (!stack.retired) stack.offers.cancel();
+    this.clearImageSubtitles(stack);
     this.surface?.guard(false); this.surface?.clear();
   }
   private bindSubtitles(stack: Stack, offers: PlayerOffersData, key: string): void {
@@ -1039,57 +1043,75 @@ export class WebShellPlaybackRuntime {
     const original = plan?.mode === 'track' ? selectedSubtitleOriginal(plan) : null;
     return original && (original.format === 'pgs' || original.format === 'vobsub') ? original : null;
   }
-  private subtitleReader(stack: Stack): ReadSubtitleFile {
+  private subtitleReader(stack: Stack, life: AbortSignal): ReadSubtitleFile {
     return async (address, maxBytes, signal) => {
       const url = this.source.api.mediaUrl(address);
       if (new URL(url).origin !== new URL(this.source.api.baseUrl).origin) problem('unexpected_subtitle_origin');
-      const response = await (this.env.fetch ?? fetch)(url, {signal, credentials: 'include', cache: 'no-store', redirect: 'error'});
-      if (!response.ok) throw new Error('subtitle_file_unavailable');
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > maxBytes) throw new Error('subtitle_file_too_large');
-      if (!this.current(stack)) throw new DOMException('Playback changed', 'AbortError');
-      return {bytes, charset: ''};
+      const joined = AbortSignal.any([signal, life, stack.life.signal]);
+      const file = await readSubtitleFile(this.env.fetch ?? fetch, url, maxBytes, joined);
+      if (!this.current(stack) || joined.aborted) throw new DOMException('Playback changed', 'AbortError');
+      return file;
     };
   }
-  /** Reads the chosen revision's own forced-line offer; a stale answer never arms the switch. */
-  private async readForcedLines(stack: Stack, linesUrl: string, key: string): Promise<void> {
+  /** Reads the chosen revision's own forced-line offer under the image load that can use it. A
+   * stale, failed, cleared or replaced load never arms the switch. */
+  private async readForcedLines(stack: Stack, linesUrl: string, key: string, epoch: number, life: AbortSignal): Promise<void> {
     try {
       const url = this.source.api.mediaUrl(linesUrl);
       if (new URL(url).origin !== new URL(this.source.api.baseUrl).origin) return;
-      const response = await (this.env.fetch ?? fetch)(url, {credentials: 'include', cache: 'no-store', redirect: 'error'});
-      if (!response.ok) return;
-      const lines = parseSubtitleLines(await response.json());
-      if (!this.current(stack) || stack.imageKey !== key || !forcedChoiceOf(lines)) return;
-      stack.forcedLines = lines ?? undefined;
+      const joined = AbortSignal.any([life, stack.life.signal]);
+      const file = await readSubtitleFile(this.env.fetch ?? fetch, url, 8192, joined);
+      const lines = parseSubtitleLines(JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(file.bytes)));
+      if (!lines || !this.current(stack) || joined.aborted || stack.imageKey !== key || stack.imageEpoch !== epoch || stack.imageFailed || !forcedChoiceOf(lines)) return;
+      stack.forcedLines = Object.freeze({lines, key, epoch});
       this.sync();
     } catch { /* no offer, no switch; the track still draws every line */ }
   }
   private renderImageSubtitles(stack: Stack, plan: SubtitlePlan, original: Readonly<{format: string; url: string; companionUrl?: string; linesUrl?: string}>): void {
     const video = this.video;
-    if (!stack.expanded || !video || plan.renderer !== 'client') { stack.imageSurface?.clear(); return; }
+    if (!stack.expanded || !video || plan.renderer !== 'client') { this.clearImageSubtitles(stack); return; }
     const key = JSON.stringify([stack.sessionKey, plan.sourceId, plan.revision, original.url, original.companionUrl ?? '', plan.offsetUs]);
     if (stack.imageKey === key) return;
-    stack.imageKey = key; stack.forcedLines = undefined; stack.forcedOnly = undefined;
-    stack.imageAbort?.abort(); const abort = new AbortController(); stack.imageAbort = abort;
-    const surface = stack.imageSurface ??= createImageSubtitleSurface(video as HTMLVideoElement, this.subtitleReader(stack),
-      () => { if (this.current(stack)) { this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
-    if (!surface) return;
+    // A new load owns its own epoch, so a late answer from the previous one cannot arm anything.
+    this.clearImageSubtitles(stack);
+    stack.imageKey = key;
+    const epoch = stack.imageEpoch = (stack.imageEpoch ?? 0) + 1;
+    const abort = new AbortController(); stack.imageAbort = abort;
+    const surface = stack.imageSurface = createImageSubtitleSurface(video as HTMLVideoElement, this.subtitleReader(stack, abort.signal),
+      () => { if (this.current(stack) && stack.imageEpoch === epoch) { stack.imageFailed = true; stack.forcedLines = undefined; this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
+    if (!surface) { stack.imageKey = undefined; return; }
     surface.setDelay(Number(plan.offsetUs) / 1e6);
-    surface.setForcedOnly(false);
+    surface.setForcedOnly(stack.forcedOnly === true);
+    // The player's canonical offset may already be known (HLS presents a nonzero start).
+    surface.timeline(this.subtitleTimeline);
     const source: DrawnSubtitleSource = original.format === 'vobsub'
       ? {kind: 'vobsub', index: original.url, data: original.companionUrl ?? ''}
       : {kind: 'pgs', data: original.url};
-    void surface.present(source).catch(() => { if (this.current(stack) && !abort.signal.aborted) { this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
-    if (original.linesUrl) void this.readForcedLines(stack, original.linesUrl, key);
+    void surface.present(source).then(() => {
+      if (!this.current(stack) || stack.imageEpoch !== epoch || abort.signal.aborted) return;
+      if (original.linesUrl) void this.readForcedLines(stack, original.linesUrl, key, epoch, abort.signal);
+      this.sync();
+    }).catch(() => {
+      if (!this.current(stack) || stack.imageEpoch !== epoch || abort.signal.aborted) return;
+      stack.imageFailed = true; stack.forcedLines = undefined;
+      this.runtimeProblem = 'playback_subtitles_failed'; this.sync();
+    });
   }
   private renderSubtitles(stack: Stack): void {
     const state = stack.subtitles?.getSnapshot() ?? emptySubtitle, plan = state.plan, surface = this.surface;
     // A PGS/VobSub track is drawn from its own file by the image overlay, not as text cues.
     const image = this.imageOriginal(plan);
-    if (image) { this.renderImageSubtitles(stack, plan!, image); return; }
-    stack.imageSurface?.clear(); stack.imageKey = undefined; stack.forcedLines = undefined; stack.forcedOnly = undefined;
+    if (image) {
+      // One owner: the text document, its poll and any engine track stop before an image draws.
+      this.clearTextSubtitles(stack);
+      if (state.suppressed) { this.clearImageSubtitles(stack); return; }
+      this.renderImageSubtitles(stack, plan!, image);
+      return;
+    }
+    this.clearImageSubtitles(stack);
     // The dock is quiet: Portico's subtitle surface is never visible in a thumbnail.
     if (!surface || !stack.expanded || !plan || state.suppressed || plan.mode !== 'track' || plan.renderer !== 'external_text' || !plan.documentUrl) { stack.documentAbort?.abort(); this.surface?.guard(false); this.surface?.clear(); stack.documentKey = undefined; return; }
+    stack.subtitles?.setPolling(plan.mode === 'track');
     const documentUrl = plan.documentUrl;
     const key = JSON.stringify([stack.sessionKey, plan.sourceId, plan.revision, plan.documentUrl, plan.offsetUs]);
     if (stack.documentKey === key) return;
@@ -1472,14 +1494,16 @@ export class WebShellPlaybackRuntime {
    * from the exact source and revision still on screen has a switch. */
   subtitleForced(fence: PlaybackFence): Readonly<{only: boolean; lines: SubtitleLines}> | undefined {
     if (fence.kind !== 'queue' || !this.matches(fence)) return undefined;
-    const stack = this.stack;
-    if (!stack.imageSurface || !stack.forcedLines || !stack.imageKey) return undefined;
-    return Object.freeze({only: stack.forcedOnly === true, lines: stack.forcedLines});
+    const stack = this.stack, offer = stack.forcedLines;
+    // The offer belongs to the one image load that produced it, on screen, in this stack.
+    if (!stack.imageSurface || !stack.expanded || stack.imageFailed || !offer || !stack.imageKey) return undefined;
+    if (offer.key !== stack.imageKey || offer.epoch !== stack.imageEpoch) return undefined;
+    return Object.freeze({only: stack.forcedOnly === true, lines: offer.lines});
   }
   setSubtitleForcedOnly(fence: PlaybackFence, on: boolean): void {
     if (fence.kind !== 'queue') problem('playback_subtitle_unavailable');
-    const stack = this.require(fence);
-    if (!stack.imageSurface || !stack.forcedLines) problem('playback_subtitle_unavailable');
+    const stack = this.require(fence), offer = stack.forcedLines;
+    if (!stack.imageSurface || stack.imageFailed || !offer || offer.key !== stack.imageKey || offer.epoch !== stack.imageEpoch) problem('playback_subtitle_unavailable');
     stack.forcedOnly = on === true;
     stack.imageSurface.setForcedOnly(stack.forcedOnly);
     this.sync();
