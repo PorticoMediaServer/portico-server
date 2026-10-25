@@ -27,3 +27,5 @@
 .storageCleanup { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 .cleanupFields { display: flex; flex-direction: column; gap: 16px; }
 .cleanupDanger { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
+
+.storageWarning { color: var(--color-amber); }

@@ -61,7 +61,7 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
       const target = linkTarget(row), text = row.control.label && t(row.control.label);
       if (target && text) return <button type="button" className={styles.sectionLink} onClick={() => {if (options.isCurrent()) options.openTarget(target);}}>{text}<Icon name="i-right" size={16} /></button>;
       const label = state.label ?? row.label;
-      return row.id === 'storage.networkNotice' ? <span role="status">{t('next.settings.storage.sharedDrive')}</span>
+      return row.id === 'storage.networkNotice' ? <span className={styles.storageWarning} role="status">{t('next.settings.storage.sharedDrive')}</span>
         : row.id === 'storage.emptyCache' ? <EmptyCache source={cache}/>
         : row.id === 'storage.dataFolder' ? <StorageDataFolder source={storage} label={label} />
         : row.id === 'storage.usage' ? <StorageUsage source={storage} label={label} cleanup={cleanup} />
