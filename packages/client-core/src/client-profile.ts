@@ -372,30 +372,34 @@ export function rokuDeclaredProfile(options:{osVersion?:string;model?:string;uhd
 /** A Google Cast receiver. Models differ enough that the table is per model:
  * the first three generations are 1080p H.264 devices; Ultra and Google TV add
  * HEVC, VP9 and HDR. Audio beyond stereo AAC is passed to the HDMI sink, which
- * only the receiver can see, so the receiver widens this at run time. */
-export function castDeclaredProfile(model:'chromecast'|'chromecast_ultra'|'google_tv_4k'|'google_tv_hd'|'nest_hub'|'unknown'):CapabilityDocument{
- const uhd=model==='chromecast_ultra'||model==='google_tv_4k';
+ * only the receiver can see, so the receiver widens this at run time. The Google
+ * TV Streamer is the exception the bar names (VIDEO.md §5): its HDMI output takes
+ * multichannel PCM, so a lossless track keeps its channels there, beside E-AC-3
+ * Atmos passthrough. */
+export function castDeclaredProfile(model:'chromecast'|'chromecast_ultra'|'google_tv_4k'|'google_tv_hd'|'google_tv_streamer'|'nest_hub'|'unknown'):CapabilityDocument{
+ const streamer=model==='google_tv_streamer';
+ const uhd=streamer||model==='chromecast_ultra'||model==='google_tv_4k';
  const hevc=uhd||model==='google_tv_hd';
  const height=uhd?2160:model==='nest_hub'?720:1080,width=uhd?3840:model==='nest_hub'?1280:1920;
- const hdr:DynamicRange[]=uhd?['sdr','hdr10','hlg',...(model==='google_tv_4k'?['hdr10plus','dolby_vision'] as DynamicRange[]:[])]:['sdr'];
+ const hdr:DynamicRange[]=uhd?['sdr','hdr10','hlg',...(model==='google_tv_4k'||streamer?['hdr10plus','dolby_vision'] as DynamicRange[]:[])]:['sdr'];
  const video=[v('h264',{bitDepths:[8],maxWidth:width,maxHeight:height,maxLevel:uhd?51:41,maxFrameRate:uhd?60:30,dynamicRanges:['sdr']}),v('vp8',{bitDepths:[8],maxWidth:width,maxHeight:height})];
- if(hevc)video.push(v('hevc',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxLevel:uhd?153:123,maxFrameRate:60,dynamicRanges:hdr,dolbyVisionProfiles:model==='google_tv_4k'?[5,8]:[]}));
+ if(hevc)video.push(v('hevc',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxLevel:uhd?153:123,maxFrameRate:60,dynamicRanges:hdr,dolbyVisionProfiles:model==='google_tv_4k'||streamer?[5,8]:[]}));
  if(hevc||model==='nest_hub')video.push(v('vp9',{bitDepths:uhd?[8,10]:[8],maxWidth:width,maxHeight:height,dynamicRanges:hdr.filter(r=>r!=='dolby_vision'&&r!=='hdr10plus')}));
- if(model==='google_tv_hd'||model==='google_tv_4k')video.push(v('av1',{bitDepths:[8,10],maxWidth:width,maxHeight:height,dynamicRanges:hdr.filter(r=>r!=='dolby_vision')}));
+ if(model==='google_tv_hd'||model==='google_tv_4k'||streamer)video.push(v('av1',{bitDepths:[8,10],maxWidth:width,maxHeight:height,dynamicRanges:hdr.filter(r=>r!=='dolby_vision')}));
  const names=video.map(x=>x.codec);
+ const audio=streamer?[a('aac',8),a('mp3',2),a('opus',2),a('vorbis',2),a('flac',8),a('pcm',8)]:[a('aac',2),a('mp3',2),a('opus',2),a('vorbis',2),a('flac',2)];
  return {
   version:2,engineSetting:'automatic',
   client:{family:'cast',form:model==='nest_hub'?'speaker':'cast',platform:'cast',model,app:'portico-cast'},
-  display:{width,height,dynamicRanges:hdr,maxFrameRate:uhd?60:30},audioOutput:{route:model==='nest_hub'?'speaker':'hdmi',maxChannels:2},
+  display:{width,height,dynamicRanges:hdr,maxFrameRate:uhd?60:30},audioOutput:{route:model==='nest_hub'?'speaker':'hdmi',maxChannels:streamer?8:2},
   engines:{native:{
-   name:'caf-shaka',evidence:'declared',video,
-   audio:[a('aac',2),a('mp3',2),a('opus',2),a('vorbis',2),a('flac',2)],
+   name:'caf-shaka',evidence:'declared',video,audio,...(streamer?{audioPassthrough:[pass('ac3',6),pass('eac3',8,{objectAudio:['atmos']})]}:{}),
    transports:[
-    {transport:'direct',containers:['mp4','m4v'],video:names.filter(x=>x!=='vp8'&&x!=='vp9'),audio:['aac','mp3']},
+    {transport:'direct',containers:['mp4','m4v'],video:names.filter(x=>x!=='vp8'&&x!=='vp9'),audio:streamer?['aac','mp3','ac3','eac3']:['aac','mp3']},
     {transport:'direct',containers:['webm'],video:names.filter(x=>x==='vp8'||x==='vp9'||x==='av1'),audio:['opus','vorbis']},
-    audioFiles(['aac','mp3','opus','vorbis','flac'],['mp3','m4a','aac','flac','ogg','wav']),
-    {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:['aac','mp3']},
-    {transport:'hls_fmp4',containers:['fmp4'],video:names.filter(x=>x==='h264'||x==='hevc'),audio:['aac','mp3']},
+    audioFiles(streamer?['aac','mp3','opus','vorbis','flac','pcm']:['aac','mp3','opus','vorbis','flac'],['mp3','m4a','aac','flac','ogg','wav']),
+    {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:streamer?['aac','mp3','ac3','eac3']:['aac','mp3']},
+    {transport:'hls_fmp4',containers:['fmp4'],video:names.filter(x=>x==='h264'||x==='hevc'||x==='av1'),audio:streamer?['aac','mp3','ac3','eac3','flac']:['aac','mp3']},
    ],
    subtitleRendering:[...textOnly],
   }},
