@@ -43,13 +43,15 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
 function Start({account, session, servers, sourceCurrent}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean}) {
   const {t} = useMemo(servicesI18n, []);
   const showEnding = useMembershipEnding(account, accountIdentity(session), servers.membershipEnding, sourceCurrent);
-  const [invitation, setInvitation] = useState(''), [join, setJoin] = useState<JoinLink>(), [shortJoin, setShortJoin] = useState<string>();
+  type InvitationOpening = Readonly<{link: JoinLink; pasted: string}>;
+  const [invitation, setInvitation] = useState(''), [joinState, setJoinState] = useState<{opening?: InvitationOpening; expired?: boolean}>({}), [shortJoin, setShortJoin] = useState<string>();
+  const opening = joinState.opening;
   const [error, setError] = useState<unknown>(), [invalid, setInvalid] = useState(false);
   const inspect = (input = invitation) => {
     const parsed = parseJoinLink(input.trim()), short = parseShortInvitationCode(input);
     setInvalid(!parsed && !short); setError(undefined);
     setShortJoin(short ? input : undefined);
-    setJoin(parsed ?? undefined);
+    setJoinState(parsed ? {opening: Object.freeze({link: parsed, pasted: input.trim()})} : {});
   };
   const run = (work: () => Promise<void>) => { void Promise.resolve().then(work).catch(setError); };
   const download = () => location.assign(distributionPage);
@@ -65,11 +67,17 @@ function Start({account, session, servers, sourceCurrent}: {account: ServicesAcc
     onAccount={() => location.assign('/account')} onJoin={() => scrollToCard('join')} onSetup={() => scrollToCard('setup')} onApps={() => scrollToCard('apps')}
     onHelp={() => window.open('https://getportico.tv/docs/', '_blank', 'noopener,noreferrer')}
     onSignOut={() => run(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />} />}
-    invitation={invitation} onInvitationChange={value => { setInvitation(value); setInvalid(false); }} onJoin={() => inspect()}
+    invitation={invitation} onInvitationChange={value => { setInvitation(value); setInvalid(false); setJoinState(previous => previous.expired ? {} : previous); }} onJoin={() => inspect()}
     onInvitationPaste={value => { setInvitation(value); inspect(value); }}
     onPaste={() => run(async () => { const value = await navigator.clipboard.readText(); setInvitation(value); inspect(value); })}
     onDownload={download} onApps={download} onCopyDownload={() => run(() => navigator.clipboard.writeText(distributionPage))}
     onShareDownload={() => run(async () => { if (navigator.share) await navigator.share({url: distributionPage}); else await navigator.clipboard.writeText(distributionPage); })}
-    error={invalid ? <ServicesNotice tone="error">{t('web.link.invalid')}</ServicesNotice> : <HostedError error={error} />} />
-    {join ? <ServicesInvitationDialog account={account} link={join} pasted={invitation.trim()} onBack={() => setJoin(undefined)} /> : null}</>;
+    error={invalid || joinState.expired ? <ServicesNotice tone="error">{t(joinState.expired ? 'accounts.invitation.expiredBody' : 'web.link.invalid')}</ServicesNotice> : <HostedError error={error} />} />
+    {opening ? <ServicesInvitationDialog account={account} link={opening.link} pasted={opening.pasted}
+      onBack={() => setJoinState(previous => previous.opening === opening ? {} : previous)}
+      onUnavailable={() => {
+        const current = account.service.getSnapshot().session;
+        if (!sourceCurrent() || !current || current.account.id !== session.account.id || current.familyId !== session.familyId) return;
+        setJoinState(previous => previous.opening === opening ? {expired: true} : previous);
+      }} /> : null}</>;
 }

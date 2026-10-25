@@ -42,7 +42,7 @@ export function ShortJoinPage({account, onBack, initialCode}: {account: Services
 /** Connect 27: the same canonical invitation screen, drawn as the dialog the start
  * page opens on a pasted link. Inspection, account switching and the journal stay
  * in AccountInvitationScreen; only the surrounding presentation is a Dialog. */
-export function ServicesInvitationDialog({account, link, pasted, onBack}: {account: ServicesAccount; link: JoinLink; pasted: string; onBack: () => void}) {
+export function ServicesInvitationDialog({account, link, pasted, onBack, onUnavailable}: {account: ServicesAccount; link: JoinLink; pasted: string; onBack: () => void; onUnavailable?: () => void}) {
   const {t} = useMemo(servicesI18n, []);
   const session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
   const current = useMemo(() => session ? servicesInvitationAccount(account, session) : undefined, [account, session]);
@@ -51,7 +51,7 @@ export function ServicesInvitationDialog({account, link, pasted, onBack}: {accou
   // The drawn dialog carries its own Join and Cancel row; the surface adds no footer.
   return <Dialog open onOpenChange={open => { if (!open) onBack(); }} title={t('services.start.join')} description={t('services.start.joinLede')}>
     <p className={dialogStyles.link} title={pasted}>{pasted}</p>
-    <AccountInvitationScreen presentation="dialog" link={link} account={current} onBack={onBack} onDifferentAccount={different}
+    <AccountInvitationScreen presentation="dialog" onUnavailable={onUnavailable} link={link} account={current} onBack={onBack} onDifferentAccount={different}
       signedOutContent={<><HostedError error={error} /><ServicesAuthForm account={account} embedded invitation onSignedIn={() => {}} /></>}
       onJoined={destination => location.assign(destination.origin)} />
   </Dialog>;
