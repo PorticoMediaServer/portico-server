@@ -264,6 +264,19 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "account_security_email_resend",
+    "method": "POST",
+    "path": "/v1/account/security/email/resend",
+    "summary": "Resend the initiating family's pending email change code without extending its expiry.",
+    "access": "account_session",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [],
+    "status": 200
+  },
+  {
     "id": "account_security_get",
     "method": "GET",
     "path": "/v1/account/security",
@@ -1309,6 +1322,7 @@ export const routePaths = {
   "account_recovery_request": "/v1/account/recovery/request",
   "account_security_action": "/v1/account/security/actions",
   "account_security_email_confirm": "/v1/account/security/email/confirm",
+  "account_security_email_resend": "/v1/account/security/email/resend",
   "account_security_get": "/v1/account/security",
   "account_security_mfa_confirm": "/v1/account/security/mfa/confirm",
   "account_security_proof": "/v1/account/security/proof",

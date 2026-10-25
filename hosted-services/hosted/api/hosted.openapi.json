@@ -789,6 +789,9 @@
           "familyId": {
             "type": "string"
           },
+          "maskedAddress": {
+            "type": "string"
+          },
           "otpAuthUri": {
             "type": "string"
           },
@@ -797,6 +800,11 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "resendsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "secret": {
             "type": "string"
@@ -977,6 +985,9 @@
           "familyId": {
             "type": "string"
           },
+          "maskedAddress": {
+            "type": "string"
+          },
           "otpAuthUri": {
             "type": "string"
           },
@@ -985,6 +996,11 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "resendsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "secret": {
             "type": "string"
@@ -1095,6 +1111,9 @@
           "familyId": {
             "type": "string"
           },
+          "maskedAddress": {
+            "type": "string"
+          },
           "otpAuthUri": {
             "type": "string"
           },
@@ -1103,6 +1122,133 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "resendsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "signOut": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "familyId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "AccountSecurityEmailResendRequest": {
+        "properties": {
+          "challengeId": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "challengeId",
+          "operationId"
+        ],
+        "type": "object"
+      },
+      "AccountSecurityEmailResendResponse": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          },
+          "deletionPreview": {
+            "properties": {
+              "affectedServers": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "canDelete": {
+                "type": "boolean"
+              },
+              "deletionToken": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "ownedServers": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "deletionToken",
+              "expiresAt",
+              "ownedServers",
+              "affectedServers",
+              "canDelete"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "familyId": {
+            "type": "string"
+          },
+          "maskedAddress": {
+            "type": "string"
+          },
+          "otpAuthUri": {
+            "type": "string"
+          },
+          "recoveryCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resendsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "secret": {
             "type": "string"
@@ -1274,6 +1420,9 @@
           "familyId": {
             "type": "string"
           },
+          "maskedAddress": {
+            "type": "string"
+          },
           "otpAuthUri": {
             "type": "string"
           },
@@ -1282,6 +1431,11 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "resendsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "secret": {
             "type": "string"
@@ -6989,6 +7143,9 @@
                     "familyId": {
                       "type": "string"
                     },
+                    "maskedAddress": {
+                      "type": "string"
+                    },
                     "otpAuthUri": {
                       "type": "string"
                     },
@@ -6997,6 +7154,11 @@
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "resendsRemaining": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "secret": {
                       "type": "string"
@@ -7461,6 +7623,9 @@
                     "familyId": {
                       "type": "string"
                     },
+                    "maskedAddress": {
+                      "type": "string"
+                    },
                     "otpAuthUri": {
                       "type": "string"
                     },
@@ -7469,6 +7634,11 @@
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "resendsRemaining": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "secret": {
                       "type": "string"
@@ -7638,6 +7808,9 @@
                     "familyId": {
                       "type": "string"
                     },
+                    "maskedAddress": {
+                      "type": "string"
+                    },
                     "otpAuthUri": {
                       "type": "string"
                     },
@@ -7646,6 +7819,11 @@
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "resendsRemaining": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "secret": {
                       "type": "string"
@@ -7700,6 +7878,187 @@
           }
         },
         "summary": "Confirm an email address change.",
+        "x-access": "account_session",
+        "x-admission": "",
+        "x-cost": "constant",
+        "x-error-codes": [],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
+      }
+    },
+    "/v1/account/security/email/resend": {
+      "post": {
+        "operationId": "account_security_email_resend",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "challengeId": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "challengeId",
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "challengeId": {
+                      "type": "string"
+                    },
+                    "deletionPreview": {
+                      "properties": {
+                        "affectedServers": {
+                          "items": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "canDelete": {
+                          "type": "boolean"
+                        },
+                        "deletionToken": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "ownedServers": {
+                          "items": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "deletionToken",
+                        "expiresAt",
+                        "ownedServers",
+                        "affectedServers",
+                        "canDelete"
+                      ],
+                      "type": "object"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "familyId": {
+                      "type": "string"
+                    },
+                    "maskedAddress": {
+                      "type": "string"
+                    },
+                    "otpAuthUri": {
+                      "type": "string"
+                    },
+                    "recoveryCodes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "resendsRemaining": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "secret": {
+                      "type": "string"
+                    },
+                    "signOut": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accountId",
+                    "familyId",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Resend the initiating family's pending email change code without extending its expiry.",
         "x-access": "account_session",
         "x-admission": "",
         "x-cost": "constant",
@@ -7815,6 +8174,9 @@
                     "familyId": {
                       "type": "string"
                     },
+                    "maskedAddress": {
+                      "type": "string"
+                    },
                     "otpAuthUri": {
                       "type": "string"
                     },
@@ -7823,6 +8185,11 @@
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "resendsRemaining": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "secret": {
                       "type": "string"
