@@ -9,6 +9,7 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "recording_root_request_expired", Status: 410, Message: publicErrorMessage("console_expired"), Retry: apierror.Never},
 		{Code: "invalid_query", Status: 400, Message: publicErrorMessage("invalid_request"), Retry: apierror.Never},
 		{Code: "home_layout_conflict", Status: 409, Message: publicErrorMessage("home_layout_conflict"), Retry: apierror.AfterRefresh},
 		{Code: "stale_continuation", Status: 409, Message: "This list changed. Refresh it to continue.", Retry: apierror.AfterRefresh},
