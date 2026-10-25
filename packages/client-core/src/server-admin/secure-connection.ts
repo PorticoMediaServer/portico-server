@@ -38,8 +38,10 @@ export type SecureConnectionView = Readonly<{
   canConnect: boolean;
 }>;
 
-/** Certificate states that mean the server has no installed Portico Account connection yet. */
-const UNCLAIMED = new Set(['claim_required', 'claim_pending', 'authority_unavailable']);
+/** Certificate states that mean the server has no installed Portico Account connection yet.
+ * `unconfigured` is what the certificate service reports for a claim-required server
+ * (`certificate_manager.go` maps that claim state to it), so it reads as unclaimed, not as off. */
+const UNCLAIMED = new Set(['claim_required', 'claim_pending', 'authority_unavailable', 'unconfigured']);
 
 /** Whether the certificate service has a Portico Account connection to work with. */
 export function certificateClaimed(status: CertificateStatus | undefined): boolean {
