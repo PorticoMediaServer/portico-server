@@ -240,3 +240,20 @@ test('private occurrence parser refuses malformed stamps instead of downgrading 
  assert.equal(parseCastEvent({type:'status',controller:controllerStamp,occurrence,itemId:'other'}),undefined);
  assert.equal(parseCastEvent({type:'status',controller:{...controllerStamp,connectionGeneration:NaN},itemId:'movie'}),undefined);
 });
+
+
+test('scoped loadACK before first status never downgrades controls or Stop to latest receiver authority',async()=>{
+ const tv=receiver('TV','tv-a'),saved=new Map<string,string>();
+ const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,describe:async()=> 'Film',
+ controllerStorage:{get:k=>saved.get(k),set:(k,v)=>{saved.set(k,v);}},
+ api:{request:async<T,>(path:string,_method?:string,body?:unknown)=> (path==='/v1/cast/bootstrap'?{bootstrap:{id:binding.bootstrapId,code:'ABC123'}}:{binding,attemptId:(body as {attemptId:string}).attemptId,ticket:'b'.repeat(43)}) as T}});
+ const started=controller.start(tv.transport,'movie',{title:'Film'},0);await settle();
+ tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await started,true);
+ assert.equal(controller.getSnapshot().phase,'casting');assert.equal(controller.getSnapshot().remoteIdentity,undefined);
+ const before=tv.sent.length;
+ controller.pause();controller.play();controller.seek(20);controller.setAudioTrack(1);controller.setSubtitleTrack(null);
+ assert.equal(tv.sent.length,before,'held first status supplies no occurrence-scoped control authority');
+ controller.stop();assert.equal(tv.sent.length,before);assert.equal(tv.ended,undefined,'no SDK end can stop a successor receiver');
+ tv.reply({type:'status',controller:controllerStamp,occurrence:{sessionId:'successor',generation:9,itemId:'later'},itemId:'later',positionSeconds:3,durationSeconds:60});
+ controller.stop();controller.pause();assert.equal(tv.sent.length,before);assert.equal(tv.ended,undefined);assert.equal(controller.getSnapshot().remoteIdentity,undefined);controller.dispose();
+});

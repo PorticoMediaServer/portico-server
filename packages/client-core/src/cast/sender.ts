@@ -452,7 +452,13 @@ export class CastController {
     this.send({type:'takeover',allow,...(expected.controller?{controller:expected.controller}:{}),...(expected.requestId?{requestId:expected.requestId}:{})});
     this.publish({takeover:undefined});
   }
-  private controlTarget(expected:CastRemoteIdentity|undefined){return this.current()&&this.state.phase==='casting'&&!this.stopping&&(!expected||sameCastRemote(expected,this.state.remoteIdentity));}
+  private controlTarget(expected:CastRemoteIdentity|undefined){
+    const target=expected??this.state.remoteIdentity;
+    // A paired production sender may have loadACK before the first admitted
+    // status. Missing occurrence authority is never a legacy/room downgrade.
+    if((this.proofContext||this.acceptedController)&&(!target||!sameCastController(target.controller,this.acceptedController)))return false;
+    return this.current()&&this.state.phase==='casting'&&!this.stopping&&(!expected||sameCastRemote(expected,this.state.remoteIdentity));
+  }
   private targetFields(expected?:CastRemoteIdentity){const target=expected??this.state.remoteIdentity;return target?{target}:{};}
   play(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.send({type:'play',...this.targetFields(expected)});if(!this.state.remoteIdentity)this.publish({paused:false}); }
   pause(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.send({type:'pause',...this.targetFields(expected)});if(!this.state.remoteIdentity)this.publish({paused:true}); }
@@ -486,6 +492,11 @@ export class CastController {
       void transport.send({type:'stop',requestId,target}).catch(refuse);return;
     }
     if(target||this.stopping)return;
+    if(this.proofContext||this.acceptedController){
+      // No exact occurrence was observed (or it was redacted). Detach this
+      // caller only; a bare Stop/SDK end could stop a successor receiver item.
+      const generation=this.startGeneration;this.redacted(this.transport,generation,this.statusRevision);return;
+    }
     this.send({type: 'stop'});
     this.release(true);
     this.publish({phase: 'off', transferPending:false,itemId: undefined, title: undefined, deviceName: undefined, error: undefined, errorId: undefined, takeover: undefined});
