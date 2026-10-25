@@ -147,8 +147,9 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     remaining: item.id === currentContentsId && snapshot.location?.pagesLeftInSection !== undefined
       ? t('next.reader.sectionRemaining', {count: snapshot.location.pagesLeftInSection}) : undefined, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
   const searchHits: ReaderSearchHit[] = visibleHits.map(hit => {
-    const start = hit.excerpt.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
-    const context = start < 0 ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, start)}, {text: hit.excerpt.slice(start, start + query.length), match: true}, {text: hit.excerpt.slice(start + query.length)}];
+    const match = hit.match;
+    const context = !match ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, match.start)},
+      {text: hit.excerpt.slice(match.start, match.start + match.length), match: true}, {text: hit.excerpt.slice(match.start + match.length)}];
     return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => openSearchHit(hit)};
   });
   const panelContent = !active ? undefined : panel === 'contents' ? (fixed
