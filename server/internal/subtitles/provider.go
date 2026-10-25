@@ -117,6 +117,7 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 	if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.db), lookupEpoch); e != nil {
 		return out, e
 	}
+	ctx = localonly.WithOnlineAdmission(ctx, s.db, lookupEpoch)
 	var candidates []ProviderCandidate
 	if advanced, ok := s.provider.(MediaSearchProvider); ok {
 		candidates, e = advanced.SearchMedia(ctx, media)
@@ -230,6 +231,7 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 	if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.db), lookupEpoch); e != nil {
 		return Receipt{}, e
 	}
+	ctx = localonly.WithOnlineAdmission(ctx, s.db, lookupEpoch)
 	raw, e := s.provider.Download(ctx, file)
 	if e != nil {
 		return Receipt{}, e

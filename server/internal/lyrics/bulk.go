@@ -387,8 +387,13 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 	if e = tx.QueryRowContext(ctx, `SELECT i.title,COALESCE((SELECT ar.title FROM catalog_song_artists sa JOIN catalog_entities ar ON ar.id=sa.artist_id WHERE sa.song_id=i.id ORDER BY ar.id LIMIT 1),'') FROM catalog_entities i WHERE i.public_id=pid_blob(?)`, item).Scan(&title, &artist); e != nil {
 		return "", e
 	}
+	lookupEpoch, e := localonly.CaptureOnline(ctx, tx)
+	if e != nil {
+		return "", e
+	}
 	query := title + " " + artist
 	gated.Rollback()
+	ctx = localonly.WithOnlineAdmission(ctx, b.Service.DB, lookupEpoch)
 	// Local sidecars/embedded lyrics win even when this song has never been
 	// played and therefore has no cached lyric resource yet.
 	if b.Service.Local != nil {

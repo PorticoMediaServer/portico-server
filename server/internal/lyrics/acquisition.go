@@ -232,6 +232,7 @@ func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe st
 		if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.DB), lookupEpoch); e != nil {
 			return out, e
 		}
+		ctx = localonly.WithOnlineAdmission(ctx, s.DB, lookupEpoch)
 		found, e = s.Provider.Search(ctx, query)
 		if e != nil {
 			return out, e
