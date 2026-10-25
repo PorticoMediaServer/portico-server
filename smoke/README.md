@@ -6,6 +6,14 @@ queue item by the M0 smoke lane, with the surface, the build SHA and the exact s
 
 Owner: lane `ds-m0-smoke`, family `P0-SMOKE`.
 
+## When to run
+
+Run these flows at a Release checkpoint, after Release publishes the deployment and artifact
+pins and grants the named device window. Between checkpoints, edit and review harness source
+without starting runner jobs, tests, devices or captures. Native frame/build pairs belong to
+Visual QA and Release's checkpoint batch; they do not block item merges or implemented credit.
+A merged item is done. Checkpoint failures become FIX items in the owning family.
+
 ## Where each surface runs
 
 | Surface | Runner | Why there |
