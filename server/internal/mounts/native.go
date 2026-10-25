@@ -172,7 +172,7 @@ func (b *NativeBackend) runOwned(ctx context.Context, relative, operation, lane 
 	// source's original operation context and validation custody. A bundled
 	// selection is never checked. No digest is compared for old or new rows.
 	if !b.included {
-		if _, err := checkProgramVersion(ctx, &b.service.validationSupervisor, b.executable); err != nil {
+		if _, err := checkProgramVersion(ctx, b.service.validationSupervisor, b.executable); err != nil {
 			return storage.ErrRemoteBinary
 		}
 	}
@@ -262,7 +262,7 @@ func (s *Service) approveExecutable(ctx context.Context, executable string) (str
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable || len(executable) > 8192 || strings.IndexFunc(executable, unicode.IsControl) >= 0 {
 		return "", "", "", ErrExecutableInvalid
 	}
-	version, err := checkProgramVersion(ctx, &s.validationSupervisor, executable)
+	version, err := checkProgramVersion(ctx, s.validationSupervisor, executable)
 	if err != nil {
 		return "", "", "", err
 	}
