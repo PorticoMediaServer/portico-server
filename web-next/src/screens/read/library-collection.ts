@@ -1,4 +1,4 @@
-import {ReadingError, type ReadingClient, type ReadingPeriodicalType, type ReadingPeriodicalGroup, type ReadingPeriodicalIssue, type ReadingYearChoice, type ReadingDayChoice} from '@portico/client-core';
+import {ReadingError, type ReadingClient, type ReadingPeriodicalType, type ReadingPeriodicalGroup, type ReadingPeriodicalIssue, type ReadingYearChoice, type ReadingDayChoice, type ReadingSeriesOverview} from '@portico/client-core';
 import {createWindowedCollection} from '@core/collections/windowed.ts';
 
 export type ReadingLibraryItem = Awaited<ReturnType<ReadingClient['list']>>['items'][number];
@@ -16,8 +16,22 @@ export function createReadingCollection(client: ReadingClient, libraryId: string
  * Reuse the bounded collection; never sort a generic browse result or derive an id
  * from a label. No progress, numbering or page-count facts are added here. */
 export function createReadingSeriesCollection(client: ReadingClient, libraryId: string, seriesId: string) {
-  return cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
-    (cursor, limit, signal) => client.series(libraryId, seriesId, {cursor, limit}, signal));
+  let overview: ReadingSeriesOverview | undefined, disposed = false;
+  const listeners = new Set<() => void>(), metadata = new WeakMap<object, ReadingSeriesOverview | undefined>();
+  const pages = cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
+    async (cursor, limit, signal) => {
+      const page = await client.series(libraryId, seriesId, {cursor, limit}, signal);
+      if (!disposed && !signal.aborted) metadata.set(page, page.overview);
+      return page;
+    }, page => {
+      const next = metadata.get(page);
+      if (overview && next && (overview.id !== next.id || overview.title !== next.title || overview.total !== next.total)) throw new ReadingError('invalid_document');
+      overview = next; for (const listener of [...listeners]) listener();
+    });
+  return {...pages, overview: {getSnapshot: () => overview, subscribe: (listener: () => void) => {
+    if (!disposed) listeners.add(listener);
+    return () => {listeners.delete(listener);};
+  }}, dispose() {disposed = true; overview = undefined; for (const listener of [...listeners]) listener(); listeners.clear(); pages.dispose();}};
 }
 
 export function createReadingPeriodicalGroupsCollection(client: ReadingClient, libraryId: string, kind: ReadingPeriodicalType) {
@@ -44,7 +58,8 @@ export function createReadingContinueCollection(client: ReadingClient, libraryId
 }
 
 function cursorCollection<T>(libraryId: string | undefined, keyOf: (item: T) => string, libraryOf: (item: T) => string,
-  fetch: (cursor: string | undefined, limit: number, signal: AbortSignal) => Promise<Readonly<{items: readonly T[]; nextCursor?: string}>>) {
+  fetch: (cursor: string | undefined, limit: number, signal: AbortSignal) => Promise<Readonly<{items: readonly T[]; nextCursor?: string}>>,
+  accept?: (page: Readonly<{items: readonly T[]; nextCursor?: string}>) => void) {
   const cursors = new Map<number, string | undefined>([[0, undefined]]);
   const waiting = new Map<number, Set<() => void>>();
   let ended: number | undefined, frontier = 0, lowerBound = 0, disposed = false;
@@ -72,6 +87,7 @@ function cursorCollection<T>(libraryId: string | undefined, keyOf: (item: T) => 
       if (disposed || signal.aborted) throw new ReadingError('cancelled');
       if (libraryId !== undefined && response.items.some(item => libraryOf(item) !== libraryId) || response.nextCursor && (response.items.length !== count || [...cursors.values()].includes(response.nextCursor)))
         throw new ReadingError('invalid_document');
+      accept?.(response);
       if (response.nextCursor) {
         cursors.set(start + count, response.nextCursor); frontier = Math.max(frontier, start + count);
         lowerBound = Math.max(lowerBound, start + response.items.length + 1);
