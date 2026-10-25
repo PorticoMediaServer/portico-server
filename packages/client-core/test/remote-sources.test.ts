@@ -299,3 +299,16 @@ test('an arbitrary backend code is normalized and never retained',async()=>{
  await assert.rejects(service.readProfile('dav'),error=>{const code=(error as {code?:string}).code;return code==='internal'&&!String(error).includes('private-password');});
  const snapshot=JSON.stringify(service.getSnapshot());assert(!snapshot.includes('private-password'));assert(!snapshot.includes('private.example'));service.dispose();
 });
+
+test('a dialog attempt guard retiring under a held operation id sends zero mutation',async()=>{
+ const held=deferred();let writes=0,open=true;
+ const service=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')writes++;return list();}),scope,()=>held.promise,()=>true);
+ const guard=()=>open;
+ const configure=service.configure(null,input,undefined,guard);open=false;held.resolve(op);
+ await configure;assert.equal(writes,0);service.dispose();
+ open=true;const saveHeld=deferred();let saveWrites=0;
+ const profile={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
+ const saveService=new RemoteSourceService(api(async(_path,method)=>{if(method!=='GET')saveWrites++;return list();}),scope,()=>saveHeld.promise,()=>true);
+ const saveGuard=()=>open;const save=saveService.saveProfile(profile,profile.values,saveGuard);open=false;saveHeld.resolve(op);
+ await assert.rejects(save);assert.equal(saveWrites,0);saveService.dispose();
+});

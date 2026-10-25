@@ -102,9 +102,9 @@ export class RemoteSourceService{
  private publish(value:Partial<RemoteState>){if(!this.live())return;this.state=Object.freeze({...this.state,...value});for(const fn of this.listeners)fn();}
  dispose(){this.epoch++;this.disposed=true;for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,operationId:null};}
  private fence(raw:unknown){if(!record(raw)||!record(raw.scope)||raw.scope.serverId!==this.scope.serverId||!text(raw.scope.viewerFence,256)||!raw.scope.viewerFence||this.viewerFence&&this.viewerFence!==raw.scope.viewerFence)invalid();this.viewerFence=raw.scope.viewerFence;}
- private async request(path:string,method='GET',body?:unknown):Promise<unknown>{if(!this.live())throw new Error('Scope changed.');const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([this.api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);}finally{if(timer)clearTimeout(timer);this.controllers.delete(c);}}
+ private async request(path:string,method='GET',body?:unknown,guard?:()=>boolean):Promise<unknown>{if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([this.api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);}finally{if(timer)clearTimeout(timer);this.controllers.delete(c);}}
  /** The sources as the server has them, checked; `undefined` when a later read or another viewer has taken over. */
- private async readSources(epoch:number,sequence:number){const raw=await this.request(routePath("get_storage_sources"));if(!this.live()||epoch!==this.epoch||sequence!==this.read)return undefined;this.fence(raw);if(!record(raw)||!Array.isArray(raw.sources)||typeof raw.mountSupported!=='boolean')invalid();const rows=firstOfEach('remote-sources','sources',keepReadable('remote-sources','sources',raw.sources,source),s=>s.id);return {sources:Object.freeze(rows),mountSupported:raw.mountSupported};}
+ private async readSources(epoch:number,sequence:number,guard?:()=>boolean){const raw=await this.request(routePath("get_storage_sources"),'GET',undefined,guard);if(!this.live()||epoch!==this.epoch||sequence!==this.read)return undefined;this.fence(raw);if(!record(raw)||!Array.isArray(raw.sources)||typeof raw.mountSupported!=='boolean')invalid();const rows=firstOfEach('remote-sources','sources',keepReadable('remote-sources','sources',raw.sources,source),s=>s.id);return {sources:Object.freeze(rows),mountSupported:raw.mountSupported};}
  /**
   * Reads the sources again while they are on screen (a share that became reachable, or stopped
   * being). What is shown stays; a failure leaves it as it was and rejects. Nothing is read while
@@ -114,20 +114,20 @@ export class RemoteSourceService{
  async load(){if(!this.live())return;const epoch=this.epoch,sequence=++this.read;this.publish({loading:true,error:''});try{const next=await this.readSources(epoch,sequence);if(!next)return;this.publish(next);}catch(e){if(epoch===this.epoch&&sequence===this.read)this.publish({error:safeError(e),sources:[],receipt:null,mountSupported:false});}finally{if(epoch===this.epoch&&sequence===this.read)this.publish({loading:false});}}
  private parseReceipt(raw:unknown,op:string):RemoteReceipt{this.fence(raw);if(!record(raw)||!record(raw.receipt)||raw.receipt.operationId!==op||raw.receipt.accepted!==true||typeof raw.receipt.removed!=='boolean')invalid();return Object.freeze({operationId:op,accepted:true,removed:raw.receipt.removed,source:source(raw.receipt.source)});}
  /** A new-source test uses one explicit in-flight credential request. It saves no source or retry receipt. */
- async testConnection(input:DAVConnectionInput):Promise<DAVConnectionResult>{
-  if(!this.live()||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+ async testConnection(input:DAVConnectionInput,guard?:()=>boolean):Promise<DAVConnectionResult>{
+  if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password)||typeof input.insecureLocal!=='boolean')throw new Error('Invalid connection fields.');
   const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:''});
   try{
-   const raw=await this.request(routePath('test_storage_source_webdav'),'POST',routeBody('test_storage_source_webdav',{name:input.name,root:input.root,username:input.username,password:input.password,insecureLocal:input.insecureLocal}));
-   if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+   const raw=await this.request(routePath('test_storage_source_webdav'),'POST',routeBody('test_storage_source_webdav',{name:input.name,root:input.root,username:input.username,password:input.password,insecureLocal:input.insecureLocal}),guard);
+   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
    this.fence(raw);
    if(!record(raw)||!record(raw.result))invalid();
    const result=raw.result;
    if(!text(result.origin)||!sourceOrigin(result.origin,'webdav')||!['unknown','conditional','unsupported'].includes(String(result.rangeSupport))||['password','username','config','root'].some(key=>result[key]!==undefined))invalid();
    return Object.freeze({origin:result.origin,rangeSupport:result.rangeSupport as DAVConnectionResult['rangeSupport']});
   }catch(error){
-   if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
    const rawCode=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
    const code=['unauthorized','not_permitted','invalid_request','source_credentials_required','internal'].includes(rawCode)?rawCode:'internal';
    const aliases:Record<string,string>={not_permitted:'forbidden',invalid_request:'remote_invalid_configuration',source_credentials_required:'remote_credentials_required'};
@@ -140,70 +140,72 @@ export class RemoteSourceService{
   * someone else changed the share meanwhile, it is read again and the edit, carried onto it field by
   * field, is sent once more without a word; only a field both changed is a conflict.
   */
- async configure(id:string|null,input:DAVConfiguration,base?:RemoteSource){if(!this.live()||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password))throw new Error('Invalid connection fields.');
+ async configure(id:string|null,input:DAVConfiguration,base?:RemoteSource,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password))throw new Error('Invalid connection fields.');
   const path=routePath("post_storage_sources_webdav")+(id?'/'+encodeURIComponent(id):'');
-  await this.command(path,id?'PUT':'POST',input);
+  await this.command(path,id?'PUT':'POST',input,guard);
   if(!id||!base||this.state.errorCode!==CONFLICT)return;
-  const fresh=await this.reread(id);if(!fresh)return;
+  const fresh=await this.reread(id,guard);if(!fresh)return;
   const rebased=rebaseDavEdit(base,fresh,input);if(!rebased)return this.publish({error:safeError({code:CONFLICT}),errorCode:CONFLICT});
-  return this.command(path,'PUT',rebased);}
+  return this.command(path,'PUT',rebased,guard);}
  /** Removes a share. A share changed elsewhere is still the share the owner meant: it is read again and removed; one already gone is done. */
- async remove(row:RemoteSource){if(!this.live()||row.kind!=='webdav'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
+ async remove(row:RemoteSource,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||row.kind!=='webdav'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
   const path=encodedRoutePath("delete_storage_sources_webdav_id", {"id": encodeURIComponent(row.id)});
-  await this.command(path,'DELETE',{expectedGeneration:row.generation});
+  await this.command(path,'DELETE',{expectedGeneration:row.generation},guard);
   if(this.state.errorCode!==CONFLICT)return;
-  const fresh=await this.reread(row.id);if(fresh===null)return this.publish({error:'',errorCode:'',alreadyDone:true});if(!fresh)return;
-  return this.command(path,'DELETE',{expectedGeneration:fresh.generation});}
+  const fresh=await this.reread(row.id,guard);if(fresh===null)return this.publish({error:'',errorCode:'',alreadyDone:true});if(!fresh)return;
+  return this.command(path,'DELETE',{expectedGeneration:fresh.generation},guard);}
  /** After a conflict: the share as the server has it now, null when it is gone, undefined when it could not be read (the conflict stays as it was). */
- private async reread(id:string):Promise<RemoteSource|null|undefined>{const epoch=this.epoch,sequence=++this.read;try{const next=await this.readSources(epoch,sequence);if(!next)return undefined;this.publish(next);return next.sources.find(s=>s.id===id)??null;}catch{return undefined;}}
- private async command(path:string,method:string,body:unknown){const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});let submitted=false;try{const op=await this.operationId();if(!this.live()||epoch!==this.epoch)return;if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();this.publish({operationId:op});submitted=true;const pending=this.request(path,method,{...(body as object),operationId:op});body=undefined;const raw=await pending;if(!this.live()||epoch!==this.epoch)return;const receipt=this.parseReceipt(raw,op);this.publish({receipt,ambiguous:false});await this.load();}catch(e){if(!this.live()||epoch!==this.epoch)return;const code=record(e)&&typeof e.code==='string'?normalizedCode(e.code):'';const rejected=['storage_command_conflict','storage_operation_expired','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden'].includes(code);this.publish({ambiguous:submitted&&!rejected,error:safeError(e),errorCode:code});}finally{body=undefined;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
+ private async reread(id:string,guard?:()=>boolean):Promise<RemoteSource|null|undefined>{const epoch=this.epoch,sequence=++this.read;try{const next=await this.readSources(epoch,sequence,guard);if(!next)return undefined;this.publish(next);return next.sources.find(s=>s.id===id)??null;}catch{return undefined;}}
+ private async command(path:string,method:string,body:unknown,guard?:()=>boolean){const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});let submitted=false;try{const op=await this.operationId();if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();this.publish({operationId:op});submitted=true;const pending=this.request(path,method,{...(body as object),operationId:op},guard);body=undefined;const raw=await pending;if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;const receipt=this.parseReceipt(raw,op);if(guard&&!guard())return;this.publish({receipt,ambiguous:false});await this.load();}catch(e){if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;const code=record(e)&&typeof e.code==='string'?normalizedCode(e.code):'';const rejected=['storage_command_conflict','storage_operation_expired','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden'].includes(code);this.publish({ambiguous:submitted&&!rejected,error:safeError(e),errorCode:code});}finally{body=undefined;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
  async recover(){if(!this.live()||this.state.busy||!this.state.operationId)throw new Error('No source operation to recover.');const op=this.state.operationId,epoch=this.epoch;this.publish({busy:true,error:''});try{const raw=await this.request(encodedRoutePath("get_storage_source_operations_id", {"id": encodeURIComponent(op)}));if(!this.live()||epoch!==this.epoch)return;this.publish({receipt:this.parseReceipt(raw,op),ambiguous:false});await this.load();}catch(e){if(epoch===this.epoch)this.publish({ambiguous:true,error:safeError(e)});}finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
  async policy(libraryId:string):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(libraryId)}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.parsePolicy(raw,libraryId);}
  private parsePolicy(raw:unknown,id:string):AnalysisPolicy{this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==id||typeof raw.policy.enabled!=='boolean'||!integer(raw.policy.revision))invalid();if(raw.policy.effective!==undefined&&typeof raw.policy.effective!=='boolean')invalid();const scanTier=['file_list_only','basic','complete','custom'].includes(String(raw.policy.scanTier))?raw.policy.scanTier as string:undefined;if(raw.policy.scanTier!==undefined&&scanTier===undefined)noteSkipped('remote-sources','policy.scanTier');return Object.freeze({libraryId:id,enabled:raw.policy.enabled,revision:raw.policy.revision,...(raw.policy.effective===undefined?{}:{effective:raw.policy.effective as boolean}),...(scanTier===undefined?{}:{scanTier})});}
  async setPolicy(policy:AnalysisPolicy,enabled:boolean):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("put_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(policy.libraryId)}),'PUT',routeBody("put_libraries_id_strm_analysis_policy", {enabled,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.parsePolicy(raw,policy.libraryId);}
- async readProfile(id:string,expectedGeneration?:string):Promise<SourceReadSettings>{
+ async readProfile(id:string,expectedGeneration?:string,guard?:()=>boolean):Promise<SourceReadSettings>{
+ if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
  const epoch=this.epoch;
  try{
-  const raw=await this.request(encodedRoutePath("get_storage_source_read_profile",{"id":encodeURIComponent(id)}));
-  if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  const raw=await this.request(encodedRoutePath("get_storage_source_read_profile",{"id":encodeURIComponent(id)}),'GET',undefined,guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
   const settings=sourceReadSettings(raw.settings);
   if(settings.sourceId!==id||expectedGeneration!==undefined&&settings.generation!==expectedGeneration)invalid();
   return settings;
  }catch(error){
-  if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   if(error instanceof Error&&error.message==='Invalid remote source response.')throw error;
   const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'internal';
   throw Object.assign(new Error(safeError({code})),{code});
  }
 }
-async saveProfile(profile:SourceReadSettings,values:SourceReadValues):Promise<SourceReadSettings>{
- if(!this.live()||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>boolean):Promise<SourceReadSettings>{
+ if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
  const parsed=sourceReadValues(values);
  if(!profile.sourceId||!profile.generation||!Number.isSafeInteger(profile.revision)||profile.revision<0)throw new Error('Invalid source profile.');
  const epoch=this.epoch;
  this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});
  let submitted=false,accepted=false;
  try{
-  const op=await this.operationId();if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  const op=await this.operationId();if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();
   this.publish({operationId:op});submitted=true;
-  const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(profile.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",{operationId:op,expectedGeneration:profile.generation,expectedRevision:profile.revision,values:parsed}));
-  if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(profile.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",{operationId:op,expectedGeneration:profile.generation,expectedRevision:profile.revision,values:parsed}),guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   const receipt=this.parseReceipt(raw,op);
   if(receipt.removed||receipt.source.id!==profile.sourceId)invalid();
   const next=record(raw)&&record(raw.receipt)&&raw.receipt.readSettings!==undefined?sourceReadSettings(raw.receipt.readSettings):undefined;
   if(next&&(next.sourceId!==profile.sourceId||next.generation!==receipt.source.generation.toString()))invalid();
+  if(guard&&!guard())throw new Error('Scope changed.');
   accepted=true;this.publish({receipt,ambiguous:false});
   if(next)return next;
-  try{return await this.readProfile(profile.sourceId, receipt.source.generation.toString());}
+  try{return await this.readProfile(profile.sourceId, receipt.source.generation.toString(),guard);}
   catch(error){
    const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'internal';
    if(['unauthorized','forbidden','not_permitted','remote_credentials_required','source_credentials_required'].includes(code))throw Object.assign(new Error(safeError({code})),{code});
    throw Object.assign(new Error(safeError({code:'refresh_failed'})),{code:'refresh_failed'});
   }
  }catch(error){
-  if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
   const rejected=['storage_command_conflict','storage_operation_expired','revision_mismatch','idempotency_key_reused','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden','not_permitted','invalid_request'].includes(code);
   const auth=['unauthorized','forbidden','not_permitted','remote_credentials_required','source_credentials_required'].includes(code);
