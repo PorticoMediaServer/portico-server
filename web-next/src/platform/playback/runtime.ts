@@ -1325,15 +1325,17 @@ export class WebShellPlaybackRuntime {
     await stack.service.changePlayback({subtitleTrackId: trackId, ...(track ? {subtitleOffsetMs: offsetMs} : {})});
     if (this.current(stack)) this.sync();
   }
-  /** Shifts the drawn track's own timing without changing which track is on. Same session and
-   * same run; the server keeps the correction on the selected resource. */
-  async setSubtitleOffset(fence: PlaybackFence, offsetSeconds: number): Promise<void> {
+  /** Shifts the drawn track's own timing without changing which track is on. The plan must be
+   * the one this full fence names and the track must still be that source's selected,
+   * deliverable resource; whole milliseconds only, inside the plan's own signed bound. */
+  async setSubtitleOffset(fence: PlaybackFence, offsetMs: number): Promise<void> {
     if (fence.kind !== 'queue') problem('playback_subtitle_unavailable');
     const stack = this.require(fence), plan = stack.subtitles?.getSnapshot().plan ?? this.snapshot.offers?.subtitlePlan;
-    const track = plan?.mode === 'track' ? plan.selected : null;
-    if (!plan || !track || !track.enabled || !Number.isFinite(offsetSeconds)) problem('playback_subtitle_unavailable');
-    const offsetMs = Math.round(offsetSeconds * 1000);
-    // The same signed, whole-millisecond bound the plan itself accepts.
+    if (!plan || plan.sessionId !== fence.sessionId || plan.generation !== fence.generation || plan.sourceId !== fence.sourceId
+      || plan.mode !== 'track' || !plan.selected) problem('playback_subtitle_unavailable');
+    const track = plan.selected;
+    if (track.sourceId !== fence.sourceId || track.retired === true || !track.enabled) problem('playback_subtitle_unavailable');
+    // A correction the replan wire cannot carry is refused, never rounded into another clock.
     if (!Number.isSafeInteger(offsetMs) || Math.abs(offsetMs) > 600000) problem('playback_subtitle_unavailable');
     await stack.service.changePlayback({subtitleTrackId: track.id, subtitleOffsetMs: offsetMs});
     if (this.current(stack)) this.sync();

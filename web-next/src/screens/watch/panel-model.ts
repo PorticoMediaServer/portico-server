@@ -12,7 +12,7 @@ export type WatchPanelModel=Readonly<{
  fence:QueuePlaybackFence;audio:readonly TrackChoice[];subtitles:readonly TrackChoice[];
  quality:readonly WatchRadioChoice[];speed:readonly WatchRadioChoice[];
  qualityLabel?:string;qualityAccessibleLabel?:string;qualityNotes:readonly string[];audioNotes:readonly string[];automatic:boolean;audioLabel?:string;subtitleLabel?:string;
- subtitleTiming?:Readonly<{offsetSeconds:number;shift(deltaSeconds:number):Promise<void>}>;
+ subtitleTiming?:Readonly<{offsetSeconds:number;shift(deltaMs:number):Promise<void>}>;
  isCurrent():boolean;selectAudio(id:string):Promise<void>;selectSubtitle(id:string):Promise<void>;
  selectQuality(id:string):Promise<void>;selectSpeed(id:string):void;
 }>;
@@ -83,11 +83,14 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   qualityRows.push({id:offer.id,label,detail,selected:selected===choice,enabled});
  }
  const timingPlan=matched?plan:null;
- const subtitleTiming=timingPlan&&timingPlan.mode==='track'&&timingPlan.selected?.enabled?(()=>{const offsetSeconds=Number(timingPlan.offsetUs)/1e6;return Object.freeze({offsetSeconds:Number.isFinite(offsetSeconds)?offsetSeconds:0,
-  shift:async(delta:number)=>{check();if(!Number.isFinite(delta))throw new Error('playback_subtitle_unavailable');
-   const next=Math.round(((Number.isFinite(offsetSeconds)?offsetSeconds:0)+delta)*10)/10;
-   if(!Number.isFinite(next)||Math.abs(next)>600)throw new Error('playback_subtitle_unavailable');
-   await runtime.setSubtitleOffset(fence,next);}});})():undefined;
+ // The plan's own signed correction is exact to the millisecond; a value the replan wire
+ // cannot carry is no control at all, never a silent zero or a rounded clock.
+ const timingBase=timingPlan&&timingPlan.mode==='track'&&timingPlan.selected?.enabled?(()=>{const offsetUs=Number(timingPlan.offsetUs);return Number.isSafeInteger(offsetUs)?offsetUs/1000:undefined;})():undefined;
+ const subtitleTiming=timingBase!==undefined&&Number.isSafeInteger(timingBase)&&Math.abs(timingBase)<=600000?Object.freeze({offsetSeconds:timingBase/1000,
+  shift:async(deltaMs:number)=>{check();if(!Number.isSafeInteger(deltaMs)||deltaMs===0)throw new Error('playback_subtitle_unavailable');
+   const next=timingBase+deltaMs;
+   if(!Number.isSafeInteger(next)||Math.abs(next)>600000)throw new Error('playback_subtitle_unavailable');
+   await runtime.setSubtitleOffset(fence,next);}}):undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
  return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),

@@ -32,9 +32,9 @@ function TimingRow({timing,reportError,t}:{timing:NonNullable<WatchPanelModel['s
  const shift=(delta:number)=>{try{void timing.shift(delta).catch(reportError);}catch(error){reportError(error);}};
  return <div className={styles.timing}><span>{t('player.opt.timing')}</span>
   <div className={styles.timingStep} role="group" aria-label={t('player.opt.timingHelp')}>
-   <button type="button" aria-label={t('player.opt.earlier')} onClick={()=>shift(-.1)}>−</button>
+   <button type="button" aria-label={t('player.opt.earlier')} onClick={()=>shift(-100)}>−</button>
    <b>{t('player.opt.offsetSeconds',{seconds:timing.offsetSeconds.toFixed(1)})}</b>
-   <button type="button" aria-label={t('player.opt.later')} onClick={()=>shift(.1)}>+</button>
+   <button type="button" aria-label={t('player.opt.later')} onClick={()=>shift(100)}>+</button>
   </div></div>;
 }
 
