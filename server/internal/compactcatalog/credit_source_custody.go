@@ -21,6 +21,12 @@ const CreditSourcePublicationMax = 128
 // Accepted local NFO locators are bounded source record references, not person IDs.
 const CreditSourceRecordReferenceMax = 4096
 
+// Existing owner text limits count UTF-16 units; private custody must retain
+// their UTF-8 bytes without rejecting already-valid non-ASCII owner credits.
+const CreditNameMaxBytes = 1200
+const CreditRoleMaxBytes = 2000
+const CreditDepartmentMaxBytes = 800
+
 var ErrCreditSourceStale = errors.New("credit source head changed")
 
 // AcceptedCreditTuple is immutable accepted evidence, not a person lookup or
@@ -293,5 +299,5 @@ func creditCustodyText(value string, maximum int, required bool) bool {
 }
 
 func validAcceptedCreditTuple(t AcceptedCreditTuple) bool {
-	return creditCustodyText(t.RecordReference, CreditSourceRecordReferenceMax, true) && creditCustodyText(t.CreditID, 256, false) && creditCustodyText(t.ProviderPersonID, 256, false) && creditCustodyText(t.PersonIdentityKey, 512, false) && creditCustodyText(t.PersonToken, 256, false) && creditCustodyText(t.TargetKind, 64, false) && creditCustodyText(t.TargetID, 256, false) && creditCustodyText(t.CreditedName, 512, false) && creditCustodyText(t.Role, 512, false) && creditCustodyText(t.Department, 200, false) && t.SourceOrdinal >= 0
+	return creditCustodyText(t.RecordReference, CreditSourceRecordReferenceMax, true) && creditCustodyText(t.CreditID, 256, false) && creditCustodyText(t.ProviderPersonID, 256, false) && creditCustodyText(t.PersonIdentityKey, 512, false) && creditCustodyText(t.PersonToken, 256, false) && creditCustodyText(t.TargetKind, 64, false) && creditCustodyText(t.TargetID, 256, false) && creditCustodyText(t.CreditedName, CreditNameMaxBytes, false) && creditCustodyText(t.Role, CreditRoleMaxBytes, false) && creditCustodyText(t.Department, CreditDepartmentMaxBytes, false) && t.SourceOrdinal >= 0
 }

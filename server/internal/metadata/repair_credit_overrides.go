@@ -16,7 +16,7 @@ func creditOverridesAvailable(ctx context.Context, tx *sql.Tx, entity int64) (bo
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_credits WHERE entity_id=?`, entity).Scan(&count); err != nil {
 		return false, err
 	}
-	if count > 100 {
+	if count > 512 {
 		return false, nil
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT provider FROM catalog_credits WHERE entity_id=? AND source_row_id IS NULL AND owner_entry_id IS NULL`, entity)
@@ -62,7 +62,7 @@ func creditRelationshipKey(row RepairRelationship) string {
 	return row.Provider + "\x00" + row.RecordID + "\x00" + row.TargetKind + "\x00" + row.TargetID
 }
 func applyEffectiveCreditSet(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, values []RepairRelationship, locked bool, actor, now string, restore bool) error {
-	if len(values) > 100 {
+	if len(values) > 512 {
 		return ErrRepairInput
 	}
 	if reference, _, e := legacyCreditNFOReference(ctx, tx, entity); e != nil {

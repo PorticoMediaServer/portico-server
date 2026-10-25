@@ -301,7 +301,7 @@ func SaveOwnerCreditsTx(ctx context.Context, tx *sql.Tx, entity, expectedRevisio
 	})
 }
 func saveOwnerCreditsTx(ctx context.Context, tx *sql.Tx, entity, expectedRevision int64, entries []OwnerCreditEntry, locked bool, actor, observed string) error {
-	if entity <= 0 || expectedRevision < 0 || len(entries) > 512 || !creditCustodyText(actor, 256, true) || !creditCustodyText(observed, 64, true) {
+	if entity <= 0 || expectedRevision < 0 || len(entries) > 2048 || !creditCustodyText(actor, 256, true) || !creditCustodyText(observed, 64, true) {
 		return errors.New("invalid owner credits")
 	}
 	var actual int64
@@ -325,7 +325,7 @@ func saveOwnerCreditsTx(ctx context.Context, tx *sql.Tx, entity, expectedRevisio
 	seen := map[string]bool{}
 	for n := range entries {
 		e := &entries[n]
-		if !creditCustodyText(e.CreditedName, 512, true) || !creditCustodyText(e.Role, 512, false) || !creditCustodyText(e.Department, 200, false) {
+		if !creditCustodyText(e.CreditedName, CreditNameMaxBytes, true) || !creditCustodyText(e.Role, CreditRoleMaxBytes, false) || !creditCustodyText(e.Department, CreditDepartmentMaxBytes, false) {
 			return errors.New("invalid owner credit content")
 		}
 		if e.Operation == "add" {
