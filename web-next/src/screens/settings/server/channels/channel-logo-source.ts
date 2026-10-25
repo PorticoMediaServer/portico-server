@@ -16,6 +16,8 @@ export class SettingsChannelLogoSource{
   private readonly lifetime=new AbortController();
   private flight?:AbortController;
   private intent?:Intent;
+  private readonly versions=new Map<string,number>();
+  revision=(channelId:string)=>this.current()?this.versions.get(channelId):undefined;
   constructor(private readonly upload:ChannelLogoUpload,private readonly serverId:string,private readonly reader:SettingsLibraryChannelsSource,private readonly isCurrent:()=>boolean,private readonly reportError:(error:unknown)=>void){}
   private current(){return !this.lifetime.signal.aborted&&this.isCurrent();}
   getSnapshot=():ChannelLogoSnapshot=>this.current()?this.state:empty;
@@ -38,7 +40,8 @@ export class SettingsChannelLogoSource{
       const response=decodePostAdminLibraryChannelsIdLogoResponse(await this.upload(intent.channel.config.id,intent.file,intent.operationId,flight.signal));
       if(!owns())return false;
       const result=response.result;
-      if(response.serverId!==this.serverId||response.protocolVersion!=='1.0'||result.channelId!==intent.channel.config.id||result.width<16||result.width>4096||result.height<16||result.height>4096||result.bytes<1||result.bytes>10*1024*1024||!['image/jpeg','image/png','image/webp'].includes(result.mediaType))throw new Error('invalid_channel_logo_receipt');
+      if(response.serverId!==this.serverId||response.protocolVersion!=='1.0'||result.channelId!==intent.channel.config.id||result.width<16||result.width>4096||result.height<16||result.height>4096||result.revision<1||result.bytes<1||result.bytes>10*1024*1024||!['image/jpeg','image/png','image/webp'].includes(result.mediaType))throw new Error('invalid_channel_logo_receipt');
+      this.versions.delete(result.channelId);this.versions.set(result.channelId,result.revision);if(this.versions.size>64)this.versions.delete(this.versions.keys().next().value!);
       this.intent=undefined;completed=true;this.publish({pending:undefined,done:true});
     }catch(error){if(owns()){
       if(terminal(error)){this.dispose();this.reportError(error);}
@@ -46,5 +49,5 @@ export class SettingsChannelLogoSource{
     }}finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
     if(completed&&this.current())await this.reader.load();return completed&&this.current();
   }
-  dispose=()=>{this.flight?.abort();this.flight=undefined;this.intent=undefined;this.lifetime.abort();this.state=empty;for(const listener of this.listeners)listener();this.listeners.clear();};
+  dispose=()=>{this.flight?.abort();this.flight=undefined;this.intent=undefined;this.versions.clear();this.lifetime.abort();this.state=empty;for(const listener of this.listeners)listener();this.listeners.clear();};
 }
