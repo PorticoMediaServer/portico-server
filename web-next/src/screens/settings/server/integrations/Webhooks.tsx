@@ -1,11 +1,12 @@
 import {useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
-import {defaultI18n} from '@i18n';
+import {defaultI18n, type MessageId} from '@i18n';
 import type {IssuedWebhook, Webhook} from '@core/api-access.ts';
 import {webhookEdits} from '@core/api-access.ts';
 import {deliveryProblem, deliveryProgress, webhookAddressOk, webhookEventGroups, webhookEventLabel, webhookTrouble} from '@core/server-admin/api-words.ts';
 import {Button, Switch, TextField} from '../../../../kit/controls';
-import {Icon} from '../../../../kit/Icon';
+import {Icon, type IconName} from '../../../../kit/Icon';
 import {Dialog} from '../../../../kit/overlays/Dialog';
+import {usePhone} from '../../../../kit/overlays/shared';
 import {Menu} from '../../../../kit/overlays/Popover';
 import {SettingsWebhooksSource} from './webhooks-source';
 import styles from './integrations.module.css';
@@ -16,6 +17,15 @@ const webhookSecretOk = (secret: string) => secret.length >= 16 && secret.length
 type Editor = Readonly<{source: SettingsWebhooksSource; hook?: Webhook}>;
 type Confirmation = Readonly<{source: SettingsWebhooksSource; hook: Webhook; kind: 'remove'|'rotate'}>;
 type SecretCard = Readonly<{source: SettingsWebhooksSource; issued: IssuedWebhook}>;
+type RowSheet = Readonly<{source: SettingsWebhooksSource; hook: Webhook}>;
+/** The row's own actions, as the phone's sheet lists them (frame 39a). */
+const rowActions: readonly {kind: 'edit'|'test'|'log'|'rotate'|'remove'; label: MessageId; icon: IconName; danger?: boolean}[] = [
+  {kind: 'edit', label: 'web.selection.edit', icon: 'i-edit'},
+  {kind: 'test', label: 'api.webhooks.sendTest', icon: 'i-send'},
+  {kind: 'log', label: 'api.webhooks.log', icon: 'i-logs'},
+  {kind: 'rotate', label: 'api.webhooks.rotate', icon: 'i-refresh'},
+  {kind: 'remove', label: 'web.missingTitles.removeConfirm', icon: 'i-trash', danger: true},
+];
 
 function HookMenu({hook, disabled, action}: Readonly<{hook: Webhook; disabled: boolean; action: (kind: 'edit'|'test'|'log'|'rotate'|'remove') => void}>) {
   const [open, setOpen] = useState(false);
@@ -33,16 +43,18 @@ function HookMenu({hook, disabled, action}: Readonly<{hook: Webhook; disabled: b
 
 export function WebhooksPanel({source, isCurrent}: Readonly<{source: SettingsWebhooksSource; isCurrent: () => boolean}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  const [editor, setEditor] = useState<Editor>(), [confirmation, setConfirmation] = useState<Confirmation>(), [card, setCard] = useState<SecretCard>();
+  const phone = usePhone();
+  const [editor, setEditor] = useState<Editor>(), [confirmation, setConfirmation] = useState<Confirmation>(), [card, setCard] = useState<SecretCard>(), [rowSheet, setRowSheet] = useState<RowSheet>();
   const [name, setName] = useState(''), [url, setUrl] = useState(''), [events, setEvents] = useState<ReadonlySet<string>>(new Set()), [signing, setSigning] = useState(''), [rotateSecret, setRotateSecret] = useState(''), [copied, setCopied] = useState(false), [testQueued, setTestQueued] = useState(false);
   const [logCursors, setLogCursors] = useState<readonly string[]>(['']);
-  const editorRef = useRef<Editor | undefined>(undefined), confirmationRef = useRef<Confirmation | undefined>(undefined), cardRef = useRef<SecretCard | undefined>(undefined), testAttempt = useRef<object | undefined>(undefined), scope = useRef(source), secret = useRef<HTMLTextAreaElement>(null);
-  if (scope.current !== source) {scope.current = source;editorRef.current = undefined;confirmationRef.current = undefined;cardRef.current = undefined;testAttempt.current = undefined;}
-  useLayoutEffect(() => {setEditor(undefined);setConfirmation(undefined);setCard(undefined);setSigning('');setRotateSecret('');void source.load();return () => {editorRef.current = undefined;confirmationRef.current = undefined;cardRef.current = undefined;testAttempt.current = undefined;setSigning('');setRotateSecret('');};}, [source]);
+  const editorRef = useRef<Editor | undefined>(undefined), confirmationRef = useRef<Confirmation | undefined>(undefined), cardRef = useRef<SecretCard | undefined>(undefined), rowRef = useRef<RowSheet | undefined>(undefined), testAttempt = useRef<object | undefined>(undefined), scope = useRef(source), secret = useRef<HTMLTextAreaElement>(null);
+  if (scope.current !== source) {scope.current = source;editorRef.current = undefined;confirmationRef.current = undefined;cardRef.current = undefined;rowRef.current = undefined;testAttempt.current = undefined;}
+  useLayoutEffect(() => {setEditor(undefined);setConfirmation(undefined);setCard(undefined);setRowSheet(undefined);setSigning('');setRotateSecret('');void source.load();return () => {editorRef.current = undefined;confirmationRef.current = undefined;cardRef.current = undefined;rowRef.current = undefined;testAttempt.current = undefined;setSigning('');setRotateSecret('');};}, [source]);
   const live = isCurrent(), busy = state.busy || state.phase === 'loading', writable = live && state.phase === 'ready' && !state.uncertain && !busy;
   const heldEditor = live && editor?.source === source && editorRef.current === editor ? editor : undefined;
   const heldConfirmation = live && confirmation?.source === source && confirmationRef.current === confirmation ? confirmation : undefined;
   const heldCard = live && card?.source === source && cardRef.current === card ? card : undefined;
+  const heldRow = live && rowSheet?.source === source && rowRef.current === rowSheet ? rowSheet : undefined;
   // A close or field edit belongs to the exact dialog its render drew: a
   // retained handler cannot clear or edit a successor's secret.
   const closeEditor = (held: Editor | undefined) => {
@@ -81,6 +93,9 @@ export function WebhooksPanel({source, isCurrent}: Readonly<{source: SettingsWeb
     else if (kind === 'test') {if (writable) {const attempt = {};testAttempt.current = attempt;setTestQueued(false);void source.test(hook).then(out => {if (out && isCurrent() && testAttempt.current === attempt) {setTestQueued(true);const fresh = source.getSnapshot().list?.items.find(item => item.id === hook.id);if (fresh) {setLogCursors(['']);void source.select(fresh);}}});}}
     else if (writable) {const next = {source, hook, kind};confirmationRef.current = next;setRotateSecret('');setConfirmation(next);}
   };
+  const closeRow = (held: RowSheet | undefined) => {if (!held || rowRef.current !== held) return;rowRef.current = undefined;setRowSheet(undefined);};
+  const openRow = (hook: Webhook) => {if (!isCurrent() || !source.getSnapshot().list?.items.includes(hook)) return;const next = {source, hook};rowRef.current = next;setRowSheet(next);};
+  const rowAction = (held: RowSheet, kind: 'edit'|'test'|'log'|'rotate'|'remove') => {if (!held || rowRef.current !== held) return;closeRow(held);action(held.hook, kind);};
   const log = state.selected;
   const logPage = async (cursor: string, next: readonly string[]) => {if (!log || !isCurrent() || busy) return;await source.select(log, cursor);if (isCurrent() && source.getSnapshot().selected === log && source.getSnapshot().deliveries) setLogCursors(next);};
   return <section id="integrations.webhooks">
@@ -90,8 +105,11 @@ export function WebhooksPanel({source, isCurrent}: Readonly<{source: SettingsWeb
     {!state.list && busy && <p role="status">{t('next.settings.loading')}</p>}
     {testQueued && <p role="status" className={styles.note}>{t('api.webhooks.testQueued')}</p>}
     {state.list && <ul className={styles.keys}>{state.list.items.map(hook => {const trouble = webhookTrouble(t, hook);return <li className={styles.keyRow} key={hook.id} data-disabled={!hook.enabled || undefined}>
-      <span className={styles.keyIcon}><Icon name="i-webhook" size={20}/></span><div className={styles.keyText}><b>{hook.name}</b><div className={styles.facts}><span className={styles.mono}>{hook.url}</span><span>{t('api.webhooks.eventCount', {count:hook.events.length})}</span>{trouble && <span className={styles.hookTrouble} data-tone={trouble.tone}>{trouble.text}</span>}</div></div>
-      <div className={styles.actions}><Switch checked={hook.enabled} disabled={!writable} aria-label={t('api.webhooks.turnOn', {name:hook.name})} onCheckedChange={enabled => {if (isCurrent()) void source.update(hook, {enabled});}}/><HookMenu hook={hook} disabled={busy || !live} action={kind => action(hook, kind)}/></div>
+      <span className={styles.keyIcon}><Icon name="i-webhook" size={20}/></span>{(() => {
+        const text = <><b>{hook.name}</b><span className={styles.facts}><span className={styles.mono}>{hook.url}</span><span>{t('api.webhooks.eventCount', {count:hook.events.length})}</span>{trouble && <span className={styles.hookTrouble} data-tone={trouble.tone}>{trouble.text}</span>}</span></>;
+        return phone ? <button type="button" className={`${styles.keyText} ${styles.keyOpen}`} disabled={!live || busy} onClick={() => openRow(hook)}>{text}</button> : <div className={styles.keyText}>{text}</div>;
+      })()}
+      <div className={styles.actions}><Switch checked={hook.enabled} disabled={!writable} aria-label={t('api.webhooks.turnOn', {name:hook.name})} onCheckedChange={enabled => {if (isCurrent()) void source.update(hook, {enabled});}}/>{!phone && <HookMenu hook={hook} disabled={busy || !live} action={kind => action(hook, kind)}/>}</div>
     </li>;})}</ul>}
     {state.list && state.list.items.length >= state.list.maximum && <p className={styles.note}>{t('api.webhooks.full', {count:state.list.maximum})}</p>}
     {state.list && !state.list.items.length && <p className={styles.note}>{t('api.webhooks.none')}</p>}
@@ -105,6 +123,10 @@ export function WebhooksPanel({source, isCurrent}: Readonly<{source: SettingsWeb
       footer={<><Button size="compact" disabled={state.busy} onClick={() => closeConfirmation(heldConfirmation)}>{t('action.cancel')}</Button><Button size="compact" className={styles.danger} disabled={!writable || (heldConfirmation?.kind === 'rotate' && rotateSecret !== '' && !webhookSecretOk(rotateSecret))} onClick={() => {void confirm();}}>{t(heldConfirmation?.kind === 'rotate' ? 'api.webhooks.rotate' : 'web.missingTitles.removeConfirm')}</Button></>}>{heldConfirmation?.kind === 'rotate' && <div className={styles.form}><TextField label={t('api.webhooks.secret')} description={t('api.webhooks.secretHelp')} type="password" autoComplete="new-password" value={rotateSecret} maxLength={256} disabled={state.busy || state.uncertain} error={rotateSecret !== '' && !webhookSecretOk(rotateSecret) ? t('api.webhooks.secretProblem') : undefined} onChange={event => {if (confirmationRef.current === heldConfirmation) setRotateSecret(event.target.value);}}/></div>}{state.error === 'write' && <p role="alert">{t('error.unconfirmedChange')}</p>}</Dialog>
     <Dialog open={!!heldCard} onOpenChange={open => {if (!open && !heldCard?.issued.secret) closeCard();}} title={t('api.webhooks.secretTitle')} width={500} initialFocusRef={secret} dismissOnBack={false} dismissOnOutsidePress={false} showCloseButton={false} footer={<Button size="compact" variant="primary" onClick={closeCard}>{t('web.access.copiedIt')}</Button>}>
       <div className={styles.form}><p className={styles.warning}>{t('api.webhooks.secretShownOnce')}</p><textarea ref={secret} className={styles.secret} readOnly rows={3} value={heldCard?.issued.secret ?? ''} aria-label={t('api.webhooks.secret')} onFocus={event => event.currentTarget.select()}/><div className={styles.actions}><Button size="xs" icon="i-copy" onClick={() => {void copy();}}>{t('web.twoStep.copy')}</Button><span role="status" className={styles.copied}>{copied && t('api.credential.copied')}</span></div></div>
+    </Dialog>
+    <Dialog open={!!heldRow} onOpenChange={open => {if (!open) closeRow(heldRow);}} title={t('api.webhooks.actions', {name: heldRow?.hook.name ?? ''})} width={420}
+      footer={<Button size="compact" variant="glass" onClick={() => closeRow(heldRow)}>{t('action.cancel')}</Button>}>
+      <div className={styles.rowActions}>{heldRow && rowActions.map(item => <Button key={item.kind} size="small" variant="text" icon={item.icon} className={item.danger ? styles.rowActionDanger : styles.rowAction} onClick={() => rowAction(heldRow, item.kind)}>{t(item.label)}</Button>)}</div>
     </Dialog>
     <Dialog open={live && !!log} onOpenChange={open => {if (!open) source.close();}} title={t('api.webhooks.log')} description={log?.name} width={720} footer={<Button size="compact" onClick={() => source.close()}>{t('action.done')}</Button>}>
       <div className={styles.form}>{state.deliveries?.items.map(delivery => <div className={styles.delivery} key={delivery.id}><b>{webhookEventLabel(t, defaultI18n.has, delivery.event)}</b><span>{defaultI18n.dateTime(delivery.createdAt)}</span><span>{t(`api.webhooks.delivery.${delivery.state}`)}</span><small>{deliveryProgress(t, delivery, defaultI18n.time)}</small>{deliveryProblem(t, defaultI18n.has, delivery) && <p>{deliveryProblem(t, defaultI18n.has, delivery)}</p>}</div>)}{state.deliveries && !state.deliveries.items.length && <p>{t('api.webhooks.logEmpty')}</p>}

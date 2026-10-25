@@ -7,6 +7,8 @@
 .keyRow:first-child { border-top: 0; }
 .keyIcon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--color-text-secondary); background: var(--color-raised-high); }
 .keyText { min-width: 0; }
+.keyOpen { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.keyOpen:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .keyText > b { display: block; font-size: var(--type-integration-key-name-size); font-weight: var(--type-integration-key-name-weight); letter-spacing: var(--type-integration-key-name-tracking); overflow-wrap: anywhere; }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 3px; font-size: var(--type-integration-key-facts-size); line-height: var(--type-integration-key-facts-line); color: var(--color-text-tertiary); }
 .actions { display: flex; align-items: center; gap: 10px; }
@@ -42,6 +44,9 @@
 .keyRow[data-disabled="true"] { opacity: .6; }
 .eventHeading { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; font-size: var(--type-row-subtitle-size); color: var(--color-text-secondary); }
 .eventActions { display: inline-flex; align-items: center; gap: 4px; }
+.rowActions { display: grid; gap: 2px; }
+.rowAction, .rowActionDanger { justify-content: flex-start; }
+.rowActionDanger { color: var(--color-danger); }
 .eventGroup { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin-bottom: 8px; font-size: var(--type-row-subtitle-size); }
 .delivery { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 14px 0; border-bottom: 1px solid var(--color-line-soft); font-size: var(--type-row-subtitle-size); }
 .delivery b { flex-basis: 100%; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
