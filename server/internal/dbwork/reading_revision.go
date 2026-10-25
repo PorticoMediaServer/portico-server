@@ -3,8 +3,8 @@ package dbwork
 import (
 	"database/sql/driver"
 
-	"portico.local/server/internal/thirdparty/sqlite"
 	"portico.local/server/internal/readingidentity"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
 func init() {
