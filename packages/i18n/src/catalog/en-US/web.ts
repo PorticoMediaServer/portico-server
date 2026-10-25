@@ -153,6 +153,7 @@ export const webMessages = {
   'web.hostedAccount.newer': 'Newer',
   'web.hostedAccount.older': 'Older',
   'web.hostedAccount.signOutBody': 'It will need to sign in to your Portico Account again.',
+  'web.hostedAccount.signOutDeviceTitle': 'Sign out {device}?',
   'web.hostedAccount.signOutOthers': 'Sign out all other devices',
   'web.hostedAccount.signOutOthersTitle': 'Sign out all other devices?',
   'web.hostedAccount.signOutOthersBody': 'Every other device is signed out of your Portico Account. This browser stays signed in.',

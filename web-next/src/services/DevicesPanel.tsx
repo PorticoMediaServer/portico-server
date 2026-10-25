@@ -2,7 +2,7 @@ import {HostedError} from '../kit/accounts/ServicesAuth';
 import {useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {ApiError} from '@core/index.ts';
 import type {AccountSessionReviewService} from '@core/account-sessions.ts';
-import {ServicesBadge, ServicesDeviceFacts, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
+import {ServicesBadge, ServicesDangerAction, ServicesDeviceFacts, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {Button} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import type {IconName} from '../kit/Icon';
@@ -64,9 +64,9 @@ export function DevicesPanel({api, frame}: Props) {
       </ServicesWorkspaceRow>;
     })}</ServicesGroup>}
     {(state.hasPrevious || state.nextCursor) && <div className={styles.pager}><Button size="small" disabled={busy || !state.hasPrevious} onClick={() => void service.previous()}>{t('web.hostedAccount.newer')}</Button><Button size="small" disabled={busy || !state.nextCursor} onClick={() => void service.next()}>{t('web.hostedAccount.older')}</Button></div>}
-    <Dialog open={Boolean(ending)} onOpenChange={open => { if (!open) setEnding(undefined); }} title={t('confirm.signOutDevice.title', {device: ending ? name(ending) : ''})} description={t('web.hostedAccount.signOutBody')}
-      footer={<><Button size="small" onClick={() => setEnding(undefined)}>{t('action.cancel')}</Button><Button size="small" variant="primary" onClick={() => { const id = ending!; setEnding(undefined); void service.revoke(id); }}>{t('action.signOut')}</Button></>}><></></Dialog>
+    <Dialog open={Boolean(ending)} onOpenChange={open => { if (!open) setEnding(undefined); }} title={t('web.hostedAccount.signOutDeviceTitle', {device: ending ? name(ending) : ''})} description={t('web.hostedAccount.signOutBody')}
+      footer={<><Button size="small" onClick={() => setEnding(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction onClick={() => { const id = ending!; setEnding(undefined); void service.revoke(id); }}>{t('action.signOut')}</ServicesDangerAction></>}><></></Dialog>
     <Dialog open={all} onOpenChange={open => { if (!open) setAll(false); }} title={t('web.hostedAccount.signOutOthersTitle')} description={t('web.hostedAccount.signOutOthersBody')}
-      footer={<><Button size="small" onClick={() => setAll(false)}>{t('action.cancel')}</Button><Button size="small" variant="primary" onClick={() => void endOthers()}>{t('web.hostedAccount.signOutOthers')}</Button></>}><></></Dialog>
+      footer={<><Button size="small" onClick={() => setAll(false)}>{t('action.cancel')}</Button><ServicesDangerAction onClick={() => void endOthers()}>{t('web.hostedAccount.signOutOthers')}</ServicesDangerAction></>}><></></Dialog>
   </>, actions);
 }
