@@ -126,7 +126,8 @@ export class MetadataRepairService {
   const path=encodedRoutePath('post_metadata_kind_id_art_role_upload',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id),role:encodeURIComponent(role)});
   const epoch=++this.epoch;this.publish({...this.state,phase:'saving',error:null});
   // Subscribers may synchronously retire this attempt while receiving the saving state.
-  if(this.disposed||epoch!==this.epoch||this.target!==target||this.state.phase!=='saving'||this.state.data!==data)return false;
+  const attempt=this.getSnapshot();
+  if(this.disposed||epoch!==this.epoch||this.target!==target||attempt.phase!=='saving'||attempt.data!==data)return false;
   try{const raw=await this.request(target,'POST',body,path,true);if(epoch!==this.epoch||this.disposed)return false;this.accept(raw,target);return true;}
   catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,true);return false;}
  }
