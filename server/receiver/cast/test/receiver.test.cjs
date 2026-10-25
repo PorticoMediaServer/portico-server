@@ -48,7 +48,7 @@ async function harness(fixture={}){
    if(options.headers['If-Match']!==String(generation))return reply({error:{code:'precondition_failed',current:sessionFor({},0)}},412);
    generation++;return reply(sessionFor({},body.seek?body.seek.positionMs:0));
   }
-  if((path==='/v1/playback/sessions/ps_1'||path==='/v1/playback/sessions/ps_known')&&options.method==='DELETE')return reply({},204);
+  if((path==='/v1/playback/sessions/ps_1'||path==='/v1/playback/sessions/ps_known')&&options.method==='DELETE'){if(fixture.stopWait){fixture.stopCalled?.();await fixture.stopWait;}return reply({},204);}
   if(path.startsWith('/v1/cast/devices/')&&options.method==='DELETE')return reply({},204);
   throw new Error('unexpected path '+path);
  }};
@@ -661,4 +661,34 @@ test('Root51 shared CAF status keeps the active display and strips private appli
  assert.equal(safe.media.metadata.title,'Film');assert.equal(safe.media.contentId,media.contentId);assert.deepEqual(Array.from(safe.activeTrackIds),[1]);
  const serialized=JSON.stringify(safe);for(const privateField of ['private','secret','future','ticket','queueData','trackContentId','customData'])assert(!serialized.includes(privateField));
  assert.equal(h.interceptors.MEDIA_STATUS({...raw,media:{...raw.media,contentId:'portico-'+ '0'.repeat(32)}}),null,'stale other-item status is refused rather than recipient-inferred');
+});
+
+test('pair connection retirement during old Stop cannot install origin/credentials or prepare the refused target',async()=>{
+ const fixture={},h=await harness(fixture);
+ await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});await h.message('phone',{type:'load',itemId:'movie',title:'Film'});
+ const gate=held(),entered=held();fixture.stopWait=gate.promise;fixture.stopCalled=()=>entered.resolve();
+ await h.message('successor',{type:'pair',code:'OTHER1',origin:'https://second.test'});
+ const allowed=h.message('phone',{type:'takeover',allow:true});await entered.promise;
+ h.ctxEvents.disconnect({senderId:'successor'});gate.resolve();await allowed;await h.message('observer',{type:'status'});
+ assert.equal(h.storage.get('portico.cast.deviceToken'),'device-ABC123');
+ assert.equal(h.calls.some(x=>x.url.startsWith('https://second.test')&&x.url.endsWith('/v1/me/devices/current/capabilities')),false);
+ assert(h.calls.some(x=>x.url==='https://second.test/v1/cast/devices/cdv_OTHER1'&&x.method==='DELETE'));
+ assert.equal(h.sent.some(x=>x.id==='successor'&&x.body.type==='paired'),false);
+});
+test('a queued never-installed pair is discarded without stopping the accepted controller',async()=>{
+ const fixture={},h=await harness(fixture);await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});await h.message('phone',{type:'load',itemId:'movie',title:'Film'});
+ const gate=held(),entered=held();fixture.startWait=gate.promise;fixture.startCalled=()=>entered.resolve();
+ const load=h.message('phone',{type:'load',itemId:'next',title:'Next'});await entered.promise;
+ await h.message('successor',{type:'pair',code:'OTHER1',origin:'https://second.test'});await h.message('phone',{type:'takeover',allow:true});
+ h.ctxEvents.disconnect({senderId:'successor'});gate.resolve();await load;await h.message('observer',{type:'status'});
+ assert.equal(h.receiver.state().controller,'phone');assert.equal(h.storage.get('portico.cast.deviceToken'),'device-ABC123');
+ assert(h.calls.some(x=>x.url==='https://second.test/v1/cast/devices/cdv_OTHER1'&&x.method==='DELETE'));
+ assert.equal(h.calls.some(x=>x.method==='DELETE'&&x.url.includes('/v1/playback/sessions/')),false);
+});
+test('discarding a refused replay cannot revoke an already installed identical target generation',async()=>{
+ const fixture={},h=await harness(fixture);await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ const gate=held(),entered=held();fixture.redeemWait=gate.promise;fixture.redeemCalled=()=>entered.resolve();
+ const replay=h.message('late-replay',{type:'pair',code:'ABC123',origin:'https://server.test'});await entered.promise;
+ h.ctxEvents.disconnect({senderId:'late-replay'});gate.resolve();await replay;await h.message('observer',{type:'status'});
+ assert.equal(h.calls.some(x=>x.url==='https://server.test/v1/cast/devices/cdv_ABC123'&&x.method==='DELETE'),false);
 });

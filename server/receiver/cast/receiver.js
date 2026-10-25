@@ -286,6 +286,10 @@
     return Object.freeze({senderId:senderId,generation:connectionGeneration(senderId)});
   }
   function pairConnectionCurrent(witness){return !!witness&&!disconnectedSenders.has(witness.senderId)&&connectionGeneration(witness.senderId)===witness.generation;}
+  function requirePairInstallation(installation,installed){
+    if(!installation)return;
+    if(!pairConnectionCurrent(installation.connection)||controllerGeneration!==installation.generation||installed&&(base!==installation.origin||session!==installation.result.session||scope!==installation.result.scope)){var e=new Error('controller_retired');e.retired=true;throw e;}
+  }
   function captureController(senderId,adoption){return Object.freeze({senderId:senderId,adoption:!!adoption,
     connection:connectionGeneration(senderId),controllerGeneration:controllerGeneration,adoptionGeneration:adoptionGeneration,
     owner:controllerSender,binding:controllerBinding,proof:controllerToken,session:session,bearer:session&&session.accessToken,scope:scope,origin:base,occurrence:playback});}
@@ -329,12 +333,12 @@
    * token; a transport failure or 5xx is retried once with the identical request (the same
    * Idempotency-Key, If-Match or timeline sequence), which the server treats as the same request. */
   var PAIRING_ENDED = ['cast_device_revoked', 'cast_device_not_found', 'cast_device_expired'];
-  async function api(path, options, lease) {
-    options=options||{};requireLease(lease);
+  async function api(path, options, lease,installation) {
+    options=options||{};requireLease(lease);requirePairInstallation(installation,true);
     var credential=lease?lease.session:session,origin=lease?lease.origin:base,originalScope=lease?lease.scope:scope;
     var originalToken=readToken();
     var attempt=async function(){
-      requireLease(lease);
+      requireLease(lease);requirePairInstallation(installation,true);
       if(!credential||(!lease&&(session!==credential||base!==origin||scope!==originalScope)))throw new Error('receiver_replaced');
       var answer=await request(path,Object.assign({},options,{origin:origin,bearer:lease?lease.bearer:credential.accessToken}));
       if(lease&&!leaseCurrent(lease)){
@@ -342,17 +346,17 @@
         if(path==='/v1/playback/sessions'&&(options.method===undefined||options.method==='POST')&&answer.status!==202&&answer.body&&typeof answer.body.id==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(answer.body.id))retired.acceptedOccurrenceId=answer.body.id;
         throw retired;
       }
-      requireLease(lease);
+      requireLease(lease);requirePairInstallation(installation,true);
       if(!lease&&(session!==credential||base!==origin||scope!==originalScope))throw new Error('receiver_replaced');
       return answer;
     };
     try{return await attempt();}
     catch(e){
       if(e.retired)throw e;
-      requireLease(lease);
+      requireLease(lease);requirePairInstallation(installation,true);
       // A command belongs to an exact receiver family/generation. Reconnect
       // rotates that family, so it cannot silently retry with the new one.
-      if(e.status===401&&originalToken&&!lease){
+      if(e.status===401&&originalToken&&!lease&&!installation){
         if(session!==credential||base!==origin||scope!==originalScope)throw new Error('receiver_replaced');
         var renewed;
         try{renewed=await post('/v1/cast/reconnect',{protocolVersion:PROTOCOL,deviceToken:originalToken,deviceId:deviceId()},undefined,origin);}
@@ -459,22 +463,28 @@
     return profile;
   }
   /** What this TV decodes, published for the session's device before anything plays. */
-  async function prepareProfile(lease) {
-    requireLease(lease);
+  async function prepareProfile(lease,installation) {
+    requireLease(lease);requirePairInstallation(installation,true);
     if (profiled) return;
     var context = window.cast && cast.framework.CastReceiverContext.getInstance();
-    await api('/v1/me/devices/current/capabilities', {method: 'PUT', body: await probeAudioOutput(buildProfile(context))},lease);
-    requireLease(lease);
+    var profile=await probeAudioOutput(buildProfile(context));
+    requireLease(lease);requirePairInstallation(installation,true);
+    await api('/v1/me/devices/current/capabilities',{method:'PUT',body:profile},lease,installation);
+    requireLease(lease);requirePairInstallation(installation,true);
     profiled = true;
   }
 
-  function adopt(result) {
+  var installedPairings=new Map();
+  function pairingIdentity(result,origin){return result&&result.device&&typeof result.device.id==='string'&&typeof result.device.generation==='string'?JSON.stringify([origin,result.device.id,result.device.generation]):undefined;}
+  function adopt(result,installation) {
+    requirePairInstallation(installation,false);
     session = result.session;
     scope = result.scope;
+    var identity=pairingIdentity(result,base);if(identity){installedPairings.delete(identity);installedPairings.set(identity,true);while(installedPairings.size>16)installedPairings.delete(installedPairings.keys().next().value);}
     writeToken(result.deviceToken);
     profiled = false;
     say('');
-    return prepareProfile().then(function () { return result; });
+    return prepareProfile(undefined,installation).then(function () { requirePairInstallation(installation,true);return result; });
   }
 
   // A reconnect whose answer was lost left the old token in storage; the server accepts it once
@@ -491,12 +501,16 @@
     return post('/v1/cast/redeem', {protocolVersion:PROTOCOL,code:code,deviceId:deviceId()}, undefined, origin);
   }
   /** Make a redeemed pairing current: stop what's playing, forget the old credential, adopt the new one. */
-  async function switchTo(result, origin) {
+  async function switchTo(result, origin,installation) {
+    requirePairInstallation(installation,false);
+    var credential=session,originalScope=scope,originalOrigin=base;
     await stopPlayback();
+    requirePairInstallation(installation,false);
+    if(installation&&(credential!==session||originalScope!==scope||originalOrigin!==base))throw new Error('receiver_replaced');
     base = origin;
     try { if (base) window.localStorage.setItem(ORIGIN_KEY, base); else window.localStorage.removeItem(ORIGIN_KEY); } catch (_) { /* ignore */ }
     profiled=false;transferStarts.clear();
-    return adopt(result);
+    return adopt(result,installation);
   }
   /** Pairing by typing a code: only offered when the page is opened in an ordinary browser. */
   async function redeem(code) {
@@ -930,6 +944,7 @@
     visible('takeover', true);
   }
   function discardPair(p) {
+    if(p&&installedPairings.has(pairingIdentity(p.result,p.origin)))return;
     if(p&&p.result&&p.result.device&&p.result.device.id&&p.result.session)request('/v1/cast/devices/'+encodeURIComponent(p.result.device.id),{method:'DELETE',origin:p.origin,bearer:p.result.session.accessToken,headers:{'If-Match':p.result.device.generation}}).catch(function(){});
   }
   function denyPending(code) {
@@ -964,21 +979,22 @@
     send(senderId,Object.assign(statusBody(),attemptId?{attemptId:attemptId}:{}));
   }
   async function takeControl(senderId, origin, result,connection) {
-    if(!pairConnectionCurrent(connection))throw new Error('controller_retired');
-    var previous=controllerSender;
-    var generation=++controllerGeneration,adoption=++adoptionGeneration;controllerPresent=false;
-    await switchTo(result,origin);
-    if(!pairConnectionCurrent(connection)||generation!==controllerGeneration||adoption!==adoptionGeneration)throw new Error('controller_retired');
-    var credential=session,proof=token(24),binding=null;
-    controllerToken=null;controllerBinding=null;controllerAttempt=null;
-    if(result.controllerBootstrapId){
-      var registered=await api('/v1/cast/controllers/register',{body:{bootstrapId:result.controllerBootstrapId,controlToken:proof}});
-      binding=registered.body.binding;
-    }
-    if(!pairConnectionCurrent(connection)||generation!==controllerGeneration||adoption!==adoptionGeneration||credential!==session)throw new Error('controller_retired');
-    controllerToken=proof;controllerBinding=binding;controllerSender=senderId;controllerPresent=true;
-    if(previous&&previous!==senderId)send(previous,{type:'replaced'});
-    send(senderId,{type:'paired',controlToken:proof,binding:binding});
+    try{
+      if(!pairConnectionCurrent(connection))throw new Error('controller_retired');
+      var previous=controllerSender,generation=++controllerGeneration;adoptionGeneration++;controllerPresent=false;
+      var installation=Object.freeze({connection:connection,generation:generation,result:result,origin:origin});
+      await switchTo(result,origin,installation);requirePairInstallation(installation,true);
+      var proof=token(24),binding=null;
+      controllerToken=null;controllerBinding=null;controllerAttempt=null;
+      if(result.controllerBootstrapId){
+        var registered=await api('/v1/cast/controllers/register',{body:{bootstrapId:result.controllerBootstrapId,controlToken:proof}},undefined,installation);
+        binding=registered.body.binding;
+      }
+      requirePairInstallation(installation,true);
+      controllerToken=proof;controllerBinding=binding;controllerSender=senderId;controllerPresent=true;
+      if(previous&&previous!==senderId)send(previous,{type:'replaced'});
+      send(senderId,{type:'paired',controlToken:proof,binding:binding});
+    }catch(error){discardPair({origin:origin,result:result});throw error;}
   }
   /** A pair request: redeem first (keeping the current pairing), then decide whether to switch now or ask. */
   function handlePair(senderId, message,connection) {
