@@ -28,7 +28,7 @@ export type DeletePreview=Readonly<{revision:number;confirmation:string;confirma
 /** One item's outcome. `code` says why an item was not removed: `file_changed` (the file at that path is no longer the one in the library) or `file_not_removed` (storage refused). */
 export type DeleteReceipt=Readonly<{itemId:string;title:string;removed:boolean;filesDeleted:number;filesKept:number;bytes:number;code:string}>;
 export type DeleteResult=Readonly<{revision:number;removed:number;failed:number;bytesDeleted:number;filesRetained:boolean;receipts:readonly DeleteReceipt[]}>;
-export type FilesystemRoot=Readonly<{path:string;name:string;kind:string;description:string}>;
+export type FilesystemRoot=Readonly<{path:string;name:string;kind:string;description:string;classification?:'local'|'network'}>;
 export type FilesystemEntry=Readonly<{name:string;path:string;kind:'directory'|'file'|'unknown';readable:boolean;symlink:boolean;bytes:number;hidden:boolean;reason?:string}>;
 export type FilesystemPage=Readonly<{path:string;parent:string;separator:string;platform:string;writable:boolean;writableChecked:boolean;runsAs?:string;reason?:string;suggestions:readonly string[];truncated:boolean;roots:readonly FilesystemRoot[];entries:readonly FilesystemEntry[];nextCursor:string}>;
 export type LiveDefaults=Readonly<{importLimits:Readonly<{bytes:number;channels:number;programmes:number}>;streamBufferMs:number;retryWindowMs:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
@@ -222,7 +222,7 @@ export function parseDeleteResult(v:unknown):DeleteResult{
 export function parseFilesystemPage(v:unknown):FilesystemPage{
  if(!object(v)||!text(v.path,8192)||!text(v.parent,8192)||!filled(v.separator,4)||!filled(v.platform,32)||!flag(v.writable)||!flag(v.truncated)||!text(v.nextCursor,1024))invalid('filesystem page');
  // A root or an entry this app cannot read is left out alone; an entry of a kind it does not know is listed as unknown.
- const roots=readable(v.roots,64,'filesystem roots',entry=>{if(!object(entry)||!filled(entry.path,8192)||!filled(entry.name,256)||!filled(entry.kind,32)||!text(entry.description,512))invalid('filesystem root');return Object.freeze({path:entry.path,name:entry.name,kind:entry.kind,description:entry.description});});
+ const roots=readable(v.roots,64,'filesystem roots',entry=>{if(!object(entry)||!filled(entry.path,8192)||!filled(entry.name,256)||!filled(entry.kind,32)||!text(entry.description,512))invalid('filesystem root');return Object.freeze({path:entry.path,name:entry.name,kind:entry.kind,description:entry.description,...(entry.classification==='local'||entry.classification==='network'?{classification:entry.classification}:{})});});
  const entries=readable(v.entries,200,'filesystem entries',entry=>{
   if(!object(entry)||!filled(entry.name,512)||!filled(entry.path,8192)||!flag(entry.readable)||!flag(entry.symlink))invalid('filesystem entry');
   return Object.freeze({name:entry.name,path:entry.path,kind:oneOfOr('administration','filesystem entry kind',entry.kind,['directory','file','unknown'] as const,'unknown'),readable:entry.readable,symlink:entry.symlink,bytes:count(entry.bytes)?entry.bytes:0,hidden:entry.hidden===true,...(typeof entry.reason==='string'&&['permission','offline','missing','broken-link'].includes(entry.reason)?{reason:entry.reason}:{})});

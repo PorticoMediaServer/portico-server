@@ -109,7 +109,12 @@ function FirstLibrary({flow, state}: {flow: SetupFlow; state: SetupSnapshot}) {
       required disabled={state.busy} onChange={event => flow.setLibraryName(event.currentTarget.value)}/></div>
     <div className={styles.legend}>{t('web.setup.folders')}</div>
     {folderApi ? <>
-      <div className={styles.setupFolders}>{state.folders?.map(path => <div key={path} className={styles.setupFolder}><Icon name="i-folder" size={20}/><span>{path}</span><Button variant="text" size="small" icon="i-x" aria-label={`${t('next.ownerLibraries.explorer.removeChosen')} ${path}`} disabled={state.busy} onClick={() => flow.setFolders(state.folders?.filter(value => value !== path) ?? [])}/></div>)}</div>
+      <div className={styles.setupFolders}>{state.folders?.map(path => {
+        const folderClass = state.folderClasses?.[path];
+        return <div key={path} className={styles.setupFolder}><Icon name="i-folder" size={20}/><span>{path}</span>
+          {folderClass ? <small className={styles.folderClass}>{t(folderClass === 'network' ? 'web.libraries.networkShare' : 'web.libraries.localDisk')}</small> : null}
+          <Button variant="text" size="small" icon="i-x" aria-label={`${t('next.ownerLibraries.explorer.removeChosen')} ${path}`} disabled={state.busy} onClick={() => flow.setFolders(state.folders?.filter(value => value !== path) ?? [], state.folderClasses)}/></div>;
+      })}</div>
       <div className={styles.folderChoose}>
         <Button variant="glass" disabled={state.busy} onClick={() => setPicking(true)}>{t('next.ownerLibraries.explorer.choose')}</Button>
         <small>{t('web.setup.chooseFoldersHelp')}</small>

@@ -98,6 +98,18 @@ export type {ScanProgress,ViewerInventoryStatus} from './library-inventory.ts';
 
 /** Read-only, folders-only server explorer. A writable check touches only the
  * selected directory and is requested explicitly by single-folder callers. */
+/** The server's own classification of a chosen folder: the longest published
+ * root it lives under, using the server's drive or mount facts. A longer root
+ * with no classification wins over a shorter classified ancestor, so an
+ * unclassified nested mount stays unknown. No path guess is made. */
+export function classifyServerPath(path:string,roots:readonly {path:string;classification?:'local'|'network'}[],separator:string):'local'|'network'|undefined{
+ const trim=(value:string)=>value.length>1&&value.endsWith(separator)?value.slice(0,-1):value;
+ const target=trim(path);let best=-1,classification:'local'|'network'|undefined;
+ for(const root of roots){const base=trim(root.path);
+  const under=base===separator?target.startsWith(separator):target===base||target.startsWith(base+separator);
+  if(under&&base.length>best){best=base.length;classification=root.classification;}}
+ return best<0?undefined:classification;
+}
 export async function browseServerFilesystem(api:LibraryContentApi, options:Readonly<{path?:string;cursor?:string;showHidden?:boolean;prefix?:string;checkWritable?:boolean;includeFiles?:boolean;limit?:number}>={}, signal?:AbortSignal):Promise<import('./administration.ts').FilesystemPage>{
  const limit=options.limit??200;
  if(!Number.isInteger(limit)||limit<1||limit>200||options.prefix!==undefined&&(!text(options.prefix,255)||/[\\/]/.test(options.prefix)))throw new Error('Invalid folder explorer query.');

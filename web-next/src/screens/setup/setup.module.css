@@ -68,3 +68,4 @@
 .setupFolder > svg { flex: none; color: var(--color-text-tertiary); }
 .folderChoose { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .folderChoose small { min-width: 0; font-size: var(--type-chip-size); line-height: 1.45; color: var(--color-text-tertiary); }
+.setupFolder .folderClass { flex: none; font-size: var(--type-chip-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }

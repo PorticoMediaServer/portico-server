@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
-import {browseServerFilesystem} from '@core/library-management.ts';
+import {browseServerFilesystem, classifyServerPath} from '@core/library-management.ts';
 import {Button, Switch, TextField} from '../controls';
 import {Icon, type IconName} from '../Icon';
 import {Dialog} from '../overlays/Dialog';
@@ -23,7 +23,7 @@ function rootIcon(root: Readonly<{kind: string; description: string}>): IconName
 /** The server's own folder explorer, folders only (owner-libraries.html#9). A
  * typed path is always available; Places are the roots the server publishes. */
 export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onChooseMany, initialPaths, initialPath, checkWritable = false, returnFocusRef, serverName}: Readonly<{
-  open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; onChoose: (path: string) => void; onChooseMany?: (paths: readonly string[]) => void; initialPaths?: readonly string[]; initialPath?: string; checkWritable?: boolean; returnFocusRef?: import('react').RefObject<HTMLElement | null>;
+  open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; onChoose: (path: string, classification?: 'local' | 'network') => void; onChooseMany?: (paths: readonly string[], classifications?: Readonly<Record<string, 'local' | 'network'>>) => void; initialPaths?: readonly string[]; initialPath?: string; checkWritable?: boolean; returnFocusRef?: import('react').RefObject<HTMLElement | null>;
   /** The real server this explorer is browsing, for the drawn subtitle. When the
    * caller has none, the dialog keeps its truthful generic label. */
   serverName?: string;
@@ -95,8 +95,19 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
   const canChooseCurrent = current() && !!page?.path && typed === page.path && !busy && !failed;
   const submit = () => {
     if (!current()) return;
-    if (onChooseMany) {if (!chosen.length) return; onChooseMany(Object.freeze([...chosen])); changeOpen(false);}
-    else if (canChooseCurrent && page) {onChoose(page.path); changeOpen(false);}
+    if (onChooseMany) {
+      if (!chosen.length) return;
+      const classifications: Record<string, 'local' | 'network'> = {};
+      for (const path of chosen) {
+        const classification = page ? classifyServerPath(path, page.roots, page.separator) : undefined;
+        if (classification) classifications[path] = classification;
+      }
+      onChooseMany(Object.freeze([...chosen]), Object.freeze(classifications));
+      changeOpen(false);
+    } else if (canChooseCurrent && page) {
+      onChoose(page.path, classifyServerPath(page.path, page.roots, page.separator));
+      changeOpen(false);
+    }
   };
 
   const breadcrumbs: {path: string; label: string}[] = [];

@@ -45,6 +45,7 @@ export type SetupSnapshot = Readonly<{
   libraryName: string;
   path: string;
   folders?: readonly string[];
+  folderClasses?: Readonly<Record<string, 'local' | 'network'>>;
   busy: boolean;
   error?: string;
   connectError?: unknown;
@@ -122,11 +123,14 @@ export class SetupFlow {
   setConfirm = (confirm: string) => {if (!this.state.busy) this.publish({confirm});};
   setKind = (kind: SetupLibraryKind) => {if (!this.state.busy) this.publish({kind, libraryName: defaultLibraryName(kind)});};
   setLibraryName = (libraryName: string) => {if (!this.state.busy) this.publish({libraryName});};
-  setPath = (path: string) => {if (!this.state.busy) this.publish({path, folders: undefined});};
+  setPath = (path: string) => {if (!this.state.busy) this.publish({path, folders: undefined, folderClasses: undefined});};
   libraryFolderApi = () => !this.disposed && this.state.phase === 'library' ? this.ports.libraryFolders : undefined;
-  setFolders = (folders: readonly string[]) => {
+  setFolders = (folders: readonly string[], classifications?: Readonly<Record<string, 'local' | 'network'>>) => {
     if (this.disposed || this.state.phase !== 'library' || this.state.busy || folders.length > 64 || folders.some(path => !path || path.length > 8192)) return;
-    this.publish({folders: Object.freeze([...new Set(folders)]), path: ''});
+    const unique = Object.freeze([...new Set(folders)]);
+    const classes: Record<string, 'local' | 'network'> = {};
+    for (const path of unique) {const classification = classifications?.[path]; if (classification === 'local' || classification === 'network') classes[path] = classification;}
+    this.publish({folders: unique, folderClasses: Object.freeze(classes), path: ''});
   };
   submitHosted = async (): Promise<void> => {
     const server = this.server;
