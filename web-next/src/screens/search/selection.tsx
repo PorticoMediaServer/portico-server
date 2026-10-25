@@ -54,7 +54,7 @@ export function createSearchSelection(context: ScreenContext, service: SearchSer
     const source: ExplicitCatalogueSelectionSource = {
       viewIdentity: () => viewId,
       getSnapshot: () => ({phase: current() ? 'ready' : 'retired', revision, queryRevision}),
-      subscribe, contains: entry => current() && mounted.has(entry),
+      subscribe, contains: entry => current() && admitted.has(entry) && mounted.has(entry),
       collection: {subscribe, itemAt: index => {const entry = rows()[index]; return entry ? {entry} : undefined;}},
     };
     const owner = context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local';

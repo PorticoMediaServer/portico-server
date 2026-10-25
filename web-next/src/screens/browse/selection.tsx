@@ -262,7 +262,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   };
   const snapshot = () => playSelection.getSnapshot(), rowFor = (member: Pick<BrowseMember, 'entry'>, index: number) => {
     const rows = snapshot().rows;
-    return rows.find(row => row.entry === member.entry) ?? rows.find(row => row.position === index);
+    return rows.find(row => row.entry === member.entry) ?? rows.find(row => row.position === index && row.entry.id === member.entry.id && row.entry.kind === member.entry.kind && row.entry.libraryId === member.entry.libraryId);
   };
   const run = (work: () => void) => {
     try {
