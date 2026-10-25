@@ -98,7 +98,8 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
   const canPlay = summary.every.play && current.selection.target?.mode === 'explicit';
   // Whole-view Select all N is offered only with the server's exact descriptor and
   // a model that can hold it; never as a local guess from the loaded window.
-  const selectAll = whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
+  const queryHeld = current.selection.target?.mode === 'query';
+  const selectAll = queryHeld ? {kind: 'clear' as const} : whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
   const offers = personalOffers(current.selection, actions, playSelection), leafItems = explicitLeafItems(current.selection);
   const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
     && !actions.signal.aborted && actions.isCurrent();
@@ -116,7 +117,10 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
       ...(canCollection ? {onCollection: (anchor: HTMLElement) => { void addToCollection(anchor); }} : {}),
     }}
     selectAll={selectAll}
-    onSelectAll={selectAll ? () => { try { void Promise.resolve(selectWhole!(wholeViewQuery(whole!))).catch(reportError); } catch (error) { reportError(error); } } : undefined}
+    onSelectAll={selectAll ? () => { try {
+      if (queryHeld) playSelection.clear();
+      else void Promise.resolve(selectWhole!(wholeViewQuery(whole!))).catch(reportError);
+    } catch (error) { reportError(error); } } : undefined}
     onExit={() => { try { playSelection.clear(); } catch (error) { reportError(error); } }}
     sticky />;
 }
