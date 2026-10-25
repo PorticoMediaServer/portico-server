@@ -1,7 +1,7 @@
 import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {
-  RemoteSourceService, cloudTokenDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
+  RemoteSourceService, cloudTokenDraft, driveOAuthDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
   type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
@@ -205,6 +205,16 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [s3Name, setS3Name] = useState('');
   const [drive, setDrive] = useState<DriveKeyFields>(emptyDrive);
   const [driveName, setDriveName] = useState('');
+  const [driveMode, setDriveMode] = useState<'service'|'oauth'>('service');
+  const [oauthClientId, setOauthClientId] = useState('');
+  const [oauthClientSecret, setOauthClientSecret] = useState('');
+  const [oauthToken, setOauthToken] = useState('');
+  const [oauthState, setOauthState] = useState('');
+  const [oauthPhase, setOauthPhase] = useState<'idle'|'starting'|'waiting'|'ready'|'expired'|'denied'|'error'>('idle');
+  const [oauthAddress, setOauthAddress] = useState('');
+  const [oauthError, setOauthError] = useState('');
+  const oauthLease = useRef<{state:string}|null>(null);
+  const oauthGeneration = useRef(0);
   const [cloud, setCloud] = useState<CloudTokenFields>(emptyCloud);
   const [cloudName, setCloudName] = useState('');
   // A test belongs to the exact rendered tuple; the revision changes with it.
@@ -258,7 +268,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   /** A refused owner retires this form before Settings hears about it. */
   const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
-    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); invalidateS3(); invalidateDrive(); invalidateCloud();
+    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); setDriveMode('service'); setOauthClientId(''); setOauthClientSecret(''); setOauthToken(''); setOauthState(''); setOauthPhase('idle'); setOauthAddress(''); setOauthError(''); oauthLease.current = null; oauthGeneration.current++; invalidateS3(); invalidateDrive(); invalidateCloud();
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
@@ -270,7 +280,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   const updateRclone = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setRclone(current => ({...current, ...patch}));};
   useEffect(() => {active.current=open;if(open)reset();else{lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
-  useEffect(() => () => {active.current=false;lifetime.current++;}, []);
+  useEffect(() => () => {active.current=false;lifetime.current++;stopOAuthRef.current();}, []);
   const test = async () => {
     const guard = attemptGuard();
     if (pending.current || !guard()) return;
@@ -313,7 +323,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const chooseSourceKind = (next: SourceKind) => {
     if (next === sourceKind) return;
-    testAttempt.current++;setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
+    testAttempt.current++;stopOAuthRef.current();setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
@@ -323,6 +333,69 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         : reason === 'email' ? 'next.remoteSources.driveKeyEmail'
           : reason === 'key' ? 'next.remoteSources.driveKeyUnreadable'
             : 'next.remoteSources.driveLocationInvalid';
+  const stopOAuth = () => {
+    oauthGeneration.current++;
+    const lease = oauthLease.current;
+    oauthLease.current = null;
+    if (lease) void service.driveOAuthCancel(lease.state);
+    setOauthState('');setOauthToken('');setOauthPhase('idle');setOauthAddress('');setOauthError('');
+  };
+  const stopOAuthRef = useRef<() => void>(() => {}); stopOAuthRef.current = stopOAuth;
+  const updateOAuth = (patch: {clientId?: string; clientSecret?: string; address?: string}) => {
+    invalidateDrive();setDriveTested(undefined);setRcloneResult(undefined);setError('');
+    if (patch.clientId !== undefined) setOauthClientId(patch.clientId);
+    if (patch.clientSecret !== undefined) setOauthClientSecret(patch.clientSecret);
+    if (patch.address !== undefined) setOauthAddress(patch.address);
+    if (patch.clientId !== undefined || patch.clientSecret !== undefined) {setOauthToken('');setOauthPhase('idle');setOauthError('');}
+  };
+  const pollOAuth = async (state: string, guard: () => boolean, revision: number, generation: number) => {
+    for (let attempt = 0; attempt < 150; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!guard() || oauthGeneration.current !== generation || driveRevisionRef.current !== revision) {void service.driveOAuthCancel(state);return;}
+      try {
+        const status = await service.driveOAuthStatus(state, guard);
+        if (!guard() || oauthGeneration.current !== generation || driveRevisionRef.current !== revision) {void service.driveOAuthCancel(state);return;}
+        if (status.phase === 'pending') continue;
+        if (status.phase === 'ready') {setOauthToken(status.token);setOauthPhase('ready');return;}
+        setOauthPhase(status.phase === 'denied' ? 'denied' : 'expired');return;
+      } catch { if (guard()) setOauthPhase('error'); return; }
+    }
+    setOauthPhase('expired');
+  };
+  const startOAuth = async () => {
+    const guard = attemptGuard();
+    const revision = driveRevision;
+    if (pending.current || !guard() || revision !== driveRevisionRef.current) return;
+    if (!oauthClientId.trim() || !oauthClientSecret) {setOauthError(t('next.remoteSources.driveOAuthInvalid'));return;}
+    pending.current = true;setOauthError('');setOauthPhase('starting');
+    try {
+      const started = await service.startDriveOAuth(oauthClientId.trim(), oauthClientSecret, guard);
+      if (!guard() || revision !== driveRevisionRef.current) {void service.driveOAuthCancel(started.state);return;}
+      oauthLease.current = {state: started.state};setOauthState(started.state);setOauthPhase('waiting');
+      window.open(started.authorizationUrl, '_blank', 'noopener,noreferrer');
+      void pollOAuth(started.state, guard, revision, ++oauthGeneration.current);
+    } catch (value) {
+      if (!guard()) return;
+      if (authFailure(value)) {refuse(value);return;}
+      setOauthPhase('error');setOauthError(t('next.remoteSources.driveOAuthInvalid'));
+    } finally {if (guard()) pending.current = false;}
+  };
+  const pasteOAuth = async () => {
+    const guard = attemptGuard();
+    const revision = driveRevision, state = oauthState;
+    if (pending.current || !guard() || !state || revision !== driveRevisionRef.current || !oauthAddress.trim()) return;
+    pending.current = true;setOauthError('');
+    try {
+      const status = await service.driveOAuthPaste(state, oauthAddress, guard);
+      if (!guard() || revision !== driveRevisionRef.current) return;
+      if (status.phase === 'ready') {setOauthToken(status.token);setOauthPhase('ready');}
+      else setOauthPhase(status.phase === 'denied' ? 'denied' : status.phase === 'expired' ? 'expired' : 'waiting');
+    } catch (value) {
+      if (!guard()) return;
+      if (authFailure(value)) {refuse(value);return;}
+      setOauthPhase('error');setOauthError(t('next.remoteSources.driveOAuthInvalid'));
+    } finally {if (guard()) pending.current = false;}
+  };
   const updateDrive = (patch: Partial<DriveKeyFields>) => {testAttempt.current++;setRcloneResult(undefined);setDriveTested(undefined);invalidateDrive();setError('');setDrive(current => ({...current, ...patch}));};
   const readKeyFile = async (file: File | undefined) => {
     const guard = attemptGuard();
@@ -341,8 +414,10 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     const guard = attemptGuard();
     const revision = driveRevision, fields = {...drive};
     if (pending.current || !guard() || revision !== driveRevisionRef.current) return;
-    const result = driveServiceAccountDraft(fields);
-    if (!result.ok) {setError(t(driveReason(result.reason)));return;}
+    const result = driveMode === 'oauth'
+      ? driveOAuthDraft({clientId: oauthClientId, clientSecret: oauthClientSecret, token: oauthToken, location: fields.location, locationId: fields.locationId})
+      : driveServiceAccountDraft(fields);
+    if (!result.ok) {setError(t(driveMode === 'oauth' ? 'next.remoteSources.driveOAuthInvalid' : driveReason(result.reason)));return;}
     pending.current = true;
     const attempt = ++testAttempt.current, built = result.draft;
     setError('');setRcloneResult(undefined);setBusy(true);
@@ -359,8 +434,10 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     const guard = attemptGuard();
     const revision = driveRevision, fields = {...drive}, name = driveName.trim(), tested = driveTested;
     if (pending.current || !guard() || !tested || tested.revision !== revision || revision !== driveRevisionRef.current || !name) return;
-    const result = driveServiceAccountDraft(fields);
-    if (!result.ok) {setError(t(driveReason(result.reason)));return;}
+    const result = driveMode === 'oauth'
+      ? driveOAuthDraft({clientId: oauthClientId, clientSecret: oauthClientSecret, token: oauthToken, location: fields.location, locationId: fields.locationId})
+      : driveServiceAccountDraft(fields);
+    if (!result.ok) {setError(t(driveMode === 'oauth' ? 'next.remoteSources.driveOAuthInvalid' : driveReason(result.reason)));return;}
     pending.current = true;setError('');setBusy(true);
     const built = result.draft;
     // The submitted tuple is captured; the key leaves the form and this witness is spent.
@@ -635,7 +712,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const canContinue = sourceKind === 'webdav' ? !!result
     : sourceKind === 'rclone' ? !!rcloneResult && !!rclone.name.trim()
       : sourceKind === 's3' ? !!s3Tested && s3Tested.revision === s3Revision && !!s3Name.trim()
-        : sourceKind === 'drive' ? !!driveTested && driveTested.revision === driveRevision && !!driveName.trim() && driveResult.ok
+        : sourceKind === 'drive' ? !!driveTested && driveTested.revision === driveRevision && !!driveName.trim() && (driveMode === 'oauth' ? oauthPhase === 'ready' && !!oauthToken : driveResult.ok)
           : sourceKind === 'cloud' ? !!cloudTested && cloudTested.revision === cloudRevision && !!cloudName.trim() && cloudResult.ok
           : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
   const footer = step === 'connection'
@@ -690,11 +767,32 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <TextField label={t('next.remoteSources.name')} value={driveName} maxLength={200} disabled={busy} onChange={event => setDriveName(event.target.value)}/>
         <div className={styles.lab2}>{t('next.remoteSources.driveSignIn')}</div>
         <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.driveSignIn')}>
-          <button type="button" role="radio" aria-checked={true} className={styles.kindTile} data-picked><Icon name="i-key" size={22}/>{t('next.remoteSources.driveServiceAccount')}</button>
-          <button type="button" role="radio" aria-checked={false} className={styles.kindTile} disabled title={t('next.remoteSources.driveOAuthUnavailable')}><Icon name="i-google" size={22}/>{t('next.remoteSources.driveOAuth')}</button>
+          <button type="button" role="radio" aria-checked={driveMode === 'service'} className={styles.kindTile} data-picked={driveMode === 'service' || undefined} disabled={busy}
+            onClick={() => {stopOAuth();setDriveMode('service');}}><Icon name="i-key" size={22}/>{t('next.remoteSources.driveServiceAccount')}</button>
+          <button type="button" role="radio" aria-checked={driveMode === 'oauth'} className={styles.kindTile} data-picked={driveMode === 'oauth' || undefined} disabled={busy}
+            onClick={() => {setDriveMode('oauth');}}><Icon name="i-google" size={22}/>{t('next.remoteSources.driveOAuth')}</button>
         </div>
-        <p className={styles.note}>{t('next.remoteSources.driveServiceAccountHint')}</p>
-        <p className={styles.note}>{t('next.remoteSources.driveOAuthUnavailable')}</p>
+        {driveMode === 'service' ? <>
+          <p className={styles.note}>{t('next.remoteSources.driveServiceAccountHint')}</p>
+        </> : <>
+          <p className={styles.note}>{t('next.remoteSources.driveOAuthHint')}</p>
+          <TextField label={t('next.remoteSources.driveClientId')} value={oauthClientId} maxLength={512} disabled={busy}
+            autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateOAuth({clientId: event.target.value})}/>
+          <TextField label={t('next.remoteSources.driveClientSecret')} type="password" value={oauthClientSecret} maxLength={2048} disabled={busy} onChange={event => updateOAuth({clientSecret: event.target.value})}/>
+          <div className={styles.testRow}>
+            <Button size="compact" variant="glass" disabled={busy || !oauthClientId.trim() || !oauthClientSecret} onClick={() => void startOAuth()}>{t('next.remoteSources.driveOAuthSignIn')}</Button>
+            {oauthPhase === 'waiting' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthWaiting')}</span>}
+            {oauthPhase === 'ready' && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{t('next.remoteSources.driveOAuthReady')}</span>}
+            {oauthPhase === 'expired' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthExpired')}</span>}
+          </div>
+          {oauthPhase === 'waiting' && <>
+            <TextField label={t('next.remoteSources.driveOAuthPaste')} value={oauthAddress} maxLength={8192} disabled={busy}
+              autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateOAuth({address: event.target.value})}/>
+            <Button size="compact" variant="glass" disabled={busy || !oauthAddress.trim()} onClick={() => void pasteOAuth()}>{t('next.remoteSources.driveOAuthPasteAction')}</Button>
+          </>}
+          {oauthError && <p className={styles.error} role="alert">{oauthError}</p>}
+        </>}
+        {driveMode === 'service' && <>
         <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.driveKey')}</span>
           <textarea className={styles.config} aria-label={t('next.remoteSources.driveKey')} value={drive.keyJson} placeholder={'{"type": "service_account", …}'} maxLength={65536}
             disabled={busy} spellCheck={false} rows={7} onChange={event => updateDrive({keyJson: event.target.value})}/>
@@ -711,6 +809,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
             : <div className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/><span>{driveResult.draft.email}</span>
                 <Button size="xs" variant="text" onClick={() => copyEmail(driveResult.draft.email)}>{t('next.remoteSources.driveCopy')}</Button></div>}
         {driveResult.ok && <p className={styles.note}>{t('next.remoteSources.driveEmailHeading')} {t('next.remoteSources.driveEmailHelp')}</p>}
+        </>}
+
         <div className={styles.lab2}>{t('next.remoteSources.driveLocation')}</div>
         <div className={styles.segment} role="group">
           <Button size="small" variant={drive.location === 'folder' ? 'primary' : 'glass'} aria-pressed={drive.location === 'folder'} disabled={busy} onClick={() => updateDrive({location: 'folder'})}>{t('next.remoteSources.driveFolder')}</Button>
