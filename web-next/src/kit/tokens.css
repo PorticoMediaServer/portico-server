@@ -1906,6 +1906,11 @@
   --type-troubleshooting-lede-weight: 400;
   --type-troubleshooting-lede-tracking: 0em;
   --type-troubleshooting-lede-transform: none;
+  --type-troubleshooting-permission-lede-size: 0.8125rem;
+  --type-troubleshooting-permission-lede-line: 1.178125rem;
+  --type-troubleshooting-permission-lede-weight: 400;
+  --type-troubleshooting-permission-lede-tracking: 0em;
+  --type-troubleshooting-permission-lede-transform: none;
   --type-troubleshooting-log-size: 0.8125rem;
   --type-troubleshooting-log-line: 1.21875rem;
   --type-troubleshooting-log-weight: 400;
@@ -2276,6 +2281,11 @@
   --type-troubleshooting-lede-weight: 400;
   --type-troubleshooting-lede-tracking: 0em;
   --type-troubleshooting-lede-transform: none;
+  --type-troubleshooting-permission-lede-size: 0.8125rem;
+  --type-troubleshooting-permission-lede-line: 1.178125rem;
+  --type-troubleshooting-permission-lede-weight: 400;
+  --type-troubleshooting-permission-lede-tracking: 0em;
+  --type-troubleshooting-permission-lede-transform: none;
   --type-troubleshooting-log-size: 0.8125rem;
   --type-troubleshooting-log-line: 1.21875rem;
   --type-troubleshooting-log-weight: 400;
@@ -2647,6 +2657,11 @@
   --type-troubleshooting-lede-weight: 400;
   --type-troubleshooting-lede-tracking: 0em;
   --type-troubleshooting-lede-transform: none;
+  --type-troubleshooting-permission-lede-size: 0.8125rem;
+  --type-troubleshooting-permission-lede-line: 1.178125rem;
+  --type-troubleshooting-permission-lede-weight: 400;
+  --type-troubleshooting-permission-lede-tracking: 0em;
+  --type-troubleshooting-permission-lede-transform: none;
   --type-troubleshooting-log-size: 0.8125rem;
   --type-troubleshooting-log-line: 1.21875rem;
   --type-troubleshooting-log-weight: 400;

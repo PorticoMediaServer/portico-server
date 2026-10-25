@@ -128,6 +128,7 @@ const handheldType = {
   reportAvatar: type(12.5, 'normal', 800), reportRank: type(128, 102.4, 800, -.07),
   // owner-server frames 3–7: exact type metrics of the drawn Troubleshooting panels.
   troubleshootingHeading: type(18, 'normal', 800, -.02), troubleshootingLede: type(14, 20.3, 400),
+  troubleshootingPermissionLede: type(13, 18.85, 400),
   troubleshootingLog: type(13, 19.5, 400), troubleshootingReason: type(13, 18.2, 400),
   troubleshootingMessage: type(15, 22.5, 400), troubleshootingCheck: type(15, 18, 400),
   troubleshootingLevel: type(12, 'normal', 800, .02),
