@@ -4,7 +4,7 @@ import {parseJoinLink, type JoinLink} from '@core/join-link.ts';
 import {StateView} from '../kit/states';
 import {ServicesAuthStage, HostedError, ServicesNotice} from '../kit/accounts/ServicesAuth';
 import {ServicesHeader, ServicesStart} from '../kit/accounts/ServicesWorkspace';
-import {ProfileAvatar} from '../kit/shell/AccountSurfaces';
+import {ServerlessAccountMenu} from '../screens/accounts/ServerlessAccountMenu';
 import {AccountPage} from './AccountPage';
 import {JoinPage} from './JoinPage';
 import {distributionPage} from './distribution';
@@ -43,9 +43,17 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
   };
   const run = (work: () => Promise<void>) => { void Promise.resolve().then(work).catch(setError); };
   const download = () => location.assign(distributionPage);
+  const scrollToCard = (id: 'join' | 'setup' | 'apps') => {
+    const target = document.getElementById(id);
+    const visible = id === 'setup' && !target?.getClientRects().length ? document.getElementById('setup-details') : target;
+    visible?.scrollIntoView({block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  };
   if (join) return <JoinPage account={account} link={join} onBack={() => setJoin(undefined)} />;
   const name = session.account.displayName || session.account.username;
-  return <ServicesStart header={<ServicesHeader notifications={false} avatar={<ProfileAvatar initial={[...name][0]?.toLocaleUpperCase() ?? ''} name={name} onClick={() => location.assign('/account')} />} />}
+  return <ServicesStart header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
+    onAccount={() => location.assign('/account')} onJoin={() => scrollToCard('join')} onSetup={() => scrollToCard('setup')} onApps={() => scrollToCard('apps')}
+    onHelp={() => window.open('https://getportico.tv/help', '_blank', 'noopener,noreferrer')}
+    onSignOut={() => run(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />} />}
     invitation={invitation} onInvitationChange={value => { setInvitation(value); setInvalid(false); }} onJoin={() => inspect()}
     onInvitationPaste={value => { setInvitation(value); inspect(value); }}
     onPaste={() => run(async () => { const value = await navigator.clipboard.readText(); setInvitation(value); inspect(value); })}
