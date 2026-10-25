@@ -1,6 +1,7 @@
 import {playbackFailurePermanent} from '@core/playback-messages.ts';
 import {captureAppLogRecorder, type AppLogRecorder} from '../app-log';
 import {advancePendingChoice, takePendingTrackChoice, type PendingChoiceProgress} from '@core/pending-track-choice.ts';
+import {createWebQueueListPort, type WebQueueListPort} from './queue-list';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -1319,6 +1320,21 @@ export class WebShellPlaybackRuntime {
     }
     if (this.current(stack)) this.sync();
   }
+  /** Root34's general Up next list uses only this captured server queue. */
+  queueList(fence: PlaybackFence): WebQueueListPort | undefined {
+    if (fence.kind !== 'queue' || !this.matches(fence) || this.stack.mode !== 'server' || this.group?.matches(fence)) return;
+    const stack = this.stack, view = stack.queue.getSnapshot().view, queueId = view?.queue.id;
+    if (!view || !queueId || view.queue.currentEntryId !== fence.entryId) return;
+    const current = () => this.current(stack) && this.matches(fence) && !this.group?.matches(fence) && stack.queue.getSnapshot().view?.queue.id === queueId;
+    return createWebQueueListPort({fence, queueId, isCurrent: current,
+      read: () => ({view: stack.queue.getSnapshot().view, workspace: stack.queue.workspace.service.getSnapshot()}),
+      subscribe: listener => {const off = this.subscribe(listener), offQueue = stack.queue.subscribe(listener), offWorkspace = stack.queue.workspace.service.subscribe(listener);return () => {off();offQueue();offWorkspace();};},
+      play: (entryId, revision) => {if (!current()) problem('stale_playback_command');return stack.queue.playEntry(queueId, entryId, revision);},
+      mutate: intent => {if (!current()) problem('stale_playback_command');return stack.queue.workspace.service.mutate(intent);},
+      refresh: () => {if (!current()) problem('stale_playback_command');return stack.queue.refresh(stack.life.signal);},
+    });
+  }
+
   private matches(fence: PlaybackFence): boolean { return this.current() && sameFence(this.snapshot?.fence, fence) && sameFence(this.dock.getSnapshot().local?.fence, fence); }
   private require(fence: PlaybackFence): Stack { if (!this.matches(fence)) problem('stale_playback_command'); return this.stack; }
   private offered(fence: PlaybackFence, command: WebPlaybackPresentation['controls'][number]): Stack { const stack = this.require(fence); if (!this.snapshot.presentation?.controls.includes(command)) problem('playback_command_unavailable'); return stack; }
