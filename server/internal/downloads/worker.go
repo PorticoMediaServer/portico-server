@@ -18,6 +18,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/preparedmedia"
+	"portico.local/server/internal/reading"
 	"portico.local/server/internal/worker"
 )
 
@@ -430,7 +431,11 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 	if docError != nil {
 		return out, docError
 	}
-	if err := s.checkPublicationTx(ctx, tx, principal, found, doc); err != nil {
+	var publication *reading.OfflineDocument
+	if doc != nil {
+		publication = doc.OfflineDocument
+	}
+	if err := s.checkPublicationTx(ctx, tx, principal, found, publication); err != nil {
 		return out, terminal(ctx, gated2, id, StateUnavailable, ReasonSourceChanged, now)
 	}
 	if doc != nil {

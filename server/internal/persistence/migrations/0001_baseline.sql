@@ -3013,7 +3013,19 @@ CREATE TABLE download_receipt_keys(
  created_ms INTEGER NOT NULL, retired_ms INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE download_preparations(
  id TEXT PRIMARY KEY,
- publication_json TEXT NOT NULL DEFAULT '',
+ publication_json TEXT NOT NULL DEFAULT '' CHECK(publication_json='' OR CASE WHEN json_valid(publication_json) THEN COALESCE(
+ length(CAST(publication_json AS BLOB))<=2097152 AND json_type(publication_json)='object'
+ AND json_type(publication_json,'$.itemId')='text' AND length(json_extract(publication_json,'$.itemId')) BETWEEN 1 AND 128
+ AND json_type(publication_json,'$.sourceId')='text' AND length(json_extract(publication_json,'$.sourceId')) BETWEEN 1 AND 128
+ AND json_type(publication_json,'$.revision')='text' AND length(json_extract(publication_json,'$.revision'))=64 AND json_extract(publication_json,'$.revision') NOT GLOB '*[^0-9a-f]*'
+ AND json_extract(publication_json,'$.format') IN('epub','pdf','cbz')
+ AND json_type(publication_json,'$.size')='integer' AND json_extract(publication_json,'$.size') BETWEEN 1 AND 2147483648
+ AND json_type(publication_json,'$.metadata')='object'
+ AND json_type(publication_json,'$.resources')='array' AND json_array_length(publication_json,'$.resources')<=4096
+ AND json_type(publication_json,'$.spine')='array' AND json_array_length(publication_json,'$.spine')<=4096
+ AND json_type(publication_json,'$.pageNames')='array' AND json_array_length(publication_json,'$.pageNames')<=4096
+ AND json_type(publication_json,'$.contents')='array' AND json_array_length(publication_json,'$.contents')<=512
+ AND json_type(publication_json,'$.progress') IN('null','object'),0) ELSE 0 END),
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
  title_json TEXT NOT NULL DEFAULT '',

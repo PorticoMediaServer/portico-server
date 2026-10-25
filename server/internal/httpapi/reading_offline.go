@@ -2,18 +2,67 @@ package httpapi
 
 import (
 	"net/http"
+	"portico.local/apikit"
 	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/reading"
+	"reflect"
 	"time"
 )
 
-type ReadingOfflineProgressRequest struct {
-	Receipt          downloads.Receipt `json:"receipt"`
-	ExpectedRevision *int64            `json:"expectedRevision"`
-	ObservedAt       int64             `json:"observedAt"`
-	StartedAt        int64             `json:"startedAt"`
-	Location         ReadingLocation   `json:"location"`
+const readingOfflineMaxInteger int64 = 9007199254740991
+
+type ReadingOfflineLocation struct {
+	Format      ReadingFormat `json:"format"`
+	CFI         string        `json:"cfi,omitempty"`
+	Section     string        `json:"section,omitempty"`
+	PageIndex   *int64        `json:"pageIndex,omitempty"`
+	Progression *float64      `json:"progression"`
 }
+
+func readingOfflineInteger(minimum int64) map[string]any {
+	return map[string]any{"type": "integer", "minimum": minimum, "maximum": readingOfflineMaxInteger}
+}
+func (ReadingOfflineLocation) JSONSchema() map[string]any {
+	variants := []any{}
+	for _, format := range []string{"epub", "pdf", "cbz"} {
+		properties := map[string]any{"format": map[string]any{"type": "string", "const": format}, "progression": map[string]any{"type": "number", "minimum": 0, "maximum": 1}}
+		required := []string{"format", "progression"}
+		if format == "epub" {
+			properties["cfi"] = map[string]any{"type": "string", "minLength": 10, "maxLength": 4096, "pattern": `^epubcfi\(/.*\)$`}
+			properties["section"] = map[string]any{"type": "string", "maxLength": 1024}
+			required = append(required, "cfi")
+		} else {
+			properties["pageIndex"] = readingOfflineInteger(0)
+			required = append(required, "pageIndex")
+		}
+		variants = append(variants, map[string]any{"type": "object", "additionalProperties": false, "properties": properties, "required": required})
+	}
+	return map[string]any{"oneOf": variants}
+}
+
+type ReadingOfflineProgressRequest struct {
+	Receipt          downloads.Receipt      `json:"receipt"`
+	ExpectedRevision *int64                 `json:"expectedRevision"`
+	ObservedAt       int64                  `json:"observedAt"`
+	StartedAt        int64                  `json:"startedAt"`
+	Location         ReadingOfflineLocation `json:"location"`
+}
+type readingOfflineProgressRequestShape ReadingOfflineProgressRequest
+
+func (ReadingOfflineProgressRequest) JSONSchema() map[string]any {
+	schema, err := apikit.Schema(reflect.TypeFor[readingOfflineProgressRequestShape]())
+	if err != nil {
+		panic(err)
+	}
+	properties := schema["properties"].(map[string]any)
+	properties["expectedRevision"] = readingOfflineInteger(0)
+	properties["observedAt"] = readingOfflineInteger(1)
+	properties["startedAt"] = readingOfflineInteger(1)
+	schema["required"] = []string{"receipt", "expectedRevision", "observedAt", "startedAt", "location"}
+	schema["additionalProperties"] = false
+	return schema
+}
+
 type ReadingOfflineOutcome string
 
 func (ReadingOfflineOutcome) JSONSchema() map[string]any {
@@ -24,6 +73,15 @@ type ReadingOfflineProgressResponse struct {
 	Progress *ReadingProgress      `json:"progress"`
 	Saved    bool                  `json:"saved"`
 	Outcome  ReadingOfflineOutcome `json:"outcome"`
+}
+
+func (ReadingOfflineProgressResponse) JSONSchema() map[string]any {
+	location := ReadingOfflineLocation{}.JSONSchema()
+	progress := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"sourceId", "sourceRevision", "location", "revision", "observedAt", "stale"}, "properties": map[string]any{
+		"sourceId":       map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
+		"sourceRevision": map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"}, "location": location, "revision": readingOfflineInteger(0), "observedAt": readingOfflineInteger(1), "stale": map[string]any{"type": "boolean"},
+	}}
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"progress", "saved", "outcome"}, "properties": map[string]any{"progress": map[string]any{"anyOf": []any{progress, map[string]any{"type": "null"}}}, "saved": map[string]any{"type": "boolean"}, "outcome": ReadingOfflineOutcome("").JSONSchema()}}
 }
 
 func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Request) {
@@ -41,8 +99,14 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 		readingFailure(w, reading.ErrInvalid)
 		return
 	}
-	if body.ExpectedRevision == nil {
+	if body.ExpectedRevision == nil || *body.ExpectedRevision < 0 || *body.ExpectedRevision > readingOfflineMaxInteger || body.ObservedAt < 1 || body.ObservedAt > readingOfflineMaxInteger || body.StartedAt < 1 || body.StartedAt > body.ObservedAt || body.Location.Progression == nil || body.Location.PageIndex != nil && *body.Location.PageIndex > readingOfflineMaxInteger {
 		readingFailure(w, reading.ErrInvalid)
+		return
+	}
+	location := body.Location
+	parsedLocation := reading.Location{Format: string(location.Format), CFI: location.CFI, Section: location.Section, PageIndex: location.PageIndex, Progression: *location.Progression}
+	if err := parsedLocation.Validate(); err != nil {
+		readingFailure(w, err)
 		return
 	}
 	claims, validate, err := d.Downloads.PublicationReceiptValidator(r.Context(), p, d.Identity.ID(), body.Receipt)
@@ -66,8 +130,7 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer f.Close()
-	l := body.Location
-	progress, saved, outcome, err := f.SaveOfflineProgress(*body.ExpectedRevision, reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}, body.ObservedAt, body.StartedAt, validate)
+	progress, saved, outcome, err := f.SaveOfflineProgress(*body.ExpectedRevision, parsedLocation, body.ObservedAt, body.StartedAt, validate)
 	if err != nil {
 		readingFailure(w, err)
 		return

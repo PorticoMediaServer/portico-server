@@ -264,7 +264,7 @@ function chapterImage(v: unknown): {image?: DownloadBundleFile} {
 }
 
 export function parseDownloadBundle(raw: unknown, preparationId: string): DownloadBundle {
-  if (object(raw) && raw.publication !== undefined && !text(raw.publication, 2 << 20)) invalid();
+  if (object(raw) && raw.publication !== undefined && (!text(raw.publication, 2 << 20) || unescape(encodeURIComponent(raw.publication)).length > 2 << 20)) invalid();
   if (!object(raw) || raw.preparationId !== preparationId || !id(raw.itemId) || !id(raw.quality) || !text(raw.qualityLabel ?? '', 128) || !text(raw.overview ?? '', 65536)) invalid();
   const media = raw.media;
   if (!object(media) || !text(media.container ?? '', 64) || !text(media.videoCodec ?? '', 64) || !text(media.audioCodec ?? '', 64)) invalid();
@@ -393,6 +393,12 @@ export function decodeDownloadReceipt(raw: unknown): {receipt: DownloadReceipt; 
   return {receipt: Object.freeze({receiptId: raw.receiptId, algorithm: 'ed25519', keyId: raw.keyId, payload: raw.payload, signature: raw.signature, claims, revision: raw.revision}), signedBytes, signatureBytes};
 }
 
+function publicationReceipt(raw: unknown): DownloadPublicationReceipt {
+  if (!object(raw) || !id(raw.sourceId) || raw.sourceId.length > 128 || !digest(raw.revision) || !digest(raw.documentSha256)) invalid();
+  const format = raw.format;
+  if (format !== 'epub' && format !== 'pdf' && format !== 'cbz') invalid();
+  return Object.freeze({sourceId: raw.sourceId, revision: raw.revision, format, documentSha256: raw.documentSha256});
+}
 export function parseReceiptClaims(raw: unknown): ReceiptClaims {
   if (!object(raw) || raw.kind !== 'portico.download-receipt' || raw.version !== '1') invalid();
   if (!id(raw.receiptId) || !id(raw.keyId) || !id(raw.itemId) || !id(raw.preparationId)) invalid();
@@ -400,13 +406,12 @@ export function parseReceiptClaims(raw: unknown): ReceiptClaims {
   if (!instant(raw.issuedAt) || !instant(raw.expiresAt) || Date.parse(raw.expiresAt) <= Date.parse(raw.issuedAt)) invalid();
   const viewer = raw.viewer;
   if (!object(viewer) || !['local','hosted'].includes(String(viewer.authority)) || !id(viewer.accountId) || !id(viewer.profileId) || !id(viewer.serverId)) invalid();
-  const publication = raw.publication;
-  if (publication !== undefined && (!object(publication) || !id(publication.sourceId) || !digest(publication.revision) || !digest(publication.documentSha256) || !['epub', 'pdf', 'cbz'].includes(String(publication.format)))) invalid();
+  const publication = raw.publication === undefined ? undefined : publicationReceipt(raw.publication);
   const bytes = raw.artifact;
   if (!object(bytes) || !digest(bytes.sha256) || !count(bytes.bytes) || bytes.bytes < 1) invalid();
   return Object.freeze({
     kind: 'portico.download-receipt', version: '1', receiptId: raw.receiptId, keyId: raw.keyId,
-    ...(object(publication) ? {publication: Object.freeze({sourceId: String(publication.sourceId), revision: String(publication.revision), format: publication.format as DownloadPublicationReceipt['format'], documentSha256: String(publication.documentSha256)})} : {}),
+    ...(publication ? {publication} : {}),
     viewer: Object.freeze({authority: String(viewer.authority), accountId: viewer.accountId, profileId: viewer.profileId, serverId: viewer.serverId}),
     itemId: raw.itemId, preparationId: raw.preparationId, quality: String(raw.quality), qualityLabel: String(raw.qualityLabel ?? ''),
     artifact: Object.freeze({sha256: bytes.sha256, bytes: bytes.bytes}), issuedAt: raw.issuedAt, expiresAt: raw.expiresAt,

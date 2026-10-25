@@ -2,12 +2,17 @@ package reading
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"portico.local/apikit"
 	"portico.local/server/internal/identity"
+	"regexp"
+	"unicode/utf8"
 )
 
 // OfflineDocument is a bounded private descriptor for exactly one observed
@@ -175,6 +180,152 @@ func (s *Service) OfflineDocument(ctx context.Context, p identity.Principal, ite
 	}
 	if err = ctx.Err(); err != nil {
 		return out, err
+	}
+	return out, nil
+}
+
+const OfflineDocumentLimit = 2 << 20
+const offlineSafeInteger int64 = 9007199254740991
+
+var offlineID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+var offlineDigest = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var offlineMIME = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.+-]*/[a-zA-Z0-9][a-zA-Z0-9.+-]*$`)
+
+func offlineKeys(raw json.RawMessage, keys ...string) bool {
+	var fields map[string]json.RawMessage
+	if len(raw) == 0 || raw[0] != '{' || json.Unmarshal(raw, &fields) != nil {
+		return false
+	}
+	allowed := map[string]bool{}
+	for _, key := range keys {
+		allowed[key] = true
+	}
+	for key := range fields {
+		if !allowed[key] {
+			return false
+		}
+	}
+	return true
+}
+
+// ParseOfflineDocument validates literal stored bytes without rewriting them.
+// It is used before signing, renewing or delivering any persisted descriptor.
+func ParseOfflineDocument(raw string) (OfflineDocument, error) {
+	var out OfflineDocument
+	if len(raw) == 0 || len(raw) > OfflineDocumentLimit || !utf8.ValidString(raw) {
+		return out, ErrInvalid
+	}
+	if _, err := apikit.CanonicalJSON([]byte(raw)); err != nil {
+		return out, ErrInvalid
+	} // duplicate/trailing rejection only; keep ORIGINAL raw
+	decoder := json.NewDecoder(bytes.NewBufferString(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&out); err != nil {
+		return out, ErrInvalid
+	}
+	var trailing any
+	if decoder.Decode(&trailing) != io.EOF {
+		return out, ErrInvalid
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &fields) != nil || !offlineKeys([]byte(raw), "itemId", "sourceId", "revision", "format", "size", "metadata", "resources", "spine", "pageNames", "contents", "progress") {
+		return out, ErrInvalid
+	}
+	if !offlineID.MatchString(out.ItemID) || !offlineID.MatchString(out.SourceID) || !offlineDigest.MatchString(out.Revision) || out.Size < 1 || out.Size > MaxSource {
+		return out, ErrInvalid
+	}
+	for _, key := range []string{"resources", "spine", "pageNames", "contents"} {
+		if len(fields[key]) == 0 || fields[key][0] != '[' {
+			return out, ErrInvalid
+		}
+	}
+	if !offlineKeys(fields["metadata"], "title", "author", "language", "direction") || len(out.Metadata.Title) > 4096 || len(out.Metadata.Author) > 4096 || len(out.Metadata.Language) > 128 {
+		return out, ErrInvalid
+	}
+	if out.Metadata.Direction != "" && out.Metadata.Direction != "ltr" && out.Metadata.Direction != "rtl" && out.Metadata.Direction != "vertical" {
+		return out, ErrInvalid
+	}
+	if len(out.Resources) > MaxEntries || len(out.Spine) > MaxEntries || len(out.PageNames) > MaxEntries || len(out.Contents) > 512 {
+		return out, ErrLimit
+	}
+	var resourceFields []json.RawMessage
+	json.Unmarshal(fields["resources"], &resourceFields)
+	known := map[string]bool{}
+	var total int64
+	for index, r := range out.Resources {
+		if !offlineKeys(resourceFields[index], "offset", "compressedSize", "compression", "path", "mime", "size", "sha256") || !safePath(r.Path) || len(r.Path) > 4096 || known[r.Path] || !offlineMIME.MatchString(r.MIME) || len(r.MIME) > 128 || !offlineDigest.MatchString(r.SHA256) {
+			return out, ErrInvalid
+		}
+		if r.Offset < 0 || r.CompressedSize < 0 || r.CompressedSize > out.Size || r.Offset > out.Size-r.CompressedSize || r.Size < 0 || r.Size > MaxMember || (r.Compression != 0 && r.Compression != 8) || (r.Compression == 0 && r.CompressedSize != r.Size) {
+			return out, ErrInvalid
+		}
+		total += r.Size
+		if total > 512<<20 {
+			return out, ErrLimit
+		}
+		known[r.Path] = true
+	}
+	seen := map[string]bool{}
+	for _, path := range out.Spine {
+		if !known[path] || seen[path] {
+			return out, ErrInvalid
+		}
+		seen[path] = true
+	}
+	seen = map[string]bool{}
+	for _, path := range out.PageNames {
+		if !known[path] || seen[path] {
+			return out, ErrInvalid
+		}
+		seen[path] = true
+	}
+	switch out.Format {
+	case "epub":
+		if len(out.Resources) == 0 || len(out.Spine) == 0 || len(out.PageNames) != 0 {
+			return out, ErrInvalid
+		}
+	case "cbz":
+		if len(out.PageNames) == 0 || len(out.PageNames) != len(out.Resources) || len(out.Spine) != 0 || len(out.Contents) != 0 {
+			return out, ErrInvalid
+		}
+	case "pdf":
+		if len(out.Resources) != 0 || len(out.Spine) != 0 || len(out.PageNames) != 0 || len(out.Contents) != 0 {
+			return out, ErrInvalid
+		}
+	default:
+		return out, ErrInvalid
+	}
+	var contentsFields []json.RawMessage
+	json.Unmarshal(fields["contents"], &contentsFields)
+	for index, c := range out.Contents {
+		if !offlineKeys(contentsFields[index], "title", "section", "fragment", "depth") || len(c.Title) < 1 || len(c.Title) > 4096 || !known[c.Section] || len(c.Fragment) > 1024 || c.Depth < 0 || c.Depth > 16 {
+			return out, ErrInvalid
+		}
+	}
+	progressRaw := fields["progress"]
+	if len(progressRaw) == 0 {
+		return out, ErrInvalid
+	}
+	if out.Progress != nil {
+		p := out.Progress
+		if !offlineKeys(progressRaw, "sourceId", "sourceRevision", "location", "revision", "observedAt", "stale") || p.SourceID != out.SourceID || !offlineDigest.MatchString(p.SourceRevision) || p.Revision < 0 || p.Revision > offlineSafeInteger || p.ObservedAt < 1 || p.ObservedAt > offlineSafeInteger {
+			return out, ErrInvalid
+		}
+		var progressFields map[string]json.RawMessage
+		json.Unmarshal(progressRaw, &progressFields)
+		if !offlineKeys(progressFields["location"], "format", "cfi", "section", "pageIndex", "progression") {
+			return out, ErrInvalid
+		}
+		l := p.Location
+		if l.Format != out.Format || l.PageIndex != nil && *l.PageIndex > offlineSafeInteger {
+			return out, ErrInvalid
+		}
+		if err := (Location{Format: l.Format, CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}).Validate(); err != nil {
+			return out, err
+		}
+		if !p.Stale && p.SourceRevision != out.Revision {
+			return out, ErrInvalid
+		}
 	}
 	return out, nil
 }

@@ -2,7 +2,9 @@ package downloads
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/dbwork"
@@ -71,6 +73,9 @@ func (s *Service) publicationForRequest(ctx context.Context, p identity.Principa
 		return nil, err
 	}
 	raw, err := json.Marshal(doc)
+	if err == nil {
+		_, err = reading.ParseOfflineDocument(string(raw))
+	}
 	if err != nil || len(raw) > 2<<20 {
 		return nil, ErrInput
 	}
@@ -174,7 +179,19 @@ func publicationJSON(doc *reading.OfflineDocument) string {
 	raw, _ := json.Marshal(doc)
 	return string(raw)
 }
-func publicationTx(ctx context.Context, tx *sql.Tx, id string) (*reading.OfflineDocument, error) {
+
+// Keep the literal validated bytes. Decoding is never authority to remarshal
+// an older descriptor under today's struct or silently remint its receipt digest.
+type storedPublication struct {
+	*reading.OfflineDocument
+	raw string
+}
+
+func (d *storedPublication) Digest() string {
+	sum := sha256.Sum256([]byte(d.raw))
+	return hex.EncodeToString(sum[:])
+}
+func publicationTx(ctx context.Context, tx *sql.Tx, id string) (*storedPublication, error) {
 	var raw string
 	if err := tx.QueryRowContext(ctx, `SELECT publication_json FROM download_preparations WHERE id=?`, id).Scan(&raw); err != nil {
 		return nil, err
@@ -182,9 +199,9 @@ func publicationTx(ctx context.Context, tx *sql.Tx, id string) (*reading.Offline
 	if raw == "" {
 		return nil, nil
 	}
-	var doc reading.OfflineDocument
-	if len(raw) > 2<<20 || json.Unmarshal([]byte(raw), &doc) != nil {
-		return nil, ErrInput
+	doc, err := reading.ParseOfflineDocument(raw)
+	if err != nil {
+		return nil, err
 	}
-	return &doc, nil
+	return &storedPublication{&doc, raw}, nil
 }
