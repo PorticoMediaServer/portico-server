@@ -27,9 +27,9 @@ export function createReadingPeriodicalGroupsCollection(client: ReadingClient, l
       return {items: page.groups, nextCursor: page.nextCursor};
     });
 }
-export function createReadingPeriodicalIssuesCollection(client: ReadingClient, libraryId: string, seriesId: string, kind: ReadingPeriodicalType) {
+export function createReadingPeriodicalIssuesCollection(client: ReadingClient, libraryId: string, seriesId: string, kind: ReadingPeriodicalType, issueDate?: string) {
   return cursorCollection<ReadingPeriodicalIssue>(libraryId, issue => issue.item.id, issue => issue.item.libraryId,
-    (cursor, limit, signal) => client.periodicalIssues(libraryId, seriesId, kind, {cursor, limit}, signal));
+    (cursor, limit, signal) => client.periodicalIssues(libraryId, seriesId, kind, {cursor, limit, issueDate}, signal));
 }
 
 /** The canonical recent index already selects the actual progressed version.
