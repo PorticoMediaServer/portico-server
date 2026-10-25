@@ -1,3 +1,4 @@
+import {withReadingManifestFacts} from './reading-manifest-facts.ts';
 import type {ReadingManifest, ReadingProgress, ReadingSavedProgress, ReadingSession, ReadingPage} from './reading.ts';
 import {ReadingError} from './reading.ts';
 import {parsePreferenceSnapshot, type PreferenceSnapshot} from './preferences.ts';
@@ -289,7 +290,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
       const data = packet(message, CONTROL);
       if (data.kind === 'initial' && !initialized) {
         if (typeof data.channel !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(data.channel)) fail();
-        const manifest: ReadingManifest = frozen(decodePostReadingSessionsResponse(data.manifest));
+        const manifest: ReadingManifest = frozen(withReadingManifestFacts(data.manifest, decodePostReadingSessionsResponse));
         const initialContentsTarget = contentsTarget(data.contentsTarget, manifest);
         snapshot = parsePreferenceSnapshot(data.preferences);
         const initialProgress = frozen(decodeGetReadingSessionsSessionIdProgressResponse(data.progress));
