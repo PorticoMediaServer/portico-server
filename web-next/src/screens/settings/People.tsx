@@ -49,7 +49,7 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const {client} = bindings;
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
   const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null), alive = useRef(true);
-  const attempts = useRef<InviteAttempts>();
+  const attempts = useRef<InviteAttempts | undefined>(undefined);
   if (!attempts.current) attempts.current = new InviteAttempts(randomId);
   useEffect(() => () => { alive.current = false; attempts.current?.retire(); inviteLife.current.abort(); }, []);
   /** The explicit Invite gesture: create once, then open the show-once dialog on
