@@ -55,7 +55,7 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	m.Access = apikit.Owner
 	m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
 	m.BodyLimit = 4096
-	m.Errors = append(m.Errors, "metadata_conflict")
+	m.Errors = append(m.Errors, "metadata_conflict", "source_unavailable")
 	if err := apikit.RegisterHTTP[reading.RereadRequest, reading.RereadResult](registry, m); err != nil {
 		return err
 	}
