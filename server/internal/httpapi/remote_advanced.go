@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
@@ -13,11 +14,30 @@ import (
 	"portico.local/server/internal/storage"
 )
 
+// SourceProgramRequest names exactly one choice: useIncluded=true asks for the
+// rclone included with Portico Server and must omit executable; otherwise an
+// absolute executable path is required. Sending both is refused.
 type SourceProgramRequest struct {
 	OperationID      string `json:"operationId"`
 	ExpectedRevision int64  `json:"expectedRevision"`
 	Executable       string `json:"executable,omitempty"`
-	UseIncluded      bool   `json:"useIncluded"`
+	UseIncluded      bool   `json:"useIncluded,omitempty"`
+}
+
+func (SourceProgramRequest) JSONSchema() map[string]any {
+	type wire SourceProgramRequest
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	props, _ := shape["properties"].(map[string]any)
+	if props == nil {
+		return shape
+	}
+	if field, ok := props["useIncluded"].(map[string]any); ok {
+		field["description"] = "true asks for the rclone included with Portico Server; executable must then be omitted."
+	}
+	if field, ok := props["executable"].(map[string]any); ok {
+		field["description"] = "Absolute program path, required unless useIncluded is true."
+	}
+	return shape
 }
 
 type SourceProgramResponse struct {

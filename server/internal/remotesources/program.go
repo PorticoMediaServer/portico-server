@@ -36,6 +36,10 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 	if bundled, e := rcloneprogram.Resolve(); e == nil {
 		includedPath = bundled.Path
 	}
+	if useIncluded && strings.TrimSpace(executable) != "" {
+		// Two answers to one question is ambiguous; refuse instead of picking.
+		return SourceProgram{}, storage.ErrRemoteConfig
+	}
 	if useIncluded {
 		if includedPath == "" {
 			return SourceProgram{}, storage.ErrRemoteConfig

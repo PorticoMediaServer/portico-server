@@ -74323,7 +74323,14 @@ export const schemas = {
     "properties": {
       "disc": {
         "properties": {
+          "fileId": {
+            "type": "string"
+          },
           "kind": {
+            "enum": [
+              "bluray",
+              "dvd"
+            ],
             "type": "string"
           },
           "titles": {
@@ -74362,6 +74369,7 @@ export const schemas = {
           }
         },
         "required": [
+          "fileId",
           "kind",
           "titles"
         ],
@@ -149608,6 +149616,11 @@ export const schemas = {
           "cacheSupported": {
             "type": "boolean"
           },
+          "cacheUsedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "generation": {
             "type": "string"
           },
@@ -149752,6 +149765,7 @@ export const schemas = {
           "saved",
           "cacheSupported",
           "cacheApplied",
+          "cacheUsedBytes",
           "scanIntervalObserved",
           "values"
         ],
@@ -150330,6 +150344,11 @@ export const schemas = {
           "backgroundSpeed": {
             "type": "string"
           },
+          "cacheUsedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "connectionsInUse": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -150423,7 +150442,8 @@ export const schemas = {
           "analysisReads",
           "scanIntervalSeconds",
           "libraries",
-          "librariesTruncated"
+          "librariesTruncated",
+          "cacheUsedBytes"
         ],
         "type": "object"
       }
@@ -197514,6 +197534,11 @@ export const schemas = {
           "cacheSupported": {
             "type": "boolean"
           },
+          "cacheUsedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "generation": {
             "type": "string"
           },
@@ -197658,6 +197683,7 @@ export const schemas = {
           "saved",
           "cacheSupported",
           "cacheApplied",
+          "cacheUsedBytes",
           "scanIntervalObserved",
           "values"
         ],
@@ -197673,6 +197699,7 @@ export const schemas = {
   "PutStorageSourceProgramRequest": {
     "properties": {
       "executable": {
+        "description": "Absolute program path, required unless useIncluded is true.",
         "type": "string"
       },
       "expectedRevision": {
@@ -197684,13 +197711,13 @@ export const schemas = {
         "type": "string"
       },
       "useIncluded": {
+        "description": "true asks for the rclone included with Portico Server; executable must then be omitted.",
         "type": "boolean"
       }
     },
     "required": [
       "operationId",
-      "expectedRevision",
-      "useIncluded"
+      "expectedRevision"
     ],
     "type": "object"
   },
