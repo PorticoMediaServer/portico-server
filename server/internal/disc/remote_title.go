@@ -134,7 +134,7 @@ func (t Tool) StreamRemoteBluRay(ctx context.Context, object storage.RemoteObjec
 
 type remoteTitleStream struct {
 	ctx      context.Context
-	file     *os.File
+	file     io.ReadCloser
 	guard    func(context.Context) error
 	stop     func()
 	done     chan struct{}
@@ -170,6 +170,16 @@ func (s *remoteTitleStream) Read(p []byte) (int, error) {
 	if e := s.guard(s.ctx); e != nil {
 		s.Close()
 		return 0, e
+	}
+	// Completion can fail while the pipe read is blocked. Do not publish its
+	// buffered bytes after that failure is known, even if authority is current.
+	select {
+	case <-s.done:
+		if s.waitErr != nil {
+			s.Close()
+			return 0, ErrProtocol
+		}
+	default:
 	}
 	if err == io.EOF {
 		<-s.done
