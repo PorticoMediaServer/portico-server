@@ -1,5 +1,5 @@
 import type {GetReadingContinueResponse} from '../../contracts/src/index.ts';
-/** Source-owned optional provenance seam pending official Release generation.
+/** Source-owned strict provenance over the officially decoded publication.
  * Parsed from actual response facts; never invents conversion support or grants.
  */
 export type ReadingConversion = Readonly<{
@@ -30,7 +30,8 @@ export function withReadingConversion<T extends ConversionBinding>(raw:unknown,d
   const base=decode(plain??raw),conversion=parseConversion(supplied,base);
   return conversion?Object.freeze({...base,conversion}):base;
 }
-type ConvertedContinue=Omit<GetReadingContinueResponse,'items'>&{items:Array<GetReadingContinueResponse['items'][number]&Readonly<{conversion?:ReadingConversion}>>};
+type ConvertedContinueItem=Omit<GetReadingContinueResponse['items'][number],'conversion'>&Readonly<{conversion?:ReadingConversion}>;
+type ConvertedContinue=Omit<GetReadingContinueResponse,'items'>&{items:ConvertedContinueItem[]};
 const sameSourceFormat=(original:string,source:string)=>original===source;
 /** A nonstale converted observation carries an actual retained-output witness.
  * This never converts or changes the saved CFI/page/revision to another output. */
@@ -42,7 +43,10 @@ export function withReadingContinueConversions(raw:unknown,decode:(value:unknown
     const original=supplied?.[index],value=record(original)?original.conversion:undefined;
     const conversion=parseConversion(value,{format:entry.progress.location.format,sourceId:entry.item.sourceId,revision:entry.progress.sourceRevision,size:record(value)&&typeof value.outputSize==='number'?value.outputSize:NaN});
     if(conversion&&(entry.progress.stale||!sameSourceFormat(conversion.originalFormat,entry.item.format)))throw new Error('invalid_reading_conversion');
-    return conversion?Object.freeze({...entry,conversion}):entry;
+    // The canonical type now includes broad provenance strings. Only this
+    // strictly source/revision-bound parser may publish the pinned witness.
+    const {conversion: _decodedConversion, ...originalEntry}=entry;
+    return conversion?Object.freeze({...originalEntry,conversion}):originalEntry;
   });
   return {...base,items};
 }
