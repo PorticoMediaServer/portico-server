@@ -207,6 +207,13 @@ func providerCreditsUnchanged(current, values []RepairRelationship) bool {
 		return out
 	}
 	before, after := collect(current), collect(values)
+	for _, row := range current {
+		// Legacy provider rows without a stable record tuple cannot be
+		// round-tripped as a new manual row without duplicating their credit.
+		if row.Kind == "credit" && row.Provider != "manual" && row.RecordID == "" {
+			return false
+		}
+	}
 	if len(before) != len(after) {
 		return false
 	}
