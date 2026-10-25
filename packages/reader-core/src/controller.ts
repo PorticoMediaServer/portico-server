@@ -300,7 +300,10 @@ export class ReaderController<P extends object> {
       if (!this.current(session)) throw new ReaderError('aborted');
       const result = next.value;
       validateLocation(result.location, session.document.format);
-      const captured = Object.freeze({...result, location: copy(result.location)});
+      const match = result.match;
+      if (match && (!Number.isSafeInteger(match.start) || match.start < 0 || !Number.isSafeInteger(match.length) || match.length < 1
+        || match.start + match.length > result.excerpt.length)) throw new ReaderError('invalid_book');
+      const captured = Object.freeze({...result, location: copy(result.location), ...(match ? {match: copy(match)} : {})});
       this.searchResults.set(captured, {session, signal: options.signal});
       yield captured;
       if (++count >= options.limit) return;
