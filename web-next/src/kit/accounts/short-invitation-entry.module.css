@@ -8,7 +8,6 @@
 .checking { margin: 12px 0 0; color: var(--color-text-tertiary); font-size: 13.5px; font-weight: 600; line-height: 1.45; }
 .error { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 12px; font-size: 15px; line-height: 1.45; margin: 0 0 18px; background: rgba(243,139,136,.1); box-shadow: inset 0 0 0 1px rgba(243,139,136,.32); }
 @media (max-width: 599px) {
-  .stage > header, .stage > footer { display: none; }
   .stage .content { width: 100%; margin: 0; padding: 22px 22px 26px; }
   .stage .content h1 { font-size: 30px; line-height: 1.04; letter-spacing: -.03em; margin-bottom: 8px; }
   .lede { font-size: 14px; line-height: 1.5; margin-bottom: 14px; }

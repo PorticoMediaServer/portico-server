@@ -7,6 +7,7 @@ import {LocalInvitationForm, PorticoInvitation} from '../../kit/accounts/Invitat
 import {Button, TextField} from '../../kit/controls';
 import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platform/account-entry';
 import styles from '../../kit/accounts/short-invitation-entry.module.css';
+import entryStyles from './short-invitation-entry.module.css';
 
 const t = defaultI18n.t;
 const CODE_PLACEHOLDER = t('web.directJoin.codePlaceholder');
@@ -85,7 +86,7 @@ function ShortInvitationOperation({entry, onBack, onJoined, account, signedOutCo
     if (busy || state.error) entry.cancel();
     apply(event.currentTarget.value);
   };
-  return <AuthStage phoneShape="top" className={styles.stage} contentClassName={styles.content}>
+  return <AuthStage phoneShape="top" className={[styles.stage, entryStyles.stage].filter(Boolean).join(' ')} contentClassName={styles.content}>
     <h1>{t('web.directJoin.title')}</h1>
     <p className={styles.lede}>{t('web.directJoin.entryBody')}</p>
     {formError}
