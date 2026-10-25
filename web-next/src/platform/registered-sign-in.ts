@@ -13,7 +13,7 @@ import {type CapturedPorticoReturn, dispatchPorticoReturn} from './portico-retur
 
 type Pending = Readonly<{
   version: 1; kind: 'registered'; origin: string; hostedOrigin: string; pin: ServerPin;
-  expectedRevision: number; attemptId: string; expiresAt: string; pending?: ReturnPending;
+  memberMove?: true; expectedRevision: number; attemptId: string; expiresAt: string; pending?: ReturnPending;
 }>;
 type Journal = Readonly<{
   assertAvailable: () => void;
@@ -33,7 +33,7 @@ type Ports = Readonly<{
 }>;
 const cancelled = () => new CodedError('cancelled', 'This server sign-in changed.');
 const invalid = () => new CodedError('invalid_return', 'This sign-in is no longer available.');
-type Completion = Readonly<{api: HttpLocalApi; result: DirectSignIn}>;
+type Completion = Readonly<{api: HttpLocalApi; result: DirectSignIn; memberMove?: true}>;
 
 /** One tab's private verifier and captured selection revision. The Hosted handoff
  * receives only RegisteredSignIn. This class never requests a Hosted credential. */
@@ -70,7 +70,7 @@ export class BrowserRegisteredSignIn {
       if (!operation.current()) throw cancelled();
       this.attemptId = attemptId;
       return {version: 1, kind: 'registered', origin, hostedOrigin, pin: route.pin,
-        expectedRevision: state.revision, attemptId, expiresAt: ''};
+        ...(move.moveCode || move.moveTicket ? {memberMove: true as const} : {}), expectedRevision: state.revision, attemptId, expiresAt: ''};
     });
     const port: ReturnPendingStore = {
       read: async () => (await this.ports.journal.read())?.pending,
@@ -81,7 +81,7 @@ export class BrowserRegisteredSignIn {
         // prepareRegisteredSignIn provides the actual producer expiry after the
         // private write. Until then the record is deliberately not consumable.
         return {version: 1, kind: 'registered', origin, hostedOrigin, pin: route.pin,
-          expectedRevision: state.revision, attemptId, expiresAt: '', pending};
+          ...(move.moveCode || move.moveTicket ? {memberMove: true as const} : {}), expectedRevision: state.revision, attemptId, expiresAt: '', pending};
       }),
     };
     try {
@@ -155,7 +155,7 @@ export class BrowserRegisteredSignIn {
       await (this.ports.remember ?? rememberNativeSession)(bound.api, grant.session, admission, bound.hosted, operation.current);
       if (!operation.current()) throw cancelled();
       adopted = true;
-      return {api: bound.api, result: grant};
+      return {api: bound.api, result: grant, ...(saved.memberMove === true ? {memberMove: true as const} : {})};
     };
     try {
       await current();
