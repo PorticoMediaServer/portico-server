@@ -29,6 +29,7 @@ import {createLibraryPlaySelection} from './play-selection';
 import {createLibrarySelection} from './selection';
 import {useMusicMixes} from './music-mixes-hook';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
+import {LibraryMenu} from '../../kit/browse';
 import {NeedsAttention} from '../metadata/NeedsAttention';
 import type {AttentionEntry} from '@core/metadata-attention.ts';
 import {LibraryDiscoveryScreen} from './Discovery';
@@ -116,6 +117,17 @@ function LibraryShow({context, captured, libraryId, search}: {context: ScreenCon
   }, [captured.context, context, binding, runtime]);
   useEffect(() => {selection.start(); return () => selection.dispose();}, [selection]);
   return <ShowScreen binding={binding} selection={selection} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
+}
+/** The reading library's ⋯ keeps the owner's online unmatched entry, and adds only the rows
+ *  whose ports this screen really holds: saving the current view, and the owner's library
+ *  settings page. Mark all read, pins and scan wait for their own ports. */
+function readingLibraryMenu(resources: {life: {current: () => boolean}; controller: {canSaveView: () => boolean}}, context: ScreenContext, library: Library, onlineAttention: boolean, save: () => void) {
+  const owner = context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' && context.identity.capabilities?.manageServer === true;
+  const unmatched = onlineAttention && context.effects.editMetadata ? () => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {unmatched: true}}).catch(context.effects.reportError);} : undefined;
+  const settings = owner ? () => {if (context.isCurrent()) void router.navigate({to: '/settings', search: {scope: 'server', section: 'libraries'}}).catch(context.effects.reportError);} : undefined;
+  const canSave = resources.life.current() && context.isCurrent() && resources.controller.canSaveView();
+  if (!canSave && !unmatched && !settings) return undefined;
+  return <LibraryMenu owner={!!owner} read {...(canSave ? {onSaveView: save} : {})} {...(unmatched ? {onUnmatched: unmatched} : {})} {...(settings ? {onLibrarySettings: settings} : {})}/>;
 }
 function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
@@ -218,10 +230,23 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   const readingHeader = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
     api: resources.life.api, signal: resources.life.signal, isCurrent: resources.life.current, reportError: context.effects.reportError, enabled: isReadingLibrary(library.kind)});
   const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: readingHeader.libraryCounts.find(row => row.id === choice.id)?.text}));
+  /** The drawn view summary is the presentation this screen is showing, not the stored default. */
+  const shownView = choice?.defaultView === appearance.libraryView ? choice.view : appearance.libraryView;
+  const save = () => {
+    // A retained menu callback can outlive its route: check the original lifetime first.
+    if (!resources.life.current() || !context.isCurrent() || !resources.controller.canSaveView()) return;
+    const query = resources.controller.query();
+    setSaving({libraryId: library.id, pivot: resources.controller.source.pivot, query: query.query ?? null,
+      sort: query.sort ?? [], presentation: shownView});
+  };
   const header = {library, libraries: libraryChoices, pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
     wash: readingHeader.wash, counts: readingHeader.counts,
     appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
-    artwork: context.artwork, libraryMenu: context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,
+    artwork: context.artwork,
+    // A Reading library's ⋯ draws only the rows this surface can really perform: saving the
+    // current view. Mark all read, pins and the owner's settings/scan have no port here yet.
+    libraryMenu: isReadingLibrary(library.kind) ? readingLibraryMenu(resources, context, library, onlineAttention, save)
+      : context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,
     onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
     onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
       if (tab.shows === 'periodicals') {navigate({view: 'series', pivot: tab.id});return;}
@@ -230,12 +255,6 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
   const empty = <LibraryEmpty api={resources.life.api} scope={context.scope} libraryId={library.id} libraryName={library.name}
     owner={context.identity?.viewer.role === 'owner'} onActivity={() => {if (context.isCurrent()) void router.navigate({to: '/dashboard'}).catch(context.effects.reportError);}}/>;
-  const save = () => {
-    if (!resources.controller.canSaveView()) return;
-    const query = resources.controller.query();
-    setSaving({libraryId: library.id, pivot: resources.controller.source.pivot, query: query.query ?? null,
-      sort: query.sort ?? [], presentation: header.libraryViewOverride ?? appearance.libraryView});
-  };
   const bindings: LibraryBindings = {...header, controller: resources.controller,
     unmatchedHelp: context.effects.editMetadata ? t('metadata.attention.browseHelp') : undefined,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
