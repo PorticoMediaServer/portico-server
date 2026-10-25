@@ -14,8 +14,8 @@ import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 const t = defaultI18n.t;
 type SecretDraft = Readonly<{value: string; remove: boolean}>;
 const emptySecret = (): SecretDraft => ({value: '', remove: false});
-type Draft = {defaultLanguage?: string; defaultRegion?: string; libraries: Record<string, MetadataLibraryChange>; limit: string; adult: boolean; edge: ArtworkMaxEdge; tmdb: SecretDraft; tvdb: SecretDraft; subtitleKey: SecretDraft; subtitleUser: string; subtitlePassword: string};
-const draftFor = (document: MetadataSettings): Draft => ({defaultLanguage: document.defaultLanguage, defaultRegion: document.defaultRegion, libraries: {}, limit: artworkLimitText(document.localArtworkLimitBytes), adult: document.includeAdult, edge: document.artworkMaxEdge,
+type Draft = {onlineLookups?: boolean;defaultLanguage?: string; defaultRegion?: string; libraries: Record<string, MetadataLibraryChange>; limit: string; adult: boolean; edge: ArtworkMaxEdge; tmdb: SecretDraft; tvdb: SecretDraft; subtitleKey: SecretDraft; subtitleUser: string; subtitlePassword: string};
+const draftFor = (document: MetadataSettings): Draft => ({onlineLookups: document.onlineLookups, defaultLanguage: document.defaultLanguage, defaultRegion: document.defaultRegion, libraries: {}, limit: artworkLimitText(document.localArtworkLimitBytes), adult: document.includeAdult, edge: document.artworkMaxEdge,
   tmdb: emptySecret(), tvdb: emptySecret(), subtitleKey: emptySecret(), subtitleUser: document.openSubtitlesUsername, subtitlePassword: ''});
 const secretValue = (draft: SecretDraft): string | undefined => draft.remove ? '' : draft.value.trim() || undefined;
 const terminal = (error: unknown): boolean => {
@@ -76,14 +76,14 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
     ...(draft.subtitleUser !== document.openSubtitlesUsername ? {openSubtitlesUsername: draft.subtitleUser.trim()} : {}),
     ...(draft.subtitlePassword ? {openSubtitlesPassword: draft.subtitlePassword} : {}),
   };
-  const dirty = draft.defaultLanguage !== document.defaultLanguage || draft.defaultRegion !== document.defaultRegion || bytes !== document.localArtworkLimitBytes || draft.adult !== document.includeAdult || draft.edge !== document.artworkMaxEdge || secretValue(draft.tmdb) !== undefined || secretValue(draft.tvdb) !== undefined || Object.keys(subtitleChanges).length > 0 || Object.keys(draft.libraries).length > 0;
-  const pendingCount = Number(draft.defaultLanguage !== document.defaultLanguage) + Number(draft.defaultRegion !== document.defaultRegion) + Number(bytes !== document.localArtworkLimitBytes) + Number(draft.adult !== document.includeAdult) + Number(draft.edge !== document.artworkMaxEdge)
+  const dirty = draft.onlineLookups !== document.onlineLookups || draft.defaultLanguage !== document.defaultLanguage || draft.defaultRegion !== document.defaultRegion || bytes !== document.localArtworkLimitBytes || draft.adult !== document.includeAdult || draft.edge !== document.artworkMaxEdge || secretValue(draft.tmdb) !== undefined || secretValue(draft.tvdb) !== undefined || Object.keys(subtitleChanges).length > 0 || Object.keys(draft.libraries).length > 0;
+  const pendingCount = Number(draft.onlineLookups !== document.onlineLookups) + Number(draft.defaultLanguage !== document.defaultLanguage) + Number(draft.defaultRegion !== document.defaultRegion) + Number(bytes !== document.localArtworkLimitBytes) + Number(draft.adult !== document.includeAdult) + Number(draft.edge !== document.artworkMaxEdge)
     + Number(secretValue(draft.tmdb) !== undefined) + Number(secretValue(draft.tvdb) !== undefined) + Object.keys(subtitleChanges).length
     + Object.values(draft.libraries).reduce((count, change) => count + Object.keys(change).length - 2, 0);
   const save = async () => {
     if (flight.current || !current() || bytes === undefined || !dirty) return;
     flight.current = true; setBusy(true); setError(undefined);
-    const change: MetadataSettingsChange = {...(draft.defaultLanguage !== document.defaultLanguage ? {defaultLanguage: draft.defaultLanguage} : {}), ...(draft.defaultRegion !== document.defaultRegion ? {defaultRegion: draft.defaultRegion} : {}), libraries: Object.values(draft.libraries), expectedRevision: document.revision, localArtworkLimitBytes: bytes, includeAdult: draft.adult, artworkMaxEdge: draft.edge,
+    const change: MetadataSettingsChange = {...(draft.onlineLookups !== document.onlineLookups ? {onlineLookups: draft.onlineLookups} : {}), ...(draft.defaultLanguage !== document.defaultLanguage ? {defaultLanguage: draft.defaultLanguage} : {}), ...(draft.defaultRegion !== document.defaultRegion ? {defaultRegion: draft.defaultRegion} : {}), libraries: Object.values(draft.libraries), expectedRevision: document.revision, localArtworkLimitBytes: bytes, includeAdult: draft.adult, artworkMaxEdge: draft.edge,
       ...(secretValue(draft.tmdb) !== undefined ? {tmdbReadToken: secretValue(draft.tmdb)} : {}), ...(secretValue(draft.tvdb) !== undefined ? {tvdbProjectKey: secretValue(draft.tvdb)} : {}), ...subtitleChanges};
     // The explicit request owns these values from here. No retry draft retains a secret.
     setDraft({...draft, tmdb: emptySecret(), tvdb: emptySecret(), subtitleKey: emptySecret(), subtitlePassword: ''});
@@ -114,6 +114,7 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
     {document.librariesComplete && !!document.libraries?.length && <MetadataLibraries libraries={document.libraries} changes={draft.libraries} busy={busy} onChange={setLibrary}/>}
     <SettingsGroup title={t('server.metadata.lookups')}>
       {(!document.librariesComplete || !document.libraries?.length) && <SettingsRow label={t('server.metadata.perLibrary')} help={t('server.metadata.perLibraryHelp')}><Button size="small" onClick={() => {if (current()) onLibraries();}}>{t('settings.server.libraries')}</Button></SettingsRow>}
+      {typeof document.onlineLookups === 'boolean' ? <SettingsRow label={t('next.settingsSpec.server.metadata.groups.0.rows.0.label')} help={t('next.settingsSpec.server.metadata.groups.0.rows.0.help')}><Switch aria-label={t('next.settingsSpec.server.metadata.groups.0.rows.0.label')} checked={draft.onlineLookups === true} disabled={busy} onCheckedChange={value => set('onlineLookups', value)}/></SettingsRow> : null}
       <SettingsRow label={t('metadata.settings.includeAdult')} help={t('server.metadata.adultHelp')}><Switch aria-label={t('metadata.settings.includeAdult')} checked={draft.adult} disabled={busy} onCheckedChange={value => set('adult', value)}/></SettingsRow>
     </SettingsGroup>
     {(document.defaultLanguage && document.defaultRegion) ? <SettingsGroup title={t('next.settingsSpec.server.metadata.groups.1.title')}>
