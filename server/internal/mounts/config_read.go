@@ -15,6 +15,10 @@ import (
 // configuration does not describe, or describes in a form Portico cannot import.
 var ErrRemoteNotConfigured = errors.New("the remote is not in the server account's rclone configuration")
 
+// wrapperKinds describe another remote instead of a storage service. Importing
+// one needs the sections it points at, which this read does not copy yet.
+var wrapperKinds = map[string]bool{"crypt": true, "alias": true, "union": true, "combine": true, "chunker": true, "hasher": true, "compress": true, "cache": true}
+
 const (
 	accountConfigLimit  = 1 << 20 // 1 MiB of INI is far more than a real account needs.
 	sectionLimit        = 64 << 10
@@ -53,7 +57,7 @@ func ReadAccountRcloneConfig() (string, []ConfigRemote, error) {
 	raw, err := readAccountConfig(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return path, []ConfigRemote{}, nil
+			return "", []ConfigRemote{}, nil
 		}
 		return path, nil, err
 	}
@@ -107,14 +111,20 @@ func ReadAccountRcloneSection(remote string) (string, error) {
 		}
 		section = append(section, trimmed)
 	}
-	if !inside || !typed || encrypted || len(section) == 0 {
+	if !inside {
 		return "", ErrRemoteNotConfigured
+	}
+	if !typed || encrypted || len(section) == 0 {
+		return "", ErrConfigInvalid
 	}
 	config := "[" + remote + "]\n" + strings.Join(section, "\n") + "\n"
 	if len(config) > sectionLimit {
 		return "", ErrConfigInvalid
 	}
 	if err = validateConfig(config, remote+":"); err != nil {
+		return "", ErrConfigInvalid
+	}
+	if wrapperKinds[configType(config)] {
 		return "", ErrConfigInvalid
 	}
 	return config, nil
@@ -136,6 +146,17 @@ func readAccountConfig(path string) ([]byte, error) {
 	return raw, nil
 }
 
+// configType reports the type line of one plain section.
+func configType(config string) string {
+	for _, line := range strings.Split(config, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && strings.TrimSpace(key) == "type" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
 func parseConfigRemotes(text string) []ConfigRemote {
 	out := make([]ConfigRemote, 0, 8)
 	name, kind := "", ""
@@ -150,6 +171,8 @@ func parseConfigRemotes(text string) []ConfigRemote {
 			reason = "encrypted"
 		case kind == "" || !configurationKinds[kind]:
 			reason = "kind"
+		case wrapperKinds[kind]:
+			reason = "wrapper"
 		}
 		out = append(out, ConfigRemote{Name: name, Kind: kind, Supported: reason == "", Reason: reason})
 	}

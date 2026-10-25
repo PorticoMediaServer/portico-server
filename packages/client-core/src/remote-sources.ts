@@ -22,7 +22,7 @@ export type RcloneProgram=Readonly<{included:boolean;available:boolean;version:s
 export type RcloneReceipt=Readonly<{operationId:string;sourceId:string;generation:number;removed:boolean}>;
 /** One remote of the server account's own rclone configuration. `reason` says why
  * an unsupported one is unsupported; no value from its section is here. */
-export type RcloneConfigRemote=Readonly<{name:string;kind:string;supported:boolean;reason:'kind'|'encrypted'|''}>;
+export type RcloneConfigRemote=Readonly<{name:string;kind:string;supported:boolean;reason:'kind'|'encrypted'|'wrapper'|''}>;
 export type RcloneConfigView=Readonly<{path:string;remotes:readonly RcloneConfigRemote[]}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 /** What one command was allowed to do, kept beside its operation id so a later
@@ -265,7 +265,8 @@ export class RemoteSourceService{
   this.fence(raw);
   if(!record(raw)||!text(raw.path)||!Array.isArray(raw.remotes)||raw.remotes.length>200)invalid();
   const remotes=raw.remotes.map(value=>{
-   if(!record(value)||!text(value.name,64)||!value.name||!text(value.kind,32)||typeof value.supported!=='boolean'||!['','kind','encrypted'].includes(String(value.reason)))invalid();
+   if(!record(value)||!text(value.name,64)||!value.name||!text(value.kind,32)||typeof value.supported!=='boolean'||!['','kind','encrypted','wrapper'].includes(String(value.reason)))invalid();
+   if(value.supported&&(value.reason!==''||!value.kind))invalid();
    return Object.freeze({name:value.name,kind:value.kind,supported:value.supported,reason:value.reason as RcloneConfigRemote['reason']});
   });
   return Object.freeze({path:raw.path,remotes:Object.freeze(remotes)});

@@ -28,6 +28,10 @@ type = crypt
 remote = archive:private
 password = RCLONE_ENCRYPT_V0:not-plaintext
 
+[shortcut]
+type = alias
+remote = archive:private
+
 [broken]
 type = ftp
 `
@@ -56,9 +60,10 @@ func TestAccountConfigRemotesProjectNamesAndReasonsOnly(t *testing.T) {
 	}
 	want := []ConfigRemote{
 		{Name: "archive", Kind: "s3", Supported: true},
-		{Name: "nas", Kind: "sftp", Supported: true},
 		{Name: "broken", Kind: "ftp", Reason: "kind"},
+		{Name: "nas", Kind: "sftp", Supported: true},
 		{Name: "oldftp", Kind: "ftp", Reason: "kind"},
+		{Name: "shortcut", Kind: "alias", Reason: "wrapper"},
 		{Name: "wrapped", Kind: "crypt", Reason: "encrypted"},
 	}
 	if len(remotes) != len(want) {
@@ -74,12 +79,12 @@ func TestAccountConfigRemotesProjectNamesAndReasonsOnly(t *testing.T) {
 func TestAccountConfigRemotesAreEmptyWhenAbsent(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", root)
-	_, remotes, err := ReadAccountRcloneConfig()
+	path, remotes, err := ReadAccountRcloneConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(remotes) != 0 {
-		t.Fatalf("remotes %#v, want none", remotes)
+	if path != "" || len(remotes) != 0 {
+		t.Fatalf("path %q remotes %#v, want none", path, remotes)
 	}
 	if _, err = ReadAccountRcloneSection("archive"); !errors.Is(err, ErrRemoteNotConfigured) {
 		t.Fatalf("section error %v, want ErrRemoteNotConfigured", err)
