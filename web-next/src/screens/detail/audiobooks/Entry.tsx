@@ -48,6 +48,10 @@ function AudiobookBound({binding, onMore}: {binding: AudiobookBindings; onMore?:
 
 const CHAPTER_PREVIEW = 11;
 const duration = (value: number | undefined) => value === undefined ? undefined : serviceI18n().duration(value);
+/** The book's own language code, named in the reader's language; an unknown code stays itself. */
+function languageName(code: string): string {
+  try { return new Intl.DisplayNames(serviceI18n().locale, {type: 'language'}).of(code) ?? code; } catch { return code; }
+}
 /** The drawn "Read by …" line, with the current locale's own list punctuation; each name is a real
  * destination when this library's checked Books capabilities offer the narrator filter. */
 function Narrators({names, linked, onOpen, locale}: {names: readonly string[]; linked: boolean; onOpen(name: string): void; locale: string | undefined}) {
@@ -188,7 +192,21 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
       {!onMore && !phone && <AudiobookMore binding={binding} page={page} entry={entity}/>}
     </div>
     {book && remaining && <div className={styles.progress}>{ratio !== undefined && <span><i style={{width: `${Math.min(1, Math.max(0, ratio)) * 100}%`}}/></span>}{t('title.resumeRemaining', {remaining})}</div>}
-    {book && entity.overview && <aside className={styles.aside}><p className={styles.about} data-expanded={expanded || undefined}>{entity.overview}</p>{!expanded && <button className={styles.readMore} onClick={() => setExpanded(true)}>{t('web.person.readMore')}</button>}</aside>}
+    {book && <aside className={styles.aside}>
+      {entity.overview && <><p className={styles.about} data-expanded={expanded || undefined}>{entity.overview}</p>{!expanded && <button className={styles.readMore} onClick={() => setExpanded(true)}>{t('web.person.readMore')}</button>}</>}
+      {/* desktop-listen's About this book: only the facts this book publishes, and only at desktop. */}
+      {!phone && <dl className={styles.bookFacts}>
+        {entity.author && <><dt>{t('filter.field.author')}</dt><dd>{authorEntry ? <button type="button" className={styles.link} onClick={() => open(authorEntry)}>{entity.author}</button> : entity.author}</dd></>}
+        {!!entity.narrators?.length && <><dt>{t('filter.field.narrator')}</dt><dd><Narrators names={entity.narrators} linked={filters.narrator} locale={serviceI18n().locale}
+          onOpen={name => run(() => binding.openNarrator(page, name))}/></dd></>}
+        {series && <><dt>{t('library.tab.series')}</dt><dd><button type="button" className={styles.link}
+          onClick={() => run(() => filters.series && seriesTarget ? binding.openSeries(page, series, seriesTarget.name) : open(series))}>{series.title}</button>{seriesTarget?.position && t('title.bookInSeries', {number: seriesTarget.position})}</dd></>}
+        {entity.publishedYear !== undefined && <><dt>{t('title.published')}</dt><dd>{serviceI18n().number(entity.publishedYear, {useGrouping: false})}</dd></>}
+        {entity.publisher && <><dt>{t('title.publisher')}</dt><dd>{entity.publisher}</dd></>}
+        {entity.language && <><dt>{t('next.selection.language')}</dt><dd>{languageName(entity.language)}</dd></>}
+        {entity.addedAt && <><dt>{t('title.added')}</dt><dd>{serviceI18n().date(entity.addedAt, 'medium')}</dd></>}
+      </dl>}
+    </aside>}
     {state.error && <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/>}
     {rows && <section><div className={styles.sectionHead}><h2>{t(book ? 'next.browse.chapters' : 'library.tab.books')}</h2><span>{rows.totalCount}</span></div>
       {(book && !chaptersExpanded ? rows.entries.slice(0, CHAPTER_PREVIEW) : rows.entries).map((entry, index) => book ? <div key={entry.id}><Chapter entry={entry} index={index} page={page} binding={binding}/>{entry.kind === 'audiobook_file' && hasLeafActions && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => leafMore(entry, event.currentTarget))}/>}</div>

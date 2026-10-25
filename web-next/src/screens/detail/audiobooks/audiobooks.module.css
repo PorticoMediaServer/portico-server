@@ -58,3 +58,8 @@
 .showAll { margin-top: 14px; }
 /* desktop-listen's book page: the narrator opens Books filtered by that narrator. */
 .narratorLink { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
+/* desktop-listen's About this book facts: labels above their values, links underlined. */
+.bookFacts { display: grid; gap: 10px; margin: 16px 0 0; }
+.bookFacts dt { font-size: var(--type-caption-size); line-height: var(--type-caption-line); color: var(--color-text-tertiary); }
+.bookFacts dd { margin: 2px 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); color: var(--color-text); }
+.link { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
