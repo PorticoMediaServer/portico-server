@@ -133,9 +133,9 @@ type adminEventCandidate struct {
 // readAdminEvents finds the newest eligible records without walking history.
 // console_audit is ordered by its sequence, not by action, so a single
 // "action IN (...) ORDER BY sequence LIMIT 8" could scan an unbounded number of
-// unsupported rows. Instead each code takes its own newest eight through the
-// (action, sequence) index — at most 22×8 candidates — and the global newest
-// eight are merged from those heads. The eight newest eligible rows must be in
+// unsupported rows. Instead each code in the closed vocabulary takes its own
+// newest eight through the (action, sequence) index — at most 12×8 candidates —
+// and the global newest eight are merged from those heads. The eight newest eligible rows must be in
 // their own code's newest eight, so the result is exact rather than a sample.
 // Ordering is the audit trail's own sequence, which is unique and therefore also
 // the stable tie-break when two rows share a millisecond.
