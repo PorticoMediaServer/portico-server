@@ -295,7 +295,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.scanProcessedOf': '{processed} of {discovered} processed',
   'next.remoteSources.scanAnalyzed': 'Files analysed',
   'next.remoteSources.scanWarnings': 'Warnings',
-  'next.remoteSources.scanStarted': 'Started {when}',
+  'next.remoteSources.scanQueuedAt': 'Queued',
   'next.remoteSources.scanFinished': 'Finished {when}',
   'next.remoteSources.readingNow': '{watching} watching, {connections} connections in use',
   'next.remoteSources.connectionsNow': '{connections} connections in use',

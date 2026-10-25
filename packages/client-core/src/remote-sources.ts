@@ -51,12 +51,14 @@ export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;
 export type RemoteSourceHealth='ready'|'healthy'|'degraded'|'inventory_running'|'cancelled'|'offline'|'root_changed'|'removing';
 /** One source folder's real active scan: closed state/mode/phase codes and
  * stored counters/timestamps. sourceGeneration/runPolicyRevision are the values
- * the run captured, not proof of the current source or policy. No percentage,
- * job error, path or guess. */
+ * the run captured, not proof of the current source or policy. queuedAt is the
+ * job's queue time; no separate scan-start time is stored. completedAt is the
+ * inventory pass completing (analysis may continue); finishedAt is the whole
+ * run. No percentage, job error, path or guess. */
 export type RemoteScanStateCode='queued'|'running'|'paused';
 export type RemoteScanMode='first-import'|'incremental'|'integrity'|'full';
 export type RemoteScanPhase='inventory'|'legacy_inventory'|'basic_pending'|'basic_running'|'analysis_enqueue'|'reconciling'|'sidecars'|'verifying'|'extras';
-export type RemoteScanState=Readonly<{state:RemoteScanStateCode;mode?:RemoteScanMode;phase?:RemoteScanPhase;sourceGeneration:number;runPolicyRevision:number;processed:number;discovered:number;analyzed:number;warnings:number;startedAt?:string;completedAt?:string;finishedAt?:string}>;
+export type RemoteScanState=Readonly<{state:RemoteScanStateCode;mode?:RemoteScanMode;phase?:RemoteScanPhase;sourceGeneration:number;runPolicyRevision:number;processed:number;discovered:number;analyzed:number;warnings:number;queuedAt?:string;completedAt?:string;finishedAt?:string}>;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
 export type RemoteSourceStatus=Readonly<{assignmentFenceSupported?:boolean;sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;health?:RemoteSourceHealth;lastCompleteAt?:string;scan?:RemoteScanState;program?:string;programVersion?:string;programRevision?:number;programIncluded?:boolean;remote?:string;backgroundSpeed?:string}>;
@@ -243,8 +245,8 @@ const scanBounded=(value:unknown):value is number=>integer(value)&&value<=2**40;
 const sourceHealths:readonly RemoteSourceHealth[]=['ready','healthy','degraded','inventory_running','cancelled','offline','root_changed','removing'];
 function remoteScan(raw:unknown):RemoteScanState|undefined{
  if(!record(raw)||!scanStates.includes(raw.state as RemoteScanStateCode)||!scanBounded(raw.sourceGeneration)||!scanBounded(raw.runPolicyRevision)||!scanBounded(raw.processed)||!scanBounded(raw.discovered)||!scanBounded(raw.analyzed)||!scanBounded(raw.warnings))return undefined;
- const started=scanTimestamp(raw.startedAt),completed=scanTimestamp(raw.completedAt),finished=scanTimestamp(raw.finishedAt);
- return Object.freeze({state:raw.state as RemoteScanStateCode,...(scanModes.includes(raw.mode as RemoteScanMode)?{mode:raw.mode as RemoteScanMode}:{}),...(scanPhases.includes(raw.phase as RemoteScanPhase)?{phase:raw.phase as RemoteScanPhase}:{}),sourceGeneration:raw.sourceGeneration,runPolicyRevision:raw.runPolicyRevision,processed:raw.processed,discovered:raw.discovered,analyzed:raw.analyzed,warnings:raw.warnings,...(started?{startedAt:started}:{}),...(completed?{completedAt:completed}:{}),...(finished?{finishedAt:finished}:{})});
+ const queued=scanTimestamp(raw.queuedAt),completed=scanTimestamp(raw.completedAt),finished=scanTimestamp(raw.finishedAt);
+ return Object.freeze({state:raw.state as RemoteScanStateCode,...(scanModes.includes(raw.mode as RemoteScanMode)?{mode:raw.mode as RemoteScanMode}:{}),...(scanPhases.includes(raw.phase as RemoteScanPhase)?{phase:raw.phase as RemoteScanPhase}:{}),sourceGeneration:raw.sourceGeneration,runPolicyRevision:raw.runPolicyRevision,processed:raw.processed,discovered:raw.discovered,analyzed:raw.analyzed,warnings:raw.warnings,...(queued?{queuedAt:queued}:{}),...(completed?{completedAt:completed}:{}),...(finished?{finishedAt:finished}:{})});
 }
 function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>10||typeof raw.librariesTruncated!=='boolean')invalid();

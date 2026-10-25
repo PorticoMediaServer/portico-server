@@ -32,8 +32,11 @@ type SourceLibraryUse struct {
 // SourceScanState is one source folder's active scan as the scanner records it.
 // State, mode and phase are closed codes; counters and timestamps are the real
 // stored values. SourceGeneration and RunPolicyRevision are the values the run
-// captured, not proof they equal the current source/policy. It never carries a
-// job error, path, locator or derived percent.
+// captured, not proof they equal the current source/policy. QueuedAt is when the
+// run's job was queued; the schema stores no separate start time, so it is not
+// proof the scan has started. CompletedAt is when the run's inventory pass
+// completed and analysis may still continue; FinishedAt is when the whole run
+// finished. It never carries a job error, path, locator or derived percent.
 type SourceScanState struct {
 	State             string `json:"state"`
 	Mode              string `json:"mode,omitempty"`
@@ -44,7 +47,7 @@ type SourceScanState struct {
 	Discovered        int64  `json:"discovered"`
 	Analyzed          int64  `json:"analyzed"`
 	Warnings          int64  `json:"warnings"`
-	StartedAt         string `json:"startedAt,omitempty"`
+	QueuedAt          string `json:"queuedAt,omitempty"`
 	CompletedAt       string `json:"completedAt,omitempty"`
 	FinishedAt        string `json:"finishedAt,omitempty"`
 }
@@ -202,11 +205,11 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	if healthCount > 0 && minComplete != "" && minComplete == maxComplete {
 		out.LastCompleteAt = scanTime(minComplete)
 	}
-	var scanState, scanMode, scanPhase, scanStarted, scanCompleted, scanFinished string
+	var scanState, scanMode, scanPhase, scanQueued, scanCompleted, scanFinished string
 	var scanGeneration, scanPolicy, scanProcessed, scanDiscovered, scanAnalyzed, scanWarnings int64
-	scanErr := snapshot.Tx().QueryRowContext(ctx, `SELECT j.status,r.scan_mode,r.phase,r.source_generation,r.policy_revision,j.processed,r.discovered,r.analyzed,r.warnings,j.created_at,r.inventory_completed_at,r.finished_at FROM library_sources s JOIN inventory_source_active a ON a.source_id=s.id JOIN jobs j ON j.id=a.job_id JOIN inventory_runs r ON r.job_id=j.id WHERE s.remote_source_id=? AND s.enabled=1 AND r.source_id=s.id AND j.library_id=s.library_id AND r.source_generation=s.generation AND r.root_incarnation=s.incarnation AND r.root_identity=s.root_identity AND j.status IN('queued','running','paused') ORDER BY j.created_at DESC,j.id DESC LIMIT 1`, row.ID).Scan(&scanState, &scanMode, &scanPhase, &scanGeneration, &scanPolicy, &scanProcessed, &scanDiscovered, &scanAnalyzed, &scanWarnings, &scanStarted, &scanCompleted, &scanFinished)
+	scanErr := snapshot.Tx().QueryRowContext(ctx, `SELECT j.status,r.scan_mode,r.phase,r.source_generation,r.policy_revision,j.processed,r.discovered,r.analyzed,r.warnings,j.created_at,r.inventory_completed_at,r.finished_at FROM library_sources s JOIN inventory_source_active a ON a.source_id=s.id JOIN jobs j ON j.id=a.job_id JOIN inventory_runs r ON r.job_id=j.id WHERE s.remote_source_id=? AND s.enabled=1 AND r.source_id=s.id AND j.library_id=s.library_id AND r.source_generation=s.generation AND r.root_incarnation=s.incarnation AND r.root_identity=s.root_identity AND j.status IN('queued','running','paused') ORDER BY j.created_at DESC,j.id DESC LIMIT 1`, row.ID).Scan(&scanState, &scanMode, &scanPhase, &scanGeneration, &scanPolicy, &scanProcessed, &scanDiscovered, &scanAnalyzed, &scanWarnings, &scanQueued, &scanCompleted, &scanFinished)
 	if scanErr == nil && scanStates[scanState] && scanFactsBounded(scanGeneration, scanPolicy, scanProcessed, scanDiscovered, scanAnalyzed, scanWarnings) {
-		out.Scan = &SourceScanState{State: scanState, SourceGeneration: scanGeneration, RunPolicyRevision: scanPolicy, Processed: scanProcessed, Discovered: scanDiscovered, Analyzed: scanAnalyzed, Warnings: scanWarnings, StartedAt: scanTime(scanStarted), CompletedAt: scanTime(scanCompleted), FinishedAt: scanTime(scanFinished)}
+		out.Scan = &SourceScanState{State: scanState, SourceGeneration: scanGeneration, RunPolicyRevision: scanPolicy, Processed: scanProcessed, Discovered: scanDiscovered, Analyzed: scanAnalyzed, Warnings: scanWarnings, QueuedAt: scanTime(scanQueued), CompletedAt: scanTime(scanCompleted), FinishedAt: scanTime(scanFinished)}
 		if scanModes[scanMode] {
 			out.Scan.Mode = scanMode
 		}
