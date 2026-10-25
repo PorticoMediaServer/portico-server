@@ -1,11 +1,10 @@
-import {ConsoleClient, type SupportExport} from '@core/console.ts';
+import {ConsoleClient, type ConsoleAPI, type SupportExport} from '@core/console.ts';
 import {isStatePermissionsAlert} from '@core/administration.ts';
 import {fixStatePermissions} from '@core/backups.ts';
 import {parseCapabilities, type ServerCapability} from '@core/server-admin/capabilities.ts';
 import {skippedParts, type SkippedPart} from '@core/tolerant.ts';
 import {randomId} from '@core/random-id.ts';
 import {routePath} from '../../../../../../packages/contracts/src/routes.ts';
-import type {ReportTransport} from '@core/client-reports.ts';
 
 export type SupportSnapshot = Readonly<{
   phase: 'idle' | 'loading' | 'ready' | 'error';
@@ -15,6 +14,7 @@ export type SupportSnapshot = Readonly<{
   /** What this app left out since it started, counted by document and part. */
   skipped: readonly SkippedPart[];
   preparing: boolean;
+  error?: unknown;
   export?: SupportExport;
   fixed: boolean;
 }>;
@@ -35,25 +35,40 @@ export class SettingsSupportSource {
   private readonly lifetime = new AbortController();
   private reading?: Promise<void>;
   private readonly console: ConsoleClient;
-  constructor(private readonly transport: ReportTransport, private readonly serverId: string, viewerId: string, private readonly isCurrent: () => boolean) {
-    this.console = new ConsoleClient(transport, {serverId, viewerId});
+  private fixing?: Promise<boolean>;
+  private fixOperation?: string;
+  private readonly transport: ConsoleAPI;
+  constructor(transport: ConsoleAPI, private readonly serverId: string, viewerId: string, private readonly isCurrent: () => boolean) {
+    const guarded = async <T>(consoleRequest: boolean, path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
+      this.assertCurrent();
+      const combined = signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal;
+      combined.throwIfAborted();
+      const value = await (consoleRequest && transport.requestConsole ? transport.requestConsole<T>(path, method, body, combined) : transport.request<T>(path, method, body, combined));
+      this.assertCurrent();combined.throwIfAborted();return value;
+    };
+    this.transport = {request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => guarded<T>(false, path, method, body, signal),
+      ...(transport.requestConsole ? {requestConsole: <T>(path: string, method: string, body: unknown, signal: AbortSignal) => guarded<T>(true, path, method, body, signal)} : {})};
+    this.console = new ConsoleClient(this.transport, {serverId, viewerId});
   }
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
+  private assertCurrent() {if (!this.current()) throw new DOMException('The support scope ended.', 'AbortError');}
+  canDownload = (id: string) => this.current() && this.state.export?.id === id;
   getSnapshot = (): SupportSnapshot => this.current() ? this.state : empty;
   subscribe = (listener: () => void): (() => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
   private publish(state: SupportSnapshot) {if (this.current()) {this.state = Object.freeze(state);for (const listener of [...this.listeners]) listener();}}
   load = (): Promise<void> => {
     if (!this.current() || this.reading) return this.reading ?? Promise.resolve();
     const task = Promise.resolve().then(async () => {
-      this.publish({...this.state, phase: 'loading'});
+      if (!this.current()) return;
+      this.publish({...this.state, phase: 'loading', error: undefined});
       try {
         const [capabilities, alerts] = await Promise.all([
           this.transport.request<unknown>(routePath('get_capability_report'), 'GET', undefined, this.lifetime.signal).then(parseCapabilities),
-          this.console.alerts().catch(() => []),
+          this.console.alerts(),
         ]);
         if (!this.current()) return;
         this.publish({...this.state, phase: 'ready', capabilities, permissions: alerts.some(alert => isStatePermissionsAlert(alert)), skipped: skippedParts()});
-      } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
+      } catch (error) {if (this.current()) this.publish({...this.state, phase: 'error', error});}
       finally {this.reading = undefined;}
     });
     this.reading = task;return task;
@@ -73,15 +88,24 @@ export class SettingsSupportSource {
   async download(): Promise<SupportExport> {
     const ready = this.state.export;
     if (!this.current() || !ready) throw new Error('No prepared export.');
-    return this.console.export(ready.id);
+    const bundle = await this.console.export(ready.id);
+    this.assertCurrent();
+    if (!this.canDownload(ready.id)) throw new DOMException('The prepared export changed.', 'AbortError');
+    return bundle;
   }
-  async fixPermissions(): Promise<boolean> {
-    if (!this.current()) return false;
-    await fixStatePermissions(this.transport, this.serverId, randomId(), this.lifetime.signal);
-    if (!this.current()) return false;
-    this.publish({...this.state, permissions: false, fixed: true});
-    return true;
-  }
+  fixPermissions = (): Promise<boolean> => {
+    if (!this.current()) return Promise.resolve(false);
+    if (this.fixing) return this.fixing;
+    const operation = this.fixOperation ??= randomId();
+    const task = Promise.resolve().then(async () => {
+      if (!this.current()) return false;
+      await fixStatePermissions(this.transport, this.serverId, operation, this.lifetime.signal);
+      if (!this.current()) return false;
+      this.fixOperation = undefined;
+      this.publish({...this.state, permissions: false, fixed: true});return true;
+    }).finally(() => {this.fixing = undefined;});
+    this.fixing = task;return task;
+  };
   retry = (): Promise<void> => {this.state = {...empty};return this.load();};
   dispose(): void {if (!this.lifetime.signal.aborted) {this.lifetime.abort();this.listeners.clear();this.console.dispose();this.state = empty;}}
 }

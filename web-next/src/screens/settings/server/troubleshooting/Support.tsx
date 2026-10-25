@@ -32,6 +32,7 @@ export function SupportPanel(props: SupportPanelProps) {
   const [busy, setBusy] = useState(false), [fixed, setFixed] = useState(false);
   const [window, setWindow] = useState('24h'), [parts, setParts] = useState<readonly SupportComponent[]>([...SUPPORT_COMPONENTS]);
   useEffect(() => {void props.source.load();}, [props.source]);
+  useEffect(() => {if (state.phase === 'error' && state.error) props.reportError(state.error);}, [state.phase, state.error, props.reportError]);
   if (state.phase === 'error') return <p className={styles.failure} role="alert"><span>{t('next.states.pageFailedBody')}</span><button type="button" onClick={() => {void props.source.retry();}}>{t('next.shell.tryAgain')}</button></p>;
   if (state.phase === 'idle' || state.phase === 'loading') return <p role="status">{t('next.settings.loading')}</p>;
   const exportReady = state.export;
@@ -73,9 +74,10 @@ export function SupportPanel(props: SupportPanelProps) {
           redaction: exportReady.manifest.redaction, expires: defaultI18n.dateTime(exportReady.expiresAt)})}</p>
         <Button variant="glass" size="small" onClick={() => {
           void props.source.download().then(bundle => {
+            if (!props.source.canDownload(bundle.id)) return;
             const blob = new Blob([JSON.stringify(bundle, null, 2)], {type: 'application/json'});
             const url = URL.createObjectURL(blob), link = document.createElement('a');
-            link.href = url;link.download = 'portico-support.json';link.click();URL.revokeObjectURL(url);
+            try {if (props.source.canDownload(bundle.id)) {link.href = url;link.download = 'portico-support.json';link.click();}} finally {URL.revokeObjectURL(url);}
           }).catch(props.reportError);
         }}>{t('web.logs.downloadJson')}</Button>
       </div>}
