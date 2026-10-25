@@ -1,3 +1,4 @@
+import {Artwork} from '../../kit/artwork';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BulkMetadataPreview} from '@core/home-selection/index.ts';
@@ -26,10 +27,15 @@ export function SelectionEditorSurface({session, options, onKeepOnly, onClose}: 
     flight.current = true; setBusy(true); setError(false);
     try {
       const next = await producer.preview(operation.current), display = await producer.display(operation.current);
-      if (session.current()) {setTargets(display); setPreview(next);}
+      if (session.current()) {
+        const aspect = next.contentKind === 'episode' ? 16 / 9 : ['song', 'album', 'artist'].includes(next.contentKind) ? 1 : 2 / 3;
+        setTargets(display.map(target => ({id: target.id, title: target.title,
+          ...(options.artwork ? {artwork: <Artwork source={options.artwork.foreground(target.posterUrl, 120, aspect)} alt=""/>} : {})})));
+        setPreview(next);
+      }
     } catch {if (session.current()) setError(true);}
     finally {flight.current = false; if (session.current()) setBusy(false);}
-  }, [mixed, noBulkKind, producer, session]);
+  }, [mixed, noBulkKind, producer, session, options.artwork]);
   useEffect(() => {void load(); return () => session.lifetime.abort();}, [load, session]);
   const close = () => {session.lifetime.abort(); onClose();};
   const save = async (value: BulkEditorDraft) => {

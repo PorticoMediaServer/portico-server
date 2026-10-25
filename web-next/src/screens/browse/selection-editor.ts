@@ -1,3 +1,4 @@
+import type {ShellArtwork} from '../../shell/artwork';
 import {validateRepair} from '@core/metadata-repair.ts';
 import {parseMediaItem} from '@core/media-item.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
@@ -22,6 +23,7 @@ export type SelectionEditorOptions = Readonly<{
   isCurrent: () => boolean;
   serverId: string;
   viewerId?: string;
+  artwork?: ShellArtwork;
   signal?: AbortSignal;
   viewerFence: () => string | undefined;
 }>;
@@ -53,21 +55,23 @@ export function createSelectionEditor({api, events, requestId, isCurrent, server
   return {
     async display(operation: AnyOperation) {
       current(); if (operation.target.mode !== 'explicit') throw new SelectionEditorError('explicit-editor-required');
-      const result: {id: string; title: string}[] = [];
+      const result: {id: string; title: string; posterUrl?: string}[] = [];
       for (const pick of operation.target.displayItems) {
         if (!('libraryId' in pick.item)) throw new SelectionEditorError('metadata-target-unavailable');
         const target = metadataPreviewTargets([pick.item])[0];
         if (target.kind === 'item') {
           const item = parseMediaItem(await api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(pick.item.id)}), 'GET', undefined, routeSignal)); current();
           if (item.id !== pick.item.id || item.libraryId !== pick.item.libraryId || item.kind !== pick.item.kind) throw new SelectionEditorError('metadata-target-mismatch');
-          result.push({id: item.id, title: item.title});
+          result.push({id: item.id, title: item.title, ...(typeof item.posterUrl === 'string' && item.posterUrl ? {posterUrl: item.posterUrl} : {})});
         } else {
           if (!viewerId) throw new SelectionEditorError('metadata-authority-unavailable');
           const fence = viewerFence();
           const raw = await api.request(encodedRoutePath('get_metadata_kind_id', {kind: encodeURIComponent(target.kind), id: encodeURIComponent(target.id)}), 'GET', undefined, routeSignal); current();
           const data = validateRepair(raw, {serverId, viewerId}, target);
           if (!fence || data.viewerFence !== fence || viewerFence() !== fence || data.snapshot.fields.title === undefined) throw new SelectionEditorError('metadata-target-mismatch');
-          result.push({id: target.id, title: data.snapshot.fields.title.value});
+          const roles = target.kind === 'artist' ? ['portrait', 'square'] : target.kind === 'album' || target.kind === 'book' ? ['cover', 'square', 'poster'] : ['poster'];
+          const chosen = roles.flatMap(role => data.snapshot.artwork.filter(choice => choice.role === role && choice.url))[0];
+          result.push({id: target.id, title: data.snapshot.fields.title.value, ...(chosen ? {posterUrl: chosen.url} : {})});
         }
       }
       return result;
