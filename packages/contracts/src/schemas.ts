@@ -370,6 +370,10 @@ export const schemas = {
                       }
                     ]
                   },
+                  "selectionRevision": {
+                    "pattern": "^browse_[a-f0-9]{64}$",
+                    "type": "string"
+                  },
                   "sort": {
                     "items": {
                       "properties": {
@@ -3638,6 +3642,10 @@ export const schemas = {
                         "type": "object"
                       }
                     ]
+                  },
+                  "selectionRevision": {
+                    "pattern": "^browse_[a-f0-9]{64}$",
+                    "type": "string"
                   },
                   "sort": {
                     "items": {
@@ -15465,6 +15473,10 @@ export const schemas = {
                             }
                           ]
                         },
+                        "selectionRevision": {
+                          "pattern": "^browse_[a-f0-9]{64}$",
+                          "type": "string"
+                        },
                         "sort": {
                           "items": {
                             "properties": {
@@ -15721,6 +15733,10 @@ export const schemas = {
                         "type": "object"
                       }
                     ]
+                  },
+                  "selectionRevision": {
+                    "pattern": "^browse_[a-f0-9]{64}$",
+                    "type": "string"
                   },
                   "sort": {
                     "items": {
@@ -18932,6 +18948,9 @@ export const schemas = {
       },
       "libraryId": {
         "type": "string"
+      },
+      "onlineLookups": {
+        "type": "boolean"
       },
       "revision": {
         "type": "string"
@@ -114788,6 +114807,9 @@ export const schemas = {
       "libraryId": {
         "type": "string"
       },
+      "onlineLookups": {
+        "type": "boolean"
+      },
       "revision": {
         "type": "string"
       },
@@ -115087,6 +115109,9 @@ export const schemas = {
   },
   "GetMetadataSettingsResponse": {
     "properties": {
+      "artworkLanguage": {
+        "type": "string"
+      },
       "artworkMaxEdge": {
         "enum": [
           1280,
@@ -115096,6 +115121,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "artworkPreference": {
+        "type": "string"
       },
       "defaultLanguage": {
         "type": "string"
@@ -115175,6 +115203,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "onlineLookups": {
+        "type": "boolean"
       },
       "openSubtitles": {
         "properties": {
@@ -150339,6 +150370,9 @@ export const schemas = {
   },
   "GetStorageSourceStatusResponse": {
     "properties": {
+      "assignmentFenceSupported": {
+        "type": "boolean"
+      },
       "scope": {
         "properties": {
           "serverId": {
@@ -150469,6 +150503,7 @@ export const schemas = {
       }
     },
     "required": [
+      "assignmentFenceSupported",
       "scope",
       "status"
     ],
@@ -157502,6 +157537,26 @@ export const schemas = {
       "classification": {
         "type": "string"
       },
+      "expectedRemoteSource": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sourceId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -162895,6 +162950,26 @@ export const schemas = {
       },
       "classification": {
         "type": "string"
+      },
+      "expectedRemoteSource": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sourceId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
       },
       "expectedRevision": {
         "maximum": 9007199254740991,
@@ -177899,6 +177974,26 @@ export const schemas = {
   },
   "PostLibrariesRequest": {
     "properties": {
+      "expectedRemoteSource": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sourceId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation"
+        ],
+        "type": "object"
+      },
       "folders": {
         "items": {
           "type": "string"
@@ -179175,6 +179270,9 @@ export const schemas = {
       "libraryId": {
         "type": "string"
       },
+      "onlineLookups": {
+        "type": "boolean"
+      },
       "revision": {
         "type": "string"
       },
@@ -179864,6 +179962,9 @@ export const schemas = {
       },
       "libraryId": {
         "type": "string"
+      },
+      "onlineLookups": {
+        "type": "boolean"
       },
       "revision": {
         "type": "string"
@@ -185863,6 +185964,185 @@ export const schemas = {
       "controlRevision",
       "accepted",
       "deleted"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthCancelRequest": {
+    "properties": {
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "state"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthCancelResponse": {
+    "properties": {
+      "cancelled": {
+        "type": "boolean"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "cancelled"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthPasteRequest": {
+    "properties": {
+      "redirectUrl": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "state",
+      "redirectUrl"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthPasteResponse": {
+    "properties": {
+      "phase": {
+        "enum": [
+          "pending",
+          "ready",
+          "expired",
+          "denied"
+        ],
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "phase"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthStartRequest": {
+    "properties": {
+      "clientId": {
+        "type": "string"
+      },
+      "clientSecret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "clientId",
+      "clientSecret"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthStartResponse": {
+    "properties": {
+      "authorizationUrl": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "scope",
+      "authorizationUrl",
+      "state"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthStatusRequest": {
+    "properties": {
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "state"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourceDriveOauthStatusResponse": {
+    "properties": {
+      "phase": {
+        "enum": [
+          "pending",
+          "ready",
+          "expired",
+          "denied"
+        ],
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "token": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "scope",
+      "phase"
     ],
     "type": "object"
   },
@@ -196028,6 +196308,9 @@ export const schemas = {
   },
   "PutMetadataSettingsRequest": {
     "properties": {
+      "artworkLanguage": {
+        "type": "string"
+      },
       "artworkMaxEdge": {
         "enum": [
           1280,
@@ -196037,6 +196320,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "artworkPreference": {
+        "type": "string"
       },
       "defaultLanguage": {
         "type": "string"
@@ -196087,6 +196373,9 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "onlineLookups": {
+        "type": "boolean"
+      },
       "openSubtitlesApiKey": {
         "type": "string"
       },
@@ -196112,6 +196401,9 @@ export const schemas = {
   },
   "PutMetadataSettingsResponse": {
     "properties": {
+      "artworkLanguage": {
+        "type": "string"
+      },
       "artworkMaxEdge": {
         "enum": [
           1280,
@@ -196121,6 +196413,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "artworkPreference": {
+        "type": "string"
       },
       "defaultLanguage": {
         "type": "string"
@@ -196200,6 +196495,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "onlineLookups": {
+        "type": "boolean"
       },
       "openSubtitles": {
         "properties": {
@@ -200867,6 +201165,9 @@ export const schemas = {
       },
       "rate": {
         "type": "number"
+      },
+      "seeked": {
+        "type": "boolean"
       },
       "seq": {
         "maximum": 9007199254740991,

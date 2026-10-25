@@ -76,6 +76,7 @@ index catalog_attribute_ambiguous_restrictions
 index catalog_automatic_collection_entity
 index catalog_automatic_member_overrides_item
 index catalog_automatic_members_group
+index catalog_book_chapters_end_ms
 index catalog_book_context_author
 index catalog_book_context_series
 index catalog_book_evidence_jobs_turn
@@ -275,6 +276,7 @@ index continue_dismissals_item_id_fk
 index continue_show_dismissals_show_id_fk
 index credit_owner_entries_source
 index credit_source_publication_members_source
+index credit_source_publications_entity
 index credit_source_rows_tuple
 index detail_jobs_due
 index direct_memberships_people_role
@@ -372,6 +374,8 @@ index lc_candidate_order
 index lc_directory
 index lc_jobs
 index lc_one_job
+index lc_play_events_item_fk
+index lc_play_events_item_snapshot
 index lc_ref_channel
 index lc_schedule_items
 index lc_schedule_window
@@ -456,6 +460,8 @@ index notification_records_page
 index notification_records_resume
 index personal_activity_receipts_expiry
 index personal_batch_receipts_expiry
+index personal_chapter_completions_asset_id_fk
+index personal_chapter_completions_file_entity_id_fk
 index personal_completed_plays_item
 index personal_conflict_open
 index personal_conflicts_item_id_fk
@@ -475,6 +481,7 @@ index personal_jobs_state
 index personal_last_played
 index personal_play_counts_item
 index personal_play_state
+index personal_playback_runs_item_id_fk
 index personal_rating_range
 index personal_receipts_expiry
 index personal_receipts_item_id_fk
@@ -1000,6 +1007,7 @@ table lc_channels
 table lc_entries
 table lc_generations
 table lc_maintenance_cursor
+table lc_play_events
 table lc_playback_refs
 table lc_receipts
 table lc_rule_state
@@ -1163,6 +1171,7 @@ table owner_reset_file
 table personal_activity_receipts
 table personal_activity_revisions
 table personal_batch_receipts
+table personal_chapter_completions
 table personal_completed_plays
 table personal_conflicts
 table personal_device_sequences
@@ -1177,6 +1186,7 @@ table personal_job_items
 table personal_job_membership_outcomes
 table personal_jobs
 table personal_play_counts
+table personal_playback_runs
 table personal_receipts
 table personal_snapshots
 table personal_watched_intents
