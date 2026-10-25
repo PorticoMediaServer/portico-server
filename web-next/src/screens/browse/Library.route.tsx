@@ -44,6 +44,7 @@ import {browseConjunction, parseLibraryScreenSearch, type LibraryScreenSearch} f
 import {SaveView} from './SaveView';
 import {FacetPage, ReadLibraryEntry, useReadLibrarySummary, authorPredicate, type FacetRequest} from '../read';
 import {isReadingLibrary} from './reading-library';
+import {useReadingMarkAll} from '../read/useReadingMarkAll';
 
 const t = defaultI18n.t;
 const noPlaybackSubscribe = () => () => {};
@@ -65,9 +66,10 @@ function readingTabs(capabilities: BrowseCapabilities | undefined, kind: string)
   return out.length > 1 ? out : base;
 }
 
-function ReadingLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
+function ReadingLibrary({captured, library, search, onMarked}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; onMarked: () => void}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   const life = useMemo(() => screenLifetime(context), [context]);
+  const markAll = useReadingMarkAll(context, library.id, JSON.stringify(search), onMarked);
   const [capabilitySnapshot, setCapabilities] = useState<Readonly<{context: ProtectedLibraryScreen['context']; data: BrowseCapabilities}>>();
   const capabilities = capabilitySnapshot?.context === captured.context && capabilitySnapshot.data.library.id === library.id && capabilitySnapshot.data.library.kind === library.kind ? capabilitySnapshot.data : undefined;
   /** desktop-read 1b/2/2c draw the library's own wash and its classified count line, and
@@ -93,7 +95,7 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
   const header = <LibraryIdentity library={library} libraries={libraryChoices} pivot={periodicalPivot ?? selected.id}
     tabs={tabs.map(tab => ({value: tab.id, label: t(tab.label)}))}
     appearance={{view: appearance.libraryView, cardWidth: width < 600 ? 108 : 190, cardSize: 'medium', backdrops: appearance.showBackdrops}}
-    preferences={appearance} artwork={context.artwork} libraryMenu={undefined} wash={wash} counts={counts}
+    preferences={appearance} artwork={context.artwork} libraryMenu={markAll ? <LibraryMenu owner={false} read onMarkAll={markAll}/> : undefined} wash={wash} counts={counts}
     onPivot={id => {const tab = tabs.find(tab => tab.id === id); if (!tab) return;
       if (tab.shows === 'periodicals') {navigate({view: 'series', pivot: tab.id}); return;}
       if (tab.shows === 'facet') {navigate({view: tab.id === 'authors' ? 'authors' : 'series'}); return;}
@@ -110,7 +112,7 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
   if (selected.shows === 'facet') return <>{header}<FacetPage libraryId={library.id} field={selected.facetSource?.field === 'series' ? 'series' : 'author'}
     pivot={gridPivot ?? (library.kind === 'comic' ? 'comics' : 'books')} request={request}
     onSelect={value => {if (selected.facetSource?.field === 'author') navigate({view: 'browse', ...(gridPivot ? {pivot: gridPivot} : {}), query: authorPredicate(value.value)}); else if (value.seriesId) navigate({view: 'series', entityId: value.seriesId});}}/></>;
-  if (search.view === 'browse' || search.query) return <BoundLibrary captured={captured} library={library} search={search} tabs={tabs}/>;
+  if (search.view === 'browse' || search.query) return <BoundLibrary captured={captured} library={library} search={search} tabs={tabs} readingMarkAll={markAll}/>;
   return <ReadLibraryEntry libraryId={library.id} header={header} view="discover"/>;
 }
 function LibraryShow({context, captured, libraryId, search}: {context: ScreenContext; captured: ProtectedLibraryScreen; libraryId: string; search: LibraryScreenSearch}) {
@@ -128,18 +130,18 @@ function LibraryShow({context, captured, libraryId, search}: {context: ScreenCon
 type ScanLease = Readonly<{context: ScreenContext; libraryId: string; life: {api: {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}; current: () => boolean}; signal: AbortSignal; service: LibraryManagementService; pending: {current: boolean}}>;
 /** The reading library's ⋯ keeps the owner's online unmatched entry, and adds only the rows
  *  whose ports this screen really holds: saving the current view, and the owner's library
- *  settings page. Mark all read and pins wait for their own ports; Scan is offered from its
+ *  settings page. Mark all read uses the original ready personal projection; Scan is offered from its
  *  own lease. */
-function readingLibraryMenu(resources: {life: {current: () => boolean}; controller: {canSaveView: () => boolean}}, context: ScreenContext, library: Library, onlineAttention: boolean, save: () => void, scan?: () => void) {
+function readingLibraryMenu(resources: {life: {current: () => boolean}; controller: {canSaveView: () => boolean}}, context: ScreenContext, library: Library, onlineAttention: boolean, save: () => void, scan?: () => void, markAll?: () => void) {
   const owner = context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' && context.identity.capabilities?.manageServer === true;
   const unmatched = onlineAttention && context.effects.editMetadata ? () => {if (resources.life.current() && context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {unmatched: true}}).catch(context.effects.reportError);} : undefined;
   const settings = owner ? () => {if (resources.life.current() && context.isCurrent()) void router.navigate({to: '/settings', search: {scope: 'server', section: 'libraries'}}).catch(context.effects.reportError);} : undefined;
   const canSave = resources.life.current() && context.isCurrent() && resources.controller.canSaveView();
-  if (!canSave && !unmatched && !settings && !scan) return undefined;
-  return <LibraryMenu owner={!!owner} read {...(canSave ? {onSaveView: save} : {})} {...(unmatched ? {onUnmatched: unmatched} : {})}
+  if (!canSave && !unmatched && !settings && !scan && !markAll) return undefined;
+  return <LibraryMenu owner={!!owner} read {...(markAll ? {onMarkAll: markAll} : {})} {...(canSave ? {onSaveView: save} : {})} {...(unmatched ? {onUnmatched: unmatched} : {})}
     {...(settings ? {onLibrarySettings: settings} : {})} {...(scan ? {onScan: scan} : {})}/>;
 }
-function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]; musicLookup?: ReturnType<typeof useMusicLibrarySummary>}) {
+function BoundLibrary({captured, library, search, tabs: offered, musicLookup, readingMarkAll}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]; musicLookup?: ReturnType<typeof useMusicLibrarySummary>; readingMarkAll?: () => void}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   // The offer needs this exact library's own online metadata agent. The fact is keyed to the
   // library and screen scope that produced it, so a stale read can never enable another library
@@ -324,8 +326,8 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {
     artwork: context.artwork,
     // A Reading library's ⋯ draws only the rows this surface can really perform: saving the
     // current view, the owner's Unmatched entry, the owner's Library settings page, and Scan
-    // from its own lease. Mark all read and pins wait for their own ports.
-    libraryMenu: isReadingLibrary(library.kind) ? readingLibraryMenu(resources, context, library, onlineAttention, save, scan)
+    // from its own lease, plus the ready original-profile Mark all read action.
+    libraryMenu: isReadingLibrary(library.kind) ? readingLibraryMenu(resources, context, library, onlineAttention, save, scan, readingMarkAll)
       : context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,
     onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
     onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
@@ -382,6 +384,7 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {
     {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
 }
 function LibraryRouteScreen() {
+  const [readingGeneration, setReadingGeneration] = useState(0);
   const captured = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
   const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
   const destination = useMusicLibrarySummary(captured, libraryId, search.section === 'mixes');
@@ -389,7 +392,7 @@ function LibraryRouteScreen() {
   if (captured && search.section === 'mixes' && destination.phase === 'loading') return <Skeleton height={320}/>;
   if (captured && search.section === 'mixes' && destination.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: destination.retry}}/>;
-  return !captured ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={libraryId} captured={captured} library={library} search={search}/>
+  return !captured ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={`${libraryId}:${readingGeneration}`} captured={captured} library={library} search={search} onMarked={() => setReadingGeneration(value => value + 1)}/>
     : <BoundLibrary key={libraryId} captured={captured} library={library} search={search} musicLookup={search.section === 'mixes' ? destination : undefined}/>
     : <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
 }

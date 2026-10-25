@@ -1,3 +1,4 @@
+export * from './reading-mark-all.ts';
 import type {MusicTechnicalFacts} from './music-facts.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
 import {ReadingClient, type ReadingScope} from './reading.ts';

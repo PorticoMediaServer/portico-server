@@ -47,6 +47,8 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 	register("PUT /v1/items/{itemId}/reading/my-list", nil, d.readingSetSaved(&personalLimiter{}))
 	register("GET /v1/items/{itemId}/reading/mark", nil, d.readingMark)
 	register("PUT /v1/items/{itemId}/reading/mark", nil, d.readingSetMark(&personalLimiter{}))
+	register("GET /v1/libraries/{libraryId}/reading/mark-all", nil, d.readingMarkAllProjection)
+	register("POST /v1/libraries/{libraryId}/reading/mark-all", nil, d.readingSetMarkAll(&personalLimiter{}))
 	register("GET /v1/reading/items", []string{"libraryId", "cursor", "limit"}, d.listReadingItems)
 	register("GET /v1/reading/discover", []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit", "newspaperLimit"}, d.readingDiscover)
 	register("GET /v1/libraries/{libraryId}/reading/series/{seriesId}", []string{"cursor", "limit"}, d.readingSeries)

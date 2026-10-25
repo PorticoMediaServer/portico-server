@@ -165,5 +165,8 @@ func registerReadingMarkHTTPContracts(registry *apikit.Registry) error {
 	m.Admission = laneDefault
 	m.BodyLimit = 4096
 	m.Errors = append(m.Errors, "rate_limited", "personal_state_conflict", "personal_needs_resolution", "personal_needs_review", "operation_expired", "idempotency_key_reused", "stale_continuation")
-	return apikit.RegisterHTTP[ReadingMarkRequest, ReadingMarkResponse](registry, m)
+	if err := apikit.RegisterHTTP[ReadingMarkRequest, ReadingMarkResponse](registry, m); err != nil {
+		return err
+	}
+	return registerReadingMarkAllHTTPContracts(registry)
 }
