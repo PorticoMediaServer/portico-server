@@ -485,7 +485,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
               {configView.path && <p className={styles.note}>{t('next.remoteSources.configPath', {path: configView.path})}</p>}
               <RichSelect aria-label={t('next.remoteSources.configRemotes')} value={configRemote} disabled={busy}
                 options={configView.remotes.map(remote => ({value: remote.name, label: t('next.remoteSources.configRemoteLabel', {name: remote.name, kind: remote.kind || t('next.remoteSources.configUnknownKind')}),
-                  description: remote.supported ? undefined : t(remote.reason === 'encrypted' ? 'next.remoteSources.configEncrypted' : remote.reason === 'wrapper' ? 'next.remoteSources.configWrapper' : 'next.remoteSources.configUnsupportedKind'),
+                  description: remote.supported ? undefined : t(remote.reason === 'encrypted' ? 'next.remoteSources.configEncrypted' : remote.reason === 'wrapper' ? 'next.remoteSources.configWrapper' : remote.reason === 'duplicate' ? 'next.remoteSources.configDuplicate' : remote.reason === 'ambiguous' ? 'next.remoteSources.configAmbiguous' : 'next.remoteSources.configUnsupportedKind'),
                   disabled: !remote.supported}))}
                 onValueChange={value => {setConfigRemote(value);setConfigName(current => current || value);}}/>
               <TextField label={t('next.remoteSources.name')} value={configName} maxLength={200} disabled={busy}

@@ -32,8 +32,9 @@ password = RCLONE_ENCRYPT_V0:not-plaintext
 type = alias
 remote = archive:private
 
-[broken]
-type = ftp
+[bracket]
+type = http
+url = https://files.example/[media]
 `
 
 func writeAccountConfig(t *testing.T, body string) string {
@@ -60,7 +61,7 @@ func TestAccountConfigRemotesProjectNamesAndReasonsOnly(t *testing.T) {
 	}
 	want := []ConfigRemote{
 		{Name: "archive", Kind: "s3", Supported: true},
-		{Name: "broken", Kind: "ftp", Reason: "kind"},
+		{Name: "bracket", Kind: "http", Supported: true},
 		{Name: "nas", Kind: "sftp", Supported: true},
 		{Name: "oldftp", Kind: "ftp", Reason: "kind"},
 		{Name: "shortcut", Kind: "alias", Reason: "wrapper"},
@@ -104,9 +105,68 @@ func TestAccountConfigSectionIsPlainAndValidated(t *testing.T) {
 	if err = validateConfig(config, "archive:"); err != nil {
 		t.Fatalf("section is not valid for save: %v", err)
 	}
-	for _, remote := range []string{"oldftp", "wrapped", "missing", "broken", "bad name", "archive:"} {
+	for _, remote := range []string{"oldftp", "wrapped", "shortcut", "missing", "bad name", "archive:"} {
 		if _, err = ReadAccountRcloneSection(remote); err == nil {
 			t.Fatalf("%q was accepted", remote)
 		}
+	}
+}
+
+func TestAccountConfigDuplicateNameIsNeverSilentlyFirst(t *testing.T) {
+	writeAccountConfig(t, `[archive]
+type = s3
+secret_access_key = first
+
+[archive]
+type = s3
+secret_access_key = second
+`)
+	_, remotes, err := ReadAccountRcloneConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remotes) != 2 || remotes[0].Reason != "duplicate" || remotes[1].Reason != "duplicate" || remotes[0].Supported {
+		t.Fatalf("duplicate remotes %#v", remotes)
+	}
+	if _, err = ReadAccountRcloneSection("archive"); !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("duplicate section error %v, want ErrConfigInvalid", err)
+	}
+}
+
+func TestAccountConfigAmbiguousGrammarIsWithheld(t *testing.T) {
+	for _, body := range []string{
+		"[archive]\ntype = s3\ntype = b2\nsecret_access_key = value\n",
+		"[archive]\ntype = s3\nnot a key value pair\n",
+		"[archive\ntype = s3\n",
+	} {
+		writeAccountConfig(t, body)
+		_, remotes, err := ReadAccountRcloneConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == "[archive]\ntype = s3\ntype = b2\nsecret_access_key = value\n" {
+			if len(remotes) != 1 || remotes[0].Reason != "ambiguous" || remotes[0].Supported {
+				t.Fatalf("repeated type remotes %#v", remotes)
+			}
+		} else if len(remotes) != 0 {
+			t.Fatalf("ambiguous grammar listed %#v", remotes)
+		}
+		if _, err = ReadAccountRcloneSection("archive"); !errors.Is(err, ErrConfigInvalid) {
+			t.Fatalf("ambiguous grammar section error %v, want ErrConfigInvalid", err)
+		}
+	}
+}
+
+func TestAccountConfigRejectsNonRegularFiles(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+	if err := os.MkdirAll(filepath.Join(root, "rclone", "rclone.conf"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReadAccountRcloneConfig(); !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("directory config error %v, want ErrConfigInvalid", err)
+	}
+	if _, err := ReadAccountRcloneSection("archive"); !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("directory section error %v, want ErrConfigInvalid", err)
 	}
 }

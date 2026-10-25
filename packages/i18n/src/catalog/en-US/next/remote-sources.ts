@@ -25,6 +25,8 @@ export const remoteSourcesMessages = {
   'next.remoteSources.configUnsupportedKind': 'Portico cannot import this kind yet.',
   'next.remoteSources.configEncrypted': 'This remote is encrypted, so Portico cannot read it here.',
   'next.remoteSources.configWrapper': 'This remote wraps another one. Portico cannot import the pair yet.',
+  'next.remoteSources.configDuplicate': 'This name appears more than once in the configuration, so Portico will not guess which one you mean.',
+  'next.remoteSources.configAmbiguous': 'This remote’s section is ambiguous, so Portico will not guess at it.',
   'next.remoteSources.configUnknownKind': 'unknown kind',
   'next.remoteSources.configRemoteLabel': '{name} · {kind}',
   'next.remoteSources.configChecksOnSave': 'Portico tests the remote when you save. Nothing has to be installed.',

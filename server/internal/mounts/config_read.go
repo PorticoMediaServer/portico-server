@@ -12,7 +12,7 @@ import (
 )
 
 // ErrRemoteNotConfigured reports a remote name the server account's own
-// configuration does not describe, or describes in a form Portico cannot import.
+// configuration does not describe at all.
 var ErrRemoteNotConfigured = errors.New("the remote is not in the server account's rclone configuration")
 
 // wrapperKinds describe another remote instead of a storage service. Importing
@@ -37,6 +37,25 @@ type ConfigRemote struct {
 	Reason    string `json:"reason"`
 }
 
+// configSection is one checked INI section, kept in the exact lines the account
+// wrote so the save path sees the same bytes the list was judged from.
+type configSection struct {
+	name         string
+	kind         string
+	lines        []string
+	typed        bool
+	encrypted    bool
+	repeatedType bool
+}
+
+// parsedConfig is the one parse both the list and the selected section use, so
+// their type and support evidence can never disagree.
+type parsedConfig struct {
+	sections  []configSection
+	duplicate map[string]int
+	malformed bool
+}
+
 // AccountRcloneConfigPath is the server account's own rclone configuration, the
 // same fixed place rclone looks. It is never chosen by a request.
 func AccountRcloneConfigPath() (string, bool) {
@@ -48,7 +67,8 @@ func AccountRcloneConfigPath() (string, bool) {
 }
 
 // ReadAccountRcloneConfig lists the account configuration's remotes. A missing
-// file is an empty list, not an error; anything unreadable is an error.
+// file is an empty list; anything unreadable is an error. A file whose grammar
+// is ambiguous lists nothing rather than guessing at its sections.
 func ReadAccountRcloneConfig() (string, []ConfigRemote, error) {
 	path, ok := AccountRcloneConfigPath()
 	if !ok {
@@ -61,12 +81,17 @@ func ReadAccountRcloneConfig() (string, []ConfigRemote, error) {
 		}
 		return path, nil, err
 	}
-	return path, parseConfigRemotes(string(raw)), nil
+	parsed := parseAccountConfig(string(raw))
+	if parsed.malformed {
+		return path, []ConfigRemote{}, nil
+	}
+	return path, configRemotes(parsed), nil
 }
 
 // ReadAccountRcloneSection returns the named section in plain rclone INI form,
-// ready for the ordinary candidate test and save. Values are passed through
-// untouched and never returned to a client.
+// ready for the ordinary candidate test and save. The name only identifies a
+// section when it occurs exactly once; values are passed through untouched and
+// never returned to a client.
 func ReadAccountRcloneSection(remote string) (string, error) {
 	if !configSectionName(remote) {
 		return "", ErrConfigInvalid
@@ -82,60 +107,149 @@ func ReadAccountRcloneSection(remote string) (string, error) {
 		}
 		return "", err
 	}
-	lines := strings.Split(string(raw), "\n")
-	inside := false
-	typed := false
-	encrypted := false
-	section := make([]string, 0, 16)
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			if inside {
-				break
-			}
-			inside = strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]") == remote
-			continue
-		}
-		if !inside || trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "RCLONE_ENCRYPT_") || strings.Contains(trimmed, "="+encryptedValueMark) || strings.Contains(trimmed, "= "+encryptedValueMark) {
-			encrypted = true
-		}
-		key, value, ok := strings.Cut(trimmed, "=")
-		if !ok {
-			return "", ErrConfigInvalid
-		}
-		if strings.TrimSpace(key) == "type" && configTypeToken(strings.TrimSpace(value)) {
-			typed = true
-		}
-		section = append(section, trimmed)
-	}
-	if !inside {
-		return "", ErrRemoteNotConfigured
-	}
-	if !typed || encrypted || len(section) == 0 {
+	parsed := parseAccountConfig(string(raw))
+	if parsed.malformed || parsed.duplicate[remote] > 1 {
 		return "", ErrConfigInvalid
 	}
-	config := "[" + remote + "]\n" + strings.Join(section, "\n") + "\n"
+	var found *configSection
+	for index := range parsed.sections {
+		if parsed.sections[index].name == remote {
+			found = &parsed.sections[index]
+			break
+		}
+	}
+	if found == nil {
+		return "", ErrRemoteNotConfigured
+	}
+	if found.reason(false) != "" {
+		return "", ErrConfigInvalid
+	}
+	config := "[" + remote + "]\n" + strings.Join(found.lines, "\n") + "\n"
 	if len(config) > sectionLimit {
 		return "", ErrConfigInvalid
 	}
 	if err = validateConfig(config, remote+":"); err != nil {
 		return "", ErrConfigInvalid
 	}
-	if wrapperKinds[configType(config)] {
-		return "", ErrConfigInvalid
-	}
 	return config, nil
 }
 
+func configRemotes(parsed parsedConfig) []ConfigRemote {
+	out := make([]ConfigRemote, 0, len(parsed.sections))
+	for _, section := range parsed.sections {
+		if len(out) >= configRemoteLimit {
+			break
+		}
+		reason := section.reason(parsed.duplicate[section.name] > 1)
+		out = append(out, ConfigRemote{Name: section.name, Kind: section.kind, Supported: reason == "", Reason: reason})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func (s configSection) reason(duplicate bool) string {
+	switch {
+	case duplicate:
+		return "duplicate"
+	case s.encrypted:
+		return "encrypted"
+	case s.repeatedType:
+		return "ambiguous"
+	case s.kind == "" || !configurationKinds[s.kind]:
+		return "kind"
+	case wrapperKinds[s.kind]:
+		return "wrapper"
+	}
+	return ""
+}
+
+// parseAccountConfig reads plain rclone INI without trusting it: one section per
+// name, one type key per section, and no content outside a section. Anything it
+// cannot account for marks the whole file ambiguous instead of choosing a line.
+func parseAccountConfig(text string) parsedConfig {
+	parsed := parsedConfig{duplicate: map[string]int{}}
+	current := -1
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			if !strings.HasSuffix(trimmed, "]") {
+				parsed.malformed = true
+				current = -1
+				continue
+			}
+			name := strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]")
+			if !configSectionName(name) {
+				parsed.malformed = true
+				current = -1
+				continue
+			}
+			parsed.duplicate[name]++
+			parsed.sections = append(parsed.sections, configSection{name: name})
+			current = len(parsed.sections) - 1
+			continue
+		}
+		if current < 0 {
+			parsed.malformed = true
+			continue
+		}
+		key, value, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			parsed.malformed = true
+			continue
+		}
+		section := &parsed.sections[current]
+		if strings.Contains(trimmed, encryptedValueMark) {
+			section.encrypted = true
+		}
+		if strings.TrimSpace(key) == "type" {
+			if section.typed {
+				section.repeatedType = true
+			}
+			section.typed = true
+			if token := strings.TrimSpace(value); configTypeToken(token) {
+				section.kind = token
+			}
+		}
+		section.lines = append(section.lines, trimmed)
+	}
+	return parsed
+}
+
+// readAccountConfig accepts only a regular file (a symlink to one is allowed),
+// so a FIFO or device on that path cannot stall a read. The byte limit bounds
+// what a regular file may contribute.
 func readAccountConfig(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		if info.Mode()&os.ModeSymlink == 0 {
+			return nil, ErrConfigInvalid
+		}
+		target, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if !target.Mode().IsRegular() {
+			return nil, ErrConfigInvalid
+		}
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() || opened.Size() > accountConfigLimit {
+		return nil, ErrConfigInvalid
+	}
 	raw, err := io.ReadAll(io.LimitReader(file, accountConfigLimit+1))
 	if err != nil {
 		return nil, err
@@ -144,68 +258,6 @@ func readAccountConfig(path string) ([]byte, error) {
 		return nil, ErrConfigInvalid
 	}
 	return raw, nil
-}
-
-// configType reports the type line of one plain section.
-func configType(config string) string {
-	for _, line := range strings.Split(config, "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if ok && strings.TrimSpace(key) == "type" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-func parseConfigRemotes(text string) []ConfigRemote {
-	out := make([]ConfigRemote, 0, 8)
-	name, kind := "", ""
-	encrypted := false
-	flush := func() {
-		if name == "" || len(out) >= configRemoteLimit {
-			return
-		}
-		reason := ""
-		switch {
-		case encrypted:
-			reason = "encrypted"
-		case kind == "" || !configurationKinds[kind]:
-			reason = "kind"
-		case wrapperKinds[kind]:
-			reason = "wrapper"
-		}
-		out = append(out, ConfigRemote{Name: name, Kind: kind, Supported: reason == "", Reason: reason})
-	}
-	for _, line := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-			flush()
-			candidate := strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]")
-			name, kind, encrypted = "", "", false
-			if configSectionName(candidate) {
-				name = candidate
-			}
-			continue
-		}
-		if name == "" || trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
-			continue
-		}
-		if strings.Contains(trimmed, encryptedValueMark) {
-			encrypted = true
-		}
-		key, value, ok := strings.Cut(trimmed, "=")
-		if !ok {
-			continue
-		}
-		if strings.TrimSpace(key) == "type" {
-			if token := strings.TrimSpace(value); configTypeToken(token) {
-				kind = token
-			}
-		}
-	}
-	flush()
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
 }
 
 func configSectionName(name string) bool {
