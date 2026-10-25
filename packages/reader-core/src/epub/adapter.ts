@@ -5,7 +5,7 @@ import {fromRange, joinIndir} from 'foliate-js/epubcfi.js';
 import {ReaderError, throwIfAborted} from '../errors.ts';
 import {abortScope} from '../abort.ts';
 import type {ReaderAdapter, ReaderDocument, ReaderLocation, ReaderMetadata, ReaderMount,
-  ReaderNavigation, ReaderSearchOptions, ReaderSearchResult, ReaderTocItem, ReaderView, ReaderViewport} from '../ports.ts';
+  ReaderNavigation, ReaderIndexedSearchHit, ReaderSearchOptions, ReaderSearchResult, ReaderTocItem, ReaderView, ReaderViewport} from '../ports.ts';
 import {openEpubArchive, safeArchivePath} from './archive.ts';
 import {resourceAssets} from './resources.ts';
 import {rejectXmlEntities, secureMarkup, secureCss} from './security.ts';
@@ -14,6 +14,7 @@ import {validateEpubRaster} from './media.ts';
 import {epubFontKey} from './font-obfuscation.ts';
 import {metadataLanguage, metadataText} from './metadata.ts';
 import {isWholeWordPhrase} from '../search-boundary.ts';
+import {indexedNormalize, indexedRange, indexedRawText, searchWellFormed, indexedPageLimit, indexedOverallLimit, indexedTextLimit, indexedTimeLimit, indexedSectionBudget} from './indexed-text.ts';
 
 type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>; resolveHref(href:string):string};
 type Navigation = {index: number; anchor?: number | ((doc: Document) => Node | Range | number | null)};
@@ -50,6 +51,7 @@ function chapterAt(book:Book,index:number,visible:Range,tocBySection:Map<number,
   }
   return label;
 }
+
 async function cancellable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   throwIfAborted(signal);
   let abort!: () => void, timer: ReturnType<typeof setTimeout>;
@@ -65,7 +67,9 @@ async function cancellable<T>(promise: Promise<T>, signal: AbortSignal): Promise
 export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(options: EpubAdapterOptions): ReaderAdapter<P> {
   return {format:'epub',async open({source,signal:parent}) {
     const id=source.id,revision=source.revision,size=source.size,resources=source.resources,contents=source.contents;
-    const currentSource=()=>source.id===id&&source.revision===revision&&source.size===size&&source.resources===resources&&source.contents===contents;
+    const indexedSearch=source.indexedSearch,indexedSpine=source.spine;
+    const spine=indexedSpine===undefined?undefined:Object.freeze([...indexedSpine]);
+    const currentSource=()=>source.id===id&&source.revision===revision&&source.size===size&&source.resources===resources&&source.contents===contents&&source.indexedSearch===indexedSearch&&source.spine===indexedSpine;
     const unchanged=()=>{if(!currentSource())throw new ReaderError('invalid_source');};
     const lifetime=new AbortController(),scope=abortScope([parent,lifetime.signal]),signal=scope.signal;
     let assets:Awaited<ReturnType<typeof openEpubArchive>>;
@@ -209,6 +213,93 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
           if(!query.trim()||query.length>1024||search.limit<1||search.limit>500)throw new ReaderError('limit_exceeded');
           const task=abortScope([signal,search.signal]),searchSignal=task.signal;let count=0;
           try {
+          if(indexedSearch&&spine&&spine.length>0){
+            let cursor:string|undefined, first=true, emitted=0, fallback=false, indexRevision:number|undefined, pages=0;
+            const seenCursors=new Set<string>(), seenHits=new Set<string>();
+            const sectionCache=new Map<number,{doc:Document;raw:NonNullable<ReturnType<typeof indexedRawText>>}>();let cachedBytes=0;
+            const deadline=Date.now()+indexedTimeLimit;
+            while(emitted<search.limit){
+              throwIfAborted(searchSignal);unchanged();
+              if(cursor!==undefined&&Date.now()>deadline)throw new ReaderError('limit_exceeded');
+              const requested=Math.min(indexedPageLimit,search.limit-emitted);
+              const page=await indexedSearch(query,{signal:searchSignal,limit:requested,...(cursor===undefined?{}:{cursor})});
+              throwIfAborted(searchSignal);unchanged();
+              if(page.sourceId!==id||page.sourceRevision!==revision)throw new ReaderError('invalid_source');
+              if(!Number.isSafeInteger(page.indexRevision)||page.indexRevision<0)throw new ReaderError('invalid_book');
+              if(indexRevision===undefined)indexRevision=page.indexRevision;else if(page.indexRevision!==indexRevision)throw new ReaderError('invalid_source');
+              if(!Array.isArray(page.hits)||page.hits.length>requested)throw new ReaderError('invalid_book');
+              const status=page.coverage?.status;
+              if(typeof status!=='string'||!['indexed','pending','unsupported','evicted','excluded'].includes(status))throw new ReaderError('invalid_book');
+              if(status!=='indexed'){
+                if(first&&emitted===0&&page.hits.length===0&&page.next===undefined){fallback=true;break;}
+                throw new ReaderError('invalid_book');
+              }
+              const groups=new Map<number,{path:string;hits:ReaderIndexedSearchHit[]}>();
+              for(const hit of page.hits){
+                if(!Number.isSafeInteger(hit.sectionIndex)||hit.sectionIndex<0||hit.sectionIndex>=spine.length)throw new ReaderError('invalid_book');
+                const path=spine[hit.sectionIndex]!;
+                if(hit.sectionPath!==path||b.sections[hit.sectionIndex]?.id!==path)throw new ReaderError('invalid_book');
+                if(!searchWellFormed(hit.excerpt)||hit.excerpt.length>8192||!Number.isSafeInteger(hit.utf16Offset)||hit.utf16Offset<0||hit.utf16Offset>indexedTextLimit
+                  ||!Number.isSafeInteger(hit.matchStart)||hit.matchStart<0||!Number.isSafeInteger(hit.matchLength)||hit.matchLength<1
+                  ||hit.matchStart+hit.matchLength>hit.excerpt.length)throw new ReaderError('invalid_book');
+                const key=`${hit.sectionIndex}\u0000${hit.utf16Offset}`;
+                if(seenHits.has(key))throw new ReaderError('invalid_book');
+                seenHits.add(key);
+                const group=groups.get(hit.sectionIndex)??{path,hits:[]};group.hits.push(hit);groups.set(hit.sectionIndex,group);
+              }
+              const cooperative=async()=>{await new Promise<void>(resolve=>setTimeout(resolve,0));throwIfAborted(searchSignal);};
+              for(const group of groups.values()){
+                throwIfAborted(searchSignal);unchanged();
+                await cooperative();
+                throwIfAborted(searchSignal);unchanged();
+                const sectionIndex=group.hits[0]!.sectionIndex;
+                // One per-group budget covers parse, walk and normalize, for both
+                // a cached section and a newly loaded one.
+                const sectionDeadline=Math.min(deadline,Date.now()+indexedSectionBudget);
+                let section=sectionCache.get(sectionIndex);
+                if(!section){
+                  const textSource=await loadText(group.path,searchSignal);throwIfAborted(searchSignal);unchanged();
+                  let doc:Document|null=null, raw:ReturnType<typeof indexedRawText>=null;
+                  if(textSource){doc=new DOMParser().parseFromString(textSource,'application/xhtml+xml');if(doc.querySelector('parsererror'))doc=null;}
+                  if(doc){try{raw=indexedRawText(doc,searchSignal,sectionDeadline);}catch(error){if(!(error instanceof ReaderError)||error.code==='aborted'||error.code==='closed')throw error;raw=null;}}
+                  if(doc&&raw){section={doc,raw};
+                    // Bounded per-query cache: at most 8 sections / 16 MiB of raw
+                    // text. Other sections are still parsed once for their page.
+                    if(sectionCache.size<8&&cachedBytes+raw.raw.length<=(16<<20)){sectionCache.set(sectionIndex,section);cachedBytes+=raw.raw.length;}
+                  }
+                }
+                const doc=section?.doc??null, raw=section?.raw??null;
+                let normalized:ReturnType<typeof indexedNormalize>=null;
+                if(raw){try{normalized=indexedNormalize(raw.raw,[...new Set(group.hits.map(hit=>hit.utf16Offset))],[...new Set(group.hits.map(hit=>hit.utf16Offset+hit.matchLength))],searchSignal,sectionDeadline);}catch(error){if(!(error instanceof ReaderError)||error.code==='aborted'||error.code==='closed')throw error;normalized=null;}}
+                for(const hit of group.hits){
+                  throwIfAborted(searchSignal);unchanged();
+                  const base={id:`indexed:${hit.sectionIndex}:${hit.utf16Offset}`,excerpt:hit.excerpt,match:Object.freeze({start:hit.matchStart,length:hit.matchLength})};
+                  let result:ReaderSearchResult=Object.freeze(base);
+                  if(doc&&raw&&normalized){
+                    try{
+                      const range=indexedRange(doc,raw,normalized,hit);
+                      if(range){
+                        const cfi=cfiAt(b,hit.sectionIndex,range);
+                        const chapter=chapterAt(b,hit.sectionIndex,range,tocBySection);
+                        const fraction=normalized.text.length?Math.max(0,Math.min(1,hit.utf16Offset/normalized.text.length)):0;
+                        const bookProgression=progression(b,hit.sectionIndex,fraction);
+                        result=Object.freeze({...base,...(chapter===undefined?{}:{chapter}),location:Object.freeze({format:'epub' as const,cfi,section:group.path,progression:bookProgression,...(chapter===undefined?{}:{chapter})})});
+                      }
+                    }catch(error){if(error instanceof ReaderError&&(error.code==='aborted'||error.code==='closed'))throw error;}
+                  }
+                  throwIfAborted(searchSignal);unchanged();
+                  yield result;emitted++;
+                  if(emitted>=search.limit)return;
+                }
+              }
+              if(emitted>=search.limit)return;
+              if(page.next===undefined)return;
+              if(typeof page.next!=='string'||!/^[A-Za-z0-9_-]{1,512}$/.test(page.next)||seenCursors.has(page.next))throw new ReaderError('invalid_book');
+              seenCursors.add(page.next);cursor=page.next;first=false;
+              if(++pages>indexedOverallLimit)throw new ReaderError('limit_exceeded');
+            }
+            if(!fallback)return;
+          }
           for(let index=0;index<b.sections.length;index++) {
             throwIfAborted(searchSignal);unchanged();
             // Search has its own read signal, so cancelling a query cancels its

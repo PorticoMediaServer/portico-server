@@ -9,7 +9,7 @@ import {validateLocation} from './controller.ts';
 /** Derived from the canonical captured facade. Native byte bridges implement
  * these same public callbacks; no HTTP client, token or URL enters an engine. */
 export type ReaderSessionInput=Pick<ReadingSession,'manifest'|'signal'|'headPDF'|'readRange'|'readAsset'|'page'> &
-  Partial<Pick<ReadingSession,'openSequential'>>;
+  Partial<Pick<ReadingSession,'openSequential'|'search'>>;
 export type ReadingPublication=Readonly<{
   format:ReaderFormat;source:ReaderSource;metadata:ReaderMetadata;signal:AbortSignal;
   comicPages?:(source:ReaderSource,signal:AbortSignal)=>Promise<ComicPageProvider>;
@@ -117,7 +117,21 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
       }});
     } else if(format==='epub') {
       const entries=Object.freeze((manifest.resources??[]).map(entry=>Object.freeze({...entry})));
-      source=Object.freeze({id,revision,size,contents,resources:Object.freeze({entries,async read(path:string,taskSignal:AbortSignal) {
+      const spine=Object.freeze([...(manifest.spine??[])]);
+      // The optional indexed port exists only for a native, non-converted EPUB
+      // with a captured spine and the retained session facade that owns search.
+      const indexed=manifest.conversion===undefined&&spine.length>0&&typeof session.search==='function';
+      const indexedSearch=indexed?async(query:string,options:Parameters<NonNullable<ReaderSource['indexedSearch']>>[1])=>{
+        const page=await run(options.signal,active=>session.search!(query,{limit:options.limit,...(options.cursor===undefined?{}:{cursor:options.cursor}),signal:active}));
+        if(!Number.isSafeInteger(page.indexRevision)||page.indexRevision<0)throw new ReaderError('invalid_book');
+        return Object.freeze({sourceId:page.sourceId,sourceRevision:page.sourceRevision,indexRevision:page.indexRevision,
+          coverage:Object.freeze({status:page.coverage.status,...(page.coverage.reason===undefined?{}:{reason:page.coverage.reason})}),
+          hits:Object.freeze(page.hits.map(hit=>Object.freeze({sectionPath:hit.sectionPath,sectionIndex:hit.sectionIndex,utf16Offset:hit.utf16Offset,excerpt:hit.excerpt,matchStart:hit.matchStart,matchLength:hit.matchLength}))),
+          ...(page.next===undefined?{}:{next:page.next})});
+      }:undefined;
+      source=Object.freeze({id,revision,size,contents,
+        ...(indexed?{spine,indexedSearch}:{}),
+        resources:Object.freeze({entries,async read(path:string,taskSignal:AbortSignal) {
         const entry=entries.find(entry=>entry.path===path);if(!entry)throw new ReaderError('invalid_source');
         return run(taskSignal,async active=>{const bytes=await session.readAsset(path,active);
           if(!(bytes instanceof Uint8Array)||bytes.length!==entry.size)throw new ReaderError('invalid_source');return bytes.slice();});
