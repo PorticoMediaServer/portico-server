@@ -484,6 +484,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/storage/sources/rclone/providers":           exempt(reasonAdmin),
 		"GET /v1/storage/sources/rclone/operations/{id}":     exempt(reasonAdmin),
 		"GET /v1/storage/sources/{id}/settings/read-profile": exempt(reasonAdmin),
+		"GET /v1/storage/sources/{id}/folders":               exempt("owner-only source configuration/read: Owner plus ScopeAdmin, storageOwner is checked before any folder listing and only the saved source's own folders are returned"),
+		"GET /v1/storage/sources/{id}/settings/advanced":     exempt("owner-only source configuration/read: Owner plus ScopeAdmin, storageOwner checked before the source's scan, cache and analysis settings are read"),
+		"GET /v1/storage/sources/{id}/status":                exempt("owner-only source status: Owner plus ScopeAdmin, storageOwner checked before the source's state, libraries and live read counts are read"),
 		"GET /v1/saved-pins/order":                           exempt("pin order: resource ids only, each read through the saved-resource routes probed below"),
 
 		// Streams.

@@ -539,10 +539,12 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			body := fmt.Sprintf(`{"operationId":"OP","expectedRevision":%d,"addItemIds":["ID"]}`, revision)
 			return perHidden("PUT", "/v1/saved-resources/"+m.savedResource+"/entries", body, "item").probes(m)
 		}),
-		"PUT /v1/saved-resources/{id}/order":  writeExempt(reasonOwnObject),
-		"PUT /v1/saved-resources/{id}/shares": writeExempt(reasonOwnObject),
-		"PUT /v1/shows/{id}/metadata/screen":  writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
-		"PUT /v1/storage/sources/webdav/{id}": writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
+		"PUT /v1/saved-resources/{id}/order":             writeExempt(reasonOwnObject),
+		"PUT /v1/saved-resources/{id}/shares":            writeExempt(reasonOwnObject),
+		"PUT /v1/shows/{id}/metadata/screen":             writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
+		"PUT /v1/storage/sources/webdav/{id}":            writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
+		"PUT /v1/storage/sources/{id}/settings/advanced": writeExempt("owner-only storage configuration; no member catalogue mutation (Owner plus ScopeAdmin, captured source association rechecked in the accepting writer)"),
+		"PUT /v1/storage/sources/{id}/settings/program":  writeExempt("owner-only storage configuration; no member catalogue mutation (Owner plus ScopeAdmin, mount receipt and source association rechecked in the accepting writer)"),
 
 		"PUT /v1/storage/sources/{id}/settings/read-profile": {check: TestSourceReadSettingsHTTPUsesCurrentOwnerCASAndDurableReceipt},
 
