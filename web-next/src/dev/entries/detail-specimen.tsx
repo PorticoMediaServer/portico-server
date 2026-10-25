@@ -1,4 +1,4 @@
-import {detailFixtureText as fixtureText} from '../../../../packages/i18n/src/catalog/en-US/next/dev/detail-fixtures.ts';
+import {detailFixtureText as fixtureText, type DetailFixtureId} from '../../../../packages/i18n/src/catalog/en-US/next/dev/detail-fixtures.ts';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
@@ -13,15 +13,16 @@ import type {AmbientArtSource, ArtworkSource} from '../../kit/artwork/types';
  * commands the screen issues. It is imported by the DEV entry alone, which fails closed outside
  * the development server.
  *
- * Facts and copy come from `design/ui-v1/desktop-detail.html` frame 1 and
- * `design/ui-v1/notes/detail-desktop.md`: Dune: Part Two, not started, More like this, the two
- * drawn recommendation rows and the 16 drawn catalogue cards.
+ * Facts and copy come from `design/ui-v1/desktop-detail.html` and
+ * `design/ui-v1/notes/detail-desktop.md`: frame 1 (Dune: Part Two, not started, More like this),
+ * frame 2 (Inside Out, nine per cent in, Resume and Start over) and frame 3 (Dune: Part Two,
+ * Details, cast and crew, its collection banner).
  */
 export type SpecimenEvent = Readonly<{kind: string; at: number; value?: unknown}>;
+export type SpecimenFrame = '1' | '2' | '3';
 
 const serverId = 'specimen-server';
 const libraryId = 'movies';
-const itemId = 'dune-part-two';
 const viewerFence = 'specimen-viewer-fence';
 const personalFence = JSON.stringify(['local', 'specimen-account', 'demo']);
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl+0AAAAASUVORK5CYII=';
@@ -35,7 +36,7 @@ const posterRow = (items: readonly (readonly [string, number])[]) => items.map((
   } as const;
 });
 
-const moreLike = posterRow([
+const moreLikeDune = posterRow([
   [fixtureText('next.detail.fixture.dune'), 2021], [fixtureText('next.detail.fixture.bladeRunner'), 1982], [fixtureText('next.detail.fixture.interstellar'), 2014], [fixtureText('next.detail.fixture.starWars'), 1977],
   [fixtureText('next.detail.fixture.avatar'), 2009], [fixtureText('next.detail.fixture.empire'), 1980], [fixtureText('next.detail.fixture.matrix'), 1999], [fixtureText('next.detail.fixture.gladiator'), 2000],
 ]);
@@ -43,102 +44,83 @@ const viewersAlso = posterRow([
   [fixtureText('next.detail.fixture.oppenheimer'), 2023], [fixtureText('next.detail.fixture.inception'), 2010], [fixtureText('next.detail.fixture.darkKnight'), 2008], [fixtureText('next.detail.fixture.barbie'), 2023],
   [fixtureText('next.detail.fixture.spiderVerse'), 2023], [fixtureText('next.detail.fixture.fightClub'), 1999], [fixtureText('next.detail.fixture.alien'), 1979], [fixtureText('next.detail.fixture.hailMary'), 2026],
 ]);
+const moreLikeInsideOut = posterRow([
+  [fixtureText('next.detail.fixture.toyStory'), 1995], [fixtureText('next.detail.fixture.monsters'), 2001], [fixtureText('next.detail.fixture.wallE'), 2008], [fixtureText('next.detail.fixture.incredibles'), 2004],
+  [fixtureText('next.detail.fixture.spiritedAway'), 2001], [fixtureText('next.detail.fixture.yourName'), 2016], [fixtureText('next.detail.fixture.dragon'), 2010], [fixtureText('next.detail.fixture.toyStory3'), 2010],
+]);
 
-const credits = [
-  {id: 'denis-villeneuve', name: fixtureText('next.detail.fixture.director'), role: fixtureText('next.detail.fixture.directorRole'), department: fixtureText('next.detail.fixture.directingDepartment'), provider: 'specimen'},
-  {id: 'timothee-chalamet', name: fixtureText('next.detail.fixture.timothee'), role: fixtureText('next.detail.fixture.paulRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
-  {id: 'zendaya', name: fixtureText('next.detail.fixture.zendaya'), role: fixtureText('next.detail.fixture.chaniRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
-  {id: 'rebecca-ferguson', name: fixtureText('next.detail.fixture.rebecca'), role: fixtureText('next.detail.fixture.jessicaRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
-  {id: 'javier-bardem', name: fixtureText('next.detail.fixture.javier'), role: fixtureText('next.detail.fixture.stilgarRole'), department: fixtureText('next.detail.fixture.actingDepartment'), provider: 'specimen'},
-  {id: 'jon-spaihts', name: fixtureText('next.detail.fixture.jon'), role: fixtureText('next.detail.fixture.screenplayRole'), department: fixtureText('next.detail.fixture.writingDepartment'), provider: 'specimen'},
-] as const;
+type FixtureCredit = Readonly<{id: string; name: string; role: string; department: string; provider: string}>;
+const credit = (id: string, name: DetailFixtureId, role: DetailFixtureId, department: DetailFixtureId): FixtureCredit => ({id, name: fixtureText(name), role: fixtureText(role), department: fixtureText(department), provider: 'specimen'});
 
-const overview = fixtureText('next.detail.fixture.overview');
+const directing: DetailFixtureId = 'next.detail.fixture.directingDepartment';
+const acting: DetailFixtureId = 'next.detail.fixture.actingDepartment';
+const writing: DetailFixtureId = 'next.detail.fixture.writingDepartment';
+
+const duneCredits: readonly FixtureCredit[] = [
+  credit('denis-villeneuve', 'next.detail.fixture.director', 'next.detail.fixture.directorRole', directing),
+  credit('timothee-chalamet', 'next.detail.fixture.timothee', 'next.detail.fixture.paulRole', acting),
+  credit('zendaya', 'next.detail.fixture.zendaya', 'next.detail.fixture.chaniRole', acting),
+  credit('rebecca-ferguson', 'next.detail.fixture.rebecca', 'next.detail.fixture.jessicaRole', acting),
+  credit('javier-bardem', 'next.detail.fixture.javier', 'next.detail.fixture.stilgarRole', acting),
+  credit('josh-brolin', 'next.detail.fixture.brolin', 'next.detail.fixture.gurneyRole', acting),
+  credit('austin-butler', 'next.detail.fixture.butler', 'next.detail.fixture.feydRole', acting),
+  credit('jon-spaihts', 'next.detail.fixture.jon', 'next.detail.fixture.screenplayRole', writing),
+  credit('frank-herbert', 'next.detail.fixture.herbert', 'next.detail.fixture.novelRole', writing),
+  credit('hans-zimmer', 'next.detail.fixture.zimmer', 'next.detail.fixture.musicRole', 'next.detail.fixture.musicRole'),
+  credit('greig-fraser', 'next.detail.fixture.fraser', 'next.detail.fixture.cinematographyRole', 'next.detail.fixture.cinematographyRole'),
+];
+const insideOutCredits: readonly FixtureCredit[] = [
+  credit('pete-docter', 'next.detail.fixture.docter', 'next.detail.fixture.directorRole', directing),
+  credit('amy-poehler', 'next.detail.fixture.poehler', 'next.detail.fixture.joyRole', acting),
+  credit('phyllis-smith', 'next.detail.fixture.phyllis', 'next.detail.fixture.sadnessRole', acting),
+  credit('richard-kind', 'next.detail.fixture.richard', 'next.detail.fixture.bingRole', acting),
+  credit('bill-hader', 'next.detail.fixture.hader', 'next.detail.fixture.fearRole', acting),
+  credit('meg-lefauve', 'next.detail.fixture.leFauve', 'next.detail.fixture.screenplayRole', writing),
+  credit('josh-cooley', 'next.detail.fixture.cooley', 'next.detail.fixture.screenplayRole', writing),
+];
 
 function basePersonal() {
-  return {watchlisted: false, favorite: false, rating: null, revision: 1, watched: false, progressMs: 0, lastPlayedAt: '', status: 'current', conflicts: [] as unknown[]};
+  return {watchlisted: false, favorite: false, rating: null as number | null, revision: 1, watched: false, progressMs: 0, lastPlayedAt: '', status: 'current', conflicts: [] as unknown[]};
 }
 
 const metric = {catalog: 1, viewer: 1};
 
-function detailDocument(personal: ReturnType<typeof basePersonal>) {
+function fixtures(frame: SpecimenFrame) {
+  if (frame === '2') {
+    const itemId = 'inside-out';
+    return {
+      itemId, title: fixtureText('next.detail.fixture.insideOut'), year: 2015, durationMs: 5_700_000, progressMs: 513_000,
+      overview: fixtureText('next.detail.fixture.insideOutOverview'), rating: fixtureText('next.detail.fixture.rating'), tagline: fixtureText('next.detail.fixture.insideOutTagline'),
+      releaseDate: '2015-06-19', studio: fixtureText('next.detail.fixture.pixar'), country: fixtureText('next.detail.fixture.country'),
+      genres: [['animation', 'next.detail.fixture.animation'], ['family', 'next.detail.fixture.family']] as const,
+      credits: insideOutCredits, creditTotals: {cast: 4, crew: 24}, audio: ['en'], subtitles: ['en'],
+      rows: [{id: 'more-like', title: fixtureText('next.detail.fixture.moreLikeInsideOut'), entries: moreLikeInsideOut}],
+    } as const;
+  }
+  const itemId = 'dune-part-two';
   return {
-    scope: {serverId, libraryId, itemId, viewerFence},
-    revision: {...metric},
-    item: {
-      id: itemId, libraryId, kind: 'movie', title: fixtureText('next.detail.fixture.title'), year: 2024, durationMs: 9_960_000,
-      progressMs: 0, available: true, addedAt: '2026-10-17T00:00:00Z', overview,
-      posterUrl: artPath('poster', itemId), backdropUrl: artPath('backdrop', itemId),
-    },
-    personal: {...personal},
-    actions: [
-      {id: 'play', labelKey: 'entry.play', enabled: true, playback: {itemId, startMs: 0}},
-      {id: 'watchlist', labelKey: 'entry.addToWatchlist', enabled: true},
-      {id: 'watched', labelKey: 'entry.markWatched', enabled: true},
-      {id: 'favorite', labelKey: 'entry.addToFavorites', enabled: true},
-    ],
-    facts: {
-      contentRating: fixtureText('next.detail.fixture.rating'), tagline: fixtureText('next.detail.fixture.tagline'), releaseDate: '2024-02-27',
-      studio: fixtureText('next.detail.fixture.studio'), country: fixtureText('next.detail.fixture.country'), originalLanguage: 'en',
-    },
-    metadata: {
-      status: 'available', ratings: [], attributions: [],
-      genres: [
-        {id: 'science-fiction', name: fixtureText('next.detail.fixture.scienceFiction'), provider: 'specimen'},
-        {id: 'adventure', name: fixtureText('next.detail.fixture.adventure'), provider: 'specimen'},
-      ],
-      credits: [...credits], creditTotals: {cast: 4, crew: 2},
-    },
-    languages: {audio: ['en'], subtitles: ['en']},
-    collections: [{id: 'dune-collection', name: fixtureText('next.detail.fixture.collection'), memberCount: 2, position: 0, posterUrls: []}],
-    markers: [],
-  };
+    itemId, title: fixtureText('next.detail.fixture.title'), year: 2024, durationMs: 9_960_000, progressMs: 0,
+    overview: fixtureText('next.detail.fixture.overview'), rating: fixtureText('next.detail.fixture.rating'), tagline: fixtureText('next.detail.fixture.tagline'),
+    releaseDate: '2024-03-01', studio: fixtureText('next.detail.fixture.studio'),
+    genres: [['science-fiction', 'next.detail.fixture.scienceFiction'], ['adventure', 'next.detail.fixture.adventure']] as const,
+    credits: duneCredits, creditTotals: frame === '3' ? {cast: 40, crew: 24} : {cast: 4, crew: 2},
+    audio: frame === '3' ? ['en', 'fr', 'es'] : ['en'], subtitles: frame === '3' ? ['en', 'fr', 'es'] : ['en'],
+    rows: [{id: 'more-like', title: fixtureText('next.detail.fixture.moreLike'), entries: moreLikeDune},
+      {id: 'viewers-also-watched', title: fixtureText('next.detail.fixture.viewersAlso'), entries: viewersAlso, note: {code: 'specimen.viewersAlsoWatchedNote', fallback: fixtureText('next.detail.fixture.viewersNote')}}],
+  } as const;
 }
 
-function recommendationRow(id: string, title: string, entries: readonly unknown[], subtitleText?: {code: string; fallback: string}) {
-  return {
-    id, viewerFence, title, kind: 'recommendations', artworkShape: 'poster', endpoint: 'item-recommendations',
-    privacySensitivity: 'public', policyState: 'current', priority: id === 'more-like' ? 1 : 2, required: false,
-    hideable: true, reorderable: false, critical: false, cursorCapable: false, titleText: {code: `specimen.${id}`, fallback: title},
-    ...(subtitleText ? {subtitleText} : {}), entries, total: entries.length, start: 0, limit: entries.length,
-    hasMore: false, nextCursor: '', revision: {...metric},
-  };
-}
-
-function recommendationsDocument() {
-  return {
-    itemId, revision: {...metric},
-    rows: [
-      recommendationRow('more-like', fixtureText('next.detail.fixture.moreLike'), moreLike),
-      recommendationRow('viewers-also-watched', fixtureText('next.detail.fixture.viewersAlso'), viewersAlso,
-        {code: 'specimen.viewersAlsoWatchedNote', fallback: fixtureText('next.detail.fixture.viewersNote')}),
-    ],
-  };
-}
-
-function activityDocument(now: string) {
-  const session = (id: string) => ({
-    id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: fixtureText('next.detail.fixture.profile')},
-    device: {id: 'specimen-device', name: fixtureText('next.detail.fixture.device')}, kind: 'vod', state: 'playing', startedAt: now,
-    problem: false, converting: false, positionMs: 60_000, decision: {},
-  });
-  return {
-    scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: fixtureText('next.detail.fixture.server'),
-    streams: {count: 2, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: [session('stream-1'), session('stream-2')]},
-    scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''},
-    health: {degraded: false}, majorIssues: [],
-  };
-}
-
-export function createDetailSpecimen() {
+export function createDetailSpecimen(frame: SpecimenFrame = '1') {
   const records: SpecimenEvent[] = [];
   const record = (kind: string, value?: unknown): void => {
     records.push(Object.freeze({kind, at: Date.now(), ...(value === undefined ? {} : {value})}));
   };
-  let personal = basePersonal();
-  const detail = () => detailDocument(personal);
-  const item = () => ({id: itemId, libraryId, kind: 'movie', title: fixtureText('next.detail.fixture.title'), available: true, durationMs: 9_960_000, progressMs: 0});
-  const recommendations = () => recommendationsDocument();
+  const facts = fixtures(frame), {itemId} = facts;
+  const progressMs = frame === '2' ? facts.progressMs : 0;
+  let personal = {...basePersonal(), progressMs};
+  const detail = () => detailDocument(facts, personal);
+  const item = () => ({id: itemId, libraryId, kind: 'movie', title: facts.title, available: true, durationMs: facts.durationMs, progressMs: frame === '2' ? facts.progressMs : 0});
+  const recommendations = () => ({itemId, revision: {...metric}, rows: facts.rows.map((row, index) => recommendationRow(index, row))});
 
   const request = async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
     const route = path.split('?')[0];
@@ -153,9 +135,10 @@ export function createDetailSpecimen() {
         ...(typeof intent.watchlisted === 'boolean' ? {watchlisted: intent.watchlisted} : {}),
         ...(typeof intent.favorite === 'boolean' ? {favorite: intent.favorite} : {}),
         ...(typeof intent.watched === 'boolean' ? {watched: intent.watched} : {}),
+        ...(typeof intent.rating === 'number' || intent.rating === null ? {rating: intent.rating as number | null} : {}),
         revision: personal.revision + 1,
       };
-      record('personal-state', {watchlisted: personal.watchlisted, favorite: personal.favorite, watched: personal.watched});
+      record('personal-state', {watchlisted: personal.watchlisted, favorite: personal.favorite, watched: personal.watched, rating: personal.rating});
       return {operationId: intent.operationId, serverId, libraryId, itemId, viewerFence, current: {...personal}} as T;
     }
     throw Object.assign(new Error(`The detail specimen has no answer for ${method} ${route}.`), {code: 'not_found', status: 404});
@@ -203,6 +186,65 @@ export function createDetailSpecimen() {
     api, events, artwork, preferences, subscribePreferences,
     identity: {serverId, viewerId: personalFence}, detail, recommendations,
   });
+}
+
+type DetailsFixture = ReturnType<typeof fixtures>;
+function detailDocument(facts: DetailsFixture, personal: ReturnType<typeof basePersonal>) {
+  const {itemId} = facts;
+  return {
+    scope: {serverId, libraryId, itemId, viewerFence},
+    revision: {...metric},
+    item: {
+      id: itemId, libraryId, kind: 'movie', title: facts.title, year: facts.year, durationMs: facts.durationMs,
+      progressMs: facts.progressMs, available: true, addedAt: '2026-10-17T00:00:00Z', overview: facts.overview,
+      posterUrl: artPath('poster', itemId), backdropUrl: artPath('backdrop', itemId),
+    },
+    personal: {...personal},
+    actions: [
+      {id: 'play', labelKey: 'entry.play', enabled: true, playback: {itemId, startMs: facts.progressMs}},
+      ...(facts.progressMs > 0 ? [{id: 'start_over', labelKey: 'entry.startOver', enabled: true, playback: {itemId, startMs: 0}}] : []),
+      {id: 'watchlist', labelKey: 'entry.addToWatchlist', enabled: true},
+      {id: 'watched', labelKey: 'entry.markWatched', enabled: true},
+      {id: 'favorite', labelKey: 'entry.addToFavorites', enabled: true},
+      {id: 'rating', labelKey: 'entry.rate', enabled: true},
+    ],
+    facts: {
+      contentRating: facts.rating, tagline: facts.tagline, releaseDate: facts.releaseDate,
+      studio: facts.studio, ...('country' in facts ? {country: facts.country} : {}), originalLanguage: 'en',
+    },
+    metadata: {
+      status: 'available', ratings: facts.itemId === 'inside-out' ? [{provider: 'TMDB', value: 8.1, max: 10, votes: 24810, sourceUrl: 'https://www.themoviedb.org/movie/150540', observedAt: '2026-10-17T00:00:00Z'}] : [], attributions: [],
+      genres: facts.genres.map(([id, name]) => ({id, name: fixtureText(name), provider: 'specimen'})),
+      credits: [...facts.credits], creditTotals: facts.creditTotals,
+    },
+    languages: {audio: [...facts.audio], subtitles: [...facts.subtitles]},
+    ...(facts.itemId === 'dune-part-two' ? {collections: [{id: 'dune-collection', name: fixtureText('next.detail.fixture.collection'), memberCount: 2, position: 2, yearFrom: 2021, yearTo: 2024, posterUrls: ['/specimen/poster/dune', '/specimen/poster/dune-part-two']}]} : {}),
+    markers: [],
+  };
+}
+
+function recommendationRow(index: number, row: DetailsFixture['rows'][number]) {
+  return {
+    id: row.id, viewerFence, title: row.title, kind: 'recommendations', artworkShape: 'poster', endpoint: 'item-recommendations',
+    privacySensitivity: 'public', policyState: 'current', priority: index + 1, required: false,
+    hideable: true, reorderable: false, critical: false, cursorCapable: false, titleText: {code: `specimen.${row.id}`, fallback: row.title},
+    ...('note' in row && row.note ? {subtitleText: row.note} : {}), entries: row.entries, total: row.entries.length, start: 0, limit: row.entries.length,
+    hasMore: false, nextCursor: '', revision: {...metric},
+  };
+}
+
+function activityDocument(now: string) {
+  const session = (id: string) => ({
+    id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: fixtureText('next.detail.fixture.profile')},
+    device: {id: 'specimen-device', name: fixtureText('next.detail.fixture.device')}, kind: 'vod', state: 'playing', startedAt: now,
+    problem: false, converting: false, positionMs: 60_000, decision: {},
+  });
+  return {
+    scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: fixtureText('next.detail.fixture.server'),
+    streams: {count: 2, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: [session('stream-1'), session('stream-2')]},
+    scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''},
+    health: {degraded: false}, majorIssues: [],
+  };
 }
 
 export type DetailSpecimen = ReturnType<typeof createDetailSpecimen>;

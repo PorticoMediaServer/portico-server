@@ -33,6 +33,12 @@ func (s *Service) showWorkspaceOnce(r ShowWorkspaceRequest) (ShowWorkspace, erro
 	if _, _, err := episodePlayStateSQL(r.Profile, r.PlayState); err != nil {
 		return out, err
 	}
+	if r.EpisodeDirection == "" {
+		r.EpisodeDirection = "asc"
+	}
+	if r.EpisodeDirection != "asc" && r.EpisodeDirection != "desc" {
+		return out, ErrShowContext
+	}
 	if r.Limit == 0 {
 		r.Limit = 40
 	}

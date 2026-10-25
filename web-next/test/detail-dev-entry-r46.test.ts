@@ -46,6 +46,41 @@ test('the public specimen parses through the real detail service at the drawn fr
   service.dispose();
 });
 
+test('the drawn frame-2 state carries Inside Out nine per cent in with a real resume action', async () => {
+  const specimen = createDetailSpecimen('2');
+  const service = new DetailService({api: specimen.api, scope: {serverId: specimen.serverId, viewerId: specimen.personalFence},
+    requestId: async () => crypto.randomUUID()});
+  await service.select({libraryId: 'movies', itemId: 'inside-out'});
+  const snapshot = service.getSnapshot();
+  assert.equal(snapshot.phase, 'ready');
+  const data = snapshot.data!;
+  assert.equal(data.item.title, 'Inside Out');
+  assert.equal(data.item.duration, 5_700);
+  assert.equal(data.item.progressSeconds, 513);
+  assert.equal(data.actions.find(action => action.id === 'play')?.playback?.startSeconds, 513);
+  assert.ok(data.actions.some(action => action.id === 'start_over' && action.enabled));
+  assert.ok(data.actions.some(action => action.id === 'rating' && action.enabled));
+  assert.equal(data.collections, undefined);
+  assert.deepEqual(data.metadata.genres.map(genre => genre.name), ['Animation', 'Family']);
+  service.dispose();
+});
+
+test('the drawn frame-3 state carries the collection year bounds, position and full cast total', async () => {
+  const specimen = createDetailSpecimen('3');
+  const service = new DetailService({api: specimen.api, scope: {serverId: specimen.serverId, viewerId: specimen.personalFence},
+    requestId: async () => crypto.randomUUID()});
+  await service.select({libraryId: 'movies', itemId: 'dune-part-two'});
+  const data = service.getSnapshot().data!;
+  assert.equal(data.item.progressSeconds, 0);
+  assert.equal(data.collections?.[0]?.memberCount, 2);
+  assert.equal(data.collections?.[0]?.position, 2);
+  assert.equal(data.collections?.[0]?.yearFrom, 2021);
+  assert.equal(data.collections?.[0]?.yearTo, 2024);
+  assert.deepEqual(data.metadata.creditTotals, {cast: 40, crew: 24});
+  assert.deepEqual(data.languages, {audio: ['en', 'fr', 'es'], subtitles: ['en', 'fr', 'es']});
+  service.dispose();
+});
+
 test('the two drawn recommendation rows keep their catalogue cards and row subtitle facts', async () => {
   const specimen = createDetailSpecimen();
   const value = validateItemRecommendations(await specimen.api.request<unknown>('/v1/items/dune-part-two/recommendations?limit=12'), 'dune-part-two');
@@ -68,7 +103,7 @@ test('the drawn My List press is a real personal-state command with a canonical 
   assert.equal(data.personal.watchlisted, true);
   assert.equal(data.personal.revision, 2);
   const receipt = specimen.records.find(event => event.kind === 'personal-state');
-  assert.deepEqual(receipt?.value, {watchlisted: true, favorite: false, watched: false});
+  assert.deepEqual(receipt?.value, {watchlisted: true, favorite: false, watched: false, rating: null});
   assert.equal(specimen.records.some(event => event.kind === 'request' && (event.value as {method?: string}).method === 'PUT'), true);
   service.dispose();
 });
@@ -80,7 +115,7 @@ test('the entry loads the registered production route through genuine providers 
   assert.match(entry, /<WebScreenProvider value=\{\{binding, context\}\}>/);
   assert.match(entry, /<ShellBindingsProvider value=\{binding\}>/);
   assert.match(entry, /<RouterProvider router=\{router\} \/>/);
-  assert.match(entry, /import \{createDetailSpecimen\} from '\.\/detail-specimen'/);
+  assert.match(entry, /import \{createDetailSpecimen, type SpecimenFrame\} from '\.\/detail-specimen'/);
   assert.match(html, /<script type="module" src="\.\/detail\.tsx"><\/script>/);
   assert.doesNotMatch(entry, /accounts\.html|ActivityReference/);
 });

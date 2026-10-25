@@ -40,4 +40,4 @@ function ItemRouteScreen() {
   const {itemId} = useParams({from: '/item/$itemId'});
   return captured ? <BoundItem key={itemId} captured={captured} itemId={itemId}/> : null;
 }
-export default defineWebScreen({id: 'item', component: ItemRouteScreen});
+export default defineWebScreen({id: 'item', component: ItemRouteScreen, phoneChrome: 'standalone'});

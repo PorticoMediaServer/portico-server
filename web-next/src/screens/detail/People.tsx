@@ -2,7 +2,9 @@ import {Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore} fr
 import type {DetailCredit, DetailProjection} from '@core/detail.ts';
 import {PersonCircle} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
+import {Icon} from '../../kit/Icon';
 import {Dialog} from '../../kit/overlays';
+import {useShellWidth} from '../../shell/viewport';
 import type {DetailBindings} from './bindings';
 import {t, locale} from './text';
 import styles from './detail.module.css';
@@ -30,18 +32,19 @@ export function CreditNames({binding, data, credits}: {binding: DetailBindings; 
   })}</>;
 }
 /** A controlled translation slot keeps the exact catalogue sentence around its live links. */
-export function CreditLine({message, ...props}: {message: 'title.directedBy' | 'title.starring'; binding: DetailBindings; data: DetailProjection; credits: readonly DetailCredit[]}) {
+export function CreditLine({message, ...props}: {message: 'title.directedBy' | 'title.writtenBy' | 'title.starring'; binding: DetailBindings; data: DetailProjection; credits: readonly DetailCredit[]}) {
   const [before, after] = t(message, {names: '\uFFF0'}).split('\uFFF0');
   return <span>{before}<CreditNames {...props} />{after}</span>;
 }
 export function TitlePeople({binding, data, episode = false}: {binding: DetailBindings; data: DetailProjection; episode?: boolean}) {
+  const phone = useShellWidth() < 1024;
   const [open, setOpen] = useState(false), trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => setOpen(false), [data]);
   const cast = data.metadata.credits.filter(castCredit), crew = data.metadata.credits.filter(credit => !castCredit(credit));
   const totals = data.metadata.creditTotals, total = totals ? totals.cast + totals.crew : undefined;
   const rendered = Math.min(6, cast.length) + Math.min(6, crew.length);
   return <div className={styles.creditGroups} data-episode={episode || undefined}>
-    {!episode && <header className={styles.peopleHeader}><h2>{t('title.allPeople')}</h2>{total !== undefined && total > rendered && <Button ref={trigger} variant="text" size="small" icon="i-right" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); setOpen(true); })}>{t('shelf.seeAllCount', {count: total})}</Button>}</header>}
+    {!episode && <header className={styles.peopleHeader}><h2>{phone ? t('next.detail.castCrew') : t('title.allPeople')}</h2>{total !== undefined && total > rendered && <button ref={trigger} type="button" className={styles.peopleAll} onClick={() => runScreenCommand(binding.context, () => { binding.current(data); setOpen(true); })}>{phone ? t('shelf.seeAll') : t('shelf.seeAllCount', {count: total})}<Icon name="i-right" size={16} /></button>}</header>}
     {([['cast', cast], ['crew', crew]] as const).map(([kind, credits]) => {
       if (!credits.length) return null;
       return <section key={kind}>{episode && <header className={styles.peopleHeader}><h2>{t(kind === 'cast' ? 'title.cast' : 'title.crew')}</h2>
