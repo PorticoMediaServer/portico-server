@@ -34,7 +34,7 @@ export class LiveSourceController extends OwnerStore<SourceSnapshot> {
     if (!this.isActive() || this.snapshot.busy) return false;
     const stored = this.snapshot.document?.sources.find(row => row.id === source.id && row.revision === source.revision);
     if (!stored) return false;
-    if (action === 'refresh' && (!canRefreshSource(stored, this.snapshot.document!.refresh) || this.snapshot.document!.refresh.some(row => row.sourceId === stored.id && row.state === 'refreshing'))) return false;
+    if (action === 'refresh' && (stored.acquisition === 'upload' || !canRefreshSource(stored, this.snapshot.document!.refresh) || this.snapshot.document!.refresh.some(row => row.sourceId === stored.id && row.state === 'refreshing'))) return false;
     const key = JSON.stringify([stored.id, stored.revision, action, stored.state]);
     let body = this.operations.get(key);
     if (!body && this.operations.size >= 256) return false;
