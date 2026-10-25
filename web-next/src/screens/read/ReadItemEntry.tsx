@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type CSSProperties} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import {createReadingPublication, type ReaderContentsTarget} from '@portico/reader-core';
@@ -19,6 +19,7 @@ import {readDestination, type ReadItemEligibility} from './navigation';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
+type ManifestFactLease = {context: Captured['context']; manifest: ReadingManifest; sourceId: string; live: boolean};
 const {t} = defaultI18n;
 /** The primary Item registration supplies a genuine Reading resource result. */
 export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibility: ReadItemEligibility}) {
@@ -34,6 +35,17 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
   const [detail, setDetail] = useState<Readonly<{manifest?: ReadingManifest; progress?: ReadingProgress; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
   const publicationReady = useRef(false);
+  const [factLease, setFactLease] = useState<ManifestFactLease>();
+  const factLeaseRef = useRef<ManifestFactLease>();
+  const factsRender = useRef({context: captured.context, manifest: detail.manifest, sourceId});
+  factsRender.current = {context: captured.context, manifest: detail.manifest, sourceId};
+  useLayoutEffect(() => {
+    const manifest = detail.manifest;
+    if (!manifest || sourceId !== manifest.sourceId) {setFactLease(undefined); return;}
+    const lease: ManifestFactLease = {context: captured.context, manifest, sourceId, live: true};
+    factLeaseRef.current = lease; setFactLease(lease);
+    return () => {lease.live = false; if (factLeaseRef.current === lease) factLeaseRef.current = undefined;};
+  }, [captured.context, detail.manifest, sourceId]);
   const captureTarget = useRef<((index: number) => ReaderContentsTarget) | undefined>(undefined);
   const anchor = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -59,6 +71,16 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const manifest = detail.manifest, version = eligibility.versions.find(version => version.sourceId === sourceId);
   if (!manifest || !version || manifest.sourceId !== sourceId) return <Skeleton height={480}/>;
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
+  const metadata = manifest.metadata, series = metadata.series;
+  const factsCurrent = () => factLease?.live === true && factLeaseRef.current === factLease && factLease.manifest === manifest
+    && factsRender.current.manifest === manifest && factsRender.current.sourceId === sourceId && factsRender.current.context === captured.context
+    && publicationReady.current && captured.context.isCurrent();
+  const seriesPresentation = series ? {label: series.number === undefined ? series.name : t('next.reader.seriesPosition', {series: series.name, number: defaultI18n.number(series.number)}), onOpen: () => {
+    if (!factsCurrent()) return;
+    const publicationType = metadata.publicationType?.value;
+    void router.navigate({to: '/library/$libraryId', params: {libraryId: series.libraryId}, search: {view: 'series', entityId: series.id,
+      ...(publicationType === 'magazine' ? {pivot: 'magazines'} : publicationType === 'newspaper' ? {pivot: 'newspapers'} : {})}}).catch(error => {if (factsCurrent()) errorSink.current(error);});
+  }} : undefined;
   const tint = generatedCoverTint(title);
   const saved = detail.progress?.progress;
   const progression = saved && !saved.stale && saved.sourceId === manifest.sourceId && saved.sourceRevision === manifest.revision && saved.location.format === manifest.format ? saved.location.progression : undefined;
@@ -80,11 +102,16 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const details = <ReadBookFacts heading={t('next.reader.details')} facts={[
     ...(author ? [{id: 'author', label: t('filter.field.author'), value: author}] : []),
     ...(manifest.metadata.language ? [{id: 'language', label: t('next.selection.language'), value: manifest.metadata.language}] : []),
+    ...(metadata.wordCount !== undefined ? [{id: 'words', label: t('next.reader.wordsLabel'), value: defaultI18n.number(metadata.wordCount)}] : []),
     ...(manifest.format === 'cbz' && manifest.pageNames?.length ? [{id: 'pages', label: t('next.reader.pagesStrip'), value: defaultI18n.number(manifest.pageNames.length)}] : []),
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
-  return <><ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} facts={[]}
+  return <><ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
+      ...(metadata.wordCount !== undefined ? [{id: 'words', text: t('next.reader.wordCount', {count: metadata.wordCount}), role: 'context' as const}] : []),
+      ...(metadata.pageCount !== undefined ? [{id: 'pages', text: t('next.reader.pageCount', {count: metadata.pageCount}), role: 'context' as const}] : []),
+      ...(metadata.estimatedSeconds !== undefined && metadata.estimatedSeconds > 0 ? [{id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(metadata.estimatedSeconds)}), role: 'context' as const}] : []),
+    ]} opening={metadata.openingLines ? {label: t('next.reader.openingLines'), text: metadata.openingLines} : undefined}
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
     actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
       : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}
