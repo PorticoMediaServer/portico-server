@@ -140,7 +140,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
     else if (entry.kind === 'book') navigate({view: 'book', entityId: entry.entityId});
     else if (entry.entityId) navigate({view: 'browse', entityId: entry.entityId});
   };
-  return <>{unmatched ? <NeedsAttention libraryId={library.id} api={resources.life.api} onOpen={openAttention}/>
+  return <>{unmatched ? <NeedsAttention libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention}/>
     : view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}

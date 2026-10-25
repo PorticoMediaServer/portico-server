@@ -17,7 +17,7 @@ const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
  * why, up to three closest matches, and only the actions the server names for it. The list is
  * the library's own; the server stays the authority on what each row offers.
  */
-export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api: Api; onOpen?: (entry: AttentionEntry) => void}) {
+export function NeedsAttention({libraryId, libraryName, api, onOpen}: {libraryId: string; libraryName?: string; api: Api; onOpen?: (entry: AttentionEntry) => void}) {
   const service = useMemo(() => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId), [api, libraryId]);
   const [page, setPage] = useState<AttentionPage>(), [cursors, setCursors] = useState<readonly string[]>([]), [cursor, setCursor] = useState('');
   const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>();
@@ -25,6 +25,7 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
   const [searching, setSearching] = useState<AttentionEntry>(), [identifying, setIdentifying] = useState<AttentionEntry>();
   const [query, setQuery] = useState(''), [typed, setTyped] = useState(''), [provider, setProvider] = useState<(typeof PROVIDERS)[number]>('tmdb');
   const generation = useRef(0);
+  const searchInput = useRef<HTMLInputElement>(null), idInput = useRef<HTMLInputElement>(null);
   const load = useCallback(async (next: string) => {
     const current = ++generation.current;
     setLoading(true); setError(undefined);
@@ -67,24 +68,24 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
       onKeep={() => void send(entry, {action: 'dismiss'}, t('metadata.attention.kept'))}
       onOpen={onOpen ? () => onOpen(entry) : undefined} />)}</div>
     {!loading && !error && page && !page.entries.length ? <div className={styles.empty}>
-      <b><Icon name="i-check" size={18} />{t('metadata.attention.empty')}</b><p>{t('metadata.attention.emptyBody')}</p>
+      <span className={styles.emptyIcon}><Icon name="i-check" size={28}/></span><b>{t('metadata.attention.empty')}</b><p>{libraryName ? t('metadata.attention.emptyLibraryBody', {library: libraryName}) : t('metadata.attention.emptyBody')}</p>
     </div> : null}
     {!loading && !error && page?.entries.length ? <p className={styles.listSummary}>{t('metadata.attention.showing', {count: page.entries.length, total: page.total})}</p> : null}
     {(cursors.length > 0 || page?.nextCursor) ? <div className={styles.pager}>
       <Button size="small" disabled={loading || !cursors.length} onClick={newer}>{t('web.hostedAccount.newer')}</Button>
       <Button size="small" disabled={loading || !page?.nextCursor} onClick={older}>{t('web.hostedAccount.older')}</Button>
     </div> : null}
-    <Dialog open={Boolean(searching)} onOpenChange={open => {if (!open && !busy) setSearching(undefined);}} title={t('server.attention.searchTitle')} description={t('server.attention.searchBody')}
+    <Dialog width={520} initialFocusRef={searchInput} bodyClassName={styles.dialogBody} open={Boolean(searching)} onOpenChange={open => {if (!open && !busy) setSearching(undefined);}} title={t('server.attention.searchTitle')} description={t('server.attention.searchBody')}
       footer={<><Button size="small" disabled={Boolean(busy)} onClick={() => setSearching(undefined)}>{t('action.cancel')}</Button>
         <Button size="small" variant="primary" loading={Boolean(busy)} disabled={query.trim().length < 2} onClick={() => {if (searching) void send(searching, {action: 'search', query: query.trim()}, t('server.attention.searchStarted'));}}><Icon name="i-search" size={18} />{t('web.search.title')}</Button></>}>
       <form onSubmit={(event: FormEvent) => {event.preventDefault(); if (searching && query.trim().length >= 2 && !busy) void send(searching, {action: 'search', query: query.trim()}, t('server.attention.searchStarted'));}}>
-        <TextField label={t('server.attention.searchFor')} value={query} onChange={event => setQuery(event.currentTarget.value)} maxLength={200} />
+        <TextField ref={searchInput} label={t('server.attention.searchFor')} value={query} onChange={event => setQuery(event.currentTarget.value)} maxLength={200} />
       </form>
     </Dialog>
-    <Dialog open={Boolean(identifying)} onOpenChange={open => {if (!open && !busy) setIdentifying(undefined);}} title={t('metadata.attention.enterProviderId')} description={identifying?.title}
+    <Dialog width={520} initialFocusRef={idInput} bodyClassName={styles.dialogBody} open={Boolean(identifying)} onOpenChange={open => {if (!open && !busy) setIdentifying(undefined);}} title={t('metadata.attention.enterProviderId')} description={identifying?.title}
       footer={<><Button size="small" disabled={Boolean(busy)} onClick={() => setIdentifying(undefined)}>{t('action.cancel')}</Button>
         <Button size="small" variant="primary" loading={Boolean(busy)} disabled={!id} onClick={() => {if (identifying && id) void send(identifying, {action: 'id', providerId: id, ...(bare ? {provider} : {})}, t('server.attention.idSaved'));}}>{t('server.attention.useId')}</Button></>}>
-      <TextField label={t('server.attention.idLabel')} description={t('server.attention.idHelp')} value={typed} onChange={event => setTyped(event.currentTarget.value)} maxLength={2048} />
+      <TextField ref={idInput} label={t('server.attention.idLabel')} description={t('server.attention.idHelp')} value={typed} onChange={event => setTyped(event.currentTarget.value)} maxLength={2048} />
       {bare ? <label className={styles.picker}>
         <span>{t('server.attention.idProvider')}</span>
         <select value={provider} onChange={event => setProvider(event.currentTarget.value as (typeof PROVIDERS)[number])}>

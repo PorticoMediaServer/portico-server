@@ -62,6 +62,6 @@ function Specimen() {
     }, 400);
     return () => clearTimeout(timer);
   }, [dialog, number]);
-  return <div style={{padding: '32px', maxWidth: 1000}}><IconSprite /><NeedsAttention libraryId="library" api={api} /></div>;
+  return <div style={{padding: '32px', maxWidth: 1000}}><IconSprite /><NeedsAttention libraryId="library" libraryName="Anime" api={api} /></div>;
 }
 createRoot(document.getElementById('root')!).render(<Specimen />);

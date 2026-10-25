@@ -91,3 +91,11 @@
 .fact { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(237,245,250,.07); color: var(--color-text-tertiary); }
 .fact[data-positive] { background: rgba(134,207,179,.13); color: var(--color-healthy); }
 @media (max-width: 600px) { .row .candidate { grid-template-columns: 42px minmax(0, 1fr); } .candidatePoster { width: 42px; } .row .candidate > button { grid-column: 2; justify-self: start; } }
+
+.row .candidate > button { min-height: 34px; height: 34px; padding: 0 14px; }
+.fact[data-positive]::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(134,207,179,.13); }
+.empty { padding: 64px 24px; background: var(--color-raised); box-shadow: none; text-align: center; border-radius: 16px; }
+.emptyIcon { width: 60px; height: 60px; display: grid; place-items: center; margin: 0 auto 20px; border-radius: 18px; background: rgba(134,207,179,.13); color: var(--color-healthy); }
+.empty b { display: block; font-size: 20px; font-weight: 800; }
+.empty p { max-width: 440px; margin: 10px auto 0; font-size: 15px; line-height: 1.55; color: var(--color-text-secondary); }
+.dialogBody { margin-top: 20px; }
