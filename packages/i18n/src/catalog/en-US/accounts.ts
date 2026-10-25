@@ -1,6 +1,11 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.recovery.choiceTitle': 'Which one fits you?',
+  'accounts.recovery.choiceBody': 'Portico doesn’t send email from your server, so a forgotten password is reset with a one-time code written to a file on this server’s computer.',
+  'accounts.recovery.choiceFile': 'I can open that file on this server',
+  'accounts.recovery.choicePorticoHint': 'A Portico Account resets its own password by email from the Portico Account page; a local account asks this server’s owner.',
+
   'accounts.tvOffline.title': 'Your servers aren’t answering',
   'accounts.tvOffline.body': 'Portico keeps checking and opens one the moment it answers.',
   'accounts.tvOffline.help': 'If one of these is your own server, check that its computer is on and connected. Your Portico Account is still signed in; its settings are in Settings.',
