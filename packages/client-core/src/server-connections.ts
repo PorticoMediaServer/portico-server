@@ -9,7 +9,7 @@ import {credentialLock,installationIdentity} from './installation.ts';
 import {parseLocalSession} from './local-session.ts';
 import {parseServerSignIn} from './sign-in.ts';
 import {parseDirectSnapshot} from './profile-management.ts';
-import {RouteConnection,bindSessionRoute,forgetSessionRoute,sessionRoute,sessionRoute as sessionRouteForRotation,type DiscoveryRoute,type RouteMemory} from './route-connection.ts';
+import {RouteConnection,bindSessionRoute,forgetSessionRoute,sessionRoute,sessionRoute as sessionRouteForRotation,type DiscoveryRoute,type RouteMemory,type RouteProbeFailure} from './route-connection.ts';
 import {RouteError,routeBase64,probeRoute,routeOrigin,routeJSON,serverPin,sameServerPin,verifyRoutes,webRouteCrypto,type RouteCrypto,type RouteKey,type ServerPin,type SignedRoutes,type VerifiedRoutes} from './route-identity.ts';
 export type RememberedServer = {
  version:'1';selectionId?:string;logicalOrigin:string;session:LocalSession;pin:ServerPin;
@@ -31,7 +31,7 @@ export interface ServerConnectionStorage {
   * including after asynchronous encryption; a failed guard writes nothing. */
  change(update:(current:RememberedServer|undefined)=>RememberedServer|undefined,beforeCommit?:()=>void):Promise<void>;
 }
-export type ConnectionEnvironment={storage:ServerConnectionStorage;fetcher?:typeof fetch;crypto?:RouteCrypto;discover?:(signal:AbortSignal)=>Promise<readonly DiscoveryRoute[]>};
+export type ConnectionEnvironment={storage:ServerConnectionStorage;fetcher?:typeof fetch;crypto?:RouteCrypto;discover?:(signal:AbortSignal)=>Promise<readonly DiscoveryRoute[]>;onProbeFailure?:(failure:RouteProbeFailure)=>void};
 export type HostedConnectionSource={origin:string;accountId:string;request:<T>(path:string,signal:AbortSignal)=>Promise<T>};
 export {parseRememberedServer,savedConnectionDamaged} from './remembered-server.ts';
 import {parseRememberedServer,savedConnectionDamaged,hostedOrigin} from './remembered-server.ts';
@@ -64,7 +64,7 @@ export async function connectHostedServer(server:HostedServer,source:HostedConne
  const origin=verified.document.candidates.find(c=>c.baseUrl===server.baseUrl)?.baseUrl??verified.document.candidates[0]?.baseUrl;
  if(!origin)throw new RouteError('server_unavailable','This server has not published a usable address. Its owner can repair remote access from the local network.');
  const hosted={origin:hostedOrigin(source.origin),accountId:source.accountId,key};
- const connection=new RouteConnection({pin:verified.document,logicalOrigin:origin,memory:{current:verified,paired:[]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,fresh:async signal=>{const next=await currentDocument(source,env,verified.document,hosted.key,signal);hosted.key=next.key;return next.routes;}});
+ const connection=new RouteConnection({pin:verified.document,logicalOrigin:origin,memory:{current:verified,paired:[]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,onProbeFailure:env.onProbeFailure,fresh:async signal=>{const next=await currentDocument(source,env,verified.document,hosted.key,signal);hosted.key=next.key;return next.routes;}});
  try{await connection.resolve(signal);const api=new HttpLocalApi(origin,'',env.fetcher);api.useRoutes(connection);return {api,connection,hosted};}catch(e){connection.dispose();throw e;}
 }
 /** Anonymous proof precedes credential entry. Native decides certificate trust first;
@@ -73,7 +73,7 @@ export async function connectHostedServer(server:HostedServer,source:HostedConne
 export async function inspectDirectServer(origin:string,env:ConnectionEnvironment,signal:AbortSignal):Promise<ServerPin>{return probeRoute(routeOrigin(origin),undefined,{fetcher:env.fetcher,crypto:env.crypto,signal});}
 export async function connectPairedServer(origin:string,pin:ServerPin,env:ConnectionEnvironment,signal:AbortSignal):Promise<{api:HttpLocalApi;connection:RouteConnection}>{
  const checked=await serverPin(pin.serverId,pin.publicKey,pin.fingerprint,env.crypto);
- const connection=new RouteConnection({pin:checked,logicalOrigin:routeOrigin(origin),memory:{paired:[routeOrigin(origin)]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover});
+ const connection=new RouteConnection({pin:checked,logicalOrigin:routeOrigin(origin),memory:{paired:[routeOrigin(origin)]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,onProbeFailure:env.onProbeFailure});
  try{await connection.resolve(signal);const api=new HttpLocalApi(connection.logicalOrigin,'',env.fetcher);api.useRoutes(connection);return{api,connection};}catch(e){connection.dispose();throw e;}
 }
 /** A Waiting member may prove this server before it has a Hosted directory row.
@@ -122,7 +122,7 @@ export async function restoreNativeSession(env:ConnectionEnvironment,source?:(re
  const memory:RouteMemory={paired:record.routes.paired,lastGood:record.routes.lastGood};let current:VerifiedRoutes|undefined,previous:VerifiedRoutes|undefined;
  if(record.hosted){for(const field of ['current','previous'] as const){const signed=record.routes[field];if(signed){const verified=await verifyRoutes(signed,record.hosted.key,{accountId:record.hosted.accountId,serverId:pin.serverId,pin,allowExpiredHint:true},env.crypto);if(field==='current')current=verified;else previous=verified;}}}
  const freshSource=source?.(record),hosted=record.hosted;
- const connection=new RouteConnection({pin,logicalOrigin:record.logicalOrigin,memory:{...memory,current,previous},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,fresh:freshSource&&hosted?async signal=>{const next=await currentDocument(freshSource,env,pin,hosted.key,signal);hosted.key=next.key;return next.routes;}:undefined});
+ const connection=new RouteConnection({pin,logicalOrigin:record.logicalOrigin,memory:{...memory,current,previous},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,onProbeFailure:env.onProbeFailure,fresh:freshSource&&hosted?async signal=>{const next=await currentDocument(freshSource,env,pin,hosted.key,signal);hosted.key=next.key;return next.routes;}:undefined});
  try{
   await connection.resolve();
   const selected=await env.storage.read();
@@ -216,7 +216,7 @@ export async function connectTrustedProfileServer(env:ConnectionEnvironment,scop
  const memory:RouteMemory={paired:record.routes.paired,lastGood:record.routes.lastGood};
  let current:VerifiedRoutes|undefined,previous:VerifiedRoutes|undefined;
  if(record.hosted)for(const field of ['current','previous']as const){const signed=record.routes[field];if(signed){const v=await verifyRoutes(signed,record.hosted.key,{accountId:scope.accountId,serverId:scope.serverId,pin,allowExpiredHint:true},env.crypto);if(field==='current')current=v;else previous=v;}}
- const connection=new RouteConnection({pin,logicalOrigin:record.logicalOrigin,memory:{...memory,current,previous},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover});
+ const connection=new RouteConnection({pin,logicalOrigin:record.logicalOrigin,memory:{...memory,current,previous},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,onProbeFailure:env.onProbeFailure});
  try{await connection.resolve(signal);const selected=await env.storage.read();if(!sameSelection(selected,record)||signal.aborted)throw new RouteError('cancelled','The saved server selection changed.');const api=new HttpLocalApi(record.logicalOrigin,'',env.fetcher);api.useRoutes(connection);return api;}catch(e){connection.dispose();throw e;}
 }
 

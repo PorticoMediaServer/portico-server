@@ -81,7 +81,8 @@ test('a proxy error page for a down server is a lost route; Portico answers are 
   assert.equal(gatewayFailure(res(200, 'application/json')), false);
 });
 
-import {RouteConnection} from '../src/route-connection.ts';
+import {RouteConnection,type RouteProbeFailure} from '../src/route-connection.ts';
+import {RouteError} from '../src/route-identity.ts';
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
 test('foreground activity promotes recovered LAN without blanking the ready remote route or asking Hosted', async () => {
@@ -151,4 +152,44 @@ test('leaving the foreground cancels a held LAN promotion and keeps the working 
     assert.equal(connection.getSnapshot().origin, remote);
     assert.equal(connection.getSnapshot().phase, 'ready');
   } finally { connection.dispose(); }
+});
+
+test('probe diagnostics keep only closed categories before the ordinary race failure', async () => {
+  const failures: RouteProbeFailure[] = [], origin = 'https://remote.example';
+  const error = Object.assign(new SyntaxError('private proof body'), {code: 'https://private.example/secret', stack: 'private stack'});
+  const connection = new RouteConnection({pin, logicalOrigin: origin, memory: {paired: [origin]},
+    probe: async () => {throw error;}, onProbeFailure: failure => failures.push(failure)});
+  try {
+    await assert.rejects(connection.resolve(), (failure: unknown) => failure instanceof RouteError && failure.code === 'route_unavailable');
+    assert.deepEqual(failures, [{code: 'other', name: 'SyntaxError'}]);
+    assert.equal(Object.isFrozen(failures[0]), true);
+    assert.equal(JSON.stringify(failures).includes('private'), false);
+    assert.deepEqual(Object.keys(failures[0]!).sort(), ['code', 'name']);
+  } finally {connection.dispose();}
+});
+
+test('throwing diagnostic observers cannot replace identity refusal or authorize lastGood', async () => {
+  const origin = 'https://remote.example', failures: RouteProbeFailure[] = [];
+  const connection = new RouteConnection({pin, logicalOrigin: origin, memory: {paired: [origin], lastGood: origin},
+    probe: async () => {throw new RouteError('identity_mismatch', 'private pin details');},
+    onProbeFailure: failure => {failures.push(failure);throw new Error('sink failed');}});
+  try {
+    await assert.rejects(connection.resolve(), (failure: unknown) => failure instanceof RouteError && failure.code === 'identity_mismatch');
+    assert.deepEqual(failures, [{code: 'identity_mismatch', name: 'RouteError'}]);
+    assert.equal(connection.getSnapshot().origin, null);
+  } finally {connection.dispose();}
+});
+
+test('late failure from a retired probe is not published to diagnostics', async () => {
+  const failures: RouteProbeFailure[] = [], origin = 'https://remote.example';
+  let rejectProbe!: (error: Error) => void;
+  const connection = new RouteConnection({pin, logicalOrigin: origin, memory: {paired: [origin]},
+    probe: () => new Promise((_resolve, reject) => {rejectProbe = reject;}), onProbeFailure: failure => failures.push(failure)});
+  const running = connection.resolve();
+  const stopped = assert.rejects(running, (failure: unknown) => failure instanceof RouteError && failure.code === 'cancelled');
+  try {
+    connection.dispose();rejectProbe(new SyntaxError('private late response'));
+    await stopped;await tick();
+    assert.deepEqual(failures, []);
+  } finally {connection.dispose();}
 });

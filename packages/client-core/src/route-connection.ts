@@ -2,6 +2,19 @@ import {RouteError,probeRoute,routeOrigin,routeBytes,observedRouteTLSLeaf,privat
 export type DiscoveryRoute = Readonly<{baseUrl:string;serverId:string;fingerprint:string;port:number;path:string;expiresAt:number}>;
 export type RouteSnapshot = Readonly<{phase:'idle'|'probing'|'ready'|'offline'|'identity_mismatch'|'unconfirmed';errorCode?:string;origin:string|null;revision:number;network:string;message:string;discovery:'unknown'|'available'|'unsupported'|'denied'|'empty'}>;
 export type RouteMemory = Readonly<{current?:VerifiedRoutes;previous?:VerifiedRoutes;paired:readonly string[];lastGood?:string}>;
+const probeFailureCodes = ['invalid_address','invalid_identity','invalid_response','identity_mismatch','invalid_signature','invalid_routes','route_stale','clocks_disagree','insecure_context','authentication_required','access_denied','rate_limited','route_unavailable','certificate_unverified','certificate_untrusted','cancelled'] as const;
+const probeFailureNames = ['RouteError','Error','TypeError','SyntaxError','ReferenceError','RangeError','AbortError'] as const;
+/** Diagnostic categories only: never the error, message, stack, address or proof. */
+export type RouteProbeFailure = Readonly<{code:typeof probeFailureCodes[number]|'other';name:typeof probeFailureNames[number]|'unknown'}>;
+function probeFailure(error:unknown):RouteProbeFailure {
+ let code:RouteProbeFailure['code']='other',name:RouteProbeFailure['name']='unknown';
+ try {
+  const value=error as {code?:unknown;name?:unknown}|null;
+  if(typeof value?.code==='string'&&(probeFailureCodes as readonly string[]).includes(value.code))code=value.code as RouteProbeFailure['code'];
+  if(typeof value?.name==='string'&&(probeFailureNames as readonly string[]).includes(value.name))name=value.name as RouteProbeFailure['name'];
+ }catch{/* Hostile accessors do not enter diagnostics or change the probe outcome. */}
+ return Object.freeze({code,name});
+}
 export interface RouteConnectionOptions {
  pin:ServerPin;
  logicalOrigin:string;
@@ -14,6 +27,9 @@ export interface RouteConnectionOptions {
  freshAfterMs?:number;
  persist?:(memory:RouteMemory)=>Promise<void>;
  probe?:typeof probeRoute;
+ /** Optional passive observation before a current candidate's failure is folded
+  * into the race result. Aborted/retired candidates are not reported. */
+ onProbeFailure?:(failure:RouteProbeFailure)=>void;
 }
 /** Normalize a Bonjour result without making it trusted. A conflicting group
  * contributes no route, including otherwise plausible records in that group. */
@@ -179,7 +195,7 @@ export class RouteConnection {
      const index=queue.findIndex(c=>c.class==='lan'?activeLAN<2:Date.now()-now>=120||!initial.some(v=>v.class==='lan'));
      if(index<0){if(!publicTimer&&queue.some(c=>c.class!=='lan')&&Date.now()-now<120)publicTimer=setTimeout(()=>{publicTimer=undefined;pump();},Math.max(1,120-(Date.now()-now)));break;}
      const candidate=queue.splice(index,1)[0],controller=new AbortController();controllers.add(controller);inflight.set(controller,candidate.baseUrl);active++;if(candidate.class==='lan')activeLAN++;
-     void (this.options.probe??probeRoute)(candidate.baseUrl,this.pin,{fetcher:this.options.fetcher,crypto:this.options.crypto??webRouteCrypto,signal:controller.signal}).then(()=>{if(!signal.aborted&&!controller.signal.aborted&&eligible(candidate.baseUrl)){this.rejected.delete(candidate.baseUrl+'|'+candidate.generation);finish(candidate.baseUrl);}}).catch(error=>{if(finished||signal.aborted||controller.signal.aborted)return;const code=routeFailureCode(error);if(certificateFailure(code))certificateFailures++;else otherFailures++;if(code==='identity_mismatch'){mismatch=true;const key=candidate.baseUrl+'|'+candidate.generation,attempts=Math.min(7,(this.rejected.get(key)?.attempts??0)+1);this.rejected.set(key,{attempts,retryAt:Date.now()+Math.min(300000,5000*2**(attempts-1))});while(this.rejected.size>64)this.rejected.delete(this.rejected.keys().next().value!);}}).finally(()=>{active--;if(candidate.class==='lan')activeLAN--;controllers.delete(controller);inflight.delete(controller);pump();});
+     void (this.options.probe??probeRoute)(candidate.baseUrl,this.pin,{fetcher:this.options.fetcher,crypto:this.options.crypto??webRouteCrypto,signal:controller.signal}).then(()=>{if(!signal.aborted&&!controller.signal.aborted&&eligible(candidate.baseUrl)){this.rejected.delete(candidate.baseUrl+'|'+candidate.generation);finish(candidate.baseUrl);}}).catch(error=>{if(finished||signal.aborted||controller.signal.aborted)return;try{this.options.onProbeFailure?.(probeFailure(error));}catch{/* Diagnostics never change route admission or recovery. */}const code=routeFailureCode(error);if(certificateFailure(code))certificateFailures++;else otherFailures++;if(code==='identity_mismatch'){mismatch=true;const key=candidate.baseUrl+'|'+candidate.generation,attempts=Math.min(7,(this.rejected.get(key)?.attempts??0)+1);this.rejected.set(key,{attempts,retryAt:Date.now()+Math.min(300000,5000*2**(attempts-1))});while(this.rejected.size>64)this.rejected.delete(this.rejected.keys().next().value!);}}).finally(()=>{active--;if(candidate.class==='lan')activeLAN--;controllers.delete(controller);inflight.delete(controller);pump();});
     }
     if(!queue.length&&!active){if(!freshStarted)fresh();if(freshDone&&discoveryDone)finish(undefined,failure());}
    };
