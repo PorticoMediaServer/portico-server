@@ -223,14 +223,22 @@ func ConsumedMembers(p Probe) ([]DiscMember, error) {
 	}
 	out := []DiscMember{}
 	index := map[string]int{}
-	add := func(path string, required, directory bool) {
+	overBound := fmt.Errorf("disc needs more than %d consumed members", MaxConsumedMembers)
+	// add stops the traversal at the bound instead of naming every member first
+	// and refusing afterwards: a probe with a long title list must not make the
+	// manifest do unbounded work before it can say no.
+	add := func(path string, required, directory bool) error {
 		if i, ok := index[path]; ok {
 			out[i].Required = out[i].Required || required
 			out[i].Directory = out[i].Directory || directory
-			return
+			return nil
+		}
+		if len(out) >= MaxConsumedMembers {
+			return overBound
 		}
 		index[path] = len(out)
 		out = append(out, DiscMember{Path: path, Required: required, Directory: directory})
+		return nil
 	}
 	switch p.Kind {
 	case "bluray":
@@ -239,36 +247,55 @@ func ConsumedMembers(p Probe) ([]DiscMember, error) {
 		// playlist added between observations changes the directory even
 		// though no named file changed.
 		for _, dir := range []string{"BDMV", "BDMV/PLAYLIST", "BDMV/CLIPINF", "BDMV/STREAM"} {
-			add(dir, true, true)
+			if err := add(dir, true, true); err != nil {
+				return nil, err
+			}
 		}
-		add("BDMV/index.bdmv", true, false)
-		add("BDMV/MovieObject.bdmv", false, false)
+		if err := add("BDMV/index.bdmv", true, false); err != nil {
+			return nil, err
+		}
+		if err := add("BDMV/MovieObject.bdmv", false, false); err != nil {
+			return nil, err
+		}
 		for _, t := range p.Titles {
-			add("BDMV/PLAYLIST/"+t.PlaylistFile, true, false)
+			if err := add("BDMV/PLAYLIST/"+t.PlaylistFile, true, false); err != nil {
+				return nil, err
+			}
 			for _, clip := range t.Clips {
-				add("BDMV/STREAM/"+clip.File, true, false)
+				if err := add("BDMV/STREAM/"+clip.File, true, false); err != nil {
+					return nil, err
+				}
 				if base, ok := strings.CutSuffix(clip.File, ".m2ts"); ok {
-					add("BDMV/CLIPINF/"+base+".clpi", true, false)
+					if err := add("BDMV/CLIPINF/"+base+".clpi", true, false); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
 	case "dvd":
-		add("VIDEO_TS", true, true)
-		add("VIDEO_TS/VIDEO_TS.IFO", true, false)
+		if err := add("VIDEO_TS", true, true); err != nil {
+			return nil, err
+		}
+		if err := add("VIDEO_TS/VIDEO_TS.IFO", true, false); err != nil {
+			return nil, err
+		}
 		for _, t := range p.Titles {
-			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS), true, false)
-			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_1.VOB", t.VTS), true, false)
+			if err := add(fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS), true, false); err != nil {
+				return nil, err
+			}
+			if err := add(fmt.Sprintf("VIDEO_TS/VTS_%02d_1.VOB", t.VTS), true, false); err != nil {
+				return nil, err
+			}
 			for n := 0; n < 10; n++ {
 				if n != 1 {
-					add(fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n), false, false)
+					if err := add(fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n), false, false); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
 	default:
 		return nil, ErrProtocol
-	}
-	if len(out) > MaxConsumedMembers {
-		return nil, fmt.Errorf("disc needs more than %d consumed members", MaxConsumedMembers)
 	}
 	return out, nil
 }

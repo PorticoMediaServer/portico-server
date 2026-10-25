@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -405,7 +406,11 @@ func TestConsumedMembersAreRelativeAndBounded(t *testing.T) {
 	}
 	many := Probe{Kind: "bluray", Packaging: "folder"}
 	for i := 0; i < MaxConsumedMembers; i++ {
-		many.Titles = append(many.Titles, Title{DiscOrder: i, DurationMs: 120000, Playlist: &playlist, PlaylistFile: "00001.mpls", Clips: []Clip{{Sequence: 0, File: "00002.m2ts", InTime90k: 0, OutTime90k: 1}}})
+		// Each title names its own playlist, stream and clip-info file. Repeating
+		// one reference legitimately collapses to a single member, so only
+		// distinct files can exercise the manifest's bound.
+		number := i + 1
+		many.Titles = append(many.Titles, Title{DiscOrder: i, DurationMs: 120000, Playlist: &number, PlaylistFile: fmt.Sprintf("%05d.mpls", number), Clips: []Clip{{Sequence: 0, File: fmt.Sprintf("%05d.m2ts", number), InTime90k: 0, OutTime90k: 1}}})
 	}
 	if _, err = ConsumedMembers(many); err == nil {
 		t.Fatal("an unbounded disc was admitted")
