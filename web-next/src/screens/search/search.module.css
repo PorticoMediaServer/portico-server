@@ -144,3 +144,8 @@
 
 .songSelection { display: flex; align-items: center; gap: 12px; }
 .songSelection > button:last-child { flex: 1; min-width: 0; }
+
+.sectionActions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.section .selectGroup { opacity: 0; }
+.section:hover .selectGroup,.section:focus-within .selectGroup { opacity: 1; }
+@media (pointer: coarse) { .section .selectGroup { opacity: 1; } }

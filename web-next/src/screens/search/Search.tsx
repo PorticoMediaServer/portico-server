@@ -166,7 +166,10 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
           if (!entries.length) return null;
           return <section key={result.id} className={styles.section} data-group={result.id}>
             <header><h2>{t(searchGroupLabel(result.id))}</h2>{result.totalCountExact && <span>{result.totalCount > cap ? t('web.search.someOf', {shown: Math.min(cap, entries.length), total: result.totalCount}) : result.totalCount}</span>}
-              {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}</header>
+              <div className={styles.sectionActions}>
+                {selection?.canSelectGroup(result) && <Button variant="text" size="small" className={styles.selectGroup} onClick={() => {try {selection.selectGroup(result);} catch (error) {context.effects.reportError(error);}}}>{t('next.selection.selectAll', {count: result.totalCount})}</Button>}
+                {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}
+              </div></header>
             <div className={styles.cards}>{entries.slice(0, cap).map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit} />)}</div>
           </section>;
         })}

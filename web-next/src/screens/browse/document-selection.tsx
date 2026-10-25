@@ -81,6 +81,26 @@ export function createCatalogueDocumentSelection(context: ScreenContext, sourceD
   function Toolbar() {useSyncExternalStore(subscribe, getSnapshot, getSnapshot); return active?.selection.toolbar ?? null;}
   return {
     start, subscribe, getSnapshot, epoch: () => serial, isActive: () => active?.play.getSnapshot().selection?.active === true, toolbar: <Toolbar/>,
+    canSelectEntries(entries: readonly ContentEntry[]) {
+      const owned = active;
+      if (!owned || sourceKey() !== owned.key || !entries.length || entries.length > 60 || new Set(entries).size !== entries.length) return false;
+      const registered = owned.play.getSnapshot().rows;
+      return entries.every(entry => admitted.has(entry) && mounted.has(entry) && registered.some(row => row.entry === entry));
+    },
+    selectEntries(entries: readonly ContentEntry[]) {
+      const owned = active;
+      if (!owned || sourceKey() !== owned.key || !entries.length || entries.length > 60 || new Set(entries).size !== entries.length) throw new DOMException('Selection changed', 'AbortError');
+      const registered = owned.play.getSnapshot().rows;
+      const selected = entries.map(entry => {
+        const row = registered.find(row => row.entry === entry);
+        if (!row || !admitted.has(entry) || !mounted.has(entry)) throw new DOMException('Selection changed', 'AbortError');
+        return row;
+      });
+      for (const row of selected) {
+        if (active !== owned || sourceKey() !== owned.key || !admitted.has(row.entry) || !mounted.has(row.entry)) throw new DOMException('Selection changed', 'AbortError');
+        if (!owned.play.selected(row)) owned.play.toggle(row);
+      }
+    },
     register(entry: ContentEntry, order: number) {
       const owned = active;
       if (!owned || sourceKey() !== owned.key || !admitted.has(entry)) return () => {};
