@@ -1,12 +1,13 @@
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
-import {SavedService} from '@core/saved.ts';
-import {routePath} from '../../../packages/contracts/src/routes.ts';
+import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
-import {CollectionPicker, DeleteMediaDialog, PlaylistPicker, type PickerEntry, type PickerResult} from '../kit/selection';
+import {CollectionPicker, DeleteMediaDialog, PlaylistPicker, type PickerEntry} from '../kit/selection';
 import {entryActions, type EntryActionPorts, type EntryActionTarget, type EntryDestination} from './entry-actions';
 import {deleteSurfaceFor, EntryDeleteProducer} from './entry-delete';
+import {EntryPickerProducer} from './entry-picker';
+import type {HomeSelectionPicker} from '@core/home-selection/types.ts';
+import {pickerResultView} from './selection-presentation';
 
 const t = defaultI18n.t;
 function errorText(code: string | undefined): string | undefined {
@@ -19,72 +20,36 @@ function errorText(code: string | undefined): string | undefined {
 function EntryPickerSurface({destination, target, ports, anchor, canCreate, onClose}: {
   destination: EntryDestination; target: EntryActionTarget; ports: EntryActionPorts; anchor: HTMLElement | null; canCreate: boolean; onClose: () => void;
 }) {
-  const lifetime = useMemo(() => new AbortController(), [ports, target, destination]);
-  const flight = useRef(false);
-  const current = () => !lifetime.signal.aborted && ports.isCurrent();
-  const close = () => {lifetime.abort(); onClose();};
-  const [mode, setMode] = useState<'choose' | 'new'>('choose'), [name, setName] = useState(''), [query, setQuery] = useState('');
-  const [busy, setBusy] = useState(false), [error, setError] = useState<string | undefined>(undefined), [result, setResult] = useState<PickerResult | undefined>(undefined);
-  const service = useMemo(() => new SavedService({api: ports.api, scope: {serverId: ports.serverId, viewerId: ports.viewerId}, requestId: ports.requestId}), [ports]);
-  const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
-  const anchorRef = useRef<HTMLElement | null>(anchor);
+  const producer = useRef<EntryPickerProducer | null>(null), anchorRef = useRef<HTMLElement | null>(anchor);
+  const [picker, setPicker] = useState<HomeSelectionPicker>(), [error, setError] = useState<string>();
+  const [mode, setMode] = useState<'choose' | 'new'>('choose'), [name, setName] = useState('');
   useEffect(() => {
-    void service.select({view: destination === 'playlist' ? 'playlists' : 'collections'}).catch(() => setError(t('next.selection.pickerFailed')));
-    return () => {lifetime.abort(); service.dispose();};
-  }, [service, destination, lifetime]);
-  const entries = useMemo<readonly PickerEntry[]>(() => {
-    const rows = snapshot.projection?.sections.flatMap(section => section.entries) ?? [];
-    const wanted = rows.flatMap(entry => destination === 'playlist'
-      ? entry.kind === 'playlist' ? [{id: entry.id, name: entry.title, size: entry.count ?? 0, canAdd: true}] : []
-      : entry.kind === 'collection' ? [{id: entry.id, name: entry.title, size: 0, canAdd: true}] : []);
-    const needle = query.trim().toLowerCase();
-    return Object.freeze(wanted.filter(row => !needle || row.name.toLowerCase().includes(needle)));
-  }, [snapshot.projection, destination, query]);
-  const finish = (id: string, label: string) => setResult({destination: {id, name: label}, inserted: 1, processed: 1, total: 1, complete: true, failures: []});
-  const add = async (id: string, label: string) => {
-    if (!current()) return;
-    if (flight.current) return;
-    flight.current = true;
-    setBusy(true); setError(undefined);
-    try {
-      const operationId = await ports.requestId();
-      if (!current()) return;
-      if (destination === 'playlist') await ports.api.request(routePath('post_playlists_id_entries', {id}), 'POST', {operationId, itemIds: [target.itemId]}, lifetime.signal);
-      else await ports.api.request(routePath('post_collections_id_items_batch', {id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []}, lifetime.signal);
-      if (!current()) return;
-      finish(id, label);
-    } catch { if (current()) setError(t('next.selection.pickerFailed')); }
-    finally { flight.current = false; if (current()) setBusy(false); }
+    setPicker(undefined); setError(undefined); setMode('choose'); setName('');
+    const owned = new EntryPickerProducer(target, destination, ports, canCreate, value => {if (producer.current === owned) setPicker(value);});
+    producer.current = owned;
+    void owned.open().catch(() => {if (producer.current === owned && ports.isCurrent()) setError(t('next.selection.pickerFailed'));});
+    return () => {owned.close(); if (producer.current === owned) producer.current = null;};
+  }, [target, destination, ports, canCreate]);
+  const close = () => {producer.current?.close(); producer.current = null; onClose();};
+  const run = (work: (value: EntryPickerProducer) => Promise<void>) => {
+    const owned = producer.current; if (!owned || !ports.isCurrent()) return;
+    setError(undefined);
+    void work(owned).catch(() => {if (producer.current === owned && ports.isCurrent()) setError(t('next.selection.pickerFailed'));});
   };
-  const create = async (value: string) => {
-    if (!value.trim() || !current()) return;
-    if (destination === 'collection' && !canCreate) { setError(t('next.selection.collectionOwnerOnly')); return; }
-    if (flight.current) return;
-    flight.current = true;
-    setBusy(true); setError(undefined);
-    try {
-      const operationId = await ports.requestId();
-      if (!current()) return;
-      if (destination === 'playlist') {
-        const made = await ports.api.request<{playlistId: string}>(routePath('post_playlists'), 'POST', {name: value, itemIds: [target.itemId], operationId}, lifetime.signal);
-        if (current()) finish(made.playlistId, value);
-      } else {
-        const made = await ports.api.request<{id: string}>(`/v1/libraries/${encodeURIComponent(target.libraryId)}/collections`, 'POST', {name: value}, lifetime.signal);
-        if (!current()) return;
-        await ports.api.request(routePath('post_collections_id_items_batch', {id: made.id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []}, lifetime.signal);
-        if (current()) finish(made.id, value);
-      }
-    } catch { if (current()) setError(t('next.selection.pickerFailed')); }
-    finally { flight.current = false; if (current()) setBusy(false); }
-  };
+  const entries: readonly PickerEntry[] = picker?.rows.map(row => ({id: row.id, name: row.name, size: row.count, canAdd: row.canAdd, alreadyIn: row.alreadyIn})) ?? [];
+  const result = picker && pickerResultView(picker, () => t('next.selection.pickerFailed'));
   const Picker = destination === 'playlist' ? PlaylistPicker : CollectionPicker;
-  return <Picker open onOpenChange={value => { if (!value) close(); }} selection={{count: 1}} anchorRef={anchorRef}
-    entries={entries} query={query} onQueryChange={setQuery} loading={snapshot.phase === 'idle' || snapshot.phase === 'loading'}
-    mode={mode} onModeChange={next => { if (next === 'new' && destination === 'collection' && !canCreate) { setError(t('next.selection.collectionOwnerOnly')); return; } setMode(next); }}
-    name={name} onNameChange={setName} onAdd={id => { const entry = entries.find(row => row.id === id); void add(id, entry?.name ?? ''); }}
-    onCreateAndAdd={value => void create(value)} onRetry={() => { setError(undefined); setResult(undefined); void service.select({view: destination === 'playlist' ? 'playlists' : 'collections'}).catch(() => setError(t('next.selection.pickerFailed'))); }}
-    onRetryOperation={() => setResult(undefined)} onRetryError={() => { setError(undefined); setResult(undefined); }}
-    result={result} busy={busy} error={error} />;
+  return <Picker open onOpenChange={value => {if (!value) close();}} selection={{count: 1}} anchorRef={anchorRef} returnFocusRef={anchorRef}
+    entries={entries} query={picker?.query ?? ''} onQueryChange={value => run(owned => owned.search(value))}
+    loading={!picker || picker.phase === 'loading'} busy={picker?.phase === 'adding'}
+    hasNext={picker?.next} hasPrevious={picker?.previous} onNext={picker?.next ? () => run(owned => owned.page()) : undefined}
+    onPrevious={picker?.previous ? () => run(owned => owned.page(true)) : undefined}
+    mode={mode} onModeChange={next => {if (next === 'new' && destination === 'collection' && !canCreate) {setError(t('next.selection.collectionOwnerOnly')); return;} setMode(next);}}
+    name={name} onNameChange={setName} onAdd={id => run(owned => owned.choose(id))} onCreateAndAdd={value => run(owned => owned.create(value))}
+    onRetry={ids => {const failures = picker?.receipt?.failures.map(row => row.itemId) ?? []; if (picker?.phase !== 'partial' || ids.length !== failures.length || ids.some((id, index) => id !== failures[index])) return; run(owned => owned.retry());}}
+    onRetryOperation={picker?.phase === 'uncertain' ? () => run(owned => owned.retry()) : undefined}
+    onRetryError={picker?.phase === 'error' || error ? () => run(owned => owned.retry()) : undefined}
+    result={result} error={error ?? (picker?.error ? t('next.selection.pickerFailed') : undefined)} />;
 }
 
 /** Mounted once by the shell. It renders nothing until a screen effect opens a surface. */
