@@ -14,9 +14,12 @@ const t = defaultI18n.t;
 /** Server › Remote: the section's status facts from the server's own producers,
  * over the canonical settings rows. Certificate and connection rows read the
  * connectivity status; remote reachability reads the remote-access status. */
-export function ServerRemotePage({api, isCurrent, groups, advanced}: Readonly<{
+export function ServerRemotePage({api, isCurrent, account, openSection, groups, advanced}: Readonly<{
   api: Readonly<{request: <T>(path: string, method: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
-  isCurrent: () => boolean; groups: ReactNode; advanced: ReactNode;
+  isCurrent: () => boolean;
+  account?: Readonly<{signIn: 'portico' | 'local'; authority?: string; serverName?: string}>;
+  openSection?: (section: string) => void;
+  groups: ReactNode; advanced: ReactNode;
 }>) {
   const form = useMemo(() => remoteAccessForm({api} as Parameters<typeof remoteAccessForm>[0]), [api]);
   const formState = useSyncExternalStore(form.subscribe, form.getSnapshot, form.getSnapshot);
@@ -84,6 +87,14 @@ export function ServerRemotePage({api, isCurrent, groups, advanced}: Readonly<{
           onCheckedChange={value => ownAddress.set({ownAddressEnabled: value})}/></label>
       {ownAddressState.loadError !== undefined && <p className={styles.error} role="alert">{t('next.remoteStatus.failed')}</p>}
       {ownAddressState.dirty && <Button size="compact" variant="primary" loading={ownAddressState.saving} onClick={() => {void ownAddress.save().catch(() => {});}}>{t('next.remoteStatus.saveOwnAddress')}</Button>}
+    </section>}
+    {account && <section className={styles.controls}>
+      <h3 className={styles.subtitle}>{t('web.general.accountConnection')}</h3>
+      <p className={styles.note}>{account.signIn === 'portico'
+        ? t('next.remoteStatus.accountConnected', {server: account.serverName ?? ''})
+        : t('next.remoteStatus.accountLocal')}</p>
+      {account.authority && <p className={styles.note}>{t('next.remoteStatus.accountAuthority', {authority: account.authority})}</p>}
+      {openSection && <Button size="compact" variant="glass" onClick={() => openSection('signin')}>{t('next.remoteStatus.openSignIn')}</Button>}
     </section>}
     {groups}
     {advanced}

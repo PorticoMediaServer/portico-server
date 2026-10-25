@@ -21,6 +21,11 @@ export const remoteSourcesMessages = {
   'next.remoteStatus.addressesTitle': 'This server’s addresses',
   'next.remoteStatus.certificateFiles': 'Certificate files',
   'next.remoteStatus.saveOwnAddress': 'Save own address',
+  'next.remoteStatus.accountConnected': 'This server is connected to a Portico Account. Remote access and the certificate service use it. {server}',
+  'next.remoteStatus.accountLocal': 'This server signs in locally. Connect a Portico Account to use Hosted remote access and its certificate service.',
+  'next.remoteStatus.accountAuthority': 'Account authority: {authority}',
+  'next.remoteStatus.openSignIn': 'Open sign-in settings',
+
   'next.remoteSources.add': 'Add remote source',
   'next.remoteSources.manage': 'Manage',
   'next.remoteSources.refresh': 'Refresh',
