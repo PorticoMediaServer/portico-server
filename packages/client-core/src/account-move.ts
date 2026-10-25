@@ -65,6 +65,19 @@ export function parseAccountMoveCodes(raw:unknown,now=Date.now()):readonly Accou
   return Object.freeze({accountId:row.accountId,username:row.username,code:row.code,expiresAt:expiry(row.expiresAt,7*86400000,now),...(row.serverId===undefined?{}:{serverId:row.serverId as string})});
  }));
 }
+export type AccountMoveWaiting=Readonly<{accountId:string;username:string}>;
+/** The waiting people for the active move: exact ids the codes route accepts,
+ * bounded and unique, with the usernames the owner recognises. No code, hash or
+ * password material is part of this read. */
+export function parseAccountMoveWaiting(raw:unknown):readonly AccountMoveWaiting[]{
+ if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>2000)invalid();
+ const seen=new Set<string>();
+ return Object.freeze(raw.items.map(row=>{
+  if(!obj(row)||!text(row.accountId,128)||seen.has(row.accountId)||!text(row.username,64)||!row.username)invalid();
+  seen.add(row.accountId);
+  return Object.freeze({accountId:row.accountId,username:row.username});
+ }));
+}
 export type MoveCodeLink=Readonly<{code:string;id?:string}>;
 /** Codes live in memory only. Scrub even an invalid fragment before any await/analytics.
  * The optional public id is an expectation for the existing first-contact proof,
@@ -146,4 +159,8 @@ export class AccountMoveClient extends MoveTransport {
  cancelPreview(move:AccountMove,signal?:AbortSignal){if(move.stage!=='preview')invalid();return this.call(encodedRoutePath('post_sign_in_move_cancel',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_cancel',{expectedRevision:move.revision}),()=>undefined,signal);}
  finish(move:AccountMove,signal?:AbortSignal){if(!['moving_to_local','moving_to_portico'].includes(move.stage))invalid();return this.call(encodedRoutePath('post_sign_in_move_finish',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_finish',{expectedRevision:move.revision}),()=>undefined,signal);}
  codes(accountIds:readonly string[],signal?:AbortSignal){if(accountIds.length>2000||accountIds.some(id=>!text(id,128))||new Set(accountIds).size!==accountIds.length)invalid();return this.call(routePath('post_sign_in_move_codes'),'POST',routeBody('post_sign_in_move_codes',{accountIds:[...accountIds]}),parseAccountMoveCodes,signal);}
+ /** The exact waiting people, for the codes sheet's targets. The generated key
+  * for this read arrives with the next official generation; the literal is the
+  * declared pending path, not a second contract. */
+ waiting(signal?:AbortSignal){return this.call('/v1/admin/sign-in/move/waiting','GET',undefined,parseAccountMoveWaiting,signal);}
 }

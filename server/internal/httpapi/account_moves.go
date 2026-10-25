@@ -46,6 +46,14 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, moveStatus{out})
 	})
+	d.httpHandle(mux, "GET /v1/admin/sign-in/move/waiting", func(w http.ResponseWriter, r *http.Request) {
+		out, e := d.Identity.MoveWaiting(r.Context(), directBearer(r))
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
 	d.httpHandle(mux, "POST /v1/admin/sign-in/move/preview", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := d.owner(r); err != nil {
 			failure(w, err)
@@ -248,6 +256,9 @@ func registerAccountMoveContracts(registry *apikit.Registry) error {
 		return e
 	}
 	if e := apikit.RegisterHTTP[struct{}, moveStatus](registry, owner("get_sign_in_move", "GET", "/v1/admin/sign-in/move", 200)); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[struct{}, identity.MoveWaitingList](registry, owner("get_sign_in_move_waiting", "GET", "/v1/admin/sign-in/move/waiting", 200)); e != nil {
 		return e
 	}
 	if e := apikit.RegisterHTTP[identity.MovePreviewRequest, identity.AccountMove](registry, owner("post_sign_in_move_preview", "POST", "/v1/admin/sign-in/move/preview", 200)); e != nil {
