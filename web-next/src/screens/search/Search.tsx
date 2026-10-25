@@ -243,24 +243,27 @@ export function SearchResult({entry, binding, selection, position = 0, onCommit,
 export function SongTableRow({entry, binding, selection, position = 0, onCommit}: {entry: SearchEntry; binding: SearchBindings; selection?: SearchSelection; position?: number; onCommit: () => void}) {
   useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
   const epoch = selection?.epoch();
-  useEffect(() => {if (selection) return selection.register(entry, position);}, [selection, entry, position, epoch]);
-  const picked = selection?.card(entry), range = useSelectionRangePreview(picked);
-  if (entry.kind !== 'song') return null;
-  const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
-  const playable = entry.available === true && !!entry.playback, title = entry.displayTitle ?? entry.title;
+  // A search answer can also carry a person or a channel, which have no library entry:
+  // the row's selection and content helpers only ever receive a real song entry.
+  const song = 'libraryId' in entry && entry.kind === 'song' ? entry : undefined;
+  useEffect(() => {if (selection && song) return selection.register(song, position);}, [selection, song, position, epoch]);
+  const picked = song ? selection?.card(song) : undefined, range = useSelectionRangePreview(picked);
+  if (!song) return null;
+  const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(song); onCommit(); });
+  const playable = song.available === true && !!song.playback, title = song.displayTitle ?? song.title;
   const activate = (event: ReactMouseEvent) => {
     if (picked?.active) picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
-    else if (playable) void binding.play(entry).then(onCommit).catch(context.effects.reportError);
+    else if (playable) void binding.play(song).then(onCommit).catch(context.effects.reportError);
     else open();
   };
   return <div className={styles.songTableRow} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>
     <span className={styles.songIndex}>{picked ? <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>
       : <button type="button" className={styles.songIndexPlay} onClick={activate} aria-label={t('next.browse.play', {title})}><span>{defaultI18n.number(position + 1)}</span><Icon name="i-play" size={16}/></button>}</span>
-    <button type="button" className={styles.songTitleCell} onClick={activate} aria-label={title}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><b>{title}</b></button>
-    <span className={styles.songArtist}>{entry.artist?.name}</span>
-    <span className={styles.songAlbum}>{entry.album?.name}</span>
-    <span className={styles.songPlays}>{entry.plays === undefined ? undefined : defaultI18n.number(entry.plays)}</span>
-    <span className={styles.songLength}>{clockText(entry.duration)}</span>
+    <button type="button" className={styles.songTitleCell} onClick={activate} aria-label={title}><Artwork source={context.artwork.foreground(song.posterUrl, 88, 1)} alt="" /><b>{title}</b></button>
+    <span className={styles.songArtist}>{song.artist?.name}</span>
+    <span className={styles.songAlbum}>{song.album?.name}</span>
+    <span className={styles.songPlays}>{song.plays === undefined ? undefined : defaultI18n.number(song.plays)}</span>
+    <span className={styles.songLength}>{clockText(song.duration)}</span>
   </div>;
 }
 
