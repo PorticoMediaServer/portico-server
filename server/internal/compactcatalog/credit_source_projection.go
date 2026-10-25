@@ -26,7 +26,7 @@ func creditRecordReference(ctx context.Context, tx *sql.Tx, entity int64, provid
 		}
 		return "accepted-owner:" + reference, nil
 	}
-	err := tx.QueryRowContext(ctx, `SELECT pe.provider||':'||CASE WHEN json_extract(pe.payload,'$.identity.type') IN('movie','episode','anime') THEN json_extract(pe.payload,'$.identity.type') WHEN pe.provider='anilist' THEN 'anime' WHEN e.kind=4 THEN 'episode' ELSE 'movie' END||':'||CAST(pe.provider_id AS TEXT) FROM provider_evidence pe JOIN catalog_entities e ON e.id=pe.item_id WHERE pe.item_id=? AND pe.provider=? AND pe.provider_id>0 AND e.kind IN(1,4)`, entity, provider).Scan(&reference)
+	err := tx.QueryRowContext(ctx, `SELECT pe.provider||':'||CASE WHEN json_extract(CASE WHEN json_valid(pe.payload) THEN pe.payload ELSE '{}' END,'$.identity.type') IN('movie','episode','anime') THEN json_extract(CASE WHEN json_valid(pe.payload) THEN pe.payload ELSE '{}' END,'$.identity.type') WHEN pe.provider='anilist' THEN 'anime' WHEN e.kind=4 THEN 'episode' ELSE 'movie' END||':'||CAST(pe.provider_id AS TEXT) FROM provider_evidence pe JOIN catalog_entities e ON e.id=pe.item_id WHERE pe.item_id=? AND pe.provider=? AND pe.provider_id>0 AND e.kind IN(1,4)`, entity, provider).Scan(&reference)
 	if err == nil {
 		return reference, nil
 	}
