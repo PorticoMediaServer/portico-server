@@ -665,6 +665,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerScreenMetadataReads(registry, d)
 	registerFreshnessRoutes(registry, d)
 	registerCapabilityReport(registry)
+	registerHardwareFacts(registry)
 	registerLiveContracts(registry, d)
 	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
