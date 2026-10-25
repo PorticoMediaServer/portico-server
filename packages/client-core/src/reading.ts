@@ -4,6 +4,7 @@ export type {ReadingFavoriteFlag, ReadingFavoriteCommand} from './reading-favori
 import {readingSavedPath, parseReadingSavedMembership, validReadingSavedCommand, type ReadingListCommand} from './reading-saved.ts';
 export type {ReadingListMembership, ReadingListCommand} from './reading-saved.ts';
 import {withReadingConversion, withReadingContinueConversions, type ReadingConversion} from './reading-conversion.ts';
+import {withReadingDiscoverMarks, type ReadingPreviewMarks} from './reading-preview-mark.ts';
 import {readingMarkPath, parseReadingMark, validReadingMarkCommand, type ReadingReadMarkCommand} from './reading-mark.ts';
 export type {ReadingReadMark, ReadingReadMarkCommand} from './reading-mark.ts';
 import {withReadingManifestFacts, type ReadingManifestFacts} from './reading-manifest-facts.ts';
@@ -419,12 +420,13 @@ export class ReadingClient {
     if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !sourceFormat(row.format) || !validReadingCover(row.id, row.coverUrl))) fail('invalid_document');
     return out;
   }
-  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number; shortReadsLimit?: number; newIssuesLimit?: number; newspaperLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover & {newIssueCards: readonly ReadingPeriodicalIssue[]; newspaperCard?: ReadingPeriodicalGroup}> {
+  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number; shortReadsLimit?: number; newIssuesLimit?: number; newspaperLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover & {newIssueCards: readonly ReadingPeriodicalIssue[]; newspaperCard?: ReadingPeriodicalGroup; previewMarks: ReadingPreviewMarks}> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 20, 1, 100) || options.seriesLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.seriesLimit,1,20))) fail('invalid_request');
     if (options.shortReadsLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.shortReadsLimit, 1, 20))) fail('invalid_request');
     if (options.newIssuesLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.newIssuesLimit, 1, 20))) fail('invalid_request');
     if (options.newspaperLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || options.newspaperLimit !== 1)) fail('invalid_request');
-    const out = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal, decodeGetReadingDiscoverResponse, 2 << 20);
+    const decoded = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal,
+      raw => withReadingDiscoverMarks(raw, decodeGetReadingDiscoverResponse), 2 << 20), out = decoded.value;
     if (out.rows.length < 1 || out.rows.length > 5 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].shortReads !== undefined || 'newIssues' in out.rows[0] || 'newspaper' in out.rows[0] || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
     const seen = new Set<string>();
     const checkItem = (item: ReadingItem, libraryId?: string) => {
@@ -494,7 +496,7 @@ export class ReadingClient {
         }
       }
     }
-    return {...out, newIssueCards, newspaperCard};
+    return {...out, newIssueCards, newspaperCard, previewMarks: decoded.marks};
   }
   async periodicalGroups(libraryId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalGroupsPage> {
     const limit = options.limit ?? 24;

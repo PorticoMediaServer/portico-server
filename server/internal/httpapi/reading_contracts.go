@@ -72,6 +72,19 @@ type ReadingItem struct {
 	InventoryAvailable bool                         `json:"inventoryAvailable"`
 	Author             *ReadingAuthor               `json:"author,omitempty"`
 	Series             *ReadingSeries               `json:"series,omitempty"`
+	// The current profile's own explicit completion mark on this exact item, when the server
+	// published one. Absent is not "unread": it means no mark was recorded for this viewer.
+	ReadingMark *ReadingItemMark `json:"readingMark,omitempty"`
+}
+type ReadingItemMark struct {
+	ItemID   string `json:"itemId"`
+	Read     bool   `json:"read"`
+	Revision int64  `json:"revision"`
+}
+
+func (ReadingItemMark) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"itemId", "read", "revision"}, "properties": map[string]any{
+		"itemId": annotationIDSchema(), "read": map[string]any{"type": "boolean"}, "revision": annotationInteger(9007199254740991)}}
 }
 type ReadingItemsResponse struct {
 	Items      []ReadingItem `json:"items"`

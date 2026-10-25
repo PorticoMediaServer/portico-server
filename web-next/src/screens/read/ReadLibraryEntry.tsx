@@ -69,6 +69,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const [newIssues, setNewIssues] = useState<readonly ReadingPeriodicalIssue[]>([]);
   const [shortReads, setShortReads] = useState<readonly ReadingShortRead[]>([]);
   const [series, setSeries] = useState<NonNullable<ReadingDiscover['rows'][number]['series']>>([]);
+  const [previewMarks, setPreviewMarks] = useState<ReadonlyMap<string, Readonly<{itemId: string; read: boolean; revision: number}>>>(new Map());
   useLayoutEffect(() => {
     const element = grid.current; if (!element) return;
     const read = () => setHeight(Math.max(280, window.innerHeight - element.getBoundingClientRect().top));
@@ -82,12 +83,12 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
    *  has no recently-added values (Root §3), and the Reading list stays reachable. */
   useEffect(() => {
     const operation = new AbortController();
-    setSeries([]); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
+    setSeries([]); setPreviewMarks(new Map()); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
     resources.bindings.client.discover({libraryId, limit: 20, seriesLimit: 12, ...(!comic ? {shortReadsLimit: 12, newIssuesLimit: 12, newspaperLimit: 1} : {})}, operation.signal)
-      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []); setNewIssues(response.newIssueCards); setNewspaper(response.newspaperCard);}})
+      .then(response => {if (!operation.signal.aborted && resources.bindings.authority.isCurrent()) {setRecent(response.rows[0]?.items ?? []); setSeries(response.rows.find(row => row.key === 'series')?.series ?? []); setPreviewMarks(response.previewMarks); setShortReads(response.rows.find(row => row.key === 'short-reads')?.shortReads ?? []); setNewIssues(response.newIssueCards); setNewspaper(response.newspaperCard);}})
       .catch(error => {
         if (operation.signal.aborted) return;
-        setRecent([]); setSeries([]); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
+        setRecent([]); setSeries([]); setPreviewMarks(new Map()); setShortReads([]); setNewIssues([]); setNewspaper(undefined);
         if (resources.bindings.authority.isCurrent()) resources.reportError(error);
       });
     return () => operation.abort();
@@ -120,14 +121,20 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
         onPlay: entry.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.item.id, entry.item.sourceId)).catch(resources.reportError);} : undefined,
       }})),
     }] : []),
-    ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('next.reader.yourSeries'), items: series.map(summary => ({id: summary.id, card: {
+    ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('next.reader.yourSeries'),
+      /** The drawn bar needs every member's own mark: a three-item preview cannot stand for a
+       *  whole series, so a partial preview draws no bar rather than unread slots it invented. */
+      subtitle: series.some(summary => summary.preview.length === summary.count && summary.preview.every(item => previewMarks.has(item.id))) ? t('next.reader.oneMarkPerBook') : undefined,
+      items: series.map(summary => ({id: summary.id, card: {
       model: {title: summary.name, caption: [
         /** desktop-read 1b/4c: the real number of titles, then the real read tally. */
         {id: 'count', text: comic ? t('next.reader.volumeCount', {count: summary.count}) : t('lib.count', {count: summary.count, pivot: 'books'}), role: 'context' as const},
         {id: 'read', text: t('next.reader.seriesReadCount', {read: defaultI18n.number(summary.readCount), count: defaultI18n.number(summary.count)}), role: 'identity' as const},
       ]},
       covers: summary.preview.map(item => resources.artwork.foreground(item.coverUrl, 380, 2 / 3) ?? {id: item.id, generated: {title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}}),
-      segments: [], visible: true,
+      segments: summary.preview.length === summary.count && summary.preview.every(item => previewMarks.has(item.id))
+        ? summary.preview.map(item => ({id: item.id, state: previewMarks.get(item.id)!.read ? 'read' as const : 'unread' as const})) : [],
+      visible: true,
       onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', entityId: summary.id}}).catch(resources.reportError);},
     }}))}] : []),
     ...(newIssues.length ? [{id: 'new-issues', kind: 'covers' as const, heading: t('next.reader.newIssues'), subtitle: t('next.reader.datesFromFileNames'),

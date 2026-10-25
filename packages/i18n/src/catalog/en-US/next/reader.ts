@@ -47,6 +47,7 @@ export const readerMessages = {
   'next.reader.allYears': 'All years',
   'next.reader.newIssues': 'New issues',
   'next.reader.yourSeries': 'Your series',
+  'next.reader.oneMarkPerBook': 'One mark per book, in order',
   'next.reader.datesFromFileNames': 'Dates from the file names',
   'next.reader.goToDate': 'Go to a date',
   'next.reader.issueCount': '{count, plural, one {# issue} other {# issues}}',

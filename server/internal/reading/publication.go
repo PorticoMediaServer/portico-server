@@ -270,7 +270,12 @@ type LibraryRow struct {
 	Author          *compactcatalog.ReadingValue
 	PublicationType *compactcatalog.ReadingValue
 	Series          *SeriesValue
-	entity          int64
+	// The current profile's own explicit completion mark on this exact row, present only when
+	// the snapshot admitted it. Never derived from progress, counts or another profile's state.
+	MarkRead     bool
+	MarkRevision int64
+	MarkKnown    bool
+	entity       int64
 }
 
 type SeriesValue struct {
