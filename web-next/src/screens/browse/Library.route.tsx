@@ -6,7 +6,7 @@ import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalSt
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
-import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentView} from '@core/library-content.ts';
+import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentSection, type ContentView} from '@core/library-content.ts';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {libraryTabs, readingTabModel, type LibraryTab} from '@core/presentation/library-tabs.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, type BrowseCapabilities} from '@core/browse.ts';
@@ -254,6 +254,19 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {
       void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal(),
         () => resources.life.current() && (!browse || resources.controller.contains(entry))).catch(context.effects.reportError);
     } : undefined});
+  const discoveryActions = (section: ContentSection, entry: ContentEntry) => {
+    if (entry.kind !== 'radio') return actions(entry);
+    const projection = resources.service.getSnapshot().projection, seed = entry.radioSeed, playRadio = context.effects.playRadio;
+    const current = () => resources.life.current() && context.isCurrent() && router.state.location.href === href && runtimeRef.current === runtime
+      && resources.service.getSnapshot().projection === projection
+      && resources.service.getSnapshot().appended.some(row => row === section && row.entries.includes(entry));
+    const play = () => {
+      if (!seed || !runtime || !playRadio || !current()) return;
+      void playRadio(seed.id, resources.life.signal(), current).catch(context.effects.reportError);
+    };
+    // A recent radio is its exact admitted seed, never an item or a library route.
+    return {onOpen: play, ...(seed && runtime && playRadio ? {onPlay: play} : {})};
+  };
   // Frame #grid: seven fluid columns at 1440 on Medium. 170 is the Medium card size the
   // drawn column paints; the screen fills each column to the gutter.
   const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 170) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
@@ -362,7 +375,7 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {
       onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} mixesTarget={search.section === 'mixes'} reportError={context.effects.reportError} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
-      actions={(_section, entry) => actions(entry)} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
+      actions={discoveryActions} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
     {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
 }
 function LibraryRouteScreen() {
