@@ -22,6 +22,7 @@ import type {SearchOnNowCard} from './on-now';
 import {appendedWindow} from './window';
 import styles from './search.module.css';
 import {TopResult} from './TopResult';
+import {artistAlbumArt} from './artist-art';
 import {runScreenCommand} from '../detail/context';
 import {useLoadingClock} from '../detail/Loading';
 import {ScreenProblem} from '../detail/ScreenProblem';
@@ -97,6 +98,8 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   const commit = () => { if (remember && text.trim() && !problem && committed.current !== text.trim()) { committed.current = text.trim(); submit(true); } };
   const showing = snapshot.data?.query.q === text.trim() && snapshot.data.query.group === (group ?? '') ? snapshot.data : null;
   const groups = showing ? snapshot.groups : [], top = !group && !selection?.isActive() ? topSearchResult(text, groups) : undefined;
+  // Frame 4: a photo-less artist's circle is cut from one of their own albums in this answer.
+  const topAlbumArt = top ? artistAlbumArt(top.entry, groups) : undefined;
   useEffect(() => {if (selection && top?.entry && 'libraryId' in top.entry) return selection.register(top.entry, -1);}, [selection, top?.entry, selectionEpoch]);
   const failed = groups.filter(value => value.status === 'error');
   const size = preferenceValue<number>(preferences, 'appearance.cardSizePercent') / 100;
@@ -161,7 +164,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
       {empty && !group && recentBlock}
-      {top && <TopResult binding={binding} result={top} />}
+      {top && <TopResult binding={binding} result={top} fallbackArtwork={topAlbumArt} />}
       {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} selection={selection} onCommit={commit} />
         : orderedSearchGroups(groups).map((result, groupIndex) => {
           const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;
@@ -173,7 +176,8 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
                 {selection?.canSelectGroup(result, shown) && <Button variant="text" size="small" className={styles.selectGroup} onClick={() => {try {selection.selectGroup(result, shown);} catch (error) {context.effects.reportError(error);}}}>{t('next.selection.selectAll', {count: shown.length})}</Button>}
                 {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}
               </div></header>
-            <div className={styles.cards}>{shown.map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit} />)}</div>
+            <div className={styles.cards}>{shown.map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit}
+              albumArt={entry.kind === 'artist' ? artistAlbumArt(entry, groups) : undefined} />)}</div>
           </section>;
         })}
     </div>
@@ -187,7 +191,7 @@ function SearchLoading() {
 
 const noSelectionSubscription = () => () => {};
 const noSelectionSnapshot = () => 0;
-export function SearchResult({entry, binding, selection, position = 0, onCommit}: {entry: SearchEntry; binding: SearchBindings; selection?: SearchSelection; position?: number; onCommit: () => void}) {
+export function SearchResult({entry, binding, selection, position = 0, onCommit, albumArt}: {entry: SearchEntry; binding: SearchBindings; selection?: SearchSelection; position?: number; onCommit: () => void; albumArt?: string}) {
   useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
   const epoch = selection?.epoch();
   useEffect(() => {if (selection && 'libraryId' in entry) return selection.register(entry, position);}, [selection, entry, position, epoch]);
@@ -209,7 +213,10 @@ export function SearchResult({entry, binding, selection, position = 0, onCommit}
     onPlay: playable ? () => { void binding.play(entry).then(onCommit).catch(context.effects.reportError); } : undefined};
   if (entry.kind === 'song') return <div className={styles.songSelection} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>{picked && <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>}<button className={styles.song} type="button" onClick={event => {if (picked?.active) picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'}); else if (playable) void binding.play(entry).then(onCommit).catch(context.effects.reportError); else open();}}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{clockText(entry.duration)}</span></button></div>;
   if (entry.kind === 'episode') return <EpisodeTile {...props} length={durationText(entry.duration, t)} artwork={context.artwork.foreground(entry.stillUrl ?? entry.backdropUrl, 632, 16 / 9)} artworkKind={entry.stillUrl ? 'still' : 'backdrop'} description={entry.overview} />;
-  if (entry.kind === 'artist') return <CircleCard {...props} covers={art ? [art] : []} variant="artist" />;
+  if (entry.kind === 'artist') {
+    const cover = entry.posterUrl ? art : albumArt ? context.artwork.foreground(albumArt, 380, 1) : undefined;
+    return <CircleCard {...props} covers={cover ? [cover] : []} variant="artist" />;
+  }
   if (entry.kind === 'ebook' || entry.kind === 'comic') {
     const kind = entry.publicationType === 'magazine' || entry.publicationType === 'newspaper' ? entry.publicationType : entry.kind === 'comic' ? 'comic' : 'book';
     const caption: readonly FactPart[] = entry.author ? [{id: 'author', text: entry.author, role: 'context'}] : [];
