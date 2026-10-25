@@ -306,6 +306,13 @@ func ReadingPathValue(in ReadingRuleInput, titles int, everySeries bool) (Readin
 			v.Title = rest
 		}
 	}
+	// A name that carries only the matching series and its number, such as
+	// "Little Nemo 01.cbz" inside Little Nemo/, leaves no title of its own. The
+	// accepted series name is then the volume's title. Never restore the raw
+	// stem here: it would put the sequence number back into the title.
+	if v.Title == "" && v.Series != nil {
+		v.Title = v.Series.Value
+	}
 	if v.Title == "" {
 		v.Title = readingCleanTitle(stem)
 	}

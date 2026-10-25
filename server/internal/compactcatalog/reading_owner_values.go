@@ -31,6 +31,10 @@ func ReadingOwnerValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (map[i
 		args = append(args, id)
 		marks = append(marks, "?")
 	}
+	// The accepted-format set matches readingAutomaticValuesTx exactly, so an
+	// owner value is not dropped for the same title whose automatic value is
+	// kept. This is only a projection over caller-selected titles; it neither
+	// enables MOBI/AZW3 conversion nor admits a title into a Reading scope.
 	query := `SELECT e.id,m.field,m.value,m.locked
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id
  JOIN libraries lib ON lib.id=cl.library_id
@@ -39,7 +43,7 @@ func ReadingOwnerValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (map[i
  WHERE e.id IN (` + strings.Join(marks, ",") + `) AND e.retired=0 AND cl.retired=0
  AND ((e.kind=20 AND lib.kind='book') OR (e.kind=21 AND lib.kind='comic'))
  AND EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
- WHERE p.item_id=e.id AND ((e.kind=20 AND p.format IN('epub','pdf')) OR (e.kind=21 AND p.format IN('cbz','pdf'))))`
+ WHERE p.item_id=e.id AND ((e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND p.format IN('cbz','pdf'))))`
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
