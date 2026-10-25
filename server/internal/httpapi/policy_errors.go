@@ -28,6 +28,7 @@ func policyErrorDefinitions() []apierror.Definition {
 		{Code: "source_network_policy", Status: 422, Message: "This source address needs confirmation before it can be reached.", Retry: apierror.Never},
 		{Code: "source_credentials_required", Status: 422, Message: "The provider refused these credentials. Enter them again.", Retry: apierror.Never},
 		{Code: "metadata_unavailable", Status: 503, Message: "Metadata is temporarily unavailable.", Retry: apierror.SameRequest},
+		{Code: "metadata_conflict", Status: 409, Message: "Metadata changed. Reload and review your decision.", Retry: apierror.Never},
 		{Code: "artwork_pending", Status: 404, Message: "Artwork is not available yet.", Retry: apierror.SameRequest},
 		{Code: "artwork_gone", Status: 410, Message: "This artwork version is no longer available.", Retry: apierror.AfterRefresh},
 		{Code: "method_not_allowed", Status: 405, Message: "This action is not supported.", Retry: apierror.Never},
