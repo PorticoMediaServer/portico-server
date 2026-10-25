@@ -116,8 +116,9 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
             {snapshot.seasonPagination.canPrevious && <MenuItem onSelect={() => pageSeasons(false)}>{t('title.earlierSeasons')}</MenuItem>}
             {snapshot.seasonPagination.nextCursor && <MenuItem onSelect={() => pageSeasons(true)}>{t('title.laterSeasons')}</MenuItem>}
           </Menu>}
+        {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
         {selectedProgress ? <span className={styles.progress}>{t('title.seasonProgress', {watched: selectedProgress.watched, total: selectedProgress.total})}</span>
-          : selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
+          : null}
         <Menu open={filterMenu} onOpenChange={setFilterMenu} title={t('next.controls.filters')} trigger={<Chip variant="toolbar" icon="i-filter">{t('next.controls.filters')}</Chip>}>
           <MenuItem selected={!snapshot.route?.playState} onSelect={() => setPlayState('all')}>{t('next.controls.all')}</MenuItem>
           <MenuItem selected={snapshot.route?.playState === 'unplayed'} onSelect={() => setPlayState('unplayed')}>{t('filter.quick.unplayed')}</MenuItem>

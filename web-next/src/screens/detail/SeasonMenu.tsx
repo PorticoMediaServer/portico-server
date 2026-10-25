@@ -39,7 +39,7 @@ export function SeasonMenu({open, onOpenChange, label, seasons, selectedId, tota
           trailing={<span>{t('next.detail.seasonNumberRange', {first: 1, last: totalCount})}</span>} />
       </form>}
     </header>
-    <div ref={list} className={styles.seasonList} role="listbox" aria-label={t('title.seasonMenu')} onKeyDown={event => {
+    <div ref={list} role="listbox" aria-label={t('title.seasonMenu')} onKeyDown={event => {
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
       const rows = [...(list.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? [])];
       if (!rows.length) return;
@@ -47,7 +47,7 @@ export function SeasonMenu({open, onOpenChange, label, seasons, selectedId, tota
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : index < 0 ? 0 : (index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
       event.preventDefault(); rows[next]?.focus();
     }}>
-      {seasons.map((season, index) => {
+      <div className={styles.seasonList}>{seasons.filter(season => season.number !== 0).map((season, index) => {
         const progress = seasonProgress(season.watchedCount, season.unwatchedCount);
         const complete = !!progress && progress.total > 0 && progress.watched >= progress.total;
         const first = year(season.firstAired), last = year(season.lastAired);
@@ -60,7 +60,13 @@ export function SeasonMenu({open, onOpenChange, label, seasons, selectedId, tota
               : progress && progress.total > 0 ? <span className={styles.seasonProgress} aria-hidden="true"><i style={{width: `${Math.round(100 * progress.watched / progress.total)}%`}} /></span> : null}
           </span>
         </button>;
-      })}
+      })}</div>
+      {seasons.filter(season => season.number === 0).map(season => <div className={styles.seasonSpecials} key={season.id}>
+        <button type="button" role="option" aria-selected={season.id === selectedId} className={styles.seasonRow} onClick={() => onSelect(season.id)}>
+          <span className={styles.seasonName}><b>{t('next.kit.special')}</b></span>
+          {season.episodeCount !== undefined && <span className={styles.seasonFacts}>{t('count.episodes', {count: season.episodeCount})}</span>}
+        </button>
+      </div>)}
     </div>
     {(hasPrevious || hasNext) && <div className={styles.seasonPaging}>
       {hasPrevious && <button type="button" onClick={onPrevious}>{t('title.earlierSeasons')}</button>}
