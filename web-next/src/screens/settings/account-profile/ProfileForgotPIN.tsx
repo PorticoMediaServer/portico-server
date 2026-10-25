@@ -13,24 +13,40 @@ const t = defaultI18n.t;
  * picker. Its grant never becomes the installed viewer or a profile switch. */
 export function ProfileForgotPIN({source, api, isCurrent}: {source: ProfileSettingsSource; api: HttpLocalApi; isCurrent: () => boolean}) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  const [flow, setFlow] = useState<BrowserProfileRecovery>();
-  const active = useRef<BrowserProfileRecovery | undefined>(undefined), trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => () => {active.current?.dispose();active.current = undefined;}, [source]);
+  type Opening = {flow: BrowserProfileRecovery; current: () => boolean; retire: () => void; profileName: string; username: string};
+  const [opening, setOpening] = useState<Opening>();
+  const active = useRef<Opening | undefined>(undefined), trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => () => {active.current?.retire();active.current = undefined;}, [source]);
   const selected = source.selected(), account = state.document;
-  const close = (captured: BrowserProfileRecovery) => {
+  const close = (captured: Opening) => {
     if (active.current !== captured) return;
-    active.current = undefined;captured.dispose();setFlow(undefined);
+    active.current = undefined;captured.retire();setOpening(undefined);
   };
   if (!isCurrent() || !account || account.canManage || !selected?.pinRequired) return null;
   return <>
     <Button ref={trigger} size="small" variant="glass" disabled={state.busy || !!active.current} onClick={() => {
       const document = source.getSnapshot().document, profile = source.selected();
       if (!isCurrent() || active.current || !document || document.canManage || !profile?.pinRequired) return;
-      const captured = new BrowserProfileRecovery(api, document, profile.id, 'local', () => isCurrent() && !!source.getSnapshot().document && source.selected()?.id === profile.id);
-      active.current = captured;setFlow(captured);
+      const accountId = document.account.id, accountRevision = document.account.revision;
+      const profileId = profile.id, profileRevision = profile.revision;
+      let retired = false, off = () => {};
+      const current = () => !retired && isCurrent() && source.getSnapshot().document === document &&
+        document.account.id === accountId && document.account.revision === accountRevision &&
+        source.selected() === profile && profile.id === profileId && profile.revision === profileRevision;
+      const flow = new BrowserProfileRecovery(api, document, profileId, 'local', current);
+      const captured: Opening = {flow, current, profileName: profile.name, username: document.account.username,
+        retire: () => {if (retired) return;retired = true;off();flow.dispose();}};
+      active.current = captured;
+      off = source.subscribe(() => {
+        if (current()) return;
+        captured.retire();
+        if (active.current === captured) {active.current = undefined;setOpening(undefined);}
+      });
+      if (!current()) {captured.retire();active.current = undefined;return;}
+      setOpening(captured);
     }}>{t('next.settingsSpec.account.profile.groups.2.rows.1.control.label')}</Button>
-    {flow && <RecoveryForm key={flow.profileId} flow={flow} current={() => active.current === flow && isCurrent() && !!source.getSnapshot().document}
-      profileName={selected.name} username={account.account.username} close={() => close(flow)} returnFocusRef={trigger} />}
+    {opening && <RecoveryForm key={opening.flow.profileId} flow={opening.flow} current={() => active.current === opening && opening.current()}
+      profileName={opening.profileName} username={opening.username} close={() => close(opening)} returnFocusRef={trigger} />}
   </>;
 }
 
