@@ -1,16 +1,13 @@
-import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
 import type {Library} from '@core/index.ts';
-import type {ContentEntry} from '@core/library-content.ts';
 import {browseNameId} from '@core/presentation/browse-toolbar.ts';
 import {appliedFilterParts, browseToolbarModel, type FactPart, type TextEnvironment} from '@portico/client-core/kit-model';
 import {LibraryHeader, LibrarySwitcher, StickyBrowseHeader, BrowseToolbar, type LibraryChoice, type BrowseLabels} from '../../kit/browse';
 import {Tabs} from '../../kit/controls';
 import {AmbientArt} from '../../kit/artwork';
 import {StateView} from '../../kit/states';
-import {Menu} from '../../kit/overlays';
-import type {CardSelectionIntent} from '../../kit/cards';
 import {LoadingGrid} from '../../kit/states/LoadingGrid';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
@@ -18,6 +15,7 @@ import {BrowseResults} from './BrowseResults';
 import {BrowseFilters} from './Filters';
 import {BrowseFilteredEmpty} from './FilteredEmpty';
 import {BrowseScopeChips} from './ScopeChips';
+import {useLibraryCardMenu} from './use-card-menu';
 import type {BrowseController, BrowseMember} from './controller';
 import type {BrowseItemActions} from './EntryCard';
 import styles from './browse.module.css';
@@ -100,55 +98,13 @@ export function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLib
   return compact ? <StickyBrowseHeader name={library.name} switcher={switcher} menu={libraryMenu} onLibraries={onLibraries} topInset={0}>{navigation}</StickyBrowseHeader> :
     <LibraryHeader name={library.name} counts={counts} switcher={switcher} menu={libraryMenu} ambient={ambient}>{navigation}</LibraryHeader>;
 }
-/** One card's menu, bound to the exact opening: the card, its entry, the
- * controller and the applied query that drew it. */
-type LibraryCardMenu = Readonly<{anchor: HTMLElement; title: string; entry: ContentEntry; controller: BrowseController;
-  queryRevision: number; play?: () => void; select?: () => void}>;
 export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const {controller, library, env, selection, reportError} = bindings;
   const appearance = browsePresentation(bindings.appearance, bindings.preferences, bindings.libraryViewOverride);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
   const [filtersOpen, setFiltersOpen] = useState(false), width = useShellWidth(), compact = width < 600;
-  // A card's own menu: its ⋯ button or a hold on an unselected card opens it at
-  // that exact card, for the query it was opened under.
-  const [cardMenu, setCardMenu] = useState<LibraryCardMenu>();
-  const cardAnchor = useRef<HTMLElement | null>(null), cardMenuRef = useRef<LibraryCardMenu | undefined>(undefined);
-  // The ref follows committed openings only, and its cleanup retires the exact
-  // opening it held; a later menu is never cleared by an earlier one.
-  useLayoutEffect(() => {
-    cardMenuRef.current = cardMenu;
-    return () => {if (cardMenuRef.current === cardMenu) cardMenuRef.current = undefined;};
-  }, [cardMenu]);
-  const queryRevision = state.queryRevision;
-  const openCardMenu = useCallback((anchor: HTMLElement, base: BrowseItemActions, entry: ContentEntry, title: string) => {
-    // A retained opener cannot draw a menu for a page the controller no longer serves.
-    if (controller.getSnapshot().queryRevision !== queryRevision || !controller.contains(entry)) return;
-    cardAnchor.current = anchor;
-    setCardMenu({anchor, title, entry, controller, queryRevision,
-      ...(base.onPlay ? {play: base.onPlay} : {}), ...(base.selection ? {select: () => base.selection!.onToggle({range: false, source: 'pointer'})} : {})});
-  }, [controller, queryRevision]);
-  /** The exact opening still owns the menu: same object, same controller, same applied query, same registered page. */
-  const cardMenuCurrent = useCallback((opened: LibraryCardMenu) => cardMenuRef.current === opened && opened.controller === controller
-    && controller.getSnapshot().queryRevision === opened.queryRevision && controller.contains(opened.entry), [controller]);
-  const cardActions = useCallback((member: BrowseMember, index: number): BrowseItemActions => {
-    const base = bindings.selection.actions(member, index), title = member.entry.displayTitle ?? member.entry.title, descriptor = base.selection;
-    // No ⋯ without something it can really do, and an owner that already supplies
-    // its own menu keeps it.
-    const own = (base.onPlay || descriptor) ? (anchor: HTMLButtonElement) => openCardMenu(anchor, base, member.entry, title) : undefined;
-    const more = base.onMore ?? own;
-    return {...base, ...(more ? {onMore: more} : {}),
-      ...(descriptor ? {selection: {...descriptor, onToggle: (intent: CardSelectionIntent) => {
-        // A hold opens the menu only while this card is not selecting; once the
-        // surface is selecting, the card keeps its drawn toggle gesture.
-        if (intent.source === 'long-press' && intent.anchor && descriptor.active === false && (base.onMore || own)) {
-          if (base.onMore) base.onMore(intent.anchor as HTMLButtonElement);
-          else openCardMenu(intent.anchor, base, member.entry, title);
-          return;
-        }
-        descriptor.onToggle(intent);
-      }}} : {})};
-  }, [bindings.selection, openCardMenu]);
+  const {cardActions, menu: cardMenu} = useLibraryCardMenu({controller, queryRevision: state.queryRevision, actions: bindings.selection.actions});
   const model = useMemo(() => state.capabilities && state.sort ? browseToolbarModel(state.capabilities, library.kind, state.predicates, state.sort, {...env, owner: bindings.owner, scope: controller.source.base?.length ? 'group' : 'library'}) : undefined,
     [state.capabilities, state.sort, state.predicates, library.kind, env, bindings.owner, controller]);
   const sort = useCallback((sort: BrowseSortSelection) => {try {controller.setQuery(controller.getSnapshot().predicates, sort);} catch (error) {reportError(error);}}, [controller, reportError]);
@@ -161,8 +117,6 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes);} catch (error) {bindings.reportError(error);}};
   const resultCount = snapshot.total === undefined || snapshot.refreshing ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
   const shape = bindings.shape ?? (bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster');
-  // A new applied query retires the menu at once; the stale state never draws again.
-  const openMenu = cardMenu && cardMenu.controller === controller && cardMenu.queryRevision === state.queryRevision ? cardMenu : undefined;
   return <>
     <BrowseToolbar model={model} labels={browseLabels} platform={compact ? 'phone' : 'desktop'} resultCount={resultCount} topInset={compact ? 94 : 76} sticky
       onQuickChange={(id, checked) => {const quick = [...model.quick, ...model.filterQuick].find(quick => quick.id === id);if (quick) setPredicates(checked ? [...state.predicates, quick.query] : state.predicates.filter(node => JSON.stringify(node) !== JSON.stringify(quick.query)));}}
@@ -178,10 +132,6 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
       empty={state.predicates.length ? <BrowseFilteredEmpty controller={controller} model={model} labels={browseLabels} predicates={state.predicates}
         library={library.name} onDrop={setPredicates} onClear={() => setPredicates([])}/> : bindings.empty}/>
     <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={resultCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
-    <Menu open={!!openMenu} onOpenChange={open => {if (!open && openMenu && cardMenuRef.current === openMenu) setCardMenu(undefined);}} title={openMenu?.title ?? ''} anchorRef={cardAnchor} width={280}
-      items={openMenu ? [
-        ...(openMenu.play ? [{id: 'play', label: t('next.selection.play'), icon: 'i-play' as const, onSelect: () => {if (!cardMenuCurrent(openMenu)) return; setCardMenu(undefined); openMenu.play!();}}] : []),
-        ...(openMenu.select ? [{id: 'select', label: t('next.selection.select'), icon: 'i-select' as const, onSelect: () => {if (!cardMenuCurrent(openMenu)) return; setCardMenu(undefined); openMenu.select!();}}] : []),
-      ] : []}/>
+    {cardMenu}
   </>;
 }
