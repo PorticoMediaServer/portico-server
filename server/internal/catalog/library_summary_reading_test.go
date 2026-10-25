@@ -28,7 +28,7 @@ func TestReadingLibrarySummaryUsesEligibleLeavesAndGuardedArtwork(t *testing.T) 
 			digest := strings.Repeat("a", 64)
 			c.Exec(`INSERT INTO artwork_objects VALUES(?,'image/png',400,600,100,'now','ready')`, digest)
 			c.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,subject,provider,image_id,origin,attribution,source_fence,observed_at) VALUES('reading-cover','item',?,'cover','','fixture','cover','local','fixture','fence','now')`, items[0].ID)
-			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('item',?,'cover','','reading-cover',?,'',0,1,'fixture','now')`, items[0].ID, digest)
+			c.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,subject,candidate_id,digest,thumbnail_digest,locked,revision,actor,observed_at) VALUES('item',?,'cover','','reading-cover',?,?,0,1,'fixture','now')`, items[0].ID, digest, digest)
 			c.Drain()
 			summaries, err := s.SummarizeLibraries(context.Background(), viewer, libraries)
 			if err != nil {
