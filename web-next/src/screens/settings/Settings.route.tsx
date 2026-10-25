@@ -58,6 +58,7 @@ import {ProfileSettingsSource} from './account-profile/source';
 import {profileSettingState, changeProfileSetting} from './account-profile/rows';
 import {ProfileList} from './account-profile/ProfileList';
 import {ProfileDelete} from './account-profile/ProfileDelete';
+import {ProfilePicture} from './account-profile/ProfilePicture';
 import {observeProfileFailures} from './account-profile/failures';
 import {ProfilePINDialog, type ProfilePINRequest} from './account-profile/ProfilePINControl';
 import {ProfileForgetDevices} from './account-profile/ProfileForgetDevices';
@@ -99,9 +100,14 @@ export function SettingsEntry() {
     // A drawn link names the page that owns its value, so it opens that row too.
     const openSettingsRow = (target: {scope: 'account' | 'server'; section: string; row?: string}) => {if (current()) void router.navigate({to: '/settings', search: () => target});};
     const profiles = route.scope === 'account' && route.section === 'profile' && viewer.authority === 'local'
-      ? new ProfileSettingsSource(context.api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current) : undefined;
+      ? new ProfileSettingsSource(context.api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current, async (path, body, contentType, signal) => {
+        if (!current()) throw new Error('shell_authority_retired');
+        const response = await context.api.routeFetch(context.api.baseUrl + path, {method: 'POST', signal, headers: {Authorization: 'Bearer ' + context.session().accessToken, 'Content-Type': contentType}, body: body as BodyInit});
+        if (!response.ok) throw Object.assign(new Error('Profile picture could not be saved.'), {status: response.status});
+        return response.json();
+      }) : undefined;
     const offProfileFailures = profiles ? observeProfileFailures(profiles, current, reportError) : undefined;
-    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.pin', 'profile.pinChange', 'profile.pinForget', 'profile.delete'].includes(id);
+    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.pin', 'profile.pinChange', 'profile.pinForget', 'profile.delete', 'profile.picture'].includes(id);
     const openProfilePIN = (remove: boolean) => {
       const target = profiles?.selected(), document = profiles?.getSnapshot().document;
       if (current() && profiles && target && document?.canManage && document.capabilities.manageAccount)
@@ -184,6 +190,7 @@ export function SettingsEntry() {
       ? new SettingsMissingSource(context.api, current, reportError) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
+        if (row.id === 'profile.picture' && profiles) return <ProfilePicture source={profiles} isCurrent={current} onFailure={reportError} />;
         if (row.id === 'profile.delete' && profiles) return <ProfileDelete source={profiles} isCurrent={current} onFailure={reportError} />;
         if (row.id === 'signin.switchToPortico' && signIn?.ownerSwitch) return <OwnerSignInSwitch source={signIn.ownerSwitch} isCurrent={current} onError={reportError}/>;
         if (row.id === 'profile.pinForget' && profiles) return <ProfileForgetDevices source={profiles} isCurrent={current} onFailure={reportError} />;
