@@ -51,7 +51,7 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
       <ServicesLead>{t('web.reset.lede')}</ServicesLead>
       <form className={styles.form} onSubmit={event => { event.preventDefault(); void submit(); }}>
         <div><AuthPasswordField name="new-password" label={<ServicesLabel detail={t('auth.passwordRule')}>{t('web.reset.password')}</ServicesLabel>}
-          autoComplete="new-password" value={password} onChange={event => setPassword(event.currentTarget.value)} autoFocus required disabled={busy}
+          autoComplete="new-password" value={password} onChange={event => { setPassword(event.currentTarget.value); setMismatch(false); }} autoFocus required disabled={busy}
           aria-describedby={password ? 'reset-strength' : undefined} error={passwordWrong ? t('services.reset.longer') : undefined} />
           <ServicesStrength password={password} id="reset-strength" /></div>
         <AuthPasswordField name="confirm-password" label={t('web.reset.confirm')} autoComplete="new-password" value={confirm}
