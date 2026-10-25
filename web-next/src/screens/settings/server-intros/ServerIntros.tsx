@@ -1,4 +1,4 @@
-import {useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {FactPart} from '@core/presentation/kit-model';
 import type {SegmentKind, SegmentReviewEntry, SegmentReviewMarker, SegmentTitleReview, SegmentTitleSummary} from '@core/segment-review.ts';
@@ -31,16 +31,26 @@ const titleLine = (title: SegmentTitleSummary) => [
 /** The owner's review under the drawn mode row and progress line: the status
  * the server reports, each video library, its shows and films, and one title's
  * markers with the drawn zoomed windows. Every number is the server's own. */
+/** One opened marker editor. The token makes a reopened marker in the same
+ * episode a different opening; Review and Episode carry this exact shape. */
+type EditOpening = Readonly<{opening: number; entryId: string; marker: SegmentReviewMarker; start: number; end: number; kind: SegmentKind}>;
+
 export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntrosSource; modeRows: ReactNode; onPreview: (libraryId: string, itemId: string, start: number) => void}) {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  const [edit, setEdit] = useState<{entryId: string; marker: SegmentReviewMarker; start: number; end: number}>();
+  const opening = useRef(0);
+  const committed = useRef<EditOpening | undefined>(undefined);
+  const [edit, setEdit] = useState<EditOpening>();
+  useLayoutEffect(() => {
+    committed.current = edit;
+    return () => {if (committed.current === edit) committed.current = undefined;};
+  }, [edit]);
   useEffect(() => {void source.load();}, [source]);
   // The drawn page starts on the first real video library; the owner can switch.
   useEffect(() => {
     const first = snapshot.status?.libraries[0];
     if (first && !snapshot.libraryId) void source.openLibrary(first.libraryId);
   }, [source, snapshot.status, snapshot.libraryId]);
-  useEffect(() => {setEdit(undefined);}, [snapshot.titleId, snapshot.season]);
+  useLayoutEffect(() => {committed.current = undefined;setEdit(undefined);}, [source, snapshot.libraryId, snapshot.titleId, snapshot.season]);
   const status = snapshot.status;
   const stateText = !status ? '' : status.mode === 'off' ? t('web.segments.stateOff') : status.files.pending || status.showsWaiting || !status.catchUpComplete ? t('web.segments.stateWorking') : t('web.segments.stateDone');
   const busy = !!snapshot.busy;
@@ -92,10 +102,10 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
           {!title ? snapshot.titleLoading ? <p className={styles.loading} role="status">{t('web.segments.loading')}</p> : snapshot.titleError ? <ReviewNotice tone="bad" onRetry={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}>{t('web.segments.error')}</ReviewNotice> : <p className={styles.empty}>{t('web.segments.chooseTitle')}</p> : <Review title={title} season={snapshot.season} entries={entries} snapshot={snapshot} edit={edit}
             onSeason={value => source.selectSeason(value)} onApproveAll={() => {void source.approve();}} onDetect={() => {void source.detectAgain();}}
             onRetryTitle={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}
-            onEdit={(entry, marker) => setEdit({entryId: entry.itemId, marker, start: seconds(marker.startUS), end: seconds(marker.endUS)})}
-            onChange={(entry, value) => setEdit(current => current && current.entryId === entry.itemId ? {...current, start: value.start, end: value.end} : current)}
-            onSave={(entry) => {if (!edit) return; void source.saveMarker(entry, edit.marker, edit.marker.kind, String(Math.round(edit.start * 1e6)), String(Math.round(edit.end * 1e6))); setEdit(undefined);}}
-            onCancel={() => setEdit(undefined)}
+            onEdit={(entry, marker) => {const next: EditOpening = {opening: ++opening.current, entryId: entry.itemId, marker, start: seconds(marker.startUS), end: seconds(marker.endUS), kind: marker.kind};committed.current = next;setEdit(next);}}
+            onChange={(entry, value) => {const open = committed.current;if (!open || open.opening !== value.opening || open.marker.id !== value.id || open.entryId !== entry.itemId) return;setEdit(current => current && current.opening === value.opening ? {...current, start: value.start, end: value.end, kind: value.kind} : current);}}
+            onSave={(entry, draft) => {const open = committed.current;if (!open || open.opening !== draft.opening || open.marker.id !== draft.id || open.entryId !== entry.itemId) return;committed.current = undefined;setEdit(undefined);void source.saveMarker(entry, open.marker, draft.kind, String(Math.round(draft.start * 1e6)), String(Math.round(draft.end * 1e6)));}}
+            onCancel={token => {const open = committed.current;if (!open || open.opening !== token) return;committed.current = undefined;setEdit(undefined);}}
             onApprove={(entry, marker) => {void source.approveMarker(entry, marker);}}
             busy={busy} onPreview={onPreview} />}
         </div>
@@ -106,12 +116,11 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
 
 function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll, onDetect, onRetryTitle, onEdit, onChange, onSave, onCancel, onApprove, busy, onPreview}: {
   title: SegmentTitleReview; season?: number; entries: readonly SegmentReviewEntry[]; snapshot: SegmentIntrosSnapshot;
-  edit?: {entryId: string; marker: SegmentReviewMarker; start: number; end: number};
-  onSeason: (value: number) => void; onApproveAll: () => void; onDetect: () => void; onRetryTitle: () => void;
+    onSeason: (value: number) => void; onApproveAll: () => void; onDetect: () => void; onRetryTitle: () => void;
   onEdit: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
   onChange: (entry: SegmentReviewEntry, value: SegmentEdit) => void;
-  onSave: (entry: SegmentReviewEntry) => void; onCancel: () => void;
-  onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; busy: boolean;
+  onSave: (entry: SegmentReviewEntry, draft: SegmentEdit) => void; onCancel: (opening: number) => void;
+  onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; busy: boolean; edit?: EditOpening;
   onPreview: (libraryId: string, itemId: string, start: number) => void;
 }) {
   return <>
@@ -138,10 +147,10 @@ function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll,
 }
 
 function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, onApprove, onPreview}: {
-  entry: SegmentReviewEntry; title: SegmentTitleReview; edit?: {entryId: string; marker: SegmentReviewMarker; start: number; end: number}; busy: boolean;
+  entry: SegmentReviewEntry; title: SegmentTitleReview; edit?: EditOpening; busy: boolean;
   onEdit: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
   onChange: (entry: SegmentReviewEntry, value: SegmentEdit) => void;
-  onSave: (entry: SegmentReviewEntry) => void; onCancel: () => void;
+  onSave: (entry: SegmentReviewEntry, draft: SegmentEdit) => void; onCancel: (opening: number) => void;
   onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
   onPreview: (libraryId: string, itemId: string, start: number) => void;
 }) {
@@ -157,10 +166,10 @@ function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, 
       <span className={styles.state} data-todo={todo > 0 || undefined}>{todo > 0 ? t('web.segments.titleSuggested', {count: todo}) : t('web.segments.entryState', {state: 'complete'})}</span>
     </header>
     {duration > 0 && (opening.length || ending.length)
-      ? <SegmentWindows duration={duration} opening={opening} ending={ending} edit={edit ? {id: edit.marker.id, start: edit.start, end: edit.end} : undefined}
+      ? <SegmentWindows duration={duration} opening={opening} ending={ending} edit={edit ? {id: edit.marker.id, opening: edit.opening, start: edit.start, end: edit.end, kind: edit.kind} : undefined}
           onPreview={(_mark, start) => onPreview(title.libraryId, entry.itemId, start)}
           onEdit={value => {const marker = entry.markers.find(candidate => candidate.id === value.id); if (marker) onEdit(entry, marker);}}
-          onChange={value => onChange(entry, value)} onSave={() => onSave(entry)} onCancel={onCancel}
+          onChange={value => onChange(entry, value)} onSave={draft => onSave(entry, draft)} onCancel={onCancel}
           onApprove={value => {const marker = entry.markers.find(candidate => candidate.id === value.id); if (marker && !busy) onApprove(entry, marker);}} />
       : <p className={styles.empty}>{t('web.segments.entryState', {state: entry.state})}</p>}
   </article>;

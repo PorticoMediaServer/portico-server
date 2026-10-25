@@ -90,6 +90,8 @@ export const shellMessages = {
   'next.shell.dragOrType': 'Drag the handles, or type the times',
   'next.shell.previewSegment': 'Watch from 3 seconds before',
   'next.shell.timeRange': '{start} to {end}',
+  'next.shell.oneSecondEarlier': 'One second earlier',
+  'next.shell.oneSecondLater': 'One second later',
   'next.shell.save': 'Save',
   'next.shell.cancel': 'Cancel',
   'next.shell.editSegment': 'Edit {kind}',

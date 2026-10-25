@@ -31,3 +31,20 @@
 @media (max-width: 599px) { .windows { grid-template-columns: 1fr; padding-left: 0; } }
 
 .markerFacts .trust[data-tone='automatic'] { background: color-mix(in srgb, var(--color-healthy) 12%, transparent); color: var(--color-healthy); }
+
+/* owner-libraries#23b/#25: the phone adjust sheet: kind first, then one zoomed
+   window and the two time steppers. */
+.adjustSheet { display: flex; flex-direction: column; gap: 16px; }
+.adjustSheet .timeline { height: 44px; }
+.stepper { display: flex; flex-direction: column; gap: 6px; }
+.stepperLabel { font-size: 12px; font-weight: 700; color: var(--color-text-tertiary); }
+.stepperRow { display: flex; align-items: center; gap: 10px; }
+.stepperRow .timeField { flex: 1; }
+.stepperRow .timeField input { width: 100%; height: 42px; font-size: 17px; }
+.stepButton { flex: none; width: 42px; height: 42px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); font-size: 22px; font-weight: 600; line-height: 1; cursor: pointer; touch-action: none; }
+.stepButton:active { background: color-mix(in srgb, var(--color-text) 16%, transparent); }
+.stepButton:focus-visible { outline: 2px solid var(--color-accent-strong); outline-offset: 2px; }
+
+/* owner-libraries#23b: the Type choice colours the edited segment at once. */
+.segment[data-kind='commercial'] { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--color-accent-strong) 70%, transparent) 0 3px, color-mix(in srgb, var(--color-accent-strong) 24%, transparent) 3px 6px); }
+.segment[data-kind='outro'] { background: #8fa6b8; }

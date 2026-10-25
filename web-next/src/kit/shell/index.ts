@@ -7,7 +7,7 @@ export type {ShellAction, SettingsNavEntry, SettingsSearchGroup, SettingsSheetPr
 export {StatTiles, Sparkline, BarList} from './Statistics';
 export type {StatTile} from './Statistics';
 export {PersonRow, DeviceRow, WaitingNotice} from './People';
-export {SegmentWindows} from './SegmentWindows';
-export type {SegmentMark, SegmentEdit, SegmentWindowsProps} from './SegmentWindows';
+export {SegmentWindows, segmentEditKinds} from './SegmentWindows';
+export type {SegmentMark, SegmentKind, SegmentEdit, SegmentWindowsProps} from './SegmentWindows';
 export {TopBarActivity, ActivityPanel, ProgressRing} from './Activity';
 export type {ActivityPanelView, ActivityStreamView, ActivityWorkView, ActivityMajorIssueView} from './Activity';
