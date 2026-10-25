@@ -88,20 +88,21 @@ type ReadingSessionRequest struct {
 	SourceID string `json:"sourceId"`
 }
 type ReadingSessionResponse struct {
-	CanSaveFile bool              `json:"canSaveFile,omitempty"`
-	CanAnnotate bool              `json:"canAnnotate,omitempty"`
-	Contents    ReadingContents   `json:"contents,omitempty"`
-	Sequential  bool              `json:"sequential,omitempty"`
-	SessionID   string            `json:"sessionId"`
-	ItemID      string            `json:"itemId"`
-	SourceID    string            `json:"sourceId"`
-	Revision    string            `json:"revision"`
-	Format      ReadingFormat     `json:"format"`
-	Size        int64             `json:"size"`
-	Metadata    ReadingMetadata   `json:"metadata"`
-	Resources   []ReadingResource `json:"resources,omitempty"`
-	Spine       []string          `json:"spine,omitempty"`
-	PageNames   []string          `json:"pageNames,omitempty"`
+	Conversion  *ReadingConversionProvenance `json:"conversion,omitempty"`
+	CanSaveFile bool                         `json:"canSaveFile,omitempty"`
+	CanAnnotate bool                         `json:"canAnnotate,omitempty"`
+	Contents    ReadingContents              `json:"contents,omitempty"`
+	Sequential  bool                         `json:"sequential,omitempty"`
+	SessionID   string                       `json:"sessionId"`
+	ItemID      string                       `json:"itemId"`
+	SourceID    string                       `json:"sourceId"`
+	Revision    string                       `json:"revision"`
+	Format      ReadingFormat                `json:"format"`
+	Size        int64                        `json:"size"`
+	Metadata    ReadingMetadata              `json:"metadata"`
+	Resources   []ReadingResource            `json:"resources,omitempty"`
+	Spine       []string                     `json:"spine,omitempty"`
+	PageNames   []string                     `json:"pageNames,omitempty"`
 }
 
 // ReadingContentsEntry is an archive-internal EPUB navigation target, not a
