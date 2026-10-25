@@ -49,12 +49,12 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
       primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.loadLibraries().catch(onError); }}} />;
   }
   if (!directory.data) return <p role="status" className={styles.loading}>{t('next.settings.loading')}</p>;
-  if (!libraries.length) return <p className={styles.empty}>{t('next.settings.libraries.empty')}</p>;
   const rows = libraryRows(libraries);
   return <>
     <div className={styles.listHeader}>
       <Button variant="primary" size="small" icon="i-plus" onClick={() => setAdding(true)}>{t('next.settingsSpec.server.libraries.groups.0.rows.0.control.addLabel')}</Button>
     </div>
+    {!libraries.length && <p className={styles.empty}>{t('next.settings.libraries.empty')}</p>}
     <ol className={styles.list} aria-label={t('next.settingsSpec.server.libraries.title')}>
     {rows.map(row => <li key={row.id} className={styles.row} data-library-row={row.id}>
       <span className={styles.identity}>
