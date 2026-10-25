@@ -1,4 +1,7 @@
 import type {ChannelApi} from '@core/channel-guide.ts';
+import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseNode} from '@core/browse.ts';
+import {channelConditionFields} from '@core/server-admin/channel-conditions.ts';
+import {parseLibraryChannelConfig, type LibraryChannelBlock, type LibraryChannelConfig} from '@core/library-channels.ts';
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {decodeGetAdminLibraryChannelsBlockPresetsResponse, decodePostAdminLibraryChannelsBlockPresetsResponse, decodePutAdminLibraryChannelsBlockPresetsIdResponse, decodeDeleteAdminLibraryChannelsBlockPresetsIdResponse} from '../../../../../../packages/contracts/src/decoders.ts';
 import {encodedRoutePath, routePath} from '../../../../../../packages/contracts/src/routes.ts';
@@ -89,6 +92,41 @@ export class BlockPresetsSource {
     }catch(error){if(owns()){this.publish({reconcile:true});this.failure(error);}}
     finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
     if(completed&&this.current())await this.load();return completed;
+  };
+  /** Read-only application: copy the checked definition into the caller's
+   * unsaved channel. Later preset writes cannot change this copied rule. */
+  apply=async(record:BlockPreset,config:LibraryChannelConfig,block:LibraryChannelBlock,caller:AbortSignal,callerCurrent:()=>boolean):Promise<LibraryChannelConfig|undefined>=>{
+    if(!this.current()||this.flight||this.intent||!this.state.loaded||this.state.reconcile||caller.aborted||!callerCurrent()||!this.state.items.includes(record)||record.body.order==='least-played'||!record.body.libraryId||config.rules.length>=16)return;
+    let ruleId:string,definition:BlockPresetBody,baseline:LibraryChannelConfig;
+    try{ruleId='rule-'+channelRequestID().slice(0,24);definition=freeze(structuredClone(record.body));baseline=structuredClone(config);}catch{return;}
+    const list=this.state.items;
+    if(!this.current()||this.flight||this.intent||caller.aborted||!callerCurrent()||this.state.items!==list||!list.includes(record))return;
+    const flight=new AbortController();this.flight=flight;
+    const owns=()=>this.current()&&this.flight===flight&&!flight.signal.aborted&&!caller.aborted&&callerCurrent()&&this.state.items===list&&list.includes(record);
+    this.publish({busy:true,error:undefined});
+    try{
+      if(!owns())return;
+      const raw=await this.api.request(browseCapabilitiesPath(definition.libraryId),'GET',undefined,AbortSignal.any([flight.signal,this.lifetime.signal,caller]));
+      if(!owns())return;
+      const capabilities=parseBrowseCapabilities(raw);
+      if(capabilities.library.id!==definition.libraryId||!['movie','tv','anime'].includes(capabilities.library.kind))throw new Error('unsupported_block_preset_library');
+      const fields=channelConditionFields(capabilities.fields),clauses:BrowseNode[]=[];
+      for(const clause of definition.criteria){
+        const field=fields.find(field=>field.id===clause.field);if(!field)throw new Error('unsupported_block_preset_field');
+        const values=clause.values.map(value=>field.type==='number'?Number(value):field.type==='boolean'?value==='true'?true:value==='false'?false:value:value);
+        const operator=field.operators.includes('contains-any')?'contains-any':field.operators.includes('in')?'in':field.operators.includes('equals')?'equals':undefined;
+        if(!operator)throw new Error('unsupported_block_preset_operator');
+        const node:BrowseNode=operator==='equals'&&values.length>1?{any:values.map(value=>({field:field.id,operator:'equals',value}))}:{field:field.id,operator,value:operator==='equals'?values[0]!:values};
+        validateBrowseQuery(capabilities,node);
+        clauses.push(clause.operator==='excludes'?{not:node}:node);
+      }
+      const filter:BrowseNode|undefined=clauses.length?{all:clauses}:undefined;
+      if(filter){validateBrowseQuery(capabilities,filter);const leaves=(node:BrowseNode):number=>'field'in node?1:'not'in node?leaves(node.not):('all'in node?node.all:node.any).reduce((sum,child)=>sum+leaves(child),0);if(leaves(filter)>capabilities.queryLimits.maximumClauses||new TextEncoder().encode(JSON.stringify(filter)).length>capabilities.queryLimits.maximumBytes)throw new Error('unsupported_block_preset_size');}
+      const base=baseline.rules.find(rule=>rule.id===baseline.defaultRuleId);if(!base)throw new Error('invalid_block_preset_channel');
+      const rule={...base,id:ruleId,name:record.name,mode:definition.order==='shuffle'?'shuffle-bag' as const:'sequential' as const,weights:[],query:{...base.query,libraryIds:[definition.libraryId],kinds:capabilities.library.kind==='movie'?['movie' as const]:['episode' as const],showIds:[],genres:[],yearFrom:0,yearThrough:0,recentDays:0,text:'',includeItemIds:[],excludeItemIds:[],filter,order:definition.order==='recent'?'recent' as const:'title' as const,limit:0}};
+      const result=parseLibraryChannelConfig({...baseline,rules:[...baseline.rules,rule],blocks:baseline.blocks.map(row=>row.id===block.id?{...row,ruleId}:row)});
+      if(!owns())return;return freeze(result);
+    }catch(error){if(owns())this.failure(error);return;}finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
   };
   dispose=()=>{this.flight?.abort();this.lifetime.abort();this.intent=undefined;this.state=empty;this.listeners.clear();};
 }
