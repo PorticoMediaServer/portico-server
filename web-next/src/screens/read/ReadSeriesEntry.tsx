@@ -14,7 +14,7 @@ import styles from './entry.module.css';
 
 const {t} = defaultI18n;
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type Resources = Readonly<{bindings: ReturnType<typeof createReadBindings>; rows: ReturnType<typeof createReadingSeriesCollection>; reportError: (error: unknown) => void}>;
+type Resources = Readonly<{artwork: Captured['context']['artwork']; bindings: ReturnType<typeof createReadBindings>; rows: ReturnType<typeof createReadingSeriesCollection>; reportError: (error: unknown) => void}>;
 
 /** The canonical series cursor owns complete membership and ordering, including unnumbered volumes. */
 export function ReadSeriesEntry({libraryId, seriesId}: {libraryId: string; seriesId: string}) {
@@ -25,7 +25,7 @@ function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libra
   const [resources, setResources] = useState<Resources>(), [retry, setRetry] = useState(0);
   useEffect(() => {
     const bindings = createReadBindings(captured.context), rows = createReadingSeriesCollection(bindings.client, libraryId, seriesId);
-    setResources({bindings, rows, reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}});
+    setResources({bindings, rows, artwork: captured.context.artwork, reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}});
     return () => {rows.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, seriesId, retry]);
   return resources ? <SeriesRows resources={resources} retry={() => setRetry(value => value + 1)}/> : <Skeleton height={320}/>;
@@ -49,7 +49,7 @@ function SeriesRows({resources, retry}: {resources: Resources; retry: () => void
     <div ref={grid} className={styles.books}><WindowedGrid collection={resources.rows.collection} label={title ?? t('library.tab.series')}
       height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30}
       renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}
-      renderItem={item => <CoverCard kind={item.format === 'cbz' ? 'comic' : 'book'} context="grid" density="grid" visible
+      renderItem={item => <CoverCard artwork={resources.artwork.foreground(item.coverUrl, cardWidth * 2, 2 / 3)} kind={item.format === 'cbz' ? 'comic' : 'book'} context="grid" density="grid" visible
         model={{title: item.title, caption: item.author ? [{id: 'author', text: item.author.value, role: 'identity'}] : []}}
         generated={{title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}} disabled={!item.inventoryAvailable}
         onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: item.id}}).catch(report);}}
