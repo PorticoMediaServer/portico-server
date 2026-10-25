@@ -129,6 +129,11 @@ func registerSourceProgram(registry *apikit.Registry, d Dependencies) {
 		if err != nil {
 			return SourceProgramResponse{}, advancedError(err)
 		}
+		// The approval and configure work can take a while; the owner must still
+		// be the same before its result is published.
+		if _, _, err = d.storageOwner(r); err != nil {
+			return SourceProgramResponse{}, folderError(err)
+		}
 		return SourceProgramResponse{Scope: scope, Program: program}, nil
 	})
 }

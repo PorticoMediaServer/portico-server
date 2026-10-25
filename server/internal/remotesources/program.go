@@ -70,22 +70,10 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 		return SourceProgram{}, storage.ErrRemoteConfig
 	}
 	admitted := row
-	list, err := s.mounts.List()
-	if err != nil {
-		return SourceProgram{}, err
-	}
-	found := false
-	for _, mount := range list {
-		if mount.ID == admitted.MountID {
-			found = true
-			if mount.ControlRevision != expectedRevision {
-				return SourceProgram{}, storage.ErrRemoteChanged
-			}
-		}
-	}
-	if !found {
-		return SourceProgram{}, storage.ErrRemoteOffline
-	}
+	// No control pre-check here: the mount command resolves the actor-bound
+	// receipt for this exact operation before it evaluates a new intent, so a
+	// lost reply is recovered rather than read as a stale revision. A genuinely
+	// changed intent still CASes against expectedRevision and is refused.
 	authorize := func(tx *sql.Tx) error {
 		if err := currentLocalOwnerTx(ctx, tx, identities, owner); err != nil {
 			return err
