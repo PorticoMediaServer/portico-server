@@ -293,3 +293,5 @@ export function createI18n(region: ResolvedRegion = resolveRegion(undefined, {lo
 
 /** The en-US formatter set, for code that runs before preferences load and for tests. */
 export const defaultI18n: I18n = createI18n();
+
+export {calendarDate} from './calendar-date.ts';

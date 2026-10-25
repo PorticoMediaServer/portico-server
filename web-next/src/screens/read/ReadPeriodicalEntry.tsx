@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
-import {defaultI18n} from '@i18n';
+import {calendarDate, defaultI18n} from '@i18n';
 import type {ReadingPeriodicalType, ReadingPeriodicalIssue} from '@portico/client-core';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -45,10 +45,6 @@ function BoundPeriodicals({captured, libraryId, kind, seriesId}: {captured: Capt
 function Failure({retry}: {retry: () => void}) {
   return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}}/>;
 }
-function dateLabel(value: string): string {
-  const month = value.length === 7;
-  return defaultI18n.date(new Date((month ? value + '-01' : value) + 'T12:00:00Z'), {year: 'numeric', month: 'long', ...(month ? {} : {day: 'numeric'}), timeZone: 'UTC'});
-}
 function GridFrame({children}: {children: (height: number, width: number) => ReactNode}) {
   const width = useShellWidth(), grid = useRef<HTMLDivElement>(null), [height, setHeight] = useState(600);
   useEffect(() => {
@@ -67,7 +63,7 @@ function GroupRows({resources, retry}: {resources: Groups; retry: () => void}) {
     height={height} cardWidth={width} rowHeight={width * 4 / 3 + 66} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={width} height={width * 4 / 3}/>}
     renderItem={group => <CoverCard kind={resources.kind} context="grid" density="grid" visible
       artwork={resources.context.artwork.foreground(group.latest.item.coverUrl, 380, 3 / 4)} fallback={<Icon name="i-book" size={40}/>}
-      model={{title: group.name, caption: [{id: 'date', text: dateLabel(group.latest.issueDate), role: 'identity'}, {id: 'issues', text: t('next.reader.issueCount', {count: group.issueCount}), role: 'identity'}]}}
+      model={{title: group.name, caption: [{id: 'date', text: calendarDate(defaultI18n, group.latest.issueDate), role: 'identity'}, {id: 'issues', text: t('next.reader.issueCount', {count: group.issueCount}), role: 'identity'}]}}
       playLabel={t('next.reader.read')} onPlay={group.latest.item.inventoryAvailable ? () => {
         if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(group.latest.item.id, group.latest.item.sourceId)).catch(resources.reportError);
       } : undefined}
@@ -86,6 +82,6 @@ function IssueRows({resources, retry}: {resources: Issues; retry: () => void}) {
     height={height} cardWidth={width} rowHeight={width * 4 / 3 + 66} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={width} height={width * 4 / 3}/>}
     renderItem={issue => <CoverCard kind={resources.kind} context="grid" density="grid" visible
       artwork={resources.context.artwork.foreground(issue.item.coverUrl, 380, 3 / 4)} fallback={<Icon name="i-book" size={40}/>}
-      model={{title: issue.item.title, caption: [{id: 'date', text: dateLabel(issue.issueDate), role: 'identity'}]}}
+      model={{title: issue.item.title, caption: [{id: 'date', text: calendarDate(defaultI18n, issue.issueDate), role: 'identity'}]}}
       disabled={!issue.item.inventoryAvailable} playLabel={t('next.reader.read')} onNavigate={() => open(issue, false)} onPlay={issue.item.inventoryAvailable ? () => open(issue, true) : undefined}/>}/>}</GridFrame></section>;
 }
