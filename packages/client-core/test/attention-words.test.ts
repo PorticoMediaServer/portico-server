@@ -10,8 +10,8 @@ const has = (id: string) => i18n.has(id);
 const entry = (reason: string) => ({entityId: reason, kind: 'item' as const, itemKind: 'movie', parentId: '', actions: ['dismiss', 'accept'], title: 'Ran', revision: 1, reason, confidence: 0.5, candidates: []});
 
 test('a reason is a sentence, and one this app does not know is never shown as a code', () => {
-  assert.equal(attentionReason(t, has, 'unmatched'), 'No confident match was found.');
-  assert.equal(attentionReason(t, has, 'low_confidence'), 'This match may need a check.');
+  assert.equal(attentionReason(t, has, 'unmatched'), 'No close match was found, so it shows under its file name.');
+  assert.equal(attentionReason(t, has, 'low_confidence'), 'There is one possible match. You can check it is the right one.');
   assert.equal(attentionReason(t, has, 'flux_capacitor'), 'This title needs a look.');
 });
 

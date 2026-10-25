@@ -20,8 +20,15 @@ test('the web groups keys, webhooks and assistants without the retired member-to
 });
 
 test('phones and tablets have the owner administration as on the web, in the web\'s order', () => {
-  const pages = server('phone');
-  assert.deepEqual(pages.map(p => p.id), server('web').map(p => p.id));
+  const pages = server('phone'), web = server('web');
+  const order = web.map(p => p.id);
+  // The phone carries the dedicated Remote sources page; the web still reaches the
+  // same source editor from Storage, so neither platform loses the page.
+  assert.deepEqual(pages.map(p => p.id), [...order.slice(0, order.indexOf('storage')), 'remote-sources', ...order.slice(order.indexOf('storage'))]);
+  assert.ok(page(pages, 'remote-sources'));
+  assert.equal(page(web, 'remote-sources'), undefined);
+  assert.ok(rowIds(page(web, 'storage')!).includes('server.remoteSources'));
+  assert.ok(rowIds(page(pages, 'storage')!).includes('server.remoteSources'));
   assert.ok(page(pages, 'integrations'));
   assert.ok(page(pages, 'metadata'));
   // The keys list has one home, Integrations, as on the web.
