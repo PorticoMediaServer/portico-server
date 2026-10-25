@@ -12,7 +12,7 @@ import {keepReadable} from './tolerant.ts';
  * pinned ids are movies, episodes or shows (a show pins all its episodes). `genres` and
  * `yearFrom`/`yearThrough` are first-version fields the server folds into `filter`. */
 export type LibraryChannelQuery={libraryIds:string[];kinds:('movie'|'episode')[];showIds:string[];genres?:string[];yearFrom?:number;yearThrough?:number;recentDays:number;order:LibraryChannelOrder;limit:number;filter?:BrowseNode;text?:string;includeItemIds?:string[];excludeItemIds?:string[]};
-export type LibraryChannelOrder='title'|'recent'|'oldest'|'year'|'episode'|'release'|'rating';
+export type LibraryChannelOrder='title'|'recent'|'oldest'|'year'|'episode'|'release'|'rating'|'least-played';
 export type LibraryChannelRule={id:string;name:string;query:LibraryChannelQuery;mode:'sequential'|'shuffle-bag'|'weighted-random'|'sequential-then-shuffle';episodeMode:'none'|'in-order'|'marathon'|'randomized'|'rotate';exhaustion:'loop'|'slate';deduplicationWindow:number;maxConsecutive:number;weights:{itemId:string;weight:number}[]};
 export type LibraryChannelBlock={id:string;weekdays:number[];startMinute:number;endMinute:number;priority:number;ruleId:string;fallbackRuleId:string;anchor:'channel-cursor'|'block-start';overrun:'finish'|'cut'|'fit'};
 export type LibraryChannelConfig={protocolVersion:'1.0';id:string;name:string;description:string;enabled:boolean;position:number;timezone:string;seed:string;defaultRuleId:string;viewerAccess:'owner-only'|'server-members';quality:{mode:'automatic'|'original'|'limited';maxBitrate:number;maxHeight:number;allowLossy:boolean;allowHdrToSdr:boolean};logoItemId:string;overlay:{enabled:boolean;corner:string;sizePercent:number;insetPercent:number;treatment:string};rules:LibraryChannelRule[];blocks:LibraryChannelBlock[];templateId:string};
@@ -38,7 +38,7 @@ function query(v:unknown):v is LibraryChannelQuery{
  if(v.yearFrom===undefined)v.yearFrom=0;
  if(v.yearThrough===undefined)v.yearThrough=0;
  if(v.filter!==undefined&&v.filter!==null){try{parseBrowseNode(v.filter,0,'query.filter');}catch{return false;}}
- return list(v.libraryIds,64,id)&&list(v.kinds,2,x=>one(x,['movie','episode']))&&optionalList(v,'showIds',128,id)&&optionalList(v,'genres',16,x=>boundedText(x,120))&&optionalList(v,'includeItemIds',500,id)&&optionalList(v,'excludeItemIds',500,id)&&safeCounter(v.yearFrom,9999)&&safeCounter(v.yearThrough,9999)&&safeCounter(v.recentDays,36500)&&safeCounter(v.limit,1000000)&&(v.text===undefined||typeof v.text==='string'&&v.text.length<=200)&&one(v.order,['title','recent','oldest','year','episode','release','rating']);
+ return list(v.libraryIds,64,id)&&list(v.kinds,2,x=>one(x,['movie','episode']))&&optionalList(v,'showIds',128,id)&&optionalList(v,'genres',16,x=>boundedText(x,120))&&optionalList(v,'includeItemIds',500,id)&&optionalList(v,'excludeItemIds',500,id)&&safeCounter(v.yearFrom,9999)&&safeCounter(v.yearThrough,9999)&&safeCounter(v.recentDays,36500)&&safeCounter(v.limit,1000000)&&(v.text===undefined||typeof v.text==='string'&&v.text.length<=200)&&one(v.order,['title','recent','oldest','year','episode','release','rating','least-played']);
 }
 function rule(v:unknown):v is LibraryChannelRule{
  if(!isRecord(v))return false;
