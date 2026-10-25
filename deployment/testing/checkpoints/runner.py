@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One isolated, admitted runner job. Main source in; per-flow evidence out."""
 from __future__ import annotations
-import argparse,base64,contextlib,email,hashlib,http.server,importlib.util,json,os,re,secrets,shutil,signal,socket,ssl,subprocess,sys,tarfile,threading,time,urllib.error,urllib.request,uuid
+import argparse,base64,contextlib,email,hashlib,http.server,importlib.util,json,os,re,secrets,shutil,signal,socket,ssl,subprocess,sys,tarfile,threading,time,traceback,urllib.error,urllib.request,uuid
 from pathlib import Path
 
 class StepFailure(Exception):
@@ -162,7 +162,7 @@ class Job:
         host=self.spawn('services-static',[str(self.work/'web-host'),'--listen',web.removeprefix('http://'),'--root',str(webroot)]);self.ready(web+'/',host)
         username='cp'+secrets.token_hex(5);password='Cp9!'+secrets.token_urlsafe(24);address=username+'@m0.getportico.invalid';continuation=secrets.token_urlsafe(32);headers={'X-Portico-Continuation':continuation}
         registration=self.json_call(api,'POST','/v1/registrations',{'username':username,'displayName':'Checkpoint','password':password,'contactAddress':address,'sessionMode':'native','requestId':secrets.token_urlsafe(24)},headers=headers,expected=(202,));code=mail.code(address)
-        grant=self.json_call(api,'POST','/v1/registrations/'+registration['id']+'/verify',{'code':code,'username':username,'displayName':'Checkpoint'},headers=headers,expected=(201,));self.report['flows'].append({'surface':'hosted','id':'real-registration-mail-verification','status':'pass','delivery':'verified TLS private mail gateway, invalid-domain recipient only'})
+        grant=self.json_call(api,'POST','/v1/registrations/'+registration['registrationId']+'/verify',{'code':code,'username':username,'displayName':'Checkpoint'},headers=headers,expected=(201,));self.report['flows'].append({'surface':'hosted','id':'real-registration-mail-verification','status':'pass','delivery':'verified TLS private mail gateway, invalid-domain recipient only'})
         self.json_call(api,'DELETE','/v1/sessions/current',token=grant['accessToken'],expected=(204,200))
         self.browser(node,{'surface':'hosted','origin':web,'apiOrigin':api,'username':username,'password':password,'disabled':self.args.disabled})
     def finish(self):
@@ -222,7 +222,7 @@ def main():
     deadline=threading.Timer(1800,lambda:os.kill(os.getpid(),signal.SIGTERM));deadline.daemon=True;deadline.start()
     try:job.web_server() if a.surface=='web-server' else job.hosted()
     except StepFailure as error:job.report['flows'].append({'surface':a.surface,'id':error.step,'status':'fail','kind':'build' if error.step.startswith(('server','web','hosted','npm','api-generation','schema-generation')) else 'infrastructure'})
-    except Exception as error:job.report['flows'].append({'surface':a.surface,'id':'runner','status':'fail','class':type(error).__name__})
+    except Exception as error:job.report['flows'].append({'surface':a.surface,'id':'runner','status':'fail','class':type(error).__name__,'frames':[{'file':Path(f.filename).name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)[-6:]]})
     finally:deadline.cancel();job.finish()
     print(json.dumps({'run':a.run_id,'flows':job.report['flows'],'cleanup':job.report['cleanup']}));return int(any(x['status']=='fail' for x in job.report['flows']))
 if __name__=='__main__':raise SystemExit(main())
