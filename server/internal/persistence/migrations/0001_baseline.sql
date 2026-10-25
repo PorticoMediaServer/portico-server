@@ -2321,6 +2321,18 @@ CREATE TABLE lyric_selections (
  FOREIGN KEY(resource_id,lyric_revision) REFERENCES lyric_revisions(resource_id,revision),
  CHECK((resource_id IS NULL AND lyric_revision IS NULL) OR (resource_id IS NOT NULL AND lyric_revision IS NOT NULL))
 ) STRICT;
+-- Owner-wide choice for one exact song source, independent of playback sessions.
+CREATE TABLE lyric_library_selections (
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ source_version TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>0),
+ resource_id TEXT, lyric_revision INTEGER, actor TEXT NOT NULL,
+ PRIMARY KEY(item_id,asset_id,source_version),
+ FOREIGN KEY(resource_id,lyric_revision) REFERENCES lyric_revisions(resource_id,revision) ON DELETE SET NULL,
+ CHECK((resource_id IS NULL AND lyric_revision IS NULL) OR (resource_id IS NOT NULL AND lyric_revision IS NOT NULL))
+) STRICT;
+CREATE INDEX lyric_library_selections_asset_id_fk ON lyric_library_selections(asset_id);
+CREATE INDEX lyric_library_selections_resource_revision_fk ON lyric_library_selections(resource_id,lyric_revision);
 CREATE TABLE lyric_candidates (
  id TEXT PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id TEXT NOT NULL REFERENCES catalog_assets(token), source_version TEXT NOT NULL,

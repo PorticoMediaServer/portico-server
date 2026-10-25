@@ -75,13 +75,14 @@ type Selection struct {
 	Resource *Revision `json:"resource"`
 }
 type View struct {
-	Scope     Scope            `json:"scope"`
-	Sources   []Source         `json:"sources"`
-	Source    *Source          `json:"source"`
-	Resources []Revision       `json:"resources"`
-	Selection Selection        `json:"selection"`
-	CanShare  bool             `json:"canShare"`
-	Providers ProviderSettings `json:"providers"`
+	LibrarySelection *Selection       `json:"librarySelection,omitempty"`
+	Scope            Scope            `json:"scope"`
+	Sources          []Source         `json:"sources"`
+	Source           *Source          `json:"source"`
+	Resources        []Revision       `json:"resources"`
+	Selection        Selection        `json:"selection"`
+	CanShare         bool             `json:"canShare"`
+	Providers        ProviderSettings `json:"providers"`
 }
 type Mutation struct {
 	Target
@@ -97,6 +98,7 @@ type Mutation struct {
 	CandidateID      string `json:"candidateId"`
 }
 type Choose struct {
+	Scope string `json:"scope,omitempty"`
 	Target
 	ExpectedSelectionRevision int64  `json:"expectedSelectionRevision"`
 	ResourceID                string `json:"resourceId"`
@@ -235,6 +237,15 @@ func readRevision(ctx context.Context, tx *sql.Tx, a Access, entity int64, sourc
 	return out, nil
 }
 func selection(ctx context.Context, tx *sql.Tx, a Access, entity int64, src *Source, session string) (Selection, error) {
+	if src != nil {
+		choice, configured, err := librarySelection(ctx, tx, a, entity, src)
+		if err != nil {
+			return Selection{}, err
+		}
+		if configured {
+			return choice, nil
+		}
+	}
 	out := Selection{}
 	if session == "" || src == nil {
 		return out, nil
@@ -309,17 +320,26 @@ func (s *Service) View(ctx context.Context, a Access, t Target) (View, error) {
 			}
 			out.Resources = append(out.Resources, r)
 		}
+		choice, configured, err := librarySelection(ctx, tx, a, entity, out.Source)
+		if err != nil {
+			return out, err
+		}
+		if configured {
+			out.LibrarySelection = &choice
+		}
 		// Choose a local/default library lyric only when the viewer has never
 		// selected or explicitly cleared one for this session.
-		if t.SessionID != "" {
+		if t.SessionID != "" && !configured {
 			_, e = tx.ExecContext(ctx, `INSERT INTO lyric_selections(session_id,revision,resource_id,lyric_revision) SELECT ?,1,r.id,r.revision FROM lyric_resources r JOIN lyric_revisions v ON v.resource_id=r.id AND v.revision=r.revision WHERE r.item_id=? AND r.asset_id=? AND r.source_version=? AND r.scope='library' AND r.deleted=0 ORDER BY CASE WHEN json_extract(v.document,'$.format')='lrc' THEN 0 ELSE 1 END,r.id LIMIT 1 ON CONFLICT(session_id) DO NOTHING`, t.SessionID, entity, out.Source.ID, out.Source.Version)
 			if e != nil {
 				return out, e
 			}
 		}
-		out.Selection, e = selection(ctx, tx, a, entity, out.Source, t.SessionID)
-		if e != nil {
-			return out, e
+		if t.SessionID != "" {
+			out.Selection, e = selection(ctx, tx, a, entity, out.Source, t.SessionID)
+			if e != nil {
+				return out, e
+			}
 		}
 	}
 	return out, gated.Commit()
@@ -361,6 +381,12 @@ func (s *Service) Read(ctx context.Context, a Access, t Target, id string, rev i
 	return out, gated2.Commit()
 }
 func (s *Service) Choose(ctx context.Context, a Access, in Choose) (Selection, error) {
+	if in.Scope == "library" {
+		return s.chooseLibrary(ctx, a, in)
+	}
+	if in.Scope != "" {
+		return Selection{}, ErrInput
+	}
 	if in.SessionID == "" || in.SourceVersion == "" || in.ExpectedSelectionRevision < 0 || in.ExpectedSelectionRevision >= 1<<52 {
 		return Selection{}, ErrInput
 	}
@@ -379,6 +405,11 @@ func (s *Service) Choose(ctx context.Context, a Access, in Choose) (Selection, e
 	}
 	if src == nil {
 		return Selection{}, ErrSource
+	}
+	if _, configured, err := librarySelection(ctx, tx, a, entity, src); err != nil {
+		return Selection{}, err
+	} else if configured {
+		return Selection{}, ErrConflict
 	}
 	before, e := selection(ctx, tx, a, entity, src, in.SessionID)
 	if e != nil {
@@ -588,6 +619,12 @@ func (s *Service) Publish(ctx context.Context, a Access, in Mutation, operation 
 	if e != nil {
 		return Revision{}, e
 	}
+	if deleted && scope == "library" {
+		if _, e = tx.ExecContext(ctx, `UPDATE lyric_library_selections SET resource_id=NULL,lyric_revision=NULL,revision=revision+1,actor=? WHERE item_id=? AND resource_id=?`, a.Actor.key(), entity, id); e != nil {
+			return Revision{}, e
+		}
+	}
+
 	if in.CandidateID != "" {
 		if _, e = tx.ExecContext(ctx, `DELETE FROM lyric_candidates WHERE id=?`, in.CandidateID); e != nil {
 			return Revision{}, e
