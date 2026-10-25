@@ -35,7 +35,7 @@ function fixture() {
     throw new Error('Unexpected fixture route: ' + path);
   }) as HttpLocalApi['request'];
   const entry = new BrowserAccountEntry({
-    store: {read: async () => ({version: 1, revision: 1, servers: []}), selected: async () => selected, connectionStorage: () => ({read: async () => undefined, change: async () => {}})} as never,
+    store: {read: async () => ({version: 1, revision: 1, servers: selected ? [selected] : [], ...(selected ? {selectedServerId: serverId} : {})}), selected: async () => selected, connectionStorage: () => ({read: async () => undefined, change: async () => {}})} as never,
     actions: {switchProfile: async () => {selections++;}, signOutServer: async (captured: LocalSession) => {assert.equal(captured.sessionFamilyId, 'account-family');selected = undefined;}} as never,
     environment: () => ({storage: {read: async () => undefined, change: async () => {}}}),
     restore: async () => ({api, session}), inspect: async () => pin, connect: (async () => ({api, connection})) as never,
