@@ -134,7 +134,6 @@ export type PlaybackSession = {
   resumeSeconds: number;
 };
 export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'|'move'> & {signIn: 'portico' | 'local';move:'to_portico'|'to_local'|null};
-/** A server-named request field (`name`, `rules[0].query.libraryIds`), or undefined for anything else. */
 /** A closed numeric rclone version (three numeric parts plus an optional suffix); never prose. */
 function errorProgramVersion(value:unknown):string|undefined{
   return typeof value==='string'&&/^\d{1,4}(?:\.\d{1,4}){2}(?:[-+][0-9A-Za-z.+-]{1,32})?$/.test(value)?value:undefined;
@@ -151,6 +150,7 @@ export function errorConfirmRoots(value: unknown): readonly string[] | undefined
   }
   return Object.freeze(out);
 }
+/** A server-named request field (`name`, `rules[0].query.libraryIds`), or undefined for anything else. */
 export function errorFieldPath(value: unknown): string | undefined {
   return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_]*(?:\[\d{1,4}\]|\.[A-Za-z][A-Za-z0-9_]*){0,12}$/.test(value) && value.length <= 200 ? value : undefined;
 }
