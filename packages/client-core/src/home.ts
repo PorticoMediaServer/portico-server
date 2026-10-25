@@ -446,6 +446,6 @@ export async function saveHomeLayout(api: HomeApi, intent: HomeLayoutIntent, sig
   }), signal));
 }
 
-export async function resetHomeLayout(api: HomeApi, idempotencyKey = '', signal?: AbortSignal): Promise<HomeLayout> {
-  return validateHomeLayout(await api.request<RouteResponse<"post_home_layout_reset">>(routePath("post_home_layout_reset"), 'POST', routeBody("post_home_layout_reset", {idempotencyKey}), signal));
+export async function resetHomeLayout(api: HomeApi, idempotencyKey = '', signal?: AbortSignal, expectedRevision?: number): Promise<HomeLayout> {
+  return validateHomeLayout(await api.request<RouteResponse<"post_home_layout_reset">>(routePath("post_home_layout_reset"), 'POST', routeBody("post_home_layout_reset", {idempotencyKey, ...(expectedRevision === undefined ? {} : {expectedRevision})}), signal));
 }

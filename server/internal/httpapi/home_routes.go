@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"portico.local/server/internal/catalog"
@@ -228,13 +229,29 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 	var body struct {
-		ExpectedRevision int64    `json:"expectedRevision"`
-		IdempotencyKey   string   `json:"idempotencyKey"`
-		RowOrder         []string `json:"rowOrder"`
-		HiddenRowIDs     []string `json:"hiddenRowIds"`
+		ExpectedRevision json.RawMessage `json:"expectedRevision"`
+		IdempotencyKey   string          `json:"idempotencyKey"`
+		RowOrder         []string        `json:"rowOrder"`
+		HiddenRowIDs     []string        `json:"hiddenRowIds"`
 	}
 	if e := decode(w, r, &body); e != nil {
 		failure(w, e)
+		return
+	}
+	var suppliedRevision *int64
+	if len(body.ExpectedRevision) != 0 {
+		if err := json.Unmarshal(body.ExpectedRevision, &suppliedRevision); err != nil {
+			failure(w, errStrictJSON)
+			return
+		}
+		if suppliedRevision == nil {
+			failure(w, errRevisionRequired)
+			return
+		}
+	} else if !reset {
+		// RawMessage is not covered by the generic int64 presence decoder.
+		// Keep PUT's existing missing-revision refusal explicitly.
+		failure(w, errRevisionRequired)
 		return
 	}
 	p, request, e := d.homeRequest(r)
@@ -251,11 +268,16 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 	if body.IdempotencyKey == "" {
 		body.IdempotencyKey = identity.Token()
 	}
-	change := operations.HomeLayoutChange{ExpectedRevision: body.ExpectedRevision, IdempotencyKey: body.IdempotencyKey,
-		RowOrder: body.RowOrder, HiddenRowIDs: body.HiddenRowIDs, Reset: reset}
-	if reset {
-		change.ExpectedRevision = request.LayoutRevision
+	expectedRevision := int64(0)
+	if suppliedRevision != nil {
+		expectedRevision = *suppliedRevision
+	} else if reset {
+		// Older clients sent only the reset key. An explicitly supplied revision
+		// remains the editor's original revision, including a genuine zero.
+		expectedRevision = request.LayoutRevision
 	}
+	change := operations.HomeLayoutChange{ExpectedRevision: expectedRevision, IdempotencyKey: body.IdempotencyKey,
+		RowOrder: body.RowOrder, HiddenRowIDs: body.HiddenRowIDs, Reset: reset}
 	out, e := d.Console.ApplyHomeLayout(r.Context(), p, d.consoleAuthority(p, false), change)
 	if e != nil {
 		if errors.Is(e, operations.ErrConflict) && !errors.Is(e, operations.ErrIdempotencyKeyReused) {
