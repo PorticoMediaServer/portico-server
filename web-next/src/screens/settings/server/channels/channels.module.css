@@ -43,3 +43,7 @@
 @media (max-width: 720px) { .editorGrid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .control { align-items: flex-start; flex-direction: column; gap: 8px; } .control > :last-child { max-width: 100%; width: 100%; } }
 
 .pinResults { display: grid; gap: 4px; justify-items: start; }
+
+.condition, .conditionGroup { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; min-width: 0; }
+.conditionGroup { background: var(--color-raised); }
+.predicate { display: grid; gap: 8px; min-width: 0; }
