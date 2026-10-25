@@ -56,6 +56,10 @@
 .timingStep b { min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; font-weight: var(--type-body-strong-weight); }
 .additions { margin-top: 6px; }
 .styleLabel { margin: 10px 12px 4px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.sleepRow { margin-top: 14px; }
+.sleepButton { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 6px 12px; border: 0; border-radius: 10px; background: none; color: var(--color-text); font: inherit; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); cursor: pointer; }
+.sleepButton:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.sleepValue { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-secondary); }
 .searchRow { margin: 10px 12px 2px; color: var(--color-text-tertiary); }
 .searchLabel { display: flex; align-items: center; gap: 10px; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
 .searchWhy { margin: 4px 0 0 28px; font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }

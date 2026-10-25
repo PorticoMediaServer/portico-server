@@ -1,9 +1,9 @@
-import {useEffect,useLayoutEffect,useRef} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {I18n} from '@i18n';
 import {Segmented} from '../../kit/controls';
 import {TrackChoices} from '../../kit/media';
 import {Icon, type IconName} from '../../kit/Icon';
-import {BottomSheet} from '../../kit/overlays';
+import {BottomSheet,Menu} from '../../kit/overlays';
 import type {WatchPanelContext} from './types';
 import {phoneOptionRows,type WatchPanelModel,type WatchRadioChoice} from './panel-model';
 import styles from './panels.module.css';
@@ -47,6 +47,7 @@ function TimingRow({timing,reportError,t}:{timing:NonNullable<WatchPanelModel['s
  * On a phone the drawn sheet lists one row per control; each row opens its own panel. */
 export function WatchOptions({model,context,i18n,reportError,openSettings,info}:{openSettings():void|Promise<void>;model:WatchPanelModel;context:WatchPanelContext;i18n:I18n;reportError(error:unknown):void;/** Playback info f2: the phone reaches the same panel from its own options sheet. */info?:boolean}){
  const root=useRef<HTMLDivElement>(null),rowRefs=useRef(new Map<string,HTMLButtonElement>()),lastSection=useRef<Section|null>(null),t=i18n.t;
+ const [sleepOpen,setSleepOpen]=useState(false),sleepAnchor=useRef<HTMLButtonElement|null>(null);
  const icons:Readonly<Record<Section,IconName>>=Object.freeze({subtitles:'i-cc',audio:'i-audio',quality:'i-quality',speed:'i-gauge'});
  const sections=[...phoneOptionRows(model,t),...(info?[{id:'info' as const,label:t('next.info.title'),value:undefined,detail:undefined}]:[])].map(row=>({...row,icon:row.id==='info'?'i-info' as IconName:icons[row.id as Section]}));
  const asked=sectionOf(context.panel),section=asked&&sections.some(row=>row.id===asked)?asked:null;
@@ -103,6 +104,14 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
    {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={model.selectAudio} reportError={reportError} t={t}/>{model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
    {model.quality.length>0&&<div data-section="quality"><RadioColumn title={t('player.opt.quality')} rows={model.quality} select={model.selectQuality} reportError={reportError}/>{model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
   </div>}
+  {(model.speed.length>0||model.subtitleStyle||model.sleepTimer)&&<div>
+   {model.speed.length>0&&<div data-section="speed" className={styles.column}>
+   <h3>{t('player.opt.speed')}<span>{model.speed.find(row=>row.selected)?.label}</span></h3>
+   <Segmented className={styles.speeds} aria-label={t('player.opt.speed')} value={model.speed.find(row=>row.selected)?.id??''}
+    items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
+    onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
+  </div>}
+
   {model.subtitleStyle&&<div data-section="style" className={styles.column}>
    <h3>{t('player.opt.subtitleStyle')}</h3>
    <p className={styles.styleLabel}>{t('settings.row.subtitleSize')}</p>
@@ -114,12 +123,15 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
     items={SUBTITLE_BACKGROUNDS.map(value=>({value,label:t(BACKGROUND_LABEL[value])}))}
     onValueChange={value=>{const next=SUBTITLE_BACKGROUNDS.find(background=>background===value);if(next)model.subtitleStyle?.set({background:next});}}/>
   </div>}
-  {model.speed.length>0&&<div data-section="speed" className={styles.column}>
-   <h3>{t('player.opt.speed')}<span>{model.speed.find(row=>row.selected)?.label}</span></h3>
-   <Segmented className={styles.speeds} aria-label={t('player.opt.speed')} value={model.speed.find(row=>row.selected)?.id??''}
-    items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
-    onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
+  {model.sleepTimer&&<div className={styles.sleepRow}>
+   <button ref={node=>{sleepAnchor.current=node;}} type="button" className={styles.sleepButton} aria-haspopup="menu" aria-expanded={sleepOpen}
+    onClick={()=>setSleepOpen(value=>!value)}><span>{t('player.opt.sleepTimer')}</span>
+    <span className={styles.sleepValue}>{model.sleepTimer.minutes?t('player.opt.minutes',{count:model.sleepTimer.minutes}):t('player.opt.off')}<Icon name="i-down" size={16}/></span></button>
+   <Menu open={sleepOpen} onOpenChange={setSleepOpen} title={t('player.opt.sleepTimer')} anchorRef={sleepAnchor} returnFocusRef={sleepAnchor} presentation="anchored" width={220}
+    items={[0,15,30,45,60,90].map(minutes=>({id:String(minutes),label:minutes?t('player.opt.minutes',{count:minutes}):t('player.opt.off'),selected:model.sleepTimer?.minutes===minutes,
+     onSelect:()=>{try{model.sleepTimer?.set(minutes);}catch(error){reportError(error);}}}))}/>
   </div>}
+ </div>}
  </div><div className={styles.note}><Icon name="i-info" size={20}/><span><b>{t('player.opt.temporaryChanges')}</b>{' '}{t('player.opt.defaultsUnchanged')}</span><a href="/settings" onClick={event=>{if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();try{context.close();void Promise.resolve(openSettings()).catch(reportError);}catch(error){reportError(error);}}}>{t('next.reader.openSettings')}<Icon name="i-right" size={16}/></a></div></>;
  return context.layout==='phone'?<BottomSheet open title={section?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>context.show('options')}><Icon name="i-left" size={20}/></button><span>{sectionTitle(section)}</span></span>:t('next.dock.options')}
   headerAction={<button type="button" className={styles.done} onClick={context.close}>{t('action.done')}</button>} showCloseButton={false}

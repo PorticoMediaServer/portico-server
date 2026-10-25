@@ -64,8 +64,10 @@ type Stack = {
   life: AbortController; offers: PlayerOffersService; optionsClient: PlaybackOptionsClient;
   offs: (() => void)[]; unmount?: () => void; subtitles?: SubtitleService; offSubtitles?: () => void;
   subtitleKey?: string; documentKey?: string; documentAbort?: AbortController; documentTimer?: unknown;
-  /** A style change made in the options panel for this playback only. */
-  subtitleStyle?: Partial<Pick<SubtitlePreferences,'size'|'background'>>;
+  /** A style change made in the options panel, for the one playback run it belongs to. */
+  subtitleStyle?: Partial<Pick<SubtitlePreferences,'size'|'background'>> & Readonly<{run: number}>;
+  /** The drawn sleep timer: one playback run's record, with the token that armed it. */
+  sleepTimer?: Readonly<{minutes: number; endsAt: number; timer: unknown; run: number; sessionId: string; token: object}>;
   sessionKey?: string; metadataAbort?: AbortController; options: PlaybackOptions | null;
   offerBinding?: OfferBinding;
   itemId?: string; metadataItemId?: string; libraryId?: string; subject?: PlaybackSubject; showId?: string; seasonId?: string;
@@ -299,6 +301,7 @@ export class WebShellPlaybackRuntime {
   }
   private retire(stack: Stack): void {
     if (stack.retired) return;
+    this.clearSleepTimer(stack);
     // Pause before releasing the actual media and checkpoint its real position. The accepted
     // dock retains only the bookmark, never a second live or hidden media session.
     if (stack.mode === 'local') stack.web.slot.pause();else stack.service.pause();
@@ -1008,6 +1011,9 @@ export class WebShellPlaybackRuntime {
     const service = new SubtitleService({request: <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) => this.source.api.request<T>(path, method, body, signal ? AbortSignal.any([signal, stack.life.signal]) : stack.life.signal)}, {itemId: stack.itemId, sessionId: current.sessionId, generation: current.generation}, this.env.key ?? idempotencyKey, {install: presentation => this.current(stack) && stack.sessionKey === key && stack.service.installSubtitlePresentation(presentation)});
     stack.subtitles = service;
     stack.offSubtitles = service.subscribe(() => { if (this.current(stack) && stack.sessionKey === key) { this.renderSubtitles(stack); this.sync(); } });
+    // A reused stack or a new playback must never keep another playback's injected caption CSS.
+    if (stack.subtitleStyle && stack.subtitleStyle.run !== this.playbackRun()) stack.subtitleStyle = undefined;
+    this.surface?.applyPreferences(this.subtitlePreferences(stack));
     service.setPolling(plan.mode === 'track'); service.start();
   }
   private renderSubtitles(stack: Stack): void {
@@ -1355,14 +1361,26 @@ export class WebShellPlaybackRuntime {
     await stack.service.changePlayback({subtitleTrackId: track.id, subtitleOffsetMs: offsetMs});
     if (this.current(stack)) this.sync();
   }
+  private playbackRun(): number { return this.snapshot?.playback.playbackRun ?? -1; }
   private subtitlePreferences(stack: Stack): SubtitlePreferences | undefined {
     const saved = this.source.settings.subtitlePreferences?.();
-    return saved && stack.subtitleStyle ? {...saved, ...stack.subtitleStyle} : saved;
+    if (!saved) return undefined;
+    const override = stack.subtitleStyle && stack.subtitleStyle.run === this.playbackRun() ? stack.subtitleStyle : undefined;
+    if (!override) return saved;
+    // An explicit size or background chosen in the player is drawn by this page, even where the
+    // saved preference delegates to the system caption style; the saved value is not written.
+    return {...saved, ...(override.size ? {size: override.size} : {}), ...(override.background ? {background: override.background} : {}), useSystemCaptionStyle: false};
+  }
+  /** Only the page-drawn text renderer on this runtime's own surface can honour a style. */
+  private canStyleSubtitles(stack: Stack): boolean {
+    if (!this.surface || stack.retired || this.snapshot?.nativeVideoSurfaceActive === true) return false;
+    const plan = stack.subtitles?.getSnapshot().plan ?? this.snapshot?.offers?.subtitlePlan;
+    return !!plan && plan.renderer === 'external_text';
   }
   /** The style this playback actually draws with: the saved preferences plus any change made
    * here. Undefined where the host supplies no preferences at all. */
   subtitleStyle(fence: PlaybackFence): Readonly<Pick<SubtitlePreferences,'size'|'background'>> | undefined {
-    if (fence.kind !== 'queue' || !this.matches(fence)) return undefined;
+    if (fence.kind !== 'queue' || !this.matches(fence) || !this.canStyleSubtitles(this.stack)) return undefined;
     const preferences = this.subtitlePreferences(this.stack);
     return preferences ? Object.freeze({size: preferences.size, background: preferences.background}) : undefined;
   }
@@ -1371,11 +1389,50 @@ export class WebShellPlaybackRuntime {
   setSubtitleStyle(fence: PlaybackFence, patch: Readonly<{size?: SubtitlePreferences['size']; background?: SubtitlePreferences['background']}>): void {
     if (fence.kind !== 'queue') problem('playback_subtitle_unavailable');
     const stack = this.require(fence);
+    if (!this.canStyleSubtitles(stack)) problem('playback_subtitle_unavailable');
     if (patch.size !== undefined && !['small','medium','large','extra-large'].includes(patch.size)) problem('playback_subtitle_unavailable');
     if (patch.background !== undefined && !['none','translucent','opaque'].includes(patch.background)) problem('playback_subtitle_unavailable');
-    stack.subtitleStyle = Object.freeze({...stack.subtitleStyle, ...(patch.size ? {size: patch.size} : {}), ...(patch.background ? {background: patch.background} : {})});
+    const run = this.playbackRun(), held = stack.subtitleStyle?.run === run ? stack.subtitleStyle : undefined;
+    stack.subtitleStyle = Object.freeze({run, ...(held?.size ? {size: held.size} : {}), ...(held?.background ? {background: held.background} : {}),
+      ...(patch.size ? {size: patch.size} : {}), ...(patch.background ? {background: patch.background} : {})});
     this.surface?.applyPreferences(this.subtitlePreferences(stack));
     this.sync();
+  }
+  /** desktop-player f3: the drawn sleep timer. Only this stack's own local playback is
+   * paused when the time is up; a group is never paused on a member's behalf. */
+  sleepTimer(fence: PlaybackFence): Readonly<{minutes: number; endsAt: number}> | undefined {
+    if (fence.kind !== 'queue' || !this.matches(fence)) return undefined;
+    const timer = this.stack.sleepTimer;
+    if (!timer) return undefined;
+    // A different run or session means its allowed lifetime is over: retire the armed record
+    // rather than leaving a timer the panel still shows as set.
+    if (timer.run !== this.playbackRun() || timer.sessionId !== fence.sessionId) { this.clearSleepTimer(this.stack); return undefined; }
+    return Object.freeze({minutes: timer.minutes, endsAt: timer.endsAt});
+  }
+  setSleepTimer(fence: PlaybackFence, minutes: number): void {
+    if (fence.kind !== 'queue') problem('playback_sleep_unavailable');
+    const stack = this.require(fence);
+    if (!Number.isSafeInteger(minutes) || ![0, 15, 30, 45, 60, 90].includes(minutes)) problem('playback_sleep_unavailable');
+    this.clearSleepTimer(stack);
+    if (!minutes) { this.sync(); return; }
+    const token = {}, run = this.playbackRun(), sessionId = fence.sessionId;
+    const timer = this.setTimer(() => {
+      // Only the record that armed this callback may act; a successor timer owns the stack now.
+      if (stack.sleepTimer?.token !== token) return;
+      this.clearSleepTimer(stack);
+      if (!this.current(stack) || this.playbackRun() !== run || this.snapshot?.session?.id !== sessionId) { this.sync(); return; }
+      if (this.group?.matches(fence)) { this.sync(); return; }
+      try { stack.service.pause(); } catch { /* a retired session has nothing to pause */ }
+      this.sync();
+    }, minutes * 60_000);
+    stack.sleepTimer = Object.freeze({minutes, endsAt: (this.env.timers?.now ?? Date.now)() + minutes * 60_000, timer, run, sessionId, token});
+    this.sync();
+  }
+  private clearSleepTimer(stack: Stack): void {
+    const timer = stack.sleepTimer;
+    if (!timer) return;
+    stack.sleepTimer = undefined;
+    this.clearTimer(timer.timer);
   }
   /** The server's own subtitle-provider facts for this fence's plan. Read-only: whether
    * subtitles found online can be searched at all, and the server's reason when they cannot. */
