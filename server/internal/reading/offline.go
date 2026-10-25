@@ -82,8 +82,9 @@ func (s *Service) SelectOfflineTx(ctx context.Context, tx *sql.Tx, p identity.Pr
 		return selected, err
 	}
 	// The existing original-download opener is the isolated local/mounted storage
-	// transport. Direct remote Reading leases are not that transfer authority.
-	if s.Storage.IsRemote(selected.path) {
+	// transport. Direct remote Reading leases and online MOBI conversions are
+	// not that transfer authority; only the descriptor formats are offered.
+	if (selected.Format != "epub" && selected.Format != "pdf" && selected.Format != "cbz") || s.Storage.IsRemote(selected.path) {
 		return selected, ErrUnavailable
 	}
 	return selected, nil
@@ -98,7 +99,7 @@ func (s *Service) OfflineDocument(ctx context.Context, p identity.Principal, ite
 	if err != nil {
 		return OfflineDocument{}, err
 	}
-	if s.Storage.IsRemote(selected.path) {
+	if (selected.Format != "epub" && selected.Format != "pdf" && selected.Format != "cbz") || s.Storage.IsRemote(selected.path) {
 		return OfflineDocument{}, ErrUnavailable
 	}
 	out := OfflineDocument{Resources: []OfflineResource{}, Spine: []string{}, PageNames: []string{}, Contents: []OfflineContents{}}
