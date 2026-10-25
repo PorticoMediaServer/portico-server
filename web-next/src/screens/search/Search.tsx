@@ -1,3 +1,4 @@
+import {generatedCoverTint} from '@design';
 import type {SearchSelection} from './selection';
 import {SelectionCircle} from '../../kit/selection';
 import {t, locale} from '../detail/text';
@@ -6,7 +7,7 @@ import {preferenceValue} from '@core/preferences.ts';
 import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult} from '@core/search.ts';
 import {SEARCH_CHIPS, orderedSearchGroups, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
 import {Button, Chip, TextField} from '../../kit/controls';
-import {useSelectionRangePreview, PosterCard, SquareCard, CircleCard, EpisodeTile, GenreTile, LiveCard} from '../../kit/cards';
+import {useSelectionRangePreview, PosterCard, SquareCard, CircleCard, EpisodeTile, GenreTile, LiveCard, CoverCard} from '../../kit/cards';
 import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
 import {Skeleton} from '../../kit/states';
@@ -145,6 +146,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     {selection?.isActive() ? selection.toolbar : text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
       const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id) ?? binding.summary().find(item => item.id === value.id);
       if (value.id !== 'all' && capability?.available === false) return null;
+      if (value.id === 'reading' && capability?.available !== true) return null;
       const off = value.id !== 'all' && result?.status === 'success' && result.totalCountExact && result.totalCount === 0;
       return <Chip key={value.id} variant="search" selected={chip === value.id} dim={off} disabled={off} retry={result?.status === 'error'}
         count={!off && result?.totalCountExact ? result.totalCount : undefined} onClick={() => { setChip(value.id); }}>{t(value.label)}</Chip>;
@@ -208,6 +210,12 @@ export function SearchResult({entry, binding, selection, position = 0, onCommit}
   if (entry.kind === 'song') return <div className={styles.songSelection} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>{picked && <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>}<button className={styles.song} type="button" onClick={event => {if (picked?.active) picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'}); else if (playable) void binding.play(entry).then(onCommit).catch(context.effects.reportError); else open();}}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{clockText(entry.duration)}</span></button></div>;
   if (entry.kind === 'episode') return <EpisodeTile {...props} length={durationText(entry.duration, t)} artwork={context.artwork.foreground(entry.stillUrl ?? entry.backdropUrl, 632, 16 / 9)} artworkKind={entry.stillUrl ? 'still' : 'backdrop'} description={entry.overview} />;
   if (entry.kind === 'artist') return <CircleCard {...props} covers={art ? [art] : []} variant="artist" />;
+  if (entry.kind === 'ebook' || entry.kind === 'comic') {
+    const kind = entry.publicationType === 'magazine' || entry.publicationType === 'newspaper' ? entry.publicationType : entry.kind === 'comic' ? 'comic' : 'book';
+    const caption: readonly FactPart[] = entry.author ? [{id: 'author', text: entry.author, role: 'context'}] : [];
+    return <CoverCard {...props} model={{...model, caption}} kind={kind} artwork={context.artwork.foreground(entry.posterUrl, 300, kind === 'magazine' || kind === 'newspaper' ? 3 / 4 : 2 / 3)}
+      generated={entry.posterUrl ? undefined : {title: entry.title, author: entry.author, glyph: Array.from(entry.title)[0] ?? '', tint: generatedCoverTint(entry.title)}} />;
+  }
   if (['album', 'book', 'audiobook_file'].includes(entry.kind)) return <SquareCard {...props} artwork={context.artwork.foreground(entry.posterUrl, 300, 1)} />;
   return <PosterCard {...props} artwork={art} progressPlacement="inset" />;
 }
