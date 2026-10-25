@@ -12,6 +12,8 @@ import {WatchScreen} from './WatchScreen';
 import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
+import {WatchStillWatchingPrompt} from './StillWatchingPrompt';
+import {watchStillWatching} from './still-watching';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
 import {WatchCapacityWait} from './CapacityWait';
 import {WatchStartFailure} from './StartFailure';
@@ -303,15 +305,20 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     }
   };
   const policy = useMemo(() => runtime && binding ? {getSnapshot: runtime.getSnapshot, isCurrent: () => !runtime.getSnapshot().disposed,
-    policyAction: runtime.policyAction.bind(runtime), reportError: binding.reportError} : undefined, [runtime, binding]);
+    policyAction: runtime.policyAction.bind(runtime), replay: runtime.replay.bind(runtime), stop: runtime.stop.bind(runtime),
+    reportError: binding.reportError} : undefined, [runtime, binding]);
   const layout = width < 1024 ? 'phone' : globalThis.matchMedia?.('(pointer: coarse)').matches ? 'tablet' : 'desktop';
+  // f6e hides the player's own chrome only while this exact dialog is really admitted.
+  const stillWatching = policy && snapshot ? watchStillWatching(policy, snapshot) : null;
   const drawnSurfaces: WatchSurfaces = {...surfaces, available: [...new Set([...(surfaces?.available ?? []), ...(castAvailable ? ['play-on' as const] : [])])], render: surfaces?.render ?? (() => null),
     more: [...(surfaces?.more ?? []), ...(canReport && feedbackTarget ? [{id: 'report-problem', label: defaultI18n.t('web.player.error.report'),
       action: () => {dispatchWatchFeedback(feedbackTarget, {available: feedbackAvailable, open: openFeedback});}}] : [])],
     playOn: cast && castAvailable ? {active: remoteState?.panel === 'play-on', open: anchor => {castAnchor.current = anchor ?? null;cast.controller.openPlayOn();}, close: () => cast.controller.closePanel()} : surfaces?.playOn,
+    ...(stillWatching ? {modal: 'still-watching' as const} : {}),
     prompts: <>{surfaces?.prompts}{policy && snapshot && <><WatchSkipPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
       <WatchUndoPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
-      <WatchUpNextPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} artwork={binding!.artwork} environment={binding!.environment} /></>}</>};
+      <WatchUpNextPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} artwork={binding!.artwork} environment={binding!.environment} />
+      <WatchStillWatchingPrompt binding={policy} snapshot={snapshot} expanded={expanded} layout={layout} environment={binding!.environment} /></>}</>};
   const remote = remoteState?.remote;
   const visualId = remote?.phase === 'playing' ? remoteState?.cast.receiver?.itemId : remote?.itemId;
   const item = visualId ? cast?.item(visualId) : undefined;
