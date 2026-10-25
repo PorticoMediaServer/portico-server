@@ -403,15 +403,18 @@ const (
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
 		"PUT /v1/libraries/{libraryId}/reading/groups/{groupKind}/{seriesId}/my-list": {check: readingSavedGroupRestrictionCheck},
-		"DELETE /v1/reading/saved-groups/{referenceId}": {check: readingSavedGroupRestrictionCheck},
-		"PUT /v1/items/{itemId}/reading/favorite": {check: readingFavoriteRestrictionCheck},
-		"PUT /v1/items/{itemId}/reading/my-list": {check: readingSavedRestrictionCheck},
-		"PUT /v1/items/{itemId}/reading/mark":           {check: readingMarkRestrictionCheck},
-		"POST /v1/reading/sessions":                     {check: readingRestrictionCheck("POST /v1/reading/sessions")},
-		"HEAD /v1/reading/sessions/{sessionId}/source":  {check: readingRestrictionCheck("HEAD /v1/reading/sessions/{sessionId}/source")},
-		"PUT /v1/reading/sessions/{sessionId}/progress": {check: readingRestrictionCheck("PUT /v1/reading/sessions/{sessionId}/progress")},
-		"DELETE /v1/reading/sessions/{sessionId}":       {check: readingRestrictionCheck("DELETE /v1/reading/sessions/{sessionId}")},
-		"DELETE /v1/me/removed-titles/{id}":             perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
+		"DELETE /v1/reading/saved-groups/{referenceId}":                               {check: readingSavedGroupRestrictionCheck},
+		"PUT /v1/items/{itemId}/reading/favorite":                                     {check: readingFavoriteRestrictionCheck},
+		"PUT /v1/items/{itemId}/reading/my-list":                                      {check: readingSavedRestrictionCheck},
+		"PUT /v1/items/{itemId}/reading/mark":                                         {check: readingMarkRestrictionCheck},
+		"POST /v1/reading/sessions":                                                   {check: readingRestrictionCheck("POST /v1/reading/sessions")},
+		"HEAD /v1/reading/sessions/{sessionId}/source":                                {check: readingRestrictionCheck("HEAD /v1/reading/sessions/{sessionId}/source")},
+		"PUT /v1/reading/sessions/{sessionId}/progress":                               {check: readingRestrictionCheck("PUT /v1/reading/sessions/{sessionId}/progress")},
+		"PUT /v1/reading/sessions/{sessionId}/annotations":                            {check: readingRestrictionCheck("PUT /v1/reading/sessions/{sessionId}/annotations")},
+		"POST /v1/reading/sessions/{sessionId}/file-save":                             {check: readingRestrictionCheck("POST /v1/reading/sessions/{sessionId}/file-save")},
+		"POST /v1/reading/offline/progress":                                           {check: readingOfflineRestrictionCheck},
+		"DELETE /v1/reading/sessions/{sessionId}":                                     {check: readingRestrictionCheck("DELETE /v1/reading/sessions/{sessionId}")},
+		"DELETE /v1/me/removed-titles/{id}":                                           perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
 		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {
 			var out []idProbe
 			for _, kind := range []string{"playlist", "collection"} {
