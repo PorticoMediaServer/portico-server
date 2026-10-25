@@ -63,3 +63,5 @@
 .searchRow { margin: 10px 12px 2px; color: var(--color-text-tertiary); }
 .searchLabel { display: flex; align-items: center; gap: 10px; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
 .searchWhy { margin: 4px 0 0 28px; font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }
+
+.phoneGroup { margin:20px 20px 6px; color:var(--color-text-tertiary); font-size:var(--type-caption-size); font-weight:var(--type-body-strong-weight); }

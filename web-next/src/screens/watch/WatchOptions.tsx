@@ -55,7 +55,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
  },[sleepOpen,context.layout]);
  const closeSleep=()=>{setSleepOpen(false);sleepAnchor.current?.focus({preventScroll:true});};
  const icons:Readonly<Record<Section,IconName>>=Object.freeze({subtitles:'i-cc',audio:'i-audio',quality:'i-quality',speed:'i-gauge'});
- const sections=[...phoneOptionRows(model,t),...(info?[{id:'info' as const,label:t('next.info.title'),value:undefined,detail:undefined}]:[])].map(row=>({...row,icon:row.id==='info'?'i-info' as IconName:icons[row.id as Section]}));
+ const sections=phoneOptionRows(model,t).map(row=>({...row,icon:icons[row.id]}));
  const asked=sectionOf(context.panel),section=asked&&sections.some(row=>row.id===asked)?asked:null;
  useLayoutEffect(()=>{
   if(context.layout!=='phone')return;
@@ -90,6 +90,11 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
     items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
     onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
    </div>:<><RadioRows rows={sectionRows(section)} select={id=>sectionSelect(section,id)} reportError={reportError} label={sectionTitle(section)}/>{section==='quality'&&model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}{section==='audio'&&model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</>}</div>:null;
+ const titleActions:readonly Readonly<{id:string;label:string;icon:IconName;action:()=>void|Promise<void>}>[]=[
+  ...(context.available?.includes('episodes')?[{id:'episodes',label:t('next.music.upNext'),icon:'i-stack' as const,action:()=>context.show('episodes')}]:[]),
+  ...(info?[{id:'info',label:t('next.info.title'),icon:'i-info' as const,action:()=>context.show('info')}]:[]),
+  ...(context.reportProblem?[{id:'report',label:context.reportProblem.label,icon:'i-flag' as const,action:context.reportProblem.action}]:[]),
+ ];
  const list=<div ref={root} className={styles.phoneRows} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}}}>
   <p className={styles.phoneNote}><Icon name="i-info" size={18}/><span>{t('player.opt.temporaryChanges')}{' '}{t('player.opt.defaultsUnchanged')}</span></p>
   {sections.map(row=><button key={row.id} type="button" className={styles.phoneRow}
@@ -105,6 +110,14 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
    <span className={styles.phoneLabel}>{t('player.opt.sleepTimer')}</span>
    <span className={styles.phoneValue}>{model.sleepTimer.minutes?t('player.opt.minutes',{count:model.sleepTimer.minutes}):t('player.opt.off')}</span><Icon name="i-right" size={18}/>
   </button>}
+
+  {titleActions.length>0&&<section aria-label={t('player.cannotPlay.thisTitle')}>
+   <h3 className={styles.phoneGroup}>{t('player.cannotPlay.thisTitle')}</h3>
+   {titleActions.map(action=><button key={action.id} type="button" className={styles.phoneRow} onClick={()=>{
+    if(!model.isCurrent())return;
+    try{if(action.id==='report')context.close();void Promise.resolve(action.action()).catch(reportError);}catch(error){reportError(error);}
+   }}><span className={styles.phoneIcon}><Icon name={action.icon} size={18}/></span><span className={styles.phoneLabel}>{action.label}</span><Icon name="i-right" size={18}/></button>)}
+  </section>}
 
  </div>;
  const columns=<><div ref={root} className={styles.columns} onKeyDown={event=>{
