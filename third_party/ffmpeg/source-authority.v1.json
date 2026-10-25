@@ -113,10 +113,10 @@
     "third_party/ffmpeg/tests/dovi-profile-packets.c": "109ab0284889bbe3051c05b3917b36174e357d108d5bc1f427449416adbb162d",
     "third_party/ffmpeg/tests/dovi-video-roundtrip.c": "e75a23f8b56886f826f6cee40a4b7bfab57f0eadf034ccc127ce86e5b52ab160",
     "third_party/portico-disc/NOTICE.md": "986ff8eaa47147b8c75a560068890c2c3441f7e72754ad47f97f8739cfa9af14",
-    "third_party/portico-disc/contract.md": "2eee091debe30a35d8625826b286a312baeda9936ed1be75131d146989579eed",
+    "third_party/portico-disc/contract.md": "4a828f655210181e6e81ad276ab63c00dfd4dc1189e408453ebde973f7a83196",
     "third_party/portico-disc/fixture-expectations.json": "a60deb8ac847b909cf17dd8a18ab68dced6100502fea090f00eca34fc3e5406a",
     "third_party/portico-disc/mpegts_dovi.h": "82da52d0bcdf2ccb39a0a52e641ecdcb8df9ba2affb7f64249bb84256c93bf89",
-    "third_party/portico-disc/portico-disc.c": "b67ac5526c43aa8a261011ed882aca5c8cda1c57cd6dfb8fe4d2994e477a4221",
+    "third_party/portico-disc/portico-disc.c": "f2f1f61410ce4dd13eb0247811d71372e698f15fd6bf398a130589a3850cfc0c",
     "third_party/portico-disc/schema1.json": "1b4058c827e6f08935b7b08b1cd0ab0bf73c6d7d428b30dba981518700809c0f"
   }
 }
