@@ -1,3 +1,4 @@
+import {ReaderHighlightsExport} from './ReaderHighlightsExport';
 import type {ReadingAnnotationPort} from '@core/reading-annotations.ts';
 import {randomId} from '@core/random-id.ts';
 import {readingLocationFromReader} from '@portico/reader-core';
@@ -196,7 +197,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
     tabs={[...(!fixed || snapshot.toc.length > 0 ? [{id:'contents',label:t('next.reader.contents')}] : []), ...(fixed ? [{id:'pages',label:t('next.reader.pagesStrip')}] : []),
       ...(notes.service ? [{id:'bookmarks',label:t('next.reader.bookmarks')},{id:'highlights',label:t('next.reader.highlights')}] : [])]}
     selected={annotationPane ?? (fixed && !snapshot.toc.length ? 'pages' : fixedPane === 'pages' ? 'pages' : 'contents')}
-    onSelect={selected => {if (selected === 'bookmarks' || selected === 'highlights' || selected === 'pages' || selected === 'contents') setFixedPane(selected);}} onClose={() => setPanel(undefined)}>
+    onSelect={selected => {if (selected === 'bookmarks' || selected === 'highlights' || selected === 'pages' || selected === 'contents') setFixedPane(selected);}} onClose={() => setPanel(undefined)} footer={environment === 'web' && annotationPane === 'highlights' && notes.service ? <ReaderHighlightsExport key={publication.source.id + publication.source.revision} service={notes.service} signal={listSignal} title={publication.metadata.title} author={publication.metadata.author} reportError={reportError}/> : undefined}>
     {annotationPane && notes.service ? <ReaderAnnotationList key={fixedPane} signal={listSignal} kind={annotationPane === 'bookmarks' ? 'bookmark' : 'highlight'} service={notes.service} state={notes.state} controller={controller} reportError={reportError}/>
       : !fixed || snapshot.toc.length > 0 && fixedPane === 'contents' ? <ReaderContents entries={contents(snapshot.toc)}/>
         : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})} onNavigate={() => {if (presentation === 'phone') setPanel(undefined);}}/>}
