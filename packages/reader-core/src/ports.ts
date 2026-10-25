@@ -102,6 +102,7 @@ export interface ReaderAdapter<Preferences extends object> {
 }
 export type ReaderSurfaceInput =
   | Readonly<{kind: 'tap'; fraction: number}>
+  | Readonly<{kind: 'swipe'; direction: 'left' | 'right'}>
   | Readonly<{kind: 'activity'}>
   | Readonly<{kind: 'key'; key: string; shift: boolean; alt: boolean; ctrl: boolean; meta: boolean; editable: boolean; preventDefault(): void}>;
 export type ReaderSnapshot<Preferences extends object> = Readonly<{
