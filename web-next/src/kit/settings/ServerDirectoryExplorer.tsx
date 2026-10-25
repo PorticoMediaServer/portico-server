@@ -4,12 +4,18 @@ import type {LibraryContentApi} from '@core/library-content.ts';
 import {browseServerFilesystem, classifyServerPath} from '@core/library-management.ts';
 import {Button, Switch, TextField} from '../controls';
 import {Icon, type IconName} from '../Icon';
+import {BottomSheet} from '../overlays/BottomSheet';
 import {Dialog} from '../overlays/Dialog';
 import {usePhone} from '../overlays/shared';
 import {Skeleton} from '../states';
 import styles from './server-directory-explorer.module.css';
 
 const t = defaultI18n.t;
+
+/** One open Places sheet: the explorer attempt and the exact response that
+ * published its roots. A later attempt or response never adopts it. */
+type FilesystemPage = NonNullable<Awaited<ReturnType<typeof browseServerFilesystem>>>;
+type PlacesOpening = Readonly<{attempt: object; page: FilesystemPage}>;
 
 /** A root's glyph follows the server's own word for it: a drive is a disk, a
  * share or network mount is the server, volumes are storage, Home is the house. */
@@ -30,7 +36,7 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
   serverName?: string;
 }>) {
   const phone = usePhone();
-  const [chosen, setChosen] = useState<readonly string[]>([]), [typing, setTyping] = useState(false);
+  const [chosen, setChosen] = useState<readonly string[]>([]), [typing, setTyping] = useState(false), [placesOpening, setPlacesOpening] = useState<PlacesOpening>();
   const [attempt, setAttempt] = useState<object>();
   const activeAttempt = useRef<object | undefined>(undefined);
   useLayoutEffect(() => {
@@ -40,7 +46,28 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
     return () => {if (activeAttempt.current === next) activeAttempt.current = undefined; request.current?.abort();};
   }, [open, api, onChoose, onChooseMany, initialPaths, initialPath]);
   const current = () => open && !!attempt && activeAttempt.current === attempt;
+  const placesRef = useRef<PlacesOpening | undefined>(undefined);
+  useLayoutEffect(() => {
+    placesRef.current = placesOpening;
+    return () => {if (placesRef.current === placesOpening) placesRef.current = undefined;};
+  }, [placesOpening]);
+  useLayoutEffect(() => {if (!open || !phone) {placesRef.current = undefined;setPlacesOpening(undefined);}}, [open, phone]);
+  useLayoutEffect(() => {placesRef.current = undefined;setPlacesOpening(undefined);}, [attempt]);
+  const samePlaces = (opening: PlacesOpening) => placesRef.current === opening && current() && phone && opening.attempt === attempt;
+  const closePlaces = (opening: PlacesOpening) => {if (placesRef.current !== opening) return;placesRef.current = undefined;setPlacesOpening(undefined);};
+  const openPlaces = () => {
+    if (!current() || !phone || !attempt || !page || !page.roots.length) return;
+    setPlacesOpening(Object.freeze({attempt, page}));
+  };
+  const pickPlace = (opening: PlacesOpening, path: string) => {
+    if (!samePlaces(opening) || page !== opening.page || !opening.page.roots.some(root => root.path === path)) return;
+    closePlaces(opening);
+    const root = opening.page.roots.find(value => value.path === path);
+    if (!root) return;
+    if (root.kind === 'unc') {setTyping(true); setTyped(root.path);} else go(root.path);
+  };
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseServerFilesystem>>>();
+  useLayoutEffect(() => {if (placesOpening && placesOpening.page !== page) {placesRef.current = undefined;setPlacesOpening(undefined);}}, [page, placesOpening]);
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
   const [uncPath, setUncPath] = useState('');
   const [showHidden, setShowHidden] = useState(false);
@@ -127,8 +154,9 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
     }
   }
   const places = page?.roots ?? [];
-  const placeButton = (root: (typeof places)[number]) => <button type="button" className={styles.pickerPlace} disabled={busy} aria-current={page?.path === root.path ? 'location' : undefined} onClick={() => {
+  const placeButton = (root: (typeof places)[number], onPicked?: () => void) => <button type="button" className={styles.pickerPlace} disabled={busy} aria-current={page?.path === root.path ? 'location' : undefined} onClick={() => {
     if (!current()) return;
+    if (onPicked) {onPicked();return;}
     if (root.kind === 'unc') {setTyping(true); setTyped(root.path);} else go(root.path);
   }}><span className={styles.pickerPlaceIcon}><Icon name={rootIcon(root)} size={20}/></span><span className={styles.pickerPlaceCopy}><b>{root.name}</b><small>{root.description || root.path}</small></span></button>;
   const rootCard = (root: (typeof places)[number]) => root.kind === 'unc'
@@ -151,7 +179,7 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
       <span className={styles.pickerPlaceCopy}><b>{root.name}</b><small>{root.description || root.path}</small></span>
     </button>;
   const title = t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder'), subtitle = serverName?.trim() ? t('next.ownerLibraries.explorer.subtitle', {server: serverName.trim()}) : t('next.settings.folderBreadcrumbs') as string;
-  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} responsive={false} showCloseButton={!phone} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={title} description={subtitle}
+  return <><Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} responsive={false} showCloseButton={!phone} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={title} description={subtitle}
     footer={<>
       {onChooseMany ? <ChosenServerFolders paths={chosen} onRemove={toggle}/> : null}
       <Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
@@ -165,7 +193,8 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
       </div>
       <p className={styles.phoneSub}>{subtitle}</p></> : null}
       <div className={styles.pickerPath}>
-        <Button disabled={busy || !page?.parent} aria-label={t('next.ownerLibraries.explorer.up')} onClick={() => {if (page?.parent) go(page.parent);}}>{t('next.settings.up')}</Button>
+        {phone ? <Button icon="i-disk" onClick={openPlaces}>{t('next.ownerLibraries.explorer.places')}</Button>
+          : <Button disabled={busy || !page?.parent} aria-label={t('next.ownerLibraries.explorer.up')} onClick={() => {if (page?.parent) go(page.parent);}}>{t('next.settings.up')}</Button>}
         {typing || !breadcrumbs.length ? <TextField label={t('next.settings.folderPath')} list={suggestionId} autoComplete="off" disabled={busy} error={failed ? t('next.ownerLibraries.explorer.failed') : undefined} value={typed} onChange={event => {if (current()) {setTyped(event.currentTarget.value);setFailed(false);}}} onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) {event.preventDefault(); go(typed);}
         }}/> : <nav className={styles.pickerBreadcrumbs} aria-label={t('next.settings.folderPath')}>
@@ -182,7 +211,7 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
         <span className={styles.addCopy}><b>{t('next.ownerLibraries.explorer.addThisFolder')}</b><small>{page.path}</small></span>
       </button> : null}
       <div className={styles.explorerColumns} data-roots={!page?.path || undefined}>
-        {!!page?.path && places.length > 0 ? <nav className={styles.pickerPlaces} aria-label={t('next.ownerLibraries.explorer.places')}>
+        {!phone && !!page?.path && places.length > 0 ? <nav className={styles.pickerPlaces} aria-label={t('next.ownerLibraries.explorer.places')}>
           <h4>{t('next.ownerLibraries.explorer.places')}</h4>{places.map(root => <div key={root.path}>{placeButton(root)}</div>)}
         </nav> : null}
         <section className={styles.explorerMain} aria-label={t('next.ownerLibraries.explorer.folders')}>
@@ -206,7 +235,10 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
         <Button variant="primary" disabled={onChooseMany ? !current() || !chosen.length : !canChooseCurrent} onClick={submit}>{onChooseMany && chosen.length ? t('next.ownerLibraries.explorer.useFolders', {count: chosen.length}) : t('next.ownerLibraries.explorer.useFolder')}</Button>
       </div> : null}
     </div>
-  </Dialog>;
+  </Dialog>
+  {phone && placesOpening && current() && placesOpening.attempt === attempt && placesOpening.page === page ? <BottomSheet open onOpenChange={next => {if (!next) closePlaces(placesOpening);}} title={t('next.ownerLibraries.explorer.places')} fitContent>
+    <div className={styles.phonePlaces}>{placesOpening.page.roots.map(root => <div key={root.path}>{placeButton(root, () => pickPlace(placesOpening, root.path))}</div>)}</div>
+  </BottomSheet> : null}</>;
 }
 
 /** The same captured paths remain removable in the parent library form. */

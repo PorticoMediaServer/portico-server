@@ -138,3 +138,7 @@
  .phoneTray { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--color-line-soft); background: var(--color-ink); }
  .phoneTray > :last-child { width: 100%; }
 }
+
+/* owner-libraries#24c: Places is a button in the path row that opens this list. */
+.phonePlaces { display: flex; flex-direction: column; gap: 4px; }
+.phonePlaces .pickerPlace { border: 1px solid var(--color-line-soft); }
