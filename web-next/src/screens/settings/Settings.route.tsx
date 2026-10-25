@@ -52,6 +52,7 @@ import {profileSettingState, changeProfileSetting} from './account-profile/rows'
 import {ProfileList} from './account-profile/ProfileList';
 import {observeProfileFailures} from './account-profile/failures';
 import {ProfilePINDialog, type ProfilePINRequest} from './account-profile/ProfilePINControl';
+import {ProfileForgetDevices} from './account-profile/ProfileForgetDevices';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
@@ -92,7 +93,7 @@ export function SettingsEntry() {
     const profiles = route.scope === 'account' && route.section === 'profile' && viewer.authority === 'local'
       ? new ProfileSettingsSource(context.api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current) : undefined;
     const offProfileFailures = profiles ? observeProfileFailures(profiles, current, reportError) : undefined;
-    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.pin', 'profile.pinChange'].includes(id);
+    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.pin', 'profile.pinChange', 'profile.pinForget'].includes(id);
     const openProfilePIN = (remove: boolean) => {
       const target = profiles?.selected(), document = profiles?.getSnapshot().document;
       if (current() && profiles && target && document?.canManage && document.capabilities.manageAccount)
@@ -167,6 +168,7 @@ export function SettingsEntry() {
       ? new SegmentIntrosSource({api: context.api, isCurrent: current, reportError}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
+        if (row.id === 'profile.pinForget' && profiles) return <ProfileForgetDevices source={profiles} isCurrent={current} onFailure={reportError} />;
         if (row.id === 'profile.pinChange' && profiles) return <Button size="small" variant="glass" disabled={state.disabled} onClick={() => openProfilePIN(false)}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
           requestAnimationFrame(() => {if (current()) document.getElementById('profile.name')?.querySelector<HTMLInputElement>('input')?.focus();});
