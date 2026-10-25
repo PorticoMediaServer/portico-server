@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -92,6 +93,7 @@ type Service struct {
 
 // serviceState is the process-lifetime state one database's catalogue keeps.
 type serviceState struct {
+	readingMobi        atomic.Bool
 	visibilityMu       sync.Mutex
 	visibilityRequests map[string]visibilityRequest
 	visibilityWake     *worker.Signal

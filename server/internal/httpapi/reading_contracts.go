@@ -8,6 +8,14 @@ func (ReadingFormat) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz"}}
 }
 
+// ReadingSourceFormat describes the real original file. Conversion never widens
+// ReadingFormat, which remains the EPUB/PDF/CBZ engine/publication coordinate union.
+type ReadingSourceFormat string
+
+func (ReadingSourceFormat) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "mobi", "azw3"}}
+}
+
 type ReadingDirection string
 
 func (ReadingDirection) JSONSchema() map[string]any {
@@ -56,7 +64,7 @@ type ReadingItem struct {
 	ID                 string                       `json:"id"`
 	LibraryID          string                       `json:"libraryId"`
 	Title              string                       `json:"title"`
-	Format             ReadingFormat                `json:"format"`
+	Format             ReadingSourceFormat          `json:"format"`
 	SourceID           string                       `json:"sourceId"`
 	InventoryAvailable bool                         `json:"inventoryAvailable"`
 	Author             *ReadingAuthor               `json:"author,omitempty"`
@@ -67,18 +75,19 @@ type ReadingItemsResponse struct {
 	NextCursor string        `json:"nextCursor,omitempty"`
 }
 type ReadingContinueItem struct {
-	Item     ReadingItem     `json:"item"`
-	Progress ReadingProgress `json:"progress"`
+	Conversion *ReadingConversionProvenance `json:"conversion,omitempty"`
+	Item       ReadingItem                  `json:"item"`
+	Progress   ReadingProgress              `json:"progress"`
 }
 type ReadingContinueResponse struct {
 	Items      []ReadingContinueItem `json:"items"`
 	NextCursor string                `json:"nextCursor,omitempty"`
 }
 type ReadingVersion struct {
-	SourceID           string        `json:"sourceId"`
-	Format             ReadingFormat `json:"format"`
-	Size               int64         `json:"size"`
-	InventoryAvailable bool          `json:"inventoryAvailable"`
+	SourceID           string              `json:"sourceId"`
+	Format             ReadingSourceFormat `json:"format"`
+	Size               int64               `json:"size"`
+	InventoryAvailable bool                `json:"inventoryAvailable"`
 }
 type ReadingVersionsResponse struct {
 	Versions []ReadingVersion `json:"versions"`
@@ -88,20 +97,21 @@ type ReadingSessionRequest struct {
 	SourceID string `json:"sourceId"`
 }
 type ReadingSessionResponse struct {
-	CanSaveFile bool              `json:"canSaveFile,omitempty"`
-	CanAnnotate bool              `json:"canAnnotate,omitempty"`
-	Contents    ReadingContents   `json:"contents,omitempty"`
-	Sequential  bool              `json:"sequential,omitempty"`
-	SessionID   string            `json:"sessionId"`
-	ItemID      string            `json:"itemId"`
-	SourceID    string            `json:"sourceId"`
-	Revision    string            `json:"revision"`
-	Format      ReadingFormat     `json:"format"`
-	Size        int64             `json:"size"`
-	Metadata    ReadingMetadata   `json:"metadata"`
-	Resources   []ReadingResource `json:"resources,omitempty"`
-	Spine       []string          `json:"spine,omitempty"`
-	PageNames   []string          `json:"pageNames,omitempty"`
+	Conversion  *ReadingConversionProvenance `json:"conversion,omitempty"`
+	CanSaveFile bool                         `json:"canSaveFile,omitempty"`
+	CanAnnotate bool                         `json:"canAnnotate,omitempty"`
+	Contents    ReadingContents              `json:"contents,omitempty"`
+	Sequential  bool                         `json:"sequential,omitempty"`
+	SessionID   string                       `json:"sessionId"`
+	ItemID      string                       `json:"itemId"`
+	SourceID    string                       `json:"sourceId"`
+	Revision    string                       `json:"revision"`
+	Format      ReadingFormat                `json:"format"`
+	Size        int64                        `json:"size"`
+	Metadata    ReadingMetadata              `json:"metadata"`
+	Resources   []ReadingResource            `json:"resources,omitempty"`
+	Spine       []string                     `json:"spine,omitempty"`
+	PageNames   []string                     `json:"pageNames,omitempty"`
 }
 
 // ReadingContentsEntry is an archive-internal EPUB navigation target, not a

@@ -2,6 +2,7 @@ import {readingFavoritePath, parseReadingFavorite, validReadingFavoriteCommand, 
 export type {ReadingFavoriteFlag, ReadingFavoriteCommand} from './reading-favorite.ts';
 import {readingSavedPath, parseReadingSavedMembership, validReadingSavedCommand, type ReadingListCommand} from './reading-saved.ts';
 export type {ReadingListMembership, ReadingListCommand} from './reading-saved.ts';
+import {withReadingConversion, withReadingContinueConversions, type ReadingConversion} from './reading-conversion.ts';
 import {readingMarkPath, parseReadingMark, validReadingMarkCommand, type ReadingReadMarkCommand} from './reading-mark.ts';
 export type {ReadingReadMark, ReadingReadMarkCommand} from './reading-mark.ts';
 import {withReadingManifestFacts, type ReadingManifestFacts} from './reading-manifest-facts.ts';
@@ -22,10 +23,10 @@ import type {Viewer} from './index.ts';
 
 export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
 type Immutable<T> = T extends readonly (infer V)[] ? readonly Immutable<V>[] : T extends object ? {readonly [K in keyof T]: Immutable<T[K]>} : T;
-export type ReadingManifest = Immutable<PostReadingSessionsResponse & {canAnnotate?: true; canSaveFile?: true; metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts}>;
+export type ReadingManifest = Immutable<PostReadingSessionsResponse & {canAnnotate?: true; canSaveFile?: true; conversion?:ReadingConversion; metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts}>;
 /** Optional source capability is withheld unless the actual response says literal true. */
 export function parseReadingManifest(raw: unknown): ReadingManifest {
-  const {canAnnotate: decodedCapability, canSaveFile: decodedSaveCapability, ...value} = withReadingManifestFacts(raw, decodePostReadingSessionsResponse) as PostReadingSessionsResponse & {metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts; canAnnotate?: unknown; canSaveFile?: unknown};
+  const {canAnnotate: decodedCapability, canSaveFile: decodedSaveCapability, ...value} = withReadingConversion(raw,value=>withReadingManifestFacts(value, decodePostReadingSessionsResponse)) as PostReadingSessionsResponse & {metadata: PostReadingSessionsResponse['metadata'] & ReadingManifestFacts; canAnnotate?: unknown; canSaveFile?: unknown; conversion?:ReadingConversion};
   void decodedCapability; void decodedSaveCapability;
   const offered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canAnnotate === true;
   const saveOffered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canSaveFile === true;
@@ -34,7 +35,7 @@ export function parseReadingManifest(raw: unknown): ReadingManifest {
 
 /** Derived from the generated official response, never a hand-written mirror. */
 export type ReadingItem = GetReadingItemsResponse['items'][number];
-export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
+export type ReadingContinueItem = GetReadingContinueResponse['items'][number] & Readonly<{conversion?:ReadingConversion}>;
 export type ReadingDiscover = GetReadingDiscoverResponse;
 export type ReadingShortRead = NonNullable<ReadingDiscover['rows'][number]['shortReads']>[number];
 export type ReadingSeriesPage = GetReadingSeriesItemsResponse;
@@ -105,7 +106,9 @@ function readingSeriesOverview(value: unknown, series: string, pageLength: numbe
   return Object.freeze({id: series, title: value.name, total: value.count, completed: value.readCount, ...(author ? {author: Object.freeze(author)} : {})});
 }
 
-const format = (s: string) => s === 'epub' || s === 'pdf' || s === 'cbz';
+const engineFormat = (s: string) => s === 'epub' || s === 'pdf' || s === 'cbz';
+const convertedSource = (s:string) => s==='mobi'||s==='azw3';
+const sourceFormat = (s:string) => engineFormat(s)||convertedSource(s);
 const mime = (s: string | null) => s?.split(';', 1)[0].trim().toLowerCase();
 const member = (s: string) => typeof s === 'string' && s.length > 0 && s.length <= 1024 && !/[\\\x00-\x1f\x7f?#]/.test(s) && !/^[a-z][a-z0-9+.-]*:/i.test(s) && s.split('/').every(p => p !== '' && p !== '.' && p !== '..');
 const frozen = <T>(value: T): T => {
@@ -241,7 +244,7 @@ function validReadingCover(itemId: string, value: unknown): boolean {
 }
 
 function validateManifest(m: ReadingManifest, request: PostReadingSessionsRequest) {
-  if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !format(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
+  if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !engineFormat(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
   if (!validReadingCover(m.itemId, m.metadata.coverUrl)) fail('invalid_manifest');
   if (m.sequential === true && m.format !== 'pdf') fail('invalid_manifest');
   if (m.metadata.direction !== undefined && !['ltr', 'rtl', 'vertical'].includes(m.metadata.direction)) fail('invalid_manifest');
@@ -397,7 +400,7 @@ export class ReadingClient {
   async list(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingItemsResponse> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_items'), options), 'GET', undefined, signal, decodeGetReadingItemsResponse, 256 << 10);
-    if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format) || !validReadingCover(row.id, row.coverUrl))) fail('invalid_document');
+    if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !sourceFormat(row.format) || !validReadingCover(row.id, row.coverUrl))) fail('invalid_document');
     return out;
   }
   async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number; shortReadsLimit?: number; newIssuesLimit?: number; newspaperLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover & {newIssueCards: readonly ReadingPeriodicalIssue[]; newspaperCard?: ReadingPeriodicalGroup}> {
@@ -409,7 +412,7 @@ export class ReadingClient {
     if (out.rows.length < 1 || out.rows.length > 5 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].shortReads !== undefined || 'newIssues' in out.rows[0] || 'newspaper' in out.rows[0] || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
     const seen = new Set<string>();
     const checkItem = (item: ReadingItem, libraryId?: string) => {
-      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !sourceFormat(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
     };
     for (const item of out.rows[0].items) {
       checkItem(item,options.libraryId);
@@ -536,21 +539,21 @@ export class ReadingClient {
     if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(out.nextCursor))) fail('invalid_document');
     const seen = new Set<string>();
     for (const item of out.items) {
-      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !sourceFormat(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
     const overview = out.overview;
     if (overview && out.nextCursor && overview.total <= out.items.length) fail('invalid_document');
     return {...out, ...(overview ? {overview} : {})};
   }
-  async continue(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingContinueResponse> {
+  async continue(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<Omit<GetReadingContinueResponse,'items'> & {items:ReadingContinueItem[]}> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(options.cursor))) fail('invalid_request');
-    const out = await this.json(query(routePath('get_reading_continue'), options), 'GET', undefined, signal, decodeGetReadingContinueResponse, 2 << 20);
+    const out = await this.json(query(routePath('get_reading_continue'), options), 'GET', undefined, signal, raw=>withReadingContinueConversions(raw,decodeGetReadingContinueResponse), 2 << 20);
     if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(out.nextCursor))) fail('invalid_document');
     const seen = new Set<string>();
-    for (const {item, progress} of out.items) {
+    for (const {item, progress, conversion} of out.items) {
       const location = progress.location;
-      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || progress.sourceId !== item.sourceId || !revision(progress.sourceRevision) || !integer(progress.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(progress.observedAt, 1, Number.MAX_SAFE_INTEGER) || !format(location.format) || (!progress.stale && location.format !== item.format) || !Number.isFinite(location.progression) || location.progression < 0 || location.progression >= 1) fail('invalid_progress');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !sourceFormat(item.format) || seen.has(item.id) || progress.sourceId !== item.sourceId || !revision(progress.sourceRevision) || !integer(progress.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(progress.observedAt, 1, Number.MAX_SAFE_INTEGER) || !engineFormat(location.format) || (!progress.stale && location.format !== item.format && !(convertedSource(item.format)&&location.format==='epub'&&conversion?.revision===progress.sourceRevision)) || !Number.isFinite(location.progression) || location.progression < 0 || location.progression >= 1) fail('invalid_progress');
       if (location.format === 'epub') {
         if (location.pageIndex !== undefined || !location.cfi?.startsWith('epubcfi(/') || !location.cfi.endsWith(')') || new TextEncoder().encode(location.cfi).length > 4096 || /[\p{Cc}<>]/u.test(location.cfi) || (location.section !== undefined && !member(location.section))) fail('invalid_progress');
       } else if (location.cfi !== undefined || location.section !== undefined || !integer(location.pageIndex ?? -1, 0, 2147483647)) fail('invalid_progress');
@@ -561,7 +564,7 @@ export class ReadingClient {
   async versions(itemId: string, signal?: AbortSignal): Promise<GetItemsItemIdReadingVersionsResponse> {
     if (!id(itemId)) fail('invalid_request');
     const out = await this.json(routePath('get_items_itemId_reading_versions', {itemId}), 'GET', undefined, signal, decodeGetItemsItemIdReadingVersionsResponse, 64 << 10);
-    if (out.versions.length > 128 || out.versions.some(v => !id(v.sourceId) || !format(v.format) || !integer(v.size, 0, 2 ** 31))) fail('invalid_document');
+    if (out.versions.length > 128 || out.versions.some(v => !id(v.sourceId) || !sourceFormat(v.format) || !integer(v.size, 0, 2 ** 31))) fail('invalid_document');
     return out;
   }
   async open(request: PostReadingSessionsRequest, signal?: AbortSignal): Promise<ReadingSession> {
@@ -699,21 +702,22 @@ export class ReadingSession {
     this.#check();
     if (this.manifest.canSaveFile !== true) fail('not_permitted');
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(operationId)) fail('invalid_request');
-    if (this.manifest.size > 64 << 20) fail('response_size');
+    const originalSize=this.manifest.conversion?.originalSize??this.manifest.size, originalRevision=this.manifest.conversion?.originalRevision??this.manifest.revision;
+    if (originalSize > 64 << 20) fail('response_size');
     if (this.#savingFile) fail('request_in_progress');
     this.#savingFile = true;
     try {
       // The canonical session route supplies the captured identity; the new
       // source-declared subresource descriptor is checkpoint-generated.
       const path = routePath('delete_reading_sessions_sessionId', {sessionId: this.manifest.sessionId}) + '/file-save';
-      return await this.#binary(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({operationId})}, signal, async (r, active, check) => {
+      return await this.#binary(path, {method: 'POST', headers: {'Content-Type': 'application/json','If-Match':'"'+originalRevision+'"'}, body: JSON.stringify({operationId})}, signal, async (r, active, check) => {
         if (r.status !== 200) return this.#client.error(r, active, check);
-        this.#etag(r);
+        if(r.headers.get('ETag')!=='"'+originalRevision+'"')fail('source_changed');
         if (r.headers.get('X-Reading-Item') !== this.manifest.itemId || r.headers.get('X-Reading-Source') !== this.manifest.sourceId
-          || r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.has('Content-Range')
+          || r.headers.get('Content-Length') !== String(originalSize) || r.headers.has('Content-Range')
           || r.headers.get('Accept-Ranges') !== 'none' || mime(r.headers.get('Content-Type')) !== 'application/octet-stream'
           || r.headers.get('Content-Disposition') !== 'attachment; filename="publication"') fail('source_changed');
-        return bytes(r, 64 << 20, active, check, this.manifest.size);
+        return bytes(r, 64 << 20, active, check, originalSize);
       });
     } finally { this.#savingFile = false; }
   };

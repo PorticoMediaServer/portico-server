@@ -99,6 +99,15 @@ func readingHeaders(w http.ResponseWriter, revision string) {
 }
 
 func (d Dependencies) openReadingBytes(w http.ResponseWriter, r *http.Request) (*reading.Source, bool) {
+	return d.openReadingRepresentation(w, r, false)
+}
+func (d Dependencies) openReadingOriginalBytes(w http.ResponseWriter, r *http.Request) (*reading.Source, bool) {
+	return d.openReadingRepresentation(w, r, true)
+}
+
+// The session/identity/source authorization is shared. Only the representation's
+// exact revision differs: original bytes never borrow the derived coordinate ID.
+func (d Dependencies) openReadingRepresentation(w http.ResponseWriter, r *http.Request, original bool) (*reading.Source, bool) {
 	p, err := d.strictPrincipalFor(r)
 	if err != nil {
 		readingFailure(w, err)
@@ -126,12 +135,16 @@ func (d Dependencies) openReadingBytes(w http.ResponseWriter, r *http.Request) (
 	}
 	// Public routes identify the captured session. The earlier private handler
 	// seam also names an item and source, which must agree when supplied.
-	if (r.PathValue("id") != "" && f.ItemID != r.PathValue("id")) || (r.URL.Query().Has("sourceId") && f.SourceID != r.URL.Query().Get("sourceId")) || f.Revision != match[1:len(match)-1] {
+	revision := f.PublicationSelection().Revision
+	if original {
+		revision = f.Revision
+	}
+	if (r.PathValue("id") != "" && f.ItemID != r.PathValue("id")) || (r.URL.Query().Has("sourceId") && f.SourceID != r.URL.Query().Get("sourceId")) || revision != match[1:len(match)-1] {
 		f.Close()
 		policyError(w, "revision_mismatch")
 		return nil, false
 	}
-	readingHeaders(w, f.Revision)
+	readingHeaders(w, revision)
 	return f, true
 }
 
@@ -284,7 +297,7 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer f.Close()
-	if f.Format != "epub" {
+	if f.PublicationSelection().Format != "epub" {
 		policyError(w, "not_found")
 		return
 	}
@@ -365,7 +378,7 @@ func serveReadingBlob(w http.ResponseWriter, r *http.Request, f *reading.Source,
 		readingFailure(w, err)
 		return
 	}
-	revision := f.Revision
+	revision := f.PublicationSelection().Revision
 	readingHeaders(w, revision)
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Length", strconv.Itoa(len(b)))

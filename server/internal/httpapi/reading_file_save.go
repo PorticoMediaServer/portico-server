@@ -55,7 +55,7 @@ func (d Dependencies) readingFileSave(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f, ok := d.openReadingBytes(w, r)
+	f, ok := d.openReadingOriginalBytes(w, r)
 	if !ok {
 		return
 	}

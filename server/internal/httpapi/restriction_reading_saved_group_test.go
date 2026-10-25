@@ -99,7 +99,7 @@ func readingSavedGroupRestrictionCheck(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				group, err := catalog.ResolveReadingSavedGroupTx(ctx, tx, catalog.Viewer{Profile: profile, Fence: scope.Fence, Libraries: []string{r.library}, Restrictions: restrictions}, catalog.ReadingSavedGroupTarget{LibraryID: r.library, GroupKind: kind, SeriesID: series})
+				group, err := catalog.ResolveReadingSavedGroupTx(ctx, tx, catalog.Viewer{Profile: profile, Fence: scope.Fence, Libraries: []string{r.library}, Restrictions: restrictions}, catalog.ReadingSavedGroupTarget{LibraryID: r.library, GroupKind: kind, SeriesID: series}, false)
 				if err == nil && (group.Count != 3 || group.Title != name || group.Proof.Key == "") {
 					t.Fatal("dynamic group did not use complete current membership", group)
 				}

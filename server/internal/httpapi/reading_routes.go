@@ -81,7 +81,7 @@ func (d Dependencies) readingPrincipal(w http.ResponseWriter, r *http.Request) (
 // selected in this same snapshot. It never derives from archive metadata,
 // titles or paths and never re-reads per item.
 func readingItemProjection(row reading.LibraryRow) ReadingItem {
-	out := ReadingItem{CoverURL: row.CoverURL, ID: row.ID, LibraryID: row.LibraryID, Title: row.Title, Format: ReadingFormat(row.Format), SourceID: row.SourceID, InventoryAvailable: row.InventoryAvailable}
+	out := ReadingItem{CoverURL: row.CoverURL, ID: row.ID, LibraryID: row.LibraryID, Title: row.Title, Format: ReadingSourceFormat(row.Format), SourceID: row.SourceID, InventoryAvailable: row.InventoryAvailable}
 	if row.PublicationType != nil {
 		out.PublicationType = &ReadingPublicationTypeValue{Value: ReadingPublicationType(row.PublicationType.Value), Source: ReadingPublicationTypeSource(row.PublicationType.Source)}
 	}
@@ -145,7 +145,7 @@ func (d Dependencies) readingContinue(w http.ResponseWriter, r *http.Request) {
 	out := ReadingContinueResponse{Items: []ReadingContinueItem{}, NextCursor: page.NextCursor}
 	for _, row := range page.Items {
 		v := row.Item
-		out.Items = append(out.Items, ReadingContinueItem{Item: readingItemProjection(v), Progress: *readingProgressProjection(&row.Progress)})
+		out.Items = append(out.Items, ReadingContinueItem{Conversion: readingConversionProjection(row.Conversion), Item: readingItemProjection(v), Progress: *readingProgressProjection(&row.Progress)})
 	}
 	write(w, 200, out)
 }
@@ -162,7 +162,7 @@ func (d Dependencies) readingVersions(w http.ResponseWriter, r *http.Request) {
 	}
 	out := ReadingVersionsResponse{Versions: []ReadingVersion{}}
 	for _, version := range versions {
-		out.Versions = append(out.Versions, ReadingVersion{version.SourceID, ReadingFormat(version.Format), version.Size, version.InventoryAvailable})
+		out.Versions = append(out.Versions, ReadingVersion{version.SourceID, ReadingSourceFormat(version.Format), version.Size, version.InventoryAvailable})
 	}
 	write(w, 200, out)
 }
@@ -189,10 +189,15 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 	}
 	v, m := document.Selection, document.Metadata
 	out := ReadingSessionResponse{CanAnnotate: reading.CanAnnotate(p), Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
+	out.Conversion = readingConversionProjection(document.Conversion)
 	readingManifestFactsProjection(&out.Metadata, m)
 	// This optional offer is descriptive only; the transfer rechecks the exact
 	// captured source and live download policy before and after each extent.
-	if v.Size > 0 && v.Size <= 64<<20 {
+	saveSize := v.Size
+	if document.Conversion != nil {
+		saveSize = document.Conversion.OriginalSize
+	}
+	if saveSize > 0 && saveSize <= 64<<20 {
 		tx, err := d.DB.BeginTx(r.Context(), nil)
 		if err == nil {
 			out.CanSaveFile, _ = downloads.ProfileAllowsDownloads(tx, p.Viewer)

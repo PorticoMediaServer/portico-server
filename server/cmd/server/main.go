@@ -1233,6 +1233,13 @@ func run() (runErr error) {
 		invalidateCustomSource()
 	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts}
 	readingService := httpapi.NewReadingService(apiDependencies)
+	mobiConverter, mobiErr := configuredReadingMobi(storeIO, cache)
+	if mobiErr != nil {
+		log.Printf("warn: MOBI/AZW3 reading conversion is unavailable; the configured bundle was not admitted")
+	} else {
+		readingService.Mobi = mobiConverter
+	}
+	cat.ConfigureReadingMobi(readingService.Mobi != nil)
 	defer readingService.Close()
 	apiDependencies.Reading = readingService
 	// Unopened EPUB coverage: the same complete counter and text-count custody

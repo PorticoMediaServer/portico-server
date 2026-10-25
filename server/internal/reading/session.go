@@ -19,6 +19,7 @@ const sessionIdle = 30 * time.Minute
 // durable identity/library/title authority is checked for every acquisition and
 // extent. It captures exactly one publication version and cannot be retargeted.
 type Session struct {
+	mobi         *mobiCache
 	ID           string
 	selection    Selection
 	actor, owner string
@@ -45,7 +46,12 @@ func (s *Session) close() {
 		s.timer.Stop()
 	}
 	remote := s.remote
+	cache := s.mobi
+	s.mobi = nil
 	s.mu.Unlock()
+	if cache != nil {
+		cache.close()
+	}
 	if remote != nil {
 		_ = remote.Close()
 	}
@@ -90,10 +96,17 @@ func (s *Service) BeginSession(ctx context.Context, p identity.Principal, item, 
 		return nil, err
 	}
 	defer f.Close()
+	if err = f.prepareMobi(); err != nil {
+		return nil, err
+	}
 	if err = f.Validate(); err != nil {
 		return nil, err
 	}
-	return s.captureSession(p, f)
+	session, err := s.captureSession(p, f)
+	if err != nil {
+		return nil, err
+	}
+	return session, nil
 }
 
 func (s *Service) captureSession(p identity.Principal, f *Source) (*Session, error) {
@@ -164,6 +177,10 @@ func (s *Service) captureSessionState(p identity.Principal, f *Source) (*Session
 		return nil, ErrChanged
 	}
 	out.family = family
+	if f.derived != nil {
+		out.mobi = f.derived.cache
+		f.derivedRetained = true
+	}
 	out.timer = time.AfterFunc(sessionIdle, out.close)
 	out.mu.Unlock()
 	f.remoteRetained = true
@@ -200,11 +217,14 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 		return nil, Publication{}, err
 	}
 	defer f.Close()
+	if err = f.prepareMobi(); err != nil {
+		return nil, Publication{}, err
+	}
 	document, err := Inspect(f)
 	if err != nil {
 		return nil, Publication{}, f.StopAndRecheck(err)
 	}
-	if err = s.adoptPublicationType(ctx, p, document.Selection, document.Metadata); err != nil {
+	if err = s.adoptPublicationType(ctx, p, f.Selection, document.Metadata); err != nil {
 		return nil, Publication{}, err
 	}
 	if err = s.adoptTextCount(ctx, p, f); err != nil {
@@ -213,7 +233,7 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	// Catalogue identity is authoritative; do not resurrect package creators.
 	// This is a current authorized DB snapshot, with no added provider Stat or
 	// archive read and no positive eligibility cache.
-	values, cover, err := s.publicationAttributions(ctx, p, document.Selection)
+	values, cover, err := s.publicationAttributions(ctx, p, f.Selection)
 	if err != nil {
 		return nil, Publication{}, err
 	}
@@ -223,7 +243,7 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 		document.Metadata.Author = values.Author.Value
 	}
 	var pageCount *int64
-	document.Metadata.WordCount, document.Metadata.OpeningLines, pageCount, err = s.publicationTextFacts(ctx, p, document.Selection)
+	document.Metadata.WordCount, document.Metadata.OpeningLines, pageCount, err = s.publicationTextFacts(ctx, p, f.Selection)
 	if err != nil {
 		return nil, Publication{}, err
 	}
@@ -329,6 +349,30 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 		release()
 		session.close()
 		return nil, ErrChanged
+	}
+	session.mu.Lock()
+	cache := session.mobi
+	closed := session.closed
+	session.mu.Unlock()
+	if closed {
+		f.Close()
+		stop()
+		cancel()
+		release()
+		return nil, ErrChanged
+	}
+	if cache != nil {
+		provenance := cache.provenance
+		if provenance.OriginalRevision != f.Revision || provenance.OriginalSourceID != f.SourceID || provenance.OriginalFormat != f.Format || cache.size() == 0 || s.Mobi == nil || provenance.WorkerSHA256 != s.Mobi.bundle.WorkerSHA256 {
+			f.Close()
+			stop()
+			cancel()
+			release()
+			session.close()
+			return nil, ErrChanged
+		}
+		f.derived = &DerivedMobi{source: f, cache: cache}
+		f.derivedRetained = true
 	}
 	f.onClose = func() { stop(); cancel(); release() }
 	f.onFailure = session.close

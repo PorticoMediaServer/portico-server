@@ -22,7 +22,7 @@ type ReadingSavedGroupProjection struct {
 
 // The caller supplies a freshly admitted normal personal Viewer. All accepted
 // identity, label/count/member and artwork facts below share its transaction.
-func ResolveReadingSavedGroupTx(ctx context.Context, tx *sql.Tx, viewer Viewer, target ReadingSavedGroupTarget) (ReadingSavedGroupProjection, error) {
+func ResolveReadingSavedGroupTx(ctx context.Context, tx *sql.Tx, viewer Viewer, target ReadingSavedGroupTarget, mobiAvailable bool) (ReadingSavedGroupProjection, error) {
 	out := ReadingSavedGroupProjection{Target: target}
 	if tx == nil || viewer.Profile == "" || viewer.Fence == "" {
 		return out, identity.ErrForbidden
@@ -45,7 +45,7 @@ func ResolveReadingSavedGroupTx(ctx context.Context, tx *sql.Tx, viewer Viewer, 
 	if err != nil {
 		return out, err
 	}
-	scope := readingBrowseScope{library: handle, kind: kind, generation: generation}
+	scope := readingBrowseScope{library: handle, kind: kind, generation: generation, mobi: kind == "book" && mobiAvailable}
 	visible, args := viewer.itemVisibilitySQL("e.id")
 	base := ` FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
  WHERE ` + scope.memberScope() + ` AND m.series_id=? AND m.series_key IS NOT NULL AND m.series_key<>'' AND m.series_value IS NOT NULL AND m.series_value<>''

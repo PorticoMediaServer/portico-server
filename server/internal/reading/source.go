@@ -35,6 +35,7 @@ type Service struct {
 	Authorize   Authorization
 	Visible     Visibility
 	SeriesScope SeriesScopeResolver
+	Mobi        *MobiConverter
 	// Changed queues metadata inventory for the actual captured folder source.
 	// It runs only outside source/DB locks, never as content-read authority.
 	Changed        func(library, folderSource string)
@@ -64,16 +65,16 @@ const publicationObjectEligible = `o.retired=0 AND o.state='available' AND o.uns
  AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
 
 const publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
  AND ` + publicationObjectEligible
 
 const selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
- WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` ORDER BY a.id,o.id LIMIT 1`
+ WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` AND (p.format NOT IN('mobi','azw3') OR ?=1) ORDER BY a.id,o.id LIMIT 1`
 
 func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, sourceID string) (Selection, error) {
 	var v Selection
 	v.ItemID = item
-	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID).Scan(selectionColumns(&v)...)
+	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID, s.Mobi != nil).Scan(selectionColumns(&v)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrUnavailable
 	}
@@ -100,7 +101,7 @@ func (s *Service) selectionValid(v Selection) error {
 	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
 		return ErrInvalid
 	}
-	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" {
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "mobi" && v.Format != "azw3" {
 		return ErrInvalid
 	}
 	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {
@@ -141,6 +142,8 @@ func (s *Service) validate(ctx context.Context, p identity.Principal, selected S
 // actor/association authority, and the helper checks observed identity before
 // and after each bounded extent. No immutable/no-splice claim is made from it.
 type Source struct {
+	derived         *DerivedMobi
+	derivedRetained bool
 	Selection
 	ctx      context.Context
 	p        identity.Principal
@@ -238,7 +241,20 @@ func (f *Source) checkObservation(o storage.ObservedFileObservation) error {
 	}
 	return nil
 }
-func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
+func (f *Source) ReadAt(b []byte, offset int64) (int, error) {
+	return f.ReadAtContext(f.ctx, b, offset)
+}
+
+// ReadAtContext retains this exact physical reader/lease, composing an operation
+// deadline with source retirement all the way into acquisition and extent IO.
+func (f *Source) ReadAtContext(caller context.Context, b []byte, offset int64) (result int, failure error) {
+	ctx, cancel := context.WithCancel(caller)
+	stop := context.AfterFunc(f.ctx, cancel)
+	defer stop()
+	defer cancel()
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
 	defer func() {
 		if failure != nil && failure != io.EOF && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
@@ -247,7 +263,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	}()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := f.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 	if offset < 0 || offset > f.Size {
@@ -256,7 +272,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	if err := f.validateCurrent(f.ctx); err != nil {
+	if err := f.validateCurrent(ctx); err != nil {
 		return 0, err
 	}
 	if f.remoteSession != nil {
@@ -265,12 +281,16 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 		}
 		if f.remoteRange == nil {
 			var err error
-			f.remoteRange, err = f.remoteSession.remote.OpenRange(f.ctx)
+			f.remoteRange, err = f.remoteSession.remote.OpenRange(ctx)
 			if err != nil {
 				return 0, fmt.Errorf("reading range acquisition: %w", err)
 			}
 		}
-		n, err := f.remoteRange.ReadAt(f.ctx, b, offset)
+		n, err := f.remoteRange.ReadAt(ctx, b, offset)
+		if canceled := ctx.Err(); canceled != nil {
+			clear(b[:n])
+			return 0, canceled
+		}
 		if err != nil && err != io.EOF {
 			return n, fmt.Errorf("reading range extent: %w", err)
 		}
@@ -280,19 +300,19 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	done := 0
 	for int64(done) < wanted {
 		n := int(min(wanted-int64(done), storage.ObservedReadLimit))
-		data, err := f.reader.ReadExtent(f.ctx, offset+int64(done), n)
+		data, err := f.reader.ReadExtent(ctx, offset+int64(done), n)
 		if err != nil {
 			return done, err
 		}
-		o, err := f.reader.Observe(f.ctx)
+		o, err := f.reader.Observe(ctx)
 		if err == nil {
 			err = f.checkObservation(o)
 		}
 		if err == nil {
-			err = f.validateCurrent(f.ctx)
+			err = f.validateCurrent(ctx)
 		}
 		if err == nil {
-			err = f.ctx.Err()
+			err = ctx.Err()
 		}
 		if err != nil {
 			return done, err
@@ -307,6 +327,9 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 }
 func (f *Source) Close() error {
 	f.closeOnce.Do(func() {
+		if f.derived != nil && !f.derivedRetained {
+			f.derived.Close()
+		}
 		if f.remoteCancel != nil {
 			f.remoteCancel()
 		}
@@ -333,17 +356,28 @@ func (f *Source) Close() error {
 
 // Validate is also called after buffered parsing/rendering and immediately
 // before publication; CPU work must not turn a revoked read into a response.
-func (f *Source) Validate() (failure error) {
+func (f *Source) Validate() error { return f.ValidateContext(f.ctx) }
+func (f *Source) ValidateContext(caller context.Context) (failure error) {
+	ctx, cancel := context.WithCancel(caller)
+	stop := context.AfterFunc(f.ctx, cancel)
+	defer stop()
+	defer cancel()
+	if err := f.ctx.Err(); err != nil {
+		return err
+	}
 	defer func() {
 		if failure != nil && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
 			f.Close()
 		}
 	}()
-	if err := f.ctx.Err(); err != nil {
+	if f.derived != nil && (f.derived.cache.size() == 0 || f.service.Mobi == nil || f.service.Mobi.bundle.WorkerSHA256 != f.derived.cache.provenance.WorkerSHA256) {
+		return ErrChanged
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := f.validateCurrent(f.ctx); err != nil {
+	if err := f.validateCurrent(ctx); err != nil {
 		return err
 	}
 	if f.remoteSession != nil {
@@ -351,18 +385,18 @@ func (f *Source) Validate() (failure error) {
 		reader := f.remoteRange
 		f.mu.Unlock()
 		if reader != nil {
-			return reader.Check(f.ctx)
+			return reader.Check(ctx)
 		}
-		return f.remoteSession.remote.Check(f.ctx)
+		return f.remoteSession.remote.Check(ctx)
 	}
-	o, err := f.reader.Observe(f.ctx)
+	o, err := f.reader.Observe(ctx)
 	if err != nil {
 		return err
 	}
 	if err := f.checkObservation(o); err != nil {
 		return err
 	}
-	return f.ctx.Err()
+	return ctx.Err()
 }
 
 // CheckSelectionTx proves this already-acquired source's captured Reading
