@@ -126,6 +126,18 @@ func classifyConverterFailure(diagnostic string) string {
 	return FailureConverter
 }
 
+// hardwareEncodeStage reports whether this plan's encoder runs on the device. It
+// reads the plan's own stages, so a hardware decoder with a software encoder does
+// not reserve an encode session.
+func hardwareEncodeStage(stages []decoder.HardwareStage) bool {
+	for _, stage := range stages {
+		if stage.Operation == decoder.StageEncode && stage.Execution == decoder.ExecutionHardware {
+			return true
+		}
+	}
+	return false
+}
+
 // errHardwarePermitUnavailable says this adapter has no session slot left right
 // now. It is an ordinary hardware failure to the caller, so the window falls back
 // to another adapter and then to software exactly as a refused encoder does.
