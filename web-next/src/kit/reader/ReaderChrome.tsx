@@ -24,6 +24,8 @@ export type ReaderChromeProps = Readonly<{
   onBack: () => void; onTurn: (turn: ReadTurn) => void; onSeek?: (progression: number) => void;
   actions: readonly ReaderChromeAction[]; children: ReactNode; panel?: ReactNode;
   panelReflows?: boolean; showPageArrows: boolean;
+  /** Real retained search results supplied by the reader assembly. */
+  searchNavigation?: ReactNode;
   /** Optional localized assembly content for fixed pages; prose always keeps the generic footer. */
   fixedPageFooter?: ReactNode;
   /** Optional drawn strip (page thumbnails) that sits above the footer on fixed pages. */
@@ -39,7 +41,7 @@ export type ReaderChromeProps = Readonly<{
 }>;
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, fixedPageStrip, hint, subscribeSurfaceInput}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, fixedPageStrip, searchNavigation, hint, subscribeSurfaceInput}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
@@ -124,6 +126,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       </footer>
       {fixedPageStrip && <div className={styles.fixedStrip}>{fixedPageStrip}</div>}
     </div>
+    {searchNavigation && !panel && <div className={styles.searchNavigation}>{searchNavigation}</div>}
     {panel}
     {hint}
   </div>;
