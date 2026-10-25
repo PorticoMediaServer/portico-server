@@ -31,12 +31,13 @@ export function RecordingStorage({controller, embedded = false}: {embedded?: boo
       </dl></SettingsRow>
       <StorageMeter used={t('next.live.storageUsed', {amount: Math.round(storage.measurement.usedBytes / 1e9)})} free={t('next.live.storageFree', {amount: Math.round(storage.measurement.freeBytes / 1e9)})}
         remaining="" label={t('recordings.storage')} fraction={storage.measurement.usedBytes / Math.max(1, storage.policy.capBytes || storage.measurement.usedBytes + storage.measurement.freeBytes)}/>
+      {!!storage.forecastDescription && <p className={styles.lede}>{storage.forecastDescription}</p>}
       {number('web.liveTv.keepRecordings', 'web.liveTv.keepRecordingsHelp', draft.retentionDays, 3650, retentionDays => controller.edit({retentionDays}), 'settings.unit.days')}
       {number('web.liveTv.episodesPerSeries', 'web.liveTv.episodesPerSeriesHelp', draft.episodeLimit, 100000, episodeLimit => controller.edit({episodeLimit}))}
       {number('web.liveTv.leaveFree', 'web.liveTv.leaveFreeHelp', Math.round(draft.floorBytes / 1e9), 9007199, value => controller.edit({floorBytes: value * 1e9}), 'web.liveTv.gbUnit')}
       {number('web.liveTv.capUpTo', 'web.liveTv.capUpToHelp', Math.round(draft.capBytes / 1e9), 9007199, value => controller.edit({capBytes: value * 1e9}), 'web.liveTv.gbUnit')}
       </div>
-      {!storage.measurement.writeHealthy && <p role="alert" className={styles.error}>{t('recordings.unavailableBody')}</p>}
+      {!storage.measurement.writeHealthy && <p role="alert" className={styles.error}>{t('web.liveTv.notWritable')}</p>}
     </>}
     </section>
     {!embedded && dirty && <div className={styles.save}><Button variant="text" size="small" disabled={state.saving} onClick={() => controller.discard()}>{t('action.discard')}</Button><Button variant="primary" size="small" type="submit" loading={state.saving}>{t('action.save')}</Button></div>}
