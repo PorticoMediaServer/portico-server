@@ -93,7 +93,7 @@ export class SettingsController {
     this.options = options; this.preferences = options.preferences;
     this.sectionReads = new SettingsSectionReads(this.current, () => {for (const listener of this.listeners) listener();});
     const libraryCurrent = () => this.current() && options.mainProfile && options.capabilities.manageServer && options.role !== 'member';
-    this.library = new SettingsLibrarySource(options.api, libraryCurrent, () => this.publish({}), options.reportError);
+    this.library = new SettingsLibrarySource(options.api, libraryCurrent, () => this.publish({}), options.reportError, {serverId: options.serverId, viewerId: options.viewerId});
     const scope = {serverId: options.serverId, viewerId: options.viewerId};
     // A folder read is tab-scoped: its headless port carries the error, so it never fails the whole section.
     this.folders = new SettingsLibraryFoldersSource(options.api, scope, libraryCurrent, () => this.publish({}), () => {});
