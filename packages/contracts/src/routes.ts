@@ -15456,6 +15456,31 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "put_storage_source_program",
+    "method": "PUT",
+    "path": "/v1/storage/sources/{id}/settings/program",
+    "summary": "Change the rclone program that serves one mounted source",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "request_in_progress",
+      "administration_unavailable",
+      "internal",
+      "revision_required"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "put_storage_source_read_profile",
     "method": "PUT",
     "path": "/v1/storage/sources/{id}/settings/read-profile",
@@ -19354,6 +19379,7 @@ export const routePaths = {
   "put_shows_id_metadata_screen_season": "/v1/shows/{id}/metadata/screen/season",
   "put_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
   "put_storage_source_advanced": "/v1/storage/sources/{id}/settings/advanced",
+  "put_storage_source_program": "/v1/storage/sources/{id}/settings/program",
   "put_storage_source_read_profile": "/v1/storage/sources/{id}/settings/read-profile",
   "put_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
   "put_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",

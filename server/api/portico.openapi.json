@@ -154876,6 +154876,11 @@
               "program": {
                 "type": "string"
               },
+              "programRevision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "programVersion": {
                 "type": "string"
               },
@@ -216102,6 +216107,72 @@
         "required": [
           "scope",
           "settings"
+        ],
+        "type": "object"
+      },
+      "PutStorageSourceProgramRequest": {
+        "properties": {
+          "executable": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision",
+          "executable"
+        ],
+        "type": "object"
+      },
+      "PutStorageSourceProgramResponse": {
+        "properties": {
+          "program": {
+            "properties": {
+              "executable": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "executable",
+              "version",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "program"
         ],
         "type": "object"
       },
@@ -504464,6 +504535,152 @@
         "x-scope": "admin"
       }
     },
+    "/v1/storage/sources/{id}/settings/program": {
+      "put": {
+        "operationId": "put_storage_source_program",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "executable": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "expectedRevision",
+                  "executable"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "program": {
+                      "properties": {
+                        "executable": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "executable",
+                        "version",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "program"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Change the rclone program that serves one mounted source",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "revision_mismatch",
+          "idempotency_key_reused",
+          "request_in_progress",
+          "administration_unavailable",
+          "internal",
+          "revision_required"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
+        "x-scope": "admin"
+      }
+    },
     "/v1/storage/sources/{id}/settings/read-profile": {
       "get": {
         "operationId": "get_storage_source_read_profile",
@@ -505064,6 +505281,11 @@
                         },
                         "program": {
                           "type": "string"
+                        },
+                        "programRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "programVersion": {
                           "type": "string"

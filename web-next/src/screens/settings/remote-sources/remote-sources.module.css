@@ -162,3 +162,18 @@
 .transportGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 720px) { .transportGrid { grid-template-columns: 1fr; } }
 .mono { font-family: var(--font-mono); font-size: var(--type-caption-size); }
+
+.programRows { display: grid; gap: 8px; margin-top: 6px; }
+.programRow { display: grid; grid-template-columns: 140px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--color-raised); font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+.programRow > span:first-child { color: var(--color-text-tertiary); }
+@media (max-width: 720px) { .programRow { grid-template-columns: 1fr; } }
+
+/* The drawn Run/Skip table for whole-file analysis stages (4b). */
+.runSkip { display: grid; gap: 2px; }
+.runSkipHead, .runSkipRow { display: grid; grid-template-columns: minmax(0, 1fr) 76px 76px; gap: 8px; align-items: center; }
+.runSkipHead { padding: 0 8px 4px; font-size: var(--type-label-size); color: var(--color-text-tertiary); }
+.runSkipHead > span:not(:first-child) { text-align: center; }
+.runSkipRow { padding: 6px 8px; border-radius: 8px; background: var(--color-raised); font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+.runSkipChoice { height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--color-text-tertiary); font: inherit; font-size: var(--type-label-size); font-weight: var(--type-body-strong-weight); cursor: pointer; }
+.runSkipChoice[data-picked] { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.runSkipChoice:disabled { cursor: default; opacity: .6; }

@@ -661,6 +661,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerSourceFolders(registry, d)
 	registerSourceStatus(registry, d)
 	registerSourceAdvanced(registry, d)
+	registerSourceProgram(registry, d)
 	registerDAVConnectionTest(registry, d)
 	registerRcloneConnectionTest(registry, d)
 	registerRcloneConfigurationProviders(registry, d)

@@ -65,16 +65,27 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
       <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')} checked={values.doubleCheckFolders} disabled={disabled} onCheckedChange={value => set('doubleCheckFolders', value)}/></label>
 
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.title')}</p>
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.0.label')}<small className={styles.note}>{t('next.remoteSources.advWholeFileHint')}</small></span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.0.label')} checked={values.seekPreviews} disabled={disabled} onCheckedChange={value => set('seekPreviews', value)}/></label>
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.1.label')}</span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.1.label')} checked={values.chapterImages} disabled={disabled} onCheckedChange={value => set('chapterImages', value)}/></label>
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.2.label')}</span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.2.label')} checked={values.waveforms} disabled={disabled} onCheckedChange={value => set('waveforms', value)}/></label>
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label')}</span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label')} checked={values.loudness} disabled={disabled} onCheckedChange={value => set('loudness', value)}/></label>
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label')}</span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label')} checked={values.checksums} disabled={disabled} onCheckedChange={value => set('checksums', value)}/></label>
+    <p className={styles.note}>{t('next.remoteSources.advWholeFileHint')}</p>
+    <div className={styles.runSkip} role="group" aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.label')}>
+      <div className={styles.runSkipHead}>
+        <span/>
+        <span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}</span>
+        <span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}</span>
+      </div>
+      {([
+        ['seekPreviews', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.0.label', 'Seek-bar pictures'],
+        ['chapterImages', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.1.label', 'Chapter pictures'],
+        ['waveforms', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.2.label', 'Waveforms'],
+        ['loudness', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label', 'Loudness'],
+        ['checksums', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label', 'Checksums and fingerprints'],
+      ] as const).map(([key, label, name]) => <div key={key} className={styles.runSkipRow}>
+        <span>{t(label)}</span>
+        <button type="button" role="radio" aria-checked={values[key]} aria-label={`${name}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}`}
+          className={styles.runSkipChoice} data-picked={values[key] || undefined} disabled={disabled} onClick={() => set(key, true)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}</button>
+        <button type="button" role="radio" aria-checked={!values[key]} aria-label={`${name}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}`}
+          className={styles.runSkipChoice} data-picked={!values[key] || undefined} disabled={disabled} onClick={() => set(key, false)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}</button>
+      </div>)}
+    </div>
     <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.label')}
       value={values.introsMode} options={introsOptions.map(option => ({value: option.value, label: t(option.label), description: t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.help')}))}
       onValueChange={value => set('introsMode', value as SourceAdvanced['introsMode'])}/>

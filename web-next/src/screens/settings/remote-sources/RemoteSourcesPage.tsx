@@ -17,6 +17,7 @@ import styles from './remote-sources.module.css';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ReadingChoices} from './ReadingChoices';
 import {SourceAdvancedRows} from './SourceAdvancedRows';
+import {ProgramPicker} from './ProgramPicker';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
@@ -114,11 +115,12 @@ function ProgramNote({program}: {program?: RcloneProgram}) {
 
 export type RemoteSourcesPageProps = Readonly<{
   api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean; reportError: (error: unknown) => void;
+  openSection?: (section: string) => void;
 }>;
 
 /** Server › Remote sources. The drawn page over the source list, the WebDAV add
  * flow and the source's reading profile; only routes the server actually has. */
-export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportError}: RemoteSourcesPageProps) {
+export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportError, openSection}: RemoteSourcesPageProps) {
   const [ids] = useState(stableStorageOperationId);
   const service = useMemo(() => new RemoteSourceService(api, {serverId, viewerId}, ids.next, isCurrent), [api, serverId, viewerId, ids, isCurrent]);
   const [adding, setAdding] = useState(false);
@@ -604,8 +606,9 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
 }
 
 
-function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent, reportError, onClose, onRemoved}: Readonly<{
+function ManageSourceDialog({service, source, api, serverId, viewerId, openSection, isCurrent, reportError, onClose, onRemoved}: Readonly<{
   service: RemoteSourceService; source: RemoteSource; api: LibraryContentApi; serverId: string; viewerId: string;
+  openSection?: (section: string) => void;
   isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onRemoved: () => void;
 }>) {
   const [draft, setDraft] = useState<WebDavDraft>({name: source.name, root: '', username: '', password: '', insecureLocal: source.insecureLocal});
@@ -621,6 +624,8 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
   const [advanced, setAdvanced] = useState<{settings?: Awaited<ReturnType<RemoteSourceService['readAdvanced']>>; values: SourceAdvanced}>();
   const [advancedBusy, setAdvancedBusy] = useState(false);
   const [advancedNote, setAdvancedNote] = useState('');
+  const [pickingProgram, setPickingProgram] = useState(false);
+  const [programNote, setProgramNote] = useState('');
   const [pendingValues, setPendingValues] = useState<SourceReadValues>(sourceReadPreset('list'));
   const libraries = useMemo(() => new LibraryManagementService({api, scope: {serverId, viewerId}}), [api, serverId, viewerId]);
   const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
@@ -648,6 +653,15 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
   }, [service, source.id, source.generation, isCurrent, libraries]);
   useEffect(() => {if (!attachTo && status?.libraries.length) setAttachTo(status.libraries[0].libraryId);}, [attachTo, status]);
   useEffect(() => {if (!attachTo && librarySnapshot.directory.data?.items.length) setAttachTo(librarySnapshot.directory.data.items[0].id);}, [attachTo, librarySnapshot.directory.data]);
+  const changeProgram = async (executable: string) => {
+    if (!status?.programRevision) {setProgramNote(t('next.remoteSources.programUnavailable'));return;}
+    setProgramNote('');
+    try {
+      await service.setProgram(source.id, status.programRevision, executable, attemptGuard());
+      const next = await service.readStatus(source.id, attemptGuard());
+      if (active.current) {setStatus(next);setProgramNote(t('next.remoteSources.programChanged'));}
+    } catch (value) {if (active.current) setProgramNote(attachFailure(value));}
+  };
   const saveAdvanced = async () => {
     if (!advanced || advancedBusy) return;
     setAdvancedBusy(true);setAdvancedNote('');
@@ -735,7 +749,7 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
           <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
       </dl>
     </section>
-    <section className={styles.group}><h3>{t('next.remoteSources.connection')}</h3>
+    <section className={styles.group} id="source-connection"><h3>{t('next.remoteSources.connection')}</h3>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={source.origin ?? t('next.settingsSpec.server.remote-sources.panels.source.tabs.0.groups.0.rows.1.control.placeholder')} disabled={busy}
         autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({root: event.target.value})}/>
@@ -770,6 +784,20 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
           <Button size="compact" variant="primary" disabled={advancedBusy} onClick={() => void saveAdvanced()}>{t('next.remoteSources.save')}</Button></>
         : <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
       {advancedNote && <p className={styles.note} role="status">{advancedNote}</p>}
+      {status?.program && <div className={styles.programRows}>
+        <p className={styles.advTitle}>{t('next.remoteSources.connection')}</p>
+        <div className={styles.programRow}><span>{t('next.remoteSources.program')}</span>
+          <span className={styles.mono}>{status.program}{status.programVersion ? ` · ${status.programVersion}` : ''}</span>
+          <Button size="xs" variant="glass" onClick={() => setPickingProgram(true)}>{t('next.remoteSources.chooseProgram')}</Button></div>
+        {status.remote && <div className={styles.programRow}><span>{t('next.remoteSources.remote')}</span>
+          <span className={styles.mono}>{status.remote}</span>
+          <Button size="xs" variant="glass" onClick={() => document.getElementById('source-connection')?.scrollIntoView({block: 'start'})}>{t('next.remoteSources.change')}</Button></div>}
+        {status.backgroundSpeed && <div className={styles.programRow}><span>{t('next.remoteSources.backgroundSpeed')}</span>
+          <span>{status.backgroundSpeed}</span>
+          <Button size="xs" variant="glass" disabled={!openSection} onClick={() => openSection?.('storage')}>{t('next.remoteSources.changeInSchedule')}</Button></div>}
+        {programNote && <p className={styles.note} role="status">{programNote}</p>}
+      </div>}
+      {pickingProgram && <ProgramPicker open={pickingProgram} api={api} startAt={status?.program ?? ''} onOpenChange={setPickingProgram} onChoose={path => void changeProgram(path)}/>}
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.foldersSection')}</h3>
       <p className={styles.note}>{t('next.remoteSources.foldersNote')}</p>
@@ -919,7 +947,7 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
   const close = () => {if (busy || pending.current) return;done();};
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
-    <section className={styles.group}><h3>{t('next.remoteSources.connection')}</h3>
+    <section className={styles.group} id="source-connection"><h3>{t('next.remoteSources.connection')}</h3>
       <p className={styles.note}><SourceStatus source={source}/> {t('next.remoteSources.kindRclone')}</p>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.remoteName')} description={t('next.remoteSources.remoteNameHelp')} value={draft.remote} placeholder={t('next.remoteSources.remoteNamePlaceholder')} maxLength={200} disabled={busy}

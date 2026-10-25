@@ -149970,6 +149970,11 @@ export const schemas = {
           "program": {
             "type": "string"
           },
+          "programRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "programVersion": {
             "type": "string"
           },
@@ -197246,6 +197251,72 @@ export const schemas = {
     "required": [
       "scope",
       "settings"
+    ],
+    "type": "object"
+  },
+  "PutStorageSourceProgramRequest": {
+    "properties": {
+      "executable": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision",
+      "executable"
+    ],
+    "type": "object"
+  },
+  "PutStorageSourceProgramResponse": {
+    "properties": {
+      "program": {
+        "properties": {
+          "executable": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "executable",
+          "version",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "program"
     ],
     "type": "object"
   },

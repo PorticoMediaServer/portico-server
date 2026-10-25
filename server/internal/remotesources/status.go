@@ -41,6 +41,7 @@ type SourceStatus struct {
 	// background speed is the server-wide Schedule value that applies to it.
 	Program         string `json:"program,omitempty"`
 	ProgramVersion  string `json:"programVersion,omitempty"`
+	ProgramRevision int64  `json:"programRevision,omitempty"`
 	Remote          string `json:"remote,omitempty"`
 	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
 }
@@ -109,10 +110,11 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	}
 	if row.MountID != "" {
 		var executable, version, remote string
-		if err = snapshot.Tx().QueryRowContext(ctx, `SELECT executable,version,remote FROM managed_mounts WHERE id=?`, row.MountID).Scan(&executable, &version, &remote); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		var control int64
+		if err = snapshot.Tx().QueryRowContext(ctx, `SELECT m.executable,m.version,m.remote,(SELECT c.revision FROM mount_controls c WHERE c.mount_id=m.id) FROM managed_mounts m WHERE m.id=?`, row.MountID).Scan(&executable, &version, &remote, &control); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return SourceStatus{}, err
 		}
-		out.Program, out.ProgramVersion, out.Remote = executable, version, remote
+		out.Program, out.ProgramVersion, out.Remote, out.ProgramRevision = executable, version, remote, control
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT background_speed FROM maintenance_settings WHERE singleton=1`).Scan(&out.BackgroundSpeed); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return SourceStatus{}, err

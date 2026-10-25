@@ -741,6 +741,7 @@ var routeLanes = map[string]string{
 	"PUT /v1/storage/sources/rclone/{id}":                                        "admin-long",
 	"PUT /v1/storage/sources/webdav/{id}":                                        "default",
 	"PUT /v1/storage/sources/{id}/settings/advanced":                             "admin",
+	"PUT /v1/storage/sources/{id}/settings/program":                              "admin",
 	"PUT /v1/storage/sources/{id}/settings/read-profile":                         "admin",
 	"GET ":                "default",
 	"POST ":               "default",
