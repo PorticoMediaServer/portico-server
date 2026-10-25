@@ -14,7 +14,7 @@ export type MissingRule='immediately'|'after_days'|'never';
 export type MissingTitle=Readonly<{id:string;libraryId:string;kind:string;title:string;parentTitle?:string;year?:number;
  /** When the title's last file went (RFC 3339). */missingSince:string;
  /** When the owner's rule will remove it; absent when the rule is `never`. */removedAt?:string}>;
-export type MissingTitlesPage=Readonly<{items:readonly MissingTitle[];nextCursor?:string;total:number;rule:MissingRule;days:number}>;
+export type MissingTitlesPage=Readonly<{observedAt?:string;items:readonly MissingTitle[];nextCursor?:string;total:number;rule:MissingRule;days:number}>;
 /** What one pass of emptying removed. Call again while `more` is true. */
 export type MissingEmptied=Readonly<{titles:number;files:number;more:boolean}>;
 
@@ -32,13 +32,14 @@ function invalid(what:string):never{throw new Error('Unreadable server response:
  */
 export function parseMissingTitlesPage(v:unknown):MissingTitlesPage{
  if(!obj(v)||!Array.isArray(v.items)||v.items.length>200||!count(v.total)||!count(v.days))invalid('missing titles');
+ if(v.observedAt!==undefined&&(!text(v.observedAt,64)||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(v.observedAt)||!Number.isFinite(Date.parse(v.observedAt))||Date.parse(v.observedAt)<=0))invalid('missing titles observation');
  if(v.nextCursor!==undefined&&!text(v.nextCursor,256))invalid('missing titles cursor');
  const items=firstOfEach('missing-titles','items',keepReadable('missing-titles','items',v.items,entry=>{
   if(!obj(entry)||!id(entry.id)||!id(entry.libraryId)||!id(entry.kind)||!text(entry.title)||!text(entry.missingSince,64)||!entry.missingSince)invalid('missing title');
   if(entry.parentTitle!==undefined&&!text(entry.parentTitle)||entry.year!==undefined&&!count(entry.year)||entry.removedAt!==undefined&&!text(entry.removedAt,64))invalid('missing title');
   return Object.freeze({id:entry.id,libraryId:entry.libraryId,kind:entry.kind,title:entry.title,...(entry.parentTitle?{parentTitle:entry.parentTitle as string}:{}),...(entry.year?{year:entry.year as number}:{}),missingSince:entry.missingSince,...(entry.removedAt?{removedAt:entry.removedAt as string}:{})});
  }),entry=>entry.id);
- return Object.freeze({items:Object.freeze(items),...(v.nextCursor?{nextCursor:v.nextCursor as string}:{}),total:v.total,rule:oneOfOr('missing-titles','rule',v.rule,rules,'never'),days:v.days});
+ return Object.freeze({...(typeof v.observedAt==='string'?{observedAt:v.observedAt}:{}),items:Object.freeze(items),...(v.nextCursor?{nextCursor:v.nextCursor as string}:{}),total:v.total,rule:oneOfOr('missing-titles','rule',v.rule,rules,'never'),days:v.days});
 }
 export function parseMissingEmptied(v:unknown):MissingEmptied{
  if(!obj(v)||!count(v.titles)||!count(v.files)||typeof v.more!=='boolean')invalid('emptied missing titles');
