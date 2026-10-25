@@ -133,7 +133,7 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 		target := metadata.RepairTarget{Kind: r.PathValue("kind"), ID: r.PathValue("id")}
 		var library string
 		if target.Kind == "item" {
-			err = d.itemAccess(r.Context(), p, target.ID)
+			err = d.itemArtworkAccess(r.Context(), p, target.ID)
 		} else {
 			// Container kinds keep their catalogue kind numbers (baseline
 			// catalog_kinds): the lookup both finds the library and checks

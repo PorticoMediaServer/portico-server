@@ -1194,10 +1194,7 @@ func New(d Dependencies) http.Handler {
 	d.httpHandle(mux, "GET /v1/items/{id}/art/{kind}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e == nil {
-			e = d.itemAccess(r.Context(), p, r.PathValue("id"))
-		}
-		if e == nil {
-			e = d.restrictedItem(r, p, r.PathValue("id"))
+			e = d.itemArtworkAccess(r.Context(), p, r.PathValue("id"))
 		}
 		if e != nil {
 			failure(w, e)
