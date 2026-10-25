@@ -36,7 +36,7 @@ export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'p
   isOperationCurrent?: (operation: SelectionOperation<BrowseSelectionContext>) => boolean;
 }>;
 
-/** A browse-safe queue add. Items are the explicit display ids in order. */
+/** A browse-safe queue add. Items are the explicit ids in original pick order. */
 export type LibraryEnqueueInput = Readonly<{items: readonly string[]; placement: 'next' | 'end'; signal: AbortSignal; isCurrent: () => boolean}>;
 /** The shared shell picker takes the explicit ids and the anchoring button. */
 export type LibraryDestinations = Readonly<{
@@ -150,14 +150,14 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
-      ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && current.selection.target?.mode === 'explicit' && queueLease ? {onDelete: props.openDelete} : {}),
+      ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && current.selection.target?.mode === 'explicit' && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}} : {}),
 ...(props.owner && props.deletion && summary.library.kind !== 'single' ? {deleteDisabledReason: defaultI18n.t('next.selection.oneLibrary')} : {}),
-      ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? {onDelete: props.openDelete, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
-      ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly || current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok) && queueLease ? {onEdit: props.openEditor, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
+      ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
+      ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly || current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok) && queueLease ? {onEdit: (anchor: HTMLElement) => {try {props.openEditor(anchor);} catch (error) {reportError(error);}}, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
-      ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
-      ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
-      ...(offers.favorite ? {onFavorite: () => { void personal({favorite: true}); }} : {}),
+      ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}).catch(reportError); }} : {}),
+      ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}).catch(reportError); }} : {}),
+      ...(offers.favorite ? {onFavorite: () => { void personal({favorite: true}).catch(reportError); }} : {}),
       ...(canQueue ? {onQueue: (placement: 'next' | 'end') => { void queue(placement).catch(reportError); }} : {}),
       ...(canPlaylist ? {onPlaylist: (anchor: HTMLElement) => { void addToPlaylist(anchor).catch(reportError); }} : {}),
       ...(canCollection ? {onCollection: (anchor: HTMLElement) => { void addToCollection(anchor).catch(reportError); }} : {}),

@@ -100,7 +100,7 @@ export function createSelectionActions({api, events, requestId, isCurrent, repor
       try {
         tasks = await captured.tasks;
         if (!tasks.length) throw new SelectionActionError('empty-selection');
-        await runSelectionJobs(api, tasks, AbortSignal.any([routeSignal, signal]), captured.current, (value, jobs) => {if (captured.current()) progress?.(operation, value, jobs);}, undefined, events);
+        await runSelectionJobs(api, tasks, AbortSignal.any([routeSignal, signal]), captured.current, (value, jobs) => {if (captured.current()) progress?.(operation, {...value, done: value.done + tasks.reduce((sum, task) => sum + (task.job?.failed ?? 0), 0)}, jobs);}, undefined, events);
         attempts.delete(key);
         return outcome(tasks);
       } catch (error) {
