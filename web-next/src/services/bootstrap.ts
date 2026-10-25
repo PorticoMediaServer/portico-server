@@ -16,7 +16,9 @@ export class ServicesBootstrap {
   private disposed = false;
   private ownerCaptureConsumed = false;
   private ownerState?: {store: HostedOwnerPendingStore; pending: HostedOwnerPending};
-  private readonly ownerControllers = new Set<ReturnType<typeof scopedHostedOwnerClaim>>();
+  // This collection owns teardown only. Each factory below retains its full,
+  // purpose-specific review type; setup never needs an owner reason.
+  private readonly approvalLifetimes = new Set<Pick<ReturnType<typeof scopedHostedOwnerClaim>, 'dispose'>>();
   constructor(private readonly account: Pick<ServicesAccount, 'service'>,
     private readonly store: () => ServicesLinkStore, private readonly capture?: LinkCapture,
     private readonly signIn?: {origin: string; capture?: SignInCapture},
@@ -30,7 +32,7 @@ export class ServicesBootstrap {
   ownerApproval(account: ServicesAccount) {
     if (this.disposed || this.state.phase !== 'ready' || !this.state.ownerPending || !this.ownerState || account.service !== this.account.service) return;
     const controller = scopedHostedOwnerClaim(account, this.ownerState.store, this.ownerState.pending);
-    this.ownerControllers.add(controller);
+    this.approvalLifetimes.add(controller);
     return controller;
   }
   approvalPurpose(account: ServicesAccount, signal: AbortSignal) {
@@ -40,10 +42,10 @@ export class ServicesBootstrap {
   setupApproval(account: ServicesAccount) {
     if (this.disposed || this.state.phase !== 'ready' || !this.state.ownerPending || !this.ownerState || account.service !== this.account.service) return;
     const controller=scopedHostedSetupClaim(account,this.ownerState.store,this.ownerState.pending);
-    this.ownerControllers.add(controller);return controller;
+    this.approvalLifetimes.add(controller);return controller;
   }
   private async restore() {
-    this.ownerControllers.forEach(controller => controller.dispose()); this.ownerControllers.clear();
+    this.approvalLifetimes.forEach(controller => controller.dispose()); this.approvalLifetimes.clear();
     this.ownerState = undefined;
     this.publish({phase: 'restoring'});
     try {
@@ -80,6 +82,6 @@ export class ServicesBootstrap {
   }
   dispose() {
     this.disposed = true; this.ownerState = undefined;
-    this.ownerControllers.forEach(controller => controller.dispose()); this.ownerControllers.clear(); this.listeners.clear();
+    this.approvalLifetimes.forEach(controller => controller.dispose()); this.approvalLifetimes.clear(); this.listeners.clear();
   }
 }
