@@ -24,7 +24,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
 export type ResumeButtonProps = ButtonProps & {progress: number; remaining?: ReactNode};
 export const ResumeButton = forwardRef<HTMLButtonElement, ResumeButtonProps>(function ResumeButton({progress, remaining, children, variant = 'primary', icon = 'i-play', className, ...props}, ref) {
-  return <Button {...props} ref={ref} variant={variant} icon={icon} className={[styles.resume, className].filter(Boolean).join(' ')}>
+  // The remaining time is a separate visual span, so the rendered text alone reads as
+  // "Resume1 h 26 min left". Name the control with one space between the two parts while
+  // leaving the drawn layout unchanged.
+  const named = typeof children === 'string' && typeof remaining === 'string' ? `${children} ${remaining}` : undefined;
+  return <Button {...props} ref={ref} aria-label={props['aria-label'] ?? named} variant={variant} icon={icon} className={[styles.resume, className].filter(Boolean).join(' ')}>
     <span className={styles.resumeLabel}>{children}{remaining !== undefined && remaining !== null && <span className={styles.remaining}>{remaining}</span>}</span>
     <span className={styles.progress} aria-hidden="true"><span style={{transform: `scaleX(${progressFraction(progress)})`}} /></span>
   </Button>;
