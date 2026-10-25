@@ -328,7 +328,7 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 				if c.sourceNumber != "" {
 					sourceNumber = c.sourceNumber
 				}
-				if _, e := tx.ExecContext(ctx, `INSERT INTO live_channel_versions VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(generation_id,channel_id) DO NOTHING`, generation, id(in.ID, c.key), c.key, c.name, c.number, sourceNumber, c.group, i, sealed[i-begin], r[0], r[1]); e != nil {
+				if _, e := tx.ExecContext(ctx, `INSERT INTO live_channel_versions(generation_id,channel_id,provider_key,name,number,source_number,group_name,position,locator_sealed,available_start,available_end) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(generation_id,channel_id) DO NOTHING`, generation, id(in.ID, c.key), c.key, c.name, c.number, sourceNumber, c.group, i, sealed[i-begin], r[0], r[1]); e != nil {
 					return ErrUnavailable
 				}
 				if _, e := tx.ExecContext(ctx, `INSERT INTO live_channel_attributes VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING`, generation, id(in.ID, c.key), c.country, c.catchup, c.catchupSource, c.catchupDays); e != nil {
