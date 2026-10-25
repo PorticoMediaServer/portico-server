@@ -64,6 +64,8 @@ import {ProfileList} from './account-profile/ProfileList';
 import {ProfileDelete} from './account-profile/ProfileDelete';
 import {ProfilePicture} from './account-profile/ProfilePicture';
 import {ProfileSignOut} from './account-profile/ProfileSignOut';
+import {ProfileOtherSignOut} from './account-profile/ProfileOtherSignOut';
+import {ProfileOtherDeviceSignOut} from './account-profile/sign-out-others';
 import {ProfileRestrictionsSource} from './account-profile/restrictions';
 import {isProfileRestriction, restrictionRow, changeRestriction} from './account-profile/restriction-rows';
 import {SettingsStringList} from '../../kit/settings/SettingsStringList';
@@ -117,6 +119,7 @@ export function SettingsEntry() {
       }) : undefined;
     const restrictions = profiles ? new ProfileRestrictionsSource(context.api, profiles, current) : undefined;
     const offRestrictions = restrictions?.subscribe(() => {if (current() && restrictions.getSnapshot().error) reportError();});
+    const otherDeviceSignOut = profiles ? new ProfileOtherDeviceSignOut(context.api, profiles, current) : undefined;
     const offProfileFailures = profiles ? observeProfileFailures(profiles, current, reportError) : undefined;
     const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.pin', 'profile.pinChange', 'profile.pinForget', 'profile.delete', 'profile.picture'].includes(id);
     const openProfilePIN = (remove: boolean) => {
@@ -202,6 +205,7 @@ export function SettingsEntry() {
       ? new SettingsMissingSource(context.api, current, reportError) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
+        if (row.id === 'profile.signOutElsewhere' && otherDeviceSignOut) return <ProfileOtherSignOut command={otherDeviceSignOut} isCurrent={current} disabled={state.disabled} onFailure={reportError} />;
         if (row.id === 'profile.signOut') return <ProfileSignOut serverName={identity.serverName} isCurrent={current} signOut={context.signOut} />;
         if (row.id === 'profile.hiddenLabels' && restrictions) return <SettingsStringList label={defaultI18n.t(row.label)} values={restrictions.getSnapshot().document?.blockedLabels ?? []} addLabel={defaultI18n.t(row.control.addLabel!)} disabled={state.disabled} onChange={value => {void changeRestriction(restrictions, row.id, value)?.catch(reportError);}} />;
         if (row.id === 'profile.picture' && profiles) return <ProfilePicture source={profiles} isCurrent={current} onFailure={reportError} />;
@@ -271,8 +275,9 @@ export function SettingsEntry() {
       // server-section configuration read would replace that page with a failure.
       getSnapshot: section => section.scope === 'account' && section.id === 'profile' && profiles ? profiles.getSnapshot() : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'metadata' && metadataCurrent() || section.id === 'live' && !!live) ? remoteSourcesPageSnapshot : source.getSnapshot(section),
       load: section => section.scope === 'account' && section.id === 'profile' && profiles ? Promise.all([profiles.load(), source.load(section)]).then(() => undefined) : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'metadata' && metadataCurrent() || section.id === 'live' && !!live) ? Promise.resolve() : source.load(section),
-      eligible: (row, selected) => row.id === 'profile.signOut' ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'storage.missingNow' ? !!missing && current() : row.id === 'storage.removeMissing' ? false : profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      eligible: (row, selected) => row.id === 'profile.signOutElsewhere' ? !!otherDeviceSignOut && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.signOut' ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'storage.missingNow' ? !!missing && current() : row.id === 'storage.removeMissing' ? false : profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
+        if (row.id === 'profile.signOutElsewhere') return {present: !!otherDeviceSignOut && current() && profiles?.getSnapshot().document?.canManage === true, disabled: profiles?.getSnapshot().busy};
         if (row.id === 'profile.signOut') return {present: current()};
         if (restrictions && profiles && isProfileRestriction(row.id)) return restrictionRow(restrictions, profiles, row.id)!;
         if (row.id === 'storage.missingNow') return {present: !!missing && current()};
@@ -288,7 +293,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard, profiles});
-    return () => {active = false;offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();missing?.dispose();controller.dispose();};
+    return () => {active = false;otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();missing?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
