@@ -22,6 +22,13 @@ type Pending = Readonly<{
   expected?: ClaimExpected; handoff?: OwnerClaimHandoff;
 }>;
 export type OwnerClaimCaller = Readonly<{isCurrent: () => boolean; signal?: AbortSignal}>;
+/** The exact attempt this preparation owns. Its cancel clears or cancels only
+ * that journal/server attempt, never whichever attempt is current later. */
+export type OwnerClaimLease = Readonly<{
+  attemptId: string; origin: string; operationId?: string; localGeneration?: string;
+  cancel: () => Promise<void>;
+}>;
+export type OwnerClaimAttempt = {lease?: OwnerClaimLease};
 type Journal = Readonly<{assertAvailable: () => void; read: () => Promise<Pending | undefined>;
   change: (update: (old: Pending | undefined) => Pending | undefined) => Promise<void>}>;
 type Ports = Readonly<{
@@ -109,13 +116,13 @@ export class BrowserOwnerClaim {
   /** Same-origin private preparation only, after the actual move confirmation.
    * Ambiguous network failures retain the exact verifier/proofs for that attempt. */
   async prepare(api: HttpLocalApi, hostedOrigin: string, purpose: 'switch' | 'change-owner' = 'switch',
-    previousOwnerRole: 'admin' | 'member' | 'remove' = 'admin', caller?: OwnerClaimCaller): Promise<string> {
+    previousOwnerRole: 'admin' | 'member' | 'remove' = 'admin', caller?: OwnerClaimCaller, attempt?: OwnerClaimAttempt): Promise<string> {
     this.ports.journal.assertAvailable();
     const origin = this.ports.pageOrigin(), route = api.getRouteConnection();
     if (api.baseUrl !== origin || routeOrigin(origin) !== origin || !route || route.getSnapshot().phase !== 'ready' ||
       routeOrigin(hostedOrigin) !== hostedOrigin || !hostedOrigin.startsWith('https://')) throw invalid();
     if (purpose === 'change-owner' && previousOwnerRole !== 'admin' && previousOwnerRole !== 'member' && previousOwnerRole !== 'remove') throw invalid();
-    const operation = this.operation();
+    const operation = this.operation(), holder = attempt ?? {};
     const callerLive = () => !caller || (caller.isCurrent() && caller.signal?.aborted !== true);
     const signal = caller?.signal ? AbortSignal.any([operation.signal, caller.signal]) : operation.signal;
     try {
@@ -150,6 +157,14 @@ export class BrowserOwnerClaim {
         ? pending.currentOwnerAccountId !== intendedOwner || pending.previousOwnerRole !== intendedRole
         : pending.currentOwnerAccountId !== undefined || pending.previousOwnerRole !== undefined) throw invalid();
       this.attemptId = pending.attemptId;
+      // Bind cleanup to this exact pending identity before any more IO.
+      const bound = pending;
+      const lease = (expected: ClaimExpected | undefined): OwnerClaimLease => Object.freeze({
+        attemptId: bound.attemptId, origin: bound.origin,
+        ...(expected ? {operationId: expected.operationId, localGeneration: expected.localGeneration} : {}),
+        cancel: () => this.cancelAttempt(bound.attemptId, expected, api),
+      });
+      holder.lease = lease(bound.expected);
       if (!callerLive()) throw invalid();
       await this.current(pending, operation);
       if (!callerLive()) throw invalid();
@@ -176,6 +191,7 @@ export class BrowserOwnerClaim {
         if (!callerLive()) throw invalid();
         await this.ports.journal.change(current => {if (!operation.current() || !callerLive() || !same(current, old)) throw cancelled(); return updated;});
         pending = updated;
+        holder.lease = lease(updated.expected);
       }
       const binding = {pin: pending.pin, origin, hostedOrigin, operationId: pending.expected!.operationId, localGeneration: pending.expected!.localGeneration,
         state: pending.state, codeChallenge: pending.codeChallenge, installationId: pending.installationId,
@@ -198,11 +214,37 @@ export class BrowserOwnerClaim {
       if (!callerLive()) throw invalid();
       return url;
     } catch (error) {
-      // A retired caller leaves no delivered handoff behind; the local journal
-      // attempt is removed. A successful return is handled by the caller.
-      if (!callerLive()) await this.cancel().catch(() => {});
+      // A retired caller leaves no delivered handoff behind. Cleanup is scoped
+      // to the exact attempt this call bound, never a later successor.
+      if (!callerLive()) await holder.lease?.cancel().catch(() => {});
       throw error;
     } finally {this.busy = false;}
+  }
+  /** Cancel only the exact journal attempt this lease names. If a successor
+   * already replaced it, do nothing at all. The Server cancellation uses the
+   * original issuer route and only while the captured owner family is still
+   * selected; otherwise the exact local attempt is dropped and the Server
+   * intent expires. */
+  private async cancelAttempt(attemptId: string, expected: ClaimExpected | undefined, api: HttpLocalApi): Promise<void> {
+    const record = await this.ports.journal.read();
+    if (!record || record.attemptId !== attemptId) return;
+    if (expected && (!record.expected || record.expected.operationId !== expected.operationId ||
+      record.expected.localGeneration !== expected.localGeneration)) return;
+    try {
+      const state = await this.ports.sessions.read();
+      const selected = this.selected(state, record.pin, record.purpose ?? 'switch');
+      const route = api.getRouteConnection();
+      if (record.expected && route && sameServerPin(route.pin, record.pin) && selected.session.sessionFamilyId === record.familyId &&
+        selected.session.tokenGeneration === record.tokenGeneration && state.revision === record.expectedRevision) {
+        const captured = new HttpLocalApi(record.origin, selected.session.accessToken); captured.useRoutes(route);
+        const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, AbortSignal.timeout(5000)), record.pin);
+        if (status.operation && status.operation.operationId === record.expected.operationId &&
+          status.operation.localGeneration === record.expected.localGeneration && status.actions.includes('cancel')) {
+          parseClaimStatus(await captured.request(routePath('post_networking_claim_cancel'), 'POST', {expected: status.operation}, AbortSignal.timeout(5000)), record.pin);
+        }
+      }
+    } catch { /* the Server attempt expires; the exact local attempt is still cleared */ }
+    await this.ports.journal.change(old => old?.attemptId === attemptId ? undefined : old);
   }
   /** Only protected KIND selects this consumer. The URL cannot select owner
    * authority and supplies no state, code, registration or credentials. */

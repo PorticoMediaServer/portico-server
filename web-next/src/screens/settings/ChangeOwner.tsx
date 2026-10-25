@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {ownerSwitchContextAllowed} from '../../platform/secure-pending';
+import type {OwnerClaimAttempt} from '../../platform/owner-claim';
 import type {SettingsOwnerSwitch} from './owner-switch';
 
 const t = defaultI18n.t;
@@ -59,22 +60,23 @@ export function ChangeOwner({source, isCurrent, onError}: {
     const owned = ticket.current;
     if (!owned || owned.retired || ticket.current !== owned || source !== sourceRef.current) return;
     target.phase = 'preparing';setBusy(true);
+    const attempt: OwnerClaimAttempt = {};
     const caller = {
       isCurrent: () => active.current === target && target.phase === 'preparing' && ticket.current === owned && !owned.retired,
       signal: target.abort.signal,
     };
     void (async () => {
       try {
-        const url = await source.prepareChangeOwner(caller);
+        const url = await source.prepareChangeOwner(caller, attempt);
         if (active.current !== target || target.phase !== 'preparing' || ticket.current !== owned || owned.retired ||
           sourceRef.current !== source || target.abort.signal.aborted) {
-          target.phase = 'closed';await source.abandonChangeOwner().catch(() => {});return;
+          target.phase = 'closed';await attempt.lease?.cancel().catch(() => {});return;
         }
         target.phase = 'handed';window.location.assign(url);
       } catch (error) {
         target.phase = 'closed';target.abort.abort();
         if (active.current === target) active.current = undefined;
-        await source.abandonChangeOwner().catch(() => {});
+        await attempt.lease?.cancel().catch(() => {});
         if (ticket.current === owned && !owned.retired && isCurrent()) onError(error);
       } finally {
         if (ticket.current === owned && !owned.retired) setBusy(false);

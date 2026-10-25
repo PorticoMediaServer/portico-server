@@ -6,7 +6,7 @@ import {passwordStrength} from '@core/password-strength.ts';
 import {LocalMoveCustody} from '../../platform/local-move';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {RouteError, routeOrigin} from '@core/route-identity.ts';
-import {createBrowserOwnerClaim, type BrowserOwnerClaim} from '../../platform/owner-claim';
+import {createBrowserOwnerClaim, type BrowserOwnerClaim, type OwnerClaimAttempt} from '../../platform/owner-claim';
 import {ownerSwitchContextAllowed} from '../../platform/secure-pending';
 
 type Claim = Pick<BrowserOwnerClaim, 'prepare' | 'cancel' | 'cancelOperation'>;
@@ -37,7 +37,7 @@ export class SettingsOwnerSwitch {
   private request?: AbortController;
   private epoch = 0;
   private closed = false;
-  private delivered = false;
+  private deliveredAttemptId?: string;
   private readonly origin: string;
   private readonly routes: ReturnType<HttpLocalApi['getRouteConnection']>;
   constructor(private readonly api: HttpLocalApi, private readonly options: OwnerSwitchOptions) {
@@ -154,28 +154,20 @@ export class SettingsOwnerSwitch {
   /** Begin the distinct change-owner claim on a Portico-account server. The
    * current owner approves a new Portico Account on Hosted; this controller
    * prepares only the existing owner claim handoff, never a move. */
-  async prepareChangeOwner(caller?: OwnerMoveCaller): Promise<string> {
+  async prepareChangeOwner(caller?: OwnerMoveCaller, attempt: OwnerClaimAttempt = {}): Promise<string> {
+    this.deliveredAttemptId = undefined;
     const operation = this.operation();
     try {
       operation.check();
-      const url = await this.claim!.prepare(this.api, this.options.hostedOrigin, 'change-owner', 'admin', caller);
+      const url = await this.claim!.prepare(this.api, this.options.hostedOrigin, 'change-owner', 'admin', caller, attempt);
       if (caller && (!caller.isCurrent() || caller.signal?.aborted === true)) {
-        await this.claim!.cancel();
+        await attempt.lease?.cancel().catch(() => {});
         throw new DOMException('The change owner opening ended.', 'AbortError');
       }
-      try {operation.check();} catch (error) {await this.claim!.cancel();throw error;}
-      this.delivered = true;return url;
+      try {operation.check();} catch (error) {await attempt.lease?.cancel().catch(() => {});throw error;}
+      this.deliveredAttemptId = attempt.lease?.attemptId;
+      return url;
     } finally {operation.finish();}
-  }
-  /** Abandon a change-owner attempt that never delivered its approval URL.
-   * Best effort: cancel the Server operation if prepared, otherwise forget the
-   * local journal attempt. A delivered handoff is never abandoned. */
-  async abandonChangeOwner(): Promise<void> {
-    this.delivered = false;
-    const claim = this.claim;
-    if (!claim) return;
-    try {await claim.cancelOperation(this.api);}
-    catch {await claim.cancel();}
   }
   async retryPreparation(): Promise<string> {
     if (!this.state.confirmed) throw new Error('The owner move has not been confirmed.');
@@ -183,9 +175,11 @@ export class SettingsOwnerSwitch {
     try {return await this.prepare(operation);} finally {operation.finish();}
   }
   private async prepare(operation: ReturnType<SettingsOwnerSwitch['operation']>): Promise<string> {
-    operation.check();const url = await this.claim!.prepare(this.api, this.options.hostedOrigin);
-    try {operation.check();} catch (error) {await this.claim!.cancel();throw error;}
-    this.delivered = true;return url;
+    const attempt: OwnerClaimAttempt = {};
+    operation.check();const url = await this.claim!.prepare(this.api, this.options.hostedOrigin, 'switch', 'admin', undefined, attempt);
+    try {operation.check();} catch (error) {await attempt.lease?.cancel().catch(() => {});throw error;}
+    this.deliveredAttemptId = attempt.lease?.attemptId;
+    return url;
   }
   async cancelPreview() {
     const preview = this.state.preview;
@@ -200,12 +194,12 @@ export class SettingsOwnerSwitch {
     finally {operation.finish();}
   }
   async cancel() {
-    const epoch = ++this.epoch;this.request?.abort();this.moves.cancel();this.delivered = false;
+    const epoch = ++this.epoch;this.request?.abort();this.moves.cancel();this.deliveredAttemptId = undefined;
     await this.claim?.cancel();if (this.current() && epoch === this.epoch) this.publish(empty);
   }
   dispose() {
     this.closed = true;++this.epoch;this.request?.abort();this.moves.dispose();this.state = empty;this.listeners.clear();
     // A full-document approval handoff must survive teardown in the original origin.
-    if (!this.delivered) void this.claim?.cancel().catch(() => {});
+    if (!this.deliveredAttemptId) void this.claim?.cancel().catch(() => {});
   }
 }
