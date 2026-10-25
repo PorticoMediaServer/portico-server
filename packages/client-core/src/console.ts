@@ -266,12 +266,12 @@ function parseExport(v:unknown):SupportExport{
  if(m.pathsInvalidAmongExamined!==undefined&&(!integer(m.pathsInvalidAmongExamined)||m.pathsInvalidAmongExamined>512))invalid();
  if(p.snapshotPaths!==undefined){
   const paths=p.snapshotPaths;
-  if(!m.includePaths||!m.included.includes('snapshot')||!obj(paths)||Object.keys(paths).some(key=>!['limit','hasMore','scanBudget','examined','scanTruncated','invalidAmongExamined','items'].includes(key))||paths.limit!==128||paths.scanBudget!==512||typeof paths.hasMore!=='boolean'||typeof paths.scanTruncated!=='boolean'||!integer(paths.examined)||paths.examined>512||!integer(paths.invalidAmongExamined)||paths.invalidAmongExamined>paths.examined||!Array.isArray(paths.items)||paths.items.length>128||paths.items.length+paths.invalidAmongExamined>paths.examined||paths.hasMore&&paths.items.length!==128)invalid();
-  for(const item of paths.items)if(!obj(item)||Object.keys(item).some(key=>!['category','reference','value'].includes(key))||!SUPPORT_PATH_CATEGORIES.includes(item.category)||!text(item.reference,16)||!/^path-[1-9][0-9]*$/.test(item.reference)||Number(item.reference.slice(5))>128||!text(item.value,4096)||!item.value||/\p{Cc}/u.test(item.value))invalid();
+  if(!m.includePaths||!m.included.includes('snapshot')||!obj(paths)||Object.keys(paths).some(key=>!['limit','hasMore','scanBudget','examined','scanTruncated','invalidAmongExamined','items'].includes(key))||paths.limit!==128||paths.scanBudget!==512||typeof paths.hasMore!=='boolean'||typeof paths.scanTruncated!=='boolean'||!integer(paths.examined)||paths.examined>512||!integer(paths.invalidAmongExamined)||paths.invalidAmongExamined>paths.examined||!Array.isArray(paths.items)||paths.items.length>128||paths.items.length+paths.invalidAmongExamined>paths.examined||paths.hasMore&&(paths.items.length!==128||paths.examined<paths.items.length+paths.invalidAmongExamined+1)||paths.scanTruncated&&(paths.examined!==512||paths.hasMore))invalid();
+  for(const [index,item] of paths.items.entries())if(!obj(item)||Object.keys(item).some(key=>!['category','reference','value'].includes(key))||!SUPPORT_PATH_CATEGORIES.includes(item.category)||!text(item.reference,16)||item.reference!==`path-${index+1}`||!text(item.value,4096)||!item.value||/\p{Cc}/u.test(item.value))invalid();
   const categories=[...new Set(paths.items.map((item:{category:SupportPathCategory})=>item.category))].sort();
   if(JSON.stringify(categories)!==JSON.stringify([...(m.pathCategories??[])].sort())||(m.pathsTruncated??false)!==paths.hasMore||(m.pathsScanTruncated??false)!==paths.scanTruncated||(m.pathsInvalidAmongExamined??0)!==paths.invalidAmongExamined)invalid();
  }else if(m.includePaths&&m.included.includes('snapshot'))invalid();
- if(!m.includePaths&&((m.pathCategories?.length??0)>0||m.pathsTruncated||m.pathsScanTruncated||m.pathsInvalidAmongExamined))invalid();
+ if(p.snapshotPaths===undefined&&((m.pathCategories?.length??0)>0||m.pathsTruncated||m.pathsScanTruncated||m.pathsInvalidAmongExamined))invalid();
  return p as SupportExport;
 }
 
