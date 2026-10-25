@@ -1,3 +1,4 @@
+import {isComicReadingFormat} from '@core/reading-format.ts';
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ReadingSession} from '@portico/client-core';
@@ -36,7 +37,7 @@ export function ReadCoverPages({reading, context, itemId, sourceId, upload, busy
     const off = bindings.authority.subscribe(() => {if (active && opening.isCurrent()) setFailed(true);});
     void bindings.open({itemId, sourceId}).then(value => {
       if (!active || !opening.isCurrent() || !bindings.authority.isCurrent()) return;
-      if (value.manifest.format !== 'cbz' || !value.manifest.pageNames?.length) throw new Error('invalid_cover_source');
+      if (!isComicReadingFormat(value.manifest.format) || !value.manifest.pageNames?.length) throw new Error('invalid_cover_source');
       setSession(value);
     }).catch(error => {if (active && opening.isCurrent()) {setFailed(true); context.effects.reportError(error);}});
     return () => {opening.controller.signal.removeEventListener('abort', stop); off(); stop();};

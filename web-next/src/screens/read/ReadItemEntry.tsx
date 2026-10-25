@@ -1,3 +1,4 @@
+import {isComicReadingFormat} from '@core/reading-format.ts';
 import {useReadingFavorite} from './useReadingFavorite';
 import {ReadSavedAction} from './ReadSavedAction';
 import {ReadMarkAction} from './ReadMarkAction';
@@ -131,7 +132,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     ...(author ? [{id: 'author', label: t('filter.field.author'), value: author}] : []),
     ...(manifest.metadata.language ? [{id: 'language', label: t('next.selection.language'), value: manifest.metadata.language}] : []),
     ...(metadata.wordCount !== undefined ? [{id: 'words', label: t('next.reader.wordsLabel'), value: defaultI18n.number(metadata.wordCount)}] : []),
-    ...(manifest.format === 'cbz' && manifest.pageNames?.length ? [{id: 'pages', label: t('next.reader.pagesStrip'), value: defaultI18n.number(manifest.pageNames.length)}] : []),
+    ...(isComicReadingFormat(manifest.format) && manifest.pageNames?.length ? [{id: 'pages', label: t('next.reader.pagesStrip'), value: defaultI18n.number(manifest.pageNames.length)}] : []),
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;

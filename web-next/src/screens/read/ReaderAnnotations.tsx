@@ -1,3 +1,4 @@
+import {isComicReadingFormat} from '@core/reading-format.ts';
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {randomId} from '@core/random-id.ts';
@@ -33,7 +34,7 @@ export function useReaderAnnotations(port: ReadingAnnotationPort | undefined, co
 const colours = ['yellow','green','blue','pink'] as const;
 const colourLabels = {yellow:'next.reader.annotationYellow',green:'next.reader.annotationGreen',blue:'next.reader.annotationBlue',pink:'next.reader.annotationPink'} as const;
 function selectedContent(selection: ReaderSelection, colour: typeof colours[number]): ReadingAnnotationContent | undefined {
-  if (!selection.text.trim() || new TextEncoder().encode(selection.text).length > 8192 || selection.location.format === 'cbz'
+  if (!selection.text.trim() || new TextEncoder().encode(selection.text).length > 8192 || isComicReadingFormat(selection.location.format)
     || selection.location.format === 'pdf' && (!selection.pageRects?.length || selection.rects.length > 128)) return;
   return Object.freeze({id: randomId(), kind:'highlight', location:readingLocationFromReader(selection.location), text:selection.text, note:'', colour,
     ...(selection.location.format === 'pdf' ? {rects:selection.pageRects} : {})});
@@ -94,7 +95,7 @@ export function ReaderAnnotationActions({service, snapshot, controller, onSearch
   const current=()=>live(lease)&&!!service?.current()&&controller.getSnapshot().sourceId===snapshot.sourceId&&controller.getSnapshot().sourceRevision===snapshot.sourceRevision;
   if(!service?.current())return null;
   const busy=state.loading||state.saving||state.revision===undefined;
-  const selectionSupported=!!selection?.text.trim()&&new TextEncoder().encode(selection.text).length<=8192&&selection.location.format!=='cbz'&&(selection.location.format!=='pdf'||!!selection.pageRects?.length&&selection.rects.length<=128);
+  const selectionSupported=!!selection?.text.trim()&&new TextEncoder().encode(selection.text).length<=8192&&!isComicReadingFormat(selection.location.format)&&(selection.location.format!=='pdf'||!!selection.pageRects?.length&&selection.rects.length<=128);
   const capture=()=>current()&&controller.getSnapshot().selection===selection&&selection?selectedContent(selection,colour):undefined;
   const ownsSelection=()=>current()&&controller.getSnapshot().selection===selection;
   return <>
