@@ -1047,26 +1047,27 @@ export class WebShellPlaybackRuntime {
     const original = plan?.mode === 'track' ? selectedSubtitleOriginal(plan) : null;
     return original && (original.format === 'pgs' || original.format === 'vobsub') ? original : null;
   }
-  private subtitleReader(stack: Stack, life: AbortSignal): ReadSubtitleFile {
+  /** The selected addresses and the original load lifetime are checked before every read. */
+  private subtitleReader(stack: Stack, life: AbortSignal, addresses: ReadonlySet<string>, current: () => boolean): ReadSubtitleFile {
     return async (address, maxBytes, signal) => {
+      const joined = AbortSignal.any([signal, life, stack.life.signal]);
+      joined.throwIfAborted();
+      if (!current() || !addresses.has(address)) problem('playback_subtitle_unavailable');
       const url = this.source.api.mediaUrl(address);
       if (new URL(url).origin !== new URL(this.source.api.baseUrl).origin) problem('unexpected_subtitle_origin');
-      const joined = AbortSignal.any([signal, life, stack.life.signal]);
       const file = await readSubtitleFile(this.env.fetch ?? fetch, url, maxBytes, joined);
-      if (!this.current(stack) || joined.aborted) throw new DOMException('Playback changed', 'AbortError');
+      joined.throwIfAborted();
+      if (!current()) throw new DOMException('Playback changed', 'AbortError');
       return file;
     };
   }
   /** Reads the chosen revision's own forced-line offer under the image load that can use it. A
    * stale, failed, cleared or replaced load never arms the switch. */
-  private async readForcedLines(stack: Stack, linesUrl: string, key: string, epoch: number, life: AbortSignal): Promise<void> {
+  private async readForcedLines(stack: Stack, linesUrl: string, key: string, epoch: number, life: AbortSignal, read: ReadSubtitleFile, current: () => boolean): Promise<void> {
     try {
-      const url = this.source.api.mediaUrl(linesUrl);
-      if (new URL(url).origin !== new URL(this.source.api.baseUrl).origin) return;
-      const joined = AbortSignal.any([life, stack.life.signal]);
-      const file = await readSubtitleFile(this.env.fetch ?? fetch, url, 8192, joined);
+      const file = await read(linesUrl, 8192, life);
       const lines = parseSubtitleLines(JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(file.bytes)));
-      if (!lines || !this.current(stack) || joined.aborted || stack.imageKey !== key || stack.imageEpoch !== epoch || stack.imageFailed || !forcedChoiceOf(lines)) return;
+      if (!lines || !current() || !forcedChoiceOf(lines)) return;
       stack.forcedLines = Object.freeze({lines, key, epoch});
       this.sync();
     } catch { /* no offer, no switch; the track still draws every line */ }
@@ -1081,8 +1082,20 @@ export class WebShellPlaybackRuntime {
     stack.imageKey = key;
     const epoch = stack.imageEpoch = (stack.imageEpoch ?? 0) + 1;
     const abort = new AbortController(); stack.imageAbort = abort;
-    const surface = stack.imageSurface = createImageSubtitleSurface(video as HTMLVideoElement, this.subtitleReader(stack, abort.signal),
-      () => { if (this.current(stack) && stack.imageEpoch === epoch) { stack.imageFailed = true; stack.forcedLines = undefined; this.clearRecordedSidecar(stack, 'image', key); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
+    const sessionKey = stack.sessionKey, run = this.playbackRun(), subtitles = stack.subtitles;
+    const current = () => {
+      const active = subtitles?.getSnapshot(), selected = active?.plan?.selected;
+      return this.current(stack) && !abort.signal.aborted && !stack.life.signal.aborted && stack.expanded && !stack.imageFailed
+        && stack.sessionKey === sessionKey && this.playbackRun() === run && stack.subtitles === subtitles
+        && stack.imageKey === key && stack.imageEpoch === epoch && !active?.suppressed
+        && active?.plan?.sessionId === plan.sessionId && active.plan.generation === plan.generation
+        && active.plan.sourceId === plan.sourceId && active.plan.revision === plan.revision && active.plan.offsetUs === plan.offsetUs
+        && selected?.id === plan.selected?.id && selected?.revision === plan.selected?.revision;
+    };
+    const addresses = new Set([original.url, ...(original.companionUrl ? [original.companionUrl] : []), ...(original.linesUrl ? [original.linesUrl] : [])]);
+    const read = this.subtitleReader(stack, abort.signal, addresses, current);
+    const surface = stack.imageSurface = createImageSubtitleSurface(video as HTMLVideoElement, read,
+      () => { if (current()) { stack.imageFailed = true; stack.forcedLines = undefined; this.clearRecordedSidecar(stack, 'image', key); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
     if (!surface) { stack.imageKey = undefined; return; }
     surface.setDelay(Number(plan.offsetUs) / 1e6);
     surface.setForcedOnly(stack.forcedOnly === true);
@@ -1092,13 +1105,14 @@ export class WebShellPlaybackRuntime {
       ? {kind: 'vobsub', index: original.url, data: original.companionUrl ?? ''}
       : {kind: 'pgs', data: original.url};
     void surface.present(source).then(() => {
-      if (!this.current(stack) || stack.imageEpoch !== epoch || abort.signal.aborted) return;
+      if (!current()) return;
       this.recordSidecar(stack, 'image', key, plan.selected?.id ?? null);
-      if (original.linesUrl) void this.readForcedLines(stack, original.linesUrl, key, epoch, abort.signal);
+      if (original.linesUrl) void this.readForcedLines(stack, original.linesUrl, key, epoch, abort.signal, read, current);
       this.sync();
     }).catch(() => {
-      if (!this.current(stack) || stack.imageEpoch !== epoch || abort.signal.aborted) return;
+      if (!current()) return;
       stack.imageFailed = true; stack.forcedLines = undefined;
+      this.clearRecordedSidecar(stack, 'image', key);
       this.runtimeProblem = 'playback_subtitles_failed'; this.sync();
     });
   }

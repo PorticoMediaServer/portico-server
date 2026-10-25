@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {drawnRenderingFor, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, subtitleOriginals} from '../src/subtitle-originals.ts';
 
 const root = '/v1/media/subtitles/grant_1/res-1/3';
-const styled = {id: 'res-1', format: 'ass', deliveries: [{format: 'text', url: root + '.vtt'}, {format: 'ass', url: root + '/original.ass', fontsUrl: root + '/fonts'}]};
-const dvd = {id: 'res-1', format: 'vobsub', deliveries: [{format: 'vobsub', url: root + '/original.idx', companionUrl: root + '/original.sub'}]};
+const styled = {id: 'res-1', revision: 3, format: 'ass', deliveries: [{format: 'text', url: root + '.vtt'}, {format: 'ass', url: root + '/original.ass', fontsUrl: root + '/fonts'}]};
+const dvd = {id: 'res-1', revision: 3, format: 'vobsub', deliveries: [{format: 'vobsub', url: root + '/original.idx', companionUrl: root + '/original.sub'}]};
 
 test('what a track offers: only originals this code understands, at addresses under the media grant', () => {
   const cases: {name: string; resource: unknown; want: unknown[]}[] = [
@@ -14,7 +14,7 @@ test('what a track offers: only originals this code understands, at addresses un
     {name: 'DVD without its second file', resource: {deliveries: [{format: 'vobsub', url: root + '/original.idx'}]}, want: []},
     {name: 'DVB', resource: {deliveries: [{format: 'dvb', url: root + '/original.mks'}]}, want: [{format: 'dvb', url: root + '/original.mks'}]},
     {name: 'text only', resource: {deliveries: [{format: 'text', url: root + '.vtt'}]}, want: []},
-    {name: 'no list (an older server)', resource: {id: 'res-1', format: 'ass'}, want: []},
+    {name: 'no list (an older server)', resource: {id: 'res-1', revision: 3, format: 'ass'}, want: []},
     {name: 'a format from a newer server', resource: {deliveries: [{format: 'ttml-image', url: root + '/original.sup'}]}, want: []},
     {name: 'an address somewhere else', resource: {deliveries: [{format: 'pgs', url: 'https://elsewhere.example/original.sup'}, {format: 'pgs', url: '/v1/items/x/original.sup'}]}, want: []},
     {name: 'a live stream address cannot stand in for a subtitle original', resource: {deliveries: [{format: 'ass', url: '/v1/media/linear/subtitles/a/b/original.ass'}]}, want: []},
@@ -40,6 +40,9 @@ test('the plan says when the device is to draw', () => {
   assert.equal(selectedSubtitleOriginal({renderer: 'burn_in', mode: 'track', selected: dvd}), null);
   assert.equal(selectedSubtitleOriginal({renderer: 'client', mode: 'off', selected: null}), null);
   assert.equal(selectedSubtitleOriginal(null), null);
+  for (const selected of [{...styled, id: 'other'}, {...styled, revision: 4}, {...styled, revision: undefined}]) {
+    assert.equal(selectedSubtitleOriginal({renderer: 'client', mode: 'track', selected}), null, 'the selected resource and revision own the addresses');
+  }
 });
 
 const response = (body: Uint8Array | string, init: {status?: number; headers?: Record<string, string>; chunk?: number} = {}) => {
@@ -100,4 +103,22 @@ test('an image original names where its forced-line count is read, and Forced on
   assert.equal(forcedChoiceOf(parseSubtitleLines({forced: 40, total: 40})), false);
   assert.equal(parseSubtitleLines({forced: 5, total: 2}), undefined);
   assert.equal(forcedChoiceOf(undefined), false);
+});
+
+
+test('a retired read never starts fetch and cancellation while awaiting headers cancels the body', async () => {
+  const retired = new AbortController(); retired.abort();
+  let requests = 0;
+  const never = (() => { requests++; return new Promise<Response>(() => {}); }) as typeof fetch;
+  await assert.rejects(readSubtitleFile(never, 'u', 40, retired.signal));
+  assert.equal(requests, 0);
+  for (const limit of [0, -1, NaN, Infinity]) {
+    await assert.rejects(readSubtitleFile(never, 'u', limit, new AbortController().signal), {code: 'invalid_subtitles'});
+  }
+  assert.equal(requests, 0);
+  const pending = new AbortController();
+  const body = response(new Uint8Array(4));
+  const ignoredAbort = (() => { pending.abort(); return Promise.resolve(body); }) as typeof fetch;
+  await assert.rejects(readSubtitleFile(ignoredAbort, 'u', 40, pending.signal));
+  assert.equal(body.wasCancelled(), true);
 });
