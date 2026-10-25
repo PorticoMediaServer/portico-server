@@ -48,5 +48,4 @@
 .back { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--color-text); font: inherit; cursor: pointer; }
 .done { padding: 0; border: 0; background: none; color: var(--color-text-secondary); font: inherit; font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); cursor: pointer; }
 .subBody { padding: 2px 16px 10px; }
-.qualityNote { margin: 14px 12px 2px; color: var(--color-text-tertiary); font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }
-.qualityNote b { color: var(--color-text); font-weight: var(--type-row-heading-weight); }
+.optionFoot { display: grid; gap: 2px; margin: 14px 12px 2px; color: var(--color-text-tertiary); font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }

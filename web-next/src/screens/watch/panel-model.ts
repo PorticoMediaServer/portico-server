@@ -10,7 +10,7 @@ export type WatchRadioChoice=Readonly<{id:string;label:string;detail?:string;sel
 export type WatchPanelModel=Readonly<{
  fence:QueuePlaybackFence;audio:readonly TrackChoice[];subtitles:readonly TrackChoice[];
  quality:readonly WatchRadioChoice[];speed:readonly WatchRadioChoice[];
- qualityLabel?:string;qualityAccessibleLabel?:string;qualityNote?:string;automatic:boolean;audioLabel?:string;subtitleLabel?:string;
+ qualityLabel?:string;qualityAccessibleLabel?:string;qualityNotes:readonly string[];audioNotes:readonly string[];automatic:boolean;audioLabel?:string;subtitleLabel?:string;
  isCurrent():boolean;selectAudio(id:string):Promise<void>;selectSubtitle(id:string):Promise<void>;
  selectQuality(id:string):Promise<void>;selectSpeed(id:string):void;
 }>;
@@ -45,8 +45,11 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   for(const resource of plan.resources.filter(r=>r.sourceId===fence.sourceId&&!r.retired)){
    const facts={...resource,sdh:resource.hearingImpaired,source:resource.origin==='embedded'?'embedded' as const:resource.origin==='sidecar'?'sidecar' as const:'downloaded' as const};
    const name=videoTrackName(facts,words);
+   // desktop-player f3: a track from outside the file names where it came from on its second line.
+   const origin=resource.origin==='provider'||resource.origin==='upload'?t('player.opt.origin',{origin:resource.origin}):undefined;
+   const secondary=[name.rest,origin].filter(Boolean).join(', ')||undefined;
    const id='resource:'+resource.id;subtitleIds.set(id,resource.id);
-   subtitleRows.push({id,primary:name.first,secondary:name.rest||undefined,fullName:name.label,selected:plan.mode==='track'&&plan.selected?.id===resource.id,
+   subtitleRows.push({id,primary:name.first,secondary,fullName:name.label,selected:plan.mode==='track'&&plan.selected?.id===resource.id,
     unavailable:!resource.enabled||!Number.isSafeInteger(Number(resource.offsetUs)/1000)});
   }
  }
@@ -55,7 +58,14 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  const actualId=session.presentation.quality.id??current.qualityId,actualStep=fixedQuality(actualId);
  const qualityLabel=actualStep?heightLabel(actualStep.height,t):actualId==='original'?t('next.kit.quality.original'):undefined;
  const action=session.presentation.decision?.video?.action;
- const qualityNote=action==='transcode'?(qualityLabel?t('player.quality.converting',{quality:qualityLabel}):undefined):action?t('player.quality.playingOriginal'):undefined;
+ // desktop-player f3: each quality footer fact keeps its own line, the network limit then the route.
+ const limit=offers.deliveryPolicy&&offers.deliveryPolicy.maxVideoHeight>0?heightLabel(offers.deliveryPolicy.maxVideoHeight,t):undefined;
+ const networkNote=limit?(offers.deliveryPolicy!.networkClass==='local'?t('next.kit.quality.home',{quality:limit})
+  :offers.deliveryPolicy!.networkClass==='remote'?t('next.kit.quality.away',{quality:limit}):undefined):undefined;
+ const routeNote=action==='transcode'?(qualityLabel?t('player.quality.converting',{quality:qualityLabel}):undefined):action?t('player.quality.playingOriginal'):undefined;
+ const qualityNotes=Object.freeze([networkNote,routeNote].filter((note):note is string=>!!note));
+ // f3b: a version with one audio track says so in place of a choice.
+ const audioNotes=Object.freeze(version.audio.length===1?[t('player.opt.oneAudioTrack')]:[]);
  for(const offer of source.qualities){
   const choice=offer.kind==='automatic'?'automatic':offer.kind==='original'?'original':isQualityChoice(offer.id)?offer.id:undefined;
   if(!choice)continue;qualityIds.set(offer.id,choice);
@@ -68,7 +78,7 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  }
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
- return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNote,
+ return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,
   selectAudio:async id=>{check();if(!audio.some(r=>r.id===id&&!r.unavailable))throw new Error('playback_audio_unavailable');await runtime.selectAudio(fence,id);},
