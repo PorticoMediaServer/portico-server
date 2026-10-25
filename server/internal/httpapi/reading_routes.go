@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 
+	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/reading"
 )
@@ -178,6 +179,15 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 	}
 	v, m := document.Selection, document.Metadata
 	out := ReadingSessionResponse{CanAnnotate: reading.CanAnnotate(p), Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
+	// This optional offer is descriptive only; the transfer rechecks the exact
+	// captured source and live download policy before and after each extent.
+	if v.Size > 0 && v.Size <= 64<<20 {
+		tx, err := d.DB.BeginTx(r.Context(), nil)
+		if err == nil {
+			out.CanSaveFile, _ = downloads.ProfileAllowsDownloads(tx, p.Viewer)
+			tx.Rollback()
+		}
+	}
 	if document.PublicationType != nil {
 		out.Metadata.PublicationType = &ReadingPublicationTypeValue{Value: ReadingPublicationType(document.PublicationType.Value), Source: ReadingPublicationTypeSource(document.PublicationType.Source)}
 	}
