@@ -83,10 +83,6 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     return () => { active = false; };
   }, [binding, context, remember]);
   useEffect(() => {
-    if (text.trim()) return;
-    if (binding.genres.getSnapshot().phase === 'idle') void binding.genres.load().catch(() => {});
-  }, [binding, text]);
-  useEffect(() => {
     if (text.trim() || context.identity?.liveAvailable !== true) return;
     if (binding.onNow.getSnapshot().phase === 'idle') void binding.onNow.load().catch(() => {});
   }, [binding, context.identity?.liveAvailable, text]);
@@ -104,6 +100,12 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   const failed = groups.filter(value => value.status === 'error');
   const size = preferenceValue<number>(preferences, 'appearance.cardSizePercent') / 100;
   const empty = showing && groups.every(value => value.status === 'success' && !value.items.length);
+  // The frame's "Browse instead" is the same genre browsing as the empty page, so the
+  // tiles load for an empty answer too.
+  useEffect(() => {
+    if (text.trim() && !empty) return;
+    if (binding.genres.getSnapshot().phase === 'idle') void binding.genres.load().catch(() => {});
+  }, [binding, text, empty]);
   const recentBlock = <RecentSearches queries={recent} compact={compact}
     onSelect={query => {if (context.isCurrent()) {setText(query);setChip('all');committed.current = '';}}}
     onClear={() => {
@@ -112,19 +114,22 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   const videoKinds = new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format([
     t('web.libraryKind.plural', {kind: 'movie'}), t('web.libraryKind.plural', {kind: 'tv'}), t('web.libraryKind.plural', {kind: 'anime'})]);
   const liveSourceCount = new Set(onNow.cards.map(card => card.channel.sourceId)).size;
+  const genreTiles = <div className={styles.genres}>{genres.genres.flatMap((genre, index) => {
+    if (!genre.backdrop) return [];
+    const art = context.artwork.foreground(genre.backdrop.path, 632, 16 / 9, {group: 'search-genres', order: index});
+    if (!art) return [];
+    return [<GenreTile key={genre.value} variant="video" context="search" artwork={art} visible
+      model={{title: genre.label, caption: [{id: 'count', role: 'supplement', text: t('next.selection.titles', {count: genre.count})}]}}
+      onNavigate={() => runScreenCommand(context, () => {const browse = context.effects.openBrowse;if (browse) browse(binding.genres.browseTarget(genre));})} />];
+  })}</div>;
+  const genreSection = genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-genres">
+    <header><h2 id="search-genres">{t('next.search.browseByGenre')}</h2><span>{videoKinds}</span></header>{genreTiles}</section>;
+  // Frame 5: a no-match answer keeps the same genre browsing, so it is not a dead end.
+  const browseInstead = genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-browse-instead">
+    <header><h2 id="search-browse-instead">{t('next.search.browseInstead')}</h2></header>{genreTiles}</section>;
   const beforeTyping = <div className={styles.empty}>
     {recentBlock}
-    {genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-genres">
-      <header><h2 id="search-genres">{t('next.search.browseByGenre')}</h2><span>{videoKinds}</span></header>
-      <div className={styles.genres}>{genres.genres.flatMap((genre, index) => {
-        if (!genre.backdrop) return [];
-        const art = context.artwork.foreground(genre.backdrop.path, 632, 16 / 9, {group: 'search-genres', order: index});
-        if (!art) return [];
-        return [<GenreTile key={genre.value} variant="video" context="search" artwork={art} visible
-          model={{title: genre.label, caption: [{id: 'count', role: 'supplement', text: t('next.selection.titles', {count: genre.count})}]}}
-          onNavigate={() => runScreenCommand(context, () => {const browse = context.effects.openBrowse;if (browse) browse(binding.genres.browseTarget(genre));})} />];
-      })}</div>
-    </section>}
+    {genreSection}
     {context.identity?.liveAvailable === true && onNow.phase === 'ready' && onNow.cards.length > 0 && <section className={styles.emptySection} aria-labelledby="search-on-now">
       <header><h2 id="search-on-now">{t('next.home.onNow')}</h2><span>{onNow.sourceNames.length ? onNow.sourceNames.join(', ') : t('next.live.sources', {count: liveSourceCount})}</span>
         <Button variant="text" size="small" className={styles.trailingLink} icon="i-right" disabled={!onOpenLive} onClick={() => onOpenLive?.()}>{t('next.controls.guide')}</Button></header>
@@ -168,7 +173,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
-      {empty && !group && recentBlock}
+      {empty && !group && browseInstead}
       {top && <TopResult binding={binding} result={top} fallbackArtwork={topAlbumArt} compact={compact}
         onOpen={() => runScreenCommand(context, () => { if (!top) return; binding.open(top.entry); commit(); })} />}
       {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} selection={selection} onCommit={commit} />
