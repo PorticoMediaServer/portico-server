@@ -89,13 +89,17 @@ func segmentNeighbours(files []showFile, i, limit int) []int {
 }
 
 func showFilesTx(ctx context.Context, q queryer, show int64) ([]showFile, error) {
+	planning, err := segmentPlanningTx(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := q.QueryContext(ctx, `SELECT f.object_id,f.source_revision,f.result_id,f.match_digest,e.entity_id,COALESCE(se.number,-1),e.number
  FROM segment_files f JOIN inventory_objects o ON o.id=f.object_id AND o.revision=f.source_revision
  JOIN catalog_episodes e ON e.entity_id=(SELECT ia.entity_id FROM catalog_assets a JOIN catalog_asset_links ia ON ia.asset_id=a.id JOIN catalog_episodes x ON x.entity_id=ia.entity_id WHERE a.token=o.asset_id AND x.show_id=f.show_id ORDER BY ia.part_index,ia.entity_id LIMIT 1)
  LEFT JOIN catalog_seasons se ON se.entity_id=e.season_id
- WHERE f.show_id=? AND f.state='complete' AND f.result_id<>''
+ WHERE f.show_id=? AND f.planning_policy=? AND f.state='complete' AND f.result_id<>''
   AND EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=f.object_id AND h.source_revision=f.source_revision AND h.stage=? AND r.id=f.result_id AND r.retired_ms=0)
- ORDER BY 6,7,f.object_id LIMIT 4097`, show, SegmentStage)
+ ORDER BY 6,7,f.object_id LIMIT 4097`, show, planning.digest(), SegmentStage)
 	if err != nil {
 		return nil, err
 	}
@@ -236,14 +240,18 @@ func (s *Service) publishSeasonMarkers(ctx context.Context, file showFile, diges
 	if err != nil {
 		return err
 	}
-	var current string
-	if err = tx.QueryRowContext(ctx, `SELECT result_id FROM segment_files WHERE object_id=?`, file.ObjectID).Scan(&current); err != nil {
+	planning, err := segmentPlanningTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	var current, policy string
+	if err = tx.QueryRowContext(ctx, `SELECT result_id,planning_policy FROM segment_files WHERE object_id=?`, file.ObjectID).Scan(&current, &policy); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return gated.Commit()
 		}
 		return err
 	}
-	if current != file.ResultID {
+	if current != file.ResultID || policy != planning.digest() {
 		return gated.Commit()
 	}
 	if _, err = replaceDetectorMarkers(ctx, tx, f, file.ResultID, seasonFamily, detections, true); err != nil {

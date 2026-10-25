@@ -28,6 +28,8 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'storage.missingRule':{form:'runtime',key:'library.missingTitles',codec:'missing-rule'},
  'storage.missingDaysExact':{form:'runtime',key:'library.missingTitlesDays'},
  'segments.libraryModes':{form:'runtime',key:'segments.libraryModes',fields:{tv:'segments.tvMode',anime:'segments.animeMode',movies:'segments.movieMode'}},
+ 'segments.shortestEpisode':{form:'runtime',key:'segments.shortestEpisode'},
+ 'segments.shortestFilm':{form:'runtime',key:'segments.shortestFilm'},
  'segments.chapters':{form:'runtime',key:'segments.useChapterNames',codec:'boolean'},
  'segments.viewerFloor':{form:'runtime',key:'segments.viewerConfidencePercent',codec:'number-choice'},
  'segments.autoFloor':{form:'runtime',key:'segments.automaticConfidencePercent',codec:'number-choice'},

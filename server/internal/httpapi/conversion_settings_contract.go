@@ -63,8 +63,20 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 		}
 		known[name] = true
 		value, ok := values[name]
-		if !ok && (name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" || name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
+		if !ok && (name == "segments.shortestFilm" || name == "segments.shortestEpisode" || name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" || name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
 			continue
+		}
+		if name == "segments.shortestEpisode" {
+			var minutes int
+			if json.Unmarshal(value, &minutes) != nil || minutes < 1 || minutes > 30 || minutes%1 != 0 {
+				return operations.ErrInvalid
+			}
+		}
+		if name == "segments.shortestFilm" {
+			var minutes int
+			if json.Unmarshal(value, &minutes) != nil || minutes < 5 || minutes > 60 || minutes%5 != 0 {
+				return operations.ErrInvalid
+			}
 		}
 		if name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" {
 			var mode string

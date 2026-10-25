@@ -7771,6 +7771,7 @@ CREATE TRIGGER social_groups_together_list_ended AFTER UPDATE OF state ON social
 CREATE TABLE segment_files (
  object_id TEXT PRIMARY KEY, source_revision TEXT NOT NULL, library_id TEXT NOT NULL,
  show_id INTEGER NOT NULL DEFAULT 0, mode TEXT NOT NULL CHECK(mode IN('standard','thorough')),
+ planning_policy TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('pending','complete','failed','unsupported')),
  attempt INTEGER NOT NULL DEFAULT 0, next_ms INTEGER NOT NULL DEFAULT 0, error_code TEXT NOT NULL DEFAULT '',
  result_id TEXT NOT NULL DEFAULT '', match_digest TEXT NOT NULL DEFAULT '', updated_ms INTEGER NOT NULL
@@ -8234,6 +8235,8 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "library.missingTitles" TEXT,
  "library.missingTitlesDays" INTEGER,
  "library.segmentDetection" TEXT,
+ "segments.shortestEpisode" INTEGER CHECK("segments.shortestEpisode" BETWEEN 1 AND 30 AND "segments.shortestEpisode"%1=0),
+ "segments.shortestFilm" INTEGER CHECK("segments.shortestFilm" BETWEEN 5 AND 60 AND "segments.shortestFilm"%5=0),
  "segments.tvMode" TEXT CHECK("segments.tvMode" IN('server','standard','thorough','off')),
  "segments.animeMode" TEXT CHECK("segments.animeMode" IN('server','standard','thorough','off')),
  "segments.movieMode" TEXT CHECK("segments.movieMode" IN('server','standard','thorough','off')),

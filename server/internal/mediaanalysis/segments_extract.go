@@ -38,10 +38,14 @@ const (
 // its middle); credits in its last third, at most eight minutes. A film's
 // credits are looked for in its last quarter, at most twenty minutes.
 func planSegments(kind, mode string, durationUS int64, audio, video bool) segmentPlan {
+	return planSegmentsWithPolicy(kind, mode, durationUS, audio, video, defaultSegmentPlanning())
+}
+
+func planSegmentsWithPolicy(kind, mode string, durationUS int64, audio, video bool, policy segmentPlanning) segmentPlan {
 	var p segmentPlan
 	switch kind {
 	case "episode":
-		if durationUS < minEpisodeUS || !audio && !(video && mode == SegmentModeThorough) {
+		if durationUS < policy.EpisodeMinutes*60_000_000 || !audio && !(video && mode == SegmentModeThorough) {
 			return p
 		}
 		if audio {
@@ -55,7 +59,7 @@ func planSegments(kind, mode string, durationUS int64, audio, video bool) segmen
 			p.Frames = region{durationUS - closing, closing}
 		}
 	case "movie":
-		if video && mode == SegmentModeThorough && durationUS >= minFilmUS {
+		if video && mode == SegmentModeThorough && durationUS >= policy.FilmMinutes*60_000_000 {
 			closing := min(durationUS/4, 1_200_000_000)
 			p.Frames = region{durationUS - closing, closing}
 		}

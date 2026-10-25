@@ -118,6 +118,13 @@ func (s *Service) segmentCatchup(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	planning, err := segmentPlanningTx(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	for i := range libraries {
+		libraries[i].Planning = planning.digest()
+	}
 	state, err := readSegmentCatchup(ctx, tx)
 	if err != nil {
 		return false, err
@@ -252,12 +259,12 @@ func (s *Service) segmentConsider(ctx context.Context, tx *sql.Tx, object string
 	if !ok || strings.HasSuffix(strings.ToLower(relative), ".strm") || analyzed != revision {
 		return nil
 	}
-	var current, mode, state string
-	err = tx.QueryRowContext(ctx, `SELECT source_revision,mode,state FROM segment_files WHERE object_id=?`, object).Scan(&current, &mode, &state)
+	var current, mode, state, planning string
+	err = tx.QueryRowContext(ctx, `SELECT source_revision,mode,state,planning_policy FROM segment_files WHERE object_id=?`, object).Scan(&current, &mode, &state, &planning)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if err == nil && current == revision && (mode == l.Mode || mode == SegmentModeThorough) {
+	if err == nil && current == revision && planning == l.Planning && (mode == l.Mode || mode == SegmentModeThorough) {
 		return nil
 	}
 	// The show is known from the start, so a file still waiting or one that
@@ -267,12 +274,13 @@ func (s *Service) segmentConsider(ctx context.Context, tx *sql.Tx, object string
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO segment_files(object_id,source_revision,library_id,show_id,mode,state,updated_ms) VALUES(?,?,?,?,?,'pending',?) ON CONFLICT(object_id) DO UPDATE SET source_revision=excluded.source_revision,library_id=excluded.library_id,show_id=excluded.show_id,mode=excluded.mode,state='pending',attempt=0,next_ms=0,error_code='',updated_ms=excluded.updated_ms`, object, revision, library, show, l.Mode, nowMS())
+	_, err = tx.ExecContext(ctx, `INSERT INTO segment_files(object_id,source_revision,library_id,show_id,mode,planning_policy,state,updated_ms) VALUES(?,?,?,?,?,?,'pending',?) ON CONFLICT(object_id) DO UPDATE SET source_revision=excluded.source_revision,library_id=excluded.library_id,show_id=excluded.show_id,mode=excluded.mode,planning_policy=excluded.planning_policy,state='pending',result_id='',match_digest='',attempt=0,next_ms=0,error_code='',updated_ms=excluded.updated_ms`, object, revision, library, show, l.Mode, l.Planning, nowMS())
 	return err
 }
 
 // segmentFile is everything one measurement needs to know about a file.
 type segmentFile struct {
+	Planning                            segmentPlanning
 	ObjectID, Revision, LibraryID, Mode string
 	AssetID, SourceID, Incarnation      string
 	Generation                          int64
@@ -360,6 +368,9 @@ func (s *Service) segmentFileStep(ctx context.Context) (bool, time.Duration, err
 		return false, 0, err
 	}
 	f, err := segmentFileTx(ctx, snapshot.Tx(), object, revision)
+	if err == nil {
+		f.Planning, err = segmentPlanningTx(ctx, snapshot.Tx())
+	}
 	if err == nil && s.Admission != nil {
 		var allowed bool
 		if allowed, err = s.Admission(ctx, snapshot.Tx(), "analysis"); err == nil && !allowed {
@@ -381,7 +392,7 @@ func (s *Service) segmentFileStep(ctx context.Context) (bool, time.Duration, err
 	if err != nil {
 		return true, 0, s.segmentFailure(ctx, object, revision, attempt, err)
 	}
-	plan := planSegments(f.ItemKind, mode, f.DurationUS, f.AudioCodec != "", f.VideoCodec != "")
+	plan := planSegmentsWithPolicy(f.ItemKind, mode, f.DurationUS, f.AudioCodec != "", f.VideoCodec != "", f.Planning)
 	evidence := segmentdetect.Evidence{DurationUS: f.DurationUS}
 	tool := "none"
 	inputEvidence := ""
