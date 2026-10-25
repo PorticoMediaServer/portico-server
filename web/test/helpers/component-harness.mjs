@@ -45,6 +45,8 @@ export async function componentModule(file, given) {
     }
     return `const ${bind} = modules[${JSON.stringify(source)}];`;
   }).replace(/export (const|function|async function|class) (\w+)/g, (_, kind, name) => { exported.push(name); return `${kind} ${name}`; })
+    // A bare re-export of a local binding (`export {hasReminder};`) has no meaning here.
+    .replace(/export\s*\{[^}]*\};/g, '')
     .replaceAll('import.meta.env', '({DEV:false,VITE_SERVER_URL:"https://server.example"})');
   return new Function('modules', (/const React\s*=/.test(code) ? '' : 'const React = modules.react.default;\n') + code + '\nreturn {' + exported.join(',') + '};')(inertWhereUnstubbed(modules));
 }
