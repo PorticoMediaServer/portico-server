@@ -13,6 +13,17 @@
 .kind { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: var(--color-raised); }
 .kind b { display: block; font-size: var(--type-row-subtitle-size); }
 .kind small { display: block; margin-top: 3px; color: var(--color-text-tertiary); font-size: var(--type-report-detail-size); }
+.kindCards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.kindChoice { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-raised); color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.kindChoice[aria-checked="true"] { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.kindChoice:disabled { cursor: default; opacity: .6; }
+.kindChoice b { display: block; font-size: var(--type-row-subtitle-size); }
+.kindChoice small { display: block; margin-top: 3px; color: var(--color-text-tertiary); font-size: var(--type-report-detail-size); }
+.configField { display: grid; gap: 6px; font-size: var(--type-row-subtitle-size); color: var(--color-text-secondary); }
+.configField small { color: var(--color-text-tertiary); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
+.configArea { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-raised-soft); color: var(--color-text); font-family: var(--font-mono); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); resize: vertical; }
+.configArea:disabled { opacity: .6; }
+.note[data-tone="warning"] { color: var(--color-amber); }
 .switchRow { display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: var(--type-row-subtitle-size); color: var(--color-text-secondary); }
 .testRow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .testCard { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 8px; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-text) 7%, transparent); }
@@ -24,4 +35,4 @@
 .danger { display: grid; gap: 10px; margin-top: 12px; padding: 16px; border: 1px solid color-mix(in srgb, var(--color-record) 42%, transparent); border-radius: 10px; }
 .danger p { margin: 0; color: var(--color-text-tertiary); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
 .actions { display: flex; justify-content: flex-end; gap: 10px; }
-@media (max-width: 720px) { .limits { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .limits, .kindCards { grid-template-columns: 1fr; } }
