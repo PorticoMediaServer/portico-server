@@ -321,6 +321,34 @@ func (f *Source) readAt(ctx context.Context, b []byte, offset int64) (result int
 	}
 	return done, nil
 }
+
+// LocalArchiveStaging reports whether this source may stage its bounded complete
+// archive privately: only a source read from a local/mounted rooted descriptor.
+// A remote range lease grants no whole-remote-file download authority.
+func (f *Source) LocalArchiveStaging() bool {
+	return f.remoteSession == nil && f.remoteRange == nil && !f.remoteRetained
+}
+
+// Recheck is the post-staging/helper currentness check: the same observation and
+// validation the extent reads use, under the captured retirement and the caller
+// deadline, before any bytes are published.
+func (f *Source) Recheck(ctx context.Context) error {
+	life, cancel := context.WithCancel(f.ctx)
+	stop := context.AfterFunc(ctx, cancel)
+	defer func() { stop(); cancel() }()
+	if f.reader == nil {
+		return ErrInvalid
+	}
+	observation, err := f.reader.Observe(life)
+	if err != nil {
+		return err
+	}
+	if err = f.checkObservation(observation); err != nil {
+		return err
+	}
+	return f.service.validate(life, f.p, f.Selection)
+}
+
 func (f *Source) Close() error {
 	f.closeOnce.Do(func() {
 		if f.remoteCancel != nil {

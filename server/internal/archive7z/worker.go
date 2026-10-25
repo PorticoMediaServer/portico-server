@@ -179,18 +179,30 @@ func page(stdin io.Reader, stdout io.Writer, name string) error {
 	}
 	defer os.RemoveAll(directory)
 	defer reader.Close()
+	// The whole accepted set is validated before the selected entry opens: a
+	// duplicate later in the archive must refuse it even when the requested name
+	// was seen first.
+	selected := -1
 	seen := map[string]bool{}
-	for _, file := range reader.File {
+	var expanded uint64
+	for index, file := range reader.File {
 		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize64) {
 			continue
 		}
-		if seen[file.Name] {
-			return errors.New("duplicate member name")
+		if seen[file.Name] || file.UncompressedSize64 > uint64(MaxMember) || uint64(MaxExpanded)-expanded < file.UncompressedSize64 {
+			return errors.New("member set refused")
 		}
 		seen[file.Name] = true
-		if file.Name != name {
-			continue
+		expanded += file.UncompressedSize64
+		if file.Name == name {
+			selected = index
 		}
+	}
+	if selected < 0 {
+		return errors.New("member not found")
+	}
+	{
+		file := reader.File[selected]
 		body, err := file.Open()
 		if err != nil {
 			return errors.New("member refused")
@@ -205,7 +217,6 @@ func page(stdin io.Reader, stdout io.Writer, name string) error {
 		}
 		return nil
 	}
-	return errors.New("member not found")
 }
 
 func plainName(name string) bool {

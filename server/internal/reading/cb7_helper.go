@@ -56,6 +56,12 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 		// provider read or scratch creation rather than starting unsupported.
 		return nil, ErrArchiveFormat
 	}
+	// First exposure is local-only: a remote range lease is not authority to
+	// stage a whole remote archive. Refuse before any provider acquisition.
+	local, ok := ra.(interface{ LocalArchiveStaging() bool })
+	if !ok || !local.LocalArchiveStaging() {
+		return nil, ErrArchiveFormat
+	}
 	path, err := cb7HelperPath()
 	if err != nil {
 		return nil, err
@@ -123,6 +129,13 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 			return nil, deadline.Err()
 		}
 		return nil, ErrArchiveFormat
+	}
+	// Currentness is re-read after staging and the helper, before these bytes are
+	// published; a source retired meanwhile refuses the result.
+	if checker, ok := ra.(interface{ Recheck(context.Context) error }); ok {
+		if err := checker.Recheck(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return body, nil
 }
