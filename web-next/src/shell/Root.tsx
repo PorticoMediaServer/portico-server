@@ -2,6 +2,7 @@ import {useLayoutEffect, useMemo, useRef} from 'react';
 import {Outlet, useRouterState} from '@tanstack/react-router';
 import {useRouteFade} from '../platform/route-motion';
 import {Shell} from './Shell';
+import {GlobalShortcuts} from './GlobalShortcuts';
 import {useShellBindings} from './bindings';
 import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
 import {webScreens, WebRetainedScreenHosts, useWebAction} from '../route-registry-view';
@@ -25,5 +26,5 @@ export function ShellRoot() {
   const viewer = binding?.shell.identity.viewer, phone = useShellWidth() < 600;
   const content = !binding || !viewer || screenId && (webScreens.chrome(screenId) !== 'shell' || phone && webScreens.phoneChrome(screenId) === 'standalone') ? <RouteContent />
     : <Shell {...binding.shell} onFeedback={onFeedback}><RouteContent /></Shell>;
-  return <>{content}<WebRetainedScreenHosts /></>;
+  return <>{content}{binding?.playback && <GlobalShortcuts key={binding.scopeKey} playback={binding.playback}/>}<WebRetainedScreenHosts /></>;
 }
