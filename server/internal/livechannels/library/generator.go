@@ -25,6 +25,7 @@ type generation struct {
 	Config                                           Config
 	Fence, Seed, Phase, Base, After                  string
 	Start, End, Boundary, CopyAfter, Cursor, Created int64
+	HistoryFence                                     int64
 	Rule                                             int
 	Count, Unresolved                                int
 	stmts                                            *stmtCache
@@ -33,7 +34,7 @@ type generation struct {
 func loadGeneration(ctx context.Context, tx *sql.Tx, id string) (generation, error) {
 	g := generation{ID: id}
 	var raw string
-	e := tx.QueryRowContext(ctx, `SELECT channel_id,config_revision,config_json,catalog_fence,seed,phase,base_generation,start_ms,end_ms,boundary_ms,copy_after_ms,scan_rule,scan_after,cursor_ms,candidate_count,unresolved_count,created_ms FROM lc_generations WHERE id=? AND status='pending'`, id).Scan(&g.ChannelID, &g.Revision, &raw, &g.Fence, &g.Seed, &g.Phase, &g.Base, &g.Start, &g.End, &g.Boundary, &g.CopyAfter, &g.Rule, &g.After, &g.Cursor, &g.Count, &g.Unresolved, &g.Created)
+	e := tx.QueryRowContext(ctx, `SELECT channel_id,config_revision,config_json,catalog_fence,seed,phase,base_generation,start_ms,end_ms,boundary_ms,copy_after_ms,scan_rule,scan_after,cursor_ms,candidate_count,unresolved_count,created_ms,play_history_fence FROM lc_generations WHERE id=? AND status='pending'`, id).Scan(&g.ChannelID, &g.Revision, &raw, &g.Fence, &g.Seed, &g.Phase, &g.Base, &g.Start, &g.End, &g.Boundary, &g.CopyAfter, &g.Rule, &g.After, &g.Cursor, &g.Count, &g.Unresolved, &g.Created, &g.HistoryFence)
 	if e != nil || json.Unmarshal([]byte(raw), &g.Config) != nil {
 		return g, unavailable(e)
 	}
@@ -235,7 +236,7 @@ func snapshotCandidates(ctx context.Context, tx *sql.Tx, g *generation) error {
 		g.After = ""
 		return nil
 	}
-	page, after, scanned, unresolved, e := candidatePage(ctx, tx, r, time.UnixMilli(g.Created), g.After, limit)
+	page, after, scanned, unresolved, e := candidatePage(ctx, tx, r, time.UnixMilli(g.Created), g.After, limit, playHistorySnapshot{ChannelID: g.ChannelID, Fence: g.HistoryFence})
 	if e != nil {
 		return e
 	}

@@ -348,7 +348,7 @@ func Validate(c Config) error {
 		}
 		ids[r.ID] = true
 		q := r.Query
-		if len(q.LibraryIDs) < 1 || len(q.LibraryIDs) > 64 || (len(q.Kinds) < 1 && len(q.IncludeItemIDs) == 0) || len(q.Kinds) > 2 || len(q.ShowIDs) > 128 || len(q.Genres) > 16 || q.YearFrom < 0 || q.YearFrom > 9999 || q.YearThrough < 0 || q.YearThrough > 9999 || (q.YearThrough > 0 && q.YearFrom > q.YearThrough) || q.RecentDays < 0 || q.RecentDays > 36500 || q.Limit < 0 || q.Limit > 1000000 || !oneOf(q.Order, "title", "recent", "oldest", "year", "episode", "release", "rating") {
+		if len(q.LibraryIDs) < 1 || len(q.LibraryIDs) > 64 || (len(q.Kinds) < 1 && len(q.IncludeItemIDs) == 0) || len(q.Kinds) > 2 || len(q.ShowIDs) > 128 || len(q.Genres) > 16 || q.YearFrom < 0 || q.YearFrom > 9999 || q.YearThrough < 0 || q.YearThrough > 9999 || (q.YearThrough > 0 && q.YearFrom > q.YearThrough) || q.RecentDays < 0 || q.RecentDays > 36500 || q.Limit < 0 || q.Limit > 1000000 || !oneOf(q.Order, "title", "recent", "oldest", "year", "episode", "release", "rating", "least-played") {
 			return ErrInvalid
 		}
 		path := fmt.Sprintf("rules[%d].query", len(ids)-1)
