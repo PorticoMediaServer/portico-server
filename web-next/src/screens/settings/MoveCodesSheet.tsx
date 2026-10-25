@@ -64,6 +64,8 @@ export function MoveCodesSheet({codes, serverName, address, isCurrent, onClose, 
   };
   const close = () => {if (current() && committed) {committed.live = false; setQR(undefined); scope.onClose();}};
   if (!current()) return null;
+  const publicWitness = publicQR && publicQR.ticket === committed ? publicQR : undefined;
+  const receiptWitness = qr && qr.ticket === committed ? qr : undefined;
   return <Dialog open title={t('accounts.move.sheetTitle')} width={760} className={styles.sheet}
     onOpenChange={value => {if (!value) close();}} footer={<>
       <Button onClick={() => {void copy();}}>{t('accounts.move.copyList')}</Button>
@@ -73,10 +75,10 @@ export function MoveCodesSheet({codes, serverName, address, isCurrent, onClose, 
     <article className={styles.paper}>
       <h2>{serverName}</h2><h3>{t('accounts.move.sheetHeading')}</h3>
       <p>{t('accounts.move.sheetHelp', {address})}</p>
-      {publicQR?.ticket === committed && <svg viewBox={`-4 -4 ${publicQR.size + 8} ${publicQR.size + 8}`} role="img" aria-label={t('qr.label')} shapeRendering="crispEdges"><path d={publicQR.path}/></svg>}
+      {publicWitness && <svg viewBox={`-4 -4 ${publicWitness.size + 8} ${publicWitness.size + 8}`} role="img" aria-label={t('qr.label')} shapeRendering="crispEdges"><path d={publicWitness.path}/></svg>}
       <table><thead><tr><th>{t('accounts.move.sheetUsername')}</th><th>{t('accounts.move.code')}</th><th>{t('accounts.move.validUntil')}</th></tr></thead>
         <tbody>{scope.codes.map(row => <tr key={row.accountId}><td>{row.username}</td><td className={styles.code}>{row.code}<div className={styles.codeActions}><Button size="small" onClick={() => {void copy(row);}}>{t('web.access.copyLink')}</Button><Button size="small" onClick={() => {void showQR(row);}}>{t('qr.label')}</Button></div></td><td>{defaultI18n.dateTime(row.expiresAt)}</td></tr>)}</tbody></table>
-      {qr?.ticket === committed && <figure><figcaption>{qr.row.username}</figcaption><svg viewBox={`-4 -4 ${qr.size + 8} ${qr.size + 8}`} role="img" aria-label={t('qr.label')} shapeRendering="crispEdges"><path d={qr.path}/></svg></figure>}
+      {receiptWitness && <figure><figcaption>{receiptWitness.row.username}</figcaption><svg viewBox={`-4 -4 ${receiptWitness.size + 8} ${receiptWitness.size + 8}`} role="img" aria-label={t('qr.label')} shapeRendering="crispEdges"><path d={receiptWitness.path}/></svg></figure>}
     </article>
   </Dialog>;
 }
