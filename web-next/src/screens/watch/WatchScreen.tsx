@@ -11,6 +11,7 @@ import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, 
 import {settledPlaybackChanged, settledPlaybackKey, type SettledPlayback} from './screen-state';
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
 import styles from './watch.module.css';
+import {PlaybackWaiting} from '../../kit/states/PlaybackWaiting';
 import {ScrubPreview} from './ScrubPreview';
 import {watchPreviewFrame} from './preview';
 import {useCoarsePointer} from '../../kit/theme';
@@ -257,6 +258,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
     <div ref={chrome} className={styles.chrome} style={rectStyle(geometry?.controls)}>
+      <PlaybackWaiting key={playbackKey} waiting={open && snapshot.playback.recovering === true && snapshot.playback.intent === 'playing' && snapshot.playback.phase !== 'error' && !snapshot.problem}/>
       <button type="button" className={styles.pictureTap} aria-label={t('player.stageLabel', {title: identity?.title ?? ''})}
         onPointerDown={event => { pointerKind.current = event.pointerType; event.preventDefault(); }}
         onPointerCancel={() => pictureInput.cancel()}
