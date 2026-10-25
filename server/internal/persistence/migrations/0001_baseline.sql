@@ -200,6 +200,7 @@ CREATE TABLE reading_publications(
 CREATE TABLE reading_image_folders(
  asset_id INTEGER PRIMARY KEY REFERENCES reading_publications(asset_id) ON DELETE CASCADE,
  source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL CHECK(generation>0),
  root_incarnation TEXT NOT NULL, root_identity TEXT NOT NULL,
  directory_path TEXT NOT NULL, directory_identity TEXT NOT NULL, directory_object TEXT NOT NULL,
  directory_revision TEXT NOT NULL, job_id TEXT NOT NULL,
@@ -5186,7 +5187,7 @@ INSERT INTO catalog_content_eligible_state(id,after_entity_id,backfill_done,turn
 CREATE VIEW reading_image_folder_availability AS
  SELECT folder.asset_id,CASE WHEN folder.available=1 AND source.kind='local'
  AND source.enabled=1 AND source.health NOT IN('offline','root_changed','removing')
- AND folder.root_incarnation=source.incarnation AND folder.root_identity=source.root_identity
+ AND folder.generation=source.generation AND folder.root_incarnation=source.incarnation AND folder.root_identity=source.root_identity
  AND folder.member_count BETWEEN 1 AND 4097
  AND folder.member_count=(SELECT count(*) FROM reading_image_members m WHERE m.folder_asset_id=folder.asset_id)
  AND folder.total_size=(SELECT sum(size) FROM reading_image_members m WHERE m.folder_asset_id=folder.asset_id)

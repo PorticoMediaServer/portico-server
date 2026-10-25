@@ -59,7 +59,7 @@ func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source Li
 	if err != nil {
 		return err
 	}
-	v := readingfolder.Inventory{SourceID: source.ID, Incarnation: source.Incarnation, RootIdentity: source.RootIdentity, Directory: directory, DirectoryIdentity: directoryID, DirectoryRevision: directoryRevision, Job: job}
+	v := readingfolder.Inventory{SourceID: source.ID, Generation: source.Generation, Incarnation: source.Incarnation, RootIdentity: source.RootIdentity, Directory: directory, DirectoryIdentity: directoryID, DirectoryRevision: directoryRevision, Job: job}
 	for rows.Next() {
 		var m readingfolder.Member
 		if err = rows.Scan(&m.ObjectID, &m.RelativePath, &m.ObjectIdentity, &m.Revision, &m.Evidence, &m.Size, &m.ModifiedNS, &m.Asset); err != nil {
@@ -113,7 +113,7 @@ func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source Li
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO reading_image_folders(asset_id,source_id,root_incarnation,root_identity,directory_path,directory_identity,directory_object,directory_revision,job_id,member_revision,member_count,total_size,available) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(asset_id) DO UPDATE SET directory_path=excluded.directory_path,directory_object=excluded.directory_object,root_incarnation=excluded.root_incarnation,root_identity=excluded.root_identity,directory_identity=excluded.directory_identity,directory_revision=excluded.directory_revision,job_id=excluded.job_id,member_revision=excluded.member_revision,member_count=excluded.member_count,total_size=excluded.total_size,available=0 WHERE reading_image_folders.source_id=excluded.source_id AND reading_image_folders.directory_object=excluded.directory_object`, anchor, source.ID, source.Incarnation, source.RootIdentity, directory, directoryID, storage.StableObjectIdentity(directoryID, source.RootIdentity), directoryRevision, job, revision, len(accepted.Members), totalSize)
+	res, err := tx.ExecContext(ctx, `INSERT INTO reading_image_folders(asset_id,source_id,generation,root_incarnation,root_identity,directory_path,directory_identity,directory_object,directory_revision,job_id,member_revision,member_count,total_size,available) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(asset_id) DO UPDATE SET generation=excluded.generation,directory_path=excluded.directory_path,directory_object=excluded.directory_object,root_incarnation=excluded.root_incarnation,root_identity=excluded.root_identity,directory_identity=excluded.directory_identity,directory_revision=excluded.directory_revision,job_id=excluded.job_id,member_revision=excluded.member_revision,member_count=excluded.member_count,total_size=excluded.total_size,available=0 WHERE reading_image_folders.source_id=excluded.source_id AND reading_image_folders.directory_object=excluded.directory_object`, anchor, source.ID, source.Generation, source.Incarnation, source.RootIdentity, directory, directoryID, storage.StableObjectIdentity(directoryID, source.RootIdentity), directoryRevision, job, revision, len(accepted.Members), totalSize)
 	if err != nil {
 		return err
 	}

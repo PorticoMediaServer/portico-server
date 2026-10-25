@@ -30,6 +30,7 @@ type Member struct {
 }
 
 type Inventory struct {
+	Generation        int64
 	SourceID          string
 	Incarnation       string
 	RootIdentity      string
@@ -55,7 +56,7 @@ func IsPage(name string) bool {
 // Seal copies and orders the entire accepted direct page set. Callers must
 // already prove the directory observation is complete, current and local.
 func Seal(v Inventory) (Inventory, string, error) {
-	if v.SourceID == "" || v.Incarnation == "" || v.RootIdentity == "" || v.DirectoryIdentity == "" || v.DirectoryRevision == "" || v.Job == "" || len(v.SourceID) > 512 || len(v.Incarnation) > 512 || len(v.RootIdentity) > 4096 || len(v.DirectoryIdentity) > 4096 || len(v.DirectoryRevision) > 512 || len(v.Directory) > 4096 || len(v.Job) > 512 || !filepath.IsLocal(v.Directory) || filepath.Clean(v.Directory) != v.Directory || len(v.Members) == 0 || len(v.Members) > MaxPages+1 {
+	if v.Generation < 1 || v.SourceID == "" || v.Incarnation == "" || v.RootIdentity == "" || v.DirectoryIdentity == "" || v.DirectoryRevision == "" || v.Job == "" || len(v.SourceID) > 512 || len(v.Incarnation) > 512 || len(v.RootIdentity) > 4096 || len(v.DirectoryIdentity) > 4096 || len(v.DirectoryRevision) > 512 || len(v.Directory) > 4096 || len(v.Job) > 512 || !filepath.IsLocal(v.Directory) || filepath.Clean(v.Directory) != v.Directory || len(v.Members) == 0 || len(v.Members) > MaxPages+1 {
 		return Inventory{}, "", ErrInventory
 	}
 	v.Members = append([]Member(nil), v.Members...)
@@ -93,7 +94,7 @@ func Seal(v Inventory) (Inventory, string, error) {
 		}
 		return NaturalLess(filepath.Base(v.Members[i].RelativePath), filepath.Base(v.Members[j].RelativePath))
 	})
-	b, err := json.Marshal([]any{v.SourceID, v.Incarnation, v.RootIdentity, v.Directory, v.DirectoryIdentity, v.DirectoryRevision, v.Members})
+	b, err := json.Marshal([]any{v.SourceID, v.Generation, v.Incarnation, v.RootIdentity, v.Directory, v.DirectoryIdentity, v.DirectoryRevision, v.Members})
 	if err != nil {
 		return Inventory{}, "", err
 	}

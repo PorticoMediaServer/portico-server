@@ -171,6 +171,7 @@ func (f *Source) imageFolder() (*Comic, error) {
 	}
 	var v readingfolder.Inventory
 	v.SourceID, v.Incarnation, v.RootIdentity = f.rootID, f.incarnation, f.rootIdentity
+	v.Generation = f.generation
 	err := f.service.DB.QueryRowContext(f.ctx, `SELECT directory_path,directory_identity,directory_revision,job_id FROM reading_image_folders WHERE asset_id=? AND source_id=? AND root_incarnation=? AND member_revision=?`, f.Asset, f.rootID, f.incarnation, f.folderRevision).Scan(&v.Directory, &v.DirectoryIdentity, &v.DirectoryRevision, &v.Job)
 	if err != nil {
 		return nil, ErrChanged
