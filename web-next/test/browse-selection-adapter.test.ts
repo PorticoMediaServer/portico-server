@@ -136,16 +136,17 @@ test('Watched and My List appear only with real job ports, and the job carries t
   assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, bare.toolbar)), />Watched</);
 });
 
-test('a container pick never becomes a personal job', async () => {
+test('a container without the canonical selection grant never becomes a personal job', async () => {
   let requested = 0;
   const actions = {api: {request: async () => { requested++; return {}; }}, events: {on: () => () => {}}, requestId: async () => 'op', isCurrent: () => true, reportError: () => {}};
-  const containerTarget = {...target, items: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities}}]};
-  const {selection} = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
+  const unavailable = {...capabilities, watched: false};
+  const containerTarget = {...target, items: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities: unavailable}}]};
+  const {selection} = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: unavailable},
     selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: containerTarget}});
   const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
   const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
   assert.doesNotMatch(html, />Watched</);
-  await assert.rejects(adapter.personal({watched: true}), /container-personal-state-unsupported/);
+  await assert.rejects(adapter.personal({watched: true}), /selection-grant-unavailable/);
   assert.equal(requested, 0);
 });
 
