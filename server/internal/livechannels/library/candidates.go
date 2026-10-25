@@ -78,6 +78,10 @@ func textWords(text string) []string {
 
 // orderKey is the rule's sequential order as a sortable text key over `i`, `ep`, `se`, `d`.
 func orderKey(r Rule) string {
+	if r.Query.Order == "least-played" {
+		r.Query.Order = "title"
+		return "printf('%020d',(SELECT count(*) FROM lc_play_events pe WHERE pe.channel_id=(SELECT channel_id FROM play_history_scope) AND pe.item_id=i.id AND pe.event_id<=(SELECT fence FROM play_history_scope)))||char(31)||" + orderKey(r)
+	}
 	if r.EpisodeMode == "rotate" {
 		// One episode per show in turn: every show's S1E1, then every S1E2, and so on.
 		return "printf('%04d',COALESCE(se.number,0))||printf('%05d',COALESCE(ep.number,0))||char(31)||printf('%020d',COALESCE(eps.id,0))||char(31)||printf('%020d',i.id)"
@@ -213,7 +217,7 @@ const candidateFrom = `
 // selection matches, so a 1M-item library generates in N/limit bounded pages.
 // A rule with a semantic limit ("the 30 most recent") needs its order, so it
 // pages by the order key (and so does a generation started before this change).
-func candidatePage(ctx context.Context, tx *sql.Tx, r Rule, at time.Time, after string, limit int) ([]Candidate, string, int, int, error) {
+func candidatePage(ctx context.Context, tx *sql.Tx, r Rule, at time.Time, after string, limit int, history ...playHistorySnapshot) ([]Candidate, string, int, int, error) {
 	if node, err := r.Query.filterNode("query.filter"); err != nil {
 		return nil, after, 0, 0, ErrInvalid
 	} else if node != nil {
@@ -230,9 +234,16 @@ func candidatePage(ctx context.Context, tx *sql.Tx, r Rule, at time.Time, after 
 		return nil, after, 0, 0, e
 	}
 	key := orderKey(r)
+	var snapshot playHistorySnapshot
+	if len(history) > 0 {
+		snapshot = history[0]
+	}
+	if r.Query.Order == "least-played" && (!validID(snapshot.ChannelID) || snapshot.Fence < 0) {
+		return nil, after, 0, 0, ErrInvalid
+	}
 	scope := []any{}
 	scopeSQL := "cl.library_id IN (" + listSQL(r.Query.LibraryIDs, &scope) + ") AND i.kind IN (SELECT id FROM catalog_kinds WHERE name IN (" + listSQL(kinds, &scope) + ")) AND cl.retired=0 AND i.retired=0"
-	byID := r.Query.Limit == 0 && (after == "" || strings.HasPrefix(after, "id:"))
+	byID := r.Query.Limit == 0 && (after == "" || strings.HasPrefix(after, "id:")) && !(r.Query.Order == "least-played" && snapshot.Ordered)
 	var query string
 	var queryArgs []any
 	scanned := 0
@@ -273,6 +284,10 @@ func candidatePage(ctx context.Context, tx *sql.Tx, r Rule, at time.Time, after 
 	} else {
 		queryArgs = append(append(append([]any{}, scope...), args...), after, limit)
 		query = candidateSelect + key + `,i.id,COALESCE(eps.id,0)` + candidateFrom + ` WHERE ` + scopeSQL + ` AND ` + where + ` AND (` + key + `)>? ORDER BY ` + key + ` LIMIT ?`
+	}
+	if r.Query.Order == "least-played" {
+		query = "WITH play_history_scope(channel_id,fence) AS (VALUES(?,?)) " + query
+		queryArgs = append([]any{snapshot.ChannelID, snapshot.Fence}, queryArgs...)
 	}
 	rows, e := tx.QueryContext(ctx, query, queryArgs...)
 	if e != nil {
@@ -475,6 +490,13 @@ func (s *Store) preview(ctx context.Context, a Authority, c Config, firstDay boo
 			return e
 		}
 		out.CatalogFence = f
+		var historyFence int64
+		if hasLeastPlayed(c) {
+			historyFence, e = playHistoryFence(ctx, tx)
+			if e != nil {
+				return unavailable(e)
+			}
+		}
 		pools := map[string][]Candidate{}
 		for _, r := range c.Rules {
 			rp := RulePreview{RuleID: r.ID, Sample: []Candidate{}, SemanticLimit: r.Query.Limit, Complete: true}
@@ -492,7 +514,7 @@ func (s *Store) preview(ctx context.Context, a Authority, c Config, firstDay boo
 					rp.Complete = false
 					break
 				}
-				page, next, n, unresolved, e := candidatePage(ctx, tx, r, observedAt, after, limit)
+				page, next, n, unresolved, e := candidatePage(ctx, tx, r, observedAt, after, limit, playHistorySnapshot{ChannelID: c.ID, Fence: historyFence, Ordered: true})
 				if e != nil {
 					return e
 				}
