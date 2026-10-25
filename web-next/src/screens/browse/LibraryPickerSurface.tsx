@@ -3,12 +3,16 @@ import {defaultI18n} from '@i18n';
 import type {HomeSelectionPicker} from '@core/home-selection/types.ts';
 import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions';
 import {pickerResultView} from '../../shell/selection-presentation';
+import type {ShellArtwork} from '../../shell/artwork';
+import {CoverMosaic} from '../../kit/artwork';
 import {CollectionPicker, PlaylistPicker, type PickerEntry} from '../../kit/selection';
 import {LibraryPickerProducer, type LibraryPickerTarget} from './selection-picker';
-export type LibraryPickerOptions = EntryActionPorts & Readonly<{signal: AbortSignal; canCreateCollection: boolean}>;
+export type LibraryPickerOptions = EntryActionPorts & Readonly<{signal: AbortSignal; canCreateCollection: boolean;
+  /** The screen's own artwork, for the picker's 2 by 2 mosaics (select.html 18). */
+  artwork?: ShellArtwork}>;
 const t = defaultI18n.t;
-export function LibraryPickerSurface({destination, target, ports, anchor, canCreate, onClose}: {
-  destination: EntryDestination; target: LibraryPickerTarget; ports: EntryActionPorts; anchor: HTMLElement | null; canCreate: boolean; onClose: () => void;
+export function LibraryPickerSurface({destination, target, ports, artwork, anchor, canCreate, onClose}: {
+  destination: EntryDestination; target: LibraryPickerTarget; ports: EntryActionPorts; artwork?: ShellArtwork; anchor: HTMLElement | null; canCreate: boolean; onClose: () => void;
 }) {
   const producer = useRef<LibraryPickerProducer | null>(null), anchorRef = useRef<HTMLElement | null>(anchor);
   const [picker, setPicker] = useState<HomeSelectionPicker>(), [error, setError] = useState<string>();
@@ -26,8 +30,19 @@ export function LibraryPickerSurface({destination, target, ports, anchor, canCre
     setError(undefined);
     void work(owned).catch(() => {if (producer.current === owned && ports.isCurrent()) setError(t('next.selection.pickerFailed'));});
   };
-  const entries: readonly PickerEntry[] = picker?.rows.map(row => ({id: row.id, name: row.name, size: row.count, canAdd: row.canAdd, alreadyIn: row.alreadyIn})) ?? [];
-  const result = picker && pickerResultView(picker, () => t('next.selection.pickerFailed'));
+  // select.html 18: each row and the result carry the destination's first four
+  // covers as a 2 by 2 mosaic, from the screen's own artwork source only.
+  const mosaic = (rows: HomeSelectionPicker['rows'][number]['artwork'] | undefined) => {
+    const source = artwork; if (!source || !rows) return undefined;
+    const covers = rows.flatMap((row, index) => {
+      const art = source.foreground(row.posterUrl ?? row.backdropUrl, 40 * (globalThis.devicePixelRatio || 1), 1, {group: 'library-destination-picker', order: index, priority: 'high'});
+      return art ? [art] : [];
+    });
+    return covers.length ? <CoverMosaic alt="" covers={covers} /> : undefined;
+  };
+  const entries: readonly PickerEntry[] = picker?.rows.map(row => ({id: row.id, name: row.name, size: row.count, canAdd: row.canAdd, alreadyIn: row.alreadyIn, artwork: mosaic(row.artwork)})) ?? [];
+  const resultView = picker && pickerResultView(picker, () => t('next.selection.pickerFailed'));
+  const result = resultView && picker ? {...resultView, destination: {...resultView.destination, artwork: mosaic(picker.destination?.artwork)}} : undefined;
   const Picker = destination === 'playlist' ? PlaylistPicker : CollectionPicker;
   return <Picker open onOpenChange={value => {if (!value) close();}} selection={{count: 'mode' in target ? target.total : target.length}} anchorRef={anchorRef} returnFocusRef={anchorRef}
     entries={entries} query={picker?.query ?? ''} onQueryChange={value => run(owned => owned.search(value))}

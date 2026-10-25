@@ -64,7 +64,7 @@ export function createCatalogueDocumentSelection(context: ScreenContext, sourceD
     const selection = createLibrarySelection({playSelection: play, owner,
       ...(runtime ? {enqueue: play.enqueue} : {}),
       pickers: {api: life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(), signal: life.signal(), isCurrent: current,
-        canCreateCollection: context.identity?.viewer.role === 'owner', pickerIdentity: {...principal, events: context.events}},
+        canCreateCollection: context.identity?.viewer.role === 'owner', pickerIdentity: {...principal, events: context.events}, artwork: context.artwork},
       ...(owner ? {editor: {api: life.api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,
         artwork: context.artwork, viewerFence: metadataFence, signal: life.signal(), isCurrent: current},
         deletion: {api: life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(), signal: life.signal(), isCurrent: current}} : {}),
