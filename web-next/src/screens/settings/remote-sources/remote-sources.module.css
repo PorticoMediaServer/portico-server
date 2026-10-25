@@ -126,3 +126,4 @@
 .choiceCost[data-tone="warning"] { color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 10%, transparent); }
 .choiceCost[data-tone="info"] { color: var(--color-passive, var(--color-text-secondary)); }
 .choiceCost svg { flex: none; margin-top: 1px; }
+.readingFields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 14px; }

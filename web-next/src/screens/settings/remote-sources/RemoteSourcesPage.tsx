@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, sourceReadPreset, sourceReadPresetName,
@@ -107,6 +107,7 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
   const service = useMemo(() => new RemoteSourceService(api, {serverId, viewerId}, ids.next, isCurrent), [api, serverId, viewerId, ids, isCurrent]);
   const [adding, setAdding] = useState(false);
   const [managing, setManaging] = useState<RemoteSource>();
+  const [reading, setReading] = useState<RemoteSource>();
   useEffect(() => {
     void service.load();
     return () => service.dispose();
@@ -125,11 +126,12 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
       {!snapshot.loading && !sources.length && !snapshot.error && <div className={styles.empty}><b>{t('next.remoteSources.empty')}</b><p>{t('next.remoteSources.emptyHelp')}</p></div>}
       {sources.map(source => <SettingsRow key={source.id} label={<><Icon name="i-globe" size={18} /> {source.name}</>}
         help={<>{t(source.kind === 'rclone' ? 'web.storage.rcloneRemote' : 'next.remoteSources.kindWebdav')}{source.origin ? ` · ${source.origin}` : ''}{problemId(source) ? ` · ${t(problemId(source)!)}` : ''}</>}>
-        <span className={styles.rowActions}><SourceStatus source={source}/>{source.kind === 'webdav' && <Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button>}</span>
+        <span className={styles.rowActions}><SourceStatus source={source}/>{source.kind === 'webdav' && <Button size="small" variant="glass" onClick={() => setManaging(source)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.itemActions.0.label')}</Button>}{source.kind === 'rclone' && <Button size="small" variant="glass" onClick={() => setReading(source)}>{t('next.remoteSources.reading')}</Button>}</span>
       </SettingsRow>)}
     </SettingsGroup>
     <AddSourceDialog service={service} api={api} serverId={serverId} viewerId={viewerId} open={adding} isCurrent={isCurrent} reportError={reportError} onClose={() => setAdding(false)} onCreated={source => {setAdding(false);setManaging(source);}}/>
     {managing && <ManageSourceDialog key={managing.id} service={service} source={managing} api={api} serverId={serverId} viewerId={viewerId} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>}
+    {reading && <SourceReadingDialog key={`${reading.id}:${reading.generation}`} service={service} source={reading} isCurrent={isCurrent} reportError={reportError} onClose={() => setReading(undefined)}/>}
     {snapshot.loading && sources.length > 0 && <Button size="xs" variant="text" onClick={refresh}>{t('next.remoteSources.refresh')}</Button>}
   </div>;
 }
@@ -529,5 +531,69 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
     </section>
     {picking && <RemoteFolderPicker service={service} sourceId={source.id} sourceName={source.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}
+  </Dialog>;
+}
+
+/** Reading applies to the exact listed source; no credential or connection mutation. */
+function SourceReadingDialog({service, source, isCurrent, reportError, onClose}: Readonly<{
+  service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean;
+  reportError: (error: unknown) => void; onClose: () => void;
+}>) {
+  const [profile, setProfile] = useState<SourceReadSettings>();
+  const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('list'));
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const scope = useMemo(() => ({}), [service, source, isCurrent]);
+  const token = useRef<object | null>(scope), flight = useRef(false);
+  const state = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
+  const listed = useCallback(() => service.getSnapshot().sources.some(row => row === source), [service, source]);
+  const current = useCallback((captured: object | null) => captured !== null && token.current === captured && isCurrent() && listed(), [isCurrent, listed]);
+  const close = () => {token.current = null;onClose();};
+  useLayoutEffect(() => {
+    const captured = scope;token.current = captured;
+    return () => {if (token.current === captured) token.current = null;};
+  }, [scope]);
+  useEffect(() => {
+    const captured = scope;
+    if (!current(captured)) return;
+    void service.readProfile(source.id, String(source.generation), () => current(captured)).then(next => {
+      if (!current(captured)) return;
+      setProfile(next);setValues(next.values);
+    }).catch(value => {
+      if (!current(captured)) return;
+      if (authFailure(value)) {token.current = null;reportError(value);} else setError(remoteErrorText(value));
+    });
+  }, [service, source, scope, current, reportError]);
+  const save = async () => {
+    const captured = scope;
+    if (!current(captured) || flight.current || !profile || state.busy || state.ambiguous) return;
+    const original = profile, draft = Object.freeze({...values});
+    flight.current = true;setBusy(true);setError('');
+    try {
+      await service.saveProfile(original, draft, () => current(captured));
+      if (current(captured)) close();
+    } catch (value) {
+      if (!current(captured)) return;
+      if (authFailure(value)) {token.current = null;reportError(value);}
+      else if (refreshFailure(value)) close();
+      else setError(remoteErrorText(value));
+    } finally {flight.current = false;if (current(captured)) setBusy(false);}
+  };
+  const disabled = busy || state.busy || state.ambiguous || !profile || !listed();
+  return <Dialog open title={source.name} description={t('next.remoteSources.reading')} onOpenChange={open => {if (!open) close();}}
+    footer={<><Button size="compact" variant="glass" onClick={close}>{t('action.cancel')}</Button><Button size="compact" variant="primary" disabled={disabled} onClick={() => void save()}>{t('next.remoteSources.save')}</Button></>}>
+    {error && <p className={styles.error} role="alert">{error}</p>}
+    {!profile && !error && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
+    <fieldset disabled={disabled} className={styles.readingFields}>
+      <RichSelect disabled={disabled} aria-label={t('next.remoteSources.readingMode')} value={sourceReadPresetName(values) ?? 'custom'} options={[...presetOptions, ...(sourceReadPresetName(values) ? [] : [{value: 'custom', label: t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label'), disabled: true}])]}
+        onValueChange={value => {if (value !== 'custom') setValues(sourceReadPreset(value as SourceReadPreset));}}/>
+      <div className={styles.limits}>
+        <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={disabled} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
+        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={disabled} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
+        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={disabled} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
+      </div>
+      <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={disabled} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
+
+    </fieldset>
   </Dialog>;
 }
