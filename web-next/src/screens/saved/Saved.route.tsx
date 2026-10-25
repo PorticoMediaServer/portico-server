@@ -20,7 +20,8 @@ const networkSubscribe = (changed: () => void) => {
 };
 function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner: RetainedSavedOwner}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!;
-  const route = parseSavedScreenRoute(useSearch({from: '/saved'}));
+  const search = useSearch({from: '/saved'});
+  const route = useMemo(() => parseSavedScreenRoute(search), [search]);
   const selectedRoute = useRef(route), playback = useRef(captured.binding.playback);
   selectedRoute.current = route;playback.current = captured.binding.playback;
   const hasPlayback = !!captured.binding.playback;
@@ -33,7 +34,7 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
     if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Saved authority unavailable', 'AbortError');
     return createSavedCatalogueSelection(context, runtime, route, {serverId: viewer.serverId, authority: viewer.authority,
       accountId: viewer.accountId, profileId: viewer.profileId}, () => captured.context.viewerFence, () => savedRouteKey(selectedRoute.current) === routeKey, captured.binding.playback?.runtime);
-  }, [context, runtime, routeKey, captured.context, captured.binding.playback?.runtime]);
+  }, [context, runtime, route, routeKey, captured.context, captured.binding.playback?.runtime]);
   useEffect(() => {selection.start();return () => selection.dispose();}, [selection]);
   const effects: SavedEffects = useMemo(() => ({
     openEntry: context.effects.openEntry,
