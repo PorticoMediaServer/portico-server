@@ -145,4 +145,6 @@ export const readerMessages = {
   'next.reader.sourceFileName': 'From the file name',
   'next.reader.sourceFolder': 'From the folder',
   'next.reader.sourceOwner': 'Edited on this server',
+  'next.reader.indexedSearchScope': 'Searches indexed book text.',
+  'next.reader.noIndexedMatches': 'No indexed matches found.',
 } as const satisfies Record<`next.reader.${string}`, string>;
