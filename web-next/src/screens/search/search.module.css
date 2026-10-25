@@ -173,3 +173,25 @@
   .phoneTopCopy > :last-child { font-size: 13px; color: var(--color-text-secondary); }
   .phoneTopPlay { position: relative; z-index: 2; flex: none; width: 46px; height: 46px; border-radius: 50%; }
 }
+
+/* Desktop-search frame 3: a full-width Songs answer carries the Music library's columns. */
+.resultTotal { margin-left: 12px; font-size: var(--type-person-title-size); font-weight: 400; color: var(--color-text-tertiary); }
+.songColumns,.songTableRow { display: grid; grid-template-columns: 44px minmax(0,2.3fr) minmax(0,1.25fr) minmax(0,1.7fr) 64px 64px; align-items: center; gap: 14px; }
+.songColumns { padding: 0 12px 8px 6px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.songColumns > :nth-child(n+5) { text-align: right; }
+.songTableRow { position: relative; width: 100%; min-height: 58px; padding: 0 12px 0 6px; border-radius: 10px; }
+.songTableRow:hover { background: var(--color-raised); }
+.songTableRow[data-selected="true"] .songTitleCell b { color: var(--color-accent-strong); }
+.songTableRow[data-preview="true"] { background: color-mix(in srgb,var(--color-accent-strong) 12%,transparent); }
+.songIndex { display: grid; place-items: center; font-size: var(--type-caption-size); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.songTitleCell { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.songTitleCell > :first-child { flex: none; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; }
+.songTitleCell b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-body-size); font-weight: var(--type-button-weight); }
+.songArtist,.songAlbum,.songPlays,.songLength { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.songPlays,.songLength { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 599px) {
+  .songColumns,.songTableRow { grid-template-columns: 32px minmax(0,1fr) 52px; gap: 10px; }
+  .songColumns > :nth-child(3),.songColumns > :nth-child(4),.songColumns > :nth-child(5),
+  .songArtist,.songAlbum,.songPlays { display: none; }
+  .songColumns > :nth-child(6) { text-align: right; }
+}

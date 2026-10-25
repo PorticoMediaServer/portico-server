@@ -2,7 +2,7 @@ import {generatedCoverTint} from '@design';
 import type {SearchSelection} from './selection';
 import {SelectionCircle} from '../../kit/selection';
 import {t, locale} from '../detail/text';
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
 import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult} from '@core/search.ts';
 import {SEARCH_CHIPS, orderedSearchGroups, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
@@ -233,6 +233,31 @@ export function SearchResult({entry, binding, selection, position = 0, onCommit,
   return <PosterCard {...props} artwork={art} progressPlacement="inset" />;
 }
 
+/** Desktop-search frame 3: a full-width Songs answer is the Music library's list, with
+ * the entry's own artist, album, plays and length. Selection keeps the same row model. */
+export function SongTableRow({entry, binding, selection, position = 0, onCommit}: {entry: SearchEntry; binding: SearchBindings; selection?: SearchSelection; position?: number; onCommit: () => void}) {
+  useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
+  const epoch = selection?.epoch();
+  useEffect(() => {if (selection) return selection.register(entry, position);}, [selection, entry, position, epoch]);
+  const picked = selection?.card(entry), range = useSelectionRangePreview(picked);
+  if (entry.kind !== 'song') return null;
+  const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
+  const playable = entry.available === true && !!entry.playback, title = entry.displayTitle ?? entry.title;
+  const activate = (event: ReactMouseEvent) => {
+    if (picked?.active) picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
+    else if (playable) void binding.play(entry).then(onCommit).catch(context.effects.reportError);
+    else open();
+  };
+  return <div className={styles.songTableRow} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>
+    <span className={styles.songIndex}>{picked ? <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/> : defaultI18n.number(position + 1)}</span>
+    <button type="button" className={styles.songTitleCell} onClick={activate} aria-label={title}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><b>{title}</b></button>
+    <span className={styles.songArtist}>{entry.artist?.name}</span>
+    <span className={styles.songAlbum}>{entry.album?.name}</span>
+    <span className={styles.songPlays}>{entry.plays === undefined ? undefined : defaultI18n.number(entry.plays)}</span>
+    <span className={styles.songLength}>{clockText(entry.duration)}</span>
+  </div>;
+}
+
 function SearchGroupWindow({binding, group, result, selection, onCommit}: {binding: SearchBindings; selection?: SearchSelection; group: SearchGroup; result?: SearchGroupResult; onCommit: () => void}) {
   const window = useMemo(() => appendedWindow<SearchEntry>(keyOf), []);
   const entries = useRef<readonly SearchEntry[]>([]), key = useRef(''), [, redraw] = useState(0);
@@ -246,8 +271,11 @@ function SearchGroupWindow({binding, group, result, selection, onCommit}: {bindi
     window.set(entries.current); redraw(value => value + 1);
   }, [window, result, queryKey, snapshot.phase, snapshot.pagination.cursor]);
   useEffect(() => () => window.dispose(), [window]);
-  return <section className={styles.single}><h2>{t(searchGroupLabel(group))}</h2><WindowedGrid collection={window.collection} label={t(searchGroupLabel(group))}
+  const songs = group === 'songs';
+  return <section className={styles.single}><h2>{t(searchGroupLabel(group))}{songs && result?.totalCountExact && <span className={styles.resultTotal}>{t('web.search.results', {count: result.totalCount})}</span>}</h2>
+    {songs && <div className={styles.songColumns} aria-hidden="true"><span>{t('next.browse.number')}</span><span>{t('next.browse.title')}</span><span>{t('next.browse.artist')}</span><span>{t('next.browse.album')}</span><span>{t('next.browse.plays')}</span><span>{t('next.browse.duration')}</span></div>}
+    <WindowedGrid collection={window.collection} label={t(searchGroupLabel(group))}
     cardWidth={group === 'songs' ? 10000 : group === 'episodes' ? 316 : 174} rowHeight={group === 'songs' ? 58 : group === 'episodes' ? 285 : 320} height="calc(100vh - 270px)" gap={16}
-    renderItem={(entry, item) => <SearchResult entry={entry} binding={binding} selection={selection} position={item.index} onCommit={onCommit} />} renderPlaceholder={index => <span className={styles.placeholder} key={index} />}
+    renderItem={(entry, item) => songs ? <SongTableRow entry={entry} binding={binding} selection={selection} position={item.index} onCommit={onCommit} /> : <SearchResult entry={entry} binding={binding} selection={selection} position={item.index} onCommit={onCommit} />} renderPlaceholder={index => <span className={styles.placeholder} key={index} />}
     onVisibleRange={(_, last) => { if (last >= entries.current.length - 20 && result?.nextCursor && binding.service.getSnapshot().phase === 'ready') void binding.service.next(group); }} /></section>;
 }
