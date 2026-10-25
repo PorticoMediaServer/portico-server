@@ -17,15 +17,16 @@ export function createReadingCollection(client: ReadingClient, libraryId: string
  * from a label. No progress, numbering or page-count facts are added here. */
 export function createReadingSeriesCollection(client: ReadingClient, libraryId: string, seriesId: string) {
   let overview: ReadingSeriesOverview | undefined, disposed = false;
-  const listeners = new Set<() => void>();
+  const listeners = new Set<() => void>(), metadata = new WeakMap<object, ReadingSeriesOverview | undefined>();
   const pages = cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
     async (cursor, limit, signal) => {
       const page = await client.series(libraryId, seriesId, {cursor, limit}, signal);
-      if (!disposed && !signal.aborted) {
-        if (overview && page.overview && (overview.id !== page.overview.id || overview.title !== page.overview.title || overview.total !== page.overview.total)) throw new ReadingError('invalid_document');
-        overview = page.overview; for (const listener of [...listeners]) listener();
-      }
+      if (!disposed && !signal.aborted) metadata.set(page, page.overview);
       return page;
+    }, page => {
+      const next = metadata.get(page);
+      if (overview && next && (overview.id !== next.id || overview.title !== next.title || overview.total !== next.total)) throw new ReadingError('invalid_document');
+      overview = next; for (const listener of [...listeners]) listener();
     });
   return {...pages, overview: {getSnapshot: () => overview, subscribe: (listener: () => void) => {
     if (!disposed) listeners.add(listener);
@@ -57,7 +58,8 @@ export function createReadingContinueCollection(client: ReadingClient, libraryId
 }
 
 function cursorCollection<T>(libraryId: string | undefined, keyOf: (item: T) => string, libraryOf: (item: T) => string,
-  fetch: (cursor: string | undefined, limit: number, signal: AbortSignal) => Promise<Readonly<{items: readonly T[]; nextCursor?: string}>>) {
+  fetch: (cursor: string | undefined, limit: number, signal: AbortSignal) => Promise<Readonly<{items: readonly T[]; nextCursor?: string}>>,
+  accept?: (page: Readonly<{items: readonly T[]; nextCursor?: string}>) => void) {
   const cursors = new Map<number, string | undefined>([[0, undefined]]);
   const waiting = new Map<number, Set<() => void>>();
   let ended: number | undefined, frontier = 0, lowerBound = 0, disposed = false;
@@ -85,6 +87,7 @@ function cursorCollection<T>(libraryId: string | undefined, keyOf: (item: T) => 
       if (disposed || signal.aborted) throw new ReadingError('cancelled');
       if (libraryId !== undefined && response.items.some(item => libraryOf(item) !== libraryId) || response.nextCursor && (response.items.length !== count || [...cursors.values()].includes(response.nextCursor)))
         throw new ReadingError('invalid_document');
+      accept?.(response);
       if (response.nextCursor) {
         cursors.set(start + count, response.nextCursor); frontier = Math.max(frontier, start + count);
         lowerBound = Math.max(lowerBound, start + response.items.length + 1);
