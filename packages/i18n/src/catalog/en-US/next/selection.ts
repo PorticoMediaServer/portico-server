@@ -1,4 +1,5 @@
 export const selectionMessages = {
+  'next.selection.editorUncertain': 'The change is unconfirmed. Save again to check the same request, or close and reload the saved values.',
   'next.selection.jobProgress': '{done, number} of {total, number} processed',
   'next.selection.jobPreparing': 'Preparing selection…',
   'next.selection.keepHolding': 'Keep holding to select',
