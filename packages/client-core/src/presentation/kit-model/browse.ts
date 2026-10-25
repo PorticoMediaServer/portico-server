@@ -35,7 +35,7 @@ const quickCopy = {
   'in-progress': 'next.kit.browse.inProgress', unwatched: 'next.kit.browse.unwatched', watched: 'next.kit.browse.watched',
   favorites: 'next.kit.browse.favorites', watchlist: 'next.kit.browse.myList', available: 'next.kit.browse.available', missing: 'next.kit.browse.unavailable',
 } as const satisfies Record<string, KitMessageId>;
-const fieldOrder = ['genre', 'year', 'contentRating', 'studio', 'network', 'collection', 'series', 'author', 'narrator', 'artist', 'album', 'actor', 'director', 'writer', 'tag', 'label', 'communityRating', 'criticRating', 'releaseDate',
+const fieldOrder = ['match', 'genre', 'year', 'contentRating', 'studio', 'network', 'collection', 'series', 'author', 'narrator', 'artist', 'album', 'actor', 'director', 'writer', 'tag', 'label', 'communityRating', 'criticRating', 'releaseDate',
   'playState', 'favorite', 'watchlisted', 'personalRating', 'lastPlayedAt',
   'resolution', 'dynamicRange', 'audioLanguage', 'durationMs', 'dateAdded', 'availability'];
 const activity = new Set(['playState', 'favorite', 'watchlisted', 'personalRating', 'lastPlayedAt']);
@@ -79,7 +79,9 @@ function offeredNode(node: BrowseNode, fields: readonly BrowseFieldCapability[])
  */
 export function browseToolbarModel(capabilities: BrowseCapabilities, libraryKind: string, predicates: readonly BrowseNode[], sort: BrowseSortSelection, env: BrowseToolbarEnvironment): BrowseToolbarModel {
   const pivot = capabilities.resolvedPivot;
-  const fields = capabilities.fields.filter(f => (!pivot?.filters || pivot.filters.includes(f.id)) && (env.owner === true || f.id !== 'match') && (env.textEntry !== false || !typedOnly(f)));
+  // Match is a public browse capability, not an owner repair operation. Local-only
+  // libraries omit it at the server; members use the same offered filter.
+  const fields = capabilities.fields.filter(f => (!pivot?.filters || pivot.filters.includes(f.id)) && (env.textEntry !== false || !typedOnly(f)));
   const visible = fields.filter(f => !internal.has(f.id) && !(f.id === 'decade' && fields.some(f => f.id === 'year')));
   const groups = (['title', 'activity', 'file'] as const).map(id => Object.freeze({id, fields: Object.freeze(visible.filter(f => (activity.has(f.id) ? 'activity' : file.has(f.id) ? 'file' : 'title') === id)
     .sort((a, b) => rank(fieldOrder, a.id) - rank(fieldOrder, b.id)))})).filter(group => group.fields.length > 0);
