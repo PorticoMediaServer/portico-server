@@ -365,6 +365,16 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 					p.Trace.Notes = append(p.Trace.Notes, NoteAudioPassthrough)
 				}
 			}
+			// A track copied to an engine that decodes the codec but not its
+			// objects plays only the channel bed. The report must say so rather
+			// than claim Atmos or DTS:X on the delivered track.
+			if selected := sourceAudioAt(source.Audio, p.AudioStream); selected != nil && selected.ObjectAudio != "" && p.AudioAction != "convert" && !p.AudioPassthrough {
+				if c := client.audioCodec(p.OutputAudioCodec); c == nil || !containsString(c.ObjectAudio, selected.ObjectAudio) {
+					if p.Trace != nil {
+						p.Trace.Notes = append(p.Trace.Notes, NoteObjectAudioDecoded)
+					}
+				}
+			}
 			if p.VideoAction == "convert" || p.AudioAction == "convert" || p.VideoAction == "copy" && videoOf(source) != nil && videoOf(source).DynamicRange == assets.RangeDolbyVision && p.Trace.Video.OutputRange != assets.RangeDolbyVision {
 				err = finishConversionTarget(&p, videoOf(source), sourceAudioAt(source.Audio, p.AudioStream), client, in.Hardware, in.Server)
 			}

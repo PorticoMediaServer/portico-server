@@ -130,3 +130,58 @@ func TestPlaybackInfoReportsTheSoundDelivery(t *testing.T) {
 		t.Fatalf("a decoded track was not reported as one: %+v", info)
 	}
 }
+
+// A device that decodes E-AC-3 or TrueHD but renders no objects plays the
+// channel bed. The plan records that, and the panel says Atmos was lost rather
+// than claiming it on the delivered track (VIDEO.md VS-3c and VC-8).
+func TestPlaybackInfoDoesNotClaimObjectsTheEngineCannotRender(t *testing.T) {
+	plan := DeliveryPlan{Strategy: DeliveryOriginal, VideoAction: "original", AudioAction: "original", OutputAudioCodec: "eac3",
+		Trace: &DecisionTrace{Audio: &TraceAudio{Codec: "eac3", Variant: "eac3_joc", ObjectAudio: "atmos", Channels: 8, Layout: "7.1"}, Notes: []string{NoteObjectAudioDecoded}}}
+	info := PlaybackInfoForPlan(plan, nil)
+	if info == nil || info.Delivered.Audio == nil || info.Delivered.Audio.ObjectAudio != "" || info.Source.Audio.ObjectAudio != "atmos" {
+		t.Fatalf("the delivered track still claimed its objects: %+v", info)
+	}
+	if len(info.Losses) != 1 || info.Losses[0].Feature != "atmos" || info.Losses[0].Replacement.AudioCodec != "eac3" {
+		t.Fatalf("the object loss was not reported: %+v", info.Losses)
+	}
+}
+
+// A device that renders the objects keeps them, and nothing is reported lost.
+func TestPlaybackInfoKeepsObjectsTheEngineRenders(t *testing.T) {
+	plan := DeliveryPlan{Strategy: DeliveryOriginal, VideoAction: "original", AudioAction: "original", OutputAudioCodec: "eac3",
+		Trace: &DecisionTrace{Audio: &TraceAudio{Codec: "eac3", Variant: "eac3_joc", ObjectAudio: "atmos", Channels: 8, Layout: "7.1"}, Notes: []string{}}}
+	info := PlaybackInfoForPlan(plan, nil)
+	if info == nil || info.Delivered.Audio == nil || info.Delivered.Audio.ObjectAudio != "atmos" || len(info.Losses) != 0 {
+		t.Fatalf("rendered objects were dropped: %+v", info)
+	}
+}
+
+// The decision records the object loss only for an engine that declares the
+// codec without the object kind; one that declares Atmos keeps it.
+func TestCopiedObjectsAreLostOnlyWhereTheEngineCannotRenderThem(t *testing.T) {
+	document := func(objects string) ClientProfile {
+		t.Helper()
+		doc, err := ParseCapabilityDocument([]byte(`{"version":2,"client":{"family":"android"},"display":{"dynamicRanges":["sdr"]},"engines":{"native":{"name":"exoplayer","evidence":"declared","video":[{"codec":"h264","bitDepths":[8],"maxWidth":1920,"maxHeight":1080}],"audio":[{"codec":"eac3","maxChannels":8` + objects + `}],"transports":[{"transport":"direct","containers":["mkv"],"video":["h264"],"audio":["eac3"]}]}}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doc.Profile(EngineNative)
+	}
+	joc := SourceAudio{Codec: "eac3", Channels: 8, StreamDetail: assets.StreamDetail{StreamBreadth: assets.StreamBreadth{AudioVariant: "eac3_joc"}, ObjectAudio: "atmos"}}
+	source := videoSource("mkv", "h264", avcDetail, joc)
+	bedOnly := decide(t, source, document(``), nil)
+	if bedOnly.AudioAction == "convert" || !containsString(bedOnly.Trace.Notes, NoteObjectAudioDecoded) {
+		t.Fatalf("a bed-only renderer kept the object claim: %+v", bedOnly.Trace.Notes)
+	}
+	info := PlaybackInfoForPlan(bedOnly, nil)
+	if info == nil || info.Delivered.Audio.ObjectAudio != "" || len(info.Losses) != 1 || info.Losses[0].Feature != "atmos" {
+		t.Fatalf("the panel claimed Atmos on a bed-only renderer: %+v", info)
+	}
+	withObjects := decide(t, source, document(`,"objectAudio":["atmos"]`), nil)
+	if containsString(withObjects.Trace.Notes, NoteObjectAudioDecoded) {
+		t.Fatalf("an Atmos renderer was told it lost Atmos: %+v", withObjects.Trace.Notes)
+	}
+	if info := PlaybackInfoForPlan(withObjects, nil); info == nil || info.Delivered.Audio.ObjectAudio != "atmos" {
+		t.Fatalf("an Atmos renderer lost its objects: %+v", info)
+	}
+}

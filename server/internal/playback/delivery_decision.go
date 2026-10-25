@@ -57,6 +57,9 @@ const (
 	NoteEngineFallback                  = "engine_setting_unavailable_other_engine_used"
 	NoteDeviceToneMaps                  = "device_tone_maps_hdr"
 	NoteAudioPassthrough                = "audio_passed_through_to_receiver"
+	// NoteObjectAudioDecoded marks a copied object-audio track that the engine
+	// decodes without its objects: the channel bed plays, the objects do not.
+	NoteObjectAudioDecoded               = "object_audio_decoded_without_objects"
 	NoteOverrideStereo                  = "viewer_override_force_stereo"
 	NoteOverrideNoPassthrough           = "viewer_override_disable_passthrough"
 	NoteOverrideNoHDR                   = "viewer_override_disable_hdr"

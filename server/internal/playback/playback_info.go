@@ -259,6 +259,13 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 			}
 		}
 		if out.Routes.Sound != "" {
+			// Objects the engine decodes without are not on the delivered
+			// track, whatever the codec still carries.
+			if containsString(p.Trace.Notes, NoteObjectAudioDecoded) && dst.ObjectAudio != "" {
+				feature := dst.ObjectAudio
+				dst.ObjectAudio = ""
+				out.Losses = append(out.Losses, PlaybackLoss{Feature: feature, Replacement: PlaybackReplacement{AudioCodec: dst.Codec, Channels: dst.Channels, Layout: dst.Layout}})
+			}
 			out.Delivered.Audio = &dst
 		}
 	}
