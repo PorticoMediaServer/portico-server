@@ -51,6 +51,7 @@ import {ProfileSettingsSource} from './account-profile/source';
 import {profileSettingState, changeProfileSetting} from './account-profile/rows';
 import {ProfileList} from './account-profile/ProfileList';
 import {observeProfileFailures} from './account-profile/failures';
+import {ProfilePINDialog, type ProfilePINRequest} from './account-profile/ProfilePINControl';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
@@ -63,7 +64,8 @@ export function SettingsEntry() {
   const liveBinding = useRef(protectedContext?.binding);
   liveBinding.current = protectedContext?.binding;
   const location = useRouterState({select: state => state.location});
-  const [owned, setOwned] = useState<{context: ShellAssemblyContext; settings: SettingsBindings; dashboard?: DashboardBindings}>();
+  const [owned, setOwned] = useState<{context: ShellAssemblyContext; settings: SettingsBindings; dashboard?: DashboardBindings; profiles?: ProfileSettingsSource}>();
+  const [profilePIN, setProfilePIN] = useState<ProfilePINRequest>();
   const [failure, setFailure] = useState(false), [retry, setRetry] = useState(0);
   const context = protectedContext?.context;
   // The same confirmed reader drives calendar lifetime. A zone change retires
@@ -90,7 +92,12 @@ export function SettingsEntry() {
     const profiles = route.scope === 'account' && route.section === 'profile' && viewer.authority === 'local'
       ? new ProfileSettingsSource(context.api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current) : undefined;
     const offProfileFailures = profiles ? observeProfileFailures(profiles, current, reportError) : undefined;
-    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username'].includes(id);
+    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.pin', 'profile.pinChange'].includes(id);
+    const openProfilePIN = (remove: boolean) => {
+      const target = profiles?.selected(), document = profiles?.getSnapshot().document;
+      if (current() && profiles && target && document?.canManage && document.capabilities.manageAccount)
+        setProfilePIN({source: profiles, target, remove, trigger: globalThis.document.activeElement as HTMLElement | null});
+    };
     const platform = settingsPlatform();
     const privacy = createPrivacySettingsSurfaces({api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, reportError});
     // One row's engine. A preset row is answered by the rule below instead, so its
@@ -160,6 +167,7 @@ export function SettingsEntry() {
       ? new SegmentIntrosSource({api: context.api, isCurrent: current, reportError}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
+        if (row.id === 'profile.pinChange' && profiles) return <Button size="small" variant="glass" disabled={state.disabled} onClick={() => openProfilePIN(false)}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
           requestAnimationFrame(() => {if (current()) document.getElementById('profile.name')?.querySelector<HTMLInputElement>('input')?.focus();});
         }} />;
@@ -207,6 +215,7 @@ export function SettingsEntry() {
     const settings: SettingsBindings = {...source,
       subscribe: listener => {const off = source.subscribe(listener), offProfiles = profiles?.subscribe(listener);return () => {off();offProfiles?.();};},
       change: (row, value, selected) => {
+        if (profiles && row.id === 'profile.pin' && typeof value === 'boolean') {openProfilePIN(!value);return;}
         if (profiles && profileRow(row.id)) {void changeProfileSetting(profiles, row.id, value)?.catch(reportError);return;}
         source.change(row, value, selected);
       },
@@ -226,7 +235,7 @@ export function SettingsEntry() {
         return server?.rowState(row) ?? device ?? (row.id === 'music.eq' ? {present: current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform)} : row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
       },
     };
-    setFailure(false);setOwned({context, settings, dashboard});
+    setFailure(false);setOwned({context, settings, dashboard, profiles});
     return () => {active = false;offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
@@ -242,7 +251,10 @@ export function SettingsEntry() {
   // A URL that names its scope or section was a link to that page (a Dashboard
   // or storage alert), so the compact layout opens the page, not the list.
   const openDetail = typeof raw.scope === 'string' || typeof raw.section === 'string';
-  return <SettingsScreen bindings={settings} route={route} navigate={navigate} openDetail={openDetail} />;
+  return <><SettingsScreen bindings={settings} route={route} navigate={navigate} openDetail={openDetail} />
+    {profilePIN && owned.profiles === profilePIN.source && <ProfilePINDialog key={JSON.stringify([profilePIN.target.id, profilePIN.target.revision, profilePIN.remove])}
+      request={profilePIN} isCurrent={() => owned.context.isCurrent()} onClose={() => setProfilePIN(undefined)} onFailure={() => setFailure(true)} />}
+  </>;
 }
 
 export default defineWebScreen({id: 'settings', component: SettingsEntry, validateSearch: raw => settingsRoute(raw, () => true)});
