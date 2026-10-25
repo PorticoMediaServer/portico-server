@@ -1,10 +1,12 @@
 import {RouteError, routeOrigin} from '@core/route-identity.ts';
 import type {WorkspaceServers} from './workspace-api';
+import {contactKnownServerForOwnerRecovery} from '@core/owner-recovery-contact.ts';
+import {accountDirectoryFailure, directoryFailurePhase} from './directory-errors';
 
 export type DirectoryItem = WorkspaceServers['items'][number];
-export type DirectorySnapshot = Readonly<{items: readonly DirectoryItem[]; phase: 'idle'|'reading'|'opening'|'leaving'; checkedAt: number; pendingId?: string; error?: unknown; waitingId?: string; seconds: number}>;
+export type DirectorySnapshot = Readonly<{items: readonly DirectoryItem[]; phase: 'idle'|'reading'|'opening'|'recovering'|'leaving'; target?: DirectoryItem; showTarget?: boolean; status?: ReturnType<typeof directoryFailurePhase>; checkedAt: number; pendingId?: string; error?: unknown; waitingId?: string; seconds: number}>;
 type Opened = Readonly<{origin: string; dispose: () => void}>;
-type Ports = Readonly<{current: () => boolean; read: (signal: AbortSignal) => Promise<WorkspaceServers>; connect: (server: DirectoryItem, signal: AbortSignal) => Promise<Opened>; navigate: (origin: string) => void; empty: () => void; now?: () => number}>;
+type Ports = Readonly<{current: () => boolean; read: (signal: AbortSignal) => Promise<WorkspaceServers>; connect: (server: DirectoryItem, signal: AbortSignal) => Promise<Opened>; contact?: typeof contactKnownServerForOwnerRecovery; navigate: (origin: string, purpose?: 'owner-recovery') => void; localRecovery?: () => void; empty: () => void; now?: () => number}>;
 
 /** One committed Hosted directory. No profile, credential or assertion is sent
  * to another origin; the server's own entry performs its ordinary admission. */
@@ -35,7 +37,7 @@ export class ServicesDirectoryFlow {
   automatic() {
     if (!this.current() || this.active || !this.state.items.length) return;
     const allOffline=this.state.items.every(item=>item.status!=='active');
-    const target = (!allOffline&&this.state.items.find(item => item.id === this.state.waitingId)) || this.state.items[this.next++ % this.state.items.length];
+    const target = ((this.state.showTarget || !allOffline) && this.state.target) || this.state.items[this.next++ % this.state.items.length];
     void this.open(target, this.state, true);
   }
   cancelAutomatic() {
@@ -47,7 +49,7 @@ export class ServicesDirectoryFlow {
   cancelOpening(expected: DirectorySnapshot) {
     if (!this.current() || this.state !== expected) return;
     const active = this.active; this.active = undefined; active?.controller.abort();
-    this.publish({...this.state, phase: 'idle', pendingId: undefined, waitingId: undefined, error: undefined});
+    this.publish({...this.state, phase: 'idle', pendingId: undefined, waitingId: undefined, target: undefined, status: undefined, showTarget: undefined, error: undefined});
   }
   async refresh(expected: DirectorySnapshot) {
     if (!this.current() || this.state !== expected || this.active) return;
@@ -63,13 +65,14 @@ export class ServicesDirectoryFlow {
     finally {if (this.active === active) this.active = undefined;}
   }
   async open(server: DirectoryItem, expected: DirectorySnapshot, automatic = false) {
-    if (!this.current() || this.state !== expected || this.active || !expected.items.includes(server)) return;
+    if (!this.current() || this.state !== expected || this.active || !expected.items.includes(server) && expected.target !== server) return;
     const captured = Object.freeze({...server}), active = {controller: new AbortController(), automatic}; this.active = active;
     const current = () => this.current() && this.active === active && !active.controller.signal.aborted;
-    this.publish({...expected, phase: 'opening', pendingId: captured.id, error: undefined});
-    let opened: Opened | undefined;
+    this.publish({...expected, phase: 'opening', pendingId: captured.id, target: captured, status: undefined, showTarget: !automatic || expected.showTarget || expected.items.length === 1 && captured.status === 'active', error: undefined});
+    let opened: Opened | undefined, readingAccount = true;
     try {
       const result = await this.ports.read(active.controller.signal); if (!current()) return;
+      readingAccount = false;
       const matches = result.items.filter(item => item.id === captured.id), fresh = matches[0];
       if (!result.items.length) {this.publish({...this.state, items: result.items, phase: 'idle', pendingId: undefined, checkedAt: this.now()}); if (current()) this.ports.empty(); return;}
       if (matches.length !== 1 || fresh.publicKey !== captured.publicKey || fresh.policyRevision < captured.policyRevision) throw new RouteError('identity_mismatch', 'The selected server identity or membership changed.');
@@ -79,8 +82,34 @@ export class ServicesDirectoryFlow {
       this.publish({...this.state, phase: 'leaving', waitingId: undefined});
       if (current()) this.ports.navigate(origin);
     } catch (error) {
-      if (current()) {this.delay = Math.min(300, automatic ? this.delay * 2 : 20); this.publish({...this.state, phase: 'idle', pendingId: undefined, waitingId: captured.id, error, seconds: this.delay});}
+      if (current()) {
+        const failure = readingAccount ? accountDirectoryFailure(error) : error;
+        const retry = Number((failure as {retryAfterSeconds?: unknown})?.retryAfterSeconds);
+        const floor = Number.isFinite(retry) && retry > 0 ? Math.min(86400, Math.ceil(retry)) : 0;
+        this.delay = Math.max(floor, Math.min(300, automatic ? this.delay * 2 : 20));
+        this.publish({...this.state, phase: 'idle', pendingId: undefined, waitingId: captured.id, error: failure, status: directoryFailurePhase(failure, automatic), seconds: this.delay});
+      }
     } finally {opened?.dispose(); if (this.active === active) this.active = undefined;}
+  }
+  /** The only emergency contact is a tap on an actual Hosted-unavailable
+   * opening. Never reread Hosted or adopt its newer directory record here. */
+  async recoverOwner(expected: DirectorySnapshot) {
+    const captured = expected.target;
+    if (!this.current() || this.state !== expected || this.active || expected.status !== 'account-waiting' || !captured) return;
+    if (!captured.baseUrl) {this.ports.localRecovery?.(); return;}
+    const active = {controller: new AbortController(), automatic: false}; this.active = active;
+    const current = () => this.current() && this.active === active && !active.controller.signal.aborted && this.state.target === captured;
+    this.publish({...expected, phase: 'recovering', pendingId: captured.id, error: undefined});
+    try {
+      const result = await (this.ports.contact ?? contactKnownServerForOwnerRecovery)({baseUrl: captured.baseUrl, serverId: captured.id, publicKey: captured.publicKey}, {signal: active.controller.signal, isCurrent: current});
+      if (!current()) return;
+      const origin = routeOrigin(captured.baseUrl);
+      if (result.purpose !== 'owner-recovery' || result.serverId !== captured.id || result.origin !== origin || result.signInURL !== origin + '/sign-in') throw new RouteError('identity_mismatch', 'The recovery destination changed.');
+      this.publish({...this.state, phase: 'leaving'});
+      if (current()) this.ports.navigate(origin, 'owner-recovery');
+    } catch (error) {
+      if (current()) this.publish({...this.state, phase: 'idle', pendingId: undefined, error, status: directoryFailurePhase(error, false) ?? 'account-waiting'});
+    } finally {if (this.active === active) this.active = undefined;}
   }
   dispose() {if (this.disposed) return; this.disposed = true; const active = this.active; this.active = undefined; active?.controller.abort(); this.listeners.clear();}
 }

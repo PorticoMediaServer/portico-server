@@ -11,8 +11,10 @@ const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
  * clock and every code that decides it. */
 export type DirectoryStatusPhase = 'opening' | 'waiting' | 'unreachable' | 'account-waiting' | 'identity' | 'clock';
 
-export function ServicesDirectoryStatus({header, phase, server, lastSeen, seconds, owner = false, onCheck, onChoose, onAccountHelp}: {
+export function ServicesDirectoryStatus({header, phase, server, lastSeen, seconds, owner = false, onCheck, onChoose, onAccountHelp, busy = false, error}: {
   header: ReactNode;
+  busy?: boolean;
+  error?: ReactNode;
   phase: DirectoryStatusPhase;
   /** The server's own captured name. */
   server: string;
@@ -56,10 +58,11 @@ export function ServicesDirectoryStatus({header, phase, server, lastSeen, second
           <svg className={styles.ring} viewBox="0 0 24 24" aria-hidden="true"><circle className={styles.ringTrack} cx="12" cy="12" r="9" /><circle className={styles.ringArc} cx="12" cy="12" r="9" /></svg>
           {t('web.chooser.checkingAgain', {seconds})}
         </div>}
+        {error}
         <div className={styles.actions}>
-          {!opening && <Button variant="primary" onClick={onCheck}>{t(counting ? 'web.chooser.checkNow' : 'web.chooser.tryAgain')}</Button>}
+          {!opening && <Button variant="primary" disabled={busy} onClick={onCheck}>{t(counting ? 'web.chooser.checkNow' : 'web.chooser.tryAgain')}</Button>}
           {opening ? <button type="button" className={styles.quiet} onClick={onChoose}>{t('web.chooser.otherServer')}</button>
-            : phase === 'account-waiting' ? <button type="button" className={styles.quiet} onClick={onAccountHelp}>{t('accounts.signIn.cannotUsePortico')}</button>
+            : phase === 'account-waiting' ? <button type="button" className={styles.quiet} disabled={busy} onClick={onAccountHelp}>{t('accounts.signIn.cannotUsePortico')}</button>
               : <Button onClick={onChoose}>{t('web.chooser.otherServer')}</Button>}
         </div>
         {phase === 'unreachable' && owner && <p className={styles.help}>{t('web.hostedAccount.offlineOwnerHint')}</p>}
