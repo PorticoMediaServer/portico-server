@@ -176,7 +176,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	v, m := document.Selection, document.Metadata
-	out := ReadingSessionResponse{Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
+	out := ReadingSessionResponse{CanAnnotate: reading.CanAnnotate(p), Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
 	if document.PublicationType != nil {
 		out.Metadata.PublicationType = &ReadingPublicationTypeValue{Value: ReadingPublicationType(document.PublicationType.Value), Source: ReadingPublicationTypeSource(document.PublicationType.Source)}
 	}
