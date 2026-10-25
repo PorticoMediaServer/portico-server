@@ -2,30 +2,29 @@ package downloads
 
 import (
 	"database/sql"
-
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/notify"
 )
 
-// DownloadNotifier is the seam the notifications workstream fills in.
-//
-// internal/operations publishes Notify(tx, now, principal, code, target, dedupe)
-// for its own inbox, but no documented download hook — there is no
-// operations.NotifyDownload today. Rather than write into another workstream's
-// table from here and guess at its dedupe and retention rules, downloads calls
-// this interface and ships a no-op default.
-//
-// TODO(notifications workstream): implement operations.NotifyDownload and wire
-// it as the default Notifier in cmd/server, keeping these two calls. The codes
-// a client should expect are "download.ready" and "download.failed", with the
-// preparation id as the notification target.
+// DownloadNotifier observes server preparation transitions in the accepting
+// transaction. Ready means ready to transfer, not downloaded onto a device.
+// Completion notifications require verified device-local completion separately.
 type DownloadNotifier interface {
 	DownloadReady(tx *sql.Tx, now int64, viewer identity.Viewer, preparationID, itemID string) error
 	DownloadFailed(tx *sql.Tx, now int64, viewer identity.Viewer, preparationID, itemID, reason string) error
 }
 
-type noopNotifier struct{}
+// inboxNotifier keeps durable inbox notices free of content names: the inbox
+// does not reproject stored titles when a profile's restrictions later change.
+// Downloads resolves the real preparation and its current content authority
+// when Open is used. Raw failure reasons never enter a notice.
+type inboxNotifier struct{}
 
-func (noopNotifier) DownloadReady(*sql.Tx, int64, identity.Viewer, string, string) error { return nil }
-func (noopNotifier) DownloadFailed(*sql.Tx, int64, identity.Viewer, string, string, string) error {
-	return nil
+func (inboxNotifier) DownloadReady(tx *sql.Tx, now int64, viewer identity.Viewer, preparationID, _ string) error {
+	_, err := notify.NotifyDownloadPreparation(tx, now, viewer.Authority, viewer.AccountID, viewer.ProfileID, preparationID, "Your download", notify.PreparationReady)
+	return err
+}
+func (inboxNotifier) DownloadFailed(tx *sql.Tx, now int64, viewer identity.Viewer, preparationID, _, _ string) error {
+	_, err := notify.NotifyDownloadPreparation(tx, now, viewer.Authority, viewer.AccountID, viewer.ProfileID, preparationID, "Your download", notify.PreparationFailed)
+	return err
 }

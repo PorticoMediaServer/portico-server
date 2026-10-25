@@ -86,7 +86,7 @@ func New(o Options) (*Service, error) {
 		o.Now = time.Now
 	}
 	if o.Notifier == nil {
-		o.Notifier = noopNotifier{}
+		o.Notifier = inboxNotifier{}
 	}
 	if o.BaseGrantPath == "" {
 		o.BaseGrantPath = "/v1/downloads/artifacts/"

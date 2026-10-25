@@ -72,6 +72,41 @@ func NotifyDownload(tx *sql.Tx, now int64, authority, account, profile, download
 	return Raise(tx, now, d)
 }
 
+// PreparationOutcome is a server preparation transition, never an assertion
+// that a receiving device has saved bytes or can play them offline.
+type PreparationOutcome string
+
+const (
+	PreparationReady  PreparationOutcome = "ready"
+	PreparationFailed PreparationOutcome = "failed"
+)
+
+// NotifyDownloadPreparation commits with the preparation's terminal state.
+// Retries replace the same profile/preparation notice. A preparation id remains
+// a preparation id; it is never placed in a completed-device download field.
+// The title must be safe for the receiving profile's inbox throughout retention.
+func NotifyDownloadPreparation(tx *sql.Tx, now int64, authority, account, profile, preparationID, title string, outcome PreparationOutcome) (Result, error) {
+	d := Draft{
+		Audience: AudienceProfile, Scope: ProfileScope(authority, account, profile),
+		Source: SourceDownloads, DedupeKey: "preparation:" + preparationID,
+		Arguments: map[string]string{"title": title, "preparationId": preparationID},
+		Actions:   []Action{{Kind: "command", Label: "Open", Command: "open-download", Arguments: map[string]string{"preparationId": preparationID}}},
+	}
+	switch outcome {
+	case PreparationReady:
+		d.Severity, d.Category = SeverityInfo, "download.prepared"
+		d.Title = "Ready to save"
+		d.Body = title + " is ready to save to your device."
+	case PreparationFailed:
+		d.Severity, d.Category = SeverityWarning, "download.preparation_failed"
+		d.Title = "Preparation failed"
+		d.Body = title + " could not be prepared for download."
+	default:
+		return Result{}, ErrInvalid
+	}
+	return Raise(tx, now, d)
+}
+
 // NotifyRecordingConflict tells the account admins that a scheduled recording
 // lost its tuner. The dedupe key is the recording, so a recurring series that
 // keeps colliding updates one notice per recording instead of one per attempt.
