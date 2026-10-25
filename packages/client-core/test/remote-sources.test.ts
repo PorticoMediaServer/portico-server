@@ -312,3 +312,16 @@ test('a dialog attempt guard retiring under a held operation id sends zero mutat
  const saveGuard=()=>open;const save=saveService.saveProfile(profile,profile.values,saveGuard);open=false;saveHeld.resolve(op);
  await assert.rejects(save);assert.equal(saveWrites,0);saveService.dispose();
 });
+
+test('a retired dialog conflict read cannot publish sources or retry a mutation',async()=>{
+ const held=deferred();let open=true,reads=0,writes=0;
+ const service=new RemoteSourceService(api(async(_path,method)=>{
+  if(method==='GET'){reads++;if(reads===1)return list();return held.promise;}
+  writes++;throw Object.assign(new Error('conflict'),{code:'storage_command_conflict'});
+ }),scope,async()=>op,()=>true);
+ await service.load();const before=service.getSnapshot().sources;
+ const pending=service.configure('dav',input,source(),()=>open);
+ while(reads<2)await new Promise(resolve=>setImmediate(resolve));
+ open=false;held.resolve(list([source({name:'Stale dialog read'})]));await pending;
+ assert.equal(writes,1);assert.equal(service.getSnapshot().sources,before);service.dispose();
+});
