@@ -235,9 +235,12 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
       ? <div {...swipe} className={styles.guide} data-guide-grid role="grid" aria-label={t('guide.label')} style={{'--guide-column': `${column}px`, '--guide-row': `${rowHeight}px`} as CSSProperties}>
         <div className={styles.guideRuler}>
           <div className={styles.guideCorner}>{phone ? <button type="button" className={styles.guideCornerNow} onClick={time.onNow}>{time.now}</button> : t('guide.channelColumn')}</div>
-          <div className={styles.guideLane}>
+          <div className={styles.guideLane} data-now-outside={nowX === undefined || undefined}>
             {ticks.map(tick => <span key={tick.atMs} className={styles.guideTick} data-kind={tick.kind} style={{left: tick.x}}>{defaultI18n.time(tick.atMs)}</span>)}
             {nowX !== undefined && <span className={styles.guideNowPill} style={{left: nowX}}>{defaultI18n.time(now)}</span>}
+            {nowX === undefined && <button type="button" className={styles.guideNowJump} data-edge={now < start ? 'start' : 'end'} onClick={time.onNow}>
+              <Icon name={now < start ? 'i-left' : 'i-right'} size={16}/>{time.now}
+            </button>}
           </div>
         </div>
         <div className={styles.guideBody} ref={body}>
