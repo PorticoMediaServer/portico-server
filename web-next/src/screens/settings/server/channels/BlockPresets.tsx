@@ -1,3 +1,4 @@
+import {channelFieldLabel, channelFieldMessage} from '@core/server-admin/channel-catalogue.ts';
 import {useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
@@ -64,10 +65,10 @@ function PresetForm({source,api,libraries,isCurrent,reportError,close,original}:
   </section>;
 }
 function PresetCriteria({source,criteria,locked,onChange}:Readonly<{source:ChannelFieldsSource;criteria:BlockPresetBody['criteria'];locked:boolean;onChange:(criteria:BlockPresetBody['criteria'])=>void}>){
-  const state=useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot),fields=state.fields.filter(entry=>defaultI18n.has(entry.field.labelKey));
+  const state=useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot),fields=state.fields.filter(entry=>channelFieldMessage(entry.field) !== undefined);
   const replace=(index:number,patch:Partial<BlockPresetBody['criteria'][number]>)=>onChange(criteria.map((row,i)=>i===index?{...row,...patch}:row));
   return <section className={styles.editorSection}><h3>{t('builder.preset.selection')}</h3>{criteria.map((clause,index)=><div key={index} className={styles.condition}>
-    <RichSelect aria-label={t('builder.preset.selection')} value={clause.field} disabled={locked} options={fields.map(entry=>({value:entry.field.id,label:t(entry.field.labelKey)}))} onValueChange={field=>{if(fields.some(entry=>entry.field.id===field))replace(index,{field});}}/>
+    <RichSelect aria-label={t('builder.preset.selection')} value={clause.field} disabled={locked} options={fields.map(entry=>({value:entry.field.id,label:channelFieldLabel(entry.field, t) ?? t('builder.opaqueConditions')}))} onValueChange={field=>{if(fields.some(entry=>entry.field.id===field))replace(index,{field});}}/>
     <RichSelect aria-label={t('builder.preset.includes')} value={clause.operator} disabled={locked} options={[{value:'includes',label:t('builder.preset.includes')},{value:'excludes',label:t('builder.preset.excludes')}]} onValueChange={operator=>{if(operator==='includes'||operator==='excludes')replace(index,{operator});}}/>
     {clause.values.map((value,i)=><div className={styles.choices} key={i}><TextField aria-label={t('builder.preset.selection')} value={value} maxLength={200} disabled={locked} onChange={event=>replace(index,{values:clause.values.map((v,n)=>n===i?event.target.value:v)})}/><Button size="small" variant="text" disabled={locked} onClick={()=>replace(index,{values:clause.values.filter((_,n)=>n!==i)})}>{t('builder.remove')}</Button></div>)}
     <Button size="small" variant="text" disabled={locked||clause.values.length>=200} onClick={()=>replace(index,{values:[...clause.values,'']})}>{t('player.opt.add')}</Button>
