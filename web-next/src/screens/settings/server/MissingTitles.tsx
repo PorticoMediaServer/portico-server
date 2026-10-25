@@ -14,8 +14,8 @@ const t = defaultI18n.t;
 export function MissingTitles({source, isCurrent, artwork}: Readonly<{source: SettingsMissingSource; isCurrent: () => boolean; artwork: (id: string) => ArtworkSource | undefined}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [confirmation, setConfirmation] = useState<MissingTitlesPage>(), [typed, setTyped] = useState(''), [cursors, setCursors] = useState<readonly string[]>(['']);
-  const generation = useRef(0), paging = useRef(false);
-  useEffect(() => {generation.current++;setConfirmation(undefined);setTyped('');setCursors(['']);void source.load();return () => {generation.current++;};}, [source]);
+  const generation = useRef<object>({}), paging = useRef(false);
+  useEffect(() => {generation.current = {};setConfirmation(undefined);setTyped('');setCursors(['']);void source.load();return () => {generation.current = {};};}, [source]);
   const page = state.page, busy = state.busy || state.phase === 'loading', live = isCurrent();
   const changePage = async (cursor: string, next: readonly string[]) => {
     if (!isCurrent() || paging.current || busy) return;

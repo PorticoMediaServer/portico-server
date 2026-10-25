@@ -24,13 +24,13 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
   const [issued, setIssued] = useState<IssuedCard>(), [copied, setCopied] = useState(false), [ended, setEnded] = useState(false), [revoking, setRevoking] = useState<ApiCredential>();
   const [cursors, setCursors] = useState<readonly string[]>(['']);
   const card = useRef<IssuedCard | undefined>(undefined), formAttempt = useRef<FormAttempt | undefined>(undefined);
-  const generation = useRef(0), paging = useRef(false), secret = useRef<HTMLTextAreaElement>(null);
+  const generation = useRef<object>({}), paging = useRef(false), secret = useRef<HTMLTextAreaElement>(null);
   const scope = useRef(source);
-  if (scope.current !== source) {scope.current = source;card.current = undefined;formAttempt.current = undefined;generation.current++;}
+  if (scope.current !== source) {scope.current = source;card.current = undefined;formAttempt.current = undefined;generation.current = {};}
   const heldForm = formAttempt.current;
   useLayoutEffect(() => {
-    generation.current++;card.current = undefined;formAttempt.current = undefined;setIssued(undefined);setCreating(false);setRevoking(undefined);setCursors(['']);void source.load();
-    return () => {generation.current++;card.current = undefined;formAttempt.current = undefined;};
+    generation.current = {};card.current = undefined;formAttempt.current = undefined;setIssued(undefined);setCreating(false);setRevoking(undefined);setCursors(['']);void source.load();
+    return () => {generation.current = {};card.current = undefined;formAttempt.current = undefined;};
   }, [source]);
   const live = isCurrent(), heldCard = live && issued?.source === source && card.current === issued ? issued : undefined, heldIssue = heldCard?.value;
   const closeForm = () => {formAttempt.current = undefined;setCreating(false);};

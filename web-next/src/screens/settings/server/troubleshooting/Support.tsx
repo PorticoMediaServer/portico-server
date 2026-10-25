@@ -28,11 +28,12 @@ const capabilityLabel = (capability: string) => KNOWN.has(capability) ? t(`web.c
 
 /** The drawn Support tab: permissions, what this server can do, the export and what was left out. */
 export function SupportPanel(props: SupportPanelProps) {
+  const {source, reportError} = props;
   const state = useSyncExternalStore(props.subscribe, props.source.getSnapshot, props.source.getSnapshot);
   const [busy, setBusy] = useState(false), [fixed, setFixed] = useState(false);
   const [window, setWindow] = useState('24h'), [parts, setParts] = useState<readonly SupportComponent[]>([...SUPPORT_COMPONENTS]);
-  useEffect(() => {void props.source.load();}, [props.source]);
-  useEffect(() => {if (state.phase === 'error' && state.error) props.reportError(state.error);}, [state.phase, state.error, props.reportError]);
+  useEffect(() => {void source.load();}, [source]);
+  useEffect(() => {if (state.phase === 'error' && state.error) reportError(state.error);}, [state.phase, state.error, reportError]);
   if (state.phase === 'error') return <p className={styles.failure} role="alert"><span>{t('next.states.pageFailedBody')}</span><button type="button" onClick={() => {void props.source.retry();}}>{t('next.shell.tryAgain')}</button></p>;
   if (state.phase === 'idle' || state.phase === 'loading') return <p role="status">{t('next.settings.loading')}</p>;
   const exportReady = state.export;
