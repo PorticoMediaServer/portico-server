@@ -61,6 +61,7 @@ type ReadingSessionRequest struct {
 	SourceID string `json:"sourceId"`
 }
 type ReadingSessionResponse struct {
+	Contents   ReadingContents   `json:"contents,omitempty"`
 	Sequential bool              `json:"sequential,omitempty"`
 	SessionID  string            `json:"sessionId"`
 	ItemID     string            `json:"itemId"`
@@ -73,6 +74,29 @@ type ReadingSessionResponse struct {
 	Spine      []string          `json:"spine,omitempty"`
 	PageNames  []string          `json:"pageNames,omitempty"`
 }
+
+// ReadingContentsEntry is an archive-internal EPUB navigation target, not a
+// bearer URL, inferred chapter time, or a stored Reading position.
+type ReadingContentsEntry struct {
+	Title    string `json:"title"`
+	Section  string `json:"section"`
+	Fragment string `json:"fragment,omitempty"`
+	Depth    int    `json:"depth"`
+}
+type ReadingContents []ReadingContentsEntry
+
+func (ReadingContents) JSONSchema() map[string]any {
+	return map[string]any{"type": "array", "maxItems": 512, "items": map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"title", "section", "depth"},
+		"properties": map[string]any{
+			"title":    map[string]any{"type": "string", "minLength": 1, "maxLength": 1024},
+			"section":  map[string]any{"type": "string", "minLength": 1, "maxLength": 4096},
+			"fragment": map[string]any{"type": "string", "maxLength": 1024},
+			"depth":    map[string]any{"type": "integer", "minimum": 0, "maximum": 16},
+		},
+	}}
+}
+
 type ReadingLocation struct {
 	Format      ReadingFormat `json:"format"`
 	CFI         string        `json:"cfi,omitempty"`

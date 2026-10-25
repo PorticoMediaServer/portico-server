@@ -17,12 +17,14 @@ type Resource struct {
 }
 type Metadata struct{ Title, Author, Language, Direction string }
 type EPUB struct {
-	archive   *archive
-	Resources []Resource
-	Metadata  Metadata
-	Package   string
-	Spine     []string
-	allowed   map[string]string
+	archive    *archive
+	Resources  []Resource
+	Metadata   Metadata
+	Package    string
+	Spine      []string
+	allowed    map[string]string
+	navigation []string
+	ncx        string
 }
 
 type containerXML struct {
@@ -44,6 +46,7 @@ type packageXML struct {
 	} `xml:"manifest>item"`
 	Spine struct {
 		Direction string `xml:"page-progression-direction,attr"`
+		TOC       string `xml:"toc,attr"`
 		Items     []struct {
 			ID string `xml:"idref,attr"`
 		} `xml:"itemref"`
@@ -140,6 +143,11 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 		}
 		ids[item.ID] = name
 		e.allowed[name] = item.MIME
+		for _, property := range strings.Fields(item.Properties) {
+			if property == "nav" && item.MIME == "application/xhtml+xml" {
+				e.navigation = append(e.navigation, name)
+			}
+		}
 	}
 	for _, item := range p.Spine.Items {
 		name := ids[item.ID]
@@ -147,6 +155,9 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 			return nil, ErrInvalid
 		}
 		e.Spine = append(e.Spine, name)
+	}
+	if name := ids[p.Spine.TOC]; name != "" && e.allowed[name] == "application/x-dtbncx+xml" {
+		e.ncx = name
 	}
 	if a.files["META-INF/encryption.xml"] != nil {
 		b, err = a.read(ctx, "META-INF/encryption.xml", 256<<10)
