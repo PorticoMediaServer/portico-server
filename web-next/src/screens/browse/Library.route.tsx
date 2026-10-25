@@ -1,3 +1,4 @@
+import {ReadSeriesEntry} from '../read/ReadSeriesEntry';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -62,9 +63,10 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
     onLibrary={libraryId => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}).catch(context.effects.reportError);}}
     onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
   const request = useMemo<FacetRequest>(() => (path, method, body, signal) => life.api.request(path, method, body, signal), [life]);
+  if (search.view === 'series' && search.entityId) return <>{header}<ReadSeriesEntry libraryId={library.id} seriesId={search.entityId}/></>;
   if (selected.shows === 'facet') return <>{header}<FacetPage libraryId={library.id} field={selected.facetSource?.field === 'series' ? 'series' : 'author'}
     pivot={gridPivot ?? (library.kind === 'comic' ? 'comics' : 'books')} request={request}
-    {...(selected.facetSource?.field === 'author' ? {onSelect: value => navigate({view: 'browse', ...(gridPivot ? {pivot: gridPivot} : {}), query: authorPredicate(value.value)})} : {})}/></>;
+    onSelect={value => {if (selected.facetSource?.field === 'author') navigate({view: 'browse', ...(gridPivot ? {pivot: gridPivot} : {}), query: authorPredicate(value.value)}); else if (value.seriesId) navigate({view: 'series', entityId: value.seriesId});}}/></>;
   if (search.view === 'browse' || search.query) return <BoundLibrary captured={captured} library={library} search={search} tabs={tabs}/>;
   return <ReadLibraryEntry libraryId={library.id} header={header} view="discover"/>;
 }
