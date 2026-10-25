@@ -71,6 +71,17 @@ const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
 const publicationObjectEligible = `o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
  AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
 
+// publicationChosenObject is the observation the public opener would choose for
+// the enclosing publication/asset: the first admitted inventory object in
+// o2.id order. It mirrors publicationObjectEligible exactly, using the o2/s2
+// aliases of the correlated subquery.
+const publicationChosenObject = `(SELECT o2.id FROM inventory_objects o2
+ JOIN library_sources s2 ON s2.id=o2.source_id AND s2.library_id=cl.library_id
+ WHERE o2.asset_id=a.token AND o2.retired=0 AND o2.state='available' AND o2.unsupported_reason=''
+ AND o2.root_incarnation=s2.incarnation AND o2.size=a.size AND o2.modified_ns=a.modified_ns
+ AND s2.enabled=1 AND s2.health NOT IN('offline','root_changed','removing')
+ ORDER BY o2.id LIMIT 1)`
+
 var publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
  AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN(` + readingcap.ComicFormatsSQL() + `))) AND link.available=1 AND a.available=1 AND available.available=1
  AND (p.format<>'cb7' OR s.kind='local') AND ` + publicationObjectEligible

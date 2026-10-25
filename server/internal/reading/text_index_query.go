@@ -50,6 +50,9 @@ type TextIndexSearch struct {
 	// Observation pins the search to one captured publication observation. Nil
 	// searches the current canonical primary version.
 	Observation *TextIndexObservation
+	// Project resolves the page's exact index tuples to public identity and
+	// bounded presentation facts inside the query snapshot, in one batch.
+	Project func(ctx context.Context, tx *sql.Tx, hits []TextIndexHit) ([]IndexedBodyHit, error)
 }
 
 // TextIndexObservation is one captured publication observation. ObjectID is
@@ -73,7 +76,13 @@ type TextIndexCoverage struct {
 // expressed in the normalized stored text, and Match is a UTF-16 range inside
 // Excerpt so a client can mark it without extracting text from the server.
 type TextIndexHit struct {
-	ItemID       int64
+	ItemID int64
+	// AssetID/ObjectID/Revision are the exact index observation keys. A global
+	// page projection must resolve these exact keys, never another observation
+	// that happens to share the asset token.
+	AssetID      int64
+	ObjectID     string
+	Revision     string
 	SectionPath  string
 	SectionIndex int
 	UTF16Offset  int
@@ -87,6 +96,11 @@ type TextIndexResult struct {
 	Next          string
 	Coverage      TextIndexCoverage
 	IndexRevision int64
+	// Fence is the exact same-snapshot scope token the cursor was minted with.
+	Fence string
+	// Projected is filled inside the same snapshot by Project when the caller
+	// needs public identity/title/cover for the page. It is never written later.
+	Projected []IndexedBodyHit
 }
 
 type textIndexCursor struct {
@@ -117,7 +131,7 @@ const (
 // restriction admission; this is the shared eligibility join.
 func (s *Service) textIndexSearchSQL(scope string, observation *TextIndexObservation) string {
 	if observation != nil {
-		return `SELECT s.id,s.item_id,s.section_index,s.section_path,s.text
+		return `SELECT s.id,s.item_id,s.asset_id,s.section_index,s.section_path,s.text,x.inventory_object_id,x.source_revision
  FROM reading_text_fts
  JOIN reading_text_sections s ON s.id=reading_text_fts.rowid
  JOIN reading_text_index_state x ON x.item_id=s.item_id AND x.asset_id=s.asset_id AND x.outcome='indexed' AND x.index_rule_version=?
@@ -134,7 +148,7 @@ func (s *Service) textIndexSearchSQL(scope string, observation *TextIndexObserva
  AND reading_text_fts MATCH ? AND reading_text_fts.rowid>=? AND (` + scope + `)
  ORDER BY reading_text_fts.rowid LIMIT ?`
 	}
-	return `SELECT s.id,s.item_id,s.section_index,s.section_path,s.text
+	return `SELECT s.id,s.item_id,s.asset_id,s.section_index,s.section_path,s.text,x.inventory_object_id,x.source_revision
  FROM reading_text_fts
  JOIN reading_text_sections s ON s.id=reading_text_fts.rowid
  JOIN reading_text_index_state x ON x.item_id=s.item_id AND x.asset_id=s.asset_id AND x.outcome='indexed' AND x.index_rule_version=?
@@ -148,6 +162,7 @@ func (s *Service) textIndexSearchSQL(scope string, observation *TextIndexObserva
  JOIN library_sources src ON src.id=o.source_id AND src.library_id=cl.library_id AND src.incarnation=o.root_incarnation AND src.enabled=1 AND src.kind='local' AND src.health NOT IN('offline','root_changed','removing')
  JOIN inventory_item_availability available ON available.item_id=s.item_id AND available.asset_id=a.token AND available.available=1
  WHERE reading_text_fts MATCH ? AND reading_text_fts.rowid>=? AND p.asset_id=` + s.primaryPublicationSQL() + `
+ AND o.id=` + publicationChosenObject + `
  AND (` + scope + `)
  ORDER BY reading_text_fts.rowid LIMIT ?`
 }
@@ -176,8 +191,7 @@ func textIndexValidateQuery(query string, limit int) (string, [][]rune, error) {
 // work, never an inexact hit. One request bounds both the section text it
 // re-scans and its elapsed time; a page that stops early returns a continuation
 // at its exact position instead of dropping or inventing hits.
-func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (TextIndexResult, error) {
-	var out TextIndexResult
+func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (out TextIndexResult, err error) {
 	if s == nil || s.DB == nil {
 		return out, ErrUnavailable
 	}
@@ -207,6 +221,14 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 		return out, err
 	}
 	defer gate.Rollback()
+	// Deferred before the scan so every page exit (limit, budget stop, scan cap
+	// or exhaustion) projects inside this snapshot; it runs before the rollback.
+	defer func() {
+		if err != nil || search.Project == nil || len(out.Hits) == 0 {
+			return
+		}
+		out.Projected, err = search.Project(ctx, gate.Tx(), out.Hits)
+	}()
 	if search.Accept != nil {
 		if err = search.Accept(ctx, gate.Tx()); err != nil {
 			return out, err
@@ -222,6 +244,7 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 	}
 	queryHash := textIndexQueryHash(query)
 	fenceHash := textIndexQueryHash(fence)
+	out.Fence = fence
 	epoch, err := textIndexEpochTx(ctx, gate.Tx())
 	if err != nil {
 		return out, err
@@ -276,10 +299,10 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 		if err = ctx.Err(); err != nil {
 			return out, err
 		}
-		var id, item int64
+		var id, item, asset int64
 		var index int
-		var path, text string
-		if err = rows.Scan(&id, &item, &index, &path, &text); err != nil {
+		var path, text, objectID, sourceRevision string
+		if err = rows.Scan(&id, &item, &asset, &index, &path, &text, &objectID, &sourceRevision); err != nil {
 			return out, err
 		}
 		scanned++
@@ -333,6 +356,9 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 			excerpt, matchStart, length := textIndexExcerpt(runes, span)
 			out.Hits = append(out.Hits, TextIndexHit{
 				ItemID:       item,
+				AssetID:      asset,
+				ObjectID:     objectID,
+				Revision:     sourceRevision,
 				SectionPath:  path,
 				SectionIndex: index,
 				UTF16Offset:  countedUnits,

@@ -30,12 +30,25 @@ the same block boundaries as the word counter. A script that the walker cannot
 segment makes the document unsupported for this producer rather than a partial
 or estimated index.
 
-The stored text is normalized per section: every whitespace run becomes one
-space and both edges are trimmed. Offsets, excerpts and hit ranges are expressed
-against that normalized text; a client that re-anchors a hit must apply the same
-normalization. `SectionIndex` is the document's position in the publication
-spine, so textless spine documents leave gaps rather than shifting later
-sections; `SectionPath` is the stable anchor identity.
+The stored text follows one closed extraction contract per section
+(`xhtml-body-blockspace-fields-v1`): only admitted spine XHTML body character
+data is used; head content and script/style/template subtrees are excluded; one
+ASCII space is inserted at the start and the end of every exact `textBlock`
+element (address, article, aside, blockquote, br, dd, div, dl, dt, figcaption,
+figure, footer, h1, h2, h3, h4, h5, h6, header, hr, li, main, nav, ol, p, pre,
+section, table, td, th, tr, ul — the same list as `textBlock` in `text_count.go`), so block
+siblings do not concatenate and inline boundaries do concatenate; finally every
+whitespace run is collapsed to one ASCII space and both edges are trimmed with
+`strings.Fields`. This is deliberately not DOM `textContent` and no raw-DOM
+UTF-16 offset is claimed.
+
+Offsets, excerpts and hit ranges are expressed against that normalized text; a
+client that re-anchors a hit must reproduce the same extraction/mapping on the
+opened exact source, verify `sourceRevision`, and validate the quote/range
+before jumping — otherwise it declines the jump. `SectionIndex` is the
+document's position in the publication spine, so textless spine documents leave
+gaps rather than shifting later sections; `SectionPath` is the stable anchor
+identity.
 
 ## Bounds and outcomes
 

@@ -249,3 +249,99 @@ func (ReadingSearchResponse) JSONSchema() map[string]any {
 		},
 	}
 }
+
+// ReadingIndexedSearchHit is one public body hit from the persisted index. Title
+// is the exact stored title when the projection has one; it is optional because
+// the entity row permits an empty title and an absent title never makes an
+// otherwise exact hit invalid (no fallback or clipping is invented). The
+// anchor is exact against the closed extraction contract named by
+// xhtml-body-blockspace-fields-v1: admitted spine XHTML body character data
+// only, script/style/template excluded, one ASCII space at the start and end of
+// each textBlock element (address, article, aside, blockquote, br, dd, div, dl,
+// dt, figcaption, figure, footer, h1, h2, h3, h4, h5, h6, header, hr, li, main,
+// nav, ol, p, pre, section, table, td, th, tr, ul), inline boundaries
+// concatenated, then every
+// whitespace run collapsed to one ASCII space and both edges trimmed. It is not
+// a DOM textContent offset. UTF16Offset indexes that normalized section text;
+// MatchStart and MatchLength are UTF-16 indices inside Excerpt. This is never a
+// CFI and grants no authority; the client must reproduce the extraction, verify
+// sourceRevision and validate the quote/range under the opened exact source, or
+// decline the jump.
+type ReadingIndexedSearchHit struct {
+	LibraryID      string `json:"libraryId"`
+	ItemID         string `json:"itemId"`
+	SourceID       string `json:"sourceId"`
+	SourceRevision string `json:"sourceRevision"`
+	Title          string `json:"title,omitempty"`
+	CoverURL       string `json:"coverUrl,omitempty"`
+	SectionPath    string `json:"sectionPath"`
+	SectionIndex   int    `json:"sectionIndex"`
+	UTF16Offset    int    `json:"utf16Offset"`
+	Excerpt        string `json:"excerpt"`
+	MatchStart     int    `json:"matchStart"`
+	MatchLength    int    `json:"matchLength"`
+}
+
+// ReadingIndexedSearchAnchor names the closed extraction and unit contract so a
+// client never guesses a position. Normalization is
+// xhtml-body-blockspace-fields-v1 as described on ReadingIndexedSearchHit.
+type ReadingIndexedSearchAnchor struct {
+	Normalization string `json:"normalization"`
+	OffsetUnit    string `json:"offsetUnit"`
+	MatchUnit     string `json:"matchUnit"`
+}
+
+type ReadingIndexedSearchResponse struct {
+	IndexedOnly   bool                       `json:"indexedOnly"`
+	IndexRevision int64                      `json:"indexRevision"`
+	Anchor        ReadingIndexedSearchAnchor `json:"anchor"`
+	Hits          []ReadingIndexedSearchHit  `json:"hits"`
+	Next          string                     `json:"next,omitempty"`
+}
+
+func (ReadingIndexedSearchAnchor) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"normalization", "offsetUnit", "matchUnit"},
+		"properties": map[string]any{
+			"normalization": map[string]any{"type": "string", "enum": []string{"xhtml-body-blockspace-fields-v1"}},
+			"offsetUnit":    map[string]any{"type": "string", "enum": []string{"utf16"}},
+			"matchUnit":     map[string]any{"type": "string", "enum": []string{"utf16"}},
+		},
+	}
+}
+
+func (ReadingIndexedSearchResponse) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false,
+		"required": []string{"indexedOnly", "indexRevision", "anchor", "hits"},
+		"properties": map[string]any{
+			"indexedOnly":   map[string]any{"type": "boolean", "enum": []bool{true}},
+			"indexRevision": map[string]any{"type": "integer", "minimum": 0},
+			"anchor": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"normalization", "offsetUnit", "matchUnit"},
+				"properties": map[string]any{
+					"normalization": map[string]any{"type": "string", "enum": []string{"xhtml-body-blockspace-fields-v1"}},
+					"offsetUnit":    map[string]any{"type": "string", "enum": []string{"utf16"}},
+					"matchUnit":     map[string]any{"type": "string", "enum": []string{"utf16"}},
+				}},
+			"hits": map[string]any{"type": "array", "maxItems": 50, "items": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"required": []string{"libraryId", "itemId", "sourceId", "sourceRevision", "sectionPath", "sectionIndex", "utf16Offset", "excerpt", "matchStart", "matchLength"},
+				"properties": map[string]any{
+					"libraryId":      map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+					"itemId":         map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+					"sourceId":       map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+					"sourceRevision": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+					"title":          map[string]any{"type": "string", "maxLength": 4096},
+					"coverUrl":       map[string]any{"type": "string", "maxLength": 2048},
+					"sectionPath":    map[string]any{"type": "string", "minLength": 1, "maxLength": 1024},
+					"sectionIndex":   map[string]any{"type": "integer", "minimum": 0, "maximum": 4095},
+					"utf16Offset":    map[string]any{"type": "integer", "minimum": 0},
+					"excerpt":        map[string]any{"type": "string", "maxLength": 8192},
+					"matchStart":     map[string]any{"type": "integer", "minimum": 0},
+					"matchLength":    map[string]any{"type": "integer", "minimum": 1},
+				},
+			}},
+			"next": map[string]any{"type": "string", "maxLength": 512},
+		},
+	}
+}
