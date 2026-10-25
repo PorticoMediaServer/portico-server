@@ -1,3 +1,4 @@
+import type {LibraryContentApi} from '@core/library-content.ts';
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {parseLocalSession} from '@core/local-session.ts';
 import {parseDirectSnapshot} from '@core/profile-management.ts';
@@ -126,7 +127,30 @@ export class BrowserSetupComposition {
     const url = await claim.prepare(server.api, this.hostedOrigin); await this.assert(server);
     this.handoffDelivered = true; this.navigate(url);
   };
-  addLibrary = async (input: Readonly<{kind: string; name: string; path: string}>): Promise<void> => {
+  /** Only the admitted owner's fixed folder-listing endpoint, never setup bearer IO. */
+  readonly libraryFolders: LibraryContentApi = {request: async <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
+    const route = routePath('get_admin_filesystem');
+    if (method !== 'GET' || body !== undefined || path !== route && !path.startsWith(route + '?')) throw changed();
+    this.current(); const owner = this.owner; if (!owner || signal?.aborted) throw changed();
+    const controller = new AbortController(), abort = () => controller.abort();
+    this.abort.signal.addEventListener('abort', abort, {once: true}); signal?.addEventListener('abort', abort, {once: true});
+    const assert = async () => {
+      for (let pass = 0; pass < 2; pass++) {
+        this.current(); if (controller.signal.aborted || this.owner !== owner) throw changed();
+        const selected = await this.ports.sessions().selected(); this.current();
+        if (controller.signal.aborted || this.owner !== owner || !selected || selected.connection.session.sessionFamilyId !== owner.session.sessionFamilyId || selected.connection.session.viewer.accountId !== owner.session.viewer.accountId || selected.connection.session.viewer.profileId !== owner.session.viewer.profileId || !sameServerPin(selected.connection.pin, owner.api.getRouteConnection()!.pin) || selected.connection.session.viewer.role !== 'owner') throw changed();
+        owner.api.setAccessToken(selected.connection.session.accessToken);
+        if (pass === 0) await this.ownerSnapshot(owner.api, owner.session);
+      }
+      this.current(); if (controller.signal.aborted || this.owner !== owner) throw changed();
+    };
+    try {
+      await assert();
+      const result = await owner.api.request<T>(path, 'GET', undefined, controller.signal);
+      await assert(); return result;
+    } finally {this.abort.signal.removeEventListener('abort', abort); signal?.removeEventListener('abort', abort);}
+  }};
+  addLibrary = async (input: Readonly<{kind: string; name: string; path: string; folders?: readonly string[]}>): Promise<void> => {
     this.current(); const owner = this.owner; if (!owner) throw changed();
     const assert = async () => {
       this.current(); const selected = await this.ports.sessions().selected(); this.current();
@@ -134,7 +158,7 @@ export class BrowserSetupComposition {
       owner.api.setAccessToken(selected.connection.session.accessToken);
     };
     await assert(); await this.ownerSnapshot(owner.api, owner.session); await assert();
-    const library = decodePostLibrariesResponse(await owner.api.request(routePath('post_libraries'), 'POST', routeBody('post_libraries', {kind: input.kind, name: input.name, path: input.path}), this.abort.signal));
+    const library = decodePostLibrariesResponse(await owner.api.request(routePath('post_libraries'), 'POST', routeBody('post_libraries', {kind: input.kind, name: input.name, ...(input.folders?.length ? {folders: input.folders} : {path: input.path})}), this.abort.signal));
     await assert();
     await owner.api.request(encodedRoutePath('post_libraries_id_scans', {id: encodeURIComponent(library.id)}), 'POST', {}, this.abort.signal);
     await assert();
