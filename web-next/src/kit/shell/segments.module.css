@@ -48,3 +48,11 @@
 /* owner-libraries#23b: the Type choice colours the edited segment at once. */
 .segment[data-kind='commercial'] { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--color-accent-strong) 70%, transparent) 0 3px, color-mix(in srgb, var(--color-accent-strong) 24%, transparent) 3px 6px); }
 .segment[data-kind='outro'] { background: #8fa6b8; }
+
+/* owner-libraries#23b: the adjust sheet's range labels, hint and quiet Dismiss row. */
+.windowRange { display: flex; justify-content: space-between; margin-top: -8px; font-size: 11.5px; font-weight: 700; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.sheetHint { margin: 0; font-size: var(--type-caption-size); line-height: 1.45; color: var(--color-text-tertiary); }
+.sheetDismiss { display: flex; align-items: flex-start; gap: 10px; margin-top: 4px; padding: 12px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--color-record) 8%, transparent); color: var(--color-record); font: inherit; text-align: left; cursor: pointer; }
+.sheetDismiss > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sheetDismiss b { font-weight: 700; }
+.sheetDismiss small { color: var(--color-text-tertiary); font-size: var(--type-caption-size); line-height: 1.4; }

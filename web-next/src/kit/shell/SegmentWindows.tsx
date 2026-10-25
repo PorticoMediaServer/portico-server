@@ -54,16 +54,17 @@ type AdjustLease = {
   onChange: (draft: SegmentEdit) => void;
   onSave: (draft: SegmentEdit) => void;
   onCancel: (opening: number) => void;
+  onDismiss: (mark: SegmentMark) => void;
   onPreview: (mark: SegmentMark, start: number) => void;
 };
 
-function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCancel, onPreview, t = tDefault}: SegmentWindowsProps & {t?: ShellTranslate}) {
+function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCancel, onDismiss, onPreview, t = tDefault}: SegmentWindowsProps & {t?: ShellTranslate}) {
   const live = useRef<AdjustLease | undefined>(undefined);
   const [lease, setLease] = useState<AdjustLease | undefined>(undefined);
   const token = edit?.opening;
   useLayoutEffect(() => {
     if (token === undefined) {live.current = undefined;setLease(undefined);return;}
-    const next: AdjustLease = {opening: token, draft: edit!, valid: {start: true, end: true}, duration, onChange, onSave, onCancel, onPreview};
+    const next: AdjustLease = {opening: token, draft: edit!, valid: {start: true, end: true}, duration, onChange, onSave, onCancel, onDismiss, onPreview};
     live.current = next;setLease(next);
     return () => {if (live.current === next) live.current = undefined;};
   }, [token]);
@@ -72,7 +73,7 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
   useLayoutEffect(() => {
     const current = live.current;
     if (!edit || !current || current.opening !== edit.opening) return;
-    current.draft = edit;current.duration = duration;current.onChange = onChange;current.onSave = onSave;current.onCancel = onCancel;current.onPreview = onPreview;
+    current.draft = edit;current.duration = duration;current.onChange = onChange;current.onSave = onSave;current.onCancel = onCancel;current.onDismiss = onDismiss;current.onPreview = onPreview;
   });
   const [valid, setValid] = useState<{start: boolean; end: boolean}>({start: true, end: true});
   const sameOpening = () => !!lease && live.current === lease && !!edit && lease.opening === edit.opening;
@@ -114,6 +115,13 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
     lease.valid = {...lease.valid, [field]: value};
   };
   const cancel = () => {if (sameOpening() && lease) lease.onCancel(lease.opening);};
+  const dismiss = (target: SegmentMark) => {
+    if (!sameOpening() || !lease || lease.draft.id !== target.id) return;
+    const current = lease;
+    live.current = undefined;
+    current.onDismiss(target);
+    current.onCancel(current.opening);
+  };
   const mark = edit ? [...opening, ...ending].find(value => value.id === edit.id) : undefined;
   if (!edit || !mark) return null;
   const range = zoomedSegmentRange([{start: edit.start, end: edit.end}], duration, edit.kind === 'credits' || edit.kind === 'outro')
@@ -128,6 +136,8 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
         <SegmentHandle label={t('next.shell.segmentStart', {kind: mark.label})} value={edit.start} min={0} max={edit.end - .1} range={range} onChange={value => apply('start', value)} />
         <SegmentHandle label={t('next.shell.segmentEnd', {kind: mark.label})} value={edit.end} min={edit.start + .1} max={duration} range={range} onChange={value => apply('end', value)} />
       </div>
+      <div className={styles.windowRange} aria-hidden="true"><span>{segmentClock(range.start)}</span><span>{segmentClock(range.end)}</span></div>
+      <p className={styles.sheetHint}>{t('web.segments.timeHelp')} {t('web.segments.stepHelp')}</p>
       <TimeStepper field="start" label={t('next.shell.startsAt')} value={edit.start} min={0} max={edit.end - .1} t={t}
         onStep={delta => step('start', delta)} onCommit={value => apply('start', value)}
         onValid={value => setFieldValid('start', value)} />
@@ -135,6 +145,10 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
         onStep={delta => step('end', delta)} onCommit={value => apply('end', value)}
         onValid={value => setFieldValid('end', value)} />
       <Button variant="glass" size="compact" onClick={() => preview(mark)}>{t('next.shell.previewSegment')}</Button>
+      <button type="button" className={styles.sheetDismiss} onClick={() => dismiss(mark)}>
+        <Icon name="i-trash" size={18}/>
+        <span><b>{t('web.segments.dismissMarker')}</b><small>{t('web.segments.dismissMarkerHelp')}</small></span>
+      </button>
     </div>
   </BottomSheet>;
 }
