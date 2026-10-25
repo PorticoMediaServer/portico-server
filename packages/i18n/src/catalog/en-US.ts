@@ -961,6 +961,7 @@ export const enUS = {
   'profiles.title': 'Profiles',
   'profile.current': 'Current',
   'profile.protected': 'Protected by a PIN',
+  'profile.inUse': 'In use',
   'profile.main': 'Main profile',
   'profile.add': 'Add profile',
   'profile.addTitle': 'Add a profile',

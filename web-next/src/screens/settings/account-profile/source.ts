@@ -7,8 +7,10 @@ import {ManagedProfilesClient, parseDirectSnapshot, type DirectSnapshot, type Ma
 export type ProfileSettingsScope = Readonly<{serverId: string; accountId: string; profileId: string}>;
 export type ProfileSettingsSnapshot = Readonly<{
   loading: boolean; busy: boolean; document?: DirectSnapshot; selectedId?: string; error?: unknown; avatars?: readonly ProfileAvatar[];
+  /** The profile this session is watching as; the list marks it in use. */
+  inUseId: string;
 }>;
-const empty: ProfileSettingsSnapshot = Object.freeze({loading: true, busy: false});
+const empty: ProfileSettingsSnapshot = Object.freeze({loading: true, busy: false, inUseId: ''});
 
 /** The server owns profiles even when the account signs in through Portico.
  * Keep the checked account document and its revisions together; never turn a
@@ -25,6 +27,7 @@ export class ProfileSettingsSource {
 
   constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean, upload?: (path: string, body: Parameters<IdentityUpload>[1], contentType: string, signal: AbortSignal) => Promise<unknown>) {
     this.scope = Object.freeze({...scope});
+    this.snapshot = Object.freeze({...this.snapshot, inUseId: this.scope.profileId});
     this.client = new ManagedProfilesClient(api, {...scope, authority: 'local'});
     this.identity = new IdentityClient({request: (path, method, body, signal) => api.request(path, method, body, signal ?? this.lifetime.signal)}, upload ? (path, body, contentType) => upload(path, body, contentType, this.lifetime.signal) : undefined);
   }

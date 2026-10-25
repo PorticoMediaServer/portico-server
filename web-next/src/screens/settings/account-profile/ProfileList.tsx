@@ -26,7 +26,9 @@ export function ProfileList({source, isCurrent, onFailure, onSelect}: {
     <ul className={styles.profiles} aria-label={t('profiles.title')}>
       {document.profiles.map((profile, index) => <li key={profile.id}>
         <span className={styles.profileIcon}><Icon name="i-user" size={20} /></span>
-        <span className={styles.profileName}><b>{profile.name}</b>{(profile.primary || profile.pinRequired) && <small>{profile.primary ? t('profile.main') : t('profile.protected')}</small>}</span>
+        <span className={styles.profileName}><b>{profile.name}</b>{profile.id === state.inUseId
+          ? <small>{t('profile.inUse')}</small>
+          : (profile.primary || profile.pinRequired) && <small>{profile.primary ? t('profile.main') : t('profile.protected')}</small>}</span>
         <span className={styles.profileActions}>{manage && <>
           <Button size="xs" variant="glass" disabled={state.busy} onClick={() => {if (isCurrent()) {source.select(profile.id);onSelect();}}}>{t('next.settingsSpec.account.profile.groups.0.rows.0.control.itemAction.label')}</Button>
           <Menu title={profile.name} open={menu === profile.id} onOpenChange={open => setMenu(open ? profile.id : undefined)} items={[
