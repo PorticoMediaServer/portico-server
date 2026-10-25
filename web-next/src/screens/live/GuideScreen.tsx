@@ -9,6 +9,7 @@ import type {SelectOption} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import {Skeleton, StateView} from '../../kit/states';
 import {liveListPrograms} from './program-window';
+import {useGuideSwipe} from './guide-swipe';
 import styles from './live.module.css';
 
 const t = defaultI18n.t;
@@ -155,6 +156,7 @@ function ProgrammeSummary({programme, now, timezone, current = false, onSelect}:
 export function GuideScreen({title, switcher, summary, conflicts, onTabChange, chips, onNow, problem, empty, day, sort, view, time, onViewChange,
   span, rows, total, selected, onSelect, onPlay, onVisibleWindow, onRetry}: GuideScreenProps) {
   const body = useRef<HTMLDivElement>(null);
+  const swipe = useGuideSwipe(time.onEarlier, time.onLater);
   const {start, end, now, scale, column, rowHeight, timezone} = span;
   const phone = column <= 60;
   const ticks = useMemo(() => rulerTicks(start, end, scale, timezone), [start, end, scale, timezone]);
@@ -230,7 +232,7 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
     </div>
     {problem && <div className={styles.guideProblem}>{problem}</div>}
     {empty ?? (view === 'guide'
-      ? <div className={styles.guide} data-guide-grid role="grid" aria-label={t('guide.label')} style={{'--guide-column': `${column}px`, '--guide-row': `${rowHeight}px`} as CSSProperties}>
+      ? <div {...swipe} className={styles.guide} data-guide-grid role="grid" aria-label={t('guide.label')} style={{'--guide-column': `${column}px`, '--guide-row': `${rowHeight}px`} as CSSProperties}>
         <div className={styles.guideRuler}>
           <div className={styles.guideCorner}>{phone ? <button type="button" className={styles.guideCornerNow} onClick={time.onNow}>{time.now}</button> : t('guide.channelColumn')}</div>
           <div className={styles.guideLane}>
