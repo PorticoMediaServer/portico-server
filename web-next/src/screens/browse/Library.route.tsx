@@ -18,6 +18,7 @@ import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
 import {BrowseController} from './controller';
 import {createLibraryPlaySelection} from './play-selection';
+import {createLibrarySelection} from './selection';
 import {useMusicMixes} from './music-mixes-hook';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
 import {NeedsAttention} from '../metadata/NeedsAttention';
@@ -96,9 +97,22 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
       requestId: async () => randomId(), signal: resources.life.signal(),
       isCurrent: () => resources.life.current() && resources.controller.getSnapshot().queryRevision === queryRevision
         && router.state.location.href === href && runtimeRef.current === runtime,
+      // The bar's job executor is the same captured route lifetime; these are real
+      // executors, and each title's own Detail actions still decide its grants.
+      personal: {myList: true, favorite: true, watched: true},
       playback: runtime?.cataloguePlayback()});
   }, [captured.context, context, resources, runtime, href, state.queryRevision]);
   useEffect(() => {playSelection.start();return () => playSelection.dispose();}, [playSelection]);
+  // The same captured route lifetime supplies the bar's real job ports. Queue and the
+  // saved-list pickers stay absent until their own producers are wired, so the bar
+  // cannot draw a control this screen cannot perform.
+  const selection = useMemo(() => createLibrarySelection({
+    playSelection,
+    descriptor: () => resources.controller.wholeSelection(),
+    actions: {api: resources.life.api, events: context.events, requestId: async () => randomId(),
+      signal: resources.life.signal(), isCurrent: () => resources.life.current(), reportError: context.effects.reportError},
+    reportError: context.effects.reportError,
+  }), [context, playSelection, resources]);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
@@ -129,7 +143,8 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   const bindings: LibraryBindings = {...header, controller: resources.controller,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
     reportError: context.effects.reportError, empty, canSaveView: resources.controller.canSaveView(), onSaveView: save,
-    selection: {actions: member => actions(member.entry), playSelection},
+    selection: {toolbar: selection.toolbar, actions: (member, index) => ({...actions(member.entry), selection: selection.entry(member, index)}),
+      registerWindow: selection.registerWindow, playSelection},
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
   const unmatched = requested?.shows === 'unmatched';
