@@ -17,12 +17,30 @@ export type CastRemoteView = CastRemoteToken & Readonly<{
   positionKnown: boolean; positionSeconds: number; durationSeconds: number; paused: boolean;
   source?: WebPlaybackPresentation; metadata?: CastMetadata;
 }>;
+/** A Portico television the viewer may send to, named by the server's receiver directory. */
+export type PlayOnReceiver = Readonly<{id: string; name: string; detail?: string}>;
+/** The receiver directory and one proven handoff. `send` resolves true only after the
+ * television has proved it is playing; the caller then stops only the fenced run. */
+export type PlayOnReceiversPort = Readonly<{
+  getSnapshot(): Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'; items: readonly PlayOnReceiver[]}>;
+  subscribe(listener: () => void): () => void;
+  refresh(): void;
+  send(id: string): Promise<boolean>;
+}>;
+export type PlayOnLinkPreview = Readonly<{requestId: string; userCode: string; deviceName: string; platform?: string}>;
+/** Signing a television in with the code it shows: review the device, then allow or deny. */
+export type PlayOnLinkPort = Readonly<{
+  preview(code: string): Promise<PlayOnLinkPreview>;
+  decide(requestId: string, code: string, decision: 'approve' | 'deny'): Promise<void>;
+}>;
 export type PlayOnSnapshot = Readonly<{
   cast: ReturnType<WebCastPort['getSnapshot']>; airPlayAvailable: boolean;
   panel: 'play-on' | 'remote' | 'tracks' | null; remote?: CastRemoteView; disposed: boolean;
 }>;
 export type PlayOnControllerOptions = Readonly<{
   sender: WebCastPort; airPlay?: AirPlayPort;
+  /** The server's Portico television directory; a panel may open for these alone. */
+  receivers?: PlayOnReceiversPort;
   runtime: Pick<WebShellPlaybackRuntime, 'getSnapshot' | 'subscribe' | 'stop' | 'play'>;
   /** The assembly's real viewer/authority lifetime, never a route lifetime. */
   isCurrent(): boolean;
@@ -133,7 +151,7 @@ export class PlayOnController {
   };
   openPlayOn(): void {
     this.assertCurrent();
-    if (!this.state.cast.available && !this.state.airPlayAvailable) return;
+    if (!this.state.cast.available && !this.state.airPlayAvailable && (this.options.receivers?.getSnapshot().items.length ?? 0) === 0) return;
     this.publish({panel: 'play-on'});
   }
   closePanel(): void { this.assertCurrent(); this.publish({panel: null}); }
