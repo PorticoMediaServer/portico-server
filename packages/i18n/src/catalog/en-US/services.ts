@@ -158,6 +158,7 @@ export const servicesMessages = {
   'services.security.emailPending': 'Your current address stays in use until you confirm the new one.',
   'services.security.emailCode': 'We’ll send a six-digit code to this address.',
   'services.security.authenticatorCode': 'Authenticator code',
+  'services.security.twoStepOnHint': 'Two-step is on',
   'services.security.stillOwn': 'You still own {servers}. Transfer or remove it first, then come back here.',
   'services.workspace.appWeb': 'Portico on the web',
   'services.workspace.appAppleTV': 'Portico on Apple TV',

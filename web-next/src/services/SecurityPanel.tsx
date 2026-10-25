@@ -155,7 +155,7 @@ function SecurityTask({account, identity, state, task, onClose}: {account: Servi
         <AuthPasswordField label={t(task === 'password_set_or_change' ? 'account.currentPassword' : 'web.password')} autoComplete="current-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} />
         {task === 'password_set_or_change' && <><AuthPasswordField label={<ServicesLabel detail={t('services.password.minimum')}>{t('auth.newPassword')}</ServicesLabel>} autoComplete="new-password" value={value} onChange={event => setValue(event.currentTarget.value)} disabled={busy} /><ServicesStrength password={value} id="security-strength" /></>}
         {task === 'email_change' && <TextField label={t('web.hostedSecurity.newEmail')} type="email" autoComplete="email" value={value} onChange={event => setValue(event.currentTarget.value)} description={t('services.security.emailCode')} disabled={busy} />}
-        {state.mfaEnabled && <TextField label={t('services.security.authenticatorCode')} autoComplete="one-time-code" value={factor} onChange={event => setFactor(event.currentTarget.value)} disabled={busy} />}
+        {state.mfaEnabled && <TextField label={task === 'password_set_or_change' ? <ServicesLabel detail={t('services.security.twoStepOnHint')}>{t('services.security.authenticatorCode')}</ServicesLabel> : t('services.security.authenticatorCode')} autoComplete="one-time-code" value={factor} onChange={event => setFactor(event.currentTarget.value)} disabled={busy} />}
       </form>}
   </Dialog>;
 }
