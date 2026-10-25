@@ -1,3 +1,4 @@
+import {CatalogueSelectionEntry} from '../browse/document-selection';
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -75,7 +76,7 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
           ]} />
       </div>
     </div></header>
-    <div className={styles.toolbar}>{bindings.selection?.toolbar}<div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={bindings.presentation.view} onValueChange={bindings.presentation.setView} /></div></div>
+    <div className={styles.toolbar}>{bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}<div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={bindings.presentation.view} onValueChange={bindings.presentation.setView} /></div></div>
     {isPlaylist ? playlist.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={runtime.saved} section={section} onMore={(entry, anchor) => {
       if (entry.kind !== 'playlist_entry' || entry.hidden || !bindings.operations.current) return;
       rowAnchor.current = anchor; setRowMenu({entryId: entry.id, media: entry.media});
@@ -129,7 +130,8 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
     if (!media || entry.hidden) return <div className={styles.hiddenRow}>{t('card.unavailable')}</div>;
     const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), shape = shapeFor(media.kind, grid ? 'grid' : 'list');
     const artwork = bindings.artwork.foreground(media.posterUrl, (grid ? cardWidth : 64) * devicePixelRatio, shapeAspect(shape));
-    const common = {model, context: grid ? 'grid' as const : 'detail' as const, selection: bindings.selection?.personalCard(bindings.runtime.personal, entry), watched: media.watched,
+    return <CatalogueSelectionEntry selection={bindings.catalogueSelection} entry={media} position={bindings.catalogueSelection?.position(media) ?? context.index}>{documentSelection => {
+    const common = {model, context: grid ? 'grid' as const : 'detail' as const, selection: documentSelection ?? bindings.selection?.personalCard(bindings.runtime.personal, entry), watched: media.watched,
       onNavigate: () => bindings.effects.openEntry(media), onMore: (anchor: HTMLButtonElement) => onMore(entry, anchor),
       onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(signal => bindings.effects.playEntry(media, signal)).catch(bindings.effects.reportError); } : undefined};
     if (grid) return <BrowseEntryCard entry={media} artwork={bindings.artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={cardWidth} mixed visible order={context.index}
@@ -137,6 +139,7 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
       actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: common.selection}} />;
     return <div className={grid ? undefined : styles.mediaListRow}>{shape === 'circle' ? <CircleCard {...common} covers={artwork ? [artwork] : []} variant="person" />
       : shape === 'square' ? <SquareCard {...common} artwork={artwork} /> : <PosterCard {...common} artwork={artwork} />}</div>;
+    }}</CatalogueSelectionEntry>;
   }} /></div>{bindings.runtime.personal.getSnapshot().nextCursor && <Button size="small" className={styles.showMore} loading={bindings.runtime.personal.getSnapshot().loading} onClick={() => { void bindings.runtime.personal.next(); }}>{t('action.showMore')}</Button>}</div>;
 }
 

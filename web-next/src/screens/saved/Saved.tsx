@@ -1,3 +1,5 @@
+import type {SavedCatalogueSelection} from './catalogue-selection';
+import {CatalogueSelectionEntry} from '../browse/document-selection';
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -58,6 +60,7 @@ export type SavedBindings = Readonly<{
   preparationArtwork: Parameters<typeof ServerDownloads>[0]['artwork'];
   presentation: SavedPresentation;
   selection?: SavedSelection;
+  catalogueSelection?: SavedCatalogueSelection;
   effects: SavedEffects;
 }>;
 export type SavedViewBindings = SavedBindings & Readonly<{operations: SavedOperations}>;
@@ -140,7 +143,7 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
           {projection?.filters.map(filter => <Select key={filter.id} aria-label={defaultI18n.has(filter.labelKey) ? t(filter.labelKey) : t('playlists.filter')}
             value={'filter' in route ? route.filter ?? 'all' : 'all'} options={filter.options.map(option => ({value: option.id, label: option.label}))}
             onValueChange={filter => { if (route.view === 'playlists') effects.selectRoute({...route, filter: filter as PlaylistListFilter}); }} />)}
-          {bindings.selection?.toolbar}
+          {bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}
           <div className={styles.toolbarEnd}>
             {total !== undefined && <span>{t('web.saved.items', {count: total})}</span>}
             {projection?.sorts.length ? <Select aria-label={t('saved.sort')} value={'sort' in route ? route.sort ?? projection.query.sort : projection.query.sort}
@@ -191,7 +194,7 @@ function SavedListToolbar({bindings, projection, total}: {bindings: SavedViewBin
       <span className={styles.separator} aria-hidden="true" />
       {quick.map(option => <Chip key={option.id} variant="toolbar" selected={filter === option.id} onClick={() => { if (listRoute) effects.selectRoute({...listRoute, filter: filter === option.id ? 'all' : option.id as SavedListFilter}); }}>{option.label}</Chip>)}
     </> : null}
-    {bindings.selection?.toolbar}
+    {bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}
     <div className={styles.toolbarEnd}>
       {total !== undefined && <span className={styles.resultCount}>{t('lib.count', {count: total, pivot: 'other'})}</span>}
       {sorts.length ? <SortMenu sorts={sorts.map(value => ({...value, defaultDirection: value.directions[0] ?? 'asc', expensive: false, applicableKinds: []}))} value={sort} label={sortLabel}
@@ -230,14 +233,16 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
           return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
         }
         if (!media) return <StateView title={t('card.unavailable')} />;
+        return <CatalogueSelectionEntry selection={bindings.catalogueSelection} entry={media} position={bindings.catalogueSelection?.position(media) ?? context.index}>{documentSelection => {
         const common = {model: homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), artwork: artwork.foreground(media.posterUrl, presentation.cardWidth * devicePixelRatio, ratio),
-          selection: cardSelection, context: 'grid' as const, watched: media.watched, onNavigate: () => effects.openEntry(media),
+          selection: documentSelection ?? cardSelection, context: 'grid' as const, watched: media.watched, onNavigate: () => effects.openEntry(media),
           onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(signal => effects.playEntry(media, signal)).catch(effects.reportError); } : undefined,
           onMore: bindings.onMore ? (anchor: HTMLButtonElement) => bindings.onMore!(entry, anchor)
             : effects.openMore ? (anchor: HTMLButtonElement) => effects.openMore!(service, section.id, entry, anchor) : undefined};
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
         return <BrowseEntryCard entry={media} artwork={artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={presentation.cardWidth} mixed visible order={context.index} group={`saved:${section.id}`} backdrops={presentation.backdrops}
-          actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: cardSelection}} />;
+          actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: documentSelection ?? cardSelection}} />;
+        }}</CatalogueSelectionEntry>;
       }} />
     {section.nextCursor && <Button className={styles.showMore} size="small" loading={service.getSnapshot().phase === 'loading'} onClick={() => { void service.next(section.id); }}>{t('action.showMore')}</Button>}
   </section>;
