@@ -158,7 +158,13 @@ function SingleMetadataEditor({source, snapshot}: {source: SelectionRendererSour
     const value = await metadata.api.request<T>(path, method, body, signal);
     assert();
     return value;
-  }}), [metadata, source.controller, grant, preview]);
+  }, ...(metadata.api.requestMetadataUpload ? {async requestMetadataUpload<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
+    const assert = () => {if (!metadata.current(grant) || source.controller.getSnapshot().editor?.preview !== preview) throw new DOMException('Metadata authority changed', 'AbortError');};
+    assert();
+    const value = await metadata.api.requestMetadataUpload!<T>(path, body, signal);
+    assert();
+    return value;
+  }} : {})}), [metadata, source.controller, grant, preview]);
   return <Dialog open onOpenChange={open => {if (!open) source.controller.closeEditor();}} title={t('next.home.editSelection')}
     returnFocusRef={source.anchor} placement="right" width={720} showCloseButton={false} headerClassName={metadataStyles.hostTitle} bodyClassName={metadataStyles.hostBody}>
     <MetadataEditor api={api} scope={metadata.scope} target={target} onClose={() => source.controller.closeEditor()}/>

@@ -9,7 +9,7 @@ import styles from './metadata.module.css';
 import {metadataDraftValue, patchMetadataDraft, type MetadataFieldDraft} from './draft-value';
 
 const t = defaultI18n.t;
-type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
+type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>; requestMetadataUpload?: <T>(path: string, body: FormData, signal?: AbortSignal) => Promise<T>}>;
 type Draft = Readonly<Record<string, MetadataFieldDraft>>;
 type Tab = 'general' | 'artwork' | 'tags' | 'people' | 'matching' | 'history';
 
@@ -95,6 +95,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
+        onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
       {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId})}
@@ -199,11 +200,18 @@ function TagList({spec, values, locked, onValues, onLock, busy}: {spec: RepairFi
   </section>;
 }
 
-function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch}: {
+function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload}: {
+  onUpload?: (role: string, file: File) => Promise<boolean>;
   data: RepairData; busy: boolean; onUse: (role: string, candidateId: string) => void;
   onLock: (role: string, subject: string, locked: boolean) => void; onFindMore: (role: string) => void; onRefetch: (role: string) => void;
 }) {
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(''), [uploadError, setUploadError] = useState('');
+  const upload = async (file: File | undefined) => {
+    if (!file || busy || !role || !onUpload) return;
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size < 1 || file.size > 10 * 1024 * 1024) {setUploadError(t('web.metadata.uploadImageLimit')); return;}
+    setUploadError('');
+    try {await onUpload(role, file);} catch {setUploadError(t('web.metadata.uploadImageLimit'));}
+  };
   const role = data.artworkRoles.includes(selected) ? selected : data.artworkRoles[0];
   const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
   const chosen = data.snapshot.artwork.find(choice => choice.role === role);
@@ -222,6 +230,11 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch}: {
         {candidate.current ? <span className={styles.badge}>{t('web.metadata.inUse')}</span>
           : <Button size="small" disabled={busy} onClick={() => onUse(role, candidate.id)}>{t('web.liveSource.useThis')}</Button>}
       </figure>)}</div> : <p className={styles.working}>{t('web.metadata.noCandidates')}</p>}
+      {onUpload ? <div className={styles.uploadTile} onDragOver={event => {if (!busy) event.preventDefault();}} onDrop={event => {event.preventDefault(); if (!busy) void upload(event.dataTransfer.files[0]);}}>
+        <b>{t('web.metadata.uploadImage')}</b><p>{t('web.metadata.uploadImageHelp')}</p>
+        <label>{t('web.metadata.chooseImageFile')}<input type="file" accept="image/jpeg,image/png" disabled={busy} onChange={event => {const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file);}}/></label>
+        {uploadError ? <p role="alert">{uploadError}</p> : null}
+      </div> : null}
       {data.artwork.jobs.filter(job => job.role === role).map(job => <p key={job.id} role="status">{t('web.metadata.artJob', {role: t('web.metadata.artRole', {role}), state: job.status})}</p>)}
     </section> : null}
   </div>;
