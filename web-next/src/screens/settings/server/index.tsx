@@ -6,6 +6,7 @@ import {Icon} from '../../../kit/Icon';
 import type {SettingsBackupSource} from '../backup-source';
 import {StorageBackupFolder, StorageBackupNow, StorageBackups, StorageRestoreFile, type BackupSurfaceProps} from './Backups';
 import {StorageDataFolder, StorageUsage} from './StorageUsage';
+import {BackupProtection} from '../server-storage/BackupProtection';
 import {SettingsStorageSource, type StorageTransport} from './storage-source';
 import {sectionLinkRows, sectionTarget, storageRowState, type SettingsTarget, type StorageRowFacts} from './rows';
 import {SettingsCleanupSource} from './cleanup-source';
@@ -47,6 +48,7 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
       const label = state.label ?? row.label;
       return row.id === 'storage.dataFolder' ? <StorageDataFolder source={storage} label={label} />
         : row.id === 'storage.usage' ? <StorageUsage source={storage} label={label} cleanup={cleanup} />
+        : row.id === 'storage.backupPassphrase' ? <BackupProtection {...backups} label={label} />
         : row.id === 'storage.backupFolder' ? <StorageBackupFolder {...backups} api={options.transport} />
         : row.id === 'storage.backupNow' ? <StorageBackupNow {...backups} />
         : row.id === 'storage.backups' ? <StorageBackups {...backups} />
