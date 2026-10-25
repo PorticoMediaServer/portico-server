@@ -72,7 +72,7 @@ export class SettingsChannelEditorSource {
     this.publish({busy:true,pending:true,error:undefined,previewLoading:false});let saved:LibraryChannel|undefined;
     try{if(!owns())return;const response=await saveLibraryChannel(this.transport(owns),this.serverId,intent.config,intent.revision,intent.requestId,flight.signal);if(!owns())return;
       if(response.config.id!==intent.config.id||response.revision<=intent.revision)throw new Error('invalid_channel_save_receipt');
-      saved=response;this.intent=undefined;this.revision=response.revision;this.publish({pending:false,config:frozen(structuredClone(response.config))});
+      saved=response;this.intent=undefined;this.original=undefined;this.revision=response.revision;this.opening?.abort();this.opening=undefined;this.publish({phase:'closed',pending:false,config:frozen(structuredClone(response.config))});
     }catch(error){if(owns()){const status=(error&&typeof error==='object'?error:{}) as {status?:number};if([400,412,422].includes(status.status??0)){this.intent=undefined;this.publish({pending:false});}this.failure(error,status.status===412?'changed':'save');}}
     finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
     if(saved&&this.current())await this.reader.load();return this.current()?saved:undefined;
