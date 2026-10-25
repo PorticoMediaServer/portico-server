@@ -46,7 +46,12 @@ type Window struct {
 	Ready                                      bool
 }
 type Producer struct {
-	ID int64
+	// OnPlayable acknowledges the first accepted nonempty elementary media
+	// output, never setup, initialization or transport/PES headers. An error
+	// refuses successful output acknowledgement and lets normal producer
+	// recovery retry the same real occurrence. It must not call Buffer methods.
+	OnPlayable func() error
+	ID         int64
 	// For scheduled sources, UTC = source PTS + TimelineBaseMS. The decoder
 	// preserves the source clock including the server-selected input seek.
 	Scheduled      bool
@@ -450,6 +455,7 @@ type Publisher struct {
 	anchored                                        bool
 	anchorPTS, anchorUS, previousPTS, previousEndUS int64
 	closed                                          bool
+	playableReported                                bool
 	// init is the producer's accepted init segment (fragmented producers).
 	init *initFile
 }
@@ -707,6 +713,14 @@ func (p *Publisher) publish(raw []byte) error {
 		} else {
 			clock, e = ReadPTS(file)
 		}
+		playable := false
+		if e == nil && p.producer.OnPlayable != nil && !p.playableReported {
+			if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+				e = seekErr
+			} else {
+				playable = hasPlayablePayload(file, p.producer.Fragmented)
+			}
+		}
 		_ = file.Close()
 		if e != nil {
 			return e
@@ -768,6 +782,12 @@ func (p *Publisher) publish(raw []byte) error {
 		p.last = entry.number
 		p.previousPTS = maximum
 		p.previousEndUS = end
+		if playable && !p.playableReported && p.producer.OnPlayable != nil {
+			if e := p.producer.OnPlayable(); e != nil {
+				return e
+			}
+			p.playableReported = true
+		}
 		for old := range p.hashes {
 			if old < entry.number-32 {
 				delete(p.hashes, old)
