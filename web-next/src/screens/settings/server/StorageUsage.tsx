@@ -14,8 +14,6 @@ function Failure({source}: {source: SettingsStorageSource}) {
   return <p className={styles.storageFailure} role="alert"><span>{t('next.settings.folderFailed')}</span><button type="button" onClick={() => {void source.retry();}}>{t('next.shell.tryAgain')}</button></p>;
 }
 
-const formatBytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : bytes >= 1024 ** 2 ? `${Math.round(bytes / 1024 ** 2)} MB` : `${Math.round(bytes / 1024)} KB`;
-
 /** The drawn data-folder folders and the conversion folder outside them, from
  * the server's own layout measurement. No per-row sweep is drawn. */
 const folderRows = [
@@ -42,17 +40,21 @@ export function StorageUsage({source, label}: RowProps) {
   if (state.phase === 'error') return <Failure source={source} />;
   if (state.phase !== 'ready' || !state.report || !state.usage) return <p role="status">{t('next.settings.loading')}</p>;
   const usage = state.usage;
-  const rows = folderRows.flatMap(([name, key]) => {
+  // The four facts each row draws, so the conversion folder's measured row can
+  // join the data folder's without pretending to be one of its categories.
+  const rows: {id: string; name: string; help: string; bytes: number}[] = folderRows.flatMap(([name, key]) => {
     const folder = usage.folders.find(candidate => candidate.name === name);
     return folder ? [{id: name, name: t(`server.space.${key}` as MessageId), help: t(`server.space.${key}Help` as MessageId), bytes: folder.bytes}] : [];
   });
-  rows.push({id: 'Conversions', name: t('server.space.conversions'), help: t('server.space.conversionsHelp', {path: usage.transcodeDirectory || '/transcode'}), bytes: usage.transcodeBytes});
+  // The conversion folder is its own measured row, never one of the data
+  // folder's categories, and its help names only the path the server reported.
+  rows.push({id: 'conversions', name: t('server.space.conversions'), help: usage.transcodeDirectory ? t('server.space.conversionsHelp', {path: usage.transcodeDirectory}) : '', bytes: usage.transcodeBytes});
   const total = rows.reduce((sum, row) => sum + row.bytes, 0);
   return <div className={styles.storage} role="group" aria-label={label}>
-    <div className={styles.storageTotal}><b>{t('web.maintenance.totalLabel')}</b><span>{formatBytes(total)}</span></div>
+    <div className={styles.storageTotal}><b>{t('web.maintenance.totalLabel')}</b><span>{defaultI18n.bytes(total)}</span></div>
     <ul className={styles.storageList}>{rows.map(row => {
       const share = total > 0 ? Math.max(0, Math.min(1, row.bytes / total)) : 0;
-      return <li key={row.id}><div className={styles.storageText}><b>{row.name}</b><small>{row.help}</small></div><span className={styles.storageSize}>{formatBytes(row.bytes)}</span>
+      return <li key={row.id}><div className={styles.storageText}><b>{row.name}</b><small>{row.help}</small></div><span className={styles.storageSize}>{defaultI18n.bytes(row.bytes)}</span>
         <span className={styles.storageBar} aria-hidden="true"><i style={{width: `${(share * 100).toFixed(1)}%`}} /></span></li>;
     })}</ul>
   </div>;
