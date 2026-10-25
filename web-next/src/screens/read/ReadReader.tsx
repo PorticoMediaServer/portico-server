@@ -19,15 +19,17 @@ export function ReadReader<P extends object>({controller, source, format, initia
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const chrome = presentation(snapshot);
   const navigate = useCallback((target: Parameters<ReaderController<P>['navigate']>[0]) => {
-    if (!authority.isCurrent() || controller.getSnapshot().status !== 'ready') return;
-    void controller.navigate(target).catch(error => { if (authority.isCurrent()) reportError(readerErrorCode(error)); });
-  }, [authority, controller, reportError]);
+    const active = controller.getSnapshot();
+    if (!authority.isCurrent() || signal?.aborted || active.status !== 'ready' || active.sourceId !== source.id || active.sourceRevision !== source.revision) return;
+    void controller.navigate(target).catch(error => { const active = controller.getSnapshot();if (authority.isCurrent() && !signal?.aborted && active.sourceId === source.id && active.sourceRevision === source.revision) reportError(readerErrorCode(error)); });
+  }, [authority, controller, reportError, signal, source.id, source.revision]);
   const turn = useCallback((kind: 'next' | 'previous') => {
     if (controller.getSnapshot().canTurnAtFit) navigate({kind});
   }, [controller, navigate]);
   const seek = useCallback((value: number) => navigate({kind: 'progression', value}), [navigate]);
+  const currentPublication = !signal?.aborted && snapshot.sourceId === source.id && snapshot.sourceRevision === source.revision;
   return <ReaderChrome {...chrome} title={metadata ? metadata.title : snapshot.metadata?.title} subtitle={metadata ? metadata.author : snapshot.metadata?.author}
-    progression={snapshot.location?.progression} pageTurnsEnabled={snapshot.status === 'ready' && snapshot.canTurnAtFit}
+    progression={snapshot.location?.progression} pageTurnsEnabled={currentPublication && snapshot.status === 'ready' && snapshot.canTurnAtFit}
     fixedPage={format !== 'epub'} holdOpen={chrome.holdOpen || snapshot.selection !== null}
     textSelectionActive={snapshot.selection !== null}
     subscribeSurfaceInput={controller.subscribeSurfaceInput} onTurn={turn} onSeek={seek} onBack={onBack}>
