@@ -3,7 +3,8 @@ import type {AccountMove, AccountMoveCode, AccountMoveWaiting} from '@core/accou
 import {defaultI18n} from '@i18n';
 import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
 import {Button} from '../../kit/controls/Button';
-import type {SettingsOwnerSwitch} from './owner-switch';
+import type {OwnerMoveCaller, SettingsOwnerSwitch} from './owner-switch';
+import {MoveFinishConfirmation} from './MoveFinishConfirmation';
 import {useMoveCodePublisher} from './move-codes-port';
 import {MoveCodesSheet} from './MoveCodesSheet';
 import styles from './owner-signin-switch.module.css';
@@ -40,6 +41,7 @@ export function MoveCodesHost({source, serverName, isCurrent, onError}: {
 	const [receipt, setReceipt] = useState<Receipt>();
 	const [busy, setBusy] = useState<Held<string>>();
 	const [note, setNote] = useState(''), [flight, setFlight] = useState<Flight>();
+	const [confirmation, setConfirmation] = useState<Flight>();
 	const sequence = useRef(0), flightRef = useRef<Flight | undefined>(undefined);
 	const rendered = useRef({source, move, isCurrent, onError});
 	rendered.current = {source, move, isCurrent, onError};
@@ -88,11 +90,11 @@ export function MoveCodesHost({source, serverName, isCurrent, onError}: {
 			setBusy(current => current && current.flight === target ? undefined : current);
 		}
 	}, [waiting, live, onError]);
-	const finish = async (target: Flight) => {
+	const finish = async (target: Flight, caller: OwnerMoveCaller) => {
 		if (!live(target) || target.pending) return;
 		target.pending = true; setBusy({flight: target, value: 'finish'}); setNote('');
-		try {await target.source.finishMove(target.move, {isCurrent: () => live(target), signal: target.controller.signal});}
-		catch (error) {if (live(target)) onError(error);}
+		try {await target.source.finishMove(target.move, {isCurrent: () => live(target) && caller.isCurrent(), signal: caller.signal ? AbortSignal.any([target.controller.signal, caller.signal]) : target.controller.signal});}
+		catch (error) {if (live(target)) onError(error);throw error;}
 		finally {
 			target.pending = false;
 			setBusy(current => current && current.flight === target ? undefined : current);
@@ -122,10 +124,12 @@ export function MoveCodesHost({source, serverName, isCurrent, onError}: {
 			</span>
 			{current && list ? <Button variant="glass" size="small" loading={held === 'all'} disabled={Boolean(held) || list.truncated}
 				onClick={() => void makeFor(current)}>{t('accounts.move.makeCodes')}</Button> : null}
-			{current ? <Button variant="glass" size="small" loading={held === 'finish'} disabled={Boolean(held)} onClick={() => void finish(current)}>{t('accounts.settings.finishNow')}</Button> : null}
+			{current ? <Button variant="glass" size="small" loading={held === 'finish'} disabled={Boolean(held)} onClick={() => {if (live(current)) setConfirmation(current);}}>{t('accounts.settings.finishNow')}</Button> : null}
 		</div>
 		{move ? <p className={styles.hostNote}>{t('accounts.settings.finishNowHelp')}</p> : null}
 		{note && <p className={styles.hostNote}>{note}</p>}
+		{confirmation && live(confirmation) ? <MoveFinishConfirmation move={confirmation.move} isCurrent={() => live(confirmation)}
+			onClose={() => setConfirmation(value => value === confirmation ? undefined : value)} onConfirm={caller => finish(confirmation, caller)}/> : null}
 		{receiptShown ? <MoveCodesSheet codes={receiptShown.codes} serverName={serverName} address={receiptShown.issuer}
 			isCurrent={() => live(receiptShown.flight)} onClose={() => close(receiptShown)} onError={onError}/> : null}
 	</>;

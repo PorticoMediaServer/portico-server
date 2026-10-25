@@ -136,6 +136,7 @@ export const accountMessages = {
   'accounts.settings.moved': '{moved} of {total} have moved',
   'accounts.settings.openPeople': 'Open People',
   'accounts.settings.finishNow': 'Finish now',
+  'accounts.settings.finishNowConfirm': 'Turn off the {count, plural, one {# account that hasn’t} other {# accounts that haven’t}} moved? Their profiles and history are kept until you delete them.',
   'accounts.settings.finishNowHelp': 'Anyone still waiting is turned off as “Didn’t move”. Their data stays until the owner deletes them.',
   // Binding ruling 17.5, also applied to Start over with Portico Accounts.
   'accounts.ownerSwitch.secureTitle': 'Switch from a secure page',
