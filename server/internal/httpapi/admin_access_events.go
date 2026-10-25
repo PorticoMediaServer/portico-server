@@ -20,24 +20,28 @@ const adminEventLimit = 8
 
 // adminSafeEventCodes is the closed, reviewed vocabulary an administrator's TV
 // Troubleshooting page may show. Each entry is an exact action code the server
-// already records in its own audit trail for a completed maintenance action.
-// Membership is not inferred from the action's spelling: an action outside this
-// list is omitted, so a new or unexpected code cannot reach the page. The
-// projection drops the audit row's actor and target, so no account, profile,
-// item, asset, path, token, title or URL travels with it.
+// records in its own audit trail, and each is emitted only by a server-wide
+// owner or administrator maintenance path:
+//
+//	alert.acknowledge        owner console alert acknowledgement
+//	downloads.settings       owner's server-wide download settings
+//	job.cancel/pause/...     administrator ingestion-job control (owner console too)
+//	optimization.*           owner prepared-version request, control and deletion
+//	schedule.apply           owner console schedule edit
+//	settings.apply           owner server settings save
+//
+// Personal download work is deliberately absent. prepare, pause, resume, cancel,
+// retry, remove and revoke are emitted for one viewer's own downloads, and the
+// profile-scoped revoke and cache release for one profile, so a global code and
+// time would expose private activity even after the actor and target are
+// dropped; an action-only audit row carries no per-row proof that would let an
+// administrator see it. Membership is not inferred from an action's spelling: an
+// action outside this list is omitted. The projection drops the audit row's
+// actor and target, so no account, profile, item, asset, path, token, title or
+// URL travels with it.
 var adminSafeEventCodes = []string{
 	"alert.acknowledge",
-	"downloads.cancel",
-	"downloads.pause",
-	"downloads.prepare",
-	"downloads.profile.cache_release",
-	"downloads.profile.revoke",
-	"downloads.remove",
-	"downloads.resume",
-	"downloads.retry",
-	"downloads.revoke",
 	"downloads.settings",
-	"job.admit",
 	"job.cancel",
 	"job.pause",
 	"job.resume",
