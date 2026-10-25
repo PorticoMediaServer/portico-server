@@ -48,6 +48,8 @@ export async function readCatalogueSelectionItem(options: CatalogueSelectionOpti
       watched: availablePorts.watched === true && offered?.watched === true,
       edit: availablePorts.edit === true && offered?.edit === true,
       delete: availablePorts.delete === true && offered?.delete === true,
+      playlist: availablePorts.playlist === true && offered?.playlist === true,
+      collection: availablePorts.collection === true && offered?.collection === true,
     })});
   }
   if (!target || target.itemId !== entry.id) throw unavailable();
