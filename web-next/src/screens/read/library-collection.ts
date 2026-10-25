@@ -1,4 +1,4 @@
-import {ReadingError, type ReadingClient, type ReadingPeriodicalType, type ReadingPeriodicalGroup, type ReadingPeriodicalIssue, type ReadingYearChoice} from '@portico/client-core';
+import {ReadingError, type ReadingClient, type ReadingPeriodicalType, type ReadingPeriodicalGroup, type ReadingPeriodicalIssue, type ReadingYearChoice, type ReadingDayChoice} from '@portico/client-core';
 import {createWindowedCollection} from '@core/collections/windowed.ts';
 
 export type ReadingLibraryItem = Awaited<ReturnType<ReadingClient['list']>>['items'][number];
@@ -27,11 +27,11 @@ export function createReadingPeriodicalGroupsCollection(client: ReadingClient, l
       return {items: page.groups, nextCursor: page.nextCursor};
     });
 }
-export function createReadingPeriodicalIssuesCollection(client: ReadingClient, libraryId: string, seriesId: string, kind: ReadingPeriodicalType, issueDate?: string, year?: string, onYears?: (choices: readonly ReadingYearChoice[]) => void) {
+export function createReadingPeriodicalIssuesCollection(client: ReadingClient, libraryId: string, seriesId: string, kind: ReadingPeriodicalType, issueDate?: string, year?: string, onYears?: (choices: readonly ReadingYearChoice[]) => void, month?: string, onDays?: (month: string | undefined, choices: readonly ReadingDayChoice[], latestDate?: string) => void) {
   return cursorCollection<ReadingPeriodicalIssue>(libraryId, issue => issue.item.id, issue => issue.item.libraryId,
     async (cursor, limit, signal) => {
-      const page = await client.periodicalIssues(libraryId, seriesId, kind, {cursor, limit, issueDate, year}, signal);
-      if (!signal.aborted) onYears?.(page.yearChoices);
+      const page = await client.periodicalIssues(libraryId, seriesId, kind, {cursor, limit, issueDate, year, month}, signal);
+      if (!signal.aborted) {onYears?.(page.yearChoices); onDays?.(page.calendarMonth, page.dayChoices, cursor === undefined ? page.items[0]?.issueDate : undefined);}
       return page;
     });
 }

@@ -1,5 +1,6 @@
 /** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
 export const readerMessages = {
+  'next.reader.month': 'Month',
   'next.reader.year': 'Year',
   'next.reader.allYears': 'All years',
   'next.reader.goToDate': 'Go to a date',
