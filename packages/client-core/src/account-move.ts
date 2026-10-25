@@ -163,7 +163,16 @@ export class AccountMoveClient extends MoveTransport {
  }
  cancelPreview(move:AccountMove,signal?:AbortSignal){if(move.stage!=='preview')invalid();return this.call(encodedRoutePath('post_sign_in_move_cancel',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_cancel',{expectedRevision:move.revision}),()=>undefined,signal);}
  finish(move:AccountMove,signal?:AbortSignal){if(!['moving_to_local','moving_to_portico'].includes(move.stage))invalid();return this.call(encodedRoutePath('post_sign_in_move_finish',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_finish',{expectedRevision:move.revision}),()=>undefined,signal);}
- codes(accountIds:readonly string[],signal?:AbortSignal){if(accountIds.length>2000||accountIds.some(id=>!text(id,128))||new Set(accountIds).size!==accountIds.length)invalid();return this.call(routePath('post_sign_in_move_codes'),'POST',routeBody('post_sign_in_move_codes',{accountIds:[...accountIds]}),parseAccountMoveCodes,signal);}
+ /** One receipt for exactly these targets. A receipt must return one code per
+  * requested account and nothing else; a row naming another server is refused. */
+ codes(accountIds:readonly string[],signal?:AbortSignal){if(accountIds.length>2000||accountIds.some(id=>!text(id,128))||new Set(accountIds).size!==accountIds.length)invalid();
+  const targets=new Set(accountIds);
+  return this.call(routePath('post_sign_in_move_codes'),'POST',routeBody('post_sign_in_move_codes',{accountIds:[...accountIds]}),raw=>{
+   const rows=parseAccountMoveCodes(raw);
+   if(rows.length!==targets.size)invalid();
+   for(const row of rows){if(!targets.has(row.accountId))invalid();if(row.serverId!==undefined&&row.serverId!==this.options.serverId)invalid();}
+   return rows;
+  },signal);}
  /** The exact waiting people, for the codes sheet's targets. The generated key
   * for this read arrives with the next official generation; the literal is the
   * declared pending path, not a second contract. */

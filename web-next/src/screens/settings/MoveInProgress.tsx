@@ -1,4 +1,4 @@
-import {useEffect, useSyncExternalStore, useState, type ReactNode} from 'react';
+import {useEffect, useRef, useSyncExternalStore, useState, type ReactNode} from 'react';
 import type {AccountMove} from '@core/account-move.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
@@ -16,8 +16,9 @@ export function SignInMoveWatch({source, children}: {
   source?: SettingsOwnerSwitch; children: (move: AccountMove | undefined) => ReactNode;
 }) {
   const move = useSyncExternalStore(source?.subscribeMove ?? noSubscribe, source?.getMove ?? noMove);
-  // One read per captured source; refreshMove itself refuses when the surface is gone.
-  useEffect(() => { source?.refreshMove(); }, [source]);
+  // One read per captured context; refreshMove itself refuses when the surface is gone.
+  const read = useRef('');
+  useEffect(() => { if (source && read.current !== source.contextId) { read.current = source.contextId; source.refreshMove(); } }, [source]);
   return <>{children(move ?? undefined)}</>;
 }
 
@@ -27,11 +28,14 @@ export function MoveInProgress({move, source, isCurrent, onPeople, onError}: {
   move: AccountMove; source: SettingsOwnerSwitch; isCurrent: () => boolean; onPeople: () => void; onError: (error: unknown) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  // The button finishes exactly the move it rendered, with this panel's own ticket.
+  const life = useRef(new AbortController());
+  useEffect(() => () => life.current.abort(), []);
   const moved = Math.max(0, move.people - move.waiting), percent = move.people > 0 ? Math.round((moved / move.people) * 100) : 0;
   const finish = async () => {
     if (busy || !isCurrent()) return;
     setBusy(true);
-    try { await source.finishMove(); }
+    try { await source.finishMove(move, {isCurrent, signal: life.current.signal}); }
     catch (error) { if (isCurrent()) onError(error); }
     finally { if (isCurrent()) setBusy(false); }
   };

@@ -42,6 +42,7 @@ export const accountMessages = {
   'accounts.move.makeCode': 'Make code',
   'accounts.move.newCode': 'New code',
   'accounts.move.noCodeYet': 'No code yet',
+  'accounts.move.noIssuer': 'This page can’t prove the server’s own address, so it won’t make a link or QR code here.',
   'accounts.signIn.recoveryCode': 'Recovery code',
   'accounts.brand': 'Portico',
   'accounts.provider.google': 'Google',

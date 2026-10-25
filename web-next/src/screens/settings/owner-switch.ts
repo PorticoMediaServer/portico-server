@@ -43,8 +43,11 @@ export class SettingsOwnerSwitch {
   private readonly moveListeners = new Set<() => void>();
   private readonly origin: string;
   private readonly routes: ReturnType<HttpLocalApi['getRouteConnection']>;
+  /** One captured server/sign-in context, stable across rebuilt sources. */
+  readonly contextId: string;
   constructor(private readonly api: HttpLocalApi, private readonly options: OwnerSwitchOptions) {
     this.origin = api.baseUrl;this.routes = api.getRouteConnection();
+    this.contextId = JSON.stringify([options.serverId, this.origin, options.hostedOrigin]);
     this.moves = new AccountMoveClient(api, {serverId: options.serverId, isCurrent: this.current, retireLateGrant: this.retire});
   }
   private retire = async (session: LocalSession) => {
@@ -204,14 +207,35 @@ export class SettingsOwnerSwitch {
     void this.moves.current(signal).then(move => {this.publishMove(move);}, () => undefined)
       .finally(() => {this.moveReading = false;});
   }
-  /** Finish now: the one confirmed move in flight ends here; nobody is admitted. */
-  async finishMove(signal?: AbortSignal) {
-    const move = this.move;
-    if (!this.current()) throw ended();
-    if (!move || (move.stage !== 'moving_to_local' && move.stage !== 'moving_to_portico')) throw new Error('There is no move in progress to finish.');
-    await this.moves.finish(move, signal);
-    this.publishMove(null);
-    this.refreshMove();
+  private finishing = false;
+  /** The origin this server was actually proved at, or nothing. A page that cannot
+   * prove it (a hosted shell, for instance) must never mint a link to another one. */
+  issuerOrigin(): string | undefined {
+    if (!this.current()) return undefined;
+    try {
+      const origin = routeOrigin(this.origin);
+      if (origin !== this.origin) return undefined;
+      if (this.routes) return this.routes.logicalOrigin === origin ? origin : undefined;
+      const host = new URL(origin).hostname;
+      return host === '127.0.0.1' || host === '[::1]' || host === 'localhost' ? origin : undefined;
+    } catch { return undefined; }
+  }
+  /** Finish now: exactly the move the caller rendered, with its own opening ticket.
+   * A stale caller or a replaced move never finishes a successor. Nobody is admitted. */
+  async finishMove(rendered: AccountMove, caller?: OwnerMoveCaller) {
+    if (this.finishing) throw new Error('An owner move finish is already running.');
+    const move = this.move, live = () => this.current() && (!caller || (caller.isCurrent() && caller.signal?.aborted !== true));
+    if (!live() || !move || move.id !== rendered.id || move.revision !== rendered.revision ||
+      (move.stage !== 'moving_to_local' && move.stage !== 'moving_to_portico')) throw new Error('There is no move in progress to finish.');
+    this.finishing = true;
+    const own = new AbortController(), signal = caller?.signal ? AbortSignal.any([own.signal, caller.signal]) : own.signal;
+    try {
+      await this.moves.finish(move, signal);
+      // The finish is only published while the same opening still stands.
+      if (!live()) return;
+      this.publishMove(null);
+      this.refreshMove();
+    } finally {this.finishing = false;}
   }
   /** The exact people still waiting, for the codes host; owner-fenced server read. */
   waiting(signal?:AbortSignal){return this.moves.waiting(signal);}
