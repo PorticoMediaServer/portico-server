@@ -38,11 +38,12 @@ func (s *Service) SetSourceProgram(ctx context.Context, identities *identity.Ser
 	if err != nil {
 		return SourceProgram{}, err
 	}
-	defer snapshot.Rollback()
 	if err = currentLocalOwnerTx(ctx, snapshot.Tx(), identities, owner); err != nil {
+		snapshot.Rollback()
 		return SourceProgram{}, err
 	}
 	row, err := sourceRowTx(ctx, snapshot.Tx(), source)
+	snapshot.Rollback()
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return SourceProgram{}, storage.ErrRemoteOffline

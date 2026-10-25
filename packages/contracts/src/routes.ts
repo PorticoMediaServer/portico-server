@@ -15478,7 +15478,7 @@ export const routes = [
       "revision_required"
     ],
     "status": 200,
-    "admission": "admin"
+    "admission": "admin-long"
   },
   {
     "id": "put_storage_source_read_profile",

@@ -93,7 +93,7 @@ func registerSourceAdvanced(registry *apikit.Registry, d Dependencies) {
 // source association is re-checked before it is accepted.
 func registerSourceProgram(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "administration_unavailable", "internal"}
-	v1Route(registry, apikit.Metadata{ID: "put_storage_source_program", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/program", Summary: "Change the rclone program that serves one mounted source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in SourceProgramRequest) (SourceProgramResponse, error) {
+	v1Route(registry, apikit.Metadata{ID: "put_storage_source_program", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/program", Summary: "Change the rclone program that serves one mounted source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in SourceProgramRequest) (SourceProgramResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceProgramResponse{}, folderError(err)

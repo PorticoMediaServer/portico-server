@@ -22,9 +22,25 @@ func sourceIntroModeTx(ctx context.Context, tx *sql.Tx, object string) (string, 
 	return mode, err
 }
 
-// effectiveSegmentModeTx is the mode that actually applies to this file now:
-// the source's own choice when it has one, otherwise the library's mode.
+// effectiveSegmentModeTx is the mode that actually applies to this file now.
+// The library's effective mode (which already folds in the server choice) comes
+// first: while it is off, no source choice can grant detection work. Only then
+// does the source's own choice pick standard or thorough under it.
 func effectiveSegmentModeTx(ctx context.Context, tx *sql.Tx, object, library string) (string, error) {
+	libraries, _, err := segmentLibrariesTx(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+	libraryMode := SegmentModeOff
+	for _, l := range libraries {
+		if l.ID == library {
+			libraryMode = l.Mode
+			break
+		}
+	}
+	if libraryMode == SegmentModeOff {
+		return SegmentModeOff, nil
+	}
 	mode, err := sourceIntroModeTx(ctx, tx, object)
 	if err != nil {
 		return "", err
@@ -37,16 +53,7 @@ func effectiveSegmentModeTx(ctx context.Context, tx *sql.Tx, object, library str
 	case "picture":
 		return SegmentModeThorough, nil
 	}
-	libraries, _, err := segmentLibrariesTx(ctx, tx)
-	if err != nil {
-		return "", err
-	}
-	for _, l := range libraries {
-		if l.ID == library {
-			return l.Mode, nil
-		}
-	}
-	return SegmentModeOff, nil
+	return libraryMode, nil
 }
 
 // effectiveMode reads the mode that applies to one file right now.

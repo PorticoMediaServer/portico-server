@@ -504662,7 +504662,7 @@
         },
         "summary": "Change the rclone program that serves one mounted source",
         "x-access": "owner",
-        "x-admission": "admin",
+        "x-admission": "admin-long",
         "x-cost": "constant",
         "x-error-codes": [
           "unauthorized",
