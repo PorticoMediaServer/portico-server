@@ -16,7 +16,7 @@ import {settingsRoute} from '../../kit/settings/search';
 import {SettingsPageFailure} from '../../kit/settings';
 import {settingsPlatform} from '../../platform/settings-platform';
 import {DashboardScreen, HistoryScreen, createDashboardBindings, type DashboardBindings} from '../dashboard';
-import {SettingsScreen, type SettingsBindings, type SettingsPageSnapshot} from './Settings';
+import {SettingsScreen, type SettingsBindings, type SettingsContext, type SettingsPageSnapshot} from './Settings';
 import {CustomizeHomeRow} from './account-appearance/CustomizeHome';
 import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
@@ -338,9 +338,14 @@ export function SettingsEntry() {
         advancedRows={renderRows({advanced: selected.section.advanced})} /> : selected.section.id === 'live' && live ? <OwnerSourcesPage source={live} libraryChannels={<LibraryChannelsPage {...libraryChannelAdmission(context, live)}/>}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} openSection={openSettings} /> : selected.section.id === 'segments' && intros ? <ServerIntros source={intros} onPreview={(libraryId, itemId, startSeconds) => {if (current()) void preview({libraryId, itemId, startSeconds}, previewLife.signal, current).catch(reportError);}} modeRows={renderRows({groups: selected.section.groups?.map(group => ({...group, rows: group.rows.filter(row => row.id === 'segments.mode')})).filter(group => group.rows.length), advanced: selected.section.advanced})} /> : selected.section.id === 'people' && people ? <>{signIn?.ownerSwitch && <MoveCodesHost source={signIn.ownerSwitch} serverName={identity.serverName} isCurrent={current} onError={reportError}/>}<PeopleScreen bindings={people} /></> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <><HistoryScreen bindings={dashboard} embedded /><HistoryRetention section={selected.section} renderRows={renderRows}/></> : selected.section.id === 'troubleshooting' ? troubleshooting?.render(<><MessageOptions>{renderRows({groups:selected.section.advanced?.groups?.map(group=>({...group,rows:group.rows.filter(row=>row.id==='troubleshooting.logLevel'||row.id==='troubleshooting.detailLength')})).filter(group=>group.rows.length)})}</MessageOptions>{playbackProblems && <div id="troubleshooting.playbackProblems"><PlaybackProblems source={playbackProblems}/></div>}</>,controller.messageDetailMinutes()) : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
+    const lyricsSourceIsLrclib = (selected: SettingsContext) => {
+      const row = settingsRowIndex.get('libraries.lyrics')?.row;
+      return !!row && controller.rowState(row, selected).value === 'lrclib';
+    };
     const settings: SettingsBindings = {...source,
       panelIntro: selected => selected.recordId && selected.tabId === 'metadata' && libraries ? <MetadataSource key={selected.recordId} libraryId={selected.recordId} api={context.api} isCurrent={current} /> : null,
-      panelHeader: (selected, title) => selected.recordId && libraries ? <LibraryHeader key={selected.recordId} libraryId={selected.recordId} name={title} rename={name => controller.renameLibrary(selected.recordId!, name)} service={libraries} artwork={context.artwork} onError={reportError} /> : null,
+      panelHeader: (selected, title) => selected.recordId && libraries ? <LibraryHeader key={selected.recordId} libraryId={selected.recordId} name={title} rename={name => controller.renameLibrary(selected.recordId!, name)} service={libraries} artwork={context.artwork} onError={reportError}
+        lyrics={{api: context.api, available: lyricsSourceIsLrclib(selected), isCurrent: current}} /> : null,
       subscribe: listener => {const off = source.subscribe(listener), offProfiles = profiles?.subscribe(listener), offLimits = restrictions?.subscribe(listener), offHardware = hardware?.subscribe(listener), offServer = server?.subscribe(listener);return () => {off();offProfiles?.();offLimits?.();offHardware?.();offServer?.();};},
       change: (row, value, selected) => {
         if (restrictions && isProfileRestriction(row.id)) {void changeRestriction(restrictions, row.id, value)?.catch(reportError);return;}
