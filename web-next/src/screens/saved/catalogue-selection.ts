@@ -8,7 +8,7 @@ import type {SavedRuntime, SavedScreenRoute} from './runtime';
 import {sameSavedRoute, savedRouteKey} from './route';
 
 export function savedCatalogueEntry(entry: SavedEntry): ContentEntry | undefined {
-  return entry.kind === 'playlist' ? undefined : entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
+  return entry.kind === 'playlist' || entry.kind === 'reading_group' ? undefined : entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
 }
 /** Only current, server-projected catalogue members participate. Playlist
  * occurrence removal and resource administration keep their separate owners. */

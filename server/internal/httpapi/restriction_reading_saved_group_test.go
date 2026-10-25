@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -128,6 +129,60 @@ func readingSavedGroupRestrictionCheck(t *testing.T) {
 			var readded ReadingSavedGroupResponse
 			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &readded) != nil || !readded.Listed || readded.Revision != 3 || readded.ReferenceID != added.ReferenceID {
 				t.Fatal("group readd rebound reference", w.Code, w.Body.String())
+			}
+			// One reference and one explicitly saved leaf share the ordered
+			// server page; the dynamic group's count includes the later member.
+			leafPath := "/v1/items/" + items[0] + "/reading/my-list"
+			leafSave := readingHTTP(t, h, "PUT", leafPath, token, "", ReadingSavedRequest{OperationID: "mixed-leaf-add", ExpectedRevision: 0, Listed: &yes})
+			if leafSave.Code != 200 {
+				t.Fatal("mixed leaf save", leafSave.Code, leafSave.Body.String())
+			}
+			type savedPage struct {
+				Sections []struct {
+					Entries []json.RawMessage `json:"entries"`
+					Total   int               `json:"totalCount"`
+					Next    string            `json:"nextCursor"`
+				} `json:"sections"`
+			}
+			for _, direction := range []string{"asc", "desc"} {
+				cursor := ""
+				seen := map[string]bool{}
+				for page := 0; page < 2; page++ {
+					endpoint := "/v1/content?view=watchlist&shape=posters&limit=1&direction=" + direction
+					if cursor != "" {
+						endpoint += "&cursor=" + url.QueryEscape(cursor)
+					}
+					response := readingHTTP(t, h, "GET", endpoint, token, "", nil)
+					var result savedPage
+					if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.Sections) != 1 || result.Sections[0].Total != 2 || len(result.Sections[0].Entries) != 1 {
+						t.Fatal("actual mixed Saved page", direction, page, response.Code, response.Body.String())
+					}
+					var card struct {
+						ID, Kind     string
+						Count        int64
+						LibraryID    string
+						ReadingGroup catalog.SavedReadingGroupLink
+						Navigation   catalog.SavedReadingGroupNavigation
+					}
+					if json.Unmarshal(result.Sections[0].Entries[0], &card) != nil || seen[card.ID] {
+						t.Fatal("duplicate/malformed mixed Saved card")
+					}
+					seen[card.ID] = true
+					if card.Kind == "reading_group" && (card.ID != added.ReferenceID || card.Count != 3 || card.LibraryID != r.library || card.ReadingGroup.SeriesID != series || card.ReadingGroup.GroupKind != kind || card.Navigation.EntityID != series) {
+						t.Fatal("dynamic group projection changed", string(result.Sections[0].Entries[0]))
+					}
+					cursor = result.Sections[0].Next
+					if (page == 0) != (cursor != "") {
+						t.Fatal("mixed cursor bound", page, cursor)
+					}
+				}
+				if !seen[added.ReferenceID] || !seen[items[0]] {
+					t.Fatal("mixed page omitted actual leaf/reference", seen)
+				}
+			}
+			leafRemove := readingHTTP(t, h, "PUT", leafPath, token, "", ReadingSavedRequest{OperationID: "mixed-leaf-remove", ExpectedRevision: 1, Listed: &no})
+			if leafRemove.Code != 200 {
+				t.Fatal("mixed leaf cleanup", leafRemove.Code, leafRemove.Body.String())
 			}
 			privatePath := func(reference string) string { return "/v1/reading/saved-groups/" + reference }
 			deleteBody := ReadingSavedGroupRemovalRequest{OperationID: "private-remove", ExpectedRevision: 3}

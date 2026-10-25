@@ -667,14 +667,34 @@ type SavedSummary struct {
 }
 
 func (s *Service) SavedSummary(server string, v Viewer, a ResourceActor) (SavedSummary, error) {
+	return s.savedSummary(server, v, a, nil)
+}
+
+// The HTTP caller supplies the same original-principal admission used by the
+// mixed Saved page. The legacy browse-only entry never reads private refs.
+func (s *Service) SavedSummaryWithReadingGroups(server string, v Viewer, a ResourceActor, admit SavedGroupAdmission) (SavedSummary, error) {
+	return s.savedSummary(server, v, a, admit)
+}
+
+func (s *Service) savedSummary(server string, v Viewer, a ResourceActor, admit SavedGroupAdmission) (SavedSummary, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
 		var out SavedSummary
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var err error
-			out, err = s.WithContext(ctx).SavedSummary(server, v, a)
+			out, err = s.WithContext(ctx).savedSummary(server, v, a, admit)
 			return err
 		})
 		return out, err
+	}
+	if admit != nil {
+		live, err := admit(s.Context(), s.readTxOrSnapshot())
+		if err != nil {
+			return SavedSummary{}, err
+		}
+		if live.Profile != v.Profile || live.Fence != v.Fence {
+			return SavedSummary{}, identity.ErrUnauthorized
+		}
+		v = live
 	}
 	out := SavedSummary{ServerID: server, ViewerFence: v.Fence}
 	var err error
@@ -683,7 +703,16 @@ func (s *Service) SavedSummary(server string, v Viewer, a ResourceActor) (SavedS
 		return out, err
 	}
 	for _, view := range []string{"watchlist", "favorites"} {
-		page, e := s.Saved(ContentRequest{Viewer: v, ServerID: server, View: view, Limit: 1}, v.Libraries)
+		var page ContentEnvelope
+		var e error
+		request := ContentRequest{Viewer: v, ServerID: server, Profile: v.Profile, ViewerFence: v.Fence, View: view, Limit: 1}
+		if view == "watchlist" && admit != nil {
+			var mixed SavedContentEnvelope
+			mixed, e = s.SavedWithReadingGroups(request, v.Libraries, admit)
+			page = mixed.ContentEnvelope
+		} else {
+			page, e = s.Saved(request, v.Libraries)
+		}
 		if e != nil {
 			return out, e
 		}

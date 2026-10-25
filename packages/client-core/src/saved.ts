@@ -1,3 +1,4 @@
+import {parseSavedReadingGroupCard, type SavedReadingGroupCard} from './reading-saved-group.ts';
 import {validateHomeEntry} from './home.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
@@ -50,10 +51,12 @@ export function personalHistoryPath(options: Readonly<{ period?: HistoryPeriod; 
 }
 export type PlaylistOccurrence = Readonly<{ id: string; kind: 'playlist_entry'; hidden: true } | { id: string; kind: 'playlist_entry'; hidden: false; media: ContentEntry }>;
 export type PlaylistCard = Readonly<{ id: string; kind: 'playlist'; title: string; subtitle?: string; count?: number; artworkPaths?:readonly string[]; navigation: Readonly<{ view: 'playlist'; entityId: string }> }>;
-export type SavedEntry = ContentEntry | PlaylistOccurrence | PlaylistCard;
+export type SavedEntry = ContentEntry | PlaylistOccurrence | PlaylistCard | SavedReadingGroupCard;
+export const savedEntryKey = (entry: SavedEntry): string => entry.kind === 'reading_group' ? `reading-group:${entry.id}` : entry.id;
 export type SavedProjection = Readonly<Omit<ContentProjection, 'scope' | 'sections' | 'navigation'> & {
  scope: Readonly<{ serverId: string; libraryId: ''; libraryKind: 'mixed'; view: SavedRoute['view']; entityId: string; viewerFence: string }>;
  shapeCounts?:SavedShapeCounts;
+ savedRevision?: number;
  playlistRevision?: number;
  actions?: readonly string[];
  navigation: readonly Readonly<{ id: string; labelKey: string; view: 'watchlist' | 'favorites' | 'playlists' }>[];
@@ -140,6 +143,7 @@ function media(v: unknown): ContentEntry {
 }
 function entry(v: unknown, view: SavedRoute['view']): SavedEntry {
  if (!record(v)) invalid();
+ if (v.kind === 'reading_group') {if (view !== 'watchlist') invalid(); return parseSavedReadingGroupCard(v);}
  if (view === 'playlist') {
   if (!id(v.id) || v.kind !== 'playlist_entry' || typeof v.hidden !== 'boolean') invalid();
   // A hidden occurrence stays opaque: whatever else the row carries is never read.
@@ -173,7 +177,7 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
  // layout is shown as a grid.
  const rawSections = list(v.sections, 4);
  for (const row of rawSections) if (record(row)) { within(row.entries, row.type === 'rail' ? 12 : 100); if (!text(row.nextCursor, 4096)) invalid(); }
- const sections = firstOfEach('saved', 'sections', keepReadable('saved', 'sections', rawSections, row => { if (!record(row) || !id(row.id)) invalid(); const type = oneOfOr('saved', 'section.type', row.type, ['rail','grid','list'] as const, 'grid'); const entries = firstOfEach('saved', 'section.entries', keepReadable('saved', 'section.entries', list(row.entries, 100), value => entry(value, selected.view)), value => value.id); return { id: row.id, type, heading: heading(row.heading), entries, totalCount: int(row.totalCount) ? Math.max(row.totalCount, entries.length) : entries.length, nextCursor: row.nextCursor as string }; }), row => row.id);
+ const sections = firstOfEach('saved', 'sections', keepReadable('saved', 'sections', rawSections, row => { if (!record(row) || !id(row.id)) invalid(); const type = oneOfOr('saved', 'section.type', row.type, ['rail','grid','list'] as const, 'grid'); const entries = firstOfEach('saved', 'section.entries', keepReadable('saved', 'section.entries', list(row.entries, 100), value => entry(value, selected.view)), savedEntryKey); return { id: row.id, type, heading: heading(row.heading), entries, totalCount: int(row.totalCount) ? Math.max(row.totalCount, entries.length) : entries.length, nextCursor: row.nextCursor as string }; }), row => row.id);
  const navigation = firstOfEach('saved', 'navigation', keepReadable('saved', 'navigation', list(v.navigation, 3), n => { if (!record(n) || !id(n.id) || !id(n.labelKey) || !['watchlist','favorites','playlists'].includes(n.view as string)) invalid(); return { id: n.id, labelKey: n.labelKey, view: n.view as 'watchlist'|'favorites'|'playlists' }; }), n => n.id);
  const rawSorts = list(v.sorts, 16); for (const row of rawSorts) if (record(row)) within(row.directions, 2);
  const sorts = firstOfEach('saved', 'sorts', keepReadable('saved', 'sorts', rawSorts, row => { if (!record(row) || !id(row.id) || !id(row.labelKey)) invalid(); const directions = [...new Set(list(row.directions, 2).filter((d): d is 'asc'|'desc' => d === 'asc' || d === 'desc'))]; return { id: row.id, labelKey: row.labelKey, directions }; }), row => row.id);
@@ -187,7 +191,8 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
  if (actions !== undefined && actions.length !== (v.actions as unknown[]).length) noteSkipped('saved', 'actions', (v.actions as unknown[]).length - actions.length);
  if (selected.view === 'playlists' && actions === undefined) invalid();
  const shapeCounts=v.shapeCounts===undefined?undefined:parseSavedShapeCounts(v.shapeCounts);
- return freeze({...(shapeCounts?{shapeCounts}:{}), scope: { serverId: bound.serverId, libraryId: '', libraryKind: 'mixed', view: selected.view, entityId: s.entityId as string, viewerFence: s.viewerFence }, revision: { catalog: r.catalog, viewer: r.viewer }, heading: heading(v.heading), query: { sort: q.sort, direction: q.direction as string, category: q.category as string, q: '', limit: 40, searchMode: 'none' }, navigation, sorts, filters, sections, ...(actions === undefined ? {} : { actions }), ...(selected.view === 'playlist' ? { playlistRevision: v.playlistRevision as number } : {}), ...(v.empty === undefined ? {} : keepReadable('saved', 'empty', [v.empty], value => ({ empty: heading(value) }))[0]) });
+ const savedRevision=v.savedRevision; if(savedRevision!==undefined&&(!int(savedRevision)||savedRevision<1||selected.view!=='watchlist'))invalid();
+ return freeze({...(savedRevision===undefined?{}:{savedRevision:savedRevision as number}), ...(shapeCounts?{shapeCounts}:{}), scope: { serverId: bound.serverId, libraryId: '', libraryKind: 'mixed', view: selected.view, entityId: s.entityId as string, viewerFence: s.viewerFence }, revision: { catalog: r.catalog, viewer: r.viewer }, heading: heading(v.heading), query: { sort: q.sort, direction: q.direction as string, category: q.category as string, q: '', limit: 40, searchMode: 'none' }, navigation, sorts, filters, sections, ...(actions === undefined ? {} : { actions }), ...(selected.view === 'playlist' ? { playlistRevision: v.playlistRevision as number } : {}), ...(v.empty === undefined ? {} : keepReadable('saved', 'empty', [v.empty], value => ({ empty: heading(value) }))[0]) });
 }
 function resource(v: unknown, bound: SavedScope, playlistId: string): PlaylistResource {
  if (!record(v) || v.serverId !== bound.serverId || !id(v.viewerFence) || v.id !== playlistId || !prose(v.name, 200) || !prose(v.summary, 4000, true) || !int(v.revision) || !['owner','editor','viewer'].includes(v.role as string) || !int(v.entryCount) || !record(v.limits)) invalid();
@@ -321,7 +326,7 @@ export class SavedService {
   const first = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
   if (playlist && (playlist.viewerFence !== first.scope.viewerFence || playlist.revision !== first.playlistRevision || this.state.lastReceipt?.playlistId === playlist.id && playlist.revision < this.state.lastReceipt.revision)) return false;
   const sections = first.sections.map(section => ({ ...section, entries: [...section.entries] as SavedEntry[] }));
-  const seen = new Set(sections.flatMap(section => section.entries.map(e => e.id)));
+  const seen = new Set(sections.flatMap(section => section.entries.map(savedEntryKey)));
   let count = seen.size;
   for (let pages = 1; count < want; pages++) {
    const paged = sections.find(section => section.nextCursor);
@@ -332,11 +337,11 @@ export class SavedService {
    try { page = projection(await this.deadline(api.request<unknown>(pathOf(followed), 'GET', undefined, controller.signal), controller), bound, selected); }
    catch (error) { if (['stale_continuation', 'invalid_cursor'].includes(errorInfo(error).code)) return false; throw error; }
    if (!live()) return true;
-   if (page.scope.viewerFence !== first.scope.viewerFence || playlist && page.playlistRevision !== playlist.revision) return false;
+   if (page.scope.viewerFence !== first.scope.viewerFence || page.savedRevision !== first.savedRevision || playlist && page.playlistRevision !== playlist.revision) return false;
    for (const part of page.sections) {
     const into = sections.find(section => section.id === part.id);
-    const added = part.entries.filter(e => !seen.has(e.id));
-    for (const e of added) seen.add(e.id);
+    const added = part.entries.filter(e => !seen.has(savedEntryKey(e)));
+    for (const e of added) seen.add(savedEntryKey(e));
     count += added.length;
     if (!into) { sections.push({ ...part, entries: added }); continue; }
     into.entries.push(...added);
@@ -391,7 +396,7 @@ export class SavedService {
     if (playlist && this.state.lastReceipt?.playlistId === playlist.id && playlist.revision < this.state.lastReceipt.revision) throw new Failure('stale_continuation', 'The server returned a playlist older than the confirmed change. Refresh again.', true);
     if (playlist && (playlist.viewerFence !== parsed.scope.viewerFence || playlist.revision !== parsed.playlistRevision)) throw new Failure('stale_continuation', 'The playlist changed while loading. Refresh its current order.', true);
     // A later page read after the list moved is still a valid page; only another viewer's answer is refused.
-    if (cursor && previous && parsed.scope.viewerFence !== previous.scope.viewerFence) throw new Failure('stale_continuation', 'Saved results changed. Refresh the first page.', true);
+    if (cursor && previous && (parsed.scope.viewerFence !== previous.scope.viewerFence || parsed.savedRevision !== previous.savedRevision)) throw new Failure('stale_continuation', 'Saved results changed. Refresh the first page.', true);
     // What the viewer has on screen: the first page, and every page appended after it.
     const count = parsed.sections.reduce((n, section) => n + section.entries.length, 0);
     this.seen = cursor === null ? count : move === 'next' ? this.seen + count : this.seen;

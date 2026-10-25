@@ -211,12 +211,22 @@ func (s *Service) ConfigureReadingMobi(available bool) {
 func (s *Service) readingMobiConfigured() bool {
 	return s != nil && s.state != nil && s.state.readingMobi.Load()
 }
-func (r *readingBrowseScope) sourceFormatsSQL() string {
+
+// Batch group projection serializes this same captured set. The array and
+// single-library SQL never infer format support from member metadata.
+func (r *readingBrowseScope) sourceFormats() []string {
 	if r.kind == "comic" {
-		return "'cbz','pdf'"
+		return []string{"cbz", "pdf"}
 	}
 	if r.mobi {
-		return "'epub','pdf','mobi','azw3'"
+		return []string{"epub", "pdf", "mobi", "azw3"}
 	}
-	return "'epub','pdf'"
+	return []string{"epub", "pdf"}
+}
+func (r *readingBrowseScope) sourceFormatsSQL() string {
+	formats := r.sourceFormats()
+	for i := range formats {
+		formats[i] = "'" + formats[i] + "'"
+	}
+	return strings.Join(formats, ",")
 }
