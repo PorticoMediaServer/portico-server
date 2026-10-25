@@ -245,22 +245,35 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
     ? {libraryId: data.scope.libraryId, itemId: data.item.id, kind, title: data.item.title} : undefined;
   const leaf = !!entryTarget;
   const canEditMetadata = leaf && owner && offered('metadata_edit') && !!binding.context.effects.editMetadata;
+  const canDelete = leaf && owner && offered('delete') && !!binding.context.effects.deleteTitle;
+  const canAddToPlaylist = leaf && offered('add_to_playlist') && !!binding.context.effects.addToPlaylist;
+  const canAddToCollection = leaf && offered('add_to_collection') && !!binding.context.effects.addToCollection;
+  const everyoneRows = personal || canAddToPlaylist || canAddToCollection || downloadAvailable;
+  const ownerRows = !!refreshPath || canEditMetadata || canDelete;
+  const sheet = width < 600;
   const destination = (effect: typeof binding.context.effects.addToPlaylist) => runScreenCommand(binding.context, () => {
     binding.current(data); if (entryTarget && effect && trigger.current) return effect(entryTarget, trigger.current);
   });
   return <>
     <Menu open={open} onOpenChange={setOpen} title={data.item.title} width={280} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} className={open ? styles.moreOpen : undefined} />}>
-      {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
-      {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
-      {offered('rating') && <MenuItem icon="i-star" onSelect={() => setRating(true)}>{t('entry.rate')}</MenuItem>}
-      {personal && <MenuSeparator />}
-      {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
-      {downloadAvailable && <MenuItem icon="i-download" onSelect={() => runScreenCommand(binding.context, openDownload)}>{t('next.detail.downloadAction')}</MenuItem>}
-      {leaf && offered('add_to_playlist') && binding.context.effects.addToPlaylist && <MenuItem icon="i-listadd" onSelect={() => destination(binding.context.effects.addToPlaylist)}>{t('next.selection.addToPlaylist')}</MenuItem>}
-      {leaf && offered('add_to_collection') && binding.context.effects.addToCollection && <MenuItem icon="i-layers" onSelect={() => destination(binding.context.effects.addToCollection)}>{t('next.selection.addToCollection')}</MenuItem>}
-      {leaf && owner && offered('delete') && binding.context.effects.deleteTitle && <MenuItem icon="i-trash" onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('next.selection.deleteMenu')}</MenuItem>}
-      <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
-      {(refreshPath || canEditMetadata) && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly>{canEditMetadata && <MenuItem onSelect={() => destination(binding.context.effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}{refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}</MenuGroup></>}
+      {/* The drawn menu (desktop-detail 1 and 2, phone-detail 9): everyone's rows keep the frame's
+          order — personal first, then playlist, collection and Download — before the version and
+          File info block and the owner's own section, with Delete last and destructive. The sheet
+          draws each block as its own card, so its separators are the gaps the frame shows. */}
+      {everyoneRows && <MenuGroup>
+        {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
+        {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
+        {offered('rating') && <MenuItem icon="i-star" onSelect={() => setRating(true)}>{t('entry.rate')}</MenuItem>}
+        {canAddToPlaylist && <MenuItem icon="i-listadd" onSelect={() => destination(binding.context.effects.addToPlaylist)}>{t('entry.addToPlaylist')}</MenuItem>}
+        {canAddToCollection && <MenuItem icon="i-layers" onSelect={() => destination(binding.context.effects.addToCollection)}>{t('entry.addToCollection')}</MenuItem>}
+        {downloadAvailable && <MenuItem icon="i-download" onSelect={() => runScreenCommand(binding.context, openDownload)}>{t('next.detail.downloadAction')}</MenuItem>}
+      </MenuGroup>}
+      {everyoneRows && !sheet && <MenuSeparator />}
+      <MenuGroup>
+        {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
+        <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
+      </MenuGroup>
+      {ownerRows && <MenuGroup label={t(sheet ? 'next.overlays.ownerOnly' : 'next.overlays.owner')} ownerOnly>{canEditMetadata && <MenuItem onSelect={() => destination(binding.context.effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}{refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}{canDelete && <MenuItem icon="i-trash" destructive onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('entry.delete')}</MenuItem>}</MenuGroup>}
     </Menu>
     {downloadView && downloadView.active.data === data && (downloadView.options?.policy.allowDownloads
       ? <DownloadNotice open onOpenChange={value => { if (!value) closeDownload(); }} title={data.item.title} artwork={binding.context.artwork.foreground(data.item.posterUrl, 88, 2 / 3)} options={downloadView.options} busy={downloadView.busy}
