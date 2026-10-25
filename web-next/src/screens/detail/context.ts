@@ -1,3 +1,4 @@
+import type {EntryMetadataEffect} from '../../shell/entry-metadata';
 import type {BrowserDownloadPort} from '../../platform/browser-download';
 import type {EntryActionTarget} from '../../shell/entry-actions';
 import type {HttpLocalApi} from '@core/index.ts';
@@ -30,6 +31,7 @@ export type ScreenContext = Readonly<{
     playSeason?: (seasonId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
     chooseVersion?: (request: WatchVersionRequest) => Promise<void>;
     download?: BrowserDownloadPort;
+    editMetadata?: EntryMetadataEffect;
     addToPlaylist?: (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
     addToCollection?: (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
     deleteTitle?: (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;

@@ -245,6 +245,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const entryTarget: EntryActionTarget | undefined = kind === 'movie' || kind === 'episode' || kind === 'song' || kind === 'audiobook_file'
     ? {libraryId: data.scope.libraryId, itemId: data.item.id, kind, title: data.item.title} : undefined;
   const leaf = !!entryTarget;
+  const canEditMetadata = leaf && owner && offered('metadata_edit') && !!binding.context.effects.editMetadata;
   const destination = (effect: typeof binding.context.effects.addToPlaylist) => runScreenCommand(binding.context, () => {
     binding.current(data); if (entryTarget && effect && trigger.current) return effect(entryTarget, trigger.current);
   });
@@ -260,7 +261,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       {leaf && offered('add_to_collection') && binding.context.effects.addToCollection && <MenuItem icon="i-layers" onSelect={() => destination(binding.context.effects.addToCollection)}>{t('next.selection.addToCollection')}</MenuItem>}
       {leaf && owner && detailActions(data, {platform: 'web'}).more.some(group => group.actions.some(action => action.id === 'delete')) && binding.context.effects.deleteTitle && <MenuItem icon="i-trash" onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('next.selection.deleteMenu')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
-      {refreshPath && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly><MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem></MenuGroup></>}
+      {(refreshPath || canEditMetadata) && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly>{canEditMetadata && <MenuItem onSelect={() => destination(binding.context.effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}{refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}</MenuGroup></>}
     </Menu>
     {downloadView && downloadView.active.data === data && (downloadView.options?.policy.allowDownloads
       ? <DownloadNotice open onOpenChange={value => { if (!value) closeDownload(); }} title={data.item.title} artwork={binding.context.artwork.foreground(data.item.posterUrl, 88, 2 / 3)} options={downloadView.options} busy={downloadView.busy}
