@@ -34,7 +34,9 @@ export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer
     // The shared label names Atmos specifically; a DTS:X loss is not that fact.
     ...(info.losses.some(loss => loss.feature === 'atmos') ? {atmosLost: true} : {}),
     ...(session.presentation.audio && typeof session.presentation.audio.loudnessAppliedDb === 'number' ? {loudnessAppliedDb: session.presentation.audio.loudnessAppliedDb} : {})};
-  const resampled = !!(observed?.sampleRate && sourceAudio.sampleRate && observed.sampleRate !== sourceAudio.sampleRate);
+  // Server conversion may already have changed the file's rate. Only a further
+  // difference from the pinned delivered audio belongs to the browser output.
+  const resampled = observed?.handling !== 'passthrough' && !!(observed?.sampleRate && delivered?.sampleRate && observed.sampleRate !== delivered.sampleRate);
   const output: MusicSignalInput['output'] = {platform: 'browser', device: 'browser',
     ...(observed?.sampleRate ? {sampleRate: observed.sampleRate} : {}), ...(observed?.bitDepth ? {bitDepth: observed.bitDepth} : {}),
     ...(observed?.handling === 'passthrough' ? {passthrough: true} : observed?.layout ? {decodedLayout: observed.layout} : {}),
