@@ -26,6 +26,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), input = useSyncExternalStore(form.subscribe, form.getSnapshot);
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), [joining, setJoining] = useState(false), started = useRef(false), alive = useRef(true), joinOrigin = useRef<string | undefined>(undefined);
   const [recovery, setRecovery] = useState<RecoveryTarget>();
+  const [acknowledgedMove, setAcknowledgedMove] = useState<ReturnType<BrowserAccountEntry['getSnapshot']>>();
   const [memberView, setMemberView] = useState<Readonly<{mode: 'old-password' | 'code'; target: RecoveryTarget}>>();
   const pageOrigin = initialOrigin ?? import.meta.env.VITE_SERVER_URL ?? location.origin;
   useEffect(() => {
@@ -39,14 +40,14 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     return () => {alive.current = false;};
   }, [entry, form, takeReturn, takeMove, pageOrigin, initialize]);
   useEffect(() => {
-    if (joining || initializing || entry.getSnapshot() !== state || input.factor || input.busy) return;
+    if (joining || initializing || entry.getSnapshot() !== state || input.factor || input.busy || state.memberMoveCompleted && !state.snapshot?.twoStepSetupRequired && (state.phase === 'profiles' || state.phase === 'ready') && acknowledgedMove !== state) return;
     if (state.phase === 'ready') void router.navigate({to: state.setupCompleted ? '/setup' : '/', replace: true});
     else if (state.phase === 'profiles' && state.snapshot && !state.snapshot.twoStepSetupRequired) void router.navigate({to: '/profiles', replace: true});
     else if (state.phase === 'two-step-setup' && state.origin) {
       form.setUsername(state.snapshot?.account.username ?? input.username);
       void entry.inspect(state.origin);
     }
-  }, [entry, form, state, input, initializing, joining]);
+  }, [entry, form, state, input, initializing, joining, acknowledgedMove]);
   const join = () => {
     const current = entry.getSnapshot(), currentForm = form.getSnapshot();
     if (!canOpenShortInvitation(current, state, currentForm, alive.current, joining, initializing)) return;
@@ -101,6 +102,13 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   const identityFailure = entry.serverIdentityFailure(() => {void router.navigate({to: '/servers'});});
   if (identityFailure) return <AccountIdentityFailure binding={identityFailure}/>;
   if (joining) return <ShortInvitationEntry onBack={leaveJoin} onJoined={destination => location.assign(destination.origin)} />;
+  if (!input.factor && state.memberMoveCompleted && !state.busy && !state.error && state.snapshot && !state.snapshot.twoStepSetupRequired && (state.phase === 'profiles' || state.phase === 'ready') && acknowledgedMove !== state) return <AuthStage>
+    <h1>{defaultI18n.t('accounts.move.linked')}</h1>
+    <p>{defaultI18n.t('accounts.move.linkedBody')}</p>
+    <Button variant="primary" disabled={busy} onClick={() => {
+      if (alive.current && !busy && entry.getSnapshot() === state && form.getSnapshot() === input) setAcknowledgedMove(state);
+    }}>{defaultI18n.t(state.phase === 'profiles' ? 'accounts.move.chooseProfile' : 'action.continue')}</Button>
+  </AuthStage>;
   if (input.factor) return <RequiredFactorDialogs form={input.factor} error={failure} onCancel={cancel} onDone={() => {form.clear(); void router.navigate({to: '/profiles', replace: true});}} />;
   if (state.phase === 'password-change') return <RequiredPasswordDialog key={input.inputEpoch} busy={busy} error={failure}
     onChange={(current, next) => {form.clear(); void entry.changePassword(current, next);}} onCancel={cancel} />;
