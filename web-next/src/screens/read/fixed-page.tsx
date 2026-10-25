@@ -87,7 +87,7 @@ function FixedPagesWindow({controller, authority, reportError, format, count, cu
     const captured = new AbortController(); lifeRef.current = captured; setLife(captured);
     return () => {captured.abort(); if (lifeRef.current === captured) lifeRef.current = undefined;};
   }, [controller, authority, sourceId, sourceRevision, count]);
-  const pages = pageWindow?.life === life ? pageWindow.collection : undefined;
+  const pages = pageWindow && pageWindow.life === life ? pageWindow.collection : undefined;
   const [height, setHeight] = useState(0);
   const currentSource = () => {
     const snapshot = controller.getSnapshot();
