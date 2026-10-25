@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
@@ -105,12 +105,22 @@ const noPreferences = () => () => {};
 /** Stable snapshot: the Remote sources page owns its reads and never enters the generic section loader. */
 const remoteSourcesPageSnapshot = Object.freeze({loading: false});
 
+const sameBuildInputs = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
+const settingsBuildFacts = (context?: ShellAssemblyContext) => {
+  const identity = context?.facts.identity, viewer = context?.session().viewer;
+  return [identity?.primaryProfile, identity?.capabilities?.manageServer, identity?.capabilities?.managePeople,
+    identity?.capabilities?.manageSignIn, identity?.signIn, viewer?.role, viewer?.serverId, viewer?.authority, viewer?.accountId, viewer?.profileId] as const;
+};
+const settingsLocationRoute = (location: Readonly<{pathname: string; searchStr: string}>) => settingsRoute(location.pathname === '/dashboard'
+  ? {scope: 'server', section: 'dashboard'} : Object.fromEntries(new URLSearchParams(location.searchStr)), () => true);
+type SettingsBuild = Readonly<{context: ShellAssemblyContext; inputs: readonly unknown[]; current: () => boolean;
+  settings: SettingsBindings; dashboard?: DashboardBindings; profiles?: ProfileSettingsSource;
+  profilePINCurrent: (request: ProfilePINRequest) => boolean; closeProfilePIN: (request: ProfilePINRequest) => void}>;
+
 export function SettingsEntry() {
   const protectedContext = useProtectedWebScreenContext();
-  const liveBinding = useRef(protectedContext?.binding);
-  liveBinding.current = protectedContext?.binding;
   const location = useRouterState({select: state => state.location});
-  const [owned, setOwned] = useState<{context: ShellAssemblyContext; settings: SettingsBindings; dashboard?: DashboardBindings; profiles?: ProfileSettingsSource}>();
+  const [owned, setOwned] = useState<SettingsBuild>();
   const [profilePIN, setProfilePIN] = useState<ProfilePINRequest>();
   const [failure, setFailure] = useState(false), [retry, setRetry] = useState(0);
   const context = protectedContext?.context;
@@ -119,26 +129,80 @@ export function SettingsEntry() {
   const preferences = useSyncExternalStore(context?.preferences?.subscribe ?? noPreferences, () => context?.preferences?.getSnapshot('web'), () => undefined);
   const reportTimeZone = preferences && shellLanguage(preferences).region.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const raw = Object.fromEntries(new URLSearchParams(location.searchStr));
-  const route = settingsRoute(location.pathname === '/dashboard' ? {scope: 'server', section: 'dashboard'} : raw, () => true);
-  // The owner's update reader is retired in a layout pass the moment any
-  // captured identity, scope or route changes, before the next paint: the
-  // passive cleanup alone could let the old reader write while the page
-  // already shows the next one.
-  const updatesLife = useRef<SettingsUpdatesSource | undefined>(undefined);
-  useLayoutEffect(() => () => {
-    const held = updatesLife.current;
-    updatesLife.current = undefined;
-    held?.dispose();
-  }, [context, retry, route.scope, route.section, !!preferences, reportTimeZone, context?.facts.identity.primaryProfile,
-    context?.facts.identity.capabilities?.manageServer, context?.facts.identity.capabilities?.managePeople,
-    context?.facts.identity.capabilities?.manageSignIn, context?.facts.identity.signIn,
-    context?.session().viewer.role, context?.session().viewer.serverId, context?.session().viewer.authority, context?.session().viewer.accountId, context?.session().viewer.profileId]);
-  useEffect(() => {
-    const reader = context?.preferences, snapshot = reader?.getSnapshot('web');
+  const route = settingsLocationRoute(location);
+  const facts = settingsBuildFacts(context);
+  // Keep the original build dependencies: ordinary preference confirmations and
+  // row-only deep links keep their controller, forms and outstanding intents.
+  const inputs = [context, retry, route.scope, route.section, !!preferences, reportTimeZone, ...facts] as const;
+  const reportCarry = useRef<Readonly<{inputs: readonly unknown[]; report: ReportContext}> | undefined>(undefined);
+  const mediaRuntime = protectedContext?.binding.playback?.runtime;
+  useLayoutEffect(() => {
+    const reader = context?.preferences, snapshot = preferences;
     if (!context || !reader || !snapshot || !context.isCurrent()) return;
     let active = true;
-    const authorityListeners = new Set<() => void>();
-    const current = () => active && context.isCurrent();
+    const lifetime = new AbortController(), authorityListeners = new Set<() => void>();
+    let preferencesAvailable = true, confirmedZone = reportTimeZone;
+    // Confirmed preference changes narrow this same build immediately. The
+    // controller still owns its form intents; only presence/zone retire it.
+    const offPreferenceFence = reader.subscribe(() => {
+      const confirmed = reader.getSnapshot('web');
+      preferencesAvailable = !!confirmed;
+      confirmedZone = confirmed && shellLanguage(confirmed).region.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    });
+    const current = () => {
+      if (!active || !context.isCurrent() || !sameBuildInputs(facts, settingsBuildFacts(context))) return false;
+      const location = router.state.location;
+      if (location.pathname !== '/settings' && location.pathname !== '/dashboard') return false;
+      const selected = settingsLocationRoute(location);
+      return selected.scope === route.scope && selected.section === route.section && preferencesAvailable && confirmedZone === reportTimeZone;
+    };
+    const assert = () => {if (!current()) throw new DOMException('Settings build retired', 'AbortError');};
+    const signal = (input?: AbortSignal | null) => input ? AbortSignal.any([lifetime.signal, input]) : lifetime.signal;
+    const originalApi = context.api;
+    const request: typeof originalApi.request = async <T,>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> => {
+      assert();const value = await originalApi.request<T>(path, method, body, signal(input));assert();return value;
+    };
+    const requestRaw: typeof originalApi.requestRaw = async (path, method, options) => {
+      assert();const value = await originalApi.requestRaw(path, method, {...options, signal: signal(options?.signal)});assert();return value;
+    };
+    const requestConsole: typeof originalApi.requestConsole = async <T,>(path: string, method: string, body: unknown, input: AbortSignal): Promise<T> => {
+      assert();const value = await originalApi.requestConsole<T>(path, method, body, signal(input));assert();return value;
+    };
+    const requestCertificate: typeof originalApi.requestCertificate = async <T,>(action: Parameters<typeof originalApi.requestCertificate>[0], body: unknown, input: AbortSignal): Promise<T> => {
+      assert();const value = await originalApi.requestCertificate<T>(action, body, signal(input));assert();return value;
+    };
+    const requestMetadataUpload: typeof originalApi.requestMetadataUpload = async <T,>(path: string, body: FormData, input?: AbortSignal): Promise<T> => {
+      assert();const value = await originalApi.requestMetadataUpload<T>(path, body, signal(input));assert();return value;
+    };
+    const requestBounded: typeof originalApi.requestBounded = async <T,>(path: string, maxBytes: number, input: AbortSignal): Promise<T> => {
+      assert();const value = await originalApi.requestBounded<T>(path, maxBytes, signal(input));assert();return value;
+    };
+    const requestLyrics: typeof originalApi.requestLyrics = async <T,>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> => {
+      assert();const value = await originalApi.requestLyrics<T>(path, method, body, signal(input));assert();return value;
+    };
+    const routeFetch: typeof originalApi.routeFetch = async (input, options) => {
+      assert();const value = await originalApi.routeFetch(input, {...options, signal: signal(options?.signal ?? (input instanceof Request ? input.signal : undefined))});assert();return value;
+    };
+    // Fence Settings transport entry points explicitly while preserving their
+    // original method owner and authentication behavior. Binding a method alone
+    // does not fence any internal transport calls it might make.
+    const methods = new Map<PropertyKey, Readonly<{original: unknown; bound: unknown}>>();
+    const api = new Proxy(originalApi, {get(target, property) {
+      if (property === 'request') return request;
+      if (property === 'requestRaw') return requestRaw;
+      if (property === 'requestConsole') return requestConsole;
+      if (property === 'requestCertificate') return requestCertificate;
+      if (property === 'requestMetadataUpload') return requestMetadataUpload;
+      if (property === 'requestBounded') return requestBounded;
+      if (property === 'requestLyrics') return requestLyrics;
+      if (property === 'routeFetch') return routeFetch;
+      const value = Reflect.get(target, property, target);
+      if (typeof value !== 'function') return value;
+      const held = methods.get(property);
+      if (held && held.original === value) return held.bound;
+      const bound = value.bind(target);methods.set(property, {original: value, bound});return bound;
+    }});
+    const buildContext: ShellAssemblyContext = {...context, api, isCurrent: current};
     const reportError = () => {if (current()) setFailure(true);};
     const language = snapshot ? shellLanguage(snapshot) : defaultI18n;
     const uiLocale = language.locale, appLocale = language.region.formatLocale;
@@ -150,25 +214,30 @@ export function SettingsEntry() {
     // A drawn link names the page that owns its value, so it opens that row too.
     const openSettingsRow = (target: {scope: 'account' | 'server'; section: string; row?: string}) => {if (current()) void router.navigate({to: '/settings', search: () => target});};
     const profiles = route.scope === 'account' && route.section === 'profile' && viewer.authority === 'local'
-      ? new ProfileSettingsSource(context.api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current, async (path, body, contentType, signal) => {
+      ? new ProfileSettingsSource(api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current, async (path, body, contentType, signal) => {
         if (!current()) throw new Error('shell_authority_retired');
-        const response = await context.api.routeFetch(context.api.baseUrl + path, {method: 'POST', signal, headers: {Authorization: 'Bearer ' + context.session().accessToken, 'Content-Type': contentType}, body: body as BodyInit});
+        const response = await api.routeFetch(api.baseUrl + path, {method: 'POST', signal, headers: {Authorization: 'Bearer ' + context.session().accessToken, 'Content-Type': contentType}, body: body as BodyInit});
         if (!response.ok) throw Object.assign(new Error('Profile picture could not be saved.'), {status: response.status});
         return response.json();
       }) : undefined;
-    const restrictions = profiles ? new ProfileRestrictionsSource(context.api, profiles, current) : undefined;
+    const restrictions = profiles ? new ProfileRestrictionsSource(api, profiles, current) : undefined;
     const offRestrictions = restrictions?.subscribe(() => {if (current() && restrictions.getSnapshot().error) reportError();});
-    const profileDevices = profiles && identity.signIn === 'local' ? new ProfileDevicesSource(context.api, profiles, current) : undefined;
-    const otherDeviceSignOut = profiles ? new ProfileOtherDeviceSignOut(context.api, profiles, current) : undefined;
+    const profileDevices = profiles && identity.signIn === 'local' ? new ProfileDevicesSource(api, profiles, current) : undefined;
+    const otherDeviceSignOut = profiles ? new ProfileOtherDeviceSignOut(api, profiles, current) : undefined;
     const offProfileFailures = profiles ? observeProfileFailures(profiles, current, reportError) : undefined;
     const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.pin', 'profile.pinChange', 'profile.pinForget', 'profile.delete', 'profile.picture'].includes(id);
+    let pinRequest: ProfilePINRequest | undefined;
+    const profilePINCurrent = (request: ProfilePINRequest) => current() && pinRequest === request;
+    const closeProfilePIN = (request: ProfilePINRequest) => {if (pinRequest === request) {pinRequest = undefined;setProfilePIN(held => held === request ? undefined : held);}};
     const openProfilePIN = (remove: boolean) => {
       const target = profiles?.selected(), document = profiles?.getSnapshot().document;
-      if (current() && profiles && target && document?.canManage && document.capabilities.manageAccount)
-        setProfilePIN({source: profiles, target, remove, trigger: globalThis.document.activeElement as HTMLElement | null});
+      if (current() && profiles && target && document?.canManage && document.capabilities.manageAccount) {
+        pinRequest = {source: profiles, target, remove, trigger: globalThis.document.activeElement as HTMLElement | null};
+        setProfilePIN(pinRequest);
+      }
     };
     const platform = settingsPlatform();
-    const privacy = createPrivacySettingsSurfaces({api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, reportError});
+    const privacy = createPrivacySettingsSurfaces({api: api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, reportError});
     // One row's engine. A preset row is answered by the rule below instead, so its
     // own missing binding never decides for the rows it sets.
     const engine = (row: Parameters<SettingsController['eligible']>[0]) => {
@@ -179,7 +248,7 @@ export function SettingsEntry() {
       if (binding.form === 'preferences') return hasWebPreferenceEffect(row);
       return binding.form !== 'library' && binding.form !== 'remote' && binding.form !== 'managedRoute';
     };
-    const options: SettingsControllerOptions = {api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]),
+    const options: SettingsControllerOptions = {api: api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]),
       role, mainProfile: identity.primaryProfile === true,
       capabilities: {manageServer: identity.capabilities?.manageServer === true, managePeople: identity.capabilities?.managePeople === true, manageSignIn: identity.capabilities?.manageSignIn === true},
       preferences: snapshot, reader, isCurrent: current, reportError, reading: readingSettingsAdapter,
@@ -188,12 +257,12 @@ export function SettingsEntry() {
     };
     const controller = new SettingsController(options);
     const signIn = identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true &&
-      (identity.signIn === 'local' || identity.signIn === 'portico') ? new SignInSettingsSource(context.api, {
+      (identity.signIn === 'local' || identity.signIn === 'portico') ? new SignInSettingsSource(api, {
         serverId: viewer.serverId, signIn: identity.signIn, isCurrent: current,
         capabilities: () => ({manageAccount: identity.capabilities?.manageAccount === true, managePeople: identity.capabilities?.managePeople === true,
           manageServer: identity.capabilities?.manageServer === true, manageSignIn: current() && identity.capabilities?.manageSignIn === true}),
         onAuthorityChanged: () => {if (current()) void router.navigate({to: '/sign-in', replace: true});},
-        ownerSwitch: identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true ? new SettingsOwnerSwitch(context.api, {serverId: viewer.serverId,
+        ownerSwitch: identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true ? new SettingsOwnerSwitch(api, {serverId: viewer.serverId,
           isCurrent: () => current() && context.session().viewer.role === 'owner' && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === identity.signIn,
           hostedOrigin: browserAccountOrigin(import.meta.env, globalThis.location),
           // The app's saved-selection revision, captured for the local direction.
@@ -203,9 +272,9 @@ export function SettingsEntry() {
     const session = context.session();
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
-        client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
+        client: new SettingsPeopleClient(api, current), serverName: context.facts.serverName, libraries: identity.libraries,
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
-        invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
+        invitations: new SettingsInvitations(api, current, api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
         // The owner's invite expiry, in whole days on the server and hours in the
         // dialog, read live so a save is used by the next invitation only.
         inviteRole: () => {
@@ -224,22 +293,25 @@ export function SettingsEntry() {
     if (identity.primaryProfile === true && identity.capabilities?.manageServer && (role === 'owner' || role === 'admin')) {
       const pending = route.section === 'history' ? historyContexts.get(context) : undefined;
       if (pending) historyContexts.delete(context);
-      const carried = pending?.timeZone === reportTimeZone ? pending : undefined;
-      dashboard = createDashboardBindings({api: context.api, events: context.events, scope: {serverId: viewer.serverId, viewerId: options.viewerId},
-        context: carried ?? captureReportContext(reportTimeZone), role, isCurrent: current, isMainProfile: () => current() && context.facts.identity.primaryProfile === true,
+      const carryInputs = [context, route.scope, route.section, !!snapshot, reportTimeZone, ...facts];
+      const held = reportCarry.current;
+      const carried = pending?.timeZone === reportTimeZone ? pending : held && sameBuildInputs(held.inputs, carryInputs) ? held.report : undefined;
+      const report = carried ?? captureReportContext(reportTimeZone);
+      reportCarry.current = {inputs: carryInputs, report};
+      dashboard = createDashboardBindings({api: api, events: context.events, scope: {serverId: viewer.serverId, viewerId: options.viewerId},
+        context: report, role, isCurrent: current, isMainProfile: () => current() && context.facts.identity.primaryProfile === true,
         artwork: (id, kind, revision) => revision ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind}) + '?' + new URLSearchParams({v: revision}), kind === 'backdrop' ? 800 : 400, kind === 'poster' ? 2 / 3 : kind === 'backdrop' ? 16 / 9 : 1) : undefined,
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
     // Server › Streaming › Hardware draws measured adapters, formats and probes:
     // one owner read per visit, and one deliberate re-probe from its own button.
     const hardware = route.section === 'streaming' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
-      ? new SettingsHardwareSource(context.api, () => current(), reportError) : undefined;
+      ? new SettingsHardwareSource(api, () => current(), reportError) : undefined;
     if (hardware) void hardware.load();
     // Server › General › Updates: the cached report the page reads, and one
     // explicit feed check only when the owner presses Check now.
     const updates = route.section === 'general' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
-      ? new SettingsUpdatesSource(context.api, () => current(), reportError) : undefined;
-    updatesLife.current = updates;
+      ? new SettingsUpdatesSource(api, () => current(), reportError) : undefined;
     if (updates) void updates.load();
     // The conversion folder the server stores, read from the runtime form the
     // controller owns, so the drawn location choice follows the save at once.
@@ -252,39 +324,39 @@ export function SettingsEntry() {
     // The owner's Libraries page owns its own bounded directory read and scan
     // commands; the settings controller keeps the per-library panel only.
     const libraries = route.section === 'libraries' && identity.primaryProfile === true && identity.capabilities?.manageServer === true && (role === 'owner' || role === 'admin')
-      ? new LibraryManagementService({api: context.api, scope: {serverId: viewer.serverId, viewerId: options.viewerId}}) : undefined;
+      ? new LibraryManagementService({api: api, scope: {serverId: viewer.serverId, viewerId: options.viewerId}}) : undefined;
     // Storage & backups owns one bounded usage sweep shared by its drawn rows.
-    const server = route.section === 'storage' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true ? createServerSettingsSurfaces({transport: context.api, serverId: viewer.serverId, isCurrent: current, openTarget: openSettingsRow,
+    const server = route.section === 'storage' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true ? createServerSettingsSurfaces({transport: api, serverId: viewer.serverId, isCurrent: current, openTarget: openSettingsRow,
       backups: controller.backups, subscribe: controller.subscribe, scopeKey: `${viewer.serverId}/${options.viewerId}`, reportError}) : undefined;
-    const troubleshooting = route.section === 'troubleshooting' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true ? createTroubleshootingSurfaces({transport: context.api, serverId: viewer.serverId,
-      viewerId: options.viewerId, downloadBase: context.api.baseUrl, isCurrent: current, subscribe: controller.subscribe, reportError,
+    const troubleshooting = route.section === 'troubleshooting' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true ? createTroubleshootingSurfaces({transport: api, serverId: viewer.serverId,
+      viewerId: options.viewerId, downloadBase: api.baseUrl, isCurrent: current, subscribe: controller.subscribe, reportError,
       messageConnection: {open: (headers, signal) => {
         if (!current()) return Promise.reject(new DOMException('The settings scope ended.', 'AbortError'));
-        return context.api.routeFetch(context.api.baseUrl + '/v1/admin/logs/events', {headers: {...headers, Authorization: 'Bearer ' + context.session().accessToken}, signal});
+        return api.routeFetch(api.baseUrl + '/v1/admin/logs/events', {headers: {...headers, Authorization: 'Bearer ' + context.session().accessToken}, signal});
       }}}) : undefined;
-    const playbackProblems = troubleshooting ? new PlaybackProblemsSource({transport:context.api,isCurrent:current,reportError,subscribe:listener=>{authorityListeners.add(listener);return()=>{authorityListeners.delete(listener);};}}) : undefined;
+    const playbackProblems = troubleshooting ? new PlaybackProblemsSource({transport:api,isCurrent:current,reportError,subscribe:listener=>{authorityListeners.add(listener);return()=>{authorityListeners.delete(listener);};}}) : undefined;
     const previewLife = new AbortController();
-    const preview = createScreenPlayEffect({isCurrent: current, runtime: () => liveBinding.current?.playback?.runtime});
+    const preview = createScreenPlayEffect({isCurrent: current, runtime: () => mediaRuntime});
     // The Sign-in page's Reset file group names the server's own data folder. It is
     // the same bounded storage report the Storage page reads, only when the owner
     // may manage this server.
     const signinStorage = route.section === 'signin' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
-      ? new SettingsStorageSource(context.api, viewer.serverId, current, reportError) : undefined;
+      ? new SettingsStorageSource(api, viewer.serverId, current, reportError) : undefined;
     const intros = route.section === 'segments' && identity.primaryProfile === true && identity.capabilities?.manageServer === true && (role === 'owner' || role === 'admin')
-      ? new SegmentIntrosSource({api: context.api, isCurrent: current, reportError}) : undefined;
+      ? new SegmentIntrosSource({api: api, isCurrent: current, reportError}) : undefined;
     const live = route.section === 'live' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
-      ? createOwnerSources({api: context.api, serverId: viewer.serverId, viewerId: options.viewerId,
+      ? createOwnerSources({api: api, serverId: viewer.serverId, viewerId: options.viewerId,
         isCurrent: () => current() && context.session().viewer.role === 'owner' && context.session().viewer.serverId === viewer.serverId && context.session().viewer.authority === viewer.authority && context.session().viewer.accountId === viewer.accountId && context.session().viewer.profileId === viewer.profileId && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageServer === true,
         reportError}) : undefined;
     const integrationKeys = route.section === 'integrations' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
-      ? new SettingsApiKeysSource(context.api, current, reportError) : undefined;
-    const webhooks = integrationKeys ? new SettingsWebhooksSource(context.api, current, reportError) : undefined;
+      ? new SettingsApiKeysSource(api, current, reportError) : undefined;
+    const webhooks = integrationKeys ? new SettingsWebhooksSource(api, current, reportError) : undefined;
     const missing = route.section === 'libraries' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
-      ? new SettingsMissingSource(context.api, current, reportError) : undefined;
+      ? new SettingsMissingSource(api, current, reportError) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         if (row.id === 'profile.devices' && profileDevices) return <ProfileDevices source={profileDevices} isCurrent={current} onFailure={reportError} signOut={context.signOut} />;
-        if (row.id === 'profile.pinForgot' && profiles && identity.signIn === 'local') return <ProfileForgotPIN source={profiles} api={context.api} isCurrent={current} />;
+        if (row.id === 'profile.pinForgot' && profiles && identity.signIn === 'local') return <ProfileForgotPIN source={profiles} api={api} isCurrent={current} />;
         if (row.id === 'profile.signOutElsewhere' && otherDeviceSignOut) return <ProfileOtherSignOut command={otherDeviceSignOut} isCurrent={current} disabled={state.disabled} onFailure={reportError} />;
         if (row.id === 'profile.signOut') return <ProfileSignOut serverName={identity.serverName} isCurrent={current} signOut={context.signOut} />;
         if (row.id === 'profile.hiddenLabels' && restrictions) return <SettingsStringList label={defaultI18n.t(row.label)} values={restrictions.getSnapshot().document?.blockedLabels ?? []} addLabel={defaultI18n.t(row.control.addLabel!)} disabled={state.disabled} onChange={value => {void changeRestriction(restrictions, row.id, value)?.catch(reportError);}} />;
@@ -304,7 +376,7 @@ export function SettingsEntry() {
           requestAnimationFrame(() => {if (current()) document.getElementById('profile.name')?.querySelector<HTMLInputElement>('input')?.focus();});
         }} />;
         if (row.id === 'streaming.transcodeFolder' && hardware) return <TranscodeFolder label={defaultI18n.t(row.label)} value={typeof state.value === 'string' ? state.value : ''}
-          disabled={state.disabled} api={context.api} onChange={path => {if (current()) controller.change(settingsRowIndex.get('streaming.transcodeFolder')!.row, path, rowContext);}} />;
+          disabled={state.disabled} api={api} onChange={path => {if (current()) controller.change(settingsRowIndex.get('streaming.transcodeFolder')!.row, path, rowContext);}} />;
         if (row.id === 'streaming.hwDevices' && hardware) return <HardwareDevices source={hardware} />;
         if (row.id === 'streaming.hwTest' && hardware) return <TestHardware source={hardware} />;
         if (row.id === 'storage.missingNow' && missing) return <MissingTitles source={missing} isCurrent={current} artwork={id => context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind: 'poster'}), 80, 2 / 3)} />;
@@ -321,15 +393,15 @@ export function SettingsEntry() {
             background: value('audioSubtitles.subtitleBackground'), position: value('audioSubtitles.subtitlePosition')})}
             text={defaultI18n.t('next.settingsSpec.account.audio-subtitles.groups.2.rows.0.control.text')} />;
         }
-        if (row.id === 'device.remote') return <RemoteNowPlaying api={context.api} isCurrent={current} onFailure={reportError}/>;
-        if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl key={context.epoch} row={row} api={context.api} isCurrent={current} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
+        if (row.id === 'device.remote') return <RemoteNowPlaying api={api} isCurrent={current} onFailure={reportError}/>;
+        if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl key={context.epoch} row={row} api={api} isCurrent={current} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
         if (row.id === 'music.eq') return <MusicEqualizerRow platform={platform} isCurrent={current}/>;
-        if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
+        if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
         if (row.id === 'libraries.name' && isLibraryPanelContext(rowContext) && rowContext.recordId && typeof state.value === 'string') {
           const libraryId = rowContext.recordId;
           return <RenameLibrary key={libraryId} name={state.value} disabled={state.disabled === true || state.saving === true} rename={name => controller.renameLibrary(libraryId, name)} />;
         }
-        if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries} serverName={identity.serverName}
+        if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={api} service={libraries} serverName={identity.serverName}
           onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
         if (row.id === 'libraries.skipped' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)
           return <SkippedFiles libraryId={rowContext.recordId} api={options.api} service={libraries} isCurrent={current} label={defaultI18n.t(row.control.label ?? row.label)} />;
@@ -338,7 +410,7 @@ export function SettingsEntry() {
             scope={{serverId: viewer.serverId, viewerId: options.viewerId}} isCurrent={current} onError={reportError} />;
         }
         if (row.id === 'libraries.remove' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries && role === 'owner')
-          return <RemoveLibraryButton key={rowContext.recordId} libraryId={rowContext.recordId} service={libraries} api={context.api}
+          return <RemoveLibraryButton key={rowContext.recordId} libraryId={rowContext.recordId} service={libraries} api={api}
             label={defaultI18n.t(row.control.label ?? row.label)} onRemoved={() => {if (current()) {openPanel('');void libraries.loadLibraries().catch(reportError);}}} onError={reportError}/>;
         if (row.id === 'libraries.unmatched' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries) {
           const libraryId = rowContext.recordId;
@@ -347,7 +419,7 @@ export function SettingsEntry() {
           }}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         }
         if (row.id === 'libraries.fetchLyrics' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries && role === 'owner')
-          return <LibraryLyricsAction key={rowContext.recordId} api={context.api} libraryId={rowContext.recordId} isCurrent={current}
+          return <LibraryLyricsAction key={rowContext.recordId} api={api} libraryId={rowContext.recordId} isCurrent={current}
             disabled={state.disabled === true || state.saving === true || controller.rowState(settingsRowIndex.get('libraries.lyrics')!.row, rowContext).value !== 'lrclib'}
             label={defaultI18n.t(row.control.label ?? row.label)} onError={reportError}/>;
         if (row.control.type === 'action' && libraryScanAction(row.id) && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)
@@ -361,10 +433,10 @@ export function SettingsEntry() {
             {renderRows(selected.section)}
           </>}</SignInMoveWatch>
         : selected.section.scope === 'server' && selected.section.id === 'remote'
-        ? <ServerRemotePage api={context.api} isCurrent={current} account={{signIn: identity.signIn === 'portico' ? 'portico' : 'local', authority: viewer.authority, serverName: identity.serverName}} openSection={openSettings} groups={renderRows({groups: selected.section.groups})} advanced={selected.section.advanced ? renderRows({advanced: selected.section.advanced}) : null}/>
-        : selected.section.scope === 'server' && selected.section.id === 'metadata' && metadataCurrent() ? <MetadataSettingsPage api={context.api} isCurrent={metadataCurrent} onLibraries={() => openSettings('libraries')}/> : selected.section.id === 'integrations' && integrationKeys && webhooks ? <IntegrationsPage source={integrationKeys} webhooks={webhooks} baseUrl={context.api.baseUrl} isCurrent={current} reportError={reportError}
+        ? <ServerRemotePage api={api} isCurrent={current} account={{signIn: identity.signIn === 'portico' ? 'portico' : 'local', authority: viewer.authority, serverName: identity.serverName}} openSection={openSettings} groups={renderRows({groups: selected.section.groups})} advanced={selected.section.advanced ? renderRows({advanced: selected.section.advanced}) : null}/>
+        : selected.section.scope === 'server' && selected.section.id === 'metadata' && metadataCurrent() ? <MetadataSettingsPage api={api} isCurrent={metadataCurrent} onLibraries={() => openSettings('libraries')}/> : selected.section.id === 'integrations' && integrationKeys && webhooks ? <IntegrationsPage source={integrationKeys} webhooks={webhooks} baseUrl={api.baseUrl} isCurrent={current} reportError={reportError}
         otherRows={renderRows({groups: selected.section.groups?.filter(group => !group.rows.some(row => ['integrations.apiKeys', 'integrations.webhooks', 'integrations.assistantAddress', 'integrations.assistantKey'].includes(row.id)))})}
-        advancedRows={renderRows({advanced: selected.section.advanced})} /> : selected.section.id === 'live' && live ? <OwnerSourcesPage source={live} libraryChannels={<LibraryChannelsPage {...libraryChannelAdmission(context, live)}/>}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} openSection={openSettings} /> : selected.section.id === 'segments' && intros ? <ServerIntros source={intros} onPreview={(libraryId, itemId, startSeconds) => {if (current()) void preview({libraryId, itemId, startSeconds}, previewLife.signal, current).catch(reportError);}} modeRows={renderRows({groups: selected.section.groups?.map(group => ({...group, rows: group.rows.filter(row => row.id === 'segments.mode')})).filter(group => group.rows.length), advanced: selected.section.advanced})} /> : selected.section.id === 'people' && people ? <MoveCodesPortProvider>{signIn?.ownerSwitch && <MoveCodesHost source={signIn.ownerSwitch} serverName={identity.serverName} isCurrent={current} onError={reportError}/>}<SignInMoveWatch source={signIn?.ownerSwitch}>{move => <PeopleScreen bindings={people} initialStatus={move ? 'waiting' : undefined}
+        advancedRows={renderRows({advanced: selected.section.advanced})} /> : selected.section.id === 'live' && live ? <OwnerSourcesPage source={live} libraryChannels={<LibraryChannelsPage {...libraryChannelAdmission(buildContext, live)}/>}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} openSection={openSettings} /> : selected.section.id === 'segments' && intros ? <ServerIntros source={intros} onPreview={(libraryId, itemId, startSeconds) => {if (current()) void preview({libraryId, itemId, startSeconds}, previewLife.signal, current).catch(reportError);}} modeRows={renderRows({groups: selected.section.groups?.map(group => ({...group, rows: group.rows.filter(row => row.id === 'segments.mode')})).filter(group => group.rows.length), advanced: selected.section.advanced})} /> : selected.section.id === 'people' && people ? <MoveCodesPortProvider>{signIn?.ownerSwitch && <MoveCodesHost source={signIn.ownerSwitch} serverName={identity.serverName} isCurrent={current} onError={reportError}/>}<SignInMoveWatch source={signIn?.ownerSwitch}>{move => <PeopleScreen bindings={people} initialStatus={move ? 'waiting' : undefined}
               rowActions={person => person.status === 'waiting' ? <MoveCodeRowAction accountId={person.accountId} hasCode={person.hasMoveCode} /> : null} />}</SignInMoveWatch></MoveCodesPortProvider> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <><HistoryScreen bindings={dashboard} embedded /><HistoryRetention section={selected.section} renderRows={renderRows}/></> : selected.section.id === 'troubleshooting' ? troubleshooting?.render(<><MessageOptions>{renderRows({groups:selected.section.advanced?.groups?.map(group=>({...group,rows:group.rows.filter(row=>row.id==='troubleshooting.logLevel'||row.id==='troubleshooting.detailLength')})).filter(group=>group.rows.length)})}</MessageOptions>{playbackProblems && <div id="troubleshooting.playbackProblems"><PlaybackProblems source={playbackProblems}/></div>}</>,controller.messageDetailMinutes()) : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
@@ -373,11 +445,12 @@ export function SettingsEntry() {
       return !!row && controller.rowState(row, selected).value === 'lrclib';
     };
     const settings: SettingsBindings = {...source,
-      panelIntro: selected => selected.recordId && selected.tabId === 'metadata' && libraries ? <MetadataSource key={selected.recordId} libraryId={selected.recordId} api={context.api} isCurrent={current} /> : null,
+      panelIntro: selected => selected.recordId && selected.tabId === 'metadata' && libraries ? <MetadataSource key={selected.recordId} libraryId={selected.recordId} api={api} isCurrent={current} /> : null,
       panelHeader: (selected, title) => selected.recordId && libraries ? <LibraryHeader key={selected.recordId} libraryId={selected.recordId} name={title} rename={name => controller.renameLibrary(selected.recordId!, name)} service={libraries} artwork={context.artwork} onError={reportError}
-        lyrics={{api: context.api, available: lyricsSourceIsLrclib(selected), isCurrent: current}} /> : null,
+        lyrics={{api: api, available: lyricsSourceIsLrclib(selected), isCurrent: current}} /> : null,
       subscribe: listener => {const off = source.subscribe(listener), offProfiles = profiles?.subscribe(listener), offLimits = restrictions?.subscribe(listener), offHardware = hardware?.subscribe(listener), offServer = server?.subscribe(listener);return () => {off();offProfiles?.();offLimits?.();offHardware?.();offServer?.();};},
       change: (row, value, selected) => {
+        if (!current()) return;
         if (restrictions && isProfileRestriction(row.id)) {void changeRestriction(restrictions, row.id, value)?.catch(reportError);return;}
         if (row.id === 'streaming.transcodeLocation' && hardware) {
           // One stored directory, three drawn choices: the choice writes it, and
@@ -425,25 +498,27 @@ export function SettingsEntry() {
         return server?.rowState(row) ?? device ?? (row.id === 'music.eq' ? {present: current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform)} : row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
       },
     };
-    setFailure(false);setOwned({context, settings, dashboard, profiles});
-    return () => {active = false;profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();controller.dispose();};
-  // The captured identity decides which sections exist (main profile, manageServer,
-  // role). It can be replaced without the assembly context object changing, so
-  // every fact the gate reads is a dependency: a newer identity must rebuild the
-  // controller instead of leaving the old section set on screen.
-  }, [context, retry, route.scope, route.section, !!preferences, reportTimeZone, context?.facts.identity.primaryProfile,
-    context?.facts.identity.capabilities?.manageServer, context?.facts.identity.capabilities?.managePeople,
-    context?.facts.identity.capabilities?.manageSignIn, context?.facts.identity.signIn,
-    context?.session().viewer.role, context?.session().viewer.serverId, context?.session().viewer.authority, context?.session().viewer.accountId, context?.session().viewer.profileId]);
-  if (!protectedContext || !owned || owned.context !== context) return null;
-  const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
-  const settings = failure ? {...owned.settings, section: () => <SettingsPageFailure retry={() => setRetry(value => value + 1)} home={owned.settings.openHome} />} : owned.settings;
+    const publishedSettings: SettingsBindings = {...settings,
+      change: (...args) => {if (current()) settings.change(...args);},
+      reset: (...args) => {if (current()) settings.reset(...args);},
+      load: (...args) => current() ? settings.load(...args) : Promise.resolve(),
+      ...(settings.loadContext ? {loadContext: (...args: Parameters<NonNullable<SettingsBindings['loadContext']>>) => current() ? settings.loadContext!(...args) : Promise.resolve()} : {}),
+    };
+    setFailure(false);setOwned({context, inputs, current, settings: publishedSettings, dashboard, profiles, profilePINCurrent, closeProfilePIN});
+    return () => {active = false;offPreferenceFence();pinRequest = undefined;lifetime.abort();setProfilePIN(held => held?.source === profiles ? undefined : held);profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signinStorage?.dispose();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();controller.dispose();};
+  // Each setup owns and retires exactly its own sources. No shared "latest"
+  // slot participates in cleanup, including the owner's update reader.
+  }, inputs);
+  const selected = protectedContext && owned && sameBuildInputs(owned.inputs, inputs) && owned.current() ? owned : undefined;
+  if (!selected) return null;
+  const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (selected.current()) void router.navigate({to: '/settings', search: () => next});};
+  const settings = failure ? {...selected.settings, section: () => <SettingsPageFailure retry={() => {if (selected.current()) setRetry(value => value + 1);}} home={selected.settings.openHome} />} : selected.settings;
   // A URL that names its scope or section was a link to that page (a Dashboard
   // or storage alert), so the compact layout opens the page, not the list.
   const openDetail = typeof raw.scope === 'string' || typeof raw.section === 'string';
   return <><SettingsScreen bindings={settings} route={route} navigate={navigate} openDetail={openDetail} />
-    {profilePIN && owned.profiles === profilePIN.source && <ProfilePINDialog key={JSON.stringify([profilePIN.target.id, profilePIN.target.revision, profilePIN.remove])}
-      request={profilePIN} isCurrent={() => owned.context.isCurrent() && !!profilePIN.source.getSnapshot().document} onClose={() => setProfilePIN(undefined)} onFailure={() => setFailure(true)} />}
+    {profilePIN && selected.profiles === profilePIN.source && <ProfilePINDialog key={JSON.stringify([profilePIN.target.id, profilePIN.target.revision, profilePIN.remove])}
+      request={profilePIN} isCurrent={() => selected.profilePINCurrent(profilePIN) && selected.profiles === profilePIN.source && !!profilePIN.source.getSnapshot().document} onClose={() => selected.closeProfilePIN(profilePIN)} onFailure={() => {if (selected.profilePINCurrent(profilePIN)) setFailure(true);}} />}
   </>;
 }
 
