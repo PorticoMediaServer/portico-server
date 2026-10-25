@@ -20,13 +20,14 @@ import (
 // level, the level actually in force, any open debug window, and per-category
 // retention.
 type LogSettings struct {
-	Revision       int64                     `json:"revision"`
-	Level          string                    `json:"logLevel"`
-	EffectiveLevel string                    `json:"effectiveLevel"`
-	DebugUntil     string                    `json:"debugWindowUntil,omitempty"`
-	Retention      []operations.LogRetention `json:"retention"`
-	Levels         []string                  `json:"levels"`
-	Categories     []string                  `json:"categories"`
+	DetailMinutes  operations.LogDetailMinutes `json:"logDetailMinutes,omitempty"`
+	Revision       int64                       `json:"revision"`
+	Level          string                      `json:"logLevel"`
+	EffectiveLevel string                      `json:"effectiveLevel"`
+	DebugUntil     string                      `json:"debugWindowUntil,omitempty"`
+	Retention      []operations.LogRetention   `json:"retention"`
+	Levels         []string                    `json:"levels"`
+	Categories     []string                    `json:"categories"`
 }
 
 // diagnosticsRoutes registers the message log, the live tail, the debug window,
@@ -83,16 +84,21 @@ func (d Dependencies) diagnosticsRoutes(mux *http.ServeMux) {
 			return
 		}
 		var body struct {
-			ExpectedRevision int64                     `json:"expectedRevision"`
-			OperationID      string                    `json:"operationId"`
-			Level            string                    `json:"logLevel"`
-			Retention        []operations.LogRetention `json:"retention"`
+			ExpectedRevision int64                       `json:"expectedRevision"`
+			OperationID      string                      `json:"operationId"`
+			Level            string                      `json:"logLevel"`
+			DetailMinutes    operations.LogDetailMinutes `json:"logDetailMinutes,omitempty"`
+			Retention        []operations.LogRetention   `json:"retention"`
 		}
 		if e = decodeLegacyRevision(w, r, &body); e != nil {
 			failure(w, e)
 			return
 		}
-		document, e := d.applySettings(r, p, body.ExpectedRevision, body.OperationID, func(v *operations.Settings) {
+		input, _ := json.Marshal(body)
+		document, e := d.applySettingsInput(r, p, body.ExpectedRevision, body.OperationID, input, func(v *operations.Settings) {
+			if body.DetailMinutes != 0 {
+				v.LogDetailMinutes = body.DetailMinutes
+			}
 			if body.Level != "" {
 				v.LogLevel = body.Level
 			}
@@ -192,7 +198,7 @@ func redactSettings(document operations.SettingsDocument) map[string]any {
 }
 
 func (d Dependencies) logSettings(document operations.SettingsDocument) LogSettings {
-	out := LogSettings{Revision: document.Revision, Level: document.Effective.LogLevel, Retention: document.Effective.LogRetention,
+	out := LogSettings{DetailMinutes: document.Effective.LogDetailMinutes, Revision: document.Revision, Level: document.Effective.LogLevel, Retention: document.Effective.LogRetention,
 		Levels: servicelog.Levels, Categories: servicelog.Categories}
 	if out.Retention == nil {
 		out.Retention = []operations.LogRetention{}
@@ -224,6 +230,9 @@ func (d Dependencies) applyLogSettings(document operations.SettingsDocument) {
 // different rows of the same document still conflict correctly rather than
 // silently overwriting each other.
 func (d Dependencies) applySettings(r *http.Request, p identity.Principal, expected int64, operation string, overlay func(*operations.Settings)) (operations.SettingsDocument, error) {
+	return d.applySettingsInput(r, p, expected, operation, nil, overlay)
+}
+func (d Dependencies) applySettingsInput(r *http.Request, p identity.Principal, expected int64, operation string, input json.RawMessage, overlay func(*operations.Settings)) (operations.SettingsDocument, error) {
 	if d.Console == nil {
 		return operations.SettingsDocument{}, identity.ErrUnauthorized
 	}
@@ -234,12 +243,18 @@ func (d Dependencies) applySettings(r *http.Request, p identity.Principal, expec
 	if err != nil {
 		return current, err
 	}
-	if current.Revision != expected {
+	if len(input) == 0 && current.Revision != expected {
 		return current, &operations.ConflictError{CurrentRevision: current.Revision}
 	}
 	values := current.Requested
 	overlay(&values)
-	document, err := d.Console.ApplySettings(r.Context(), p, d.consoleAuthority(p, true), operations.SettingsChange{ExpectedRevision: expected, IdempotencyKey: operation, Values: values})
+	change := operations.SettingsChange{ExpectedRevision: expected, IdempotencyKey: operation, Values: values}
+	var document operations.SettingsDocument
+	if len(input) == 0 {
+		document, err = d.Console.ApplySettings(r.Context(), p, d.consoleAuthority(p, true), change)
+	} else {
+		document, err = d.Console.ApplyLogSettingsInput(r.Context(), p, d.consoleAuthority(p, true), change, input)
+	}
 	if err == nil && !d.configurationOwnsLiveSettings {
 		err = d.applyLiveSettings(r.Context())
 	}

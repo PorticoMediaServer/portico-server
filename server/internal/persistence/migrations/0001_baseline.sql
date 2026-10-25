@@ -8260,6 +8260,7 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "customCertificateKeyPath" TEXT,
  "customCertificateDomain" TEXT,
  "logLevel" TEXT,
+ "logDetailMinutes" INTEGER CHECK("logDetailMinutes" IN(15,30,60,120,240)),
  "conversionMode" TEXT CHECK("conversionMode" IN('all','sound','never')),
  "outputFormat" TEXT CHECK("outputFormat" IN('auto','h264')),
  "downloadMaxQuality" TEXT,

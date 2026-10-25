@@ -246,16 +246,17 @@ type Settings struct {
 	// as the LAN, the owner's upload capacity (the remote stream budget), the
 	// paused-session limit, the interface advertised to LAN clients, and an
 	// owner-supplied certificate for a custom domain.
-	TrustedProxies              []string       `json:"trustedProxies"`
-	UploadCapacityKbps          int            `json:"uploadCapacityKbps"`
-	PausedSessionTimeoutMinutes int            `json:"pausedSessionTimeoutMinutes"`
-	AdvertisedInterface         string         `json:"advertisedInterface"`
-	OwnAddressEnabled           bool           `json:"ownAddressEnabled"`
-	CustomCertificatePath       string         `json:"customCertificatePath"`
-	CustomCertificateKeyPath    string         `json:"customCertificateKeyPath"`
-	CustomCertificateDomain     string         `json:"customCertificateDomain"`
-	LogLevel                    string         `json:"logLevel"`
-	LogRetention                []LogRetention `json:"logRetention"`
+	TrustedProxies              []string         `json:"trustedProxies"`
+	UploadCapacityKbps          int              `json:"uploadCapacityKbps"`
+	PausedSessionTimeoutMinutes int              `json:"pausedSessionTimeoutMinutes"`
+	AdvertisedInterface         string           `json:"advertisedInterface"`
+	OwnAddressEnabled           bool             `json:"ownAddressEnabled"`
+	CustomCertificatePath       string           `json:"customCertificatePath"`
+	CustomCertificateKeyPath    string           `json:"customCertificateKeyPath"`
+	CustomCertificateDomain     string           `json:"customCertificateDomain"`
+	LogLevel                    string           `json:"logLevel"`
+	LogDetailMinutes            LogDetailMinutes `json:"logDetailMinutes,omitempty"`
+	LogRetention                []LogRetention   `json:"logRetention"`
 }
 
 // LogRetention is one message log category's history budget in days.
@@ -269,7 +270,30 @@ type LogRetention struct {
 func DefaultSettings() Settings {
 	chapterNames := true
 	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
-		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
+		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogDetailMinutes: 30, LogRetention: []LogRetention{}}
+}
+
+// LogDetailMinutes is a saved default, distinct from an active debug window.
+// Its zero value represents an omitted field in older settings requests only.
+type LogDetailMinutes int
+
+func (LogDetailMinutes) JSONSchema() map[string]any {
+	return map[string]any{"type": "integer", "enum": []int{15, 30, 60, 120, 240}}
+}
+
+func (m *LogDetailMinutes) UnmarshalJSON(raw []byte) error {
+	var value int
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	if !validLogDetailMinutes(LogDetailMinutes(value)) {
+		return errors.New("invalid logDetailMinutes")
+	}
+	*m = LogDetailMinutes(value)
+	return nil
+}
+func validLogDetailMinutes(value LogDetailMinutes) bool {
+	return value == 15 || value == 30 || value == 60 || value == 120 || value == 240
 }
 
 type SettingsDocument struct {
@@ -581,7 +605,18 @@ func validateSettings(v *Settings) error {
 	}
 	return nil
 }
-func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange) (out SettingsDocument, e error) {
+func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange) (SettingsDocument, error) {
+	return s.applySettings(ctx, p, auth, c, nil)
+}
+
+// ApplyLogSettingsInput keeps the captured typed logs request as receipt identity.
+// Authorization and receipt lookup share the write transaction; a receipt can
+// replay before the current revision fence, but a new stale write still fails.
+func (s *Store) ApplyLogSettingsInput(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange, input json.RawMessage) (SettingsDocument, error) {
+	return s.applySettings(ctx, p, auth, c, append(json.RawMessage(nil), input...))
+}
+func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange, input json.RawMessage) (out SettingsDocument, e error) {
+	omittedLogDetailMinutes := c.Values.LogDetailMinutes == 0
 	omittedSegmentShortestEpisode := c.Values.SegmentShortestEpisode == 0
 	omittedSegmentShortestFilm := c.Values.SegmentShortestFilm == 0
 	omittedSegmentIntroWindow := c.Values.SegmentIntroWindow == ""
@@ -594,17 +629,31 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 	omittedViewer := c.Values.SegmentViewerConfidencePercent == 0
 	omittedAutomatic := c.Values.SegmentAutomaticConfidencePercent == 0
 	normalized := c.Values
-	if e = validateSettings(&normalized); e != nil {
-		return out, e
+	if len(input) == 0 {
+		if e = validateSettings(&normalized); e != nil {
+			return out, e
+		}
 	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
 		scope := "settings:" + AccountKey(p)
-		raw, digest, err := Receipt(tx, scope, c.IdempotencyKey, c, s.now())
+		var receiptInput any = c
+		if len(input) != 0 {
+			receiptInput = struct {
+				Domain string
+				Input  json.RawMessage
+			}{"logs-settings-v1", input}
+		}
+		raw, digest, err := Receipt(tx, scope, c.IdempotencyKey, receiptInput, s.now())
 		if err != nil {
 			return err
 		}
 		if raw != "" {
 			return decodeDocument(raw, &out)
+		}
+		if len(input) != 0 {
+			if err = validateSettings(&normalized); err != nil {
+				return err
+			}
 		}
 		current, err := readSettings(tx)
 		if err != nil {
@@ -614,6 +663,9 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 			return &ConflictError{current.Revision}
 		}
 		values := normalized
+		if omittedLogDetailMinutes {
+			values.LogDetailMinutes = current.Requested.LogDetailMinutes
+		}
 		if omittedSegmentShortestEpisode {
 			values.SegmentShortestEpisode = current.Requested.SegmentShortestEpisode
 		}
