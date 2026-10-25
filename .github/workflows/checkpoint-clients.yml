@@ -104,7 +104,7 @@ jobs:
         run: bash "$RUNNER_TEMP/checkpoint-command" next-checks npm run check --workspace portico-web-next
       - id: next-types
         name: next-types
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.next-checks.outcome != 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" next-types npx --no-install tsc --noEmit -p web-next/tsconfig.json
       - id: next-units
         name: next-units
