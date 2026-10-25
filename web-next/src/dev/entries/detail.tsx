@@ -1,4 +1,5 @@
 import {createRoot} from 'react-dom/client';
+import {FreshnessProvider} from '../../platform/freshness';
 import {useEffect} from 'react';
 import {RouterProvider, createMemoryHistory} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -93,11 +94,13 @@ const context = contextBase;
 
 router.update({history: createMemoryHistory({initialEntries: [`/item/${specimen.itemId}`]})});
 createRoot(document.getElementById('root')!).render(
+  <FreshnessProvider api={specimen.api} viewerId={specimen.personalFence} serverId={specimen.serverId} events={specimen.events}>
   <WebScreenProvider value={{binding, context}}>
     <DetailReady />
     <IconSprite />
     <ShellBindingsProvider value={binding}>
       <RouterProvider router={router} />
     </ShellBindingsProvider>
-  </WebScreenProvider>,
+  </WebScreenProvider>
+  </FreshnessProvider>,
 );
