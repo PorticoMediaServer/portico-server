@@ -35,8 +35,8 @@ export function SupportPanel(props: SupportPanelProps) {
   if (state.phase === 'error') return <p className={styles.failure} role="alert"><span>{t('next.states.pageFailedBody')}</span><button type="button" onClick={() => {void props.source.retry();}}>{t('next.shell.tryAgain')}</button></p>;
   if (state.phase === 'idle' || state.phase === 'loading') return <p role="status">{t('next.settings.loading')}</p>;
   const exportReady = state.export;
-  return <div className={styles.reports}>
-    {state.permissions && <section className={styles.panel}>
+  return <div className={`${styles.reports} ${styles.support}`}>
+    {state.permissions && <section className={styles.permissions}>
       <div className={styles.panelHead}><h3>{t('web.maintenance.permissionsTitle')}</h3></div>
       <p className={styles.lede}>{t('web.maintenance.permissionsBody')}</p>
       <div><Button variant="glass" size="small" disabled={busy} onClick={() => {
@@ -53,7 +53,7 @@ export function SupportPanel(props: SupportPanelProps) {
     <section className={styles.panel}>
       <div className={styles.panelHead}><h3>{t('web.logs.exportTitle')}</h3></div>
       <p className={styles.lede}>{t('web.logs.exportLede')}</p>
-      {!exportReady && <>
+      <>
         <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.timeWindow')}</span>
           <div className={styles.statusChoice} role="radiogroup" aria-label={t('web.logs.timeWindow')}>{WINDOWS.map(entry => <button key={entry.id} type="button" role="radio"
             aria-checked={entry.id === window} className={styles.statusOption} disabled={state.preparing} onClick={() => setWindow(entry.id)}>{t(entry.label)}</button>)}</div></div>
@@ -62,11 +62,14 @@ export function SupportPanel(props: SupportPanelProps) {
             <input type="checkbox" checked={parts.includes(component)} disabled={state.preparing}
               onChange={event => setParts(current => event.currentTarget.checked ? [...new Set([...current, component])] : current.filter(part => part !== component))} />
             {t(PART_LABEL[component])}</label>)}</div></div>
-      </>}
-      {exportReady ? <div className={styles.exportReady}>
+      </>
+      <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.prepareExport')}</span>
+        <SettingsAction size="small" appearance="glass" loading={state.preparing} disabled={state.preparing || !parts.length}
+          onClick={() => {void props.source.prepare(WINDOWS.find(entry => entry.id === window)!.ms, parts).catch(props.reportError);}}>{t('web.logs.prepare')}</SettingsAction></div>
+      {exportReady && <div className={styles.exportReady}>
         <b>{t('web.logs.readyToDownload')}</b>
         <p className={styles.note}>{t('web.logs.readyHelp', {included: exportReady.manifest.included.join(', ') || t('web.logs.exportNothing'),
-          excluded: exportReady.manifest.excluded.length ? exportReady.manifest.excluded.join(', ') : 'none',
+          excluded: exportReady.manifest.excluded.length ? exportReady.manifest.excluded.join(', ') : t('web.logs.exportNothing'),
           redaction: exportReady.manifest.redaction, expires: defaultI18n.dateTime(exportReady.expiresAt)})}</p>
         <Button variant="glass" size="small" onClick={() => {
           void props.source.download().then(bundle => {
@@ -75,9 +78,7 @@ export function SupportPanel(props: SupportPanelProps) {
             link.href = url;link.download = 'portico-support.json';link.click();URL.revokeObjectURL(url);
           }).catch(props.reportError);
         }}>{t('web.logs.downloadJson')}</Button>
-      </div> : <div className={styles.exportRow}><span className={styles.fieldLabel}>{t('web.logs.prepareExport')}</span>
-        <SettingsAction size="small" appearance="glass" loading={state.preparing} disabled={state.preparing || !parts.length}
-          onClick={() => {void props.source.prepare(WINDOWS.find(entry => entry.id === window)!.ms, parts).catch(props.reportError);}}>{t('web.logs.prepare')}</SettingsAction></div>}
+      </div>}
     </section>
     <section className={styles.panel}>
       <div className={styles.panelHead}><h3>{t('settings.server.skippedParts')}</h3></div>
