@@ -173,6 +173,7 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
   if (path.includes('/logs/settings')) return {revision: 1, logLevel: 'info', effectiveLevel: 'info', retention: [], levels: ['error','warn','info','debug'], categories: ['server','playback','scan','network','client']};
   if (path.includes('/admin/logs')) return {items: [...messageRecords].reverse(), limit: 200, nextCursor: '', level: 'info', effectiveLevel: 'info'};
   if (path.includes('/diagnostics/capabilities')) return capabilities;
+  if (path.includes('/console/registry')) return {scope: {serverId, viewerFence: fence}, data: {fields: []}};
   if (path.includes('/console/alerts')) return {scope: {serverId, viewerFence: fence}, data: alerts};
   if (path.includes('/admin/feedback/')) {
     const id = path.split('/').pop();
