@@ -114,7 +114,7 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	if row.MountID != "" {
 		var executable, version, remote string
 		var control int64
-		if err = snapshot.Tx().QueryRowContext(ctx, `SELECT m.executable,m.version,m.remote,(SELECT c.revision FROM mount_controls c WHERE c.mount_id=m.id) FROM managed_mounts m WHERE m.id=?`, row.MountID).Scan(&executable, &version, &remote, &control); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err = snapshot.Tx().QueryRowContext(ctx, `SELECT m.executable,COALESCE(b.version,''),m.remote,(SELECT c.revision FROM mount_controls c WHERE c.mount_id=m.id) FROM managed_mounts m LEFT JOIN mount_backend_configs b ON b.mount_id=m.id WHERE m.id=?`, row.MountID).Scan(&executable, &version, &remote, &control); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return SourceStatus{}, err
 		}
 		out.Program, out.ProgramVersion, out.Remote, out.ProgramRevision = executable, version, remote, control
