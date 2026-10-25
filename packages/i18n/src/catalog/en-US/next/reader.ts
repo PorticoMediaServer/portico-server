@@ -1,5 +1,11 @@
 /** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
 export const readerMessages = {
+  'next.reader.wordsLabel': 'Words',
+  'next.reader.wordCount': '{count, plural, one {# word} other {# words}}',
+  'next.reader.pageCount': '{count, plural, one {# page} other {# pages}}',
+  'next.reader.openingLines': 'Opening lines',
+  'next.reader.seriesPosition': '{series} · {number}',
+
   'next.reader.month': 'Month',
   'next.reader.yourArchive': 'Your archive',
   'next.reader.year': 'Year',
