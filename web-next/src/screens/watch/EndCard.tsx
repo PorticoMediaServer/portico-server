@@ -4,14 +4,16 @@ import {Artwork} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import type {WatchEndCard} from './end-card';
+import type {ArtworkSource} from '../../kit/artwork/types';
 import styles from './end-card.module.css';
 
 const t = defaultI18n.t;
 
 /** desktop-player f4b. Drawn parts only: Finished, the title, the viewer's rating, Replay,
  * a way back to the title page and the server's related titles as a full row. */
-export function WatchEndCardView({card, canReplay, onReplay, reportError}: {
+export function WatchEndCardView({card, canReplay, onReplay, reportError, artwork}: {
   card: WatchEndCard; canReplay: boolean; onReplay: () => void; reportError: (error: unknown) => void;
+  artwork: (url: string | undefined) => ArtworkSource | undefined;
 }) {
   const [hover, setHover] = useState<number | null>(null), [pending, setPending] = useState(false);
   const stored = card.rating?.value == null ? null : card.rating.value / 2, shown = hover ?? stored ?? 0;
@@ -38,6 +40,12 @@ export function WatchEndCardView({card, canReplay, onReplay, reportError}: {
         <Button size="small" onClick={() => act(card.back)}>{t('player.post.backTo', {title: card.title})}</Button>
       </div>
     </div>
+    {card.collection && <section className={styles.feature} aria-label={t('player.collection.next', {collection: card.collection.collectionName})}>
+      <div className={styles.featureArt}><Artwork source={card.collection.posterUrl ? artwork(card.collection.posterUrl) : undefined} alt="" width="100%" height="100%" />
+        <span className={styles.featureText}><small>{t('player.collection.next', {collection: card.collection.collectionName})}</small>
+          <b>{card.collection.title}</b>{card.collection.year !== undefined && <span>{card.collection.year}</span>}</span></div>
+      <div className={styles.actions}><Button variant="primary" size="small" icon="i-play" onClick={() => act(() => card.collection!.play())}>{t('player.collection.play', {title: card.collection.title})}</Button></div>
+    </section>}
     {card.related.length > 0 && <section className={styles.row} aria-label={t('player.moreLike', {title: card.title})}>
       <h2>{t('player.moreLike', {title: card.title})}</h2>
       <div className={styles.track}>

@@ -1,5 +1,5 @@
 import {defineWebScreen} from '../../route-registry';
-import {useState, useSyncExternalStore} from 'react';
+import {useEffect, useState, useSyncExternalStore} from 'react';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {WatchTitleBody, type WatchMyList} from '../detail';
 import {WatchPlayback} from './WatchPlayback';
@@ -35,10 +35,27 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
   // desktop-player f4b: the retained title read is the only source of the film-end card.
   const detailBinding = held && held.binding.body.kind === 'title' ? held.binding.body.binding : undefined;
   const detail = useSyncExternalStore(detailBinding?.service.subscribe ?? noSubscribe, detailBinding?.service.getSnapshot ?? noSnapshot, noSnapshot);
+  // desktop-player f4b: the collection's own next member, read in its order while the film ends.
+  const [collectionNext, setCollectionNext] = useState<WatchCollectionNext | undefined>(undefined);
+  const collection = detail?.data?.collections?.[0], finishKey = snapshot?.presentation?.finished ? `${collection?.id ?? ''}:${detail?.data?.item.id ?? ''}` : '';
+  useEffect(() => {
+    setCollectionNext(undefined);
+    const data = detail?.data, card = collection, api = captured?.api, playback = runtime;
+    if (!data || !card || !api || !playback || !finishKey || card.position >= card.memberCount) return;
+    const life = new AbortController(), run = playback.getSnapshot().playback.playbackRun;
+    void readCollectionNext(api, card, data.item.id, id => {
+      const live = playback.getSnapshot();
+      // The card belongs to the playback it was drawn for; a later title is never started by it.
+      if (live.disposed || live.playback.playbackRun !== run) return Promise.reject(new DOMException('Playback changed', 'AbortError'));
+      return playback.play(id);
+    }, life.signal).then(value => { if (!life.signal.aborted) setCollectionNext(value); }).catch(() => { if (!life.signal.aborted) setCollectionNext(undefined); });
+    return () => life.abort();
+  }, [captured, runtime, collection?.id, detail?.data?.item.id, finishKey]);
   const end = held && binding && detailBinding && detail?.data
     ? watchEndCard(detail.data, entry => binding.artwork.foreground(entry.posterUrl, 260, 2 / 3, {group: 'playback'}),
       id => router.navigate({to: '/item/$itemId', params: {itemId: id}}),
-      value => detail.data ? detailBinding.mutate(detail.data, {action: 'rating', value}) : Promise.reject(new Error('rating_unavailable')))
+      value => detail.data ? detailBinding.mutate(detail.data, {action: 'rating', value}) : Promise.reject(new Error('rating_unavailable')),
+      collectionNext)
     : undefined;
   const matches = !!held && !!target && held.key === watchBodyKey(target);
   // desktop-player f6: the drawer reads the same retained title page the portrait body owns.

@@ -313,7 +313,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
             {!mobile && <Control large icon="i-close" label={t('player.close')} action={() => send({kind: 'stop'})} />}
           </div>
         </div>
-        {endCard ? <WatchEndCardView card={endCard} canReplay={can('replay')} onReplay={() => send({kind: 'replay'})} reportError={binding.reportError} /> : <>
+        {endCard ? <WatchEndCardView card={endCard} canReplay={can('replay')} onReplay={() => send({kind: 'replay'})} reportError={binding.reportError}
+          artwork={url => binding.artwork.foreground(url, 512, 16 / 9, {group: 'playback', priority: 'high'})} /> : <>
         <div className={styles.center}>{transport}</div>
         <div className={styles.bottom}>
           <div className={styles.seek}>
