@@ -88,7 +88,7 @@ export function EntryActionHost() {
   useEffect(() => {
     if (stale) { entryActions.close(); return; }
     const current = producer.current;
-    if (!open) { current.close(); return; }
+    if (!open || open.kind !== 'delete') { current.close(); return; }
     anchor.current = open.anchor;
     current.open(open.target, open.ports);
     return () => current.close();
