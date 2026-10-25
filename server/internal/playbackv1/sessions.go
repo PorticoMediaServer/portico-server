@@ -360,17 +360,28 @@ func (c *Caller) admitChannel(ctx context.Context, channel string) error {
 
 // storedRequest is what a session keeps of its request for re-planning.
 type storedRequest struct {
-	DiscTitle        *catalog.DiscTitleRef `json:"discTitle,omitempty"`
-	State            string                `json:"state,omitempty"`
-	VersionID        string                `json:"versionId,omitempty"`
-	Quality          Quality               `json:"quality"`
-	Audio            *AudioRequest         `json:"audio,omitempty"`
-	Subtitles        *SubtitleRequest      `json:"subtitles,omitempty"`
-	SubtitleOffsetMs int64                 `json:"subtitleOffsetMs,omitempty"`
-	Network          string                `json:"network,omitempty"`
+	DiscTitle *catalog.DiscTitleRef `json:"discTitle,omitempty"`
+	// SelectedDiscTitle is the accepted presentation's actual title, including
+	// a default-main selection. It is separate from explicit request intent so
+	// default starts retain their existing resume and track-carry semantics.
+	SelectedDiscTitle *catalog.DiscTitleRef `json:"selectedDiscTitle,omitempty"`
+	State             string                `json:"state,omitempty"`
+	VersionID         string                `json:"versionId,omitempty"`
+	Quality           Quality               `json:"quality"`
+	Audio             *AudioRequest         `json:"audio,omitempty"`
+	Subtitles         *SubtitleRequest      `json:"subtitles,omitempty"`
+	SubtitleOffsetMs  int64                 `json:"subtitleOffsetMs,omitempty"`
+	Network           string                `json:"network,omitempty"`
 	// Carry is the audio and subtitle choice this playback carries from the
 	// queue entry before (nil: none; the Settings decide).
 	Carry *TrackCarry `json:"carry,omitempty"`
+}
+
+func (r storedRequest) selectedDiscTitle() *catalog.DiscTitleRef {
+	if r.SelectedDiscTitle != nil {
+		return r.SelectedDiscTitle
+	}
+	return r.DiscTitle
 }
 
 // normalized is a stored request with a quality mode: one stored before
@@ -453,7 +464,7 @@ func (s *Service) reportEvery(state string) time.Duration {
 }
 
 func (s *Service) view(r row) SessionView {
-	v := SessionView{DiscTitle: r.stored().DiscTitle, ID: r.id, Revision: strconv.Itoa(r.revision), Kind: r.kind, Role: r.role, State: r.state, ItemID: r.item, VersionID: r.version, ChannelID: r.channel}
+	v := SessionView{DiscTitle: r.stored().selectedDiscTitle(), ID: r.id, Revision: strconv.Itoa(r.revision), Kind: r.kind, Role: r.role, State: r.state, ItemID: r.item, VersionID: r.version, ChannelID: r.channel}
 	if r.ended > 0 {
 		v.State = "ended"
 		v.End = &SessionEnd{Reason: r.endReason, Message: r.message}
@@ -699,7 +710,8 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	video := kind != "song" && kind != "track" && kind != "audiobook_file"
 	request := t.request.normalized()
-	if request.DiscTitle != nil {
+	discTitle := request.selectedDiscTitle()
+	if discTitle != nil {
 		if t.version == "" || t.part != 0 || !video {
 			return playback.Session{}, Presentation{}, &FieldError{Path: "discTitle"}
 		}
@@ -707,7 +719,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	if !video && request.Quality.Mode == QualityFixed || video && request.Quality.Mode == QualityCD {
 		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
 	}
-	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume && request.DiscTitle == nil, DiscTitle: request.DiscTitle}
+	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume && request.DiscTitle == nil, DiscTitle: discTitle}
 	request.Quality.apply(&base)
 	version := t.version
 	if version == "" && video && t.part == 0 {
@@ -745,7 +757,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	subtitle := request.Subtitles
 	var resources []subtitles.Resource
 	if video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && carry != nil && carry.SubtitleMode == "on") {
-		resources = s.subtitleResources(ctx, c.Principal, t.item, asset, request.DiscTitle)
+		resources = s.subtitleResources(ctx, c.Principal, t.item, asset, discTitle)
 	}
 	if subtitle == nil {
 		subtitle = carriedSubtitle(carry, subtitles.PlaybackPlan{Resources: resources})
@@ -753,7 +765,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	var chosen *subtitles.Resource
 	if subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" {
 		chosen = resourceByID(resources, string(subtitle.TrackID))
-		if request.DiscTitle != nil && chosen == nil {
+		if discTitle != nil && chosen == nil {
 			return playback.Session{}, Presentation{}, &FieldError{Path: "subtitles.trackId"}
 		}
 	}
@@ -1169,6 +1181,19 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		}
 	}
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassPlaybackStart, func(ctx context.Context, tx *sql.Tx) error {
+		selected, err := s.Playback.PresentationDiscTitleTx(ctx, tx, media.ID, media.Generation)
+		if err != nil {
+			return err
+		}
+		if asked := stored.selectedDiscTitle(); asked != nil && (selected == nil || *asked != *selected) {
+			return playback.ErrStaleOffer
+		}
+		stored.SelectedDiscTitle = selected
+		acceptedRequest, err := json.Marshal(stored)
+		if err != nil {
+			return err
+		}
+		r.request = string(acceptedRequest)
 		if bound, ok := ctx.Value(queueInitialStartKey{}).(queueInitialStart); ok && c.Principal.Grant == identity.GrantCastTarget {
 			if err := s.recheckInitialQueueStartTx(ctx, tx, c, bound, base); err != nil {
 				return err

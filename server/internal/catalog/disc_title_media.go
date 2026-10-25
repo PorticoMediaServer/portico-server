@@ -22,6 +22,24 @@ type DiscTitleRef struct {
 	Revision string `json:"revision"`
 }
 
+// PinnedDiscTitleRefTx projects an already checked physical title pin. It never
+// chooses the current main title or substitutes another set of timed facts.
+func PinnedDiscTitleRefTx(ctx context.Context, tx *sql.Tx, asset, key, factsRevision string) (*DiscTitleRef, error) {
+	d, err := ReadDiscSelection(ctx, tx, asset)
+	if err != nil {
+		return nil, err
+	}
+	if d == nil || key == "" || factsRevision == "" {
+		return nil, ErrDiscSelectionChanged
+	}
+	var token string
+	err = tx.QueryRowContext(ctx, `SELECT t.selection_token FROM inventory_disc_titles t JOIN inventory_disc_title_media m ON m.object_id=t.object_id AND m.title_key=t.title_key WHERE t.object_id=? AND t.title_key=? AND m.source_revision=? AND m.fingerprint=? AND m.revision=?`, d.Object, key, d.Revision, d.Fingerprint, factsRevision).Scan(&token)
+	if err != nil {
+		return nil, err
+	}
+	return &DiscTitleRef{ID: discPublicID(token), Revision: discTitleRevision(d.PublicRevision(), token, factsRevision)}, nil
+}
+
 func discTitleRevision(source, token, facts string) string {
 	sum := sha256.Sum256([]byte("disc_title_offer_v1\x00" + source + "\x00" + token + "\x00" + facts))
 	return hex.EncodeToString(sum[:])

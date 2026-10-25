@@ -119,6 +119,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if change.VersionID != "" && change.VersionID != r.version {
 		next.VersionID, bytes = change.VersionID, true
 		next.DiscTitle = nil
+		next.SelectedDiscTitle = nil
 	}
 	if change.Audio != nil && (stored.Audio == nil || !reflect.DeepEqual(*change.Audio, *stored.Audio)) {
 		next.Audio, bytes = change.Audio, true
@@ -305,6 +306,20 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	part := changedPart(r, change, version)
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
+		if bytes {
+			selected, err := s.Playback.PresentationDiscTitleTx(ctx, tx, media, mediaGeneration)
+			if err != nil {
+				return err
+			}
+			if asked := next.selectedDiscTitle(); asked != nil && (selected == nil || *asked != *selected) {
+				return playback.ErrStaleOffer
+			}
+			next.SelectedDiscTitle = selected
+			requestJSON, err = json.Marshal(next)
+			if err != nil {
+				return err
+			}
+		}
 		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,location=?,version_id=?,part_index=?,request=?,media_session_id=?,media_generation=?,presentation=?,generation=?,position_ms=?,start_position_ms=?,bandwidth_kbps=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND revision=? AND ended_ms=0`,
 			state, location, version, part, string(requestJSON), media, mediaGeneration, string(presentationJSON), generation, position, presentation.StartPositionMs, bandwidth, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision)
 		if err != nil {
@@ -372,7 +387,7 @@ func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current 
 	if err != nil {
 		return false
 	}
-	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset, r.stored().DiscTitle), string(req.TrackID)), req) != ""
+	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset, r.stored().selectedDiscTitle()), string(req.TrackID)), req) != ""
 }
 
 // Stop is DELETE /v1/playback/sessions/{id} (spec §5.8): idempotent; a final

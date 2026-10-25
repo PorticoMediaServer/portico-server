@@ -117,6 +117,27 @@ func checkDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) error {
 	return nil
 }
 
+// PresentationDiscTitleTx captures the actual selected title for a presentation
+// being accepted. The caller owns actor/occurrence admission in this same Tx.
+func (s *Service) PresentationDiscTitleTx(ctx context.Context, tx *sql.Tx, id string, generation int) (*catalog.DiscTitleRef, error) {
+	var asset string
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id FROM playback_sessions WHERE id=? AND generation=? AND state NOT IN('stopped','ended','failed')`, id, generation).Scan(&asset); err != nil {
+		return nil, err
+	}
+	var key, revision string
+	err := tx.QueryRowContext(ctx, `SELECT title_key,title_facts_revision FROM playback_disc_pins WHERE session_id=?`, id).Scan(&key, &revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = checkDiscSessionTx(ctx, tx, id); err != nil {
+		return nil, err
+	}
+	return catalog.PinnedDiscTitleRefTx(ctx, tx, asset, key, revision)
+}
+
 func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInput, bool, error) {
 	tx, done, err := dbwork.BeginRead(ctx, h.db)
 	if err != nil {
