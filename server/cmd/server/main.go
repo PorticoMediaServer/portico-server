@@ -26,8 +26,8 @@ import (
 	"portico.local/server/internal/configfile"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dlna"
-	"portico.local/server/internal/enrichment"
 	"portico.local/server/internal/driveoauth"
+	"portico.local/server/internal/enrichment"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storagepaths"
 	"runtime"
@@ -1306,6 +1306,8 @@ func run() (runErr error) {
 		notified := make(chan struct{})
 		supervise.Go("hosted.shutdown-notice", func() { defer close(notified); _ = control.NotifyShutdown(stop) })
 		_ = server.Shutdown(stop)
+		// The owner's in-flight Google sign-ins own loopback listeners and flights.
+		apiDependencies.DriveOAuth.Close()
 		flush, finishFlush := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := httpapi.FlushCredentialUse(flush, handler); err != nil {
 			log.Printf("Credential usage could not be saved before shutdown: %v", err)
