@@ -1,3 +1,4 @@
+import {captureReadingAnnotationMutation, parseReadingAnnotations, parseReadingAnnotationSaved, readingAnnotationId, type ReadingAnnotationMutation, type ReadingAnnotationsPage} from './reading-annotations.ts';
 import {
   decodeGetReadingPeriodicalGroupsResponse, decodeGetReadingPeriodicalIssuesResponse,
   type GetReadingPeriodicalGroupsResponse, type GetReadingPeriodicalIssuesResponse,
@@ -14,7 +15,15 @@ import type {Viewer} from './index.ts';
 
 export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
 type Immutable<T> = T extends readonly (infer V)[] ? readonly Immutable<V>[] : T extends object ? {readonly [K in keyof T]: Immutable<T[K]>} : T;
-export type ReadingManifest = Immutable<PostReadingSessionsResponse>;
+export type ReadingManifest = Immutable<PostReadingSessionsResponse & {canAnnotate?: true}>;
+/** Optional source capability is withheld unless the actual response says literal true. */
+export function parseReadingManifest(raw: unknown): ReadingManifest {
+  const {canAnnotate: decodedCapability, ...value} = decodePostReadingSessionsResponse(raw) as PostReadingSessionsResponse & {canAnnotate?: unknown};
+  void decodedCapability;
+  const offered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canAnnotate === true;
+  return frozen({...value, ...(offered ? {canAnnotate: true as const} : {})});
+}
+
 /** Derived from the generated official response, never a hand-written mirror. */
 export type ReadingItem = GetReadingItemsResponse['items'][number];
 export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
@@ -459,7 +468,7 @@ export class ReadingClient {
   async open(request: PostReadingSessionsRequest, signal?: AbortSignal): Promise<ReadingSession> {
     if (!id(request.itemId) || !id(request.sourceId)) fail('invalid_request');
     const captured = Object.freeze({itemId: request.itemId, sourceId: request.sourceId});
-    const manifest = await this.json(routePath('post_reading_sessions'), 'POST', captured, signal, decodePostReadingSessionsResponse, 8 << 20, undefined, undefined, m => m.revision);
+    const manifest = await this.json(routePath('post_reading_sessions'), 'POST', captured, signal, parseReadingManifest, 8 << 20, undefined, undefined, m => m.revision);
     validateManifest(manifest, captured); this.check(signal);
     const session = new ReadingSession(this, manifest); this.#sessions.add(session); return session;
   }
@@ -610,6 +619,23 @@ export class ReadingSession {
       if (out.saved && (out.progress === null || out.progress.stale || out.progress.revision !== expectedRevision + 1)) fail('invalid_progress');
       return out;
     }, true);
+  };
+  /** The existing generated session identity plus the declared annotations subresource.
+   * Official new operation descriptors are produced at the Release checkpoint. */
+  annotations = async (cursor = '', revision?: number, signal?: AbortSignal): Promise<ReadingAnnotationsPage> => {
+    this.#check();
+    if (this.manifest.canAnnotate !== true) fail('not_permitted');
+    if (cursor && (!readingAnnotationId(cursor) || revision === undefined) || revision !== undefined && !integer(revision, 0, Number.MAX_SAFE_INTEGER)) fail('invalid_revision');
+    const path = routePath('delete_reading_sessions_sessionId', {sessionId: this.manifest.sessionId}) + '/annotations';
+    return this.#control(() => this.#client.json(query(path, {cursor, revision}), 'GET', undefined, signal,
+      raw => parseReadingAnnotations(raw, this.manifest, location => validateLocation(location, this.manifest), cursor), 2 << 20, this.#headers(), this.signal), true);
+  };
+  mutateAnnotation = async (request: ReadingAnnotationMutation, signal?: AbortSignal): Promise<Readonly<{revision: number}>> => {
+    this.#check(); if (this.manifest.canAnnotate !== true) fail('not_permitted');
+    const captured = captureReadingAnnotationMutation(request, location => validateLocation(location, this.manifest));
+    const path = routePath('delete_reading_sessions_sessionId', {sessionId: this.manifest.sessionId}) + '/annotations';
+    return this.#control(() => this.#client.json(path, 'PUT', captured, signal,
+      raw => parseReadingAnnotationSaved(raw, captured.expectedRevision), 4096, this.#headers(), this.signal), true);
   };
   close = async (signal?: AbortSignal): Promise<void> => {
     if (this.signal.aborted) return;
