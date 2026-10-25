@@ -8,103 +8,124 @@ import styles from './owner-signin-switch.module.css';
 
 const t = defaultI18n.t;
 type Waiting = Readonly<{items: readonly AccountMoveWaiting[]; truncated: boolean}>;
-type Receipt = Readonly<{id: number; codes: readonly AccountMoveCode[]; targets: readonly string[]; issuer: string}>;
-/** One opening: this source, this exact move revision and its own abort ticket. */
-type Opening = Readonly<{id: number; move: AccountMove; controller: AbortController}>;
+/** One committed flight: this exact source, move revision and lifetime ticket.
+ * Handlers are rendered against one flight and can only ever act on it. */
+type Flight = {
+	readonly id: number; readonly source: SettingsOwnerSwitch; readonly contextId: string;
+	readonly move: AccountMove; readonly controller: AbortController;
+	retired: boolean; pending: boolean; launched: boolean;
+};
+type Held<T> = Readonly<{flight: Flight; value: T}>;
+type Receipt = Readonly<{flight: Flight; codes: readonly AccountMoveCode[]; targets: readonly string[]; issuer: string}>;
+
+const retire = (flight: Flight) => {if (!flight.retired) {flight.retired = true; flight.controller.abort();}};
 
 /**
  * Frames 24d and 24c2: the owner makes codes for the exact people still waiting,
- * one person at a time or everyone listed at once. Each opening is bound to one
- * source and one exact move revision; a replaced move retires the previous list,
- * operation and receipt synchronously, and every read, issue and finish carries
- * that opening's own signal, so an old callback can never touch its successor.
- * The server re-proves the owner; the sheet's address is the proven issuer origin
- * captured here, never the page's own location. Nothing is admitted.
+ * one person at a time or everyone listed. Each flight is bound to one exact
+ * source, move revision and abort ticket; a replaced move retires the previous
+ * flight during render (before its layout cleanup) and every handler only acts
+ * through the flight it was drawn with, so a retained button cannot issue a
+ * successor's targets or finish a move it did not draw. The sheet's address is
+ * the issuer origin proved for this server, never the page's own location.
  */
 export function MoveCodesHost({source, serverName, isCurrent, onError}: {
 	source: SettingsOwnerSwitch; serverName: string; isCurrent: () => boolean; onError: (error: unknown) => void;
 }) {
 	const move = useSyncExternalStore(source.subscribeMove, source.getMove);
-	const [epoch, setEpoch] = useState(0);
-	const [waiting, setWaiting] = useState<Waiting>();
+	const [waiting, setWaiting] = useState<Held<Waiting>>();
 	const [receipt, setReceipt] = useState<Receipt>();
-	const [busy, setBusy] = useState(''), [note, setNote] = useState('');
-	const opening = useRef<Opening | undefined>(undefined), moveRef = useRef(move), liveRef = useRef(isCurrent);
-	const sourceRef = useRef(source), refreshed = useRef(''), pending = useRef(false);
-	moveRef.current = move; liveRef.current = isCurrent; sourceRef.current = source;
-	const contextId = source.contextId;
-	const active = (opening_: Opening | undefined): opening_ is Opening =>
-		opening_ !== undefined && opening.current === opening_ && !opening_.controller.signal.aborted && liveRef.current();
+	const [busy, setBusy] = useState<Held<string>>();
+	const [note, setNote] = useState('');
+	const sequence = useRef(0), flightRef = useRef<Flight | undefined>(undefined), liveRef = useRef(isCurrent);
+	const sourceRef = useRef(source), refreshed = useRef('');
+	liveRef.current = isCurrent; sourceRef.current = source;
+	const contextId = source.contextId, moveId = move?.id, revision = move?.revision;
+	// Install the flight for this render, retiring a replaced one immediately.
+	let flight = flightRef.current;
+	if (flight && (!move || flight.contextId !== contextId || flight.move.id !== moveId || flight.move.revision !== revision)) {
+		retire(flight); flight = undefined; flightRef.current = undefined;
+	}
+	if (!flight && move) {
+		flight = {id: ++sequence.current, source, contextId, move, controller: new AbortController(), retired: false, pending: false, launched: false};
+		flightRef.current = flight;
+	}
+	const live = (target: Flight | undefined): target is Flight =>
+		target !== undefined && target === flightRef.current && !target.retired && !target.controller.signal.aborted && liveRef.current();
 	// One read per captured context, not per rebuilt source object.
 	useEffect(() => {if (refreshed.current !== contextId) {refreshed.current = contextId; sourceRef.current.refreshMove();}}, [contextId]);
-	const moveId = move?.id, revision = move?.revision;
-	// A replaced source or move retires the previous opening before this one paints.
+	const flightId = flight?.id;
 	useLayoutEffect(() => {
-		opening.current?.controller.abort();
-		const current = moveRef.current;
-		const next = current ? {id: (opening.current?.id ?? 0) + 1, move: current, controller: new AbortController()} : undefined;
-		opening.current = next; pending.current = false;
-		setEpoch(next?.id ?? 0); setWaiting(undefined); setReceipt(undefined); setNote(''); setBusy('');
-		if (!next) return;
-		void sourceRef.current.waiting(next.controller.signal).then(list => {
-			if (active(next)) setWaiting(list);
-		}, () => undefined);
-		return () => {next.controller.abort();};
-	}, [contextId, moveId, revision]);
-	const makeFor = async (ids?: readonly string[]) => {
-		const current = opening.current, list = waiting;
-		if (!active(current) || pending.current || !list) return;
+		if (!flight) return;
+		setWaiting(undefined); setReceipt(undefined); setBusy(undefined); setNote('');
+		if (!flight.launched) {
+			flight.launched = true;
+			void flight.source.waiting(flight.controller.signal).then(list => {
+				if (live(flight)) setWaiting({flight, value: list});
+			}, () => undefined);
+		}
+		return () => {retire(flight);};
+	}, [flightId]);
+	const makeFor = async (target: Flight, ids?: readonly string[]) => {
+		const list = waiting && waiting.flight === target ? waiting.value : undefined;
+		if (!live(target) || target.pending || !list) return;
 		const targets = ids ?? list.items.map(row => row.accountId);
 		// Exactly the rendered people: no invented target, and no whole-population
 		// action while the read proves it listed only the first 2000.
 		if (!targets.length || targets.some(id => !list.items.some(row => row.accountId === id))) return;
 		if (!ids && list.truncated) return;
-		const issuer = sourceRef.current.issuerOrigin();
+		const issuer = target.source.issuerOrigin();
 		if (!issuer) {setNote(t('accounts.move.noIssuer')); return;}
-		pending.current = true; setBusy(ids ? ids[0] ?? '' : 'all'); setNote('');
+		target.pending = true; setBusy({flight: target, value: ids ? ids[0] ?? '' : 'all'}); setNote('');
 		try {
-			const codes = await sourceRef.current.codes(targets, current.controller.signal);
-			if (!active(current)) return;
+			const codes = await target.source.codes(targets, target.controller.signal);
+			if (!live(target)) return;
 			// The receipt must be exactly these targets before anything is shown.
 			if (codes.length !== targets.length || targets.some(id => !codes.some(code => code.accountId === id))) return;
-			setReceipt({id: current.id, codes, targets, issuer});
-		} catch (error) {if (active(current)) onError(error);}
-		finally {pending.current = false; if (active(current)) setBusy('');}
+			setReceipt({flight: target, codes, targets, issuer});
+		} catch (error) {if (live(target)) onError(error);}
+		finally {
+			target.pending = false;
+			setBusy(current => current && current.flight === target ? undefined : current);
+		}
 	};
-	const finish = async () => {
-		const current = opening.current;
-		if (!active(current) || pending.current) return;
-		pending.current = true; setBusy('finish'); setNote('');
-		try {await sourceRef.current.finishMove(current.move, {isCurrent: liveRef.current, signal: current.controller.signal});}
-		catch (error) {if (active(current)) onError(error);}
-		finally {pending.current = false; if (active(current)) setBusy('');}
+	const finish = async (target: Flight) => {
+		if (!live(target) || target.pending) return;
+		target.pending = true; setBusy({flight: target, value: 'finish'}); setNote('');
+		try {await target.source.finishMove(target.move, {isCurrent: liveRef.current, signal: target.controller.signal});}
+		catch (error) {if (live(target)) onError(error);}
+		finally {
+			target.pending = false;
+			setBusy(current => current && current.flight === target ? undefined : current);
+		}
 	};
-	// Closing the sheet drops only its receipt; the move opening stays usable.
-	const close = () => {setReceipt(undefined);};
-	const currentReceipt = receipt && opening.current?.id === receipt.id && receipt.id === epoch ? receipt : undefined;
-	const shown = move ? waiting : undefined;
+	// A retained sheet may dismiss only the receipt it was drawn for.
+	const close = (target: Receipt) => {setReceipt(current => current === target ? undefined : current);};
+	const current = flight, list = waiting && waiting.flight === current ? waiting.value : undefined;
+	const receiptShown = receipt && receipt.flight === current ? receipt : undefined;
+	const held = busy && busy.flight === current ? busy.value : undefined;
 	return <>
 		<div className={styles.codesRow}>
 			<span>{t('accounts.move.sheetTitle')}
 				<small>{move ? t('accounts.settings.waiting', {waiting: move.waiting, total: move.people})
-					: shown ? t(shown.truncated ? 'accounts.move.waitingTruncated' : 'accounts.move.waitingCount', {count: defaultI18n.number(shown.items.length)})
+					: list ? t(list.truncated ? 'accounts.move.waitingTruncated' : 'accounts.move.waitingCount', {count: defaultI18n.number(list.items.length)})
 						: t('accounts.move.waitingHelp')}</small>
 			</span>
-			{move && shown ? <Button variant="glass" size="small" loading={busy === 'all'} disabled={Boolean(busy) || shown.truncated}
-				onClick={() => void makeFor()}>{t('accounts.move.makeCodes')}</Button> : null}
-			{move ? <Button variant="glass" size="small" loading={busy === 'finish'} disabled={Boolean(busy)} onClick={() => void finish()}>{t('accounts.settings.finishNow')}</Button> : null}
+			{current && list ? <Button variant="glass" size="small" loading={held === 'all'} disabled={Boolean(held) || list.truncated}
+				onClick={() => void makeFor(current)}>{t('accounts.move.makeCodes')}</Button> : null}
+			{current ? <Button variant="glass" size="small" loading={held === 'finish'} disabled={Boolean(held)} onClick={() => void finish(current)}>{t('accounts.settings.finishNow')}</Button> : null}
 		</div>
 		{move ? <p className={styles.hostNote}>{t('accounts.settings.finishNowHelp')}</p> : null}
 		{note && <p className={styles.hostNote}>{note}</p>}
-		{move && shown ? <ul className={styles.waitingList}>
-			{shown.items.map(row => <li key={row.accountId}>
+		{current && list ? <ul className={styles.waitingList}>
+			{list.items.map(row => <li key={row.accountId}>
 				<span><b>{row.username}</b><small>{row.expiresAt ? `${t('accounts.move.validUntil')} ${defaultI18n.date(row.expiresAt)}` : t('accounts.move.noCodeYet')}</small></span>
-				<Button variant="glass" size="small" loading={busy === row.accountId} disabled={Boolean(busy)}
-					onClick={() => void makeFor([row.accountId])}>{row.expiresAt ? t('accounts.move.newCode') : t('accounts.move.makeCode')}</Button>
+				<Button variant="glass" size="small" loading={held === row.accountId} disabled={Boolean(held)}
+					onClick={() => void makeFor(current, [row.accountId])}>{row.expiresAt ? t('accounts.move.newCode') : t('accounts.move.makeCode')}</Button>
 			</li>)}
-			{shown.truncated ? <li><small>{t('accounts.move.waitingTruncated', {count: defaultI18n.number(shown.items.length)})}</small></li> : null}
+			{list.truncated ? <li><small>{t('accounts.move.waitingTruncated', {count: defaultI18n.number(list.items.length)})}</small></li> : null}
 		</ul> : null}
-		{currentReceipt ? <MoveCodesSheet codes={currentReceipt.codes} serverName={serverName} address={currentReceipt.issuer}
-			isCurrent={() => liveRef.current() && opening.current?.id === currentReceipt.id} onClose={close} onError={onError}/> : null}
+		{receiptShown ? <MoveCodesSheet codes={receiptShown.codes} serverName={serverName} address={receiptShown.issuer}
+			isCurrent={() => live(receiptShown.flight)} onClose={() => close(receiptShown)} onError={onError}/> : null}
 	</>;
 }

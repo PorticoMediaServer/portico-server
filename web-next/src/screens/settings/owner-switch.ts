@@ -221,21 +221,30 @@ export class SettingsOwnerSwitch {
     } catch { return undefined; }
   }
   /** Finish now: exactly the move the caller rendered, with its own opening ticket.
-   * A stale caller or a replaced move never finishes a successor. Nobody is admitted. */
+   * A stale caller or a replaced move never finishes a successor, and the finish
+   * joins this controller's owned lifetime, so cancel/dispose retire it. */
   async finishMove(rendered: AccountMove, caller?: OwnerMoveCaller) {
     if (this.finishing) throw new Error('An owner move finish is already running.');
-    const move = this.move, live = () => this.current() && (!caller || (caller.isCurrent() && caller.signal?.aborted !== true));
-    if (!live() || !move || move.id !== rendered.id || move.revision !== rendered.revision ||
+    const move = this.move, callerLive = () => !caller || (caller.isCurrent() && caller.signal?.aborted !== true);
+    if (!this.current() || this.state.busy || !callerLive() || !move || move.id !== rendered.id || move.revision !== rendered.revision ||
       (move.stage !== 'moving_to_local' && move.stage !== 'moving_to_portico')) throw new Error('There is no move in progress to finish.');
     this.finishing = true;
-    const own = new AbortController(), signal = caller?.signal ? AbortSignal.any([own.signal, caller.signal]) : own.signal;
+    // The owned controller is the one cancel()/dispose() abort, not a private stray.
+    this.request?.abort();
+    const own = this.request = new AbortController();
+    const live = () => this.current() && this.request === own && !own.signal.aborted && callerLive();
+    const signal = caller?.signal ? AbortSignal.any([own.signal, caller.signal]) : own.signal;
     try {
       await this.moves.finish(move, signal);
-      // The finish is only published while the same opening still stands.
-      if (!live()) return;
+      const now = this.move;
+      // Publication requires the same rendered move, the same caller and this ticket.
+      if (!live() || !now || now.id !== rendered.id || now.revision !== rendered.revision) return;
       this.publishMove(null);
       this.refreshMove();
-    } finally {this.finishing = false;}
+    } finally {
+      this.finishing = false;
+      if (this.request === own) this.request = undefined;
+    }
   }
   /** The exact people still waiting, for the codes host; owner-fenced server read. */
   waiting(signal?:AbortSignal){return this.moves.waiting(signal);}
