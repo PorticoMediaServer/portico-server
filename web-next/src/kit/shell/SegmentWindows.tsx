@@ -51,15 +51,16 @@ type AdjustLease = {
   onChange: (draft: SegmentEdit) => void;
   onSave: (draft: SegmentEdit) => void;
   onCancel: (opening: number) => void;
+  onPreview: (mark: SegmentMark, start: number) => void;
 };
 
-function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCancel, t = tDefault}: SegmentWindowsProps & {t?: ShellTranslate}) {
+function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCancel, onPreview, t = tDefault}: SegmentWindowsProps & {t?: ShellTranslate}) {
   const live = useRef<AdjustLease | undefined>(undefined);
   const [lease, setLease] = useState<AdjustLease | undefined>(undefined);
   const token = edit?.opening;
   useLayoutEffect(() => {
     if (token === undefined) {live.current = undefined;setLease(undefined);return;}
-    const next: AdjustLease = {opening: token, draft: edit!, valid: {start: true, end: true}, duration, onChange, onSave, onCancel};
+    const next: AdjustLease = {opening: token, draft: edit!, valid: {start: true, end: true}, duration, onChange, onSave, onCancel, onPreview};
     live.current = next;setLease(next);
     return () => {if (live.current === next) live.current = undefined;};
   }, [token]);
@@ -68,7 +69,7 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
   useLayoutEffect(() => {
     const current = live.current;
     if (!edit || !current || current.opening !== edit.opening) return;
-    current.draft = edit;current.duration = duration;current.onChange = onChange;current.onSave = onSave;current.onCancel = onCancel;
+    current.draft = edit;current.duration = duration;current.onChange = onChange;current.onSave = onSave;current.onCancel = onCancel;current.onPreview = onPreview;
   });
   const [valid, setValid] = useState<{start: boolean; end: boolean}>({start: true, end: true});
   const sameOpening = () => !!lease && live.current === lease && !!edit && lease.opening === edit.opening;
@@ -100,6 +101,10 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
     if (!sameOpening() || !lease || !lease.valid.start || !lease.valid.end) return;
     lease.onSave(lease.draft);
   };
+  const preview = (mark: SegmentMark) => {
+    if (!sameOpening() || !lease || lease.draft.id !== mark.id) return;
+    lease.onPreview(mark, Math.max(0, lease.draft.start - 3));
+  };
   const setFieldValid = (field: 'start' | 'end', value: boolean) => {
     setValid(current => current[field] === value ? current : {...current, [field]: value});
     if (!sameOpening() || !lease) return;
@@ -126,6 +131,7 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
       <TimeStepper field="end" label={t('next.shell.endsAt')} value={edit.end} min={edit.start + .1} max={duration} t={t}
         onStep={delta => step('end', delta)} onCommit={value => apply('end', value)}
         onValid={value => setFieldValid('end', value)} />
+      <Button variant="glass" size="compact" onClick={() => preview(mark)}>{t('next.shell.previewSegment')}</Button>
     </div>
   </BottomSheet>;
 }
