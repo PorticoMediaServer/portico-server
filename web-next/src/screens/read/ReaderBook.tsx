@@ -17,6 +17,7 @@ import {readerBookPresentation, type ReaderEnvironment} from './native/tablet-pr
 import type {ReaderMountAuthority} from './mount';
 import type {ReaderChapterMark} from './ReaderChrome';
 import fixedStyles from './fixed-page.module.css';
+import {ReaderMatchNavigation} from './ReaderMatchNavigation';
 const {t} = defaultI18n;
 const directionIcon = (rtl: boolean): 'i-rtl' | 'i-ltr' => rtl ? 'i-rtl' : 'i-ltr';
 /** A chapter mark is the file's own contents entry; its end is the next entry, never a guess. */
@@ -43,7 +44,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const [fixedPane, setFixedPane] = useState<'contents' | 'pages'>('contents');
   const zoomAnchor = useRef<HTMLButtonElement>(null), directionAnchor = useRef<HTMLButtonElement>(null);
   const fixed = publication.format !== 'epub';
-  const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [currentHit, setCurrentHit] = useState<string>();
+  const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [searchComplete, setSearchComplete] = useState(false), [currentHit, setCurrentHit] = useState<string>();
   const anchor = useRef<HTMLButtonElement>(null);
   const contentsError = useRef(reportError); contentsError.current = reportError;
   useEffect(() => {
@@ -68,13 +69,15 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const layout = readerBookPresentation(width, environment), {presentation} = layout;
   useEffect(() => {if (!active) setPanel(undefined);}, [active]);
   const navigate = (location: ReaderLocation) => {
-    if (!authority.isCurrent()) return;
+    const current = controller.getSnapshot();
+    if (!active || !authority.isCurrent() || publication.signal.aborted || current.status !== 'ready'
+      || current.sourceId !== publication.source.id || current.sourceRevision !== publication.source.revision) return;
     void controller.navigate({kind: 'location', location}).catch(reportError);
     if (presentation === 'phone') setPanel(undefined);
   };
   useEffect(() => {
-    setCurrentHit(undefined);
-    if (!active || panel !== 'search' || !query.trim()) {setHits([]); setSearching(false); return;}
+    setCurrentHit(undefined); setSearchComplete(false);
+    if (!active || !query.trim()) {setHits([]); setSearching(false); return;}
     const life = new AbortController(); let queryCurrent = true;
     setSearching(true); setHits([]);
     void (async () => {
@@ -83,9 +86,17 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
         if (!queryCurrent || !authority.isCurrent()) return;
         found.push(hit); setHits([...found]);
       }
+      // A rejected or retired iterator never establishes a complete result count.
+      // At the core's limit, exhaustion is bounded rather than a book-wide total.
+      if (queryCurrent && authority.isCurrent() && !life.signal.aborted && found.length < 100) setSearchComplete(true);
     })().catch(error => {if (queryCurrent && authority.isCurrent()) reportError(error);}).finally(() => {if (queryCurrent) setSearching(false);});
     return () => {queryCurrent = false; life.abort();};
-  }, [controller, authority, active, panel, query, reportError]);
+  }, [controller, authority, active, query, reportError]);
+  const stepSearch = (direction: 'previous' | 'next') => {
+    const index = readingSearchStepIndex(hits.length, hits.findIndex(hit => hit.id === currentHit), direction);
+    const next = index === undefined ? undefined : hits[index];
+    if (next) {setCurrentHit(next.id); navigate(next.location);}
+  };
   const contents = (items: readonly ReaderTocItem[]): readonly ReaderContentsEntry[] => items.map(item => ({id: item.id, label: item.label,
     page: item.location.pageLabel, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
   const searchHits: ReaderSearchHit[] = hits.map(hit => {
@@ -103,9 +114,9 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>)
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={setQuery} hits={searchHits} current={currentHit} loading={searching}
-        resultSummary={!searching && query.trim() && hits.length < 100 ? t('next.reader.matches', {count: hits.length}) : undefined}
+        resultSummary={searchComplete && query.trim() ? t('next.reader.matches', {count: hits.length}) : undefined}
         onSearchAll={query.trim() ? () => {if (!authority.isCurrent() || !query.trim()) return; void router.navigate({to: '/search', search: {q: query.trim()}}).catch(reportError);} : undefined}
-        onStep={direction => {const index = readingSearchStepIndex(hits.length, hits.findIndex(hit => hit.id === currentHit), direction), next = index === undefined ? undefined : hits[index]; if (next) {setCurrentHit(next.id); navigate(next.location);}}}
+        onStep={stepSearch}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
       : panel === 'display' ? <ReadingDisplay controller={controller} authority={authority} copy={readingDisplayCopy(defaultI18n, presentation, 7)}
         scale={{min: 1, max: 7, step: 1, ticks: [1, 2, 3, 4, 5, 6, 7]}} presentation={presentation} popover={layout.displayPopover} label={t('next.reader.display')}
@@ -120,7 +131,9 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       chapters: readerChapterMarks(value.toc, value.location ?? undefined),
       chapter: value.location?.chapter, pages: readerPagePosition(value.location, value.metadata?.pageCount),
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
-      percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
+      percent: value.location ? defaultI18n.percent(value.location.progression) : undefined,
+      searchNavigation: active && presentation === 'phone' && currentHit && hits.some(hit => hit.id === currentHit)
+        ? <ReaderMatchNavigation query={query} onStep={stepSearch} onClose={() => setQuery('')}/> : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
       fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
         {id: 'contents', label: t('next.reader.contents'), icon: 'i-chapters', expanded: panel === 'contents', onPress: () => setPanel(panel === 'contents' ? undefined : 'contents')},
