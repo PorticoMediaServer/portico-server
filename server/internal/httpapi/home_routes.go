@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"portico.local/server/internal/catalog"
@@ -228,10 +229,10 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 	var body struct {
-		ExpectedRevision *int64   `json:"expectedRevision"`
-		IdempotencyKey   string   `json:"idempotencyKey"`
-		RowOrder         []string `json:"rowOrder"`
-		HiddenRowIDs     []string `json:"hiddenRowIds"`
+		ExpectedRevision json.RawMessage `json:"expectedRevision"`
+		IdempotencyKey   string          `json:"idempotencyKey"`
+		RowOrder         []string        `json:"rowOrder"`
+		HiddenRowIDs     []string        `json:"hiddenRowIds"`
 	}
 	if e := decode(w, r, &body); e != nil {
 		failure(w, e)
@@ -252,8 +253,13 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 		body.IdempotencyKey = identity.Token()
 	}
 	expectedRevision := int64(0)
-	if body.ExpectedRevision != nil {
-		expectedRevision = *body.ExpectedRevision
+	if len(body.ExpectedRevision) != 0 {
+		var supplied *int64
+		if err := json.Unmarshal(body.ExpectedRevision, &supplied); err != nil || supplied == nil {
+			failure(w, errStrictJSON)
+			return
+		}
+		expectedRevision = *supplied
 	} else if reset {
 		// Older clients sent only the reset key. An explicitly supplied revision
 		// remains the editor's original revision, including a genuine zero.

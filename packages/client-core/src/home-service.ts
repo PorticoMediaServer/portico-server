@@ -310,38 +310,60 @@ export class HomeService {
 
   loadLayout = (signal?: AbortSignal): Promise<HomeLayoutView> => fetchHomeLayout(this.api(), signal);
 
+  private assertLayoutCurrent(lifetime?: HomeLayoutWriteLifetime): void {
+    let live = !this.disposed && !lifetime?.signal.aborted;
+    try {if (lifetime && !lifetime.isCurrent()) live = false;} catch {live = false;}
+    if (!live) throw layoutRetired();
+  }
   /** A conflicting save is surfaced for Reload layout; it never overwrites another device silently. */
   async saveLayout(rowOrder: readonly string[], hiddenRowIds: readonly string[], idempotencyKey: () => string, expectedRevision?: number, lifetime?: HomeLayoutWriteLifetime): Promise<HomeLayout> {
-    if (lifetime && (lifetime.signal.aborted || !lifetime.isCurrent())) throw layoutRetired();
+    this.assertLayoutCurrent(lifetime);
     const revision = expectedRevision ?? this.state.document?.layout.revision;
     if (revision === undefined) throw new Error('Home is not loaded.');
-    const saved = await saveHomeLayout(this.api(), {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()}, lifetime?.signal);
-    await this.afterLayout(lifetime);
-    return saved;
+    try {
+      const saved = await saveHomeLayout(this.api(), {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()}, lifetime?.signal);
+      this.assertLayoutCurrent(lifetime);
+      await this.afterLayout(lifetime);this.assertLayoutCurrent(lifetime);return saved;
+    } catch (error) {this.assertLayoutCurrent(lifetime);throw error;}
   }
 
   async resetLayout(idempotencyKey: () => string, expectedRevision?: number, lifetime?: HomeLayoutWriteLifetime): Promise<void> {
-    if (lifetime && (lifetime.signal.aborted || !lifetime.isCurrent())) throw layoutRetired();
-    await resetHomeLayout(this.api(), idempotencyKey(), lifetime?.signal, expectedRevision);
-    await this.afterLayout(lifetime);
+    this.assertLayoutCurrent(lifetime);
+    try {
+      await resetHomeLayout(this.api(), idempotencyKey(), lifetime?.signal, expectedRevision);
+      this.assertLayoutCurrent(lifetime);
+      await this.afterLayout(lifetime);this.assertLayoutCurrent(lifetime);
+    } catch (error) {this.assertLayoutCurrent(lifetime);throw error;}
   }
 
   /** The rows follow a new arrangement at once, without a loading state when Home is already showing. */
   private async afterLayout(lifetime?: HomeLayoutWriteLifetime): Promise<void> {
-    const current = () => !lifetime || !lifetime.signal.aborted && lifetime.isCurrent();
-    if (!current()) return;
+    if (lifetime) {
+      this.assertLayoutCurrent(lifetime);
+      if (this.state.phase === 'ready' && this.state.document) {
+        const mine = this.generation;
+        try {
+          const fresh = await this.read(lifetime.signal);this.assertLayoutCurrent(lifetime);
+          if (mine === this.generation && this.state.document) {
+            this.publish({document: mergeHomeDocument(this.state.document, fresh)});this.hydrateRows(fresh);
+          }
+        } catch (error) {this.assertLayoutCurrent(lifetime);throw error;}
+      }
+      // A supplied opening never falls through to load(), whose lifecycle is
+      // the persistent Home owner rather than this editor's captured lifetime.
+      this.assertLayoutCurrent(lifetime);return;
+    }
     if (this.state.phase === 'ready' && this.state.document) {
       const mine = this.generation;
       try {
-        const fresh = await this.read(lifetime?.signal ?? new AbortController().signal);
-        if (current() && !this.disposed && mine === this.generation && this.state.document) {
-          this.publish({document: mergeHomeDocument(this.state.document, fresh)});
-          this.hydrateRows(fresh);
+        const fresh = await this.read(new AbortController().signal);
+        if (!this.disposed && mine === this.generation && this.state.document) {
+          this.publish({document: mergeHomeDocument(this.state.document, fresh)});this.hydrateRows(fresh);
         }
         return;
-      } catch { /* fall through to an ordinary load, which reports its own failure */ }
+      } catch { /* Existing callers keep their ordinary Home load fallback. */ }
     }
-    if (current()) await this.load();
+    await this.load();
   }
 
   /** Take an entry out of every row at once (an optimistic removal the screen has just asked the server for); returns the way to put the rows back. */

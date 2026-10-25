@@ -80,9 +80,14 @@ export function parseEntryOutcomes(v:unknown,limit=200):EntryOutcomes{
 /** One already-named resource, without executing its saved query or scanning a
  * directory. The same canonical metadata parser/actor scope is used as Saved. */
 export async function readPersonalResource(api:SavedApi,scope:SavedScope,resourceId:string,signal?:AbortSignal):Promise<PersonalResource>{
- if(!id(resourceId))bad();
- const value=resource(await api.request<unknown>(encodedRoutePath('get_saved_resources_id',{id:encodeURIComponent(resourceId)}),'GET',undefined,signal),scope);
- if(value.id!==resourceId)bad();return freeze(value);
+ const original=Object.freeze({serverId:scope.serverId,viewerId:scope.viewerId});
+ if(!id(original.serverId)||!str(original.viewerId,1024)||!original.viewerId||!id(resourceId))bad();
+ const current=()=>{if(signal?.aborted)throw Object.assign(new Error('Saved resource read retired'),{name:'AbortError'});};
+ current();
+ try{
+  const raw=await api.request<unknown>(encodedRoutePath('get_saved_resources_id',{id:encodeURIComponent(resourceId)}),'GET',undefined,signal);
+  current();const value=resource(raw,original);if(value.id!==resourceId)bad();current();return freeze(value);
+ }catch(error){current();throw error;}
 }
 
 export const MAX_PERSONAL_BATCH=200;
