@@ -76,9 +76,9 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
       </li>)}
     </ul> : <p className={styles.formNote}>{t('next.settings.libraries.noFolders')}</p>}
     <FolderPicker open={picking} onOpenChange={setPicking} api={api} onChoose={path => { setPicking(false); setAdding(path); }} />
-    <FolderEditor open={!!adding} onOpenChange={open => { if (!open && !lifetime.current?.running) setAdding(undefined); }} initialPath={adding}
+    <FolderEditor api={api} open={!!adding} onOpenChange={open => { if (!open && !lifetime.current?.running) setAdding(undefined); }} initialPath={adding}
       busy={busy} onSave={edit => { void run(() => service.saveSource(undefined, {...edit, expectedRevision: config.revision, acceptReplacement: false}), () => setAdding(undefined)); }} />
-    <FolderEditor open={!!editing} onOpenChange={open => { if (!open && !lifetime.current?.running) setEditing(undefined); }} source={editing}
+    <FolderEditor api={api} open={!!editing} onOpenChange={open => { if (!open && !lifetime.current?.running) setEditing(undefined); }} source={editing}
       busy={busy} onSave={edit => { if (!editing) return;
         void run(() => service.saveSource(editing.id, {...edit, expectedRevision: config.revision, acceptReplacement: false}), () => setEditing(undefined)); }} />
     <Dialog open={!!removing} onOpenChange={open => { if (!open && !lifetime.current?.running) setRemoving(undefined); }} size="sm" role="alertdialog"
@@ -94,11 +94,13 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
 }
 
 /** One existing folder's editable facts: its name, its path, and how often the
- * server checks it for changes. The location is read-only here. */
-function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: Readonly<{
-  open: boolean; onOpenChange: (open: boolean) => void; source?: InventorySource; initialPath?: string; busy: boolean;
+ * server checks it for changes, with the real server folder explorer. */
+function FolderEditor({api, open, onOpenChange, source, initialPath, busy, onSave}: Readonly<{
+  api: LibraryContentApi; open: boolean; onOpenChange: (open: boolean) => void; source?: InventorySource; initialPath?: string; busy: boolean;
   onSave: (edit: Readonly<{name: string; path: string; classification: 'local' | 'network'; followSymlinks: boolean; intervalSeconds: number}>) => void;
 }>) {
+  const [choosing, setChoosing] = useState(false);
+  useEffect(() => {if (!open) setChoosing(false);}, [open]);
   const [classification, setClassification] = useState<'local' | 'network'>('local');
   const [followSymlinks, setFollowSymlinks] = useState(false);
   const [name, setName] = useState(''), [path, setPath] = useState(''), [interval, setInterval] = useState('0');
@@ -107,7 +109,7 @@ function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: R
     if (source) { setName(source.name); setPath(source.path); setInterval(String(source.intervalSeconds)); return; }
     if (initialPath) { const parts = initialPath.split(/[\\/]/).filter(Boolean); setName(parts[parts.length - 1] ?? ''); setPath(initialPath); setInterval('0'); }
   }, [source, initialPath]);
-  return <Dialog open={open} onOpenChange={next => { if (!busy) onOpenChange(next); }} size="md" title={t(source ? 'next.settings.libraries.editFolder' : 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}
+  return <><Dialog open={open} onOpenChange={next => { if (!busy) onOpenChange(next); }} size="md" title={t(source ? 'next.settings.libraries.editFolder' : 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}
     footer={<><Button disabled={busy} onClick={() => { if (!busy) onOpenChange(false); }}>{t('next.settings.cancel')}</Button>
       <Button variant="primary" loading={busy} disabled={busy || !name.trim() || !path.trim()} onClick={() => {
         onSave({name: name.trim(), path: path.trim(), classification,
@@ -116,6 +118,7 @@ function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: R
     <div className={styles.form}>
       <TextField label={label('1.rows.1.label')} value={name} onChange={event => setName(event.currentTarget.value)} />
       <TextField label={label('1.rows.0.label')} value={path} onChange={event => setPath(event.currentTarget.value)} />
+      <Button disabled={busy} onClick={() => setChoosing(true)}>{t('next.settings.chooseFolder')}</Button>
       <RichSelect label={t('next.ownerLibraries.addFolder.location')} value={classification}
         options={(['local', 'network'] as const).map((value, index) => ({value, label: t(('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.2.control.options.' + index + '.label') as Parameters<typeof t>[0])}))}
         onValueChange={value => { if (!busy && (value === 'local' || value === 'network')) setClassification(value); }} />
@@ -123,5 +126,7 @@ function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: R
       <RichSelect label={label('1.rows.3.label')} value={interval} options={folderIntervalOptions().map(option => ({...option, label: t(option.label)}))}
         onValueChange={setInterval} />
     </div>
-  </Dialog>;
+  </Dialog>
+  <FolderPicker open={open && choosing} onOpenChange={setChoosing} api={api} onChoose={chosen => {setPath(chosen);setChoosing(false);}} />
+  </>;
 }
