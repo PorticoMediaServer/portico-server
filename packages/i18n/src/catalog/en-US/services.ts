@@ -2,6 +2,11 @@
 export const servicesMessages = {
   'services.claim.switchTitle': 'Switch {server} to Portico Accounts',
   'services.claim.switchLead': 'You asked to move this server from local sign-in. Approve with the Portico Account that will own it.',
+  'services.claim.changeOwnerTitle': 'Change owner of {server}',
+  'services.claim.changeOwnerLead': 'Approving makes {account} the owner of {server}.',
+  'services.claim.previousAdmin': 'The previous owner becomes an administrator.',
+  'services.claim.previousMember': 'The previous owner becomes a member.',
+  'services.claim.previousRemoved': 'The previous owner is removed from this server.',
   'services.claim.returnHint': 'Either way, a link then takes you back to {server}.',
   'services.claim.justNow': 'Just now',
   'services.claim.becomesOwner': '{account} becomes the owner.',

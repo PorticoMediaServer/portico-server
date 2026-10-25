@@ -14,16 +14,20 @@ export function OwnerApprovalReview({display, requested, approved = false, busy 
   display: OwnerApprovalDisplay; requested: string; approved?: boolean; busy?: boolean; notice?: ReactNode;
   onApprove: () => void; onDeny: () => void; onReturn: () => void;
 }) {
-  const {t} = servicesI18n();
+  const {t} = servicesI18n(), changeOwner = display.reason === 'change-owner';
+  const previous = display.previousOwnerRole === 'admin' ? 'services.claim.previousAdmin'
+    : display.previousOwnerRole === 'member' ? 'services.claim.previousMember'
+      : display.previousOwnerRole === 'remove' ? 'services.claim.previousRemoved' : undefined;
   return <ServicesAuthStage variant="ownerReview">
-    <ServicesHeading>{t('services.claim.switchTitle', {server: display.name})}</ServicesHeading>
-    <ServicesLead>{t('services.claim.switchLead')}</ServicesLead>
+    <ServicesHeading>{t(changeOwner ? 'services.claim.changeOwnerTitle' : 'services.claim.switchTitle', {server: display.name})}</ServicesHeading>
+    <ServicesLead>{t(changeOwner ? 'services.claim.changeOwnerLead' : 'services.claim.switchLead', {server: display.name, account: display.accountName})}</ServicesLead>
     <ServicesFacts items={[
       {id: 'server', label: t('web.claim.server'), value: display.name},
       {id: 'address', label: t('web.claim.address'), value: new URL(display.address).host},
       {id: 'account', label: t('web.claim.account'), value: display.accountName},
       {id: 'requested', label: t('web.claim.requested'), value: requested},
     ]} />
+    {previous ? <ServicesNotice tone="info">{t(previous)}</ServicesNotice> : null}
     {display.otherPeopleCount === undefined ? null : <ServicesNotice tone="info">
       <b>{t('services.claim.becomesOwner', {account: display.accountName})}</b>{' '}{t('services.claim.otherPeople', {count: display.otherPeopleCount})}
     </ServicesNotice>}

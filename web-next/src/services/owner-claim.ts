@@ -12,6 +12,8 @@ export type HostedOwnerClaimCapture = Readonly<{request?: HostedOwnerClaimLink}>
 export type HostedOwnerClaimReview = Readonly<{
   request: HostedOwnerClaimLink; identity: AccountIdentity; serverId: string; name: string; address: string;
   transactionId: string; requestedAt: string; expiresAt: string; status: 'pending' | 'approved';
+  /** The signed claim's own reason; a plain switch carries no previous-owner fact. */
+  reason: 'switch' | 'change-owner'; previousOwnerRole?: 'admin' | 'member' | 'remove'; currentOwnerUsername?: string;
   /** Signed informational count of the other people on the server. Absent when
    * the producer's exact count is over its bound: never read as zero. */
   otherPeopleCount?: number;
@@ -83,7 +85,14 @@ async function lookup(account: ServicesAccount, request: HostedOwnerClaimLink, s
         new TextEncoder().encode(claim.name).length > 120 || !claim.serverId.startsWith('srv_') ||
         !currentUTCTimestamp(claim.requestedAt) || Date.parse(claim.requestedAt) > now + 60000 ||
         !currentUTCTimestamp(claim.expiresAt) || Date.parse(claim.expiresAt) - now > 300000 ||
-        Date.parse(claim.expiresAt) <= Date.parse(claim.requestedAt) || claim.currentOwnerUsername !== undefined || claim.previousOwnerRole !== undefined) throw invalid();
+        Date.parse(claim.expiresAt) <= Date.parse(claim.requestedAt)) throw invalid();
+    // A change-owner claim names what the previous owner becomes; a plain switch
+    // carries neither field. Anything else is refused rather than guessed.
+    const previousOwnerRole = claim.previousOwnerRole;
+    if (previousOwnerRole !== undefined && !['admin', 'member', 'remove'].includes(previousOwnerRole)) throw invalid();
+    const currentOwnerUsername = claim.currentOwnerUsername;
+    if (currentOwnerUsername !== undefined && (!currentOwnerUsername || new TextEncoder().encode(currentOwnerUsername).length > 64)) throw invalid();
+    if ((previousOwnerRole === undefined) !== (currentOwnerUsername === undefined)) throw invalid();
     routeBytes(claim.serverId.slice(4), 32);
     ownerOrigin(claim.address);
     // Presentation only: the count never authorizes anything, and a value the
@@ -100,6 +109,8 @@ async function lookup(account: ServicesAccount, request: HostedOwnerClaimLink, s
     const review: HostedOwnerClaimReview = Object.freeze({request, identity: Object.freeze(accountIdentity(session)),
       serverId: claim.serverId, name: claim.name, address: claim.address, transactionId: claim.ownerTransactionId,
       requestedAt: claim.requestedAt, expiresAt: claim.expiresAt, status: claim.status,
+      reason: previousOwnerRole === undefined ? 'switch' : 'change-owner',
+      ...(previousOwnerRole === undefined ? {} : {previousOwnerRole}), ...(currentOwnerUsername === undefined ? {} : {currentOwnerUsername}),
       ...(otherPeopleCount === undefined ? {} : {otherPeopleCount}), ...(registration ? {registration} : {})});
     fresh(review, now);
     return review;
@@ -113,7 +124,8 @@ export function reviewHostedOwnerClaim(account: ServicesAccount, request: Hosted
 function sameClaim(prior: HostedOwnerClaimReview, current: HostedOwnerClaimReview) {
   if (prior.serverId !== current.serverId || prior.name !== current.name || prior.address !== current.address ||
       prior.transactionId !== current.transactionId || prior.requestedAt !== current.requestedAt || prior.expiresAt !== current.expiresAt ||
-      prior.otherPeopleCount !== current.otherPeopleCount ||
+      prior.otherPeopleCount !== current.otherPeopleCount || prior.reason !== current.reason ||
+      prior.previousOwnerRole !== current.previousOwnerRole || prior.currentOwnerUsername !== current.currentOwnerUsername ||
       prior.registration && (!current.registration || prior.registration.id !== current.registration.id || prior.registration.origin !== current.registration.origin)) throw invalid();
 }
 
