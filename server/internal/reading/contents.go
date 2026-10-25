@@ -222,39 +222,86 @@ func (e *EPUB) Contents(ctx context.Context) ([]ContentsEntry, error) {
 	} else {
 		var hasNavigation func(*navigationNode) bool
 		hasNavigation = func(n *navigationNode) bool {
-			if n.name.Local=="navPoint" || n.name.Local=="navMap" {return true}
-			for _,c:=range n.children {if hasNavigation(c) {return true}};return false
-		}
-		var navMap *navigationNode
-		if root.name.Local!="ncx" {return nil,nil}
-		for _,c:=range root.children {
-			if c.name.Local=="navMap" {if navMap!=nil {return nil,nil};navMap=c} else if hasNavigation(c) {return nil,nil}
-		}
-		if navMap==nil {return nil,nil}
-		var point func(*navigationNode,int) error
-		point=func(n *navigationNode,depth int) error {
-			var label,href string
-			labels,targets:=0,0
-			for _,c:=range n.children {
-				switch c.name.Local {
-				case "navLabel":labels++;label=c.label();if hasNavigation(c) {return ErrInvalid}
-				case "content":targets++;href=c.attr("src","");if hasNavigation(c) {return ErrInvalid}
-				case "navPoint":
-				default:if hasNavigation(c) {return ErrInvalid}
+			if n.name.Local == "navPoint" || n.name.Local == "navMap" {
+				return true
+			}
+			for _, c := range n.children {
+				if hasNavigation(c) {
+					return true
 				}
 			}
-			if labels!=1||targets!=1 {return ErrInvalid}
-			if err:=appendEntry(href,label,depth);err!=nil{return err}
-			for _,c:=range n.children {if c.name.Local=="navPoint" {if err:=point(c,depth+1);err!=nil{return err}}}
+			return false
+		}
+		var navMap *navigationNode
+		if root.name.Local != "ncx" {
+			return nil, nil
+		}
+		for _, c := range root.children {
+			if c.name.Local == "navMap" {
+				if navMap != nil {
+					return nil, nil
+				}
+				navMap = c
+			} else if hasNavigation(c) {
+				return nil, nil
+			}
+		}
+		if navMap == nil {
+			return nil, nil
+		}
+		var point func(*navigationNode, int) error
+		point = func(n *navigationNode, depth int) error {
+			var label, href string
+			labels, targets := 0, 0
+			for _, c := range n.children {
+				switch c.name.Local {
+				case "navLabel":
+					labels++
+					label = c.label()
+					if hasNavigation(c) {
+						return ErrInvalid
+					}
+				case "content":
+					targets++
+					href = c.attr("src", "")
+					if hasNavigation(c) {
+						return ErrInvalid
+					}
+				case "navPoint":
+				default:
+					if hasNavigation(c) {
+						return ErrInvalid
+					}
+				}
+			}
+			if labels != 1 || targets != 1 {
+				return ErrInvalid
+			}
+			if err := appendEntry(href, label, depth); err != nil {
+				return err
+			}
+			for _, c := range n.children {
+				if c.name.Local == "navPoint" {
+					if err := point(c, depth+1); err != nil {
+						return err
+					}
+				}
+			}
 			return nil
 		}
-		for _,c:=range navMap.children {
-			if c.name.Local=="navPoint" {if point(c,0)!=nil {return nil,nil}} else if hasNavigation(c) {return nil,nil}
+		for _, c := range navMap.children {
+			if c.name.Local == "navPoint" {
+				if point(c, 0) != nil {
+					return nil, nil
+				}
+			} else if hasNavigation(c) {
+				return nil, nil
+			}
 		}
-		if ctx.Err()!=nil {
-			return nil,ctx.Err()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
-		if len(out)>maxContents {
+		if len(out) > maxContents {
 			return nil, nil
 		}
 	}
