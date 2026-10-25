@@ -62,8 +62,13 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
     {mode === 'sent' && <ServicesStateIcon tone="info" icon="i-mail" size={26} />}
     {mode === 'ready' && <ServicesStateIcon />}
     {mode === 'provider' && state.provider && <ServicesProviderContext provider={state.provider} email={state.verifiedEmail} />}
-    {!(invitation && mode === 'signin') && <><ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : <ServicesLead>{body}</ServicesLead>}</>}
+    {!(invitation && mode === 'signin') && <><ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : mode !== 'provider-stopped' && <ServicesLead>{body}</ServicesLead>}</>}
     {mode === 'signin' && before}
+    {mode === 'provider-stopped' && state.provider && <>
+      <ServicesNotice icon="i-clock">{t('services.provider.stopped', {provider: t(state.provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</ServicesNotice>
+      {providers.some(item => item.id === state.provider) && <ServicesProviderButton provider={state.provider} disabled={blocked} onClick={() => {if (flow.getSnapshot() === state && state.provider) void flow.provider(state.provider);}}>{t(state.provider === 'apple' ? 'services.provider.apple' : 'services.provider.google')}</ServicesProviderButton>}
+      {state.options?.password && <ServicesActions><Button disabled={busy} onClick={() => {if (flow.getSnapshot() === state) flow.go('signin');}}>{t('services.provider.useEmail')}</Button></ServicesActions>}
+    </>}
     {(mode === 'signin' || mode === 'create') && providerButtons}
     {state.error && !codeRejected && !(errorCode === 'username_unavailable' && mode === 'create') ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : errorCode === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : mailDown ? <ServicesNotice icon="i-clock">{t('services.signup.mailUnavailable')}</ServicesNotice> : <HostedError error={state.error} /> : null}
     {mode === 'signin' && state.options?.password && <>

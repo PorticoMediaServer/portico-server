@@ -2,7 +2,7 @@ import {AccountAttemptIds, MFARequiredError, type IdentityOptions, type Identity
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 
-export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'ready';
+export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'provider-stopped' | 'ready';
 export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
 /** Local form controller. The singleton CredentialSessionService owns every account session. */
 export class ServicesAuthFlow {
@@ -44,7 +44,13 @@ export class ServicesAuthFlow {
       if (options.status === 'fulfilled') this.publish({options: options.value}); else throw options.reason;
       if (transaction.status === 'fulfilled' && transaction.value?.mode === 'login') {
         const tx = transaction.value;
-        if (tx.needsUsername && tx.contactVerified && tx.status !== 'failed') {
+        if (tx.status === 'failed') {
+          // The current browser-bound transaction is terminal. It proves no
+          // email/account collision and cannot be completed or adopted.
+          this.transaction = undefined; this.ids.clear('provider');
+          this.publish({mode: 'provider-stopped', provider: tx.provider}); return;
+        }
+        if (tx.needsUsername && tx.contactVerified) {
           this.transaction = tx; this.publish({mode: 'provider', provider: tx.provider, suggestedName: tx.suggestedName, verifiedEmail: tx.verifiedEmail}); return;
         }
         if (tx.status === 'verified' && !tx.needsUsername) {
@@ -79,6 +85,7 @@ export class ServicesAuthFlow {
   }
   provider(provider: IdentityProvider) {
     return this.run(async signal => {
+      if (this.state.mode === 'provider-stopped') this.ids.clear('provider');
       const value = await this.account.client.start(provider, {mode: 'login', requestId: await this.ids.for('provider', {provider})}, signal);
       if (value.authorizationUrl && !signal.aborted) this.redirect(value.authorizationUrl);
     });

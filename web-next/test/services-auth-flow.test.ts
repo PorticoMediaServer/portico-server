@@ -123,3 +123,23 @@ test('restored provider completion never supplies return consent; explicit crede
   await clicked.signIn('account', 'memory-only-test-input', '');
   assert.deepEqual(reasons, [false, true]); clicked.dispose();
 });
+
+
+test('a failed original provider transaction draws a stopped choice without completion or email-account inference', async () => {
+  const p = port(); let completions = 0;
+  p.value.client.transaction = async () => ({transactionId: 'failed-original', provider: 'google', mode: 'login', status: 'failed', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: false, needsUsername: false, mfaRequired: false});
+  p.value.client.complete = async () => {completions++; return {} as never;};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  assert.equal(flow.getSnapshot().mode, 'provider-stopped'); assert.equal(flow.getSnapshot().provider, 'google');
+  assert.equal(flow.getSnapshot().verifiedEmail, undefined); assert.equal(p.authenticated(), 0); assert.equal(completions, 0);
+  flow.go('signin'); assert.equal(flow.getSnapshot().mode, 'signin'); assert.equal(p.completed(), 0); flow.dispose();
+});
+test('retry from a terminal provider choice creates a fresh transaction request identity', async () => {
+  const p = port(), requests: string[] = [], destinations: string[] = [];
+  p.value.client.transaction = async () => ({transactionId: 'failed-original', provider: 'apple', mode: 'login', status: 'failed', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: false, needsUsername: false, mfaRequired: false});
+  p.value.client.start = async (_provider, input) => {requests.push(input.requestId); return {transactionId: 'new-original', mode: 'login', expiresAt: new Date(Date.now() + 60000).toISOString(), authorizationUrl: 'https://provider.example/authorize'};};
+  const flow = new ServicesAuthFlow(p.value, p.done, 'signin', url => {destinations.push(url);}); await flow.initialize();
+  await flow.provider('apple'); await flow.provider('apple');
+  assert.equal(requests.length, 2); assert.notEqual(requests[0], requests[1]); assert.deepEqual(destinations, ['https://provider.example/authorize','https://provider.example/authorize']);
+  assert.equal(p.authenticated(), 0); flow.dispose();
+});
