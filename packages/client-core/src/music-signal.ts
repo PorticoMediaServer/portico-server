@@ -59,7 +59,12 @@ export function signalGain(db:number):string{
  return `${db<0&&n!==0?'−':'+'}${n.toFixed(1)}`;
 }
 function codecName(codec:string):string{
- return ({flac:'FLAC',alac:'ALAC',aac:'AAC',mp3:'MP3',opus:'Opus',vorbis:'Vorbis',truehd:'Dolby TrueHD',eac3:'Dolby Digital Plus',ac3:'Dolby Digital',dts:'DTS',pcm:'PCM',wavpack:'WavPack'} as Record<string,string>)[codec]??codec.toUpperCase();
+ const name=codec.toLowerCase();
+ // The probe reports a family member for these two: pcm_s24le, dsd_lsbf and so on. The
+ // drawn names are the family, never the raw probe token.
+ if(name==='pcm'||name.startsWith('pcm_'))return 'PCM';
+ if(name==='dsd'||name.startsWith('dsd_'))return 'DSD';
+ return ({flac:'FLAC',alac:'ALAC',aac:'AAC',mp3:'MP3',opus:'Opus',vorbis:'Vorbis',truehd:'Dolby TrueHD',eac3:'Dolby Digital Plus',ac3:'Dolby Digital',dts:'DTS',pcm:'PCM',wavpack:'WavPack'} as Record<string,string>)[name]??codec.toUpperCase();
 }
 /** An explicit measured layout, or the one-channel/two-channel names a count does prove; a
  * larger count alone cannot tell 5.1 from 6.0, 7.1 from 8.0, so it names no layout. */
