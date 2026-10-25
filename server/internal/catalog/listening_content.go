@@ -311,8 +311,21 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		if r.View == "book_series" {
 			// collections 41c/45: a series page names its author as a link to the
 			// author destination. The author navigation id is the same catalog
-			// identity the book page's own context section uses.
-			sections = append(sections, listeningSection{"context", "Author", "list", "context", "", `SELECT ` + listeningGroupNavigationID + ` id,g.id entity_id,g.name title,'author' subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_book_groups series JOIN catalog_book_group_members member ON member.group_id=series.id JOIN catalog_book_context context ON context.book_id=member.book_id AND context.has_file=1 JOIN catalog_book_group_members authorship ON authorship.book_id=member.book_id JOIN catalog_book_groups g ON g.id=authorship.group_id AND g.kind=1 AND g.retired=0 JOIN catalog_libraries l ON l.id=g.library_id WHERE series.token=? AND l.library_id=? AND series.kind=2 AND series.retired=0 GROUP BY g.id`, []any{r.EntityID, lib.ID}, false, ""})
+			// identity the book page's own context section uses. A restricted
+			// viewer sees only authors of this series' own books that are visible
+			// in the published class: an author who owns a visible book elsewhere
+			// does not qualify through this series' hidden book.
+			query := `SELECT ` + listeningGroupNavigationID + ` id,g.id entity_id,g.name title,'author' subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_book_groups series JOIN catalog_book_group_members member ON member.group_id=series.id JOIN catalog_book_context context ON context.book_id=member.book_id AND context.has_file=1 JOIN catalog_book_group_members authorship ON authorship.book_id=member.book_id JOIN catalog_book_groups g ON g.id=authorship.group_id AND g.kind=1 AND g.retired=0 JOIN catalog_libraries l ON l.id=g.library_id WHERE series.token=? AND l.library_id=? AND series.kind=2 AND series.retired=0`
+			args := []any{r.EntityID, lib.ID}
+			if r.Viewer.EffectiveRestrictions().Active() {
+				class, generation, err := s.bookGroupClassReady(lib.ID, r.Viewer.EffectiveRestrictions())
+				if err != nil {
+					return out, err
+				}
+				query += ` AND EXISTS(SELECT 1 FROM catalog_book_visible_counts visible WHERE visible.class_id=? AND visible.generation=? AND visible.book_id=member.book_id)`
+				args = append(args, class, generation)
+			}
+			sections = append(sections, listeningSection{"context", "Author", "list", "context", "", query + ` GROUP BY g.id`, args, false, ""})
 		}
 	case "book":
 		if lib.Kind != "audiobook" {
