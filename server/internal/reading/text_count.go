@@ -202,6 +202,39 @@ func textBlock(name string) bool {
 	return false
 }
 
+// textCountCached reports whether this exact admitted row/revision/rule (and
+// the current opening-text rule) is already carried. A cached NULL word_count is
+// a determined unsupported/partial publication fact, not a transient
+// acquisition outcome.
+func (s *Service) textCountCached(ctx context.Context, selected Selection) (bool, error) {
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return false, err
+	}
+	defer g.Rollback()
+	var cached int
+	err = g.Tx().QueryRowContext(ctx, `SELECT 1 FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=? AND opening_rule_version=1`, selected.Entity, selected.Asset, selected.inventoryRow, selected.inventory, readingTextRuleVersion).Scan(&cached)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return false, err
+}
+
+// adoptTextCountRow writes the one row for this exact item/asset; the caller
+// has just rechecked that the selection is still current under its own opener.
+// Opening text is retained only from the same complete, valid extraction.
+func adoptTextCountRow(ctx context.Context, tx *sql.Tx, current Selection, count *int64, opening string) error {
+	var openingValue any
+	if opening != "" {
+		openingValue = opening
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO reading_text_counts(item_id,asset_id,word_count,inventory_object_id,source_revision,rule_version,opening_lines,opening_rule_version) VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(item_id,asset_id) DO UPDATE SET word_count=excluded.word_count,inventory_object_id=excluded.inventory_object_id,source_revision=excluded.source_revision,rule_version=excluded.rule_version,opening_lines=excluded.opening_lines,opening_rule_version=excluded.opening_rule_version WHERE reading_text_counts.word_count IS NOT excluded.word_count OR reading_text_counts.inventory_object_id<>excluded.inventory_object_id OR reading_text_counts.source_revision<>excluded.source_revision OR reading_text_counts.rule_version<>excluded.rule_version OR reading_text_counts.opening_lines IS NOT excluded.opening_lines OR reading_text_counts.opening_rule_version<>1`, current.Entity, current.Asset, count, current.inventoryRow, current.inventory, readingTextRuleVersion, openingValue)
+	return err
+}
+
 // Reuse one exact admitted source; never acquire a second version or retain an
 // actor credential for background work. Cache only this row/revision/rule.
 func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *Source) error {
@@ -209,17 +242,8 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 	if selected.Format != "epub" {
 		return nil
 	}
-	g, err := dbwork.BeginSnapshot(ctx, s.DB)
-	if err != nil {
-		return err
-	}
-	var cached int
-	err = g.Tx().QueryRowContext(ctx, `SELECT 1 FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=? AND opening_rule_version=1`, selected.Entity, selected.Asset, selected.inventoryRow, selected.inventory, readingTextRuleVersion).Scan(&cached)
-	g.Rollback()
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	cached, err := s.textCountCached(ctx, selected)
+	if err != nil || cached {
 		return err
 	}
 	e, err := f.epub()
@@ -245,12 +269,7 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 	if current.Revision != selected.Revision || current.inventoryRow != selected.inventoryRow || current.object != selected.object || current.inventory != selected.inventory {
 		return ErrChanged
 	}
-	var openingValue any
-	if opening != "" {
-		openingValue = opening
-	}
-	_, err = gate.Tx().ExecContext(ctx, `INSERT INTO reading_text_counts(item_id,asset_id,word_count,inventory_object_id,source_revision,rule_version,opening_lines,opening_rule_version) VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(item_id,asset_id) DO UPDATE SET word_count=excluded.word_count,inventory_object_id=excluded.inventory_object_id,source_revision=excluded.source_revision,rule_version=excluded.rule_version,opening_lines=excluded.opening_lines,opening_rule_version=excluded.opening_rule_version WHERE reading_text_counts.word_count IS NOT excluded.word_count OR reading_text_counts.inventory_object_id<>excluded.inventory_object_id OR reading_text_counts.source_revision<>excluded.source_revision OR reading_text_counts.rule_version<>excluded.rule_version OR reading_text_counts.opening_lines IS NOT excluded.opening_lines OR reading_text_counts.opening_rule_version<>1`, current.Entity, current.Asset, count, current.inventoryRow, current.inventory, readingTextRuleVersion, openingValue)
-	if err != nil {
+	if err = adoptTextCountRow(ctx, gate.Tx(), current, count, opening); err != nil {
 		return err
 	}
 	return gate.Commit()

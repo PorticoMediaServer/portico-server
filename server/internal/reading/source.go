@@ -87,18 +87,27 @@ func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal
 	if err = s.Authorize(ctx, tx, p, v.library, item); err != nil {
 		return v, err
 	}
-	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
-		return v, ErrInvalid
-	}
-	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" {
-		return v, ErrInvalid
-	}
-	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {
-		return v, ErrChanged
+	if err = s.selectionValid(v); err != nil {
+		return v, err
 	}
 	v.SourceID = v.token
 	v.Revision = v.fence()
 	return v, nil
+}
+
+// selectionValid checks structural source custody only; authorization and
+// currentness remain the opener's own checks.
+func (s *Service) selectionValid(v Selection) error {
+	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
+		return ErrInvalid
+	}
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" {
+		return ErrInvalid
+	}
+	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {
+		return ErrChanged
+	}
+	return nil
 }
 func selectionColumns(v *Selection) []any {
 	return []any{&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence, &v.inventoryRow}
@@ -136,20 +145,24 @@ func (s *Service) validate(ctx context.Context, p identity.Principal, selected S
 // and after each bounded extent. No immutable/no-splice claim is made from it.
 type Source struct {
 	Selection
-	ctx            context.Context
-	p              identity.Principal
-	service        *Service
-	reader         *storage.ObservedPlaybackReader
-	roots          *sourceaccess.Registry
-	mu             sync.Mutex
-	observed       storage.ObservedFileObservation
-	remoteSession  *Session
-	remoteRange    *remotesources.SourceRange
-	remoteRetained bool
-	remoteCancel   func()
-	onClose        func()
-	onFailure      func()
-	closeOnce      sync.Once
+	ctx      context.Context
+	p        identity.Principal
+	service  *Service
+	reader   *storage.ObservedPlaybackReader
+	roots    *sourceaccess.Registry
+	mu       sync.Mutex
+	observed storage.ObservedFileObservation
+	// validateCurrent is the exact opener's currentness check: a viewer's live
+	// authorization or the preparation worker's catalog/fence check. Reads never
+	// substitute one for the other.
+	validateCurrent func(context.Context) error
+	remoteSession   *Session
+	remoteRange     *remotesources.SourceRange
+	remoteRetained  bool
+	remoteCancel    func()
+	onClose         func()
+	onFailure       func()
+	closeOnce       sync.Once
 }
 
 // Context carries both this request's cancellation and the captured reader
@@ -188,7 +201,7 @@ func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID
 		roots.Close()
 		return nil, err
 	}
-	f := &Source{Selection: v, ctx: ctx, p: p, service: s, reader: r, roots: roots}
+	f := &Source{Selection: v, ctx: ctx, p: p, service: s, reader: r, roots: roots, validateCurrent: func(ctx context.Context) error { return s.validate(ctx, p, v) }}
 	o, err := r.Observe(ctx)
 	if err == nil {
 		err = f.matchInventory(o)
@@ -246,7 +259,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
+	if err := f.validateCurrent(f.ctx); err != nil {
 		return 0, err
 	}
 	if f.remoteSession != nil {
@@ -279,7 +292,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 			err = f.checkObservation(o)
 		}
 		if err == nil {
-			err = f.service.validate(f.ctx, f.p, f.Selection)
+			err = f.validateCurrent(f.ctx)
 		}
 		if err == nil {
 			err = f.ctx.Err()
@@ -333,7 +346,7 @@ func (f *Source) Validate() (failure error) {
 	if err := f.ctx.Err(); err != nil {
 		return err
 	}
-	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
+	if err := f.validateCurrent(f.ctx); err != nil {
 		return err
 	}
 	if f.remoteSession != nil {
