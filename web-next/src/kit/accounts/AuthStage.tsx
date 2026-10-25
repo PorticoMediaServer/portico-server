@@ -9,10 +9,15 @@ import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
 /** The public auth surface has colour only. It never accepts library artwork. */
-export function AuthStage({children, shape = 'side', phoneShape, layout = 'column', service = false, topRight, legal = true, className, contentClassName}: {
-  children: ReactNode; shape?: 'side' | 'round' | 'top'; phoneShape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean;
+export function AuthStage({children, shape = 'side', phoneShape, layout = 'column', service = false, topRight, legal = true, bare = false, className, contentClassName}: {
+  children: ReactNode; shape?: 'side' | 'round' | 'top'; phoneShape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean; bare?: boolean;
   className?: string; contentClassName?: string;
 }) {
+  // A bare stage keeps the same content and controls inside a dialog, without the
+  // page backdrop, wordmark or legal footer it already sits within.
+  if (bare) return <section className={[styles.stage, className].filter(Boolean).join(' ')} data-layout={layout} data-bare={true}>
+    <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>
+  </section>;
   return <section className={[styles.stage, phoneShape && styles.hasPhoneBackdrop, className].filter(Boolean).join(' ')} data-layout={layout}>
     <ColourBackdrop shape={shape} className={styles.standardBackdrop} />
     {phoneShape && <ColourBackdrop shape={phoneShape} className={styles.phoneBackdrop} />}

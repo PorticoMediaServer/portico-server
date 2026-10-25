@@ -6,7 +6,7 @@ import {ServicesAuthStage, HostedError, ServicesNotice} from '../kit/accounts/Se
 import {ServicesHeader, ServicesStart} from '../kit/accounts/ServicesWorkspace';
 import {ServerlessAccountMenu} from '../screens/accounts/ServerlessAccountMenu';
 import {AccountPage} from './AccountPage';
-import {JoinPage, ShortJoinPage} from './JoinPage';
+import {ServicesInvitationDialog, ShortJoinPage} from './JoinPage';
 import {parseShortInvitationCode} from '@core/short-invitation-code.ts';
 import {distributionPage} from './distribution';
 import {servicesI18n} from './i18n';
@@ -51,9 +51,8 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
     visible?.scrollIntoView({block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   };
   if (shortJoin !== undefined) return <ShortJoinPage account={account} initialCode={shortJoin} onBack={() => setShortJoin(undefined)} />;
-  if (join) return <JoinPage account={account} link={join} onBack={() => setJoin(undefined)} />;
   const name = session.account.displayName || session.account.username;
-  return <ServicesStart header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
+  return <><ServicesStart header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
     onAccount={() => location.assign('/account')} onJoin={() => scrollToCard('join')} onSetup={() => scrollToCard('setup')} onApps={() => scrollToCard('apps')}
     onHelp={() => window.open('https://getportico.tv/help', '_blank', 'noopener,noreferrer')}
     onSignOut={() => run(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />} />}
@@ -62,5 +61,6 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
     onPaste={() => run(async () => { const value = await navigator.clipboard.readText(); setInvitation(value); inspect(value); })}
     onDownload={download} onApps={download} onCopyDownload={() => run(() => navigator.clipboard.writeText(distributionPage))}
     onShareDownload={() => run(async () => { if (navigator.share) await navigator.share({url: distributionPage}); else await navigator.clipboard.writeText(distributionPage); })}
-    error={invalid ? <ServicesNotice tone="error">{t('web.link.invalid')}</ServicesNotice> : <HostedError error={error} />} />;
+    error={invalid ? <ServicesNotice tone="error">{t('web.link.invalid')}</ServicesNotice> : <HostedError error={error} />} />
+    {join ? <ServicesInvitationDialog account={account} link={join} pasted={invitation.trim()} onBack={() => setJoin(undefined)} /> : null}</>;
 }

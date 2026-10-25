@@ -11,10 +11,10 @@ const t = defaultI18n.t;
 export type LocalInvitationFormProps = Readonly<{
   serverName: string; inviter?: string; libraries: readonly string[]; busy?: boolean; error?: unknown; errorContent?: ReactNode;
   initialValues?: Readonly<{name?: string; username?: string; password?: string; confirmation?: string}>;
-  onJoin: (username: string, password: string, name: string) => void; onBack: () => void;
+  onJoin: (username: string, password: string, name: string) => void; onBack: () => void; bare?: boolean;
 }>;
 /** Auth 12. The plain password fields are deliberate: this frame has no reveal action. */
-export function LocalInvitationForm({serverName, inviter, libraries, busy, error, errorContent, initialValues, onJoin, onBack}: LocalInvitationFormProps) {
+export function LocalInvitationForm({serverName, inviter, libraries, busy, error, errorContent, initialValues, onJoin, onBack, bare = false}: LocalInvitationFormProps) {
   const [name, setName] = useState(initialValues?.name ?? ''), [username, setUsername] = useState(initialValues?.username ?? '');
   const [password, setPassword] = useState(initialValues?.password ?? ''), [confirmation, setConfirmation] = useState(initialValues?.confirmation ?? '');
   const [confirmed, setConfirmed] = useState(false);
@@ -29,7 +29,7 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
   // These three labels are drawn. The remaining computed levels await exact copy;
   // never relabel a weak password as Good or Strong, and never gate on advice.
   const strengthLabel = strength.label === 'Good' ? t('accounts.password.good') : strength.label === 'Strong' ? t('services.password.strong') : strength.label === 'Too short' ? t('services.password.tooShort') : undefined;
-  return <AuthStage phoneShape="top" className={styles.localInvitationStage} contentClassName={styles.invitationContent}>
+  return <AuthStage phoneShape="top" bare={bare} className={styles.localInvitationStage} contentClassName={styles.invitationContent}>
     <p className={styles.eyebrow}>{t('accounts.invitation.to')}</p><h1>{serverName}</h1>
     <p className={styles.lede}><span className={styles.desktopInvitationBody}>{t('accounts.invitation.localBody')}</span><span className={styles.phoneInvitationBody}>{t('accounts.invitation.localPhoneBody', {server: serverName})}</span></p>
     <div className={styles.phoneInvitationLibraries}><InvitationLibraries libraries={libraries.map(name => ({name}))} /></div>
@@ -80,8 +80,8 @@ function InvitationLibraries({libraries, member = false}: {libraries: readonly R
   </div>;
 }
 
-export function InvitationUnavailable({otherAccount = false, onBack, onDifferentAccount}: {otherAccount?: boolean; onBack: () => void; onDifferentAccount: () => void}) {
-  return <AuthStage shape="top" legal={false} className={styles.invitationFailureStage} contentClassName={styles.invitationFailureContent}>
+export function InvitationUnavailable({otherAccount = false, onBack, onDifferentAccount, bare = false}: {otherAccount?: boolean; onBack: () => void; onDifferentAccount: () => void; bare?: boolean}) {
+  return <AuthStage shape="top" legal={false} bare={bare} className={styles.invitationFailureStage} contentClassName={styles.invitationFailureContent}>
     <div className={styles.invitationFailureIcon}><Icon name={otherAccount ? 'i-userx' : 'i-clock'} size={34} /></div>
     <h2>{t(otherAccount ? 'accounts.invitation.otherAccountTitle' : 'accounts.invitation.expiredTitle')}</h2>
     <p>{t(otherAccount ? 'web.directJoin.forAccount' : 'accounts.invitation.expiredBody')}</p>

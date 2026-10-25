@@ -224,3 +224,9 @@
   .pinStage .pinActions button:last-child { padding: 0; height: auto; font-size: 15px; }
   .pinStage .phoneProfileBack { position: absolute; z-index: 2; top: 50px; left: 8px; display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 6px 0 0; border: 0; background: none; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; }
 }
+
+/* The same stage inside a dialog: no page backdrop, wordmark or legal footer. */
+.stage[data-bare] { min-height: 0; overflow: visible; background: transparent; }
+.stage[data-bare] .content { min-height: 0; width: 100%; margin: 0; padding: 0; }
+.stage[data-bare] .content :where(h1) { font-size: 30px; line-height: 1.1; margin: 0 0 10px; text-shadow: none; }
+.stage[data-bare] .content :where(h2) { font-size: 22px; margin: 0 0 8px; }
