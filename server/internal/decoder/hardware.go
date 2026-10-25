@@ -1005,10 +1005,6 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				filters = append(filters, spec.toneMap(algorithm))
 				toneExecution = ExecutionHardware
 			}
-			{
-				filters = append(filters, boundedScaleFilter(backend, r.MaxWidth, r.MaxHeight))
-				scaleExecution = ExecutionHardware
-			}
 			if spec.upload != "" && !hardwareFrames {
 				// The upload sits between the system-frame filters and the
 				// backend's own, wherever either list happens to be empty.
@@ -1019,24 +1015,29 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				hardware := append([]string{upload}, filters[pre:]...)
 				filters = append(filters[:pre:pre], hardware...)
 			}
-			switch backend {
-			case BackendNVENC:
-				filters = append(filters, "scale_cuda=format="+surface)
-			case BackendVAAPI:
-				filters = append(filters, "scale_vaapi=format="+surface)
-			case BackendQSV:
-				filters = append(filters, "vpp_qsv=format="+surface)
-			}
-			if deviceBurnIn {
+			scale := boundedScaleFilter(backend, r.MaxWidth, r.MaxHeight)
+			encoderSurface := map[HardwareBackend]string{BackendNVENC: "scale_cuda=format=", BackendVAAPI: "scale_vaapi=format=", BackendQSV: "vpp_qsv=format="}[backend]
+			if deviceBurnIn && encoderSurface != "" {
+				// Blend on the source canvas, exactly where the processor burn
+				// does, then scale: a subtitle fitted to the source would land
+				// in the wrong place on an already-scaled picture.
 				burnInput := *r.BurnIn
 				burnInput.DynamicRange = target.DynamicRange
-				graph, extra, err := hardwareBurnInGraph(backend, burnInput, strings.Join(filters, ","))
+				graph, extra, err := hardwareBurnInGraph(backend, burnInput, strings.Join(filters, ","), scale+","+encoderSurface+surface)
 				if err != nil {
 					return out, err
 				}
 				composite, out.ExtraInput = graph, extra
 				out.VideoMap = "[burn_output]"
 				out.Stages = append(out.Stages, HardwareStage{"subtitle_burn_in", ExecutionHardware})
+				scaleExecution = ExecutionHardware
+				filters = nil
+			} else {
+				filters = append(filters, scale)
+				scaleExecution = ExecutionHardware
+				if encoderSurface != "" {
+					filters = append(filters, encoderSurface+surface)
+				}
 			}
 		} else {
 			if r.ToneMap {

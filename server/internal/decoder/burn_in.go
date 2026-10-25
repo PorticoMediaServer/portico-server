@@ -2,7 +2,6 @@ package decoder
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -18,11 +17,8 @@ type BurnIn struct {
 // burnFilter runs on system frames after HDR-to-SDR and before scaling/upload.
 // Both subtitle formats retain the title clock across restarted HLS windows.
 func burnFilter(b BurnIn, facts *ToolchainFacts) (string, []string, error) {
-	if !filepath.IsAbs(b.File) || filepath.Clean(b.File) != b.File || strings.ContainsAny(b.File, "\n\r\x00") || b.PositionUS < 0 || b.PositionUS > 86400000000 || b.OffsetUS < -600000000 || b.OffsetUS > 600000000 || b.InputStartUS < -86400000000 || b.InputStartUS > 86400000000 {
-		return "", nil, ErrInvalidConfiguration
-	}
-	if b.FontsDirectory != "" && (!filepath.IsAbs(b.FontsDirectory) || filepath.Clean(b.FontsDirectory) != b.FontsDirectory || strings.ContainsAny(b.FontsDirectory, "\n\r\x00")) {
-		return "", nil, ErrInvalidConfiguration
+	if err := validateBurnIn(b); err != nil {
+		return "", nil, err
 	}
 	switch b.Format {
 	case "ass", "ssa":
