@@ -77,7 +77,9 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  const networkNote=limit?(offers.deliveryPolicy!.networkClass==='local'?t('next.kit.quality.home',{quality:limit})
   :offers.deliveryPolicy!.networkClass==='remote'?t('next.kit.quality.away',{quality:limit}):undefined):undefined;
  const routeNote=action==='transcode'?(qualityLabel?t('player.quality.converting',{quality:qualityLabel}):undefined):action?t('player.quality.playingOriginal'):undefined;
- const qualityNotes=Object.freeze([networkNote,routeNote].filter((note):note is string=>!!note));
+ // f3b: while the owner has conversion off, only the original can play and the footer says why.
+ const conversionOff=offers.transcodingEnabled===false;
+ const qualityNotes=Object.freeze([networkNote,routeNote,...(conversionOff?[t('player.quality.conversionOff')]:[])].filter((note):note is string=>!!note));
  // f3b: a version with one audio track says so in place of a choice. Frame 7: the
  // audio footer also says what this device does with the chosen track when something
  // is lost, in the notice's own words.
@@ -89,9 +91,10 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   if(!choice)continue;qualityIds.set(offer.id,choice);
   const step=fixedQuality(choice),label=choice==='automatic'?t('next.kit.quality.automatic'):choice==='original'?t('next.kit.quality.original'):step?heightLabel(step.height,t):undefined;
   if(!label)continue;
-  const detail=choice==='automatic'&&qualityLabel?t('next.kit.quality.adjusts',{quality:qualityLabel}):choice==='original'?t('next.kit.quality.originalDetail'):
-   typeof offer.maxVideoBitrateBps==='number'?t('web.player.quality.rate',{mbps:offer.maxVideoBitrateBps/1e6}):undefined;
   const enabled=offer.enabled&&options.qualities.some(option=>option.applicable!==false&&qualityChoiceOf(option)===choice);
+  // f3b: with conversion off every converted step says who turned it off, not a bit rate.
+  const detail=conversionOff&&choice!=='original'?t('player.ownerOff'):choice==='automatic'&&qualityLabel?t('next.kit.quality.adjusts',{quality:qualityLabel}):choice==='original'?t('next.kit.quality.originalDetail'):
+   typeof offer.maxVideoBitrateBps==='number'?t('web.player.quality.rate',{mbps:offer.maxVideoBitrateBps/1e6}):undefined;
   qualityRows.push({id:offer.id,label,detail,selected:selected===choice,enabled});
  }
  // These ports are capabilities: a host that predates one simply has no such control, so a
