@@ -10,6 +10,8 @@ export type StorageReport = Readonly<{
 }>;
 export type StorageSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'}> & Readonly<{report?: StorageReport; error?: boolean}>;
 
+const idleStorageSnapshot: StorageSnapshot = Object.freeze({phase: 'idle'});
+
 export type StorageTransport = Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>;
 
 /** The generated decoder owns the wire shape; this keeps only the drawn facts. */
@@ -25,12 +27,12 @@ export function storageReport(value: unknown, serverId: string): StorageReport {
 
 /** One selected-server owner read, shared by every storage row on the page. */
 export class SettingsStorageSource {
-  private state: StorageSnapshot = Object.freeze({phase: 'idle'});
+  private state: StorageSnapshot = idleStorageSnapshot;
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
   private reading?: Promise<void>;
   constructor(private readonly transport: StorageTransport, private readonly serverId: string, private readonly isCurrent: () => boolean) {}
-  getSnapshot = (): StorageSnapshot => this.current() ? this.state : Object.freeze({phase: 'idle'});
+  getSnapshot = (): StorageSnapshot => this.current() ? this.state : idleStorageSnapshot;
   subscribe = (listener: () => void): (() => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
   private publish(state: StorageSnapshot) {if (this.current()) {this.state = Object.freeze(state);for (const listener of [...this.listeners]) listener();}}
@@ -49,6 +51,6 @@ export class SettingsStorageSource {
     this.reading = task;
     return task;
   };
-  retry = (): Promise<void> => {this.state = Object.freeze({phase: 'idle'});return this.load();};
-  dispose(): void {if (!this.lifetime.signal.aborted) {this.lifetime.abort();this.listeners.clear();this.state = Object.freeze({phase: 'idle'});}}
+  retry = (): Promise<void> => {this.state = idleStorageSnapshot;return this.load();};
+  dispose(): void {if (!this.lifetime.signal.aborted) {this.lifetime.abort();this.listeners.clear();this.state = idleStorageSnapshot;}}
 }
