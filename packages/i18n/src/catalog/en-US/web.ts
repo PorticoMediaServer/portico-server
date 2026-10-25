@@ -2147,7 +2147,7 @@ export const webMessages = {
   'web.library.viewsLabel': 'Library views',
   'web.library.categoryChip': 'Category: {category}',
   'web.library.titlesLabel': 'Titles',
-  'web.metadata.editorLede': '{kind, select, film {Film} episode {Episode} album {Album} book {Audiobook} other {Item}} on this server. Saved here; your files are never rewritten.',
+  'web.metadata.editorLede': '{kind, select, film {Film} episode {Episode} show {Show} season {Season} album {Album} artist {Artist} song {Song} book {Audiobook} audiobook_file {Audiobook part} reading {Reading title} other {Item}} on this server. Saved here; your files are never rewritten.',
   'web.metadata.editorLockHelp': 'Editing a field locks it, so a refresh won’t undo your change. Unlock it to let providers update it again.',
   'web.metadata.numericBounds': '{min} to {max}',
   'web.metadata.numericMinimum': '{min} or more',
