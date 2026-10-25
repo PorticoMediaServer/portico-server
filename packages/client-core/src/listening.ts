@@ -73,6 +73,7 @@ export class ListeningService {
  private state:ListeningSnapshot=Object.freeze({eqApplied:false,levelingApplied:false,phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
+ private readonly audiobook:()=>AudiobookPreferences;
  private pausedBook?:{session:string;generation:number;item:string;intentId:number;run:number;seekRevision:number;at:number};
  /** A speed chosen in the player: for this playback only (`playbackRun`), never saved. */
  private heldRate?:{run:number;kind:string;rate:number};
@@ -81,7 +82,7 @@ export class ListeningService {
  /** PERF-24: whether an item can be a listening item (a song or audiobook file), when the caller
   * knows; video never asks for listening details. */
  private listens?:(itemId:string,sessionId:string)=>boolean;
- constructor(scope:QueueScope,request:ListeningRequest,playback:PlaybackService,now:()=>number=()=>performance.now(),listens?:(itemId:string,sessionId:string)=>boolean,private readonly audiobook:()=>AudiobookPreferences=()=>defaultAudiobookPreferences){this.scope=scope;this.request=request;this.playback=playback;this.now=now;this.listens=listens;this.lastActivity=this.now();}
+ constructor(scope:QueueScope,request:ListeningRequest,playback:PlaybackService,now:()=>number=()=>performance.now(),listens?:(itemId:string,sessionId:string)=>boolean,audiobook:()=>AudiobookPreferences=()=>defaultAudiobookPreferences){this.scope=scope;this.request=request;this.playback=playback;this.now=now;this.listens=listens;this.audiobook=audiobook;this.lastActivity=this.now();}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
