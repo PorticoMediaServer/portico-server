@@ -177,6 +177,10 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 	}
 	v, m := document.Selection, document.Metadata
 	out := ReadingSessionResponse{CanAnnotate: reading.CanAnnotate(p), Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
+	if document.Conversion != nil {
+		c := document.Conversion
+		out.Conversion = &ReadingConversionProvenance{OriginalRevision: c.OriginalRevision, OriginalSourceID: c.OriginalSourceID, OriginalFormat: c.OriginalFormat, OriginalSize: c.OriginalSize, InputSHA256: c.InputSHA256, Converter: c.Converter, WorkerSHA256: c.WorkerSHA256, Options: c.Options, OutputSHA256: c.OutputSHA256, OutputSize: c.OutputSize, Revision: c.Revision}
+	}
 	readingManifestFactsProjection(&out.Metadata, m)
 	if document.PublicationType != nil {
 		out.Metadata.PublicationType = &ReadingPublicationTypeValue{Value: ReadingPublicationType(document.PublicationType.Value), Source: ReadingPublicationTypeSource(document.PublicationType.Source)}
