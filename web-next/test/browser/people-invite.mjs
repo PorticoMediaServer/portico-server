@@ -35,10 +35,10 @@ try {
  await invite.click();
  const all = page.getByRole('checkbox', {name: 'All libraries', exact: true});
  await all.uncheck();
- assert.equal(await page.getByRole('button', {name: 'Create', exact: true}).isDisabled(), true);
+ assert.equal(await page.getByRole('button', {name: 'Create invitation', exact: true}).isDisabled(), true);
  assert.equal(await page.evaluate(() => probe.calls.length), 0);
  await all.check();
- await page.getByRole('button', {name: 'Create', exact: true}).click();
+ await page.getByRole('button', {name: 'Create invitation', exact: true}).click();
  await page.waitForFunction(() => probe.calls.length === 1);
  await page.keyboard.press('Escape');
  assert.equal(await page.getByRole('dialog', {name: 'Invite someone', exact: true}).count(), 1);
