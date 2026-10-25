@@ -2006,6 +2006,7 @@ export const enUS = {
   'player.marker.recap': 'Recap',
   'player.marker.credits': 'Credits',
   // The remote's keys in place of the button row while the seek bar has focus.
+  'player.hint.hold': 'Hold',
   'player.hint.move': 'Move',
   'player.hint.faster': 'Faster',
   'player.hint.playFrom': 'Play from {time}',
