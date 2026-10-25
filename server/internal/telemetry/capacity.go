@@ -150,6 +150,15 @@ type TemporaryDirectory struct {
 	Path      string `json:"path"`
 	Ready     bool   `json:"ready"`
 	FreeBytes *int64 `json:"freeBytes"`
+	// Fallback is true when the owner configured no directory and the server's
+	// own state directory is used. It is the one condition that tells a container
+	// owner the conversion directory was never mapped.
+	Fallback bool `json:"fallback"`
+	// Memory is the RAM file system a conversion directory can use on this
+	// platform, offered only when it exists and this server can write to it. An
+	// empty value means there is none to offer: a client must leave that choice
+	// out rather than draw one the server cannot honour.
+	Memory string `json:"memoryPath"`
 }
 
 // Report is the wire shape of GET /v1/admin/transcode/capacity.
@@ -360,7 +369,10 @@ func resolveTemporaryDirectory(configured, state string) TemporaryDirectory {
 	if path == "" && state != "" {
 		path = filepath.Join(state, "hls")
 	}
-	return exactTemporaryDirectory(path)
+	out := exactTemporaryDirectory(path)
+	out.Fallback = configured == ""
+	out.Memory = memoryTranscodeDirectory()
+	return out
 }
 
 func exactTemporaryDirectory(path string) TemporaryDirectory {

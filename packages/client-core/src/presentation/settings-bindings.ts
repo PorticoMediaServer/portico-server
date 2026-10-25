@@ -46,6 +46,11 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'general.updateFeed':{form:'runtime',key:'updates.feedUrl'},
  'updates.channel':{form:'runtime',key:'updates.releaseChannel'},
  'streaming.allowConversion':{form:'runtime',key:'conversionMode'},
+ // The drawn Conversion location is one stored directory: "separate" writes no
+ // path, "memory" writes the platform's RAM file system, and the child folder
+ // row writes the chosen one. The three-way choice is projected by the page
+ // from the capacity facts, never stored as a second setting.
+ 'streaming.transcodeFolder':{form:'runtime',key:'temporaryDirectory'},
  'streaming.outputFormat':{form:'runtime',key:'outputFormat'},
  'streaming.musicAwayQuality':{form:'runtime',key:'musicAwayQuality',codec:'music-quality-choice'},
  'streaming.downloadQuality':{form:'runtime',key:'downloadMaxQuality',codec:'video-quality-choice'},

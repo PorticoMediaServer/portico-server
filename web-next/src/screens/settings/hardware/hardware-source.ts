@@ -76,6 +76,21 @@ export class SettingsHardwareSource {
     }
   };
 
+  /** Read the capacity document again after the page itself changed a setting it
+   * describes, so the drawn choice matches what the server now stores. */
+  reload = async (): Promise<void> => {
+    if (!this.current()) return;
+    const read = new AbortController();
+    this.read?.abort();
+    this.read = read;
+    try {
+      const capacity = await readTranscodeCapacity(this.api, read.signal);
+      if (this.current() && !read.signal.aborted) this.publish({capacity, phase: 'ready'});
+    } catch (error) {
+      if (this.current() && !read.signal.aborted) this.terminal(error);
+    }
+  };
+
   /** Probe every adapter and backend again now. The server bounds the work, so
    * this waits for one answer instead of polling. */
   test = async (): Promise<void> => {

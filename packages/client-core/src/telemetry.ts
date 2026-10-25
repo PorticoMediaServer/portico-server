@@ -36,7 +36,11 @@ export type SessionLimits={concurrent:number;hardware:number;software:number;bac
 /** A null count means the server publishes no figure, never "no sessions". */
 export type SessionCounts={active:number|null;hardware:number|null;software:number|null;background:number|null;limits:SessionLimits};
 export type ToneMappingStatus={status:'disabled'|'available'|'limited'|'unavailable';detail:string};
-export type TemporaryDirectory={path:string;ready:boolean;freeBytes:number|null};
+export type TemporaryDirectory={path:string;ready:boolean;freeBytes:number|null;
+ /** No owner directory is set and the server's own state directory is used. */
+ fallback:boolean;
+ /** The RAM file system a conversion directory can use, or '' when this platform has none to offer. */
+ memoryPath:string};
 export type TranscodePreset={id:string;label:string;height:number;videoKbps:number;audioKbps:number};
 export type RuntimeDependency={path:string;version:string;ok:boolean};
 export type TranscodeCapacity={
@@ -131,6 +135,9 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  const toneStatus=oneOfOr('transcode-capacity','hdrToneMapping.status',tone.status,['disabled','available','limited','unavailable'] as const,'unavailable');
  const directory=base(c.temporaryDirectory);
  if(!text(directory.path,1024)||typeof directory.ready!=='boolean'||directory.freeBytes!==null&&!integer(directory.freeBytes))invalid();
+ // An older server publishes neither fact: no fallback is claimed and no memory
+ // filesystem is offered, which keeps that choice out of the drawn select.
+ const directoryFacts={fallback:directory.fallback===true,...(text(directory.memoryPath,1024)&&directory.memoryPath?{memoryPath:directory.memoryPath as string}:{memoryPath:''})};
  if(!Array.isArray(c.presets)||c.presets.length>20)invalid();
  const presets=keepReadable('transcode-capacity','presets',c.presets,preset=>{const p=base(preset);if(!text(p.id,40)||!text(p.label,80)||!integer(p.height)||!integer(p.videoKbps)||!integer(p.audioKbps))invalid();return p as TranscodePreset;});
  const published=base(c.dependencies);
@@ -139,5 +146,5 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  for(const [name,dependency] of Object.entries(published)){if(obj(dependency)&&text(dependency.path,1024)&&text(dependency.version,512)&&typeof dependency.ok==='boolean')dependencies[name]=dependency as RuntimeDependency;else noteSkipped('transcode-capacity','dependencies');}
  if(!Array.isArray(c.warnings)||c.warnings.length>20)invalid();
  const warnings=keepReadable('transcode-capacity','warnings',c.warnings,(w:unknown)=>text(w,512)?w:undefined);
- return {...c,hardware:{...hardware,probes,devices,formats,lastError,lastTest},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
+ return {...c,hardware:{...hardware,probes,devices,formats,lastError,lastTest},temporaryDirectory:{...directory,...directoryFacts},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
 }

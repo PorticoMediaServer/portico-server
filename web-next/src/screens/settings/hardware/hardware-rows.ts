@@ -58,7 +58,7 @@ export function hardwareFormats(snapshot: HardwareSnapshot): readonly SettingsTa
 
 /** The Hardware rows the server can answer, in the frame's wording. A row with
  * no measured fact is absent rather than drawn as an empty or invented value. */
-export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot): SettingPresentation | undefined {
+export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, storedDirectory?: string): SettingPresentation | undefined {
   if (snapshot.phase !== 'ready' || !snapshot.capacity) return undefined;
   const hardware = snapshot.capacity.hardware;
   const devices = hardware.devices.length > 0;
@@ -69,10 +69,32 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot): Set
       // uses. A directory with no measured free space says the path only.
       const directory = snapshot.capacity.temporaryDirectory;
       if (!directory.path) return {present: false};
+      // A container that never mapped a conversion folder uses its own state
+      // directory; the drawn line names the mapping only in that case.
+      const advice = directory.fallback && snapshot.inventory?.platform.container === true ? ` ${t('next.settings.streaming.spaceMap')}` : '';
       if (!directory.ready) return {present: true, displayValue: t('next.settings.streaming.spaceNotWritable', {path: directory.path}), statusTone: 'warn'};
-      return {present: true, statusTone: 'ok', displayValue: directory.freeBytes === null
+      const where = directory.freeBytes === null
         ? t('next.settings.streaming.space', {path: directory.path})
-        : t('next.settings.streaming.spaceFree', {path: directory.path, free: defaultI18n.bytes(directory.freeBytes)})};
+        : t('next.settings.streaming.spaceFree', {path: directory.path, free: defaultI18n.bytes(directory.freeBytes)});
+      return {present: true, statusTone: 'ok', displayValue: where + advice};
+    }
+    case 'streaming.transcodeLocation': {
+      // One stored directory, drawn as the frame's three choices. A RAM file
+      // system this server cannot write to is not offered at all, so the choice
+      // never promises storage the host does not have.
+      const directory = snapshot.capacity.temporaryDirectory;
+      const memory = directory.memoryPath;
+      // The stored directory decides the choice; the capacity document's own
+      // facts answer only until the runtime form has loaded.
+      const path = storedDirectory ?? (directory.fallback ? '' : directory.path);
+      const value = path === '' ? 'separate'
+        : memory && (path === memory || path.startsWith(memory + '/')) ? 'memory' : 'folder';
+      const options = [
+        {value: 'separate', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.label'), hint: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.hint')},
+        {value: 'memory', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label'), hint: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.hint'), locked: !memory},
+        {value: 'folder', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.2.label')},
+      ];
+      return {present: true, value, defaultValue: 'separate', choices: options};
     }
     case 'streaming.hwError': {
       const text = faultText(snapshot);
@@ -104,10 +126,10 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot): Set
 
 /** The rows this page answers itself, so eligibility asks the same facts the
  * row does instead of looking for a settings binding these rows do not have. */
-export const hardwareRowIds: readonly string[] = ['streaming.transcodeStatus', 'streaming.hwError', 'streaming.hwDevices', 'streaming.hwLimit', 'streaming.hwFormats', 'streaming.hwToneMapping', 'streaming.hwTest'];
+export const hardwareRowIds: readonly string[] = ['streaming.transcodeStatus', 'streaming.transcodeLocation', 'streaming.hwError', 'streaming.hwDevices', 'streaming.hwLimit', 'streaming.hwFormats', 'streaming.hwToneMapping', 'streaming.hwTest'];
 
-export function hardwareEligible(rowId: string, snapshot: HardwareSnapshot): boolean {
-  return hardwareRowIds.includes(rowId) && hardwareRowState(rowId, snapshot) !== undefined;
+export function hardwareEligible(rowId: string, snapshot: HardwareSnapshot, storedDirectory?: string): boolean {
+  return hardwareRowIds.includes(rowId) && hardwareRowState(rowId, snapshot, storedDirectory) !== undefined;
 }
 
 /** The one result line a test may leave: good news only, as drawn. */

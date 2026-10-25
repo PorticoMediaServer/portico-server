@@ -37,8 +37,8 @@ import {SettingsWebhooksSource} from './server/integrations/webhooks-source';
 import {MissingTitles} from './server/MissingTitles';
 import {SettingsMissingSource} from './server/missing-source';
 import {SettingsHardwareSource} from './hardware/hardware-source';
-import {HardwareDevices, TestHardware} from './hardware/HardwareRows';
-import {hardwareEligible, hardwareRowState} from './hardware/hardware-rows';
+import {HardwareDevices, TestHardware, TranscodeFolder} from './hardware/HardwareRows';
+import {hardwareEligible, hardwareRowIds, hardwareRowState} from './hardware/hardware-rows';
 import {presetEnginesAvailable} from './server/engines';
 import {LibraryFolders} from './libraries/LibraryFolders';
 import {SkippedFiles} from './libraries/SkippedFiles';
@@ -191,6 +191,14 @@ export function SettingsEntry() {
     const hardware = route.section === 'streaming' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
       ? new SettingsHardwareSource(context.api, () => current(), reportError) : undefined;
     if (hardware) void hardware.load();
+    // The conversion folder the server stores, read from the runtime form the
+    // controller owns, so the drawn location choice follows the save at once.
+    const storedDirectory = (): string | undefined => {
+      const location = settingsRowIndex.get('streaming.transcodeFolder');
+      if (!location) return undefined;
+      const state = controller.rowState(location.row);
+      return typeof state.value === 'string' ? state.value : undefined;
+    };
     // The owner's Libraries page owns its own bounded directory read and scan
     // commands; the settings controller keeps the per-library panel only.
     const libraries = route.section === 'libraries' && identity.primaryProfile === true && identity.capabilities?.manageServer === true && (role === 'owner' || role === 'admin')
@@ -233,6 +241,8 @@ export function SettingsEntry() {
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
           requestAnimationFrame(() => {if (current()) document.getElementById('profile.name')?.querySelector<HTMLInputElement>('input')?.focus();});
         }} />;
+        if (row.id === 'streaming.transcodeFolder' && hardware) return <TranscodeFolder label={defaultI18n.t(row.label)} value={typeof state.value === 'string' ? state.value : ''}
+          disabled={state.disabled} api={context.api} onChange={path => {if (current()) controller.change(settingsRowIndex.get('streaming.transcodeFolder')!.row, path, rowContext);}} />;
         if (row.id === 'streaming.hwDevices' && hardware) return <HardwareDevices source={hardware} />;
         if (row.id === 'streaming.hwTest' && hardware) return <TestHardware source={hardware} />;
         if (row.id === 'storage.missingNow' && missing) return <MissingTitles source={missing} isCurrent={current} artwork={id => context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind: 'poster'}), 80, 2 / 3)} />;
@@ -286,6 +296,16 @@ export function SettingsEntry() {
       subscribe: listener => {const off = source.subscribe(listener), offProfiles = profiles?.subscribe(listener), offLimits = restrictions?.subscribe(listener), offHardware = hardware?.subscribe(listener), offServer = server?.subscribe(listener);return () => {off();offProfiles?.();offLimits?.();offHardware?.();offServer?.();};},
       change: (row, value, selected) => {
         if (restrictions && isProfileRestriction(row.id)) {void changeRestriction(restrictions, row.id, value)?.catch(reportError);return;}
+        if (row.id === 'streaming.transcodeLocation' && hardware) {
+          // One stored directory, three drawn choices: the choice writes it, and
+          // "folder" only reveals the path row that already holds it.
+          const directory = hardware.getSnapshot().capacity?.temporaryDirectory;
+          const target = value === 'separate' ? '' : value === 'memory' ? directory?.memoryPath : undefined;
+          if (typeof target === 'string') {
+            controller.change(settingsRowIndex.get('streaming.transcodeFolder')!.row, target, selected);
+          }
+          return;
+        }
         if (profiles && row.id === 'profile.pin' && typeof value === 'boolean') {openProfilePIN(!value);return;}
         if (profiles && profileRow(row.id)) {void changeProfileSetting(profiles, row.id, value)?.catch(reportError);return;}
         source.change(row, value, selected);
@@ -294,7 +314,7 @@ export function SettingsEntry() {
       // server-section configuration read would replace that page with a failure.
       getSnapshot: section => section.scope === 'account' && section.id === 'profile' && profiles ? profiles.getSnapshot() : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'metadata' && metadataCurrent() || section.id === 'live' && !!live) ? remoteSourcesPageSnapshot : section.scope === 'server' && section.id === 'storage' && server ? server.pageSnapshot(source.getSnapshot(section)) : section.scope === 'server' && section.id === 'streaming' && hardware ? hardware.pageSnapshot(source.getSnapshot(section)) : source.getSnapshot(section),
       load: section => section.scope === 'account' && section.id === 'profile' && profiles ? Promise.all([profiles.load(), source.load(section)]).then(() => undefined) : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'metadata' && metadataCurrent() || section.id === 'live' && !!live) ? Promise.resolve() : source.load(section),
-      eligible: (row, selected) => hardware && hardwareEligible(row.id, hardware.getSnapshot()) ? current() && controller.sectionVisible(selected.section) : row.id === 'profile.devices' ? !!profileDevices && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.pinForgot' ? !!profiles && identity.signIn === 'local' && current() : row.id === 'profile.signOutElsewhere' ? !!otherDeviceSignOut && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.signOut' ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'storage.missingNow' ? !!missing && current() : row.id === 'storage.removeMissing' ? false : profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      eligible: (row, selected) => hardware && hardwareEligible(row.id, hardware.getSnapshot(), storedDirectory()) ? current() && controller.sectionVisible(selected.section) : row.id === 'profile.devices' ? !!profileDevices && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.pinForgot' ? !!profiles && identity.signIn === 'local' && current() : row.id === 'profile.signOutElsewhere' ? !!otherDeviceSignOut && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.signOut' ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'storage.missingNow' ? !!missing && current() : row.id === 'storage.removeMissing' ? false : profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
         if (row.id === 'profile.devices') return {present: !!profileDevices && current() && profiles?.getSnapshot().document?.canManage === true};
         if (row.id === 'profile.pinForgot') return {present: !!profiles && identity.signIn === 'local' && current() && profiles.getSnapshot().document?.canManage === false && profiles.selected()?.pinRequired === true};
@@ -309,7 +329,7 @@ export function SettingsEntry() {
         if (row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') return {present: current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section)};
         if (libraryScanAction(row.id)) return {present: current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section)};
         if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
-        const hardwareState = hardware ? hardwareRowState(row.id, hardware.getSnapshot()) : undefined;
+        const hardwareState = hardware ? hardwareRowState(row.id, hardware.getSnapshot(), hardwareRowIds.includes(row.id) ? storedDirectory() : undefined) : undefined;
         if (hardwareState !== undefined) return hardwareState;
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
         return server?.rowState(row) ?? device ?? (row.id === 'music.eq' ? {present: current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform)} : row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));

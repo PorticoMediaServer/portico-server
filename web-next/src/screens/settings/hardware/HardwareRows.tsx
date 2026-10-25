@@ -1,7 +1,11 @@
-import {useSyncExternalStore} from 'react';
+import {useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../../../kit/Icon';
 import {SettingsAction} from '../../../kit/settings';
+import {ServerFolderPicker} from '../../../kit/settings/ServerFolderPicker';
+import {Button} from '../../../kit/controls';
+import {SettingText} from '../../../kit/settings/SettingText';
+import type {LibraryContentApi} from '@core/library-content.ts';
 import {hardwareMethodName, hardwareTestResult} from './hardware-rows';
 import type {SettingsHardwareSource} from './hardware-source';
 import styles from './hardware.module.css';
@@ -37,5 +41,19 @@ export function TestHardware({source}: {source: SettingsHardwareSource}) {
   return <div className={styles.test}>
     <SettingsAction loading={snapshot.testing} disabled={snapshot.phase !== 'ready'} onClick={() => {void source.test();}}>{t('next.settingsSpec.server.streaming.groups.3.rows.5.control.label')}</SettingsAction>
     {result && <span className={styles.result} role="status"><Icon name="i-check" size={15} />{result}</span>}
+  </div>;
+}
+
+/** The conversion folder: the path the choice above points at, edited as a path
+ * or chosen from the server's own bounded explorer. It writes the one stored
+ * directory, so nothing about the choice is duplicated. */
+export function TranscodeFolder({label, value, disabled, api, onChange}: {label: string; value: string; disabled?: boolean; api: LibraryContentApi; onChange: (path: string) => void}) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  return <div className={styles.test}>
+    <SettingText label={label} value={value} disabled={disabled} onCommit={onChange} />
+    <Button ref={trigger} variant="glass" size="xs" disabled={disabled} onClick={() => setOpen(true)}>{t('next.settings.chooseFolder')}</Button>
+    <ServerFolderPicker open={open} onClose={() => setOpen(false)} api={api} initialPath={value} returnFocusRef={trigger}
+      onChoose={paths => {const chosen = paths[0]; if (chosen) onChange(chosen);}} />
   </div>;
 }
