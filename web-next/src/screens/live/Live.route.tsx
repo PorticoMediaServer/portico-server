@@ -21,6 +21,7 @@ import {RecordingsScreen} from './RecordingsScreen';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
 import {liveProgramWindow} from './program-window';
+import {useGuideViewPreference} from './guide-view-preference';
 import {LiveOnNow} from './OnNow';
 import {GuideScreen, type GuideRowData} from './GuideScreen';
 import styles from './live.module.css';
@@ -71,7 +72,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   }, [context, owner, search.sourceId, search.channelId, search.kind]);
   const phone = width < 600, column = phone ? 60 : width < 1024 ? 180 : 284, rowHeight = phone ? 72 : width < 1024 ? 62 : 76;
   const scale = pxPerMsFor(width < 1024 ? 90 : 240), end = start + Math.max(1, width - column) / scale;
-  const view = search.view ?? 'guide';
+  const {view, remember} = useGuideViewPreference({...context.scope, kind: search.kind ?? 'all', sourceId: search.sourceId ?? ''}, search.view, context.isCurrent);
   const {start: readStart, end: readEnd} = liveProgramWindow(view, start, end, now);
   // The guide body scrolls with the page; the loaded window is the visible rows.
   const [visible, setVisible] = useState({first: 0, last: Math.max(0, Math.ceil(640 / rowHeight))});
@@ -150,7 +151,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
           problem={snapshot.channelsError ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => owner.store.retry()}}/> : undefined}
           empty={snapshot.total === 0 ? <StateView title={t('channels.filterEmptyTitle', {filter: search.group ?? (search.favorites ? t('channels.favorites') : search.q ?? t('channels.all'))})}
             primary={{id: 'all', label: t('channels.showAll'), onPress: () => navigate({group: undefined, favorites: undefined, q: undefined})}}/> : undefined}
-          view={view} onViewChange={view => navigate({view})}
+          view={view} onViewChange={view => {if (context.isCurrent()) {remember(view);navigate({view});}}}
           time={{earlier: t('guide.earlier'), now: t('guide.now'), later: t('guide.later'), onEarlier: () => setStart(value => value - 2 * 60 * 60_000), onNow: () => setStart(nowStart()), onLater: () => setStart(value => value + 2 * 60 * 60_000)}}
           span={{start, end, now, scale, column, rowHeight, timezone}}
           rows={rows} total={total}
