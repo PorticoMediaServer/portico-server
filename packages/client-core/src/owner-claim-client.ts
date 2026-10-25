@@ -40,9 +40,17 @@ function signed(value: unknown): OwnerSignedProof {
 export async function prepareOwnerClaimHandoff(api: Api, expected: ClaimExpected, binding: OwnerStartExpectation,
   ports: OwnerClaimStartPorts, options: Readonly<{signal?: AbortSignal; now?: () => number; crypto?: RouteCrypto}> = {}): Promise<string> {
   expected = Object.freeze({operationId: expected.operationId, localGeneration: expected.localGeneration, revision: expected.revision});
+  // Binding facts are persisted runtime data. Reject an unknown purpose and the
+  // mixed omitted/switch + owner-facts shapes before the freeze; otherwise the
+  // omitted case would silently drop facts and normalize to a switch.
+  const purpose = binding.purpose;
+  if (purpose !== undefined && purpose !== 'switch' && purpose !== 'change-owner') invalid();
+  if (purpose === undefined || purpose === 'switch') {
+    if (binding.currentOwnerAccountId !== undefined || binding.previousOwnerRole !== undefined) invalid();
+  } else if (!binding.currentOwnerAccountId || !binding.previousOwnerRole) invalid();
   binding = Object.freeze({pin: Object.freeze({...binding.pin}), origin: binding.origin, hostedOrigin: binding.hostedOrigin,
     operationId: binding.operationId, localGeneration: binding.localGeneration, state: binding.state, codeChallenge: binding.codeChallenge, installationId: binding.installationId,
-    ...(binding.purpose === undefined ? {} : {purpose: binding.purpose, currentOwnerAccountId: binding.currentOwnerAccountId, previousOwnerRole: binding.previousOwnerRole})});
+    ...(purpose === undefined ? {} : {purpose, currentOwnerAccountId: binding.currentOwnerAccountId, previousOwnerRole: binding.previousOwnerRole})});
   const now = options.now ?? Date.now;
   if (!identifier(expected.operationId) || !counter(expected.localGeneration) || !counter(expected.revision) || expected.revision === '0' ||
       expected.operationId !== binding.operationId || expected.localGeneration !== binding.localGeneration || !validInstallationId(binding.installationId) ||

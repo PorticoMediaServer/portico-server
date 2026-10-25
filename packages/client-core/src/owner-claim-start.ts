@@ -36,11 +36,15 @@ export async function verifyOwnerClaimStart(original: unknown, signedStart: unkn
   const address = new URL(expected.origin);
   if (address.protocol !== 'https:' && !(address.protocol === 'http:' && address.hostname === 'localhost')) invalid();
   routeBytes(expected.state, 32); routeBytes(expected.codeChallenge, 32);
+  // Persisted expectations are runtime data, not the TypeScript union. Reject
+  // any purpose other than the two the protocol signs, then validate the facts
+  // that purpose is allowed to carry.
   const purpose = expected.purpose ?? 'switch';
+  if (purpose !== 'switch' && purpose !== 'change-owner') invalid();
   if (purpose === 'switch'
     ? expected.currentOwnerAccountId !== undefined || expected.previousOwnerRole !== undefined
-    : !expected.currentOwnerAccountId || !/^[A-Za-z0-9_-]{1,128}$/.test(expected.currentOwnerAccountId) ||
-      !['admin', 'member', 'remove'].includes(expected.previousOwnerRole ?? '')) invalid();
+    : typeof expected.currentOwnerAccountId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(expected.currentOwnerAccountId) ||
+      typeof expected.previousOwnerRole !== 'string' || !['admin', 'member', 'remove'].includes(expected.previousOwnerRole)) invalid();
   const c = readProof(original, claimFields), s = readProof(signedStart, startFields), claim = c.facts, start = s.facts;
   const purposeBound = purpose === 'switch'
     ? claim.purpose === 'switch' && start.purpose === 'switch' && claim.currentOwnerAccountId === '' && claim.previousOwnerRole === ''
