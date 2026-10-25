@@ -189,9 +189,13 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			return
 		}
 		var out catalog.SavedResourceContent
+		var admit catalog.SavedGroupAdmission
+		if identity.CanUsePersonalState(p) {
+			admit = d.savedReadingGroupsAdmission(p, viewer)
+		}
 		e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
 			var readErr error
-			out, readErr = cat.SavedResourceContent(viewer, d.Identity.ID(), fence, r.PathValue("id"), resourceActor(p), r.URL.Query().Get("cursor"), limit)
+			out, readErr = cat.SavedResourceContent(viewer, d.Identity.ID(), fence, r.PathValue("id"), resourceActor(p), r.URL.Query().Get("cursor"), limit, admit)
 			if readErr != nil {
 				return readErr
 			}
@@ -264,7 +268,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			if route.action == "entries" && len(m.AddItemIDs) > 0 {
 				keep := []string{}
 				for _, id := range m.AddItemIDs {
-					if err := d.itemAccess(r.Context(), p, id); err != nil {
+					if err := d.savedResourceItemAccess(r.Context(), p, id); err != nil {
 						if errors.Is(err, sql.ErrNoRows) || errors.Is(err, identity.ErrNotVisible) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrForbidden) {
 							rejected = append(rejected, catalog.EntryOutcome{ItemID: id, Code: "not_found"})
 							continue
@@ -297,7 +301,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 					if e := d.resourceAuthorize(tx, p, library); e != nil {
 						return e
 					}
-					if _, e := d.playbackAuthorityTx(r.Context(), tx, p, id); e != nil {
+					if e := d.savedResourceItemAuthorityTx(r.Context(), tx, p, id); e != nil {
 						return e
 					}
 				}

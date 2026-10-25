@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaanalysis"
 	"strconv"
@@ -31,12 +32,16 @@ func (d Dependencies) detailFenceFor(r *http.Request, p identity.Principal) (str
 	if e != nil {
 		return "", "", e
 	}
-	if e = d.allowedLibrary(r.Context(), p, library); e != nil {
+	return d.detailLibraryFenceFor(r, p, library)
+}
+
+func (d Dependencies) detailLibraryFenceFor(r *http.Request, p identity.Principal, library string) (string, string, error) {
+	if e := d.allowedLibrary(r.Context(), p, library); e != nil {
 		return "", "", e
 	}
 	var policy, restriction int64
 	if p.Authority != "local" {
-		e = d.DB.QueryRowContext(r.Context(), `SELECT COALESCE((SELECT revision FROM policy WHERE server_id=?),0),COALESCE((SELECT revision FROM restrictions WHERE profile_id=?),0)`, d.Identity.ID(), p.ProfileID).Scan(&policy, &restriction)
+		e := d.DB.QueryRowContext(r.Context(), `SELECT COALESCE((SELECT revision FROM policy WHERE server_id=?),0),COALESCE((SELECT revision FROM restrictions WHERE profile_id=?),0)`, d.Identity.ID(), p.ProfileID).Scan(&policy, &restriction)
 		if e != nil {
 			return "", "", e
 		}
@@ -64,7 +69,7 @@ func (d Dependencies) markerAccess(p identity.Principal, library, item, fence st
 func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 	personalRate := &personalLimiter{}
 	d.projectedHandle(mux, "GET /v1/items/{id}/detail", func(w http.ResponseWriter, r *http.Request) {
-		p, library, fence, e := d.detailAccess(r)
+		p, library, fence, e := d.detailContentAccess(r)
 		if e != nil {
 			failure(w, e)
 			return
@@ -91,6 +96,24 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 		var out catalog.Detail
 		e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 			var composeErr error
+			var readingKind int
+			if err := dbwork.Snapshot(cat.Context()).QueryRowContext(cat.Context(), `SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?)`, r.PathValue("id")).Scan(&readingKind); err != nil {
+				return err
+			}
+			if readingKind == 20 || readingKind == 21 {
+				out, composeErr = cat.ReadingDetail(viewer, d.Identity.ID(), r.PathValue("id"), d.savedReadingGroupsAdmission(p, viewer))
+				if composeErr != nil {
+					return composeErr
+				}
+				authority, err := d.homeActionAuthority(cat.Context(), p)
+				if err != nil {
+					return err
+				}
+				if authority.ReadingCollections {
+					out.Actions = append(out.Actions, catalog.DetailAction{ID: "add_to_collection", LabelKey: "action.add_to_collection", Enabled: true})
+				}
+				return nil
+			}
 			out, composeErr = cat.Detail(viewer, d.Identity.ID(), r.PathValue("id"), p.Authority == "local" && p.Role == "owner")
 			if composeErr != nil {
 				return composeErr
@@ -117,7 +140,7 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		_, after, e := d.detailFenceFor(r, p)
+		_, after, e := d.detailContentFenceFor(r, p)
 		if e != nil {
 			failure(w, e)
 			return

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/readingcap"
 	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
@@ -312,12 +313,12 @@ func (s *Service) SavedResources(server, fence string, a ResourceActor, kind, cu
 	}
 	return out, nil
 }
-func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, a ResourceActor, cursor string, limit int) (SavedResourceContent, error) {
+func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, a ResourceActor, cursor string, limit int, readingAdmission ...SavedGroupAdmission) (SavedResourceContent, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
 		var out SavedResourceContent
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var readErr error
-			out, readErr = s.WithContext(ctx).SavedResourceContent(viewer, server, fence, id, a, cursor, limit)
+			out, readErr = s.WithContext(ctx).SavedResourceContent(viewer, server, fence, id, a, cursor, limit, readingAdmission...)
 			return readErr
 		})
 		return out, err
@@ -366,7 +367,13 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 			return out, e
 		}
 		rev.Catalog += r.Revision
-		scope := cursorScope{Profile: actorKey(a), View: "saved_collection", Entity: id, Viewer: fence, Limit: limit}
+		// A build's admitted Reading formats are part of this paging domain.
+		// A capability change cannot continue a page made under another domain.
+		domain := operationHash(struct {
+			Mobi   bool
+			Comics string
+		}{s.readingMobiConfigured(), readingcap.ComicFormatsSQL()})
+		scope := cursorScope{Profile: actorKey(a), View: "saved_collection", Entity: id, Viewer: fence + ":" + domain, Limit: limit}
 		// Inaccessible membership has an opaque stable entry ID and no media facts.
 		// A collection lists in its own order: new entries at the end, wherever its
 		// owner (or an editor) has moved them since.
@@ -412,7 +419,13 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 				return out, e
 			}
 		}
-		items, e := s.mediaPage(actorKey(a), ids, false)
+		visibleIDs := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if id != "" {
+				visibleIDs = append(visibleIDs, id)
+			}
+		}
+		items, e := s.mediaPage(actorKey(a), visibleIDs, false)
 		if e != nil {
 			return out, e
 		}
@@ -420,17 +433,24 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 		for _, item := range items {
 			byID[item.ID] = item
 		}
+		projected := make(map[string]ContentEntry, len(byID))
+		for id, item := range byID {
+			projected[id] = contentItem(item)
+		}
+		var admit SavedGroupAdmission
+		if len(readingAdmission) == 1 {
+			admit = readingAdmission[0]
+		}
+		if e = s.resourceReadingEntries(viewer, visibleIDs, projected, admit); e != nil {
+			return out, e
+		}
 		for i, item := range ids {
 			if item == "" {
 				continue
 			}
-			media, ok := byID[item]
+			entry, ok := projected[item]
 			if !ok {
 				return out, ErrStaleContinuation
-			}
-			entry := contentItem(media)
-			if !media.Available {
-				entry.Playback = nil
 			}
 			out.Entries[i].Media = &entry
 		}

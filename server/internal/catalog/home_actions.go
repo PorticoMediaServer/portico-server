@@ -71,6 +71,7 @@ type HomeChannelActions struct {
 // snapshot as Home. None of these facts is inferred from a role by catalog.
 type HomeActionAuthority struct {
 	Personal, Organize, Bulk, Playback, Queue, Metadata, Refresh, Downloads bool
+	ReadingCollections                                                      bool
 	DeleteLibrary                                                           func(string) (bool, error)
 }
 
@@ -177,7 +178,9 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 	 LEFT JOIN catalog_item_availability a ON a.entity_id=e.id AND a.retired=0
 	 LEFT JOIN personal_items p ON p.item_id=e.id AND p.profile_id=?
 	 LEFT JOIN container_personal_state c ON c.container_id=e.id AND c.kind=k.name AND c.profile_id=?
-	 WHERE e.retired=0 AND l.retired=0 AND CASE WHEN k.playable=1 THEN
+	 WHERE e.retired=0 AND l.retired=0
+	 AND (e.kind NOT IN(20,21) OR EXISTS(SELECT 1 FROM libraries reading_library WHERE reading_library.id=l.library_id AND ((e.kind=20 AND reading_library.kind='book') OR (e.kind=21 AND reading_library.kind='comic'))))
+	 AND CASE WHEN k.playable=1 OR e.kind IN(20,21) THEN
 	 (`+leafVisible+recordingsClause("e.id", v.EffectiveRestrictions())+` AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id))
 	 ELSE `+containerVisible+` END`, bound...)
 	if err != nil {
@@ -215,6 +218,13 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 		}
 		f, ok := facts[entry.ID]
 		if !ok || f.kind != entry.Kind || f.library != entry.LibraryID || !v.AllowsLibrary(f.library) {
+			continue
+		}
+		if f.kind == "ebook" || f.kind == "comic" {
+			// Exact Reading leaves use the bounded personal Saved entries
+			// command. They do not acquire any timed-media/job selector grants.
+			collection := authority.ReadingCollections
+			entry.HomeActions = &HomeActions{State: f.state, Details: true, Collection: collection, Selection: HomeSelectionActions{Collection: collection}}
 			continue
 		}
 		leaf := f.kind == "movie" || f.kind == "episode" || f.kind == "song" || f.kind == "audiobook_file"

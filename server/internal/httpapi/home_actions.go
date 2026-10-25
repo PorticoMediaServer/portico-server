@@ -33,6 +33,7 @@ func (d Dependencies) homeActionAuthority(ctx context.Context, p identity.Princi
 	}
 	out.Personal = true
 	out.Organize = d.Catalog != nil
+	out.ReadingCollections = d.Catalog != nil && identity.CanUsePersonalState(p)
 	out.Bulk = d.Scheduler != nil
 	out.Playback = d.v1 != nil && d.Playback != nil
 	out.Queue = d.v1 != nil
