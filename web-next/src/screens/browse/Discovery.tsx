@@ -42,8 +42,10 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
     if (selected.current?.service === service && selected.current.key === routeKey) return;
     selected.current = {service, key: routeKey};void service.select(route);
   }, [service, route, routeKey]);
-  if (!snapshot.projection && snapshot.phase === 'error') return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => {void service.retry();}}}/>;
+  // The library frame is already known while its sections fail to load; keep it and put the
+  // failure and its retry in place of the sections.
+  if (!snapshot.projection && snapshot.phase === 'error') return <>{header}<StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
+    primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => {void service.retry();}}}/></>;
   const renderSection = (section: ContentSection) => {
       // Music's authored quick grid precedes Mixes on both web widths. Its entries
       // and scope come unchanged from this library's actual Discover projection.
