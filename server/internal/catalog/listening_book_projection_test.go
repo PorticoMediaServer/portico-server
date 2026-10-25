@@ -86,3 +86,52 @@ func TestAuthorBooksPublishStoredFactsAndOwnProgress(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthorAggregateOmitsDurationAndNarratorsOnAPagedWindow(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("books", "Books", "audiobook", "/books")
+	first := c.Book(lib, "The Martian", "Andy Weir")
+	c.Fields(first.ID, map[string]any{"narrator": "R. C. Bray"})
+	c.BookFile(first, 1, "/books/martian.m4b")
+	second := c.Book(lib, "Project Hail Mary", "Andy Weir")
+	c.Fields(second.ID, map[string]any{"narrator": "Ray Porter"})
+	c.BookFile(second, 1, "/books/hail-mary.m4b")
+	c.Drain()
+	s := New(c.DB)
+	for {
+		more, err := s.RefreshListeningGroups(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !more {
+			break
+		}
+	}
+	c.Drain()
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"books"}}
+	browse, err := s.BrowseEntities(viewer, BrowseRequest{ServerID: "server", Library: "books", Profile: "p", ViewerFence: "f", Pivot: "authors", Limit: 40})
+	if err != nil || len(browse.Entries) != 1 {
+		t.Fatalf("author browse: %+v, %v", browse, err)
+	}
+	request := ContentRequest{Viewer: viewer, ServerID: "server", Library: "books", Profile: "p", ViewerFence: "f", Limit: 1,
+		View: "author", EntityID: browse.Entries[0].ID}
+	page, err := s.Content(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Entity == nil || page.Entity.Count == nil || *page.Entity.Count != 2 {
+		t.Fatalf("author count: %+v", page.Entity)
+	}
+	if page.Entity.Duration != nil || len(page.Entity.Narrators) != 0 {
+		t.Fatalf("paged author aggregate leaked: %+v", page.Entity)
+	}
+	var books *ContentSection
+	for i := range page.Sections {
+		if page.Sections[i].ID == "books" {
+			books = &page.Sections[i]
+		}
+	}
+	if books == nil || len(books.Entries) != 1 || books.NextCursor == "" {
+		t.Fatalf("expected a bounded first books page: %+v", books)
+	}
+}
