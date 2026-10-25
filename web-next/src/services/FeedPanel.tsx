@@ -27,8 +27,9 @@ export function FeedPanel({feed, onReviewDevices}: {feed: ServicesFeed; onReview
     finally { if (alive.current) setDownloading(undefined); }
   };
   return <>
-    {state.error ? <HostedError error={state.error} /> : null}{error ? <HostedError error={error} /> : null}
-    {!state.loading && !state.items.length ? <ServicesGroup><ServicesEmpty title={t('services.workspace.emptyNotifications')} description={t('services.workspace.emptyNotificationsBody')} /></ServicesGroup> : null}
+    {state.error ? <><HostedError error={state.error} /><Button disabled={state.busy} onClick={() => void feed.refresh()}>{t('action.tryAgain')}</Button></> : null}{error ? <HostedError error={error} /> : null}
+    {state.loading && !state.error && <p role="status">{t('status.loading')}</p>}
+    {!state.loading && !state.error && !state.items.length ? <ServicesGroup><ServicesEmpty title={t('services.workspace.emptyNotifications')} description={t('services.workspace.emptyNotificationsBody')} /></ServicesGroup> : null}
     {state.items.length ? <ServicesGroup>{state.items.map(item => {
       const copy = serviceNoticeCopy(item, i18n);
       const actions = item.kind === 'new_device' ? <Button size="small" disabled={state.busy} onClick={() => { if (!item.read) void feed.markRead([item.id]); onReviewDevices(); }}>{t('services.feed.reviewDevices')}</Button>
