@@ -3,6 +3,8 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -52,7 +54,38 @@ func (ReadingAnnotationOperation) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"upsert", "delete"}}
 }
 
-type ReadingAnnotationRect = reading.AnnotationRect
+type ReadingAnnotationRect reading.AnnotationRect
+
+func (r *ReadingAnnotationRect) UnmarshalJSON(data []byte) error {
+	var value struct {
+		X      *float64 `json:"x"`
+		Y      *float64 `json:"y"`
+		Width  *float64 `json:"width"`
+		Height *float64 `json:"height"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF || value.X == nil || value.Y == nil || value.Width == nil || value.Height == nil {
+		return reading.ErrInvalid
+	}
+	x, y, w, h := *value.X, *value.Y, *value.Width, *value.Height
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsNaN(w) || math.IsNaN(h) || math.IsInf(x, 0) || math.IsInf(y, 0) || math.IsInf(w, 0) || math.IsInf(h, 0) || x < 0 || y < 0 || w <= 0 || h <= 0 || x+w > 1 || y+h > 1 {
+		return reading.ErrInvalid
+	}
+	*r = ReadingAnnotationRect{X: x, Y: y, Width: w, Height: h}
+	return nil
+}
+func annotationRectValues(rects []ReadingAnnotationRect) []reading.AnnotationRect {
+	out := make([]reading.AnnotationRect, len(rects))
+	for i, r := range rects {
+		out[i] = reading.AnnotationRect(r)
+	}
+	return out
+}
+
 type ReadingAnnotation struct {
 	Rects     []ReadingAnnotationRect `json:"rects"`
 	ID        string                  `json:"id"`
@@ -71,8 +104,26 @@ type ReadingAnnotationsResponse struct {
 	Entries        []ReadingAnnotation `json:"entries"`
 	NextCursor     string              `json:"nextCursor"`
 }
+type ReadingAnnotationRects []ReadingAnnotationRect
+
+func (r *ReadingAnnotationRects) UnmarshalJSON(data []byte) error {
+	raw := bytes.TrimSpace(data)
+	if len(raw) == 0 || raw[0] != '[' {
+		return reading.ErrInvalid
+	}
+	var value []ReadingAnnotationRect
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	if len(value) > 128 {
+		return reading.ErrInvalid
+	}
+	*r = value
+	return nil
+}
+
 type ReadingAnnotationRequest struct {
-	Rects            []ReadingAnnotationRect    `json:"rects,omitempty"`
+	Rects            ReadingAnnotationRects     `json:"rects,omitempty"`
 	ExpectedRevision ReadingAnnotationRevision  `json:"expectedRevision"`
 	Operation        ReadingAnnotationOperation `json:"operation"`
 	ID               string                     `json:"id"`
@@ -88,10 +139,11 @@ type ReadingAnnotationSavedResponse struct {
 
 func readingAnnotationProjection(a reading.Annotation) ReadingAnnotation {
 	l := a.Location
-	if a.Rects == nil {
-		a.Rects = []ReadingAnnotationRect{}
+	rects := make([]ReadingAnnotationRect, len(a.Rects))
+	for i, r := range a.Rects {
+		rects[i] = ReadingAnnotationRect(r)
 	}
-	return ReadingAnnotation{a.Rects, a.ID, ReadingAnnotationKind(a.Kind), ReadingLocation{ReadingFormat(l.Format), l.CFI, l.Section, l.PageIndex, l.Progression}, a.Text, a.Note, ReadingAnnotationColour(a.Colour), a.CreatedAt, a.UpdatedAt}
+	return ReadingAnnotation{rects, a.ID, ReadingAnnotationKind(a.Kind), ReadingLocation{ReadingFormat(l.Format), l.CFI, l.Section, l.PageIndex, l.Progression}, a.Text, a.Note, ReadingAnnotationColour(a.Colour), a.CreatedAt, a.UpdatedAt}
 }
 func (d Dependencies) readingAnnotations(w http.ResponseWriter, r *http.Request) {
 	f, ok := d.openReadingBytes(w, r)
@@ -148,7 +200,7 @@ func (d Dependencies) readingMutateAnnotation(w http.ResponseWriter, r *http.Req
 		l := request.Location
 		location = reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}
 	}
-	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: request.ExpectedRevision.value, Operation: string(request.Operation), Annotation: reading.Annotation{Rects: request.Rects, ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
+	revision, err := f.MutateAnnotation(reading.AnnotationMutation{ExpectedRevision: request.ExpectedRevision.value, Operation: string(request.Operation), Annotation: reading.Annotation{Rects: annotationRectValues(request.Rects), ID: request.ID, Kind: string(request.Kind), Location: location, Text: request.Text, Note: request.Note, Colour: string(request.Colour)}})
 	if err != nil {
 		readingFailure(w, err)
 		return
