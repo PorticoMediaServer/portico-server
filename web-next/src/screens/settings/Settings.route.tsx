@@ -183,6 +183,10 @@ export function SettingsEntry() {
         invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
         // The owner's invite expiry, in whole days on the server and hours in the
         // dialog, read live so a save is used by the next invitation only.
+        inviteRole: () => {
+          const stored = controller.rowState(settingsRowIndex.get('people.inviteRole')!.row).value;
+          return stored === 'administrator' ? 'admin' : stored === 'member' ? 'member' : undefined;
+        },
         inviteExpiryHours: () => {
           const state = controller.rowState(settingsRowIndex.get('people.inviteExpiry')!.row);
           const days = Number(state.value);

@@ -42,6 +42,9 @@ export type PeopleBindings = Readonly<{
    * document when a new invitation form opens. A started invitation keeps the
    * value it opened with. */
   inviteExpiryHours?: () => number | undefined;
+  /** The owner's default role for a new invitation, in the dialog's own words
+   * (member or admin), read when a form opens and kept for that invitation. */
+  inviteRole?: () => 'member' | 'admin' | undefined;
   streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; signIn?: 'local' | 'portico'; openHome: () => void; reportError: (error: unknown) => void;
 }>;
 
@@ -57,8 +60,10 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
   /** The drawn ladder is whole days on the server and hours in the dialog. */
   const openedChoices = (): InviteChoices => {
-    const hours = bindings.inviteExpiryHours?.();
-    return hours && Number.isFinite(hours) && hours > 0 ? Object.freeze({...defaultInviteChoices, expiresInHours: hours}) : defaultInviteChoices;
+    const hours = bindings.inviteExpiryHours?.(), role = bindings.inviteRole?.();
+    return Object.freeze({...defaultInviteChoices,
+      ...(hours && Number.isFinite(hours) && hours > 0 ? {expiresInHours: hours} : {}),
+      ...(role ? {role} : {})});
   };
   const [formBusy, setFormBusy] = useState(false), [formError, setFormError] = useState<unknown>(), [retained, setRetained] = useState<InviteAttempt>();
   const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null), alive = useRef(true);
