@@ -12,6 +12,7 @@ export type WatchPanelModel=Readonly<{
  fence:QueuePlaybackFence;audio:readonly TrackChoice[];subtitles:readonly TrackChoice[];
  quality:readonly WatchRadioChoice[];speed:readonly WatchRadioChoice[];
  qualityLabel?:string;qualityAccessibleLabel?:string;qualityNotes:readonly string[];audioNotes:readonly string[];automatic:boolean;audioLabel?:string;subtitleLabel?:string;
+ subtitleTiming?:Readonly<{offsetSeconds:number;shift(deltaSeconds:number):Promise<void>}>;
  isCurrent():boolean;selectAudio(id:string):Promise<void>;selectSubtitle(id:string):Promise<void>;
  selectQuality(id:string):Promise<void>;selectSpeed(id:string):void;
 }>;
@@ -81,9 +82,15 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   const enabled=offer.enabled&&options.qualities.some(option=>option.applicable!==false&&qualityChoiceOf(option)===choice);
   qualityRows.push({id:offer.id,label,detail,selected:selected===choice,enabled});
  }
+ const timingPlan=matched?plan:null;
+ const subtitleTiming=timingPlan&&timingPlan.mode==='track'&&timingPlan.selected?.enabled?(()=>{const offsetSeconds=Number(timingPlan.offsetUs)/1e6;return Object.freeze({offsetSeconds:Number.isFinite(offsetSeconds)?offsetSeconds:0,
+  shift:async(delta:number)=>{check();if(!Number.isFinite(delta))throw new Error('playback_subtitle_unavailable');
+   const next=Math.round(((Number.isFinite(offsetSeconds)?offsetSeconds:0)+delta)*10)/10;
+   if(!Number.isFinite(next)||Math.abs(next)>600)throw new Error('playback_subtitle_unavailable');
+   await runtime.setSubtitleOffset(fence,next);}});})():undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
- return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,
+ return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,
   selectAudio:async id=>{check();if(!audio.some(r=>r.id===id&&!r.unavailable))throw new Error('playback_audio_unavailable');await runtime.selectAudio(fence,id);},

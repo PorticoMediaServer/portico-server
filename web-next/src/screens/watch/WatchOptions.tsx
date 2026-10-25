@@ -27,6 +27,16 @@ function RadioColumn({title,rows,select,reportError}:{title:string;rows:readonly
  return <section className={styles.column} aria-label={title}><h3>{title}</h3>
   <RadioRows rows={rows} select={select} reportError={reportError} label={title}/></section>;
 }
+/** desktop-player f3: the selected track's own correction, a tenth of a second at a time. */
+function TimingRow({timing,reportError,t}:{timing:NonNullable<WatchPanelModel['subtitleTiming']>;reportError(error:unknown):void;t:I18n['t']}){
+ const shift=(delta:number)=>{try{void timing.shift(delta).catch(reportError);}catch(error){reportError(error);}};
+ return <div className={styles.timing}><span>{t('player.opt.timing')}</span>
+  <div className={styles.timingStep} role="group" aria-label={t('player.opt.timingHelp')}>
+   <button type="button" aria-label={t('player.opt.earlier')} onClick={()=>shift(-.1)}>−</button>
+   <b>{t('player.opt.offsetSeconds',{seconds:timing.offsetSeconds.toFixed(1)})}</b>
+   <button type="button" aria-label={t('player.opt.later')} onClick={()=>shift(.1)}>+</button>
+  </div></div>;
+}
 
 /** The drawn single options panel. Every visible radio row has actual source membership and
  * every action calls that same runtime with its captured full fence. No optimistic selection.
@@ -84,7 +94,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}
   else if(event.defaultPrevented&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))event.stopPropagation();
  }}>
-  {model.subtitles.length>0&&<div data-section="subtitles"><TrackChoices title={t('player.opt.subtitles')} choices={model.subtitles} layout={context.layout} onSelect={model.selectSubtitle} reportError={reportError} t={t}/></div>}
+  {model.subtitles.length>0&&<div data-section="subtitles"><TrackChoices title={t('player.opt.subtitles')} choices={model.subtitles} layout={context.layout} onSelect={model.selectSubtitle} reportError={reportError} t={t}/>{model.subtitleTiming&&<TimingRow timing={model.subtitleTiming} reportError={reportError} t={t}/>}</div>}
   {(model.audio.length>0||model.quality.length>0)&&<div>
    {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={model.selectAudio} reportError={reportError} t={t}/>{model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
    {model.quality.length>0&&<div data-section="quality"><RadioColumn title={t('player.opt.quality')} rows={model.quality} select={model.selectQuality} reportError={reportError}/>{model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
