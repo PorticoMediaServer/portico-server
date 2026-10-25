@@ -754,6 +754,11 @@ export type PlaybackSnapshot = {
 export interface PlaybackAdapter {
   apply(snapshot: PlaybackSnapshot): void;
 }
+/** Actual current-song applied leveling gain: only when the report says leveling was applied and
+ * its dB amount is finite and inside the renderer's admitted range. */
+function appliedLevelingGain(facts:Pick<NativeListeningStatus,'levelingApplied'|'levelingGainDb'>|undefined):number|undefined{
+ return facts?.levelingApplied===true&&typeof facts.levelingGainDb==='number'&&Number.isFinite(facts.levelingGainDb)&&facts.levelingGainDb>=-60&&facts.levelingGainDb<=30?facts.levelingGainDb:undefined;
+}
 /** UI intent is the sole command authority. Native events report facts, never autoplay intent. */
 export class PlaybackService {
   /** Device engine processing (for example device-local EQ), never an account preference. */
@@ -900,7 +905,7 @@ export class PlaybackService {
     const changed='session' in patch&&(patch.session?.id!==this.snapshot.session?.id||patch.session?.generation!==this.snapshot.session?.generation);
     if(changed||patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'){
       const actual=patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'?undefined:patch.nativeListening;
-      patch={...patch,audioEffects:{...(patch.audioEffects??this.snapshot.audioEffects),eqApplied:actual?.eqApplied===true,levelingApplied:actual?.levelingApplied===true,levelingGainDb:undefined}};
+      patch={...patch,audioEffects:{...(patch.audioEffects??this.snapshot.audioEffects),eqApplied:actual?.eqApplied===true,levelingApplied:actual?.levelingApplied===true,levelingGainDb:appliedLevelingGain(actual)}};
     }
     // `ended` belongs to one session: a new start or another session clears it.
     if (!("ended" in patch) && this.snapshot.ended && (patch.phase === "starting" || ("session" in patch && patch.session?.id !== this.snapshot.session?.id)))
@@ -1355,7 +1360,7 @@ export class PlaybackService {
       phase:event.terminal?'error':event.ended?'ended':event.ready?'ready':'starting',
       ...(changed?{audio:this.audioSelection.reset()}:{}),
       ...(event.observed&&!event.seeking?{pendingSeek:undefined,failedSeek:undefined,seekError:undefined}:{}),
-      audioEffects:{...this.snapshot.audioEffects,rendering:event.rendering??false,eqApplied:event.eqApplied===true,levelingApplied:event.levelingApplied===true,levelingGainDb:undefined,rate:event.rate,effectiveRate:event.effectiveRate,waiting:event.rateWaiting,prepared:undefined,committed:undefined},
+      audioEffects:{...this.snapshot.audioEffects,rendering:event.rendering??false,eqApplied:event.eqApplied===true,levelingApplied:event.levelingApplied===true,levelingGainDb:appliedLevelingGain(event),rate:event.rate,effectiveRate:event.effectiveRate,waiting:event.rateWaiting,prepared:undefined,committed:undefined},
       error:event.error??undefined,listeningDeadlines:event.deadlines});
     // The server ended it (an administrator, a transfer, the lease): its reason, never an advance.
     if(event.terminal&&event.end)this.serverEnded(session.id,event.end);

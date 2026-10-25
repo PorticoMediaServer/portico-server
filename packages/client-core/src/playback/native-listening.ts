@@ -21,7 +21,7 @@ export type NativeListeningStatus=Readonly<{
  positionSeconds:number; effectiveRate?:number;supportedRates?:readonly number[];rateWaiting?:boolean;rateError?:string; observed:boolean; ready:boolean; seeking:boolean; ended:boolean;
  error:string|null; terminal:boolean; route:string; deadlines:ListeningDeadlines;
  /** Current-song engine facts. Omission is unreported, never evidence an effect ran. */
- rendering?:boolean;eqApplied?:boolean;levelingApplied?:boolean;timerStopped?:boolean;expiredTimerRevision?:number;policyRevision?:number;
+ rendering?:boolean;eqApplied?:boolean;levelingApplied?:boolean; /** Actual current-song applied leveling gain in dB, only while levelingApplied is true. */ levelingGainDb?:number;timerStopped?:boolean;expiredTimerRevision?:number;policyRevision?:number;
  commandRevision:number; binding:{lease:string;intentId:number;sessionId:string;generation:number;itemId:string}|null;
 }>;
 export function listeningDeadline(value:unknown):value is number|null {
