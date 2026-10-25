@@ -37,18 +37,20 @@ import (
 var castCapabilities = map[string]bool{"load": true, "control": true, "stop": true, "progress": true, "renew": true, "reconnect": true, "advance": true, "segment-skip": true}
 
 type CastBootstrapRequest struct {
-	ProtocolVersion string   `json:"protocolVersion"`
-	DisplayName     string   `json:"displayName,omitempty"`
-	Capabilities    []string `json:"capabilities,omitempty"`
+	Source          *identity.CastQueueSource `json:"source,omitempty"`
+	ProtocolVersion string                    `json:"protocolVersion"`
+	DisplayName     string                    `json:"displayName,omitempty"`
+	Capabilities    []string                  `json:"capabilities,omitempty"`
 }
 
 type CastBootstrap struct {
-	ID           string   `json:"id"`
-	Code         string   `json:"code"`
-	State        string   `json:"state"`
-	DisplayName  string   `json:"displayName"`
-	Capabilities []string `json:"capabilities"`
-	ExpiresAt    string   `json:"expiresAt"`
+	Transfer     *identity.CastQueueTransferStatus `json:"transfer,omitempty"`
+	ID           string                            `json:"id"`
+	Code         string                            `json:"code"`
+	State        string                            `json:"state"`
+	DisplayName  string                            `json:"displayName"`
+	Capabilities []string                          `json:"capabilities"`
+	ExpiresAt    string                            `json:"expiresAt"`
 	// ApplicationID is the published Google Cast application id, read from the
 	// `cast.applicationId` setting. It is configuration, never a default: an
 	// unset setting yields an empty value and the sender must not advertise Cast.
@@ -89,6 +91,7 @@ type CastScope struct {
 }
 
 type CastSession struct {
+	deviceID    string
 	AccessToken string `json:"accessToken"`
 	ExpiresAt   string `json:"expiresAt"`
 }
@@ -198,10 +201,21 @@ func (s *Store) CastBootstrapStart(ctx context.Context, p identity.Principal, re
 		id, digest(code), p.Authority, p.AccountID, p.ProfileID, p.Role, p.Epoch, req.DisplayName, string(raw), now, expires, identity.FamilyOfTokenTx(ctx, tx, p.Hash)); e != nil {
 		return out, e
 	}
+	if req.Source != nil {
+		if s.Identity == nil {
+			return out, identity.ErrForbidden
+		}
+		if e = s.Identity.CreateCastQueueTransferTx(ctx, tx, p, id, *req.Source, expires, now); e != nil {
+			return out, e
+		}
+	}
 	out = CastBootstrapResponse{ProtocolVersion: Protocol, ServerTime: stamp(now), Bootstrap: CastBootstrap{
 		ID: id, Code: code, State: "pending", DisplayName: req.DisplayName, Capabilities: capabilities,
 		ExpiresAt: stamp(expires), ApplicationID: s.applicationID(ctx, tx), ReceiverURL: "/receiver/cast/",
 	}}
+	if req.Source != nil {
+		out.Bootstrap.Transfer = &identity.CastQueueTransferStatus{ID: id, State: "pending"}
+	}
 	return out, gated.Commit()
 }
 
@@ -229,6 +243,12 @@ func (s *Store) CastBootstrapStatus(ctx context.Context, p identity.Principal, i
 	}
 	bootstrap := CastBootstrap{ID: id, State: state, DisplayName: name, ExpiresAt: stamp(expires), ApplicationID: s.applicationID(ctx, tx), ReceiverURL: "/receiver/cast/"}
 	_ = json.Unmarshal([]byte(capabilities), &bootstrap.Capabilities)
+	if s.Identity != nil {
+		bootstrap.Transfer, e = s.Identity.CastQueueTransferStatusTx(ctx, tx, p, id, false)
+		if e != nil {
+			return out, e
+		}
+	}
 	return CastBootstrapResponse{ProtocolVersion: Protocol, ServerTime: stamp(s.ms()), Bootstrap: bootstrap}, nil
 }
 
@@ -363,6 +383,11 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 	if _, e = tx.ExecContext(ctx, `UPDATE social_cast_devices SET session_family_id=? WHERE id=?`, family, rowID); e != nil {
 		return out, e
 	}
+	if semantics == "initial" {
+		if e = s.Identity.BindCastQueueTransferTx(ctx, tx, r.bootstrapID, rowID, family, session.deviceID, generation, now); e != nil {
+			return out, e
+		}
+	}
 	var list []string
 	_ = json.Unmarshal([]byte(r.capabilities), &list)
 	return CastReceiverSession{
@@ -402,7 +427,7 @@ func (s *Store) castSessionTx(ctx context.Context, tx *sql.Tx, id castIdentity, 
 	if e != nil {
 		return CastSession{}, "", e
 	}
-	return CastSession{AccessToken: envelope.AccessToken, ExpiresAt: envelope.ExpiresAt}, envelope.SessionFamilyID, nil
+	return CastSession{AccessToken: envelope.AccessToken, ExpiresAt: envelope.ExpiresAt, deviceID: envelope.DeviceID}, envelope.SessionFamilyID, nil
 }
 
 var errCastAccessEnded = &Fault{Code: "cast_access_ended", Status: 403, Message: "This account can no longer play on this server. Pair again from a signed-in device."}

@@ -70,9 +70,10 @@ type SubtitleRequest struct {
 
 // StartRequest is POST /v1/playback/sessions (spec §5.1).
 type StartRequest struct {
-	DiscTitle *catalog.DiscTitleRef `json:"discTitle,omitempty"`
-	ItemID    string                `json:"itemId,omitempty"`
-	ChannelID string                `json:"channelId,omitempty"`
+	DiscTitle      *catalog.DiscTitleRef `json:"discTitle,omitempty"`
+	CastTransferID string                `json:"castTransferId,omitempty"`
+	ItemID         string                `json:"itemId,omitempty"`
+	ChannelID      string                `json:"channelId,omitempty"`
 	// ChannelGeneration is the guide generation the viewer tuned from (a fence
 	// against a lineup that changed since); absent: the current one.
 	ChannelGeneration string           `json:"channelGeneration,omitempty"`
@@ -507,6 +508,10 @@ func digest(v any) string {
 
 // validate checks a start request's shape.
 func (r StartRequest) validate() error {
+	if r.CastTransferID != "" && (r.Queue == nil || !keyPattern.MatchString(r.CastTransferID)) {
+		return &FieldError{Path: "castTransferId"}
+	}
+
 	targets := 0
 	for _, set := range []bool{r.ItemID != "", r.ChannelID != "", r.Queue != nil, r.TransferID != ""} {
 		if set {
@@ -952,6 +957,11 @@ func (s *Service) Start(ctx context.Context, c Caller, key string, req StartRequ
 		if existing.startDigest != want {
 			return SessionView{}, false, ErrIdempotencyMismatch
 		}
+		if req.CastTransferID != "" {
+			if err = s.replayCastTransfer(ctx, c, req.CastTransferID, existing, key, want); err != nil {
+				return SessionView{}, false, err
+			}
+		}
 		return s.replayStart(ctx, c, existing)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -1162,9 +1172,34 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 				return err
 			}
 		}
+		if bound, ok := ctx.Value(queueStartCustodyKey{}).(queueStartCustody); ok {
+			if err := s.recheckQueueStartCustodyTx(ctx, tx, c, bound); err != nil {
+				return err
+			}
+		}
+		if bound, ok := ctx.Value(castTransferStartKey{}).(castTransferStart); ok {
+			if err := s.recheckCastTransferStartTx(ctx, tx, c, bound, base); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO playback_v1_sessions(`+rowColumns+`) `+rowValues,
 			r.id, r.device, r.account, r.profile, r.authority, r.startKey, r.startDigest, r.kind, r.role, r.state, r.item, r.version, r.channel, r.queueID, r.entryID, r.transfer, r.group, r.request, r.media, r.presentation, r.audioTrack, r.subtitleTrack, r.location, r.endReason, r.message, r.partIndex, r.revision, r.generation, r.mediaGeneration, r.startPosition, r.position, r.lastSeq, r.bandwidth, r.lease, r.created, r.updated, r.ended, r.pausedSince); err != nil {
 			return err
+		}
+
+		if bound, ok := ctx.Value(castTransferStartKey{}).(castTransferStart); ok {
+			if s.CastQueueTransferCommit == nil {
+				return identity.ErrForbidden
+			}
+			if err := s.CastQueueTransferCommit(ctx, tx, c, bound.intent, bound.queue, bound.entry, bound.item, r.id, key, startDigest); err != nil {
+				return err
+			}
+		}
+
+		if bound, ok := ctx.Value(queueStartCustodyKey{}).(queueStartCustody); ok {
+			if _, err := tx.ExecContext(ctx, `UPDATE queues_v1 SET session_id=?,current_entry_id=? WHERE id=?`, r.id, bound.currentEntry, bound.queue); err != nil {
+				return err
+			}
 		}
 
 		if c.UploadLimited != nil {
@@ -1191,6 +1226,11 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		if existing, e := scanRow(s.DB.QueryRowContext(ctx, `SELECT `+rowSelect+` FROM playback_v1_sessions WHERE device_id=? AND start_key=?`, c.DeviceID, key)); e == nil {
 			if existing.startDigest != startDigest {
 				return SessionView{}, false, ErrIdempotencyMismatch
+			}
+			if req.CastTransferID != "" {
+				if e = s.replayCastTransfer(ctx, c, req.CastTransferID, existing, key, startDigest); e != nil {
+					return SessionView{}, false, e
+				}
 			}
 			return s.replayStart(ctx, c, existing)
 		}

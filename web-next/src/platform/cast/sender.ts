@@ -186,7 +186,7 @@ export class WebCastSender {
 
   /** Invalidates pending SDK selection and pairing; a late picker cannot send a new load. */
   cancelConnecting(): void {
-    if (this.snapshot.phase === 'connecting' || this.snapshot.phase === 'pairing' || this.snapshot.phase === 'waiting') this.stop();
+    if (this.snapshot.phase === 'connecting' || this.snapshot.phase === 'pairing' || this.snapshot.phase === 'waiting' || this.snapshot.phase === 'error') this.stop();
   }
   play(): void { this.controller?.play(); }
   pause(): void { this.controller?.pause(); }

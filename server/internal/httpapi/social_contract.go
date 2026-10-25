@@ -161,7 +161,7 @@ func registerSocial(r *apikit.Registry, d Dependencies) {
 			socialContract[social.HandoffCommit, social.HandoffResponse](r, pattern, h, 200)
 		case "POST /v1/cast/bootstrap":
 			socialContract[social.CastBootstrapRequest, social.CastBootstrapResponse](r, pattern, h, 201)
-		case "GET /v1/cast/bootstrap/{id}":
+		case "GET /v1/cast/bootstrap/{id}", "DELETE /v1/cast/bootstrap/{id}":
 			socialContract[noBody, social.CastBootstrapResponse](r, pattern, h, 200)
 		case "POST /v1/cast/redeem":
 			socialContract[social.CastRedeemRequest, social.CastReceiverSession](r, pattern, h, 200)

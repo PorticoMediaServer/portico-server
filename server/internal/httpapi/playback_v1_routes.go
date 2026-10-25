@@ -50,6 +50,25 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	}
 	s.CastQueueAuthority = d.castQueueAuthorityTx
 	s.CastQueueStartAuthority = d.castQueueStartAuthorityTx
+	s.CastQueueTransferCheck = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller, id, q, e, item string) error {
+		if d.Identity == nil {
+			return identity.ErrForbidden
+		}
+		return d.Identity.CastQueueTransferStartTx(ctx, tx, c.Principal, id, q, e, item)
+	}
+	s.CastQueueTransferCommit = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller, id, q, e, item, target, key, digest string) error {
+		if d.Identity == nil {
+			return identity.ErrForbidden
+		}
+		return d.Identity.CommitCastQueueTransferTx(ctx, tx, c.Principal, id, q, e, item, target, key, digest)
+	}
+	s.CastQueueTransferReplay = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller, id, target, key, digest string) error {
+		if d.Identity == nil {
+			return identity.ErrForbidden
+		}
+		return d.Identity.ReplayCastQueueTransferTx(ctx, tx, c.Principal, id, target, key, digest)
+	}
+
 	// Queue sources and windows are authorized like every other catalog read:
 	// library access, then the item's restrictions (SEC-02).
 	s.QueryKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, source playbackv1.Selector) (catalog.QueueSelection, error) {

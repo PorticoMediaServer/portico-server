@@ -213,13 +213,26 @@
   var mediaAddresses = new Map(); // bounded receiver-private addresses; never placed in CAF status
   function mediaAddress(request) { return request && request.media ? mediaAddresses.get(request.media.contentId) || '' : ''; }
   function queuePath(id) { return '/v1/queues/' + encodeURIComponent(id); }
-  function queueRef(value) { return value && typeof value.queueId === 'string' && typeof value.entryId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value.queueId) && /^[A-Za-z0-9._:-]{1,128}$/.test(value.entryId) ? {queueId:value.queueId,entryId:value.entryId} : null; }
+  function queueRef(value) { return value && typeof value.queueId === 'string' && typeof value.entryId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value.queueId) && /^[A-Za-z0-9._:-]{1,128}$/.test(value.entryId) && (value.transferId===undefined||typeof value.transferId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(value.transferId)) ? {queueId:value.queueId,entryId:value.entryId,...(value.transferId?{transferId:value.transferId}:{})} : null; }
+  var transferStarts=new Map(); // bounded private request/ACK identity, never exposed in CAF status
   var manager = null, castContext = null, profiled = false;
   // CAF routes PlayerManager's own calls through the same interceptors as the
   // media channel. Only these exact engine-created objects may bypass sender
   // gates; an external JSON request cannot reproduce their private identity.
   var localRequests = new WeakSet(), localRequestId = 0;
-  function loadMedia(request) { localRequests.add(request); return manager.load(request); }
+  var cafOccurrence = null;
+  async function loadMedia(request) {
+    // Bind the single CAF deck to the exact accepted server presentation.
+    var owner=playback, occurrence={id:owner&&owner.id,generation:owner&&owner.generation,contentId:request.media.contentId,finished:false};
+    cafOccurrence=null;localRequests.add(request);
+    await manager.load(request);
+    if(playback&&owner&&playback.id===owner.id&&playback.generation===owner.generation)cafOccurrence=occurrence;
+  }
+  function finishedOccurrence(owner, occurrence) {
+    var media=manager&&manager.getMediaInformation(),element=$('player');
+    return !!owner&&!!occurrence&&cafOccurrence===occurrence&&owner.id===occurrence.id&&owner.generation===occurrence.generation&&
+      !!media&&media.contentId===occurrence.contentId&&!!element&&element.ended===true;
+  }
   function mediaCommand(type, fields) {
     var request=Object.assign({type:type,requestId:++localRequestId},fields);
     localRequests.add(request);manager.sendLocalMediaRequest(request);
@@ -354,7 +367,6 @@
       }
     });
     if (caps.display_supported === false) passthrough = [];
-    var surround=caps.display_supported!==false&&passthrough.length>0;
     var fmp4Audio=audio.filter(function(a){return ({aac:'mp4a.40.2',mp3:'mp4a.69',flac:'fLaC',opus:'Opus'})[a.codec]&&supports('audio/mp4; codecs="'+({aac:'mp4a.40.2',mp3:'mp4a.69',flac:'fLaC',opus:'Opus'})[a.codec]+'"');}).map(function(a){return a.codec;}).concat(passthrough.map(function(a){return a.codec;}));
     var hlsAudio=audio.filter(function(a){return ['aac','mp3'].indexOf(a.codec)>=0;}).map(function(a){return a.codec;}).concat(passthrough.map(function(a){return a.codec;}));
     var names=video.map(function (v) {return v.codec;});
@@ -372,7 +384,7 @@
     });
     // The capability document (version 2): the device, and what its one player engine can do.
     // Display presence and codec acceptance do not identify the active audio route.
-    return {version:2,client:client,engineSetting:'automatic',display:{dynamicRanges:ranges},audioOutput:{maxChannels:surround?Math.max.apply(null,passthrough.map(function(a){return a.maxChannels;})):2},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
+    return {version:2,client:client,engineSetting:'automatic',display:{dynamicRanges:ranges},audioOutput:{route:'',maxChannels:0,spatial:false},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
   }
   /** CAF's type probe has no channel/rate arguments. Where the receiver also exposes the
    * MediaCapabilities API, ask exact decoded configurations; silence/timeout stays stereo. */
@@ -396,7 +408,7 @@
       accepted=accepted.filter(function(rate){return rate>0;});
       if(accepted.length){codec.sampleRates=accepted;codec.maxSampleRate=Math.max.apply(null,accepted);codec.evidence='mixed';}
     }));
-    profile.audioOutput.maxChannels=Math.max(profile.audioOutput.maxChannels,...profile.engines.native.audio.map(function(a){return a.maxChannels;}));
+    // Decoding support does not measure the active output route or its channels.
     return profile;
   }
   /** What this TV decodes, published for the session's device before anything plays. */
@@ -434,7 +446,7 @@
     await stopPlayback();
     base = origin;
     try { if (base) window.localStorage.setItem(ORIGIN_KEY, base); else window.localStorage.removeItem(ORIGIN_KEY); } catch (_) { /* ignore */ }
-    profiled=false;
+    profiled=false;transferStarts.clear();
     return adopt(result);
   }
   /** Pairing by typing a code: only offered when the page is opened in an ordinary browser. */
@@ -645,7 +657,7 @@
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     if (!playback) return;
     var id = playback.id, at = Math.round(position() * 1000);
-    playback = null; meta = null;
+    playback = null; meta = null;cafOccurrence=null;
     if (manager) mediaCommand('STOP');
     mediaAddresses.clear();
     showIdle();
@@ -667,12 +679,22 @@
     var body = {itemId: itemId, state: 'playing'};
     if (Number.isFinite(startSeconds)) body.startPositionMs = Math.round(Math.max(0, startSeconds) * 1000); else body.startFrom = 'resume';
     if (replaces) body.replacesSessionId = replaces;
-    if (queueRef(queue)) { body.queue = queueRef(queue); delete body.itemId; }
+    if(queue&&!queueRef(queue))throw new Error('invalid_cast_queue');
+    if (queueRef(queue)) {
+      body.queue={queueId:queue.queueId,entryId:queue.entryId};delete body.itemId;
+      if(queue.transferId)body.castTransferId=queue.transferId;
+    }
     // The sender's subtitle choice ("off", or a track id). This TV draws text only; the server
     // delivers a styled or image track burned into the picture.
     if (subtitleTrackId === 'off') body.subtitles = {trackId: null};
     else if (typeof subtitleTrackId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(subtitleTrackId)) body.subtitles = {trackId: subtitleTrackId};
     var key = token(16), deadline = Date.now() + 110000, answer;
+    if(queue&&queue.transferId){
+      var captured=transferStarts.get(queue.transferId);
+      if(!captured)throw new Error('cast_transfer_required');
+      if(captured.body)body=captured.body;else captured.body=Object.freeze(body);
+      key='cast-'+queue.transferId;
+    }
     // 202: the server is still preparing; the identical request is repeated until it answers.
     for (;;) {
       answer = await api('/v1/playback/sessions', {body: body, headers: {'Idempotency-Key': key}});
@@ -685,6 +707,7 @@
     stopPreparing();
     var started = answer.body;
     if (!started || !started.presentation) throw new Error('playback_not_ready');
+    if(started.state==='ended')throw new Error('session_ended');
     var artTimer, image;
     try { image = await Promise.race([art, new Promise(function(resolve){artTimer=setTimeout(function(){resolve('');},1500);})]); }
     finally { clearTimeout(artTimer); }
@@ -695,17 +718,30 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await loadMedia(load);showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId);return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){
+    var captured;
+    if(queue&&queue.transferId){
+      var digest=JSON.stringify({itemId:itemId,startSeconds:startSeconds,subtitleTrackId:subtitleTrackId,queue:queue}),now=Date.now();
+      transferStarts.forEach(function(value,key){if(value.expires<=now)transferStarts.delete(key);});
+      captured=transferStarts.get(queue.transferId);
+      if(captured&&(captured.digest!==digest||captured.scope!==scope||captured.origin!==base))throw new Error('cast_transfer_changed');
+      if(captured&&captured.accepted)return captured.accepted;
+      if(!captured){if(transferStarts.size>=8)throw new Error('cast_transfer_busy');captured={digest:digest,scope:scope,origin:base,expires:now+180000};transferStarts.set(queue.transferId,captured);}
+    }
+    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await loadMedia(load);showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId);if(captured)captured.accepted=playback;return playback;}
+    catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}
+  }); }
 
   // V1 music is progressive: the next server occurrence starts only after the
   // actual current media finishes. CAF preloadTime is a hint, not a buffer or
   // gapless promise; there is no private progressive PRELOAD or held response.
-  async function advanceQueue() {
-    if (!playback || !playback.queue) return false;
-    var owner = playback;
+  async function advanceQueue(owner) {
+    if (!owner || playback!==owner || !owner.queue) return false;
     var head = (await api(queuePath(owner.queue.queueId),{method:'GET'})).body;
-    if (playback !== owner || !head.next || !head.next.available) return false;
-    var answer = await api(queuePath(owner.queue.queueId) + ':advance',{body:{reason:'completion'},headers:{'If-Match':head.revision,'Idempotency-Key':token(16)}});
+    if (playback !== owner) return false;
+    if(!head.current||head.current.entryId!==owner.queue.entryId)throw new Error('cast_queue_changed');
+    if (!head.next || !head.next.available) return false;
+    var answer = await api(queuePath(owner.queue.queueId) + ':advance',{body:{reason:'completion',completionSessionId:owner.id,completionGeneration:owner.generation},headers:{'If-Match':head.revision,'Idempotency-Key':token(16)}});
     if (playback !== owner || !answer.body.session) return false;
     var current=answer.body.session;
     playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;
@@ -963,8 +999,9 @@
       controllerPresent=true;
       switch (message.type) {
         case 'load':
-          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId, queueRef(message.queue)).then(function () {
-            if (typeof message.requestId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId)) reply({type:'loaded',requestId:message.requestId,itemId:playback ? playback.itemId : ''});
+          if(message.queue!==undefined&&!queueRef(message.queue)){reply({type:'load-failed',requestId:message.requestId});break;}
+          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId, queueRef(message.queue)).then(function (accepted) {
+            if (typeof message.requestId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId)) reply({type:'loaded',requestId:message.requestId,itemId:accepted ? accepted.itemId : ''});
             broadcast();
           }).catch(function (error) {
             reply({ type: 'load-failed', requestId: typeof message.requestId==='string'?message.requestId.slice(0,128):undefined, code: error.code || error.message || '' });
@@ -990,13 +1027,15 @@
     // finished title, still reporting, with nobody connected to stop it.
     manager.addEventListener(events.MEDIA_FINISHED,function(event){
       if(!event||event.endedReason!==cast.framework.events.EndedReason.END_OF_STREAM)return;
-      var owner=playback;
-      if(!owner)return;
+      var owner=playback,occurrence=cafOccurrence;
+      // MEDIA_FINISHED has no item/session field. Require the real single deck's
+      // ended state and its loaded content identity, then consume this event once.
+      if(!finishedOccurrence(owner,occurrence)||occurrence.finished)return;
+      occurrence.finished=true;
       serial(async function(){
-        // Duplicate/stale completion queued before a new occurrence cannot end it.
-        if(playback!==owner)return;
+        if(playback!==owner||!finishedOccurrence(owner,occurrence))return;
         try {
-          if(await advanceQueue())return;
+          if(await advanceQueue(owner))return;
           try{await report('ended');}finally{notice('');await stopPlayback(true);}
         } catch(error) {
           // A terminal queue fetch/admission/load failure is actionable. Do not

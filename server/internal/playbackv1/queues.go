@@ -198,22 +198,28 @@ type ShuffleSwitch struct {
 type AdvanceRequest struct {
 	Reason  string `json:"reason"`
 	EntryID string `json:"entryId,omitempty"`
+	// A receiver completion names the occurrence it actually finished. A queue
+	// header revision alone cannot identify a replaced session on the same entry.
+	CompletionSessionID  string `json:"completionSessionId,omitempty"`
+	CompletionGeneration int    `json:"completionGeneration,omitempty"`
 }
 
 // queueRow is one queues_v1 row.
 type queueRow struct {
 	automatic                                                     int
+	custody                                                       int64
+	currentEntry                                                  string
 	id, ownerKind, ownerID, authority, account, profile, session  string
 	repeat                                                        string
 	revision, current, seed, lap, domain, first, created, updated int64
 	shuffle                                                       bool
 }
 
-const queueColumns = `id,owner_kind,owner_id,authority,account_id,profile_id,session_id,repeat,revision,current_position,shuffle_seed,shuffle_lap,shuffle_domain,shuffle_first,created_ms,updated_ms,shuffle_on,automatic_advances`
+const queueColumns = `id,owner_kind,owner_id,authority,account_id,profile_id,session_id,repeat,revision,current_position,shuffle_seed,shuffle_lap,shuffle_domain,shuffle_first,created_ms,updated_ms,shuffle_on,automatic_advances,custody_generation,current_entry_id`
 
 func scanQueue(r scanner) (queueRow, error) {
 	var q queueRow
-	err := r.Scan(&q.id, &q.ownerKind, &q.ownerID, &q.authority, &q.account, &q.profile, &q.session, &q.repeat, &q.revision, &q.current, &q.seed, &q.lap, &q.domain, &q.first, &q.created, &q.updated, &q.shuffle, &q.automatic)
+	err := r.Scan(&q.id, &q.ownerKind, &q.ownerID, &q.authority, &q.account, &q.profile, &q.session, &q.repeat, &q.revision, &q.current, &q.seed, &q.lap, &q.domain, &q.first, &q.created, &q.updated, &q.shuffle, &q.automatic, &q.custody, &q.currentEntry)
 	return q, err
 }
 
@@ -856,9 +862,11 @@ func loadQueue(ctx context.Context, q querier, id string) (queueRow, error) {
 // in on the same TV can't read or control it (P17).
 // ownsQueue: the caller's profile's queue, and a live one: a queue being
 // staged ("~" owner) or retired by a replacement ("!" owner) is no one's.
+// Root42 transfers permanently narrow custody to its exact device; stale source
+// controllers cannot recover queue command authority through profile ownership.
 func ownsQueue(c Caller, q queueRow) bool {
 	return q.authority == c.Principal.Authority && q.account == c.Principal.AccountID && q.profile == c.Principal.ProfileID &&
-		!strings.HasPrefix(q.ownerID, "~") && !strings.HasPrefix(q.ownerID, "!")
+		!strings.HasPrefix(q.ownerID, "~") && !strings.HasPrefix(q.ownerID, "!") && (q.custody == 0 || q.ownerKind == "device" && q.ownerID == c.DeviceID)
 }
 
 func (s *Service) queueEventsTx(ctx context.Context, tx *sql.Tx, l *layout, now time.Time) error {
@@ -866,6 +874,16 @@ func (s *Service) queueEventsTx(ctx context.Context, tx *sql.Tx, l *layout, now 
 	if l.sonicErr != nil {
 		return l.sonicErr
 	}
+	// Persist the authoritative header alongside every layout mutation/event.
+	// Transfer reads this indexed fact instead of walking segments/removals/spans.
+	entry := ""
+	if v.Current != nil {
+		entry = v.Current.EntryID
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE queues_v1 SET current_entry_id=? WHERE id=?`, entry, l.q.id); err != nil {
+		return err
+	}
+	l.q.currentEntry = entry
 	data := map[string]any{"total": v.Total}
 	if v.Current != nil {
 		data["current"] = v.Current

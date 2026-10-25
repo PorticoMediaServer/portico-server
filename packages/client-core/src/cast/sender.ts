@@ -1,4 +1,4 @@
-import {routeBody} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath,routeBody} from "../../../contracts/src/routes.ts";
 import {routePath} from "../../../contracts/src/routes.ts";
 /**
  * The Portico Cast sender, one implementation for every platform. The platform finds a Cast
@@ -9,7 +9,7 @@ import {routePath} from "../../../contracts/src/routes.ts";
  */
 import type {MessageId} from '../../../i18n/src/index.ts';
 import {serviceProblem, serviceText} from '../presentation/service-text.ts';
-import {CAST_PAIR_TIMEOUT_MS, CAST_PROTOCOL_VERSION, CAST_TAKEOVER_WINDOW_MS, castChoiceFields, castMetadataFields, parseCastEvent, type CastChoices, type CastCommand, type CastEvent, type CastMetadata, type CastTrack} from './protocol.ts';
+import {CAST_PAIR_TIMEOUT_MS, CAST_PROTOCOL_VERSION, CAST_TAKEOVER_WINDOW_MS, captureCastChoices,castTransferReceipt,castChoiceFields, castMetadataFields, parseCastEvent, type CastQueueSource,type CastTransferReceipt,type CastChoices, type CastCommand, type CastEvent, type CastMetadata, type CastTrack} from './protocol.ts';
 
 /** One open session with one receiver, over the `urn:x-cast:tv.getportico.cast` namespace. */
 export interface CastTransport {
@@ -33,6 +33,10 @@ export type CastPhase = 'off' | 'connecting' | 'pairing' | 'waiting' | 'casting'
 export type CastSnapshot = Readonly<{
   /** The platform can cast from here (set by the platform once its SDK and the server agree). */
   available: boolean;
+  /** Internal accepting receipt: never a receiver-supplied source identity. */
+  acceptedSource?:CastQueueSource;
+  /** Retain the original source until cancellation or commit is authoritative. */
+  transferPending?:boolean;
   phase: CastPhase;
   deviceName?: string;
   itemId?: string;
@@ -68,7 +72,10 @@ class CastFailure extends Error {
 
 const idle: CastSnapshot = Object.freeze({available: false, phase: 'off', positionSeconds: 0, durationSeconds: 0, paused: false, audioTracks: Object.freeze([]), textTracks: Object.freeze([])});
 
+type CastTransferFlight={id?:string;transport:CastTransport;source:CastQueueSource;itemId:string;position:number;cancellation?:Promise<CastTransferReceipt|undefined>};
 export class CastController {
+  private transferFlight?:CastTransferFlight;
+  private recoveryTransfer?:CastTransferFlight;
   private state: CastSnapshot = idle;
   private listeners = new Set<() => void>();
   private api: CastApi;
@@ -113,23 +120,40 @@ export class CastController {
   /** The platform's verdict on whether Cast can be offered here. */
   setAvailable(available: boolean) { this.publish({available}); }
   /** The platform's device picker is open ("Choose a device…"). */
-  connecting(title?: string) { this.publish({phase: 'connecting', title, error: undefined, errorId: undefined, takeover: undefined}); }
+  connecting(title?: string) { this.publish({phase: 'connecting', acceptedSource:undefined,title, error: undefined, errorId: undefined, takeover: undefined}); }
   /** The picker closed without a device: not an error. */
   cancelConnecting() { if (this.state.phase === 'connecting') this.publish({phase: 'off'}); }
 
   /** Pair with the TV on `transport` and start `itemId` there. True once the TV has the title. */
   async start(transport: CastTransport, itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
+    if(this.recoveryTransfer || this.transferFlight?.id){
+      const previous=this.recoveryTransfer ?? this.transferFlight!;
+      try{const receipt=await this.cancelTransfer(previous);this.recoveryTransfer=undefined;if(this.transferFlight===previous)this.transferFlight=undefined;
+        if(receipt?.state==='committed'&&receipt.itemId===previous.itemId)this.publish({acceptedSource:previous.source});
+        this.publish({phase:'off',acceptedSource:undefined,transferPending:false});
+      }catch{this.fail('cast.error.unreachable');}
+      return false;
+    }
     this.release(false);
     const generation = this.startGeneration;
+    choices=captureCastChoices(choices);meta=Object.freeze({...meta});
+    const flight:CastTransferFlight|undefined=choices?.source?{transport,source:choices.source,itemId,position:Math.max(0,startSeconds)}:undefined;
+    this.transferFlight=flight;
     this.transport = transport;
     this.detach.push(transport.onMessage(raw => { const e = parseCastEvent(raw); if (e) this.receive(e); }));
     this.detach.push(transport.onSessionEnd(() => this.sessionEnded()));
     let loading = false;
-    this.publish({phase: 'pairing', deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
+    this.publish({phase: 'pairing', acceptedSource:undefined,transferPending:!!flight,deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
     try {
       const displayName = transport.deviceName.trim().slice(0, 64);
-      const issued = await this.api.request<{bootstrap?: {code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", {protocolVersion: CAST_PROTOCOL_VERSION, ...(displayName ? {displayName} : {})}));
-      if (generation !== this.startGeneration) return false;
+      const bootstrapBody={protocolVersion:CAST_PROTOCOL_VERSION,...(displayName?{displayName}:{}),...(choices?.source?{source:choices.source}:{})};
+      const issued = await this.api.request<{bootstrap?: {id?:unknown;code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", bootstrapBody));
+      if(flight){
+        const id=issued?.bootstrap?.id;
+        if(typeof id!=='string'||!/^[A-Za-z0-9._:-]{1,128}$/.test(id)||!castTransferReceipt(issued,id))throw new CastFailure('cast.error.noCode');
+        flight.id=id;choices=Object.freeze({...choices,queue:Object.freeze({...choices!.queue!,transferId:id})});
+      }
+      if (generation !== this.startGeneration) {if(flight)await this.cancelTransfer(flight);return false;}
       const code = issued?.bootstrap?.code;
       if (typeof code !== 'string' || !code) throw new CastFailure('cast.error.noCode');
       await this.exchange({type: 'pair', code, origin: this.origin, displayName: this.displayName});
@@ -137,11 +161,48 @@ export class CastController {
       loading = true;
       const playingItemId = await this.load({type: 'load', itemId, startSeconds: Math.max(0, startSeconds), ...castMetadataFields(meta), ...castChoiceFields(choices)});
       if (generation !== this.startGeneration) return false;
-      this.publish({phase: 'casting', itemId: playingItemId, positionSeconds: Math.max(0, startSeconds), paused: false});
+      if(flight?.id){
+        const receipt=await this.transferStatus(flight.id);
+        if(generation!==this.startGeneration)return false;
+        if(receipt?.state!=='committed'||receipt.itemId!==itemId||playingItemId!==itemId)throw new CastFailure('cast.error.loadFailed');
+      }
+      if(this.transferFlight===flight)this.transferFlight=undefined;
+      this.publish({phase: 'casting', acceptedSource:flight?.source,transferPending:false,itemId: playingItemId, positionSeconds: Math.max(0, startSeconds), paused: false});
+      this.send({type:'status'});
       return true;
     } catch (e) {
       if (generation !== this.startGeneration) return false;
-      if (loading) this.send({type: 'stop'});
+      if(flight?.id){
+        // Delivery/ACK loss is uncertainty, not a refusal. Recover the same
+        // committed result without stopping it. Only a real receiver failure
+        // or the user's Stop takes the cancellation/authorized Stop path.
+        if(!(e instanceof CastFailure && e.messageId==='cast.error.loadFailed')){
+          try{
+            const receipt=await this.transferStatus(flight.id);
+            if(generation!==this.startGeneration)return false;
+            if(!receipt)throw new CastFailure('cast.error.noAnswer');
+            if(receipt.state==='committed'){
+              if(receipt.itemId!==itemId)throw new CastFailure('cast.error.loadFailed');
+              this.transferFlight=undefined;this.recoveryTransfer=undefined;
+              this.publish({phase:'casting',acceptedSource:flight.source,transferPending:false,itemId:receipt.itemId,paused:false});
+              this.send({type:'status'});return true;
+            }
+          }catch{
+            if(generation===this.startGeneration){this.transferFlight=undefined;this.recoveryTransfer=flight;this.release(false);this.fail('cast.error.unreachable');}
+            return false;
+          }
+        }
+        try{
+          const receipt=await this.cancelTransfer(flight);
+          if(generation===this.startGeneration){
+            this.transferFlight=undefined;this.recoveryTransfer=undefined;
+            this.publish({transferPending:false,...(receipt?.state==='committed'&&receipt.itemId===itemId?{acceptedSource:flight.source}:{})});
+          }
+        }catch{
+          if(generation===this.startGeneration){this.transferFlight=undefined;this.recoveryTransfer=flight;this.fail('cast.error.unreachable');}
+        }
+      } else if (loading) this.send({type: 'stop'});
+      if(generation!==this.startGeneration)return false;
       this.release(false);
       const id: MessageId = e instanceof CastFailure ? e.messageId : 'cast.error.unreachable';
       this.publish({phase: 'error', takeover: undefined, errorId: id, error: e instanceof CastFailure ? serviceText(id) : serviceProblem(e, 'playback', id)});
@@ -156,7 +217,7 @@ export class CastController {
    * again). `describe` names the title from its item id. Resolves true once adopted.
    */
   adopt(transport: CastTransport, describe?: (itemId: string) => Promise<string | undefined>, waitMs = 5000): Promise<boolean> {
-    if (this.transport || this.disposed) return Promise.resolve(false);
+    if (this.transport || this.disposed || this.state.transferPending || this.recoveryTransfer) return Promise.resolve(false);
     this.transport = transport;
     return new Promise<boolean>(resolve => {
       const give = (ok: boolean) => { if (!this.adopting) return; this.clearTimer(this.adoptTimer); this.adopting = false; this.settleAdoption = undefined; resolve(ok); };
@@ -188,14 +249,43 @@ export class CastController {
   }
 
   /** Correlate a bounded number of in-flight receiver loads; a transport send is not playback. */
+  private transferPath(id:string){return encodedRoutePath('social_get_v1_cast_bootstrap_id',{id:encodeURIComponent(id)});}
+  private async transferStatus(id:string):Promise<CastTransferReceipt|undefined>{
+    let failure:unknown;
+    for(let n=0;n<2;n++)try{return castTransferReceipt(await this.api.request(this.transferPath(id),'GET'),id);}catch(error){failure=error;}
+    throw failure;
+  }
+  private cancelTransfer(flight:CastTransferFlight):Promise<CastTransferReceipt|undefined>{
+    if(!flight.id)return Promise.resolve(undefined);
+    if(flight.cancellation)return flight.cancellation;
+    const id=flight.id;
+    flight.cancellation=(async()=>{
+      let failure:unknown;
+      for(let n=0;n<2;n++)try{
+        const receipt=castTransferReceipt(await this.api.request(this.transferPath(id),'DELETE'),id);
+        if(!receipt)throw new CastFailure('cast.error.noAnswer');return receipt;
+      }catch(error){failure=error;}
+      flight.cancellation=undefined;throw failure;
+    })();return flight.cancellation;
+  }
+  /** Replay the same command; resolve uncertain commits with the original authenticated receipt. */
   private load(command: Extract<CastCommand, {type: 'load'}>): Promise<string> {
     if (this.loads.size >= 8 || !this.transport) return Promise.reject(new CastFailure('cast.error.busy'));
-    const requestId = 'load-' + (++this.requestSequence);
+    const requestId = 'load-' + (++this.requestSequence),transport=this.transport;
+    const queue=command.queue&&typeof command.queue==='object'?command.queue:undefined,transferId=queue?.transferId;
     return new Promise<string>((resolve, reject) => {
-      const finish = (error?: Error, itemId = command.itemId) => { if (!this.loads.delete(requestId)) return; this.clearTimer(timer); if (error) reject(error); else resolve(itemId); };
-      const timer = this.setTimer(() => finish(new CastFailure('cast.error.noAnswer')), 150_000);
+      const retries:unknown[]=[];
+      const finish = (error?: Error, itemId = command.itemId) => { if (!this.loads.delete(requestId)) return; this.clearTimer(timer);for(const retry of retries)this.clearTimer(retry);if (error) reject(error); else resolve(itemId); };
+      const recover=async()=>{try{
+        const receipt=typeof transferId==='string'?await this.transferStatus(transferId):undefined;
+        if(receipt?.state==='committed'&&receipt.itemId===command.itemId){finish(undefined,receipt.itemId);return;}
+        finish(new CastFailure('cast.error.noAnswer'));
+      }catch{finish(new CastFailure('cast.error.unreachable'));}};
+      const timer = this.setTimer(() => {void recover();}, 150_000);
       this.loads.set(requestId, {resolve: itemId => finish(undefined, itemId), reject: error => finish(error)});
-      void this.transport!.send({...command, requestId}).catch(() => finish(new CastFailure('cast.error.unreachable')));
+      const send=()=>{if(this.loads.has(requestId)&&this.transport===transport)void transport.send({...command,requestId}).catch(()=>{if(!transferId)finish(new CastFailure('cast.error.unreachable'));});};
+      if(transferId)for(const delay of [10_000,30_000])retries.push(this.setTimer(send,delay));
+      send();
     });
   }
 
@@ -222,7 +312,7 @@ export class CastController {
         this.publish({phase: 'replaced', takeover: undefined});
         return;
       case 'status':
-        if (this.state.phase === 'casting') this.publish({itemId: e.itemId || undefined, positionSeconds: e.positionSeconds, durationSeconds: e.durationSeconds, paused: e.paused, audioTracks: e.audioTracks, textTracks: e.textTracks});
+        if (this.state.phase === 'casting') this.publish({...(!e.itemId?{phase:'off' as const}:{}),itemId: e.itemId || undefined, positionSeconds: e.positionSeconds, durationSeconds: e.durationSeconds, paused: e.paused, audioTracks: e.audioTracks, textTracks: e.textTracks});
         return;
     }
   }
@@ -237,6 +327,13 @@ export class CastController {
   /** Detach from the transport; `stopReceiver` closes Portico on the TV. */
   private release(stopReceiver: boolean, end = true) {
     this.startGeneration++;
+    const flight=this.transferFlight;this.transferFlight=undefined;const released=this.startGeneration;
+    if(flight?.id)this.recoveryTransfer=flight;
+    if(flight)void this.cancelTransfer(flight).then(receipt=>{
+      if(this.disposed||this.transport||this.startGeneration!==released)return;
+      if(receipt?.state==='committed'&&receipt.itemId===flight.itemId)this.publish({acceptedSource:flight.source});
+      this.recoveryTransfer=undefined;this.publish({phase:'off',acceptedSource:undefined,transferPending:false});
+    },()=>{if(!this.disposed&&!this.transport&&this.startGeneration===released){this.recoveryTransfer=flight;this.fail('cast.error.unreachable');}});
     for (const off of this.detach.splice(0)) off();
     this.waiting?.reject(new CastFailure('cast.error.noAnswer'));
     this.waiting = undefined;
@@ -263,10 +360,21 @@ export class CastController {
   setSubtitleTrack(trackId: number | null) { this.send({type: 'subtitles', trackIds: trackId === null ? [] : [trackId]}); }
   stop() {
     this.clearTimer(this.takeoverTimer);
+    const flight=this.transferFlight??this.recoveryTransfer;
+    if(flight?.id){
+      this.transferFlight=undefined;const generation=++this.startGeneration;
+      void this.cancelTransfer(flight).then(receipt=>{
+        if(this.disposed||generation!==this.startGeneration||this.transport!==undefined&&this.transport!==flight.transport)return;
+        if(receipt?.state==='committed'&&receipt.itemId===flight.itemId)this.publish({acceptedSource:flight.source});
+        this.recoveryTransfer=undefined;this.release(false);
+        this.publish({phase:'off',acceptedSource:undefined,transferPending:false,itemId:undefined,title:undefined,deviceName:undefined,error:undefined,errorId:undefined,takeover:undefined});
+      },()=>{if(!this.disposed&&generation===this.startGeneration){this.recoveryTransfer=flight;this.release(false);this.fail('cast.error.unreachable');}});
+      return;
+    }
     this.send({type: 'stop'});
     this.release(true);
-    this.publish({phase: 'off', itemId: undefined, title: undefined, deviceName: undefined, error: undefined, errorId: undefined, takeover: undefined});
+    this.publish({phase: 'off', transferPending:false,itemId: undefined, title: undefined, deviceName: undefined, error: undefined, errorId: undefined, takeover: undefined});
   }
-  dismiss() { this.publish({phase: 'off', error: undefined, errorId: undefined}); }
+  dismiss() { if(this.state.transferPending){this.stop();return;}this.publish({phase: 'off', error: undefined, errorId: undefined}); }
   dispose() { this.clearTimer(this.takeoverTimer); this.settleAdoption?.(false); this.release(false); this.disposed = true; this.listeners.clear(); }
 }

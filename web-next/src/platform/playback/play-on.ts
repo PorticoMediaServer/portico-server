@@ -83,7 +83,7 @@ export class PlayOnController {
   }
   private clearExpiry(): void { if (this.expiry !== undefined) (this.options.clearTimer ?? (timer => clearTimeout(timer as ReturnType<typeof setTimeout>)))(this.expiry); this.expiry = undefined; this.terminalAt = undefined; }
   private terminal(): void {
-    if (this.terminalAt !== undefined) return;
+    if (this.terminalAt !== undefined || this.state.cast.transferPending) return;
     this.terminalAt = (this.options.now ?? Date.now)();
     const id = this.state.remote?.id;
     this.expiry = (this.options.setTimer ?? setTimeout)(() => {
@@ -110,13 +110,20 @@ export class PlayOnController {
   private senderChanged = (): void => {
     if (!this.current() || this.dismissing) return;
     const cast = this.options.sender.getSnapshot(), previous = this.state.remote, attempt = this.attempt;
+    const requestedSource=attempt?.choices.source,acceptedSource=cast.acceptedSource;
+    const acceptedAttempt=!!requestedSource&&!!acceptedSource&&acceptedSource.sessionId===requestedSource.sessionId&&acceptedSource.generation===requestedSource.generation&&acceptedSource.queueId===requestedSource.queueId&&acceptedSource.entryId===requestedSource.entryId&&acceptedSource.queueRevision===requestedSource.queueRevision;
+    // Receipt recovery can arrive after the transport closed. Process its exact
+    // source before clearing an unconfirmed/off presentation.
+    if(acceptedAttempt&&attempt&&!attempt.handedOff&&sameFence(this.options.runtime.getSnapshot().fence,attempt.source.fence)){
+      attempt.handedOff=true;void this.options.runtime.stop(attempt.source.fence).catch(this.options.reportError);
+    }
     const active = cast.phase !== 'off';
-    if (!active && !previous) { this.publish({cast}); return; }
-    if (!active && previous && !previous.confirmed) {
+    if (!active && !previous && !acceptedAttempt && !cast.transferPending) { this.publish({cast}); return; }
+    if (!active && previous && !previous.confirmed && !acceptedAttempt && !cast.transferPending) {
       this.attempt = undefined; this.clearExpiry(); this.publish({cast, remote: undefined, panel: null}); return;
     }
     const phase: CastRemotePhase = cast.phase === 'casting' ? 'playing' : cast.phase === 'off' ? 'stopped' : cast.phase;
-    const confirmed = phase === 'playing' || previous?.confirmed === true;
+    const confirmed = phase === 'playing' || acceptedAttempt || previous?.confirmed === true;
     const itemId = cast.receiver?.itemId ?? cast.itemId ?? previous?.itemId ?? (attempt?.source.fence.kind === 'queue' ? attempt.source.fence.itemId : undefined);
     const receiver = cast.receiver?.itemId === itemId ? cast.receiver : undefined;
     const sourceCandidate = attempt?.source ?? previous?.source;
@@ -144,6 +151,9 @@ export class PlayOnController {
     // Only an explicit source attempt hands off local playback. SDK adoption does not stop an
     // unrelated title in this browser. Pairing, waiting and picker cancellation never stop it.
     if (phase === 'playing' && attempt && !attempt.handedOff) {
+      const requested=attempt.choices.source,accepted=cast.acceptedSource;
+      if(requested&&(!accepted||accepted.sessionId!==requested.sessionId||accepted.generation!==requested.generation||accepted.queueId!==requested.queueId||accepted.entryId!==requested.entryId||accepted.queueRevision!==requested.queueRevision))return;
+
       if (!sameFence(this.options.runtime.getSnapshot().fence, attempt.source.fence)) { this.options.sender.stop(); return; }
       attempt.handedOff = true;
       void this.options.runtime.stop(attempt.source.fence).catch(this.options.reportError);
@@ -159,16 +169,20 @@ export class PlayOnController {
   startCast(): Promise<boolean> {
     this.assertCurrent();
     const snapshot = this.options.runtime.getSnapshot(), source = snapshot.presentation;
-    if (['connecting', 'pairing', 'waiting'].includes(this.state.cast.phase)) return Promise.resolve(false);
+    if (this.state.cast.transferPending || ['connecting', 'pairing', 'waiting'].includes(this.state.cast.phase)) return Promise.resolve(false);
     if (!this.state.cast.available || !source || source.fence.kind !== 'queue' || !snapshot.session?.queue || snapshot.session.itemId !== source.fence.itemId) return Promise.resolve(false);
     this.clearExpiry(); this.describedItem = undefined;
     const item = source.subject.kind === 'channel' ? undefined : source.subject.item;
     if (!item) return Promise.resolve(false);
     const serial = ++this.serial;
-    this.attempt = {id: (this.options.key ?? (() => crypto.randomUUID()))(), serial, source, choices: {queue: snapshot.session.queue}, handedOff: false};
+    const queue=snapshot.queueView?.queue;
+    if(!queue||queue.id!==snapshot.session.queue.queueId||queue.currentEntryId!==source.fence.entryId||queue.currentPlaybackId!==snapshot.session.id)return Promise.resolve(false);
+    this.attempt = {id: (this.options.key ?? (() => crypto.randomUUID()))(), serial, source, choices: {
+      queue:Object.freeze({...snapshot.session.queue}), source:Object.freeze({sessionId:snapshot.session.id,generation:snapshot.session.presentation.generation,
+        queueId:queue.id,entryId:source.fence.entryId,queueRevision:queue.revision})}, handedOff: false};
     this.publish({panel: null, remote: undefined});
     // Display paths and ids only. The platform/controller whitelist never receives media URLs,
-    // session grants, sign-in credentials or the local session id.
+    // session grants or sign-in credentials. Only the authenticated bootstrap receives the source session id.
     const meta: CastMetadata = {title: item.show?.title || item.title, subtitle: item.show?.title ? item.title : item.artist ?? item.author,
       kind: source.kind, artworkPath: source.posterUrl ?? source.backdropUrl};
     const started = this.options.sender.start(source.fence.itemId, meta, source.positionSeconds, this.attempt.choices);
@@ -194,10 +208,13 @@ export class PlayOnController {
   subtitles(token: CastRemoteToken, id: number | null): void { if (this.requireRemote(token)?.phase === 'playing' && (id === null || this.state.cast.textTracks.some(track => track.id === id))) this.options.sender.setSubtitleTrack(id); }
   stop(token: CastRemoteToken): void {
     const remote = this.requireRemote(token); if (!remote) return; ++this.serial;
-    if (!remote.confirmed) { this.attempt = undefined; this.options.sender.cancelConnecting(); this.clearExpiry(); this.publish({remote: undefined, panel: null}); return; }
+    if (!remote.confirmed) { this.options.sender.cancelConnecting(); this.clearExpiry(); this.publish({panel: null}); return; }
     this.options.sender.stop();
   }
-  dismiss(token: CastRemoteToken): void { if (!this.requireRemote(token)) return; ++this.serial; this.attempt = undefined; this.describedItem = undefined; this.clearExpiry(); this.dismissing = true;
+  dismiss(token: CastRemoteToken): void {
+    if (!this.requireRemote(token)) return;
+    if(this.state.cast.transferPending){++this.serial;this.clearExpiry();this.options.sender.stop();this.publish({panel:null});return;}
+    ++this.serial; this.attempt = undefined; this.describedItem = undefined; this.clearExpiry(); this.dismissing = true;
     try { this.options.sender.dismiss(); } finally { this.dismissing = false; }
     this.publish({cast: this.options.sender.getSnapshot(), remote: undefined, panel: null}); }
   async continueHere(token: CastRemoteToken): Promise<void> {

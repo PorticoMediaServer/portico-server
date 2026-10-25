@@ -235,13 +235,17 @@ type Service struct {
 	// the same-viewer live device queue, and the selected entry and resolved item
 	// bound by the caller. Nil refuses narrowed Cast starts.
 	CastQueueStartAuthority func(context.Context, *sql.Tx, Caller, string, string, string) error
-	QueryKeys               func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
-	RadioKeys               func(context.Context, *sql.Tx, identity.Principal, catalog.RadioBatchRequest) (catalog.RadioBatch, error)
-	MixKeys                 func(context.Context, *sql.Tx, identity.Principal, string) ([]string, error)
-	JourneyKeys             func(context.Context, *sql.Tx, identity.Principal, JourneySelector) ([]string, error)
-	SmoothOrder             func(context.Context, *sql.Tx, identity.Principal, []string) (catalog.MusicSmoothOrder, error)
-	LibraryCheck            LibraryCheck
-	Visibility              Visibility
+	CastQueueTransferCheck  func(context.Context, *sql.Tx, Caller, string, string, string, string) error
+	CastQueueTransferCommit func(context.Context, *sql.Tx, Caller, string, string, string, string, string, string, string) error
+	CastQueueTransferReplay func(context.Context, *sql.Tx, Caller, string, string, string, string) error
+
+	QueryKeys    func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
+	RadioKeys    func(context.Context, *sql.Tx, identity.Principal, catalog.RadioBatchRequest) (catalog.RadioBatch, error)
+	MixKeys      func(context.Context, *sql.Tx, identity.Principal, string) ([]string, error)
+	JourneyKeys  func(context.Context, *sql.Tx, identity.Principal, JourneySelector) ([]string, error)
+	SmoothOrder  func(context.Context, *sql.Tx, identity.Principal, []string) (catalog.MusicSmoothOrder, error)
+	LibraryCheck LibraryCheck
+	Visibility   Visibility
 	// Unrestricted says the caller's item fence admits every item (every
 	// library, no restrictions): such a caller sees a container as it is, so a
 	// large shuffle can use the container's cached size (queue_counts.go).

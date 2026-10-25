@@ -857,6 +857,18 @@ func (d Dependencies) castRoutes(handle socialHandle, viewer socialViewer, store
 		}
 		write(w, 201, out)
 	})
+	handle("DELETE /v1/cast/bootstrap/{id}", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := viewer(w, r)
+		if !ok {
+			return
+		}
+		out, err := store.CastBootstrapCancel(r.Context(), p, r.PathValue("id"))
+		if err != nil {
+			socialFailure(w, err)
+			return
+		}
+		write(w, 200, out)
+	})
 	handle("GET /v1/cast/bootstrap/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := viewer(w, r)
 		if !ok {

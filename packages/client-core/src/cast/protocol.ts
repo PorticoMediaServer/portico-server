@@ -25,15 +25,17 @@ export type CastTrack = Readonly<{id: number; language: string; name: string}>;
  * the TV can show it: text, or burned into the picture for an image or styled track the TV cannot
  * draw itself. Absent: the profile's usual choice.
  */
-export type CastQueueRef = Readonly<{queueId: string; entryId: string}>;
-export type CastChoices = Readonly<{subtitleTrackId?: string | null; queue?: CastQueueRef}>;
+export type CastQueueRef = Readonly<{queueId: string; entryId: string; transferId?: string}>;
+/** Sent only to the authenticated bootstrap endpoint, never to the receiver. */
+export type CastQueueSource = Readonly<{sessionId: string; generation: number; queueId: string; entryId: string; queueRevision: string}>;
+export type CastChoices = Readonly<{subtitleTrackId?: string | null; queue?: CastQueueRef; source?: CastQueueSource}>;
 const trackIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 /** `load` fields for `choices`: `subtitleTrackId` is a track id, or "off". */
 export function castChoiceFields(choices: CastChoices | undefined): Record<string, string | CastQueueRef> {
   const fields: Record<string, string | CastQueueRef> = {};
   if (choices?.subtitleTrackId === null) fields.subtitleTrackId = 'off';
   else if (typeof choices?.subtitleTrackId === 'string' && trackIdPattern.test(choices.subtitleTrackId)) fields.subtitleTrackId = choices.subtitleTrackId;
-  if (choices?.queue && typeof choices.queue.queueId === 'string' && typeof choices.queue.entryId === 'string' && trackIdPattern.test(choices.queue.queueId) && trackIdPattern.test(choices.queue.entryId)) fields.queue = {queueId: choices.queue.queueId, entryId: choices.queue.entryId};
+  if (choices?.queue && typeof choices.queue.queueId === 'string' && typeof choices.queue.entryId === 'string' && trackIdPattern.test(choices.queue.queueId) && trackIdPattern.test(choices.queue.entryId)) fields.queue = {queueId: choices.queue.queueId, entryId: choices.queue.entryId,...(choices.queue.transferId&&trackIdPattern.test(choices.queue.transferId)?{transferId:choices.queue.transferId}:{})};
   return fields;
 }
 
@@ -96,4 +98,24 @@ export function castMetadataFields(meta: CastMetadata): Record<string, string | 
   if (meta.kind) out.kind = meta.kind.slice(0, 32);
   if (meta.artworkPath && meta.artworkPath.startsWith(apiRoot)) out.artworkPath = meta.artworkPath.slice(0, 512);
   return out;
+}
+
+/** Exact capture for one source attempt; malformed queue intent never degrades to an item load. */
+export function captureCastChoices(value: CastChoices | undefined): CastChoices | undefined {
+ if (!value) return undefined;
+ const queue=value.queue;
+ if(queue&&(!trackIdPattern.test(queue.queueId)||!trackIdPattern.test(queue.entryId)))throw new Error('invalid_cast_queue');
+ const source=value.source;
+ if(source&&(!queue||!trackIdPattern.test(source.sessionId)||!Number.isSafeInteger(source.generation)||source.generation<1||source.queueId!==queue.queueId||source.entryId!==queue.entryId||!/^(?:[0-9]+|"[0-9]+")$/.test(source.queueRevision)))throw new Error('invalid_cast_source');
+ return Object.freeze({...value,...(queue?{queue:Object.freeze({queueId:queue.queueId,entryId:queue.entryId})}:{}),...(source?{source:Object.freeze({...source})}:{})});
+}
+export type CastTransferReceipt=Readonly<{id:string;state:'pending'|'bound'|'cancelled'|'committed';itemId?:string;playbackState?:'preparing'|'playing'|'paused'|'ended'}>;
+export function castTransferReceipt(raw:unknown,id:string):CastTransferReceipt|undefined{
+ if(!raw||typeof raw!=='object')return undefined;
+ const bootstrap=(raw as {bootstrap?:unknown}).bootstrap;if(!bootstrap||typeof bootstrap!=='object')return undefined;
+ const transfer=(bootstrap as {transfer?:unknown}).transfer;if(!transfer||typeof transfer!=='object')return undefined;
+ const t=transfer as Record<string,unknown>;
+ if(t.id!==id||!['pending','bound','cancelled','committed'].includes(t.state as string))return undefined;
+ if(t.state==='committed'&&(typeof t.itemId!=='string'||!trackIdPattern.test(t.itemId)||!['preparing','playing','paused','ended'].includes(t.playbackState as string)))return undefined;
+ return Object.freeze({id,state:t.state as CastTransferReceipt['state'],...(t.state==='committed'?{itemId:t.itemId as string,playbackState:t.playbackState as CastTransferReceipt['playbackState']}:{})});
 }

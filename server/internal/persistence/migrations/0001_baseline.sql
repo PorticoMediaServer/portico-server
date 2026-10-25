@@ -3527,6 +3527,8 @@ CREATE TABLE api_events(
 ) STRICT;
 CREATE TABLE queues_v1(
  automatic_advances INTEGER NOT NULL DEFAULT 0 CHECK(automatic_advances BETWEEN 0 AND 1000000),
+ custody_generation INTEGER NOT NULL DEFAULT 0 CHECK(custody_generation>=0),
+ current_entry_id TEXT NOT NULL DEFAULT '',
  id TEXT PRIMARY KEY,
  owner_kind TEXT NOT NULL CHECK(owner_kind IN('device','group')),
  owner_id TEXT NOT NULL,
@@ -9052,3 +9054,19 @@ BEGIN
   WHERE pp.session_id=OLD.id AND owner.state NOT IN('stopped','ended','failed') AND owner.expires_at>strftime('%Y-%m-%dT%H:%M:%SZ','now'))
  ON CONFLICT(audience,type,resource_kind,resource_id) DO NOTHING;
 END;
+-- A Root42 intent binds one authenticated source to one redeemed Cast target.
+-- It never contains a queue graph, bearer, media URL or future-item grant.
+CREATE TABLE social_cast_queue_transfers(
+ id TEXT PRIMARY KEY REFERENCES social_cast_bootstraps(id) ON DELETE CASCADE,
+ authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
+ source_family_id TEXT NOT NULL,source_device_id TEXT NOT NULL,
+ source_session_id TEXT NOT NULL,source_generation INTEGER NOT NULL CHECK(source_generation>0),
+ queue_id TEXT NOT NULL,entry_id TEXT NOT NULL,queue_revision INTEGER NOT NULL CHECK(queue_revision>=0),
+ source_position INTEGER NOT NULL CHECK(source_position>=0),
+ target_cast_id TEXT NOT NULL DEFAULT '',target_family_id TEXT NOT NULL DEFAULT '',
+ target_device_id TEXT NOT NULL DEFAULT '',target_generation INTEGER NOT NULL DEFAULT 0,target_custody_generation INTEGER NOT NULL DEFAULT 0,
+ state TEXT NOT NULL CHECK(state IN('pending','bound','cancelled','committed')),
+ target_session_id TEXT NOT NULL DEFAULT '',start_key TEXT NOT NULL DEFAULT '',start_digest TEXT NOT NULL DEFAULT '',
+ expires_ms INTEGER NOT NULL,created_ms INTEGER NOT NULL
+) STRICT;
+CREATE INDEX social_cast_queue_transfers_expiry ON social_cast_queue_transfers(expires_ms,id);

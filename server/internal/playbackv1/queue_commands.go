@@ -1203,7 +1203,7 @@ func (s *Service) UpdateQueue(ctx context.Context, c Caller, id, ifMatch string,
 // previous or a jump to an entry. With a session playing from this queue, the
 // next session starts in the same request, replacing it (slot transfer).
 func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req AdvanceRequest) (QueueReply, error) {
-	if c.Principal.Grant == identity.GrantCastTarget && (req.Reason != "completion" || req.EntryID != "") {
+	if c.Principal.Grant == identity.GrantCastTarget && (req.Reason != "completion" || req.EntryID != "" || !keyPattern.MatchString(req.CompletionSessionID) || req.CompletionGeneration < 1) {
 		return QueueReply{}, identity.ErrForbidden
 	}
 	switch req.Reason {
@@ -1232,7 +1232,7 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 				return false, err
 			}
 			entry, _, err := l.entryAtErr(l.q.current)
-			if err != nil || old.entryID != entry {
+			if err != nil || old.entryID != entry || old.id != req.CompletionSessionID || old.generation != req.CompletionGeneration || old.device != c.DeviceID {
 				return false, identity.ErrForbidden
 			}
 		}
@@ -1393,7 +1393,20 @@ func (s *Service) DeleteQueue(ctx context.Context, c Caller, id string) error {
 		return nil
 	}
 	// Retired now; its keys are removed in batches by the sweep (review P19).
-	if _, err = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassInteractive, `UPDATE queues_v1 SET owner_id='!'||owner_id WHERE id=? AND substr(owner_id,1,1) NOT IN('~','!')`, id); err != nil {
+	if err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
+		fresh, err := loadQueue(ctx, tx, id)
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !ownsQueue(c, fresh) || fresh.custody != q.custody {
+			return nil
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE queues_v1 SET owner_id='!'||owner_id WHERE id=?`, id)
+		return err
+	}); err != nil {
 		return err
 	}
 	s.sweepQueues()
@@ -1404,13 +1417,29 @@ func (s *Service) DeleteQueue(ctx context.Context, c Caller, id string) error {
 // entryId}}), links it to the queue, and makes it the queue's session.
 func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDigest string, req StartRequest) (SessionView, bool, error) {
 	q, err := loadQueue(ctx, s.DB, req.Queue.QueueID)
-	if err != nil || !ownsQueue(c, q) {
+	if err != nil {
+		return SessionView{}, false, err
+	}
+	if req.CastTransferID == "" && !ownsQueue(c, q) {
 		return SessionView{}, false, ErrNotFound
 	}
-	item, initial, revision, err := s.withMusicLayoutStart(ctx, c, q.id, req.Queue.EntryID, sonicEntryWindow(req.Queue.EntryID), func(l *layout) error {
-		q = l.q
-		return nil
-	})
+	var item string
+	var initial bool
+	var revision int64
+	currentEntry := q.currentEntry
+	if req.CastTransferID != "" {
+		item, revision, err = s.readCastTransferStart(ctx, c, req.CastTransferID, req.Queue.QueueID, req.Queue.EntryID)
+	} else {
+		item, initial, revision, err = s.withMusicLayoutStart(ctx, c, q.id, req.Queue.EntryID, sonicEntryWindow(req.Queue.EntryID), func(l *layout) error {
+			q = l.q
+			head := s.header(l)
+			currentEntry = ""
+			if head.Current != nil {
+				currentEntry = head.Current.EntryID
+			}
+			return nil
+		})
+	}
 	if err != nil {
 		return SessionView{}, false, err
 	}
@@ -1438,11 +1467,15 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 		// that gained an occurrence meanwhile is refused.
 		startCtx = context.WithValue(ctx, queueInitialStartKey{}, queueInitialStart{queue: q.id, entry: req.Queue.EntryID, item: item, revision: revision})
 	}
+	if req.CastTransferID != "" {
+		startCtx = context.WithValue(ctx, castTransferStartKey{}, castTransferStart{intent: req.CastTransferID, queue: q.id, entry: req.Queue.EntryID, item: item, revision: revision})
+	} else {
+		startCtx = context.WithValue(startCtx, queueStartCustodyKey{}, queueStartCustody{queue: q.id, ownerKind: q.ownerKind, ownerID: q.ownerID, session: q.session, currentEntry: currentEntry, generation: q.custody, revision: revision})
+	}
 	view, preparing, err := s.startPresentation(startCtx, c, key, startDigest, req, row{kind: sessionKind, role: "local", item: item, version: req.VersionID, queueID: q.id, entryID: req.Queue.EntryID}, stored)
 	if err != nil {
 		return view, preparing, err
 	}
-	_, _ = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassInteractive, `UPDATE queues_v1 SET session_id=? WHERE id=?`, view.ID, q.id)
 	return view, preparing, nil
 }
 
