@@ -6357,7 +6357,28 @@ CREATE TABLE webhooks(
  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),
  failures INTEGER NOT NULL DEFAULT 0, dropped INTEGER NOT NULL DEFAULT 0,
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
+ -- The create this row answers: the owner who asked, the identifier that owner
+ -- sent, and the digest of that request. All empty for a create that named no
+ -- identifier, which keeps the original create unchanged. The identity lives as
+ -- long as the webhook does, so a lost response is answered by the webhook it
+ -- already made even after any retry aid has been pruned.
+ create_actor TEXT NOT NULL DEFAULT '', create_operation TEXT NOT NULL DEFAULT '',
+ create_digest TEXT NOT NULL DEFAULT '',
+ -- A create that named an identifier carries the whole identity, and one that
+ -- did not carries none of it; a half identity can never be stored.
+ CHECK ((create_actor='' AND create_operation='' AND create_digest='')
+     OR (create_actor<>'' AND length(create_operation) BETWEEN 8 AND 128
+         AND length(create_digest)=64 AND create_digest NOT GLOB '*[^0-9a-f]*'))) STRICT;
+CREATE UNIQUE INDEX webhooks_create_identity ON webhooks(create_actor,create_operation) WHERE create_operation<>'';
+-- One row per create request that named an identifier, kept after its webhook is
+-- deleted. Without it a retry of a request whose webhook has since gone would
+-- make a second endpoint; with it the answer stays the truthful refusal. It is
+-- bounded by this package's own prune and nothing else deletes from it.
+CREATE TABLE webhook_create_receipts(
+ actor TEXT NOT NULL CHECK(actor<>''), operation TEXT NOT NULL, digest TEXT NOT NULL, webhook_id TEXT NOT NULL,
+ created_ms INTEGER NOT NULL, PRIMARY KEY(actor,operation),
+ CHECK (length(operation) BETWEEN 8 AND 128 AND length(digest)=64 AND digest NOT GLOB '*[^0-9a-f]*')) STRICT;
 CREATE TABLE webhook_deliveries(
  id TEXT PRIMARY KEY, webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
  type TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}',

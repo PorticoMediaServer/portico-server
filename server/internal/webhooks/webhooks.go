@@ -14,6 +14,7 @@ package webhooks
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -79,6 +80,12 @@ const (
 var (
 	ErrInvalid  = errors.New("invalid webhook")
 	ErrCapacity = errors.New("too many webhooks")
+	// ErrIdempotencyKeyReused is one operation identifier sent again with a
+	// different request. The first attempt stands; this one is refused.
+	ErrIdempotencyKeyReused = errors.New("webhook operation reused for a different request")
+	// ErrCreateGone answers a repeated create whose webhook has since been
+	// deleted: the request was already made, so it cannot make another.
+	ErrCreateGone = errors.New("the webhook this request made no longer exists")
 )
 
 // ValidationError names the fields a request got wrong.
@@ -138,6 +145,14 @@ type Create struct {
 	Events  []string `json:"events"`
 	Secret  string   `json:"secret,omitempty"`
 	Enabled *bool    `json:"enabled,omitempty"`
+	// OperationID makes one create retry-safe. A request that names an operation
+	// and repeats it, unchanged, gets the webhook the first attempt made instead
+	// of a second one; a repeat with a different body is refused. It is optional:
+	// a caller that does not name one creates exactly as before.
+	OperationID string `json:"operationId,omitempty"`
+	// Actor is who asked. The route supplies it and the body can never set it, so
+	// it stays out of the published document and out of the request digest.
+	Actor string `json:"-"`
 }
 
 // Change is a partial edit: a field left out is left alone. It is made
@@ -354,6 +369,73 @@ func (s *Store) List(ctx context.Context, auth Authorize) (List, error) {
 	return out, rows.Err()
 }
 
+// validOperationID bounds a caller-supplied idempotency key the way every other
+// owner write in this server does.
+func validOperationID(v string) bool {
+	if len(v) < 8 || len(v) > 128 {
+		return false
+	}
+	for _, r := range v {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
+}
+
+func requestDigest(v any) string {
+	raw, _ := json.Marshal(v)
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// resolveCreate answers whether this owner's identifier already names an effect,
+// before anything is created and before the capacity check. The webhook row is
+// the effect and lives exactly as long as the webhook does, so it answers first;
+// the receipt only remembers a request whose webhook has since been deleted, so
+// that a retry stays a refusal rather than making a second endpoint. Neither
+// answer carries a secret: it was shown once, when the webhook was made.
+func (s *Store) resolveCreate(tx *sql.Tx, actor, operation, want string) (Webhook, bool, error) {
+	var id, digest string
+	err := tx.QueryRow(`SELECT id,create_digest FROM webhooks WHERE create_actor=? AND create_operation=?`, actor, operation).Scan(&id, &digest)
+	switch {
+	case err == nil:
+		if digest != want {
+			return Webhook{}, false, ErrIdempotencyKeyReused
+		}
+		webhook, err := scanWebhook(tx.QueryRow(`SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
+		return webhook, err == nil, err
+	case !errors.Is(err, sql.ErrNoRows):
+		return Webhook{}, false, err
+	}
+	err = tx.QueryRow(`SELECT digest FROM webhook_create_receipts WHERE actor=? AND operation=?`, actor, operation).Scan(&digest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Webhook{}, false, nil
+	}
+	if err != nil {
+		return Webhook{}, false, err
+	}
+	if digest != want {
+		return Webhook{}, false, ErrIdempotencyKeyReused
+	}
+	// The request was made and its webhook has since been deleted, so the effect
+	// it names is gone. That stays a refusal, not a new endpoint.
+	return Webhook{}, false, ErrCreateGone
+}
+
+// recordCreateReceipt remembers one create request after its webhook exists, so
+// the request can still be answered truthfully once that webhook is deleted. It
+// is written in the same transaction as the webhook, and this table is bounded
+// by this package alone: nothing here deletes another owner's receipts.
+func recordCreateReceipt(tx *sql.Tx, actor, operation, want, id string, now int64) error {
+	if _, err := tx.Exec(`INSERT INTO webhook_create_receipts(actor,operation,digest,webhook_id,created_ms) VALUES(?,?,?,?,?) ON CONFLICT(actor,operation) DO NOTHING`, actor, operation, want, id, now); err != nil {
+		return err
+	}
+	// A retry aid, not history: keep the newest 2000 of these, and nothing else.
+	_, err := tx.Exec(`DELETE FROM webhook_create_receipts WHERE rowid NOT IN(SELECT rowid FROM webhook_create_receipts ORDER BY created_ms DESC LIMIT 2000)`)
+	return err
+}
+
 func (s *Store) Create(ctx context.Context, auth Authorize, q Create) (Issued, error) {
 	var out Issued
 	fields := []string{}
@@ -374,12 +456,39 @@ func (s *Store) Create(ctx context.Context, auth Authorize, q Create) (Issued, e
 	} else if !validSecret(secret) {
 		fields = append(fields, "secret")
 	}
+	// An identifier with no actor cannot be bound to one caller's intent, so it
+	// is refused rather than stored unbound. Every other request keeps the
+	// original create, with no identifier at all.
+	if q.OperationID != "" && (!validOperationID(q.OperationID) || q.Actor == "") {
+		fields = append(fields, "operationId")
+	}
 	if len(fields) > 0 {
 		return out, &ValidationError{fields}
 	}
 	enabled := q.Enabled == nil || *q.Enabled
 	id := identifier()
+	// A create that named an identifier stores the whole identity; one that did
+	// not stores none of it, so no caller identity is kept for a legacy create and
+	// the row's shape is closed by the table's own check.
+	actor, operation, digest := "", "", ""
+	if q.OperationID != "" {
+		actor, operation, digest = q.Actor, q.OperationID, requestDigest(q)
+	}
+	created := false
 	err := s.write(ctx, auth, func(tx *sql.Tx) error {
+		// One create request's identity is resolved before capacity: a server that
+		// filled up because of this very request still answers its retry, and an
+		// identifier that already names an effect never makes a second one.
+		if q.OperationID != "" {
+			prior, found, err := s.resolveCreate(tx, actor, operation, digest)
+			if err != nil {
+				return err
+			}
+			if found {
+				out.Webhook = prior
+				return nil
+			}
+		}
 		var count int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM webhooks`).Scan(&count); err != nil {
 			return err
@@ -388,17 +497,27 @@ func (s *Store) Create(ctx context.Context, auth Authorize, q Create) (Issued, e
 			return ErrCapacity
 		}
 		now := s.now()
-		if _, err := tx.ExecContext(ctx, `INSERT INTO webhooks(id,name,url,secret,events,enabled,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?)`, id, name, q.URL, secret, packEvents(events), enabled, now, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO webhooks(id,name,url,secret,events,enabled,created_ms,updated_ms,create_actor,create_operation,create_digest) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, id, name, q.URL, secret, packEvents(events), enabled, now, now, actor, operation, digest); err != nil {
 			return err
 		}
 		var err error
-		out.Webhook, err = scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
-		return err
+		if out.Webhook, err = scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id)); err != nil {
+			return err
+		}
+		created = true
+		if operation == "" {
+			return nil
+		}
+		return recordCreateReceipt(tx, actor, operation, digest, id, now)
 	})
 	if err != nil {
 		return Issued{}, err
 	}
-	out.Secret = secret
+	// Only an attempt that made the webhook shows its secret; a replay answers
+	// with the webhook alone.
+	if created {
+		out.Secret = secret
+	}
 	return out, nil
 }
 
