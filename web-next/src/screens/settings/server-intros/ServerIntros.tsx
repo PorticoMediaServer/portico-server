@@ -8,6 +8,7 @@ import {CreateMarkerSheet, SegmentWindows, StatTiles, type SegmentEdit, type Seg
 import {Dialog} from '../../../kit/overlays/Dialog';
 import {Menu} from '../../../kit/overlays/Popover';
 import {usePhone} from '../../../kit/overlays/shared';
+import {ToastHost, type ToastData} from '../../../kit/overlays';
 import type {SegmentIntrosSnapshot, SegmentIntrosSource} from './source';
 import styles from './server-intros.module.css';
 
@@ -57,6 +58,8 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
   useLayoutEffect(() => () => {createOp.current = undefined;}, []);
   const createOpening = useRef(0);
   const [confirmingDetect, setConfirmingDetect] = useState<DetectOpening>();
+  const [toast, setToast] = useState<ToastData | null>(null);
+  const toastSequence = useRef(0);
   const admittedReview = useRef<ReviewAdmission | undefined>(undefined);
   const [review, setReview] = useState<ReviewAdmission | undefined>(undefined);
   useLayoutEffect(() => {
@@ -100,6 +103,7 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
   const status = snapshot.status;
   const stateText = !status ? '' : status.mode === 'off' ? t('web.segments.stateOff') : status.files.pending || status.showsWaiting || !status.catchUpComplete ? t('web.segments.stateWorking') : t('web.segments.stateDone');
   const busy = !!snapshot.busy;
+  useEffect(() => {if (snapshot.note) setToast({id: `segments-note-${++toastSequence.current}`, message: snapshot.note, tone: 'success'});}, [snapshot.note]);
   const title = snapshot.title;
   const season = title?.kind === 'show' ? title.seasons.find(value => value.number === snapshot.season) ?? title.seasons[0] : undefined;
   const entries = title ? title.kind === 'show' ? season?.entries ?? [] : title.seasons.flatMap(value => value.entries) : [];
@@ -168,6 +172,7 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
     <Dialog open={!!confirmingDetect} onOpenChange={next => {if (!next) {const open = detectCommitted.current;if (open && open === confirmingDetect) {detectCommitted.current = undefined;setConfirmingDetect(undefined);}}}} size="sm" role="alertdialog" title={t('web.segments.detectAgain')} description={t('web.segments.detectAgainHelp')}
       footer={<><Button variant="glass" size="compact" disabled={busy} onClick={() => {const open = detectCommitted.current;if (!open || open !== confirmingDetect) return;detectCommitted.current = undefined;setConfirmingDetect(undefined);}}>{t('next.shell.cancel')}</Button>
         <Button variant="primary" size="compact" disabled={busy} onClick={() => {const open = detectCommitted.current;if (!open || open !== confirmingDetect) return;detectCommitted.current = undefined;setConfirmingDetect(undefined);void open.source.detectAgain(open.title);}}>{t('web.segments.detectAgain')}</Button></>}>{null}</Dialog>
+    <ToastHost toast={toast} onDismiss={() => setToast(null)} />
     {creating ? <CreateMarkerSheet key={creating.opening} duration={seconds(creating.entry.durationUS)} busy={busy}
       onCancel={() => {const open = createCommitted.current;if (!open || open.opening !== creating.opening) return;createCommitted.current = undefined;setCreating(undefined);}}
       onSave={draft => {
@@ -218,7 +223,6 @@ function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll,
         <Button variant="ghost" size="small" icon="i-refresh" onClick={onDetect} disabled={busy}>{t('web.segments.detectAgain')}</Button>
       </div>
     </header>
-    {snapshot.note ? <p className={styles.note} role="status">{snapshot.note}</p> : null}
     {snapshot.actionError ? <ReviewNotice tone="bad">{t('web.segments.actionError')}</ReviewNotice> : null}
     {snapshot.titleLoading ? <p className={styles.loading} role="status">{t('web.segments.loading')}</p> : null}
     {snapshot.titleError ? <ReviewNotice tone="bad" onRetry={onRetryTitle}>{t('web.segments.error')}</ReviewNotice> : null}
