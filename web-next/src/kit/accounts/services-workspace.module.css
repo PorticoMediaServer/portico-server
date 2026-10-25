@@ -42,6 +42,9 @@
 .iconRow:first-child { border-top: 0; }
 .iconRow[data-phone-icon-only] { grid-template-columns: minmax(0, 1fr) auto; gap: 28px; }
 .iconRow[data-phone-icon-only] > .icon { display: none; }
+/* account25/29: a server that is not answering is dimmed; its own Try again stays
+   in the row so the state is still actionable. */
+.iconRow[data-dim] { opacity: .62; }
 .iconRow b { display: block; font-size: 16px; font-weight: 600; }
 .iconRow p { margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--color-text-tertiary); max-width: 600px; }
 .icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--color-raised-bright); color: var(--color-text-secondary); }

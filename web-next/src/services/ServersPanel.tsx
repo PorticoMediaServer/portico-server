@@ -67,7 +67,7 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
     {ownsOffline ? <p className={styles.offlineHint}>{t('web.hostedAccount.offlineOwnerHint')}</p> : null}
     {servers && <ServicesGroup>{servers.items.length ? servers.items.map(server => {
       const copy = servicesServerDirectoryCopy(server, i18n);
-      return <ServicesWorkspaceRow key={server.id} icon="i-server" title={server.name}
+      return <ServicesWorkspaceRow key={server.id} icon="i-server" title={server.name} dim={!copy.online}
       help={copy.presence && <span className={copy.online ? styles.online : undefined}>{copy.presence}</span>}
       badge={copy.badge ? <ServicesBadge tone={copy.badge.tone}>{copy.badge.label}</ServicesBadge> : undefined}>
       {!copy.online ? <Button size="small" variant="glass" disabled={busy || Boolean(retrying)} loading={retrying === server.id} onClick={() => void retry(server)}>{t('next.states.tryAgain')}</Button> : null}
