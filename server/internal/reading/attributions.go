@@ -63,6 +63,11 @@ func (s *Service) publicationAttributions(ctx context.Context, p identity.Princi
 }
 
 // One bounded lookup for the visible selected entities, never archive I/O or a provider fetch.
+// This projection admits only image folders, so it cannot select a MOBI source
+// without the Service's configured converter readiness.
+const selectImageFolderCoverPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
+ WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` AND p.format='image-folder' ORDER BY a.id,o.id LIMIT 1`
+
 func readingArtworkProjectionTx(ctx context.Context, tx *sql.Tx, items []LibraryRow) error {
 	if len(items) == 0 {
 		return nil
@@ -80,7 +85,7 @@ func readingArtworkProjectionTx(ctx context.Context, tx *sql.Tx, items []Library
 			items[i].CoverURL = "/v1/items/" + url.PathEscape(items[i].ID) + "/art/cover?v=" + digest
 		} else if items[i].Format == "image-folder" {
 			var selected Selection
-			err := tx.QueryRowContext(ctx, selectPublication, items[i].ID, items[i].SourceID, items[i].SourceID).Scan(selectionColumns(&selected)...)
+			err := tx.QueryRowContext(ctx, selectImageFolderCoverPublication, items[i].ID, items[i].SourceID, items[i].SourceID).Scan(selectionColumns(&selected)...)
 			if err == sql.ErrNoRows {
 				continue
 			}
