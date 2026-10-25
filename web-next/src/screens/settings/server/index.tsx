@@ -39,7 +39,7 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
   const backups: BackupSurfaceProps = {source: options.backups, subscribe: options.subscribe, isCurrent: options.isCurrent, scopeKey: options.scopeKey, reportError: options.reportError};
   const facts = (): StorageRowFacts => {
     const snapshot = options.backups.getSnapshot();
-    return {live: options.isCurrent(), backups: !!snapshot.settings || !!snapshot.document};
+    return {live: options.isCurrent(), backups: !!snapshot.settings || !!snapshot.document, backupProtectionKnown: typeof snapshot.settings?.passphraseProtected === 'boolean'};
   };
   const linkTarget = (row: SettingsRow) => sectionLinkRows.has(row.id) ? sectionTarget(row.control.to) : undefined;
   return {
@@ -52,6 +52,7 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
       return row.id === 'storage.dataFolder' ? <StorageDataFolder source={storage} label={label} />
         : row.id === 'storage.usage' ? <StorageUsage source={storage} label={label} cleanup={cleanup} />
         : row.id === 'storage.downloads' ? <DownloadsUsage source={downloads} label={label} />
+        : row.id === 'storage.backupKeysNote' ? <span className={styles.storageNote}>{t('next.settings.backup.keysNotice')}</span>
         : row.id === 'storage.backupPassphrase' ? <BackupProtection {...backups} label={label} />
         : row.id === 'storage.backupFolder' ? <StorageBackupFolder {...backups} api={options.transport} />
         : row.id === 'storage.backupNow' ? <StorageBackupNow {...backups} />

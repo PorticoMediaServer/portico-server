@@ -1506,6 +1506,7 @@ export const webMessages = {
   'web.diagnostics.clientReports': 'Client reports',
   'web.diagnostics.clientReportDownload': 'Download report',
   'web.diagnostics.clientReportDelete': 'Delete report',
+  'next.settings.backup.keysNotice': 'Anyone with a backup file can read the keys inside.',
   'web.maintenance.backupsLedePlain': 'The server’s database and settings, kept as plain files you can copy. Media files are never included.',
   'web.maintenance.backupsOpenFiles': 'Backups are plain SQLite files you can copy or open with any SQLite tool.',
   'web.maintenance.backupKindScheduled': 'Scheduled',
