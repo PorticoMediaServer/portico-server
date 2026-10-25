@@ -25,12 +25,12 @@ export function MoveCodesPortProvider({children}: {children: ReactNode}) {
 export function useMoveCodePublisher() { return useContext(ChannelContext).publish; }
 
 /** One waiting person's Make code / New code, in the row the frame draws it in. */
-export function MoveCodeRowAction({accountId}: {accountId: string}) {
+export function MoveCodeRowAction({accountId, hasCode = false}: {accountId: string; hasCode?: boolean}) {
   const port = useContext(ChannelContext).current;
   if (!port) return null;
-  const expires = port.expires.get(accountId);
-  const label = expires ? t('accounts.move.newCode') : t('accounts.move.makeCode');
+  const expires = port.expires.get(accountId), existing = Boolean(expires) || hasCode;
+  const label = existing ? t('accounts.move.newCode') : t('accounts.move.makeCode');
   return <Button size="xs" variant="glass" loading={port.busy === accountId} disabled={Boolean(port.busy)} aria-label={label}
-    title={expires ? `${t('accounts.move.validUntil')} ${defaultI18n.date(expires)}` : t('accounts.move.noCodeYet')}
+    title={expires ? `${t('accounts.move.validUntil')} ${defaultI18n.date(expires)}` : hasCode ? t('accounts.move.hasCode') : t('accounts.move.noCodeYet')}
     onClick={() => port.make(accountId)}>{label}</Button>;
 }
