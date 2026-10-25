@@ -117,10 +117,11 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/admin_diagnostics.go:79
 	if err := apikit.RegisterHTTP[struct {
-		ExpectedRevision int64                     "json:\"expectedRevision\""
-		OperationID      string                    "json:\"operationId\""
-		Level            string                    "json:\"logLevel\""
-		Retention        []operations.LogRetention "json:\"retention\""
+		ExpectedRevision int64                       "json:\"expectedRevision\""
+		OperationID      string                      "json:\"operationId\""
+		Level            string                      "json:\"logLevel\""
+		DetailMinutes    operations.LogDetailMinutes `json:"logDetailMinutes,omitempty"`
+		Retention        []operations.LogRetention   "json:\"retention\""
 	}, LogSettings](registry, apikit.Metadata{ID: "patch_admin_logs_settings", Method: "PATCH", Path: "/v1/admin/logs/settings", Summary: "Change server logs settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
