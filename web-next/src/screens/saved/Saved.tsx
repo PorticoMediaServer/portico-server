@@ -253,8 +253,13 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
         const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
         if (entry.kind === 'playlist') {
           const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, phoneRows ? 64 : presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
-          if (phoneRows) return <PlaylistRow first={context.index === 0} title={entry.title} count={entry.count} covers={covers} open={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} />;
-          return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
+          const changed = playlistChangedLabel(entry.lastChanged);
+          if (phoneRows) return <PlaylistRow first={context.index === 0} title={entry.title} count={entry.count} pinned={entry.pinned === true} lastChanged={entry.lastChanged} covers={covers} open={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} />;
+          const caption = [
+            ...(entry.count !== undefined ? [{id: 'count', role: 'value' as const, text: t('web.saved.items', {count: entry.count})}] : []),
+            ...(changed ? [{id: 'changed', role: 'context' as const, text: changed}] : []),
+          ];
+          return <PlaylistMosaic model={{title: entry.title, caption}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
         }
         if (!media) return <StateView title={t('card.unavailable')} />;
         const selectable = bindings.catalogueSelection?.member(media);
@@ -272,14 +277,24 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
     {section.nextCursor && <Button className={styles.showMore} size="small" loading={service.getSnapshot().phase === 'loading'} onClick={() => { void service.next(section.id); }}>{t('action.showMore')}</Button>}
   </section>;
 }
+/** collections.html 1 and 14a name a playlist's own last change by day. */
+const playlistChangedDay = new Intl.DateTimeFormat(defaultI18n.region.uiLocale, {month: 'short', day: 'numeric'});
+function playlistChangedLabel(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const changed = new Date(value); if (!Number.isFinite(changed.getTime())) return undefined;
+  const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate()), day = new Date(changed.getFullYear(), changed.getMonth(), changed.getDate());
+  return day.getTime() === today.getTime() ? t('saved.today') : playlistChangedDay.format(day);
+}
 /** collections.html 14a: a playlist at phone width is one row, its 2 by 2 mosaic
- * on the left, the name and count beside it and the chevron on the right. The
- * rows sit in individual virtual cells, so each draws its own inset divider and
- * the first one leaves it out. */
-function PlaylistRow({first, title, count, covers, open}: {first: boolean; title: string; count: number | undefined; covers: readonly ArtworkSource[]; open: () => void}) {
+ * on the left, the name, its count, its own last change and this viewer's pin
+ * beside it, and the chevron on the right. The rows sit in individual virtual
+ * cells, so each draws its own inset divider and the first one leaves it out. */
+function PlaylistRow({first, title, count, pinned, lastChanged, covers, open}: {first: boolean; title: string; count: number | undefined; pinned: boolean; lastChanged: string | undefined; covers: readonly ArtworkSource[]; open: () => void}) {
+  const changed = playlistChangedLabel(lastChanged);
   return <button type="button" className={styles.playlistRow} data-first={first || undefined} onClick={open}>
     <span className={styles.playlistRowArt}><CoverMosaic covers={covers} shape="square" alt="" /></span>
-    <span className={styles.playlistRowCopy}><b>{title}</b>{count !== undefined && <small>{t('web.saved.items', {count})}</small>}</span>
+    <span className={styles.playlistRowCopy}><b>{title}</b><small>{count !== undefined && <span>{t('web.saved.items', {count})}</span>}{changed && <span>{changed}</span>}</small></span>
+    {pinned && <span className={styles.playlistRowPin} role="img" aria-label={t('pins.heading')}><Icon name="i-bookmark-f" size={16} /></span>}
     <Icon name="i-right" size={18} className={styles.playlistRowChevron} />
   </button>;
 }
