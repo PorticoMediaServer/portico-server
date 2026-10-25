@@ -230,8 +230,8 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
     <WindowedGrid collection={collection} label={bindings.heading?.label ?? serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 16} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
       renderPlaceholder={() => <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
       renderItem={(entry, context) => {
-        const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
         if (entry.kind === 'reading_group') return <ReadingGroupCard card={entry} service={service} runtime={bindings.runtime} operations={bindings.operations} artwork={artwork} width={presentation.cardWidth} open={effects.openReadingGroup} reportError={effects.reportError}/>;
+        const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
         if (entry.kind === 'playlist') {
           const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
           return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
