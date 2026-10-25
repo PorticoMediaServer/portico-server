@@ -104,6 +104,7 @@ func parse(in SourceInput) (out parsedSource, result error) {
 							}
 						case "tvg-chno":
 							ch.number = value
+							ch.sourceNumber = value
 						case "group-title":
 							ch.group = value
 						case "tvg-country":
