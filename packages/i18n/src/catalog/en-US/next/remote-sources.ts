@@ -151,6 +151,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.bundledProgram': 'Portico reads this storage through rclone, which comes with Portico Server. It runs only on this server, so there is nothing to install.',
   'next.remoteSources.bundledVersion': 'Portico reads this storage through rclone {version}, which comes with Portico Server. It runs only on this server, so there is nothing to install.',
   'next.remoteSources.bundledUnavailable': 'Portico’s own rclone is not available on this server right now. Check the server, then test again.',
+  'next.remoteSources.checkAgain': 'Check again',
   'next.remoteSources.providers': 'This server accepts these configuration types: {providers}.',
   'next.remoteSources.testedRclone': 'Connected. Portico started rclone {version}.',
   'next.remoteSources.testedRcloneUnknown': 'Connected. Portico started its own rclone.',

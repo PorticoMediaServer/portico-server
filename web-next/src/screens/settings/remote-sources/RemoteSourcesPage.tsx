@@ -145,10 +145,15 @@ function attachFailure(error: unknown): string {
   return t('next.remoteSources.attachFailed');
 }
 
-function ProgramNote({program}: {program?: RcloneProgram}) {
-  if (!program) return <p className={styles.note}>{t('next.remoteSources.bundledProgram')}</p>;
-  if (!program.available) return <p className={styles.notice} role="status">{t('next.remoteSources.bundledUnavailable')}</p>;
-  return <p className={styles.note}>{program.version ? t('next.remoteSources.bundledVersion', {version: program.version}) : t('next.remoteSources.bundledProgram')}</p>;
+/** The wizard step's Program row: what the server's own rclone is, drawn from
+ * the same published status the source page reads, with the frame's Check again
+ * repeating that read without leaving the step (remote-sources 2/2c). */
+function ProgramRow({program, disabled, onCheck}: {program?: RcloneProgram; disabled: boolean; onCheck?: () => void}) {
+  return <div className={styles.programRow}>
+    <span>{t('next.remoteSources.program')}</span>
+    {program && <span role="status">{program.available ? (program.version ? t('next.remoteSources.bundledVersion', {version: program.version}) : t('next.remoteSources.bundledProgram')) : t('next.remoteSources.bundledUnavailable')}</span>}
+    {onCheck && <Button size="xs" variant="glass" disabled={disabled} onClick={onCheck}>{t('next.remoteSources.checkAgain')}</Button>}
+  </div>;
 }
 
 export type RemoteSourcesPageProps = Readonly<{
@@ -1058,7 +1063,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         </div>
       </> : sourceKind === 'config' ? <>
         <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectFromConfig')}</b><small>{t('next.remoteSources.connectFromConfigHint')}</small></span></div>
-        <ProgramNote program={program}/>
+        <ProgramRow program={program} disabled={busy} onCheck={() => void loadProgram()}/>
         {!configView ? <p className={styles.note} role="status">{t('next.remoteSources.loading')}</p>
           : !configView.remotes.length ? <p className={styles.note} role="status">{t(configView.path ? 'next.remoteSources.configEmpty' : 'next.remoteSources.configAbsent')}</p>
             : <>
@@ -1083,7 +1088,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
             disabled={busy} spellCheck={false} rows={8} onChange={event => updateRclone({config: event.target.value})}/>
           <small className={styles.note}>{t('next.remoteSources.configurationHelp')}</small>
         </label>
-        <ProgramNote program={program}/>
+        <ProgramRow program={program} disabled={busy} onCheck={() => void loadProgram()}/>
         {providers.length > 0 && <p className={styles.note}>{t('next.remoteSources.providers', {providers: providers.join(', ')})}</p>}
         <p className={styles.note}>{t('next.remoteSources.rcloneKindsNote')}</p>
         <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !rclone.remote.trim() || !rclone.config.trim()} onClick={() => void testRclone()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
@@ -1654,7 +1659,7 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
           disabled={busy} spellCheck={false} rows={8} onChange={event => updateDraft({config: event.target.value})}/>
         <small className={styles.note}>{t('next.remoteSources.configurationHelp')}</small>
       </label>
-      <ProgramNote program={program}/>
+      <ProgramRow program={program} disabled={busy}/>
       <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !draft.remote.trim() || !draft.config.trim()} onClick={() => void test()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
         {result && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{result.version ? t('next.remoteSources.testedRclone', {version: result.version}) : t('next.remoteSources.testedRcloneUnknown')}</span>}
       </div>
