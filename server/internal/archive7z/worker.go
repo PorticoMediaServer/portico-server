@@ -151,7 +151,7 @@ func list(stdin io.Reader, stdout io.Writer) error {
 	seen := map[string]bool{}
 	var expanded uint64
 	for _, file := range reader.File {
-		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize64) {
+		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize) {
 			continue
 		}
 		if seen[file.Name] {
@@ -160,11 +160,11 @@ func list(stdin io.Reader, stdout io.Writer) error {
 			return errors.New("duplicate member name")
 		}
 		seen[file.Name] = true
-		if file.UncompressedSize64 > uint64(MaxMember) || uint64(MaxExpanded)-expanded < file.UncompressedSize64 {
+		if file.UncompressedSize > uint64(MaxMember) || uint64(MaxExpanded)-expanded < file.UncompressedSize {
 			return errors.New("member bytes out of bounds")
 		}
-		expanded += file.UncompressedSize64
-		names = append(names, Member{Name: file.Name, Size: int64(file.UncompressedSize64)})
+		expanded += file.UncompressedSize
+		names = append(names, Member{Name: file.Name, Size: int64(file.UncompressedSize)})
 	}
 	return json.NewEncoder(stdout).Encode(reply{Members: names})
 }
@@ -186,14 +186,14 @@ func page(stdin io.Reader, stdout io.Writer, name string) error {
 	seen := map[string]bool{}
 	var expanded uint64
 	for index, file := range reader.File {
-		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize64) {
+		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize) {
 			continue
 		}
-		if seen[file.Name] || file.UncompressedSize64 > uint64(MaxMember) || uint64(MaxExpanded)-expanded < file.UncompressedSize64 {
+		if seen[file.Name] || file.UncompressedSize > uint64(MaxMember) || uint64(MaxExpanded)-expanded < file.UncompressedSize {
 			return errors.New("member set refused")
 		}
 		seen[file.Name] = true
-		expanded += file.UncompressedSize64
+		expanded += file.UncompressedSize
 		if file.Name == name {
 			selected = index
 		}
@@ -209,7 +209,7 @@ func page(stdin io.Reader, stdout io.Writer, name string) error {
 		}
 		defer body.Close()
 		out, err := io.ReadAll(io.LimitReader(body, MaxMember+1))
-		if err != nil || int64(len(out)) != int64(file.UncompressedSize64) || len(out) > MaxMember {
+		if err != nil || int64(len(out)) != int64(file.UncompressedSize) || len(out) > MaxMember {
 			return errors.New("member out of bounds")
 		}
 		if _, err = stdout.Write(out); err != nil {
