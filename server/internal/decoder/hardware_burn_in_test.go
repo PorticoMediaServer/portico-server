@@ -58,3 +58,46 @@ func TestHardwareBurnInStaysOnTheProcessorWhereItIsNotProven(t *testing.T) {
 		}
 	}
 }
+
+// Hardware-decoded frames with nothing before the blend arrive in no named
+// chain: the picture half is empty, and the graph must not open with a comma.
+func TestHardwareBurnInGraphWithoutPreprocessing(t *testing.T) {
+	burn := BurnIn{File: "/media/subtitle.sup", Format: "pgs", Width: 1920, Height: 1080}
+	for _, backend := range []HardwareBackend{BackendVAAPI, BackendNVENC, BackendQSV} {
+		graph, _, err := hardwareBurnInGraph(backend, burn, "", "scale=w=1280:h=720")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(graph, "[0:v:0]scale_") && !strings.HasPrefix(graph, "[0:v:0]vpp_qsv=") {
+			t.Fatalf("%s: the picture must start with a filter, not a comma: %s", backend, graph)
+		}
+		if strings.Contains(graph, "[0:v:0],") {
+			t.Fatalf("%s: an empty picture half left a leading comma: %s", backend, graph)
+		}
+	}
+}
+
+// The conversion a qualified hardware decoder actually takes: hardware frames,
+// no tone map, no deinterlace, no frame-rate cap, and a bitmap subtitle. It must
+// assemble one valid filter graph with the device blend in it.
+func TestBuildConversionQualifiedDecodeBurnInGraph(t *testing.T) {
+	burn := BurnIn{File: "/media/subtitle.sup", Format: "pgs", Width: 1920, Height: 1080}
+	probe := HardwareProbe{Backend: BackendVAAPI, Available: true, Reason: ProbeAvailable, Encoder: "h264_vaapi",
+		DecodeCodecs: map[string]bool{"h264:8": true}, OutputEncoders: map[string]bool{"h264:8": true},
+		OutputQuality: map[string]bool{"h264:8": true}, NativeFilters: true, ScaleFilters: true, BurnInFilters: true}
+	graph, err := BuildConversion(ConversionRequest{SourceVideoCodec: "h264", SourceBitDepth: 8, ConvertVideo: true,
+		Probe: probe, BurnIn: &burn, MaxWidth: 1280, MaxHeight: 720, Target: &ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(graph.Video, " ")
+	if !strings.Contains(joined, "-filter_complex") || !strings.Contains(joined, "overlay_vaapi=") {
+		t.Fatalf("a qualified decoder with a bitmap subtitle blends on the device: %s", joined)
+	}
+	if strings.Contains(joined, "[0:v:0],") {
+		t.Fatalf("the picture half must not open with a comma: %s", joined)
+	}
+	if !strings.Contains(joined, "[burn_mixed]scale_vaapi=w=") {
+		t.Fatalf("the scale must follow the blend: %s", joined)
+	}
+}

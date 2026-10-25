@@ -66,6 +66,17 @@ func hardwareBurnInFor(backend HardwareBackend, surface string) (burnInPlan, boo
 	return burnInPlan{}, false
 }
 
+// nonEmpty keeps a chain's real steps and drops the ones a path does not have.
+func nonEmpty(steps []string) []string {
+	out := make([]string, 0, len(steps))
+	for _, step := range steps {
+		if strings.TrimSpace(step) != "" {
+			out = append(out, step)
+		}
+	}
+	return out
+}
+
 // hasHardwareBurnIn reports whether this backend documents a composite at all.
 func hasHardwareBurnIn(backend HardwareBackend) bool {
 	_, ok := hardwareBurnInFor(backend, "nv12")
@@ -123,7 +134,14 @@ func hardwareBurnInGraph(backend HardwareBackend, b BurnIn, picture, after strin
 	if err != nil {
 		return "", nil, err
 	}
-	return "[0:v:0]" + picture + "," + plan.pre + "[burn_picture];" + cues + ";[burn_picture][burn_cues]" + plan.overlay + "[burn_mixed];[burn_mixed]" + after + "[burn_output]", inputs, nil
+	// Hardware-decoded frames with no preprocessing arrive in no named chain, so
+	// the picture half may be empty; a leading comma there is an invalid graph.
+	pictureChain := []string{picture, plan.pre}
+	head := "[0:v:0]"
+	if joined := strings.Join(nonEmpty(pictureChain), ","); joined != "" {
+		head += joined
+	}
+	return head + "[burn_picture];" + cues + ";[burn_picture][burn_cues]" + plan.overlay + "[burn_mixed];[burn_mixed]" + after + "[burn_output]", inputs, nil
 }
 
 // probeBurnIn proves the composite on this device with the graph a session runs,
