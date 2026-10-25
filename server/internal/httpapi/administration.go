@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -522,13 +523,33 @@ func readLogoUpload(w http.ResponseWriter, r *http.Request) ([]byte, *int64, str
 			_ = r.MultipartForm.RemoveAll()
 		}
 	}()
-	file, _, err := r.FormFile("file")
+	file, header, err := r.FormFile("file")
 	if err != nil {
 		return nil, nil, "", administration.ErrImage
 	}
 	defer file.Close()
 	raw, err := io.ReadAll(io.LimitReader(file, administration.LogoUploadBytes+1))
 	if err != nil || len(raw) > administration.LogoUploadBytes {
+		return nil, nil, "", administration.ErrImage
+	}
+	// Native pickers return bounded JPEG bytes as base64. Decode only this
+	// explicit file-part encoding; the same image proof and digest below still
+	// operate on the original image bytes. The outer encoded body limit remains.
+	encodings := header.Header.Values("Content-Transfer-Encoding")
+	if len(encodings) > 1 {
+		return nil, nil, "", administration.ErrImage
+	}
+	switch strings.ToLower(strings.TrimSpace(header.Header.Get("Content-Transfer-Encoding"))) {
+	case "", "binary", "8bit":
+	case "base64":
+		if strings.ContainsAny(string(raw), "\r\n") {
+			return nil, nil, "", administration.ErrImage
+		}
+		raw, err = base64.StdEncoding.Strict().DecodeString(string(raw))
+		if err != nil || len(raw) == 0 || len(raw) > administration.LogoUploadBytes {
+			return nil, nil, "", administration.ErrImage
+		}
+	default:
 		return nil, nil, "", administration.ErrImage
 	}
 	var revision *int64
