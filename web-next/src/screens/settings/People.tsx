@@ -13,6 +13,7 @@ import type {SettingsViewerScope} from '../../platform/settings-platform';
 import type {SettingsInvitations} from './invitations';
 import {InvitationShortCodeDialog} from '../../kit/accounts';
 import {randomId} from '@core/random-id.ts';
+import {InviteAttempts} from './people-invite';
 import type {ServerInvitation} from '@core/direct-account.ts';
 
 const invitationStates = ['pending', 'accepted', 'revoked', 'expired'] as const;
@@ -47,22 +48,32 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
 function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const {client} = bindings;
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
-  const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null);
-  useEffect(() => () => inviteLife.current.abort(), []);
+  const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null), alive = useRef(true);
+  const attempts = useRef<InviteAttempts>();
+  if (!attempts.current) attempts.current = new InviteAttempts(randomId);
+  useEffect(() => () => { alive.current = false; attempts.current?.retire(); inviteLife.current.abort(); }, []);
   /** The explicit Invite gesture: create once, then open the show-once dialog on
    * that exact invitation. A replay without a short code is an absence, not a
    * reason to issue again. */
   const openInvite = async (opener: HTMLElement) => {
-    const invitations = bindings.invitations;
+    const invitations = bindings.invitations, owner = attempts.current!;
     if (!invitations || !bindings.authority.isCurrent()) return;
+    // One synchronous gate before the first await: a second click, or a click
+    // while an uncertain first answer is being reconciled, sends nothing.
+    const attempt = owner.begin({role: 'member', allowedLibraries: [], expiresInHours: 168});
+    if (!attempt) return;
     inviteOpener.current = opener;
     try {
-      const created = await invitations.create({role: 'member', allowedLibraries: [], expiresInHours: 168, operationId: randomId()},
-        {signal: inviteLife.current.signal, isCurrent: bindings.authority.isCurrent});
+      const created = await invitations.create({...attempt.body, allowedLibraries: [...attempt.body.allowedLibraries]},
+        {signal: inviteLife.current.signal, isCurrent: () => alive.current && bindings.authority.isCurrent()});
+      owner.created();
+      if (!alive.current || !bindings.authority.isCurrent()) return;
       if (!invitationState(created.state)) throw new Error('invitation_state_unknown');
-      if (!bindings.authority.isCurrent()) return;
       setIssued(created); setInviteOpen(true);
-    } catch (error) { if (bindings.authority.isCurrent()) bindings.reportError(error); }
+    } catch (error) {
+      owner.failed(error);
+      if (alive.current && bindings.authority.isCurrent()) bindings.reportError(error);
+    }
   };
   const live = useSyncExternalStore(bindings.authority.subscribe, bindings.authority.isCurrent, () => false);
   const [denied, setDenied] = useState(false);
