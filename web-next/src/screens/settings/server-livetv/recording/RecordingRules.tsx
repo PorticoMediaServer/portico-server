@@ -43,8 +43,11 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
       <div className={fields.fields} ref={editor}>
         {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
         <TextField label={t('web.recordingRules.ruleName')} maxLength={160} value={draft.name} disabled={busy} onChange={event => controller.edit(draft, {name: event.currentTarget.value})}/>
-        <Select label={t('web.recordingRules.recordFor')} value={draft.owner.accountId ? recordingOwnerKey(draft.owner) : ''} disabled={busy || !!draft.id} options={[{value: '', label: t('web.recordingRules.chooseProfile')}, ...owners.map(row => ({value: recordingOwnerKey(row.owner), label: recordingOwnerLabel(row)}))]} onValueChange={key => {const row = owners.find(row => recordingOwnerKey(row.owner) === key);if (row) controller.edit(draft, {owner: row.owner});}}/>
-        {!owners.length && <p>{t('web.recordingRules.allowFirst')}</p>}
+        <Select label={t('web.recordingRules.recordFor')} value={draft.owner.accountId ? recordingOwnerKey(draft.owner) : ''} disabled={busy || policy.loading || !!draft.id} options={[{value: '', label: t('web.recordingRules.chooseProfile')}, ...owners.map(row => ({value: recordingOwnerKey(row.owner), label: recordingOwnerLabel(row)}))]} onValueChange={key => {const row = owners.find(row => recordingOwnerKey(row.owner) === key);if (row) controller.edit(draft, {owner: row.owner});}}/>
+        {policy.loading && <p role="status">{t('status.loading')}</p>}
+        {!!policy.error && <p role="alert" className={styles.error}>{errorMessage(policy.error)}</p>}
+        {!draft.id && policy.cursor && <Button size="small" variant="text" disabled={busy || policy.loading || policy.saving || !!policy.uncertain || !!Object.keys(policy.edits).length} onClick={() => void permissions.load(true)}>{t('action.showMore')}</Button>}
+        {!policy.loading && !policy.error && !policy.cursor && !owners.length && <p>{t('web.recordingRules.allowFirst')}</p>}
         {!draft.id ? <>
           <Select label={t('live.guideSource')} value={state.sourceId} disabled={busy} options={[{value: '', label: t('web.live.allSources')}, ...sources.map(row => ({value: row.id, label: row.name}))]} onValueChange={value => {if (controller.getSnapshot().draft === draft) void controller.guide(state.day, value);}}/>
           <TextField type="date" label={t('web.recordingRules.guideDate')} value={state.day} disabled={busy} onChange={event => {if (controller.getSnapshot().draft === draft) void controller.guide(event.currentTarget.value, state.sourceId);}}/>
