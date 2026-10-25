@@ -46,6 +46,9 @@ export type WatchSurfaces = Readonly<{
   together?: ReactNode;
   prompts?: ReactNode;
   notices?: ReactNode;
+  /** Frames 6e: a modal prompt that really owns the screen. Only the admitted
+   * validator sets it, never raw attention; the stage and the portal stay. */
+  modal?: 'still-watching';
   /** One real loss note for this playback, drawn once and only when the device's
    * "Picture and sound notices" setting allows it. */
   loss?: Readonly<{notice: PlaybackLossNotice; enabled: boolean}>;

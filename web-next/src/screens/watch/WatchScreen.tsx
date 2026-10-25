@@ -255,11 +255,12 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     {windowPort?.pictureInPicture && <Control icon="i-pip" label={t('player.pictureInPicture')} active={windowPort.pictureInPicture.active} action={() => effect(windowPort.pictureInPicture!.toggle)} />}
     {!touchTablet && (portrait || (!mobile && windowPort?.fullscreen)) && <Control icon="i-full" label={t('next.states.shortcut.fullscreen')} active={fullWindow || windowPort?.fullscreen?.active} action={toggleFullscreen} />}
   </>;
-  return <div ref={root} className={styles.watch} hidden={!open} tabIndex={-1} data-watch-screen data-mode={mode} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+  const stillWatching = surfaces?.modal === 'still-watching';
+  return <div ref={root} className={styles.watch} hidden={!open} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
-    <div ref={chrome} className={styles.chrome} style={rectStyle(geometry?.controls)}>
+    <div ref={chrome} className={styles.chrome} style={rectStyle(geometry?.controls)} inert={stillWatching || undefined}>
       {open && snapshot.playback.phase === 'error' && <PlaybackFailure key={playbackKey} error={snapshot.playback.error}
         onRetry={fence && binding.runtime.canRetryFailure(fence) ? () => binding.runtime.retryFailure(fence) : undefined}
         onVersions={surfaces?.available.includes('versions') ? () => showPanel('versions') : undefined}
