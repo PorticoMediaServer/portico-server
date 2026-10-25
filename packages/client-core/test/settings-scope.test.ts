@@ -59,9 +59,23 @@ test('secondary local profiles retain their profile controls without account sec
  }
 });
 
-test('the TV-declared HDR and surround switches appear only where the device cannot detect them', () => {
-  const ids = (capabilities: Record<string, unknown>) => settingsStructure({platform: 'tv', owner: false, capabilities} as Parameters<typeof settingsStructure>[0])
-    .headings.flatMap(h => h.pages.flatMap(p => p.sections.flatMap(s => s.rows))).flatMap(r => (r.kind === 'composite' ? [r.id] : []));
-  assert.ok(!ids({}).includes('tvHdr'));
-  assert.deepEqual(ids({declaredOutputs: true}).filter(id => id === 'tvHdr' || id === 'tvSurround'), ['tvHdr', 'tvSurround']);
+test('the TV output override is one drawn choice with the four exact combinations', () => {
+  const rowsOf = (platform: SettingsPlatform, capabilities: Record<string, unknown>) => settingsStructure({platform, owner: false, capabilities} as Parameters<typeof settingsStructure>[0])
+    .headings.flatMap(h => h.pages.flatMap(p => p.sections.flatMap(s => s.rows)));
+  // The single override stays available when the TV cannot report its outputs,
+  // and the two retired switches never reappear beside it.
+  for (const capabilities of [{}, {declaredOutputs: false}, {declaredOutputs: true}, {hdr: false}]) {
+    const tv = rowsOf('tv', capabilities);
+    const choice = tv.find(row => row.kind === 'composite' && row.id === 'tvSupports');
+    assert.ok(choice && choice.kind === 'composite', 'the TV output override is drawn');
+    assert.equal(choice.control.type, 'choice');
+    assert.deepEqual(choice.control.type === 'choice' ? choice.control.choices.map(option => option.value) : [], ['none', 'hdr', 'surround', 'hdr-surround']);
+    assert.ok(!tv.some(row => row.kind === 'composite' && (row.id === 'tvHdr' || row.id === 'tvSurround')), 'the retired HDR/surround switches stay absent');
+  }
+  for (const platform of ['web', 'phone'] as const) {
+    assert.ok(!rowsOf(platform, {}).some(row => row.kind === 'composite' && (row.id === 'tvSupports' || row.id === 'tvHdr' || row.id === 'tvSurround')));
+  }
+  // Unsupported HDR still hides the narrow HDR fix; an unknown capability does not.
+  assert.ok(!rowsOf('tv', {hdr: false}).some(row => row.kind === 'composite' && row.id === 'disableHdr'));
+  assert.ok(rowsOf('tv', {}).some(row => row.kind === 'composite' && row.id === 'disableHdr'));
 });
