@@ -259,7 +259,7 @@ export function SettingsEntry() {
             background: value('audioSubtitles.subtitleBackground'), position: value('audioSubtitles.subtitlePosition')})}
             text={defaultI18n.t('next.settingsSpec.account.audio-subtitles.groups.2.rows.0.control.text')} />;
         }
-        if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl row={row} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
+        if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl row={row} api={context.api} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
         if (row.id === 'music.eq') return <MusicEqualizerRow platform={platform} isCurrent={current}/>;
         if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
         if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries}
