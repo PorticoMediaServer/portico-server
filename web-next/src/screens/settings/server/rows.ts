@@ -8,7 +8,7 @@ export type SettingsTarget = Readonly<{scope: 'account' | 'server'; section: str
  * than showing an empty control or a setting with no engine (ruling 3).
  */
 export const pendingServerRows: ReadonlySet<string> = new Set(['storage.networkNotice', 'storage.emptyCache',
-  'storage.backupPassphrase', 'storage.downloads', 'storage.upgradeCopy', 'storage.backupKeysNote']);
+  'storage.downloads', 'storage.upgradeCopy', 'storage.backupKeysNote']);
 
 /** The rows this page draws from its own owner-scoped producers. */
 export const factRows: ReadonlySet<string> = new Set(['storage.dataFolder', 'storage.usage']);
@@ -17,7 +17,7 @@ export const factRows: ReadonlySet<string> = new Set(['storage.dataFolder', 'sto
 export const sectionLinkRows: ReadonlySet<string> = new Set(['storage.keepHistory', 'storage.keepLogsLink']);
 
 /** The Backups rows this batch draws; they need the server's own backup answer first. */
-export const backupRows: ReadonlySet<string> = new Set(['storage.backupFolder', 'storage.backupNow', 'storage.backups']);
+export const backupRows: ReadonlySet<string> = new Set(['storage.backupFolder', 'storage.backupNow', 'storage.backups', 'storage.backupPassphrase']);
 
 /** Restoring from a file or folder only needs the owner's live session; the file is chosen here. */
 export const fileRestoreRows: ReadonlySet<string> = new Set(['storage.restoreFile']);
