@@ -3,6 +3,10 @@
  * Certificate decisions are headless; people compare an identity code only when required.
  */
 export const connectionTrustMessages = {
+  'connection.discovery.find': 'Find a server on this Wi-Fi',
+  'connection.discovery.empty': 'No servers found on this network. Enter the server’s address, or check that it is running on the same Wi-Fi.',
+  'connection.discovery.failed': 'Couldn’t search this network. Try again, or enter the server’s address.',
+
   'connection.certificates.title': 'Trusted certificates',
   'connection.certificates.forget': 'Forget certificate',
   'connection.certificates.confirm': 'Forget this certificate?',
