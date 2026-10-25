@@ -37,7 +37,7 @@ export type SettingsServerOptions = Readonly<{
 /** Owner-only Storage facts and controls. One shared sweep feeds both drawn rows. */
 export function createServerSettingsSurfaces(options: SettingsServerOptions): SettingsServerSurfaces {
   const downloads = new DownloadsUsageSource(options.transport, options.isCurrent, options.reportError);
-  const storage = new SettingsStorageSource(options.transport, options.serverId, options.isCurrent);
+  const storage = new SettingsStorageSource(options.transport, options.serverId, options.isCurrent, options.reportError);
   const cleanup = new SettingsCleanupSource(options.transport, options.serverId, options.isCurrent, () => storage.getSnapshot().report, storage.retry, options.reportError);
   const backups: BackupSurfaceProps = {source: options.backups, subscribe: options.subscribe, isCurrent: options.isCurrent, scopeKey: options.scopeKey, reportError: options.reportError};
   const facts = (): StorageRowFacts => {

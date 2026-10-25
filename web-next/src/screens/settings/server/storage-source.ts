@@ -35,7 +35,7 @@ export class SettingsStorageSource {
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
   private reading?: Promise<void>;
-  constructor(private readonly transport: StorageTransport, private readonly serverId: string, private readonly isCurrent: () => boolean) {}
+  constructor(private readonly transport: StorageTransport, private readonly serverId: string, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void = () => {}) {}
   getSnapshot = (): StorageSnapshot => this.current() ? this.state : idleStorageSnapshot;
   subscribe = (listener: () => void): (() => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
@@ -49,7 +49,13 @@ export class SettingsStorageSource {
         const value = await this.transport.request<unknown>(routePath('get_admin_storage_usage'), 'GET', undefined, this.lifetime.signal);
         if (!this.current()) return;
         this.publish({phase: 'ready', report: storageReport(value, this.serverId)});
-      } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({phase: 'error', error: true});}
+      } catch (error) {
+        if (!this.current()) return;
+        const failure = error && typeof error === 'object' ? error as {status?: number; code?: string} : {};
+        if (failure.status === 401 || failure.status === 403 || ['unauthorized', 'forbidden', 'not_permitted'].includes(failure.code ?? '')) {
+          this.dispose();this.reportError(error);
+        } else this.publish({phase: 'error', error: true});
+      }
       finally {this.reading = undefined;}
     });
     this.reading = task;
