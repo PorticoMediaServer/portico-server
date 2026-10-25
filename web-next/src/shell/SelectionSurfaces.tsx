@@ -17,6 +17,7 @@ import {editorCoreDraft, editorResultView, editorUiDraft, editorValues, selectio
 import {SelectionPickerSurface} from './SelectionPickerSurface';
 import {useShellWidth} from './viewport';
 import {MetadataEditor} from '../screens/metadata/MetadataEditor';
+import metadataStyles from '../screens/metadata/metadata.module.css';
 import styles from './selection.module.css';
 
 export type SelectionRendererSource = Readonly<{
@@ -159,7 +160,7 @@ function SingleMetadataEditor({source, snapshot}: {source: SelectionRendererSour
     return value;
   }}), [metadata, source.controller, grant, preview]);
   return <Dialog open onOpenChange={open => {if (!open) source.controller.closeEditor();}} title={t('next.home.editSelection')}
-    returnFocusRef={source.anchor} placement="right" width={720}>
+    returnFocusRef={source.anchor} placement="right" width={720} showCloseButton={false} headerClassName={metadataStyles.hostTitle} bodyClassName={metadataStyles.hostBody}>
     <MetadataEditor api={api} scope={metadata.scope} target={target} onClose={() => source.controller.closeEditor()}/>
   </Dialog>;
 }
