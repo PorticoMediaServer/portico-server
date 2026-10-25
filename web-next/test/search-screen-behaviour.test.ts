@@ -5,7 +5,7 @@ import {defaultI18n} from '@i18n';
 import {componentModule} from '../../web/test/helpers/component-harness.mjs';
 import {all, createRenderer, one, tree, textOf} from '../../web/test/helpers/interaction-harness.mjs';
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
-async function mount(context: any, options: {text?: string; remember?: boolean; failClear?: () => boolean; snapshot?: any; summary?: any[]; group?: string} = {}) {
+async function mount(context: any, options: {text?: string; remember?: boolean; failClear?: () => boolean; snapshot?: any; summary?: any[]; group?: string; linkedQuery?: string; liveAvailable?: boolean; onNow?: any; openLive?: boolean} = {}) {
   context.mock.timers.enable({apis: ['setTimeout', 'setInterval']});
   const h = createRenderer(), calls: {name: string; args: any[]}[] = [];
   let current = true;
@@ -18,8 +18,8 @@ async function mount(context: any, options: {text?: string; remember?: boolean; 
     recent: async () => { calls.push({name: 'recent', args: []}); return {entries: [{q: 'Stored Query'}]}; },
     clearRecent: async () => { calls.push({name: 'clearRecent', args: []}); if (options.failClear?.()) throw new Error('unavailable'); },
     genres: {...store({phase: 'ready', genres: []}), load: record('genres')},
-    onNow: {...store({phase: 'ready', cards: [], sourceNames: []}), load: record('onNow')},
-    context: {isCurrent: () => current, identity: {liveAvailable: false}, effects: {reportError: record('error')},
+    onNow: {...store(options.onNow ?? {phase: 'ready', cards: [], sourceNames: []}), load: record('onNow')},
+    context: {isCurrent: () => current, identity: {liveAvailable: options.liveAvailable === true}, effects: {reportError: record('error')},
       preferences: store({effective: {'search.rememberHistory': options.remember !== false, 'appearance.cardSizePercent': 100}})}};
   const app = await componentModule(new URL('../src/screens/search/Search.tsx', import.meta.url), {
     react: h.react, '../detail/text': {t, locale: () => 'en-US'},
@@ -34,7 +34,8 @@ async function mount(context: any, options: {text?: string; remember?: boolean; 
     './window': {appendedWindow: () => ({collection: {}, set(items: any[]) { calls.push({name: 'window', args: [items]}); }, dispose() {}})},
     './search.module.css': {default: {}},
   });
-  const flat = () => tree(h.render(() => app.SearchScreen({binding})));
+  const consume = record('consumeLinkedQuery'), openLive = record('openLive');
+  const flat = () => tree(h.render(() => app.SearchScreen({binding, linkedQuery: options.linkedQuery, onConsumeLinkedQuery: consume, onOpenLive: options.openLive ? openLive : undefined})));
   const settle = async () => { for (let i = 0; i < 6; i++) { await Promise.resolve(); flat(); } };
   flat(); await settle();
   return {flat, settle, calls, focused: h.focused, retire: () => { current = false; }};
@@ -191,4 +192,39 @@ test('an empty first-page cursor replaces the existing window even at the same r
   snapshot.groups = [{...snapshot.groups[0], items: [replacement]}];
   f.flat(); await f.settle();
   assert.deepEqual(windowItems(f), [replacement]);
+});
+
+
+test('linked query overrides session text and is consumed once by the mounted screen', async context => {
+  const f = await mount(context, {text: 'old query', linkedQuery: 'linked title'});
+  assert.equal(one(f.flat(), 'TextField').props.value, 'linked title');
+  assert.equal(f.calls.filter(call => call.name === 'consumeLinkedQuery').length, 1);
+  context.mock.timers.tick(260); await f.settle();
+  assert.deepEqual(selects(f).at(-1)?.args, ['linked title', {}]);
+});
+
+const initialLive = {phase: 'ready', sourceNames: ['Real source'], cards: [
+  {channel: {sourceId: 'source-one', id: 'channel-one', name: 'One'}, programmes: []},
+  {channel: {sourceId: 'source-two', id: 'channel-two', name: 'Two'}, programmes: []},
+]};
+
+test('initial On now cards open their actual source while Guide opens the overall guide', async context => {
+  const f = await mount(context, {text: '', liveAvailable: true, onNow: initialLive, openLive: true});
+  const cards = all(f.flat(), 'LiveCard'); assert.equal(cards.length, 2);
+  cards[0].props.onNavigate(); cards[1].props.onNavigate();
+  const guide = all(f.flat(), 'Button').find(node => textOf(node) === t('next.controls.guide')); assert.ok(guide);
+  assert.equal(guide.props.disabled, false); guide.props.onClick();
+  assert.deepEqual(f.calls.filter(call => call.name === 'openLive').map(call => call.args), [['source-one'], ['source-two'], []]);
+});
+
+test('On now is absent without live capability even when a retained snapshot has cards', async context => {
+  const f = await mount(context, {text: '', onNow: initialLive, openLive: true});
+  assert.equal(all(f.flat(), 'LiveCard').length, 0);
+  assert.equal(all(f.flat(), 'Button').some(node => textOf(node) === t('next.controls.guide')), false);
+});
+
+test('initial Guide is disabled when no navigation callback is supplied', async context => {
+  const f = await mount(context, {text: '', liveAvailable: true, onNow: initialLive});
+  const guide = all(f.flat(), 'Button').find(node => textOf(node) === t('next.controls.guide')); assert.ok(guide);
+  assert.equal(guide.props.disabled, true);
 });
