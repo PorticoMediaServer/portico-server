@@ -74,6 +74,11 @@ const (
 	DefaultTrickplayIntervalSeconds = 10
 	DefaultTrickplayTileWidth       = 320
 	DefaultTrickplayMaxTiles        = 1080
+	// MaxTrickplayTiles is the most frames one library may ask for: the analysis
+	// runner produces at most its own MaxPreviewFrames per set, which defaults to
+	// and is capped at this value. A larger stored number would publish scrubbing
+	// hours the runner never produces.
+	MaxTrickplayTiles = 4096
 )
 
 // Normalized returns the effective production geometry. Callers never see a
@@ -90,7 +95,7 @@ func (t TrickplaySettings) Normalized() TrickplaySettings {
 	}
 	t.IntervalSeconds = min(600, max(1, t.IntervalSeconds))
 	t.TileWidth = min(640, max(64, t.TileWidth/2*2))
-	t.MaxTiles = min(20000, max(16, t.MaxTiles))
+	t.MaxTiles = min(MaxTrickplayTiles, max(16, t.MaxTiles))
 	return t
 }
 

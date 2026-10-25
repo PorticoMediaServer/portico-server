@@ -667,7 +667,7 @@ func validateLibrarySettings(v *LibrarySettings) error {
 	}
 	clampInt(&v.Navigation.TrickplayIntervalMs, 1000, 600000)
 	clampInt(&v.Navigation.TrickplayTileWidth, 96, 640)
-	clampInt(&v.Navigation.TrickplayMaxTiles, 20, 20000)
+	clampInt(&v.Navigation.TrickplayMaxTiles, 20, catalog.MaxTrickplayTiles)
 	clampInt(&v.Navigation.VideoPreviewMs, 5000, 120000)
 	return nil
 }
@@ -906,6 +906,13 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		// Write the document the owner sent, with every control they did not send
 		// left exactly as this library has it now.
 		value := mergeLibrarySettings(change.Settings, current)
+		// The provider selection is written whole, but an empty region is not a
+		// choice the page offers: on an online policy it would clear the region the
+		// library stores, while the metadata policy itself only falls back for an
+		// empty language. Keep the stored region instead.
+		if len(value.Providers) == 1 && len(current.Providers) == 1 && value.Providers[0].Region == "" {
+			value.Providers[0].Region = current.Providers[0].Region
+		}
 		normalizeLibrarySettings(&value)
 		if err = validateLibrarySettings(&value); err != nil {
 			return err
