@@ -1,6 +1,7 @@
-import {useEffect, useState, useSyncExternalStore, type RefObject} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
-import type {ReadingPreferences} from '@portico/client-core';
+import {createWindowedCollection, type WindowedCollection, type ReadingPreferences} from '@portico/client-core';
+import {WindowedGrid} from '../../kit/layout/WindowedGrid';
 import {readerErrorCode, type ReadingController, type ReaderErrorCode, type ReaderFit, type ReaderFormat, type ReaderLocation, type ReaderZoom, type ReaderZoomState} from '@portico/reader-core';
 import {Menu, MenuItem, MenuSeparator} from '../../kit/overlays';
 import {loadReadPagePreview, type ReadPagePreview} from './preview';
@@ -66,24 +67,57 @@ function PageThumb({controller, authority, reportError, format, index, count, cu
   </button>;
 }
 
-/** The same bounded page window as a panel, for fixed pages whose only contents are pages. */
-export function FixedPagesPanel({controller, authority, reportError, format}: Fixed) {
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+/** The actual document page count supplies ordinals; only visible previews mount. */
+export function FixedPagesPanel(props: Fixed & Readonly<{onNavigate?: () => void}>) {
+  const snapshot = useSyncExternalStore(props.controller.subscribe, props.controller.getSnapshot, props.controller.getSnapshot);
   const count = snapshot.metadata?.pageCount, location = snapshot.location;
-  const current = location && location.format !== 'epub' ? location.page : undefined;
-  if (format === 'epub' || !count || count < 1 || current === undefined || snapshot.status !== 'ready') return null;
-  const first = Math.max(0, Math.min(current - 6, count - 13)), last = Math.min(count, first + 13);
+  if (props.format === 'epub' || !count || !Number.isSafeInteger(count) || count < 1 || !location || location.format === 'epub'
+    || snapshot.status !== 'ready' || !snapshot.sourceId || !snapshot.sourceRevision) return null;
+  return <FixedPagesWindow key={JSON.stringify([snapshot.sourceId, snapshot.sourceRevision, count])} {...props}
+    count={count} current={location.page} sourceId={snapshot.sourceId} sourceRevision={snapshot.sourceRevision}/>;
+}
+function FixedPagesWindow({controller, authority, reportError, format, count, current, sourceId, sourceRevision, onNavigate}: Fixed & Readonly<{
+  count: number; current: number; sourceId: string; sourceRevision: string; onNavigate?: () => void;
+}>) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const [pages, setPages] = useState<WindowedCollection<number>>();
+  const [height, setHeight] = useState(0);
+  const currentSource = () => {
+    const snapshot = controller.getSnapshot();
+    return authority.isCurrent() && snapshot.status === 'ready' && snapshot.sourceId === sourceId && snapshot.sourceRevision === sourceRevision
+      && snapshot.metadata?.pageCount === count;
+  };
+  useEffect(() => {
+    const collection = createWindowedCollection<number>({pageSize: 24, maxResidentPages: 4, maxConcurrent: 1, prefetchPages: 0,
+    keyOf: index => String(index), async fetchPage(start, size, signal) {
+      const snapshot = controller.getSnapshot();
+      if (signal.aborted || !authority.isCurrent() || snapshot.status !== 'ready' || snapshot.sourceId !== sourceId
+        || snapshot.sourceRevision !== sourceRevision || snapshot.metadata?.pageCount !== count) throw new Error('source_changed');
+      return {items: Array.from({length: Math.max(0, Math.min(size, count - start))}, (_, offset) => start + offset), total: count};
+    },
+    });
+    setPages(collection);
+    return () => collection.dispose();
+  }, [controller, authority, sourceId, sourceRevision, count]);
+  useEffect(() => {
+    const element = viewport.current; if (!element) return;
+    const observer = new ResizeObserver(() => setHeight(element.clientHeight)); observer.observe(element); setHeight(element.clientHeight);
+    return () => observer.disconnect();
+  }, []);
   const navigate = (index: number) => {
+    if (!currentSource() || !Number.isSafeInteger(index) || index < 0 || index >= count) return;
     const target: ReaderLocation = {format: format === 'pdf' ? 'pdf' : 'cbz', page: index, progression: count === 1 ? 0 : index / (count - 1)};
-    void controller.navigate({kind: 'location', location: target}).catch(error => {
-      if (authority.isCurrent()) reportError(readerErrorCode(error));
+    void controller.navigate({kind: 'location', location: target}).then(() => {if (currentSource()) onNavigate?.();}).catch(error => {
+      if (currentSource()) reportError(readerErrorCode(error));
     });
   };
   return <div className={styles.panel}>
     <p className={styles.panelCount}>{t('next.reader.pageOf', {page: defaultI18n.number(current + 1), count: defaultI18n.number(count)})}</p>
-    <div className={styles.panelGrid}>{Array.from({length: last - first}, (_, offset) => first + offset).map(index =>
-      <PageThumb key={index} controller={controller} authority={authority} reportError={reportError} format={format} index={index} count={count}
-        current={index === current} large pageLabel={t('next.reader.pageLabel', {page: defaultI18n.number(index + 1)})} onSelect={() => navigate(index)}/>)}</div>
+    <div ref={viewport} className={styles.panelWindow}>{height > 0 && pages && <WindowedGrid initialIndex={current} collection={pages}
+      label={t('next.reader.pagesStrip')} height={height} cardWidth={104} rowHeight={156} gap={12} rowGap={12} overscanRows={1}
+      renderPlaceholder={() => <span className={styles.blank} aria-hidden="true"/>}
+      renderItem={index => <PageThumb controller={controller} authority={authority} reportError={reportError} format={format} index={index} count={count}
+        current={index === current} large pageLabel={t('next.reader.pageLabel', {page: defaultI18n.number(index + 1)})} onSelect={() => navigate(index)}/>}/>}</div>
   </div>;
 }
 

@@ -148,7 +148,8 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
     ? <ReaderPanel label={t('next.reader.pagesStrip')} tabs={[...(snapshot.toc.length > 0 ? [{id: 'contents', label: t('next.reader.contents')}] : []), {id: 'pages', label: t('next.reader.pagesStrip')}]}
       selected={snapshot.toc.length > 0 ? fixedPane : 'pages'} onSelect={selected => setFixedPane(selected === 'pages' ? 'pages' : 'contents')} onClose={() => setPanel(undefined)}>
       {snapshot.toc.length > 0 && fixedPane === 'contents' ? <ReaderContents entries={contents(snapshot.toc)}/>
-        : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/>}
+        : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
+          onNavigate={() => {if (presentation === 'phone') setPanel(undefined);}}/>}
     </ReaderPanel>
     : <ReaderPanel label={t('next.reader.contents')} tabs={[{id: 'contents', label: t('next.reader.contents')}]}
       selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>)
