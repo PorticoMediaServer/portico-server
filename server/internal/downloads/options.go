@@ -86,8 +86,11 @@ type DownloadOptionsView struct {
 // viewer who cannot sees the rung as unavailable rather than being allowed to
 // queue work that will never start.
 func (s *Service) Options(ctx context.Context, p identity.Principal, item string, owner bool) (DownloadOptionsView, error) {
+	return s.OptionsVersion(ctx, p, item, "", owner)
+}
+func (s *Service) OptionsVersion(ctx context.Context, p identity.Principal, item, version string, owner bool) (DownloadOptionsView, error) {
 	out := DownloadOptionsView{ItemID: item, Options: []QualityOption{}}
-	if !validID.MatchString(item) {
+	if !validID.MatchString(item) || version != "" && !validID.MatchString(version) {
 		return out, ErrInput
 	}
 	gated, e := dbwork.BeginSnapshot(ctx, s.db)
@@ -95,7 +98,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		return out, e
 	}
 	defer gated.Rollback()
-	out, e = s.optionsTx(ctx, gated.Tx(), p, item, owner)
+	out, e = s.optionsVersionTx(ctx, gated.Tx(), p, item, version, owner)
 	if e != nil {
 		return out, e
 	}
@@ -103,6 +106,9 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 }
 
 func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item string, owner bool) (DownloadOptionsView, error) {
+	return s.optionsVersionTx(ctx, tx, p, item, "", owner)
+}
+func (s *Service) optionsVersionTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, version string, owner bool) (DownloadOptionsView, error) {
 	out := DownloadOptionsView{ItemID: item, Options: []QualityOption{}}
 	var e error
 	if e = s.visibleItem(ctx, tx, p, item); e != nil {
@@ -135,7 +141,7 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 		}
 		out.Storage.RemainingBytes = &remaining
 	}
-	found, err := resolveSource(ctx, tx, item)
+	found, err := resolveVersionSource(ctx, tx, item, version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, ErrNotFound
 	}

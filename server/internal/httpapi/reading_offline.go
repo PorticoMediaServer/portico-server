@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"portico.local/apikit"
 	"portico.local/server/internal/downloads"
@@ -50,12 +52,43 @@ func (ReadingOfflineLocation) JSONSchema() map[string]any {
 }
 
 type ReadingOfflineProgressRequest struct {
-	Receipt          downloads.Receipt      `json:"receipt"`
-	ExpectedRevision *int64                 `json:"expectedRevision"`
-	ObservedAt       int64                  `json:"observedAt"`
-	StartedAt        int64                  `json:"startedAt"`
-	Location         ReadingOfflineLocation `json:"location"`
+	ObservationReceipt *downloads.Receipt     `json:"observationReceipt,omitempty"`
+	Receipt            downloads.Receipt      `json:"receipt"`
+	ExpectedRevision   *int64                 `json:"expectedRevision"`
+	ObservedAt         int64                  `json:"observedAt"`
+	StartedAt          int64                  `json:"startedAt"`
+	Location           ReadingOfflineLocation `json:"location"`
 }
+
+func (body *ReadingOfflineProgressRequest) UnmarshalJSON(raw []byte) error {
+	if _, err := apikit.CanonicalJSON(raw); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return reading.ErrInvalid
+	}
+	allowed := map[string]bool{"receipt": true, "expectedRevision": true, "observedAt": true, "startedAt": true, "location": true, "observationReceipt": true}
+	for key, value := range fields {
+		if !allowed[key] || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return reading.ErrInvalid
+		}
+	}
+	for _, key := range []string{"receipt", "expectedRevision", "observedAt", "startedAt", "location"} {
+		if _, ok := fields[key]; !ok {
+			return reading.ErrInvalid
+		}
+	}
+	var plain readingOfflineProgressRequestShape
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&plain); err != nil {
+		return err
+	}
+	*body = ReadingOfflineProgressRequest(plain)
+	return nil
+}
+
 type readingOfflineProgressRequestShape ReadingOfflineProgressRequest
 
 func (ReadingOfflineProgressRequest) JSONSchema() map[string]any {
@@ -64,6 +97,11 @@ func (ReadingOfflineProgressRequest) JSONSchema() map[string]any {
 		panic(err)
 	}
 	properties := schema["properties"].(map[string]any)
+	receiptSchema, err := apikit.Schema(reflect.TypeFor[downloads.Receipt]())
+	if err != nil {
+		panic(err)
+	}
+	properties["observationReceipt"] = receiptSchema
 	properties["expectedRevision"] = readingOfflineInteger(0)
 	properties["observedAt"] = readingOfflineInteger(1)
 	properties["startedAt"] = readingOfflineInteger(1)
@@ -123,13 +161,16 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 		readingFailure(w, downloadError(err))
 		return
 	}
-	issued, err := time.Parse(time.RFC3339Nano, claims.IssuedAt)
-	if err != nil {
-		readingFailure(w, reading.ErrInvalid)
+	original := body.Receipt
+	if body.ObservationReceipt != nil {
+		original = *body.ObservationReceipt
+	}
+	if err = d.Downloads.VerifyPublicationObservation(r.Context(), claims, original, body.StartedAt, body.ObservedAt); err != nil {
+		readingFailure(w, downloadError(err))
 		return
 	}
 	expires, err := time.Parse(time.RFC3339Nano, claims.ExpiresAt)
-	if err != nil || body.StartedAt < issued.UnixMilli() || body.ObservedAt > expires.UnixMilli() {
+	if err != nil || body.ObservedAt > expires.UnixMilli() {
 		readingFailure(w, reading.ErrInvalid)
 		return
 	}

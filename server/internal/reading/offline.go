@@ -77,7 +77,17 @@ func (d OfflineDocument) Digest() string {
 // SelectOfflineTx joins download admission to the same current inventory and
 // Reading authority as online open, inside the admitting transaction.
 func (s *Service) SelectOfflineTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, source string) (Selection, error) {
-	return s.selectTx(ctx, tx, p, item, source)
+	selected, err := s.selectTx(ctx, tx, p, item, source)
+	if err != nil {
+		return selected, err
+	}
+	// The existing original-download opener is the isolated local/mounted storage
+	// transport. Direct remote Reading leases and online MOBI conversions are
+	// not that transfer authority; only the descriptor formats are offered.
+	if (selected.Format != "epub" && selected.Format != "pdf" && selected.Format != "cbz") || s.Storage.IsRemote(selected.path) {
+		return selected, ErrUnavailable
+	}
+	return selected, nil
 }
 
 // OfflineDocument validates every resource using the existing reader validators.
@@ -85,8 +95,15 @@ func (s *Service) SelectOfflineTx(ctx context.Context, tx *sql.Tx, p identity.Pr
 // members. Work is cancellable and bounded by existing per-member/source limits
 // plus a cumulative expansion ceiling; only one member is materialized at a time.
 func (s *Service) OfflineDocument(ctx context.Context, p identity.Principal, item, source string) (OfflineDocument, error) {
+	selected, err := s.Resolve(ctx, p, item, source)
+	if err != nil {
+		return OfflineDocument{}, err
+	}
+	if (selected.Format != "epub" && selected.Format != "pdf" && selected.Format != "cbz") || s.Storage.IsRemote(selected.path) {
+		return OfflineDocument{}, ErrUnavailable
+	}
 	out := OfflineDocument{Resources: []OfflineResource{}, Spine: []string{}, PageNames: []string{}, Contents: []OfflineContents{}}
-	f, err := s.Open(ctx, p, item, source, "")
+	f, err := s.open(ctx, p, item, selected.SourceID, selected.Revision, true)
 	if err != nil {
 		return out, err
 	}

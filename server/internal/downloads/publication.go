@@ -72,11 +72,13 @@ func (s *Service) publicationForRequest(ctx context.Context, p identity.Principa
 	if err != nil {
 		return nil, err
 	}
+	// Keep the escaped descriptor plus existing bundle metadata within the
+	// unchanged page response budget. Larger descriptors fail before admission.
 	raw, err := json.Marshal(doc)
 	if err == nil {
 		_, err = reading.ParseOfflineDocument(string(raw))
 	}
-	if err != nil || len(raw) > 2<<20 {
+	if err != nil || len(raw) > 160<<10 {
 		return nil, ErrInput
 	}
 	return &doc, nil
@@ -210,4 +212,23 @@ func publicationTx(ctx context.Context, tx *sql.Tx, id string) (*storedPublicati
 		return nil, err
 	}
 	return &storedPublication{&doc, raw}, nil
+}
+
+func (s *Service) VerifyPublicationObservation(ctx context.Context, current ReceiptClaims, envelope Receipt, started, observed int64) error {
+	keys, err := s.ReceiptKeys(ctx)
+	if err != nil {
+		return err
+	}
+	original, err := VerifyReceipt(keys, envelope, time.UnixMilli(observed))
+	if err != nil {
+		return err
+	}
+	if original.ReceiptID != current.ReceiptID || original.PreparationID != current.PreparationID || original.ItemID != current.ItemID || original.Viewer != current.Viewer || original.Artifact != current.Artifact || original.Publication == nil || current.Publication == nil || *original.Publication != *current.Publication {
+		return identity.ErrForbidden
+	}
+	issued, err := time.Parse(time.RFC3339Nano, original.IssuedAt)
+	if err != nil || started < issued.UnixMilli() {
+		return ErrInput
+	}
+	return nil
 }
