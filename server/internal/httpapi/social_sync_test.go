@@ -334,3 +334,39 @@ func TestSocialBoundsGroupCreationAndFiltersNames(t *testing.T) {
 		t.Fatal("live group cap did not apply", capped.Code, capped.Body.String())
 	}
 }
+
+// A closed governance window is forbidden regardless of target readiness.
+func TestSocialHostClaimGovernancePrecedesReadiness(t *testing.T) {
+	for _, mode := range []string{"host-only", "anyone"} {
+		for _, elapsed := range []time.Duration{0, 31 * time.Second} {
+			for _, readiness := range []string{"ready", "buffering"} {
+				t.Run(mode+"/"+elapsed.String()+"/"+readiness, func(t *testing.T) {
+					f := socialHTTP(t)
+					created := f.group(mode)
+					id := created.Group.ID
+					joined := f.join(f.member, f.invite(id))
+					now := time.Now().Add(elapsed)
+					store, host := f.socialStore(&now)
+					guest, err := f.d.Identity.Authenticate(f.member)
+					if err != nil {
+						t.Fatal(err)
+					}
+					ctx := context.Background()
+					if _, err = store.ReportReadiness(ctx, guest, id, social.ReadinessRequest{ProtocolVersion: social.Protocol, PlaybackRevision: created.Group.PlaybackRevision, Readiness: readiness, PositionUS: "0"}); err != nil {
+						t.Fatal(err)
+					}
+					g, err := store.ReadGroup(ctx, host, id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, target := range []string{joined.Group.MemberID, created.Group.MemberID} {
+						_, err = store.TransferHost(ctx, guest, "", id, social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: target, ExpectedRevision: g.Group.GovernanceRevision})
+						if failure, ok := err.(*social.Fault); !ok || failure.Status != 403 || failure.Code != "host_required" {
+							t.Fatalf("target %s: expected403 host_required, got %v", target, err)
+						}
+					}
+				})
+			}
+		}
+	}
+}
