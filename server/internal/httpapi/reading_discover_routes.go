@@ -12,10 +12,11 @@ import (
 // ReadingDiscoverRow is one server-composed Discover row. The key names the row
 // the client asked for; items use the same public projection as List/Continue.
 type ReadingDiscoverRow struct {
-	Key        string                  `json:"key"`
-	Items      []ReadingItem           `json:"items"`
-	Series     []ReadingDiscoverSeries `json:"series,omitempty"`
-	ShortReads []ReadingShortRead      `json:"shortReads,omitempty"`
+	Key        string                   `json:"key"`
+	Items      []ReadingItem            `json:"items"`
+	Series     []ReadingDiscoverSeries  `json:"series,omitempty"`
+	NewIssues  []ReadingPeriodicalIssue `json:"newIssues,omitempty"`
+	ShortReads []ReadingShortRead       `json:"shortReads,omitempty"`
 }
 
 // Seconds round up for display only; membership uses the exact complete count.
@@ -101,7 +102,16 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	discover, err := d.readingService().Discover(r.Context(), p, r.URL.Query().Get("libraryId"), reading.DiscoverLimits{Recent: limit, Series: seriesLimit, ShortReads: shortReadsLimit})
+	newIssuesLimit := 0
+	if raw := r.URL.Query().Get("newIssuesLimit"); r.URL.Query().Has("newIssuesLimit") {
+		var err error
+		newIssuesLimit, err = strconv.Atoi(raw)
+		if err != nil || newIssuesLimit < 1 || newIssuesLimit > 20 || r.URL.Query().Get("libraryId") == "" {
+			readingFailure(w, reading.ErrInvalid)
+			return
+		}
+	}
+	discover, err := d.readingService().Discover(r.Context(), p, r.URL.Query().Get("libraryId"), reading.DiscoverLimits{Recent: limit, Series: seriesLimit, ShortReads: shortReadsLimit, NewIssues: newIssuesLimit})
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -129,6 +139,13 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Rows = append(out.Rows, ReadingDiscoverRow{Key: "short-reads", Items: []ReadingItem{}, ShortReads: short})
 	}
+	if len(discover.NewIssues) > 0 {
+		issues := make([]ReadingPeriodicalIssue, 0, len(discover.NewIssues))
+		for _, item := range discover.NewIssues {
+			issues = append(issues, ReadingPeriodicalIssue{Item: readingItemProjection(item), IssueDate: ReadingIssueDate(item.IssueDate)})
+		}
+		out.Rows = append(out.Rows, ReadingDiscoverRow{Key: "new-issues", Items: []ReadingItem{}, NewIssues: issues})
+	}
 	write(w, 200, out)
 }
 
@@ -136,6 +153,6 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 // operation; the vocabulary is a rows-only payload of the existing item shape.
 func registerReadingDiscoverHTTPContract(registry *apikit.Registry) error {
 	errors := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_required", "revision_mismatch", "request_in_progress", "body_too_large", "internal"}
-	m := apikit.Metadata{ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit"}}
+	m := apikit.Metadata{ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit"}}
 	return apikit.RegisterHTTP[struct{}, ReadingDiscoverResponse](registry, m)
 }
