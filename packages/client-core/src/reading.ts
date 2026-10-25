@@ -321,7 +321,11 @@ export class ReadingClient {
     }
     await discard(response); throw new ReadingError(code, response.status);
   }
-  canMarkRead(itemId: string): boolean { return readingMarkPath('GET', itemId) !== undefined && readingMarkPath('PUT', itemId) !== undefined; }
+  canMarkRead(itemId: string): boolean {
+    const viewer = this.viewer;
+    return !!viewer.authority && !!viewer.accountId && !!viewer.profileId && ['owner', 'admin', 'member'].includes(viewer.role)
+      && readingMarkPath('GET', itemId) !== undefined && readingMarkPath('PUT', itemId) !== undefined;
+  }
   async readMark(itemId: string, signal?: AbortSignal) {
     const path = readingMarkPath('GET', itemId);
     if (!path) fail('unsupported');

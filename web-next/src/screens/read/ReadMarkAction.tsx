@@ -4,7 +4,7 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 
 type Opening = {client: ReadingClient; itemId: string; controller: AbortController; live: boolean; busy: boolean; command?: ReadingReadMarkCommand; needsRead: boolean};
-type View = Readonly<{opening?: Opening; mark?: ReadingReadMark; busy?: boolean; failed?: boolean}>;
+type View = Readonly<{opening?: Opening; mark?: ReadingReadMark; busy?: boolean; failed?: boolean; unavailable?: boolean}>;
 const definite = new Set(['personal_state_conflict', 'personal_needs_resolution', 'personal_needs_review', 'operation_expired', 'idempotency_key_reused', 'invalid_request', 'not_found', 'not_permitted', 'unauthorized']);
 
 /** An explicit profile mark. Saved location and publication progress stay with
@@ -21,7 +21,11 @@ export function ReadMarkAction({client, itemId, isCurrent, reportError}: {client
       const mark = await held.client.readMark(held.itemId, held.controller.signal);
       if (!current(held)) return;
       held.needsRead = false; setView({opening: held, mark});
-    } catch (error) {if (current(held)) {setView(previous => ({...previous, opening: held, busy: false, failed: true})); inputs.current.reportError(error);}}
+    } catch (error) {if (current(held)) {
+      if (error instanceof ReadingError && (error.status === 403 || error.status === 404)) setView({opening: held, unavailable: true});
+      else setView(previous => ({...previous, opening: held, busy: false, failed: true}));
+      inputs.current.reportError(error);
+    }}
     finally {held.busy = false;}
   }, [current]);
   useLayoutEffect(() => {
@@ -31,7 +35,7 @@ export function ReadMarkAction({client, itemId, isCurrent, reportError}: {client
     return () => {held.live = false; held.controller.abort(); if (opening.current === held) opening.current = undefined;};
   }, [client, itemId, load]);
   const held = view.opening, mark = view.mark;
-  if (!held || !current(held) || !client.canMarkRead(itemId) || !mark && !view.failed) return null;
+  if (!held || !current(held) || !client.canMarkRead(itemId) || view.unavailable || !mark && !view.failed) return null;
   const press = async () => {
     if (!current(held) || held.busy) return;
     if (held.needsRead || !mark) {await load(held); return;}
