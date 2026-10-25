@@ -220,12 +220,12 @@
   // media channel. Only these exact engine-created objects may bypass sender
   // gates; an external JSON request cannot reproduce their private identity.
   var localRequests = new WeakSet(), localRequestId = 0;
-  var cafOccurrence = null;
+  var cafOccurrence = null,platformOccurrence=null;
   async function loadMedia(request,lease) {
     requireLease(lease);
     // Bind the single CAF deck to the exact accepted server presentation.
     var owner=playback, occurrence={id:owner&&owner.id,generation:owner&&owner.generation,contentId:request.media.contentId,finished:false};
-    cafOccurrence=null;localRequests.add(request);
+    cafOccurrence=null;platformOccurrence=occurrence;localRequests.add(request);
     await manager.load(request);
     requireLease(lease);
     if(playback&&owner&&playback.id===owner.id&&playback.generation===owner.generation)cafOccurrence=occurrence;
@@ -701,7 +701,7 @@
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     if (!playback) return;
     var id = playback.id, at = Math.round(position() * 1000);
-    playback = null; meta = null;cafOccurrence=null;
+    playback = null; meta = null;cafOccurrence=null;platformOccurrence=null;
     if (manager) mediaCommand('STOP');
     mediaAddresses.clear();
     showIdle();
@@ -1008,6 +1008,51 @@
     return Object.assign(status, clockFacts());
   }
 
+  // Root51: this is deliberately shared Cast/Google Home presentation. It
+  // has no recipient authority. Only a fixed active-item display allow-list
+  // leaves CAF; private Portico state stays on the validated custom channel.
+  function displayImage(value){return typeof value==='string'&&value.length<=4194500&&/^data:image\/(?:png|jpeg|webp|gif|avif|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(value)?value:'';}
+  function platformMetadata(value){
+    if(!value||typeof value!=='object')return;
+    var out={};
+    if([0,1,2,3,4].indexOf(value.metadataType)>=0)out.metadataType=value.metadataType;
+    ['title','subtitle','seriesTitle','artist','albumName','albumArtist'].forEach(function(key){var text=cleanText(value[key],200);if(text)out[key]=text;});
+    ['season','episode','trackNumber','discNumber'].forEach(function(key){if(Number.isSafeInteger(value[key])&&value[key]>=0)out[key]=value[key];});
+    if(Array.isArray(value.images)){var images=value.images.slice(0,1).map(function(image){var url=displayImage(image&&image.url);return url?{url:url}:null;}).filter(Boolean);if(images.length)out.images=images;}
+    return out;
+  }
+  function platformTracks(value){return !Array.isArray(value)?[]:value.slice(0,32).filter(function(track){return track&&Number.isSafeInteger(track.trackId)&&track.trackId>=0&&['TEXT','AUDIO','VIDEO'].indexOf(track.type)>=0;}).map(function(track){
+    var out={trackId:track.trackId,type:track.type},name=cleanText(track.name,100);
+    if(name&&!/^(?:[a-z][a-z0-9+.-]*:|[\\/]|[a-z]:[\\/])/i.test(name))out.name=name;
+    if(typeof track.language==='string'&&/^[A-Za-z0-9-]{1,35}$/.test(track.language))out.language=track.language;
+    if(['SUBTITLES','CAPTIONS','DESCRIPTIONS','CHAPTERS','METADATA'].indexOf(track.subtype)>=0)out.subtype=track.subtype;
+    return out;
+  });}
+  function platformStatus(status){
+    if(!status||typeof status!=='object')return null;
+    var out={type:'MEDIA_STATUS'};
+    if(Number.isSafeInteger(status.mediaSessionId)&&status.mediaSessionId>=0)out.mediaSessionId=status.mediaSessionId;
+    if(Number.isSafeInteger(status.requestId)&&status.requestId>=0)out.requestId=status.requestId;
+    if(!playback){out.playerState='IDLE';return out;}
+    var occurrence=platformOccurrence,media=status.media||(manager&&manager.getMediaInformation());
+    if(!occurrence||occurrence.id!==playback.id||occurrence.generation!==playback.generation||!media||media.contentId!==occurrence.contentId||!/^portico-[a-f0-9]{32}$/.test(media.contentId))return null;
+    var safe={contentId:media.contentId};
+    if(typeof media.contentType==='string'&&/^(?:audio|video|application)\/[A-Za-z0-9.+-]{1,80}$/.test(media.contentType))safe.contentType=media.contentType;
+    if(['BUFFERED','LIVE','NONE'].indexOf(media.streamType)>=0)safe.streamType=media.streamType;
+    if(Number.isFinite(media.duration)&&media.duration>=0)safe.duration=media.duration;
+    var metadata=platformMetadata(media.metadata);if(metadata)safe.metadata=metadata;
+    var tracks=platformTracks(media.tracks);if(tracks.length)safe.tracks=tracks;
+    out.media=safe;
+    var state=manager&&manager.getPlayerState(),time=manager&&manager.getCurrentTimeSec();
+    if(['IDLE','PLAYING','PAUSED','BUFFERING'].indexOf(state)>=0)out.playerState=state;
+    if(Number.isFinite(time)&&time>=0)out.currentTime=time;
+    if(Number.isFinite(status.playbackRate)&&status.playbackRate>=0&&status.playbackRate<=4)out.playbackRate=status.playbackRate;
+    if(Number.isSafeInteger(status.supportedMediaCommands)&&status.supportedMediaCommands>=0)out.supportedMediaCommands=status.supportedMediaCommands;
+    if(['CANCELLED','INTERRUPTED','FINISHED','ERROR'].indexOf(status.idleReason)>=0)out.idleReason=status.idleReason;
+    if(Array.isArray(status.activeTrackIds))out.activeTrackIds=status.activeTrackIds.slice(0,32).filter(function(id){return tracks.some(function(track){return track.trackId===id;});});
+    return out;
+  }
+
   // --- Cast framework wiring ------------------------------------------------
 
   function attachCastFramework() {
@@ -1017,6 +1062,7 @@
     // CAF's documented resolver keeps grant-bearing URLs out of its public media/queue status.
     manager.setMediaUrlResolver(mediaAddress);
     var types=cast.framework.messages.MessageType;
+    if(types.MEDIA_STATUS)manager.setMessageInterceptor(types.MEDIA_STATUS,platformStatus);
     // Media-channel commands from a sender that isn't the controller: pause and stop are allowed
     // (anyone in the room can do that with the remote); load, play and seek are not.
     function fromOther(request) { return !request || !isController(request.senderId); }
@@ -1029,7 +1075,7 @@
       if (!custom.itemId || fromOther(request)) { return null; }
       var lease;try{lease=await controllerAuthority(request.senderId);}catch(e){return null;}
       var identity = displayMeta(custom) || (request.media.metadata ? displayMeta({title: request.media.metadata.title, subtitle: request.media.metadata.subtitle || request.media.metadata.seriesTitle}) : null);
-      return commandQueue(lease,function(){recoveries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity,undefined,undefined,lease);}).then(function(load){requireLease(lease);showPlaying();scheduleReport(0);return load;}).catch(function(e){if(leaseCurrent(lease))showError(e&&(e.code||e.message));return null;});
+      return commandQueue(lease,function(){recoveries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity,undefined,undefined,lease);}).then(function(load){requireLease(lease);platformOccurrence={id:playback.id,generation:playback.generation,contentId:load.media.contentId};showPlaying();scheduleReport(0);return load;}).catch(function(e){if(leaseCurrent(lease))showError(e&&(e.code||e.message));return null;});
     });
     // Play and pause are the player's own; the timeline reports them. A seek the server must
     // produce again is sent to it and the new presentation loaded here instead.
