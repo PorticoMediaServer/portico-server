@@ -1,3 +1,5 @@
+import {ReadingGroupCard} from './ReadingGroupCard';
+import type {SavedReadingGroupCard} from '@core/reading-saved-group.ts';
 import type {SavedCatalogueSelection} from './catalogue-selection';
 import {CatalogueSelectionEntry} from '../browse/document-selection';
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
@@ -44,6 +46,7 @@ export type SavedSelection = Readonly<{
 }>;
 export type SavedEffects = SavedDownloadEffects & Readonly<{
   openEntry(entry: ContentEntry): void;
+  openReadingGroup?: (card: Extract<SavedReadingGroupCard, {hidden: false}>) => void;
   playEntry(entry: ContentEntry, signal: AbortSignal): Promise<void>;
   openMore?: (service: SavedService, sectionId: string, entry: SavedEntry, anchor: HTMLElement) => void;
   selectRoute(route: SavedScreenRoute): void;
@@ -228,6 +231,7 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
       renderPlaceholder={() => <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
       renderItem={(entry, context) => {
         const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
+        if (entry.kind === 'reading_group') return <ReadingGroupCard card={entry} service={service} runtime={bindings.runtime} operations={bindings.operations} artwork={artwork} width={presentation.cardWidth} open={effects.openReadingGroup} reportError={effects.reportError}/>;
         if (entry.kind === 'playlist') {
           const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
           return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
@@ -249,7 +253,7 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
   </section>;
 }
 function mediaEntry(entry: SavedEntry): ContentEntry | undefined {
-  return entry.kind === 'playlist' ? undefined : entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
+  return entry.kind === 'playlist' || entry.kind === 'reading_group' ? undefined : entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
 }
 
 function PersonalResources(bindings: SavedViewBindings & {onCreate: () => void}) {

@@ -38,6 +38,11 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
   useEffect(() => {selection.start();return () => selection.dispose();}, [selection]);
   const effects: SavedEffects = useMemo(() => ({
     openEntry: context.effects.openEntry,
+    openReadingGroup(card) {
+      if (!context.isCurrent() || !runtime.operations.current || selectedRoute.current.view !== 'watchlist') return;
+      void router.navigate({to: '/library/$libraryId', params: {libraryId: card.libraryId}, search: {view: 'series', entityId: card.readingGroup.seriesId,
+        ...(card.navigation.pivot ? {pivot: card.navigation.pivot} : {})}}).catch(context.effects.reportError);
+    },
     async playEntry(entry: ContentEntry, signal: AbortSignal) {
       if (!entry.libraryId || !entry.playback || entry.available === false || entry.missing) throw new DOMException('Saved playback changed', 'AbortError');
       await context.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId,
