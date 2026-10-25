@@ -5,7 +5,7 @@ import {Button} from '../controls';
 import styles from './playback-failure.module.css';
 const t = defaultI18n.t;
 /** Safe existing failure vocabulary; no raw engine diagnostics or transport ownership. */
-export function PlaybackFailure({error, onRetry, onVersions, onReport, onClose, onError, closeLabel}: Readonly<{
+export function PlaybackFailure({error, onRetry, onVersions, onReport, onClose, onError, closeLabel, children}: Readonly<{
   error?: string; onRetry?: () => Promise<void>; onVersions?: () => void; onReport?: () => void; onClose: () => void; onError: (error: unknown) => void;
   /** The drawn owner variant names the setting this card closes to; absent keeps "Close". */ closeLabel?: string;
   /** The drawn state's own body content, e.g. the account's other playbacks; no layout changes. */ children?: ReactNode;
