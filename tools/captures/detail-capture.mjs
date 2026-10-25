@@ -67,6 +67,29 @@ try {
     await page.setViewportSize({width: 2880, height: 900});
     await page.setContent(`<body style="margin:0;display:flex;background:#071018"><img width="1440" src="data:image/jpeg;base64,${frame.toString('base64')}"><img width="1440" src="data:image/jpeg;base64,${build.toString('base64')}"></body>`);
     await page.screenshot({path: `${output}/${prefix}-pair.jpg`, type: 'jpeg', quality: 90, fullPage: true});
+    if (state === '6') {
+      // Exercise the actual anchored kit menu and Show wiring after the pair.
+      // The specimen retains canonical asc; server/client tests cover desc pages.
+      await page.setViewportSize({width: 1440, height: 900});
+      await page.goto(`${origin}/src/dev/entries/show.html?frame=6`);
+      await page.waitForSelector('[data-show-frame6-ready]');
+      await page.keyboard.press('Escape');
+      const trigger = page.getByRole('button', {name: 'Episode order', exact: true});
+      await trigger.click();
+      const choices = page.getByRole('menuitemradio');
+      if (await choices.count() !== 2 || (await choices.allTextContents()).join('|') !== 'Episode order|Reverse episode order') throw new Error('Episode order menu differs from Root §13');
+      if (await choices.nth(0).getAttribute('aria-checked') !== 'true' || await choices.nth(1).getAttribute('aria-checked') !== 'false') throw new Error('Default episode order is not checked');
+      await choices.nth(0).focus();
+      await page.keyboard.press('ArrowDown');
+      if (!await choices.nth(1).evaluate(row => row === document.activeElement)) throw new Error('Episode order keyboard navigation failed');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('[role="menuitemradio"]'));
+      if (!await trigger.evaluate(button => button === document.activeElement)) throw new Error('Episode order focus did not return');
+      await trigger.click();
+      await page.getByRole('menuitemradio', {name: 'Episode order', exact: true}).click();
+      await page.waitForFunction(() => !document.querySelector('[role="menuitemradio"]'));
+      console.log('Episode order exact rows, checked default, keyboard, Escape, focus return and select-close passed');
+    }
     console.log(`Detail frame ${state} pair captured`);
   }
 } finally {
