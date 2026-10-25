@@ -1,0 +1,9 @@
+.health { display: flex; flex-direction: column; gap: 12px; font-size: var(--type-row-subtitle-size); line-height: var(--type-row-subtitle-line); }
+.health p { margin: 0; }
+.healthy, .warning { padding: 12px 14px; border-radius: 10px; color: var(--color-text-secondary); }
+.healthy { background: color-mix(in srgb, var(--color-healthy) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-healthy) 22%, transparent); }
+.warning { background: color-mix(in srgb, var(--color-amber) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-amber) 22%, transparent); }
+.facts { margin: 0; }
+.facts > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--color-line-soft); }
+.facts dt { color: var(--color-text-tertiary); }
+.facts dd { margin: 0; text-align: right; color: var(--color-text); font-weight: var(--type-body-strong-weight); }
