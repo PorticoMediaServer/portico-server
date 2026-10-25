@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import {createWindowedCollection, type WindowedCollection, type ReadingPreferences} from '@portico/client-core';
 import {WindowedGrid} from '../../kit/layout/WindowedGrid';
@@ -45,20 +45,20 @@ export function FixedPageStrip({controller, authority, reportError, format}: Fix
   </div>;
 }
 
-function PageThumb({controller, authority, reportError, format, index, count, current, pageLabel, large = false, onSelect}: Fixed & Readonly<{
-  index: number; count: number; current: boolean; pageLabel: string; large?: boolean; onSelect: () => void;
+function PageThumb({controller, authority, reportError, format, index, count, current, pageLabel, large = false, signal, onSelect}: Fixed & Readonly<{
+  index: number; count: number; current: boolean; pageLabel: string; large?: boolean; signal?: AbortSignal; onSelect: () => void;
 }>) {
   const [preview, setPreview] = useState<ReadPagePreview>();
   useEffect(() => {
     const life = new AbortController();
     let loaded: ReadPagePreview | undefined, alive = true;
-    void loadReadPagePreview({controller, index, width: large ? 180 : 96, authority, signal: life.signal}).then(value => {
-      if (!alive) {value.dispose(); return;}
+    void loadReadPagePreview({controller, index, width: large ? 180 : 96, authority, signal: signal ? AbortSignal.any([life.signal, signal]) : life.signal}).then(value => {
+      if (!alive || signal?.aborted) {value.dispose(); return;}
       loaded = value; setPreview(value);
-    }).catch(error => {if (alive && authority.isCurrent() && !life.signal.aborted) reportError(readerErrorCode(error));});
+    }).catch(error => {if (alive && authority.isCurrent() && !life.signal.aborted && !signal?.aborted) reportError(readerErrorCode(error));});
     return () => {alive = false; life.abort(); loaded?.dispose();};
     // A preview belongs to one page of one authorized document.
-  }, [controller, index, authority, reportError, large]);
+  }, [controller, index, authority, reportError, large, signal]);
   return <button type="button" className={large ? `${styles.page} ${styles.large}` : styles.page} aria-current={current ? 'page' : undefined}
     aria-label={count > 0 ? t('next.reader.pageOf', {page: defaultI18n.number(index + 1), count: defaultI18n.number(count)}) : pageLabel}
     data-current={current || undefined} onClick={onSelect}>
@@ -80,7 +80,14 @@ function FixedPagesWindow({controller, authority, reportError, format, count, cu
   count: number; current: number; sourceId: string; sourceRevision: string; onNavigate?: () => void;
 }>) {
   const viewport = useRef<HTMLDivElement>(null);
-  const [pages, setPages] = useState<WindowedCollection<number>>();
+  const [pageWindow, setPageWindow] = useState<Readonly<{collection: WindowedCollection<number>; life: AbortController}>>();
+  const [life, setLife] = useState<AbortController>();
+  const lifeRef = useRef<AbortController | undefined>(undefined);
+  useLayoutEffect(() => {
+    const captured = new AbortController(); lifeRef.current = captured; setLife(captured);
+    return () => {captured.abort(); if (lifeRef.current === captured) lifeRef.current = undefined;};
+  }, [controller, authority, sourceId, sourceRevision, count]);
+  const pages = pageWindow?.life === life ? pageWindow.collection : undefined;
   const [height, setHeight] = useState(0);
   const currentSource = () => {
     const snapshot = controller.getSnapshot();
@@ -88,27 +95,28 @@ function FixedPagesWindow({controller, authority, reportError, format, count, cu
       && snapshot.metadata?.pageCount === count;
   };
   useEffect(() => {
+    if (!life || lifeRef.current !== life || life.signal.aborted) return;
     const collection = createWindowedCollection<number>({pageSize: 24, maxResidentPages: 4, maxConcurrent: 1, prefetchPages: 0,
     keyOf: index => String(index), async fetchPage(start, size, signal) {
       const snapshot = controller.getSnapshot();
-      if (signal.aborted || !authority.isCurrent() || snapshot.status !== 'ready' || snapshot.sourceId !== sourceId
+      if (signal.aborted || life.signal.aborted || lifeRef.current !== life || !authority.isCurrent() || snapshot.status !== 'ready' || snapshot.sourceId !== sourceId
         || snapshot.sourceRevision !== sourceRevision || snapshot.metadata?.pageCount !== count) throw new Error('source_changed');
       return {items: Array.from({length: Math.max(0, Math.min(size, count - start))}, (_, offset) => start + offset), total: count};
     },
     });
-    setPages(collection);
+    setPageWindow({collection, life});
     return () => collection.dispose();
-  }, [controller, authority, sourceId, sourceRevision, count]);
+  }, [life, controller, authority, sourceId, sourceRevision, count]);
   useEffect(() => {
     const element = viewport.current; if (!element) return;
     const observer = new ResizeObserver(() => setHeight(element.clientHeight)); observer.observe(element); setHeight(element.clientHeight);
     return () => observer.disconnect();
   }, []);
   const navigate = (index: number) => {
-    if (!currentSource() || !Number.isSafeInteger(index) || index < 0 || index >= count) return;
+    if (!life || lifeRef.current !== life || life.signal.aborted || !currentSource() || !Number.isSafeInteger(index) || index < 0 || index >= count) return;
     const target: ReaderLocation = {format: format === 'pdf' ? 'pdf' : 'cbz', page: index, progression: count === 1 ? 0 : index / (count - 1)};
-    void controller.navigate({kind: 'location', location: target}).then(() => {if (currentSource()) onNavigate?.();}).catch(error => {
-      if (currentSource()) reportError(readerErrorCode(error));
+    void controller.navigate({kind: 'location', location: target}, life.signal).then(() => {if (lifeRef.current === life && !life.signal.aborted && currentSource()) onNavigate?.();}).catch(error => {
+      if (lifeRef.current === life && !life.signal.aborted && currentSource()) reportError(readerErrorCode(error));
     });
   };
   return <div className={styles.panel}>
@@ -117,7 +125,7 @@ function FixedPagesWindow({controller, authority, reportError, format, count, cu
       label={t('next.reader.pagesStrip')} height={height} cardWidth={104} rowHeight={156} gap={12} rowGap={12} overscanRows={1}
       renderPlaceholder={() => <span className={styles.blank} aria-hidden="true"/>}
       renderItem={index => <PageThumb controller={controller} authority={authority} reportError={reportError} format={format} index={index} count={count}
-        current={index === current} large pageLabel={t('next.reader.pageLabel', {page: defaultI18n.number(index + 1)})} onSelect={() => navigate(index)}/>}/>}</div>
+        current={index === current} large signal={life?.signal} pageLabel={t('next.reader.pageLabel', {page: defaultI18n.number(index + 1)})} onSelect={() => navigate(index)}/>}/>}</div>
   </div>;
 }
 
