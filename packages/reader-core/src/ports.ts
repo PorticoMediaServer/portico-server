@@ -46,6 +46,8 @@ export type ReaderMetadata = Readonly<{
 }>;
 export type ReaderSelection = Readonly<{
   text: string; location: ReaderLocation; rects: readonly ReaderRect[];
+  /** Real page-relative unit rectangles; viewport rectangles are never persisted as anchors. */
+  pageRects?: readonly ReaderRect[];
 }>;
 export type ReaderSearchResult = Readonly<{
   id: string; excerpt: string; location: ReaderLocation; chapter?: string;
