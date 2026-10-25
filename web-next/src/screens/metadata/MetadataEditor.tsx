@@ -406,8 +406,8 @@ function People({data, target, busy, onCommit, onLock}: {
   const rows = draft ?? credits;
   const editable = (row: RepairData['snapshot']['relationships'][number]) => data.snapshot.canEditProviderCredits === true || row.provider === 'manual' && (!row.recordId || !row.locked);
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
-  const valid = rows.length <= 100 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
-    (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? ''));
+  const valid = rows.length <= 512 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
+    (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? '')) && new TextEncoder().encode(JSON.stringify(rows)).length <= (1 << 20) - 1024;
   const change = (index: number, patch: Partial<Pick<RepairData['snapshot']['relationships'][number], 'label' | 'role' | 'department'>>) => {
     if (busy || !editable(rows[index])) return;
     setDraft(rows.map((row, at) => at === index ? {...row, ...patch} : row));
@@ -417,7 +417,7 @@ function People({data, target, busy, onCommit, onLock}: {
     setDraft(rows.filter((_, at) => at !== index));
   };
   const add = () => {
-    if (busy || target.kind !== 'item' || rows.length >= 100) return;
+    if (busy || target.kind !== 'item' || rows.length >= 512) return;
     setDraft([...rows, {kind: 'credit', provider: 'manual', targetKind: 'scoped_credit', targetId: '', label: '', role: '', department: '',
       ordinal: rows.reduce((top, row) => Math.max(top, row.ordinal), 0) + 1, source: 'manual', locked: true}]);
   };
@@ -429,7 +429,7 @@ function People({data, target, busy, onCommit, onLock}: {
     <div className={styles.creditHeader}><h3>{t('web.metadata.tabPeople')}</h3><small>{t('web.metadata.creditCount', {count: rows.length})}</small>
       <button type="button" className={styles.lock} disabled={busy || draft !== null} aria-pressed={data.snapshot.relationshipLocks.credit === true}
         onClick={() => {if (currentDraft()) onLock(data.snapshot.relationshipLocks.credit !== true);}}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
-      {target.kind === 'item' ? <Button size="small" disabled={busy || rows.length >= 100} onClick={add}>{t('web.metadata.addPerson')}</Button> : null}
+      {target.kind === 'item' ? <Button size="small" disabled={busy || rows.length >= 512} onClick={add}>{t('web.metadata.addPerson')}</Button> : null}
     </div>
     {rows.map((row, index) => <div key={`${row.recordId ?? 'new'}:${row.targetId}:${index}`} className={styles.creditRow} data-new={!row.recordId || undefined}>
       <TextField label={t('web.metadata.field.name')} value={row.label} disabled={busy || !editable(row)} maxLength={300} onChange={event => change(index, {label: event.currentTarget.value})}/>
