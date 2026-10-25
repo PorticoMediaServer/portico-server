@@ -61,8 +61,10 @@ export function signalGain(db:number):string{
 function codecName(codec:string):string{
  return ({flac:'FLAC',alac:'ALAC',aac:'AAC',mp3:'MP3',opus:'Opus',vorbis:'Vorbis',truehd:'Dolby TrueHD',eac3:'Dolby Digital Plus',ac3:'Dolby Digital',dts:'DTS',pcm:'PCM',wavpack:'WavPack'} as Record<string,string>)[codec]??codec.toUpperCase();
 }
+/** An explicit measured layout, or the one-channel/two-channel names a count does prove; a
+ * larger count alone cannot tell 5.1 from 6.0, 7.1 from 8.0, so it names no layout. */
 function layout(f:MusicFormatFacts):string|undefined{
- return f.layout??({1:'mono',2:'stereo',6:'5.1',8:'7.1'} as Record<number,string>)[f.channels??0];
+ return f.layout??({1:'mono',2:'stereo'} as Record<number,string>)[f.channels??0];
 }
 export function musicSignalSource(f:MusicFormatFacts,short=false):SignalText|string|undefined{
  if(f.atmos===true)return text(short?'player.signal.badge.atmos':'player.signal.source.atmos');

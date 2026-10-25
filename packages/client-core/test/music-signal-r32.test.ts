@@ -44,7 +44,9 @@ test('812: DSD conversion is folded once and notable badges are bounded',()=>{
  assert.equal(musicSignalAccessibleName(model,defaultI18n.t),'Signal path: DSD64 converted to PCM 176.4 kHz');
  assert.deepEqual(musicFormatBadges({...base.source,bitDepth:16,sampleRate:44100}),[]);
  assert.deepEqual(musicFormatBadges({codec:'aac',lossless:false,bitrateBps:256000}),[]);
- assert.equal(musicFormatBadges({...base.source,atmos:true,channels:8}).length,2);
+ assert.equal(musicFormatBadges({...base.source,atmos:true,channels:8,layout:'7.1'}).length,2);
+ assert.equal(musicFormatBadges({...base.source,atmos:true,channels:6}).length,1);
+ assert.equal(musicFormatBadges({...base.source,atmos:true,channels:8}).length,1);
  assert.equal(albumMusicFormatBadges([base.source,base.source,{dsdMultiple:128},{atmos:true}]).length,2);
 });
 test('812: Smooth transitions alone starts neither a renderer nor an overlap',()=>{
