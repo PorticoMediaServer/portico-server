@@ -126,3 +126,19 @@ test('same-server account-family replacement during recovered-profile read refus
   assert.equal(f.selections.length,0);assert.equal((await f.store.selected())?.connection.session.sessionFamilyId,'successor');
   flow.dispose();f.entry.dispose();
 });
+
+
+test('recovered profile captures the rotated bearer only within its original private admission', async () => {
+  const f=await fixture(false,true),flow=f.entry.profileRecovery('main');await flow.reset('2468');
+  const rotated={...f.initial,accessToken:'rotated-access',tokenGeneration:'2'};
+  await f.save(rotated);await settle();f.hint();await settle();
+  await flow.openProfile('2468',()=>true);
+  assert.equal(f.selections.length,1);assert.deepEqual(f.selections[0][1],rotated);
+  flow.dispose();f.entry.dispose();
+});
+test('recovery refuses a same-family replacement authorization horizon', async () => {
+  const f=await fixture(false,true),flow=f.entry.profileRecovery('main');await flow.reset('2468');
+  await f.save({...f.initial,authorizationHorizon:'2099-03-01T00:00:00Z',tokenGeneration:'2'});await settle();f.hint();await settle();
+  await flow.openProfile('2468',()=>true);assert.equal(f.selections.length,0);
+  flow.dispose();f.entry.dispose();
+});

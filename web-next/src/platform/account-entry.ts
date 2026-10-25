@@ -37,6 +37,12 @@ type ContinuationReturnController=OwnerReturnController|SetupReturnController;
 type AdmittedCompletion=Readonly<{api:HttpLocalApi;result:Extract<DirectSignIn,{kind:'signed-in'}>}>;
 export type OwnerResetDetails=Readonly<{username:string;twoStepEnabled:boolean}>;
 export type HostedDirectoryServer=Readonly<Pick<HostedServer,'id'|'name'|'publicKey'|'policyRevision'|'baseUrl'|'routes'>>;
+// Rotation may update the bearer while the original recovery view is open.
+// A different private admission, viewer or authorization horizon never joins it.
+const sameRecoveryAdmission=(original:LocalSession,current:LocalSession|undefined)=>!!current&&
+ current.sessionFamilyId===original.sessionFamilyId&&current.deviceId===original.deviceId&&current.installationId===original.installationId&&current.authorizationHorizon===original.authorizationHorizon&&
+ (['serverId','authority','accountId','profileId','role'] as const).every(key=>current.viewer[key]===original.viewer[key])&&
+ /^\d+$/.test(original.tokenGeneration)&&/^\d+$/.test(current.tokenGeneration)&&BigInt(current.tokenGeneration)>=BigInt(original.tokenGeneration);
 type OwnerResetCapture=Readonly<{source:HttpLocalApi;api:HttpLocalApi;grant:Extract<DirectSignIn,{kind:'signed-in'}>;pin:ServerPin;revision:number}>;
 
 export type AccountEntryState = Readonly<{
@@ -742,18 +748,18 @@ export class BrowserAccountEntry {
   const api=this.api,state=this.state,snapshot=state.snapshot,session=this.session,epoch=this.epoch;
   if(state.phase!=='profiles'||state.busy||!api||!snapshot||snapshot.twoStepSetupRequired||!state.server||!session)throw new Error('Choose a current server profile first.');
   return new BrowserProfileRecovery(api,snapshot,profileId,state.server.signIn,
-   ()=>viewCurrent()&&!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&this.session?.sessionFamilyId===session.sessionFamilyId,
+   ()=>viewCurrent()&&!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&sameRecoveryAdmission(session,this.session),
    grant=>this.temporary(api,grant),(pin,current)=>this.openRecoveredProfile(api,session,state,snapshot,profileId,epoch,pin,current));
  }
 
- private async openRecoveredProfile(api:HttpLocalApi,session:LocalSession,state:AccountEntryState,snapshot:DirectSnapshot,profileId:string,epoch:number,pin:string,viewCurrent:()=>boolean){
-  const original=snapshot.profiles.find(profile=>profile.id===profileId),serverPin=state.pin;
-  if(!original||!serverPin||this.disposed||this.epoch!==epoch||this.api!==api||this.session!==session||this.state.snapshot!==snapshot||this.state.phase!=='profiles'||this.state.busy||!viewCurrent())return;
+ private async openRecoveredProfile(api:HttpLocalApi,openingSession:LocalSession,state:AccountEntryState,snapshot:DirectSnapshot,profileId:string,epoch:number,pin:string,viewCurrent:()=>boolean){
+  const session=this.session,original=snapshot.profiles.find(profile=>profile.id===profileId),serverPin=state.pin;
+  if(!session||!sameRecoveryAdmission(openingSession,session)||!original||!serverPin||this.disposed||this.epoch!==epoch||this.api!==api||this.state.snapshot!==snapshot||this.state.phase!=='profiles'||this.state.busy||!viewCurrent())return;
   const op=this.operation();this.stopAuthorityWatch();this.publish({...state,busy:true,error:undefined});
   const current=()=>op.current()&&viewCurrent()&&this.api===api&&this.session===session&&this.state.phase==='profiles'&&this.state.snapshot===snapshot;
   const selected=(record:Awaited<ReturnType<AppSessionStore['read']>>)=>{
    const saved=record.servers.find(value=>value.connection.pin.serverId===record.selectedServerId);
-   return !!saved&&record.selectedServerId===snapshot.serverId&&sameServerPin(saved.connection.pin,serverPin)&&saved.connection.session.sessionFamilyId===session.sessionFamilyId&&(['authority','serverId','accountId','profileId','role'] as const).every(key=>saved.connection.session.viewer[key]===session.viewer[key]);
+   return !!saved&&record.selectedServerId===snapshot.serverId&&sameServerPin(saved.connection.pin,serverPin)&&sameRecoveryAdmission(session,saved.connection.session);
   };
   try{
    const before=await this.ports.store.read();if(!current())return;if(!selected(before))throw new CodedError('cancelled','The server selection changed.');
