@@ -45,6 +45,51 @@ async function startDesktop(){
   // validated scope; no server call, no player and no second downloads owner.
   const selected=await browserViewerStorage.read().catch(()=>null);lifetime.assertCurrent();
   const offlineScope=offlineDownloadScope(selected?.session,Date.now());
+  const deadline=selected?Date.parse(selected.session.authorizationHorizon||selected.session.expiresAt):NaN;
+  // The exact retained selection lease, not only its horizon: a different viewer, profile,
+  // server or family must never inherit this list.
+  const lease=selected&&offlineScope?JSON.stringify([offlineScope.authority,offlineScope.serverId,offlineScope.accountId,offlineScope.profileId,selected.session.sessionFamilyId,selected.session.tokenGeneration]):'';
+  if(offlineScope&&lease){
+    const port=await downloads.bindOfflineDownloads(offlineScope,lifetime.signal).catch(()=>undefined);
+    if(port){
+      lifetime.retain(()=>port.dispose());
+      const listeners=new Set<()=>void>();
+      let retired=false,timer:ReturnType<typeof setTimeout>|undefined;
+      let snapshot:{phase:'loading'|'ready'|'unavailable';items:readonly {id:string;itemId:string;revision:number;quality:string;bytes:number;title:string;artist:string;kind:string;onServer:boolean}[]}={phase:'loading',items:[]};
+      const unavailable=Object.freeze({phase:'unavailable' as const,items:Object.freeze([]) as readonly never[]});
+      const publish=(next:typeof snapshot)=>{if(retired)return;snapshot=next;for(const listener of [...listeners])listener();};
+      const same=(record:Awaited<ReturnType<typeof browserViewerStorage.read>>)=>{const next=record&&offlineDownloadScope(record.session,Date.now());return !!next&&JSON.stringify([next.authority,next.serverId,next.accountId,next.profileId,record!.session.sessionFamilyId,record!.session.tokenGeneration])===lease;};
+      const live=()=>!retired&&!lifetime.signal.aborted&&Number.isFinite(deadline)&&deadline>Date.now();
+      const retire=()=>{if(retired)return;retired=true;if(timer){clearTimeout(timer);timer=undefined;}snapshot=unavailable;for(const listener of [...listeners])listener();port.dispose();};
+      // One captured deadline clears the visible list even if nothing else renders or reads.
+      if(Number.isFinite(deadline))timer=setTimeout(retire,Math.max(0,deadline-Date.now()));
+      const leased=async()=>live()&&same(await browserViewerStorage.read().catch(()=>null));
+      const refresh=async()=>{
+        if(!live()){retire();return;}
+        const items=await port.list(new AbortController().signal).catch(()=>undefined);
+        if(items===undefined||!live()){retire();return;}
+        // Re-check the exact lease after the list returns, before anything is published.
+        if(!await leased()){retire();return;}
+        publish(items.length?{phase:'ready',items}:{phase:'unavailable',items:[]});
+      };
+      void refresh();
+      lifetime.retain(installOfflineDownloads({
+        subscribe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},
+        snapshot:()=>{if(!live()){void Promise.resolve().then(retire);return unavailable;}return snapshot;},
+        openFolder:async()=>{
+          if(!await leased()){retire();throw new DOMException('Aborted','AbortError');}
+          await port.openFolder(new AbortController().signal);
+          if(!await leased())retire();else void refresh();
+        },
+        retire,
+      }));
+    }
+  }
+  lifetime.retain(()=>downloads.dispose());
+  // The launch page offers this device's completed downloads from the persisted,
+  // validated scope; no server call, no player and no second downloads owner.
+  const selected=await browserViewerStorage.read().catch(()=>null);lifetime.assertCurrent();
+  const offlineScope=offlineDownloadScope(selected?.session,Date.now());
   const horizon=selected?Date.parse(selected.session.authorizationHorizon||selected.session.expiresAt):NaN;
   // The persisted authority, not the launch, decides for how long the list may be shown.
   const alive=()=>!lifetime.signal.aborted&&Number.isFinite(horizon)&&horizon>Date.now();

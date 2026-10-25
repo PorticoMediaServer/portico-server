@@ -51,7 +51,9 @@ export class LocalPlaybackRuntime {
   private active?: Active;
   private serial = 0;
   private run = 0;
-  private disposed = false;
+  private lifecycle: 'live' | 'retiring' | 'retired' = 'live';
+  private barrier?: Promise<void>;
+  private readonly orphaned = new Set<WebLocalQueueResource>();
   private retirement?: Promise<void>;
   private readonly listeners = new Set<() => void>();
   private readonly scope: LocalPlaybackScope;
@@ -84,50 +86,48 @@ export class LocalPlaybackRuntime {
     };
   }
 
-  get mounted(): boolean { return !!this.attachment && !this.disposed; }
+  get mounted(): boolean { return !!this.attachment && this.lifecycle === 'live'; }
 
-  /** Start one receipt-verified preparation. Any previous queue is retired first and
-   * its preparation release awaited, so two queues never share the slot. */
+  /** Start one receipt-verified preparation. Any in-flight retirement is awaited first and
+   * the resource this call brought is released if that barrier fails, so nothing leaks. */
   async play(resource: WebLocalQueueResource, admission: Readonly<{signal: AbortSignal; isCurrent(): boolean}>): Promise<void> {
-    const alive = () => this.alive();
-    if (!alive() || !this.mounted || !this.slot.canLoadLocal) { await this.releaseQuiet(resource); throw new Error('local_playback_unavailable'); }
-    if (admission.signal.aborted || !admission.isCurrent()) { await this.releaseQuiet(resource); throw new DOMException('Local selection retired', 'AbortError'); }
-    if (!sameLocalScope(resource.preparation.scope, this.scope)) { await this.releaseQuiet(resource); throw new Error('local_playback_unavailable'); }
-    const token = ++this.serial;
-    let preparation: WebLocalQueuePreparation;
+    let adopted = false;
     try {
-      preparation = captureLocalQueue(resource.preparation, this.scope);
+      if (this.lifecycle !== 'live' || !this.options.isCurrent() || !this.attachment || !this.slot.canLoadLocal) throw new Error('local_playback_unavailable');
+      if (admission.signal.aborted || !admission.isCurrent()) throw new DOMException('Local selection retired', 'AbortError');
+      if (!sameLocalScope(resource.preparation.scope, this.scope)) throw new Error('local_playback_unavailable');
+      const preparation = captureLocalQueue(resource.preparation, this.scope);
+      // The old queue's cleanup is a barrier, not a fire-and-forget: its failure fails this start.
+      await this.retireActive();
+      if (this.lifecycle !== 'live' || !this.options.isCurrent()) throw new Error('local_playback_unavailable');
+      const token = ++this.serial;
+      const owned = retryableOnce(() => resource.release());
+      let queue: WebLocalQueue;
+      try {
+        queue = new WebLocalQueue({
+          scope: this.scope, run: ++this.run, port: this.slot, preparation,
+          // The action's lifetime only admits the start; the runtime's own scope life keeps it.
+          isCurrent: () => this.lifecycle === 'live' && this.options.isCurrent(),
+          release: owned,
+          reportError: error => { if (this.lifecycle === 'live') this.options.reportError(error); },
+        });
+      } catch (error) {
+        throw error;
+      }
+      const off = queue.subscribe(() => this.notify());
+      this.active = {token, queue, resource, release: owned, off};
+      adopted = true;
+      this.notify();
+      try {
+        await queue.start({signal: admission.signal, isCurrent: () => this.lifecycle === 'live' && this.options.isCurrent() && admission.isCurrent()}, {autoplay: true});
+        if (token !== this.serial || this.lifecycle !== 'live' || !this.options.isCurrent()) throw new Error('local_playback_unavailable');
+      } catch (error) {
+        // The queue owns the resource from here; its retirement releases it.
+        await this.retireActive().catch(retireError => this.options.reportError(retireError));
+        throw error;
+      }
     } catch (error) {
-      await this.releaseQuiet(resource);
-      throw error;
-    }
-    // Retire the exact previous queue and wait for its owned release before adopting.
-    await this.retireActive();
-    if (token !== this.serial || !alive()) { await this.releaseQuiet(resource); throw new Error('local_playback_unavailable'); }
-    let queue: WebLocalQueue;
-    const owned = once(() => resource.release());
-    try {
-      queue = new WebLocalQueue({
-        scope: this.scope, run: ++this.run, port: this.slot, preparation,
-        // The action's lifetime only admits the start; the runtime's own scope life keeps it.
-        isCurrent: alive,
-        release: owned.call,
-        reportError: error => { if (alive()) this.options.reportError(error); },
-      });
-    } catch (error) {
-      await this.releaseQuiet(resource);
-      throw error;
-    }
-    const off = queue.subscribe(() => this.notify());
-    const active = {token, queue, resource, release: owned.call, off};
-    this.active = active;
-    this.notify();
-    try {
-      await queue.start({signal: admission.signal, isCurrent: () => alive() && admission.isCurrent()}, {autoplay: true});
-      if (token !== this.serial || !alive()) throw new Error('local_playback_unavailable');
-    } catch (error) {
-      if (this.active?.token === token) await this.retireActive().catch(report => this.options.reportError(report));
-      else await this.releaseQuiet(resource);
+      if (!adopted) await this.retainFailure(resource);
       throw error;
     }
   }
@@ -144,22 +144,25 @@ export class LocalPlaybackRuntime {
     return () => { this.listeners.delete(listener); };
   }
 
-  /** Stop local sound and await the actual preparation release. Repeated calls return the
-   * same task; a failed cleanup keeps its custody and may be retried. */
+  /** Terminal: once retiring starts this runtime never adopts another queue or player.
+   * Repeated calls return the same task until it finishes; a failed cleanup keeps its
+   * custody (and the orphaned resources) for a later retry while staying terminal. */
   dispose(): Promise<void> {
     if (this.retirement) return this.retirement;
-    this.disposed = true;
+    if (this.lifecycle === 'retired') return Promise.resolve();
+    this.lifecycle = 'retiring';
     const task = (async () => {
       try {
         await this.retireActive();
+        await this.releaseOrphaned();
         this.attachment = undefined;
         this.video = undefined;
         this.player = undefined;
         try { this.slot.unmount(); } catch { /* already unmounted */ }
+        this.lifecycle = 'retired';
       } catch (error) {
-        // Keep custody of the unreleased preparation so a later dispose can finish it.
+        // Still terminal: no new play or mount. The same task is retried on the next dispose.
         this.retirement = undefined;
-        this.disposed = false;
         this.options.reportError(error);
         throw error;
       }
@@ -170,34 +173,46 @@ export class LocalPlaybackRuntime {
 
   async stop(): Promise<void> { await this.dispose(); }
 
-  private alive(): boolean { return !this.disposed && this.options.isCurrent(); }
+  private alive(): boolean { return this.lifecycle === 'live' && this.options.isCurrent(); }
 
   private assertAlive(): void { if (!this.alive()) throw new Error('local_playback_unavailable'); }
 
-  private async retireActive(): Promise<void> {
+  /** One in-flight retirement is shared as a barrier; the active queue is only cleared once
+   * its owned release actually completes, so a new start cannot outrun it. */
+  private retireActive(): Promise<void> {
+    if (this.barrier) return this.barrier;
     const active = this.active;
-    if (!active) return;
-    this.active = undefined;
-    try { active.off(); } catch { /* no longer subscribed */ }
-    try { active.queue.dispose(); } catch { /* release below still runs */ }
-    try {
+    if (!active) return Promise.resolve();
+    const task = (async () => {
+      try { active.off(); } catch { /* no longer subscribed */ }
+      try { active.queue.dispose(); } catch { /* release below still runs */ }
       await active.release();
-    } catch (error) {
-      // Retain the exact custody for a retry rather than pretending it was retired.
-      if (!this.active) this.active = active;
-      throw error;
-    }
-    this.notify();
+      if (this.active === active) { this.active = undefined; this.notify(); }
+    })().finally(() => { if (this.barrier === task) this.barrier = undefined; });
+    this.barrier = task;
+    return task;
   }
 
-  private async releaseQuiet(resource: WebLocalQueueResource): Promise<void> {
-    try { await resource.release(); } catch (error) { this.options.reportError(error); }
+  private async releaseOrphaned(): Promise<void> {
+    for (const resource of [...this.orphaned]) {
+      try { await resource.release(); this.orphaned.delete(resource); }
+      catch (error) { this.options.reportError(error); }
+    }
+    if (this.orphaned.size > 0) throw new Error('local_release_pending');
+  }
+
+  /** A resource whose start never adopted must still be released; a failure keeps it for
+   * a later dispose instead of pretending it was cleaned. */
+  private async retainFailure(resource: WebLocalQueueResource): Promise<void> {
+    try { await resource.release(); }
+    catch (error) { this.orphaned.add(resource); this.options.reportError(error); }
   }
 
   private notify(): void { for (const listener of [...this.listeners]) listener(); }
 }
 
-function once(run: () => Promise<void>): {call: () => Promise<void>} {
+function retryableOnce(run: () => Promise<void>): () => Promise<void> {
   let task: Promise<void> | undefined;
-  return {call: () => task ??= run()};
+  return () => task ??= run().catch(error => { task = undefined; throw error; });
 }
+
