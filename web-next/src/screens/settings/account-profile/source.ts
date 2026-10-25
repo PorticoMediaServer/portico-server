@@ -1,0 +1,117 @@
+import {routePath} from '../../../../../packages/contracts/src/routes.ts';
+import {CodedError} from '@core/server-messages.ts';
+import {ManagedProfilesClient, parseDirectSnapshot, type DirectSnapshot, type ManagedProfile, type ProfileAPI, type ProfileArt} from '@core/profile-management.ts';
+
+export type ProfileSettingsScope = Readonly<{serverId: string; accountId: string; profileId: string}>;
+export type ProfileSettingsSnapshot = Readonly<{
+  loading: boolean; busy: boolean; document?: DirectSnapshot; selectedId?: string; error?: unknown;
+}>;
+const empty: ProfileSettingsSnapshot = Object.freeze({loading: true, busy: false});
+
+/** The server owns profiles even when the account signs in through Portico.
+ * Keep the checked account document and its revisions together; never turn a
+ * cached shell capability into permission to edit another profile. */
+export class ProfileSettingsSource {
+  private readonly client: ManagedProfilesClient;
+  private readonly scope: ProfileSettingsScope;
+  private readonly lifetime = new AbortController();
+  private readonly listeners = new Set<() => void>();
+  private snapshot: ProfileSettingsSnapshot = empty;
+  private pending?: Promise<void>;
+  private closed = false;
+
+  constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean) {
+    this.scope = Object.freeze({...scope});
+    this.client = new ManagedProfilesClient(api, {...scope, authority: 'local'});
+  }
+  private current = () => !this.closed && this.isCurrent();
+  getSnapshot = (): ProfileSettingsSnapshot => this.current() ? this.snapshot : empty;
+  subscribe = (listener: () => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
+  private publish(snapshot: ProfileSettingsSnapshot) {
+    if (!this.current()) return;
+    this.snapshot = Object.freeze(snapshot);
+    for (const listener of this.listeners) listener();
+  }
+  private async read(): Promise<DirectSnapshot> {
+    const raw = await this.api.request(routePath('get_direct_account'), 'GET', undefined, this.lifetime.signal);
+    const document = parseDirectSnapshot(raw, {...this.scope, authority: 'local'});
+    const viewer = document.profiles.find(profile => profile.id === this.scope.profileId);
+    if (!viewer || document.account.disabled || !viewer.primary && Object.values(document.capabilities).some(Boolean)) {
+      throw new CodedError('forbidden', 'The selected profile is no longer available.');
+    }
+    return document;
+  }
+  load = (): Promise<void> => {
+    if (!this.current() || this.snapshot.document) return Promise.resolve();
+    if (this.pending) return this.pending;
+    this.publish({loading: true, busy: false});
+    const task = this.read().then(document => {
+      this.publish({loading: false, busy: false, document, selectedId: this.scope.profileId});
+    }, error => {this.publish({loading: false, busy: false, error});}).finally(() => {
+      if (this.pending === task) this.pending = undefined;
+    });
+    this.pending = task;return task;
+  };
+  selected = (): ManagedProfile | undefined => {
+    const state = this.getSnapshot();
+    return state.document?.profiles.find(profile => profile.id === state.selectedId);
+  };
+  select = (id: string): void => {
+    const state = this.getSnapshot(), document = state.document;
+    if (!document || state.busy || !document.profiles.some(profile => profile.id === id) ||
+      id !== this.scope.profileId && !document.canManage) return;
+    this.publish({...state, selectedId: id, error: undefined});
+  };
+  private requireManager(): DirectSnapshot {
+    const document = this.getSnapshot().document;
+    if (!document?.canManage || !document.capabilities.manageAccount ||
+      !document.profiles.some(profile => profile.id === this.scope.profileId && profile.primary)) {
+      throw new CodedError('forbidden', 'Profile management requires the main profile.');
+    }
+    return document;
+  }
+  private async mutate(command: (document: DirectSnapshot) => Promise<void>): Promise<void> {
+    if (!this.current() || this.snapshot.busy || this.pending) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
+    const document = this.requireManager();
+    this.publish({...this.snapshot, busy: true, error: undefined});
+    try {
+      // Publication calls listeners synchronously. A listener may retire this viewer.
+      if (!this.current()) return;
+      await command(document);
+      if (!this.current()) return;
+      const refreshed = await this.read();
+      const selectedId = refreshed.profiles.some(profile => profile.id === this.snapshot.selectedId) ? this.snapshot.selectedId : this.scope.profileId;
+      this.publish({loading: false, busy: false, document: refreshed, selectedId});
+    } catch (error) {
+      // A failed write/readback must not leave old revisions available for retry.
+      this.publish({loading: false, busy: false, error});
+      throw error;
+    }
+  }
+  rename = (name: string): Promise<void> => this.edit({name});
+  color = (art: ProfileArt): Promise<void> => this.edit({art});
+  private edit(change: {name?: string; art?: ProfileArt}): Promise<void> {
+    const selectedId = this.getSnapshot().selectedId;
+    return this.mutate(async document => {
+      const profile = document.profiles.find(candidate => candidate.id === selectedId);
+      if (!profile) throw new CodedError('not_found', 'This profile is no longer available.');
+      await this.client.edit(profile, change, this.lifetime.signal);
+    });
+  }
+  create = (name: string, art: ProfileArt): Promise<void> => this.mutate(async document => {
+    if (document.profiles.length >= 8) throw new CodedError('conflict', 'This account already has eight profiles.');
+    await this.client.create(name, art, this.lifetime.signal);
+  });
+  move = (id: string, direction: -1 | 1): Promise<void> => this.mutate(async document => {
+    const profiles = [...document.profiles], from = profiles.findIndex(profile => profile.id === id), to = from + direction;
+    if (from < 0 || to < 0 || to >= profiles.length) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
+    [profiles[from], profiles[to]] = [profiles[to]!, profiles[from]!];
+    await this.client.order(profiles, this.lifetime.signal);
+  });
+  dispose = () => {
+    if (this.closed) return;
+    this.closed = true;this.lifetime.abort();this.snapshot = empty;
+    for (const listener of this.listeners) listener();
+    this.listeners.clear();
+  };
+}
