@@ -34,7 +34,9 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
 	limit = max(1, min(limit, 100))
 	var library, input, build, after int64
 	var phase string
-	err := tx.QueryRowContext(ctx, `SELECT library_id,input_generation,build_generation,after_item,phase FROM reading_attribution_state WHERE input_generation<>ready_generation ORDER BY served_ms,namespace LIMIT 1`).Scan(&library, &input, &build, &after, &phase)
+	// Seek the pending prefix and take its oldest served scope directly from
+	// the index. Ready libraries never participate in the scheduler's scan.
+	err := tx.QueryRowContext(ctx, `SELECT library_id,input_generation,build_generation,after_item,phase FROM reading_attribution_state WHERE (input_generation<>ready_generation)=1 ORDER BY served_ms,namespace LIMIT 1`).Scan(&library, &input, &build, &after, &phase)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
