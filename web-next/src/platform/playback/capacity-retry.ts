@@ -7,6 +7,8 @@ export type WebPlaybackCapacityWait = Readonly<{
   attempt: number;
   retryAt: number;
   isCurrent(): boolean;
+  /** Explicit viewer retry of this same captured start; never creates another request key. */
+  retryNow(): void;
   cancel(): void;
 }>;
 
@@ -53,8 +55,10 @@ export function capacityRetryHttp(input: Readonly<{
         // an actual created session. A retired refusal must never schedule another write.
         const delay = directedWait(response);
         if (!current() || delay === undefined || attempt >= 5 || now() - started + delay > 30_000) return response;
+        let wake: (() => void) | undefined, requested = false;
         const wait: WebPlaybackCapacityWait = Object.freeze({attempt: attempt + 1, retryAt: now() + delay,
           isCurrent: () => current() && active === wait,
+          retryNow: () => {if (current() && active === wait && !requested) {requested = true; wake?.();}},
           cancel: () => {if (current() && active === wait) controller.abort();}});
         mine = active = wait;
         input.publish(wait);
@@ -62,9 +66,11 @@ export function capacityRetryHttp(input: Readonly<{
         await new Promise<void>((resolve, reject) => {
           let timer: unknown;
           const abort = () => {clearTimer(timer); signal.removeEventListener('abort', abort); reject(new DOMException('Playback start retired', 'AbortError'));};
-          timer = setTimer(() => {signal.removeEventListener('abort', abort); resolve();}, delay);
+          wake = () => {clearTimer(timer); signal.removeEventListener('abort', abort); resolve();};
+          timer = setTimer(wake, delay);
           signal.addEventListener('abort', abort, {once: true});
           if (signal.aborted) abort();
+          else if (requested) wake();
         });
       }
     } finally {
