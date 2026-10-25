@@ -27,6 +27,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dlna"
 	"portico.local/server/internal/enrichment"
+	"portico.local/server/internal/driveoauth"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storagepaths"
 	"runtime"
@@ -1202,7 +1203,7 @@ func run() (runErr error) {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
 	var transport *cappedListener
-	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, DriveOAuth: driveoauth.New(8), CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, LocalHTTPURL: networking.LoopbackHTTPURL(listener.Addr()), Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
