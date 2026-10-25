@@ -47,7 +47,13 @@ function TimingRow({timing,reportError,t}:{timing:NonNullable<WatchPanelModel['s
  * On a phone the drawn sheet lists one row per control; each row opens its own panel. */
 export function WatchOptions({model,context,i18n,reportError,openSettings,info}:{openSettings():void|Promise<void>;model:WatchPanelModel;context:WatchPanelContext;i18n:I18n;reportError(error:unknown):void;/** Playback info f2: the phone reaches the same panel from its own options sheet. */info?:boolean}){
  const root=useRef<HTMLDivElement>(null),rowRefs=useRef(new Map<string,HTMLButtonElement>()),lastSection=useRef<Section|null>(null),t=i18n.t;
+ const sleepRoot=useRef<HTMLDivElement>(null);
  const [sleepOpen,setSleepOpen]=useState(false),sleepAnchor=useRef<HTMLButtonElement|null>(null);
+ useLayoutEffect(()=>{
+  if(context.layout!=='phone')return;
+  if(sleepOpen)sleepRoot.current?.querySelector<HTMLButtonElement>('[aria-checked="true"], button')?.focus({preventScroll:true});
+ },[sleepOpen,context.layout]);
+ const closeSleep=()=>{setSleepOpen(false);sleepAnchor.current?.focus({preventScroll:true});};
  const icons:Readonly<Record<Section,IconName>>=Object.freeze({subtitles:'i-cc',audio:'i-audio',quality:'i-quality',speed:'i-gauge'});
  const sections=[...phoneOptionRows(model,t),...(info?[{id:'info' as const,label:t('next.info.title'),value:undefined,detail:undefined}]:[])].map(row=>({...row,icon:row.id==='info'?'i-info' as IconName:icons[row.id as Section]}));
  const asked=sectionOf(context.panel),section=asked&&sections.some(row=>row.id===asked)?asked:null;
@@ -94,6 +100,12 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
    <span className={styles.phoneValue}>{row.value}{row.detail&&<small>{row.detail}</small>}</span>
    <Icon name="i-right" size={18}/>
   </button>)}
+  {model.sleepTimer&&<button ref={sleepAnchor} type="button" className={styles.phoneRow} onClick={()=>{if(model.isCurrent())setSleepOpen(true);}}>
+   <span className={styles.phoneIcon}><Icon name="i-clock" size={18}/></span>
+   <span className={styles.phoneLabel}>{t('player.opt.sleepTimer')}</span>
+   <span className={styles.phoneValue}>{model.sleepTimer.minutes?t('player.opt.minutes',{count:model.sleepTimer.minutes}):t('player.opt.off')}</span><Icon name="i-right" size={18}/>
+  </button>}
+
  </div>;
  const columns=<><div ref={root} className={styles.columns} onKeyDown={event=>{
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();context.close();}
@@ -133,9 +145,13 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
   </div>}
  </div>}
  </div><div className={styles.note}><Icon name="i-info" size={20}/><span><b>{t('player.opt.temporaryChanges')}</b>{' '}{t('player.opt.defaultsUnchanged')}</span><a href="/settings" onClick={event=>{if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();try{context.close();void Promise.resolve(openSettings()).catch(reportError);}catch(error){reportError(error);}}}>{t('next.reader.openSettings')}<Icon name="i-right" size={16}/></a></div></>;
- return context.layout==='phone'?<BottomSheet open title={section?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>context.show('options')}><Icon name="i-left" size={20}/></button><span>{sectionTitle(section)}</span></span>:t('next.dock.options')}
+ const phoneSleep=sleepOpen&&model.sleepTimer?<div ref={sleepRoot} className={styles.subBody} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeSleep();}}}>
+  <RadioRows label={t('player.opt.sleepTimer')} rows={[0,15,30,45,60,90].map(minutes=>({id:String(minutes),label:minutes?t('player.opt.minutes',{count:minutes}):t('player.opt.off'),selected:model.sleepTimer?.minutes===minutes,enabled:true}))}
+   select={id=>{if(!model.isCurrent())return;model.sleepTimer?.set(Number(id));}} reportError={reportError}/>
+ </div>:null;
+ return context.layout==='phone'?<BottomSheet open title={section||phoneSleep?<span className={styles.subHeader}><button type="button" className={styles.back} aria-label={t('next.dock.backToOptions')} onClick={()=>{if(phoneSleep)closeSleep();else context.show('options');}}><Icon name="i-left" size={20}/></button><span>{phoneSleep?t('player.opt.sleepTimer'):section?sectionTitle(section):''}</span></span>:t('next.dock.options')}
   headerAction={<button type="button" className={styles.done} onClick={context.close}>{t('action.done')}</button>} showCloseButton={false}
   onOpenChange={open=>{if(!open)context.close();}} returnFocusRef={context.returnFocusRef}
-  detents={[Math.max(1,(typeof window==='undefined'?context.phoneTop:window.visualViewport?.height??window.innerHeight)-context.phoneTop)]}>{section?subPanel:list}</BottomSheet>
+  detents={[Math.max(1,(typeof window==='undefined'?context.phoneTop:window.visualViewport?.height??window.innerHeight)-context.phoneTop)]}>{phoneSleep??(section?subPanel:list)}</BottomSheet>
   :<section className={styles.options} role="dialog" aria-label={t('next.dock.options')}>{columns}</section>;
 }
