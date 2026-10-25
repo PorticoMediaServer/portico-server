@@ -26,3 +26,12 @@ test('an episode order is stored with what is added to file numbers, and reads b
   assert.equal(orderTakesOffset('dvd'), false);
   assert.throws(() => tmdbAbsoluteOrder('dvd', 2));
 });
+
+test('screen rows and parentless songs do not construct an album artwork route',()=>{
+ const entry=page.entries[0];
+ const out=parseMetadataAttention({...page,entries:[entry,{...entry,entityId:'song',kind:'song',itemKind:'song',parentId:''}]},'lib');
+ assert.deepEqual(out.entries.map(e=>e.entityId),['title','song']);
+ assert.equal(out.entries[0].artworkUrl,undefined);
+ assert.equal(out.entries[1].artworkUrl,undefined);
+ assert.equal(out.entries[0].candidates[0].identity.id,'42');
+});
