@@ -175,7 +175,7 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
 }
 
 type WizardStep = 'connection' | 'reading' | 'folders' | 'done';
-type ReadingOpening = Readonly<{guard: () => boolean; sourceId: string; generation: string; revision: number}>;
+type ReadingOpening = Readonly<{guard: () => boolean; sourceId: string; sourceGeneration: number; profileGeneration: string; profileRevision: number}>;
 type AttachMode = 'new' | 'existing';
 type LibraryKind = ManagedLibrary['kind'];
 
@@ -787,7 +787,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const openReadingChange = () => {
     if (!profile || !sourceNow || readingOpeningRef.current) return;
-    const opening: ReadingOpening = {guard: attemptGuard(), sourceId: sourceNow.id, generation: profile.generation, revision: profile.revision};
+    const opening: ReadingOpening = {guard: attemptGuard(), sourceId: sourceNow.id, sourceGeneration: sourceNow.generation, profileGeneration: profile.generation, profileRevision: profile.revision};
     readingOpeningRef.current = opening;
     setPendingReading(values);
     setReadingOpening(opening);
@@ -799,8 +799,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     readingOpeningRef.current = null;
     setReadingOpening(null);
     if (!opening.guard() || live.step !== 'reading') return;
-    if (!live.source || !live.profile || live.source.id !== opening.sourceId || live.source.generation !== opening.generation) return;
-    if (live.profile.generation !== opening.generation || live.profile.revision !== opening.revision) return;
+    if (!live.source || !live.profile || live.source.id !== opening.sourceId || live.source.generation !== opening.sourceGeneration) return;
+    if (live.profile.generation !== opening.profileGeneration || live.profile.revision !== opening.profileRevision) return;
     setValues(pendingReading);
   };
   const readingChangeDialog = phone && readingOpening ? <Dialog open width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
