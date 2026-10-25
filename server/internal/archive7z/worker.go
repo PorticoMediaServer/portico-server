@@ -24,6 +24,10 @@ const (
 	MaxMembers     = 4096
 	MaxExpanded    = 2 << 30
 	maxNameLength  = 1024
+	// MaxComicInfo is the only non-page member a comic archive may expose:
+	// root ComicInfo.xml, bounded well below a page so metadata can never become
+	// a decompression or memory route.
+	MaxComicInfo = 256 << 10
 	// Mode is the hidden first argument that dispatches the server executable
 	// into this worker before normal startup.
 	Mode = "__reading-archive7z"
@@ -239,6 +243,10 @@ func plainName(name string) bool {
 func plainMember(name string, dir bool, size uint64) bool {
 	if dir || size == 0 || size > MaxMember || !plainName(name) {
 		return false
+	}
+	// One exact root metadata member, case-sensitive, under its own cap.
+	if name == "ComicInfo.xml" {
+		return size <= MaxComicInfo
 	}
 	lower := strings.ToLower(name)
 	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp"} {
