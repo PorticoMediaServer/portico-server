@@ -220,14 +220,15 @@ export class DVRClient {
  }
  async saveRule(ruleId:string,revision:number,c:RuleConfig,anchor?:Occurrence,lifetime?:DVRCommandLifetime){
   const original=captureDVRCommand(lifetime);this.requireCommand(original);
-  if(!id(ruleId)||!number(revision))invalid();config(c);
-  try{const raw=await this.mutate(encodedRoutePath("put_dvr_rules_id", {"id": ruleId}),'PUT',{id:ruleId,expectedRevision:revision,config:configToWire(c),...(anchor?{anchor}:{})},original);this.requireCommand(original);const result=rule(raw);this.requireCommand(original);return result;}
+  if(!id(ruleId)||!number(revision))invalid();const validated=config(c),definition=original?validated:c;
+  const capturedAnchor=original&&anchor?{sourceId:anchor.sourceId,channelId:anchor.channelId,generation:anchor.generation,programmeId:anchor.programmeId}:anchor;
+  try{const raw=await this.mutate(encodedRoutePath("put_dvr_rules_id", {"id": ruleId}),'PUT',{id:ruleId,expectedRevision:revision,config:configToWire(definition),...(capturedAnchor?{anchor:capturedAnchor}:{})},original);this.requireCommand(original);const result=rule(raw);this.requireCommand(original);return result;}
   catch(error){this.requireCommand(original);throw error;}
  }
  async deleteRule(r:RecordingRule,future:'keep'|'cancel'){const v=await this.mutate<{deleted:boolean}>(encodedRoutePath("delete_dvr_rules_id", {"id": r.id}),'DELETE',{expectedRevision:r.revision,future});if(v.deleted!==true)invalid();}
  async preview(c:RuleConfig,lifetime?:DVRCommandLifetime):Promise<RulePreview>{
-  const original=captureDVRCommand(lifetime);this.requireCommand(original);config(c);
-  try{const v=await this.read<RulePreview>(routePath("post_dvr_rules_preview"),'POST',configToWire(c),original);this.requireCommand(original);
+  const original=captureDVRCommand(lifetime);this.requireCommand(original);const validated=config(c),definition=original?validated:c;
+  try{const v=await this.read<RulePreview>(routePath("post_dvr_rules_preview"),'POST',configToWire(definition),original);this.requireCommand(original);
    if(!object(v)||!number(v.matches)||!number(v.unknownNewEvidence)||!id(v.generation,48)||!Array.isArray(v.sample)||v.sample.length>12||!validCapacity(v.capacity))invalid();
    const result={matches:v.matches,unknownNewEvidence:v.unknownNewEvidence,sample:v.sample.map(programme),generation:v.generation,capacity:capacity(v.capacity)};this.requireCommand(original);return result;
   }catch(error){this.requireCommand(original);throw error;}
