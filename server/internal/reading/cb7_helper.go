@@ -44,9 +44,20 @@ func cb7HelperPath() (string, error) {
 	return executable, nil
 }
 
+// archiveStagingSource is the authority the staging path requires. A bare
+// io.ReaderAt is not enough: the source must be local/mounted (never a remote
+// range lease used as whole-file download authority), must carry a deadline
+// into its own reads, and must be able to confirm currentness afterwards.
+type archiveStagingSource interface {
+	LocalArchiveStaging() bool
+	ReadAtContext(context.Context, []byte, int64) (int, error)
+	Recheck(context.Context) error
+}
+
 // runCB7Helper starts the helper with a fixed argv, its own scratch root and a
 // deadline, feeds the archive from the leased reader, and returns the bounded
-// stdout. No filename from the archive or client reaches the command line.
+// stdout. The command line carries only the helper mode and, for a page, one
+// already-validated member name; the archive's own path never reaches it.
 func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...string) ([]byte, error) {
 	if size <= 0 || size > MaxSource {
 		return nil, ErrLimit
@@ -58,8 +69,8 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 	}
 	// First exposure is local-only: a remote range lease is not authority to
 	// stage a whole remote archive. Refuse before any provider acquisition.
-	local, ok := ra.(interface{ LocalArchiveStaging() bool })
-	if !ok || !local.LocalArchiveStaging() {
+	source, ok := ra.(archiveStagingSource)
+	if !ok || !source.LocalArchiveStaging() {
 		return nil, ErrArchiveFormat
 	}
 	path, err := cb7HelperPath()
@@ -75,10 +86,10 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 	}
 	deadline, cancel := context.WithTimeout(ctx, cb7HelperTimeout)
 	defer cancel()
-	// The archive is staged into the parent-owned scratch root under the same
-	// deadline first: exec's stdin copy cannot hang on a blocked Source.ReadAt,
-	// because the helper reads a local, fully written file.
-	staged, err := stageCB7Archive(deadline, ra, size, scratch)
+	// The archive is staged into the parent-owned scratch root first: the helper
+	// reads a local, fully written file, so exec's stdin copy has no upstream
+	// read to hang on.
+	staged, err := stageCB7Archive(deadline, source, size, scratch)
 	if err != nil {
 		_ = os.RemoveAll(scratch)
 		return nil, err
@@ -131,11 +142,10 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 		return nil, ErrArchiveFormat
 	}
 	// Currentness is re-read after staging and the helper, before these bytes are
-	// published; a source retired meanwhile refuses the result.
-	if checker, ok := ra.(interface{ Recheck(context.Context) error }); ok {
-		if err := checker.Recheck(ctx); err != nil {
-			return nil, err
-		}
+	// published; a source retired meanwhile refuses the result. The check is
+	// mandatory, not best-effort: a reader without it never stages.
+	if err := source.Recheck(ctx); err != nil {
+		return nil, err
 	}
 	return body, nil
 }
@@ -206,13 +216,7 @@ func cb7MemberBytes(ctx context.Context, ra io.ReaderAt, size int64, name string
 // retirement and the child deadline into every read. There is no goroutine and
 // no bounded wait substituting for cancellation: the copy either finishes,
 // including its close and sync, or the seam returns the cancellation itself.
-func stageCB7Archive(ctx context.Context, ra io.ReaderAt, size int64, scratch string) (string, error) {
-	reader, ok := ra.(interface {
-		ReadAtContext(context.Context, []byte, int64) (int, error)
-	})
-	if !ok {
-		return "", ErrArchiveFormat
-	}
+func stageCB7Archive(ctx context.Context, reader archiveStagingSource, size int64, scratch string) (string, error) {
 	path := filepath.Join(scratch, "archive.7z")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
 	if err != nil {
