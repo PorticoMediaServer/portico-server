@@ -725,16 +725,18 @@ func run() (runErr error) {
 	recordingStore, e := dvr.New(db, liveSources, recordingaccess.Policy{Cached: control}.Durable)
 	if e != nil { return e }
 	var recorder *recordingmedia.Driver
-	e = recordingroot.Activate(ctx, db, adminOperations, ident, state, operatorRecordingsRoot, func(root string) (func(), func() error, error) {
-		var err error
-		recorder, err = recordingmedia.New(root, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
-		if err != nil { return nil, nil, err }
-		recordingsRoot = root
-		storeIO.RecordingRoot = root
-		storeIO.RecordingLayout = recordingStore.IsRecordingLayoutPath
-		return func() { _ = recorder.Close(); storeIO.RecordingRoot = "" }, func() error {
-			if storeIO.RecordingRoot != root { return errors.New("recording storage binding changed") }
-			return recorder.ValidateRootBinding()
+	e = recordingroot.Activate(ctx, db, adminOperations, ident, state, operatorRecordingsRoot, func(root string) (recordingroot.StartupBinding, error) {
+		prepared, err := recordingmedia.New(root, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
+		if err != nil { return recordingroot.StartupBinding{}, err }
+		return recordingroot.StartupBinding{
+			Rollback: func() { _ = prepared.Close() },
+			Verify: prepared.ValidateRootBinding,
+			Publish: func() {
+				recorder = prepared
+				recordingsRoot = root
+				storeIO.RecordingRoot = root
+				storeIO.RecordingLayout = recordingStore.IsRecordingLayoutPath
+			},
 		}, nil
 	})
 	if e != nil { return errors.New("private recording storage configuration could not be accepted") }
