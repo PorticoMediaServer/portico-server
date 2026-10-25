@@ -4,7 +4,7 @@ import {defaultI18n} from '@i18n';
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import {loadRemoteAccess, remoteAccessSummary, type RemoteAccess} from '@core/remote-access.ts';
 import {parseConnectivityStatus, type ConnectivityStatus} from '@core/server-administration.ts';
-import {connectivityForm, remoteAccessForm} from '@core/server-admin/server-forms.ts';
+import {remoteAccessForm} from '@core/server-admin/server-forms.ts';
 import {Button, Switch, TextField} from '../../../kit/controls';
 import {SettingNumber} from '../../../kit/settings';
 import styles from './server-remote.module.css';
@@ -24,9 +24,6 @@ export function ServerRemotePage({api, isCurrent, account, openSection, groups, 
   const form = useMemo(() => remoteAccessForm({api} as Parameters<typeof remoteAccessForm>[0]), [api]);
   const formState = useSyncExternalStore(form.subscribe, form.getSnapshot, form.getSnapshot);
   useEffect(() => () => form.dispose(), [form]);
-  const ownAddress = useMemo(() => connectivityForm({api} as Parameters<typeof connectivityForm>[0]), [api]);
-  const ownAddressState = useSyncExternalStore(ownAddress.subscribe, ownAddress.getSnapshot, ownAddress.getSnapshot);
-  useEffect(() => () => ownAddress.dispose(), [ownAddress]);
   const [remote, setRemote] = useState<RemoteAccess>();
   const [connectivity, setConnectivity] = useState<ConnectivityStatus>();
   useEffect(() => {
@@ -81,13 +78,7 @@ export function ServerRemotePage({api, isCurrent, account, openSection, groups, 
       {formState.loadError !== undefined && <p className={styles.error} role="alert">{t('next.remoteStatus.failed')}</p>}
       {formState.dirty && <Button size="compact" variant="primary" loading={formState.saving} onClick={() => {void form.save().catch(() => {});}}>{t('next.remoteStatus.save')}</Button>}
     </section>}
-    {ownAddressState.draft && <section className={styles.controls}>
-      <label className={styles.switchRow}><span>{t('web.connectivity.customCert')}<small className={styles.note}>{t('settings.server.ownCertificateLede')}</small></span>
-        <Switch aria-label={t('web.connectivity.customCert')} checked={ownAddressState.draft.ownAddressEnabled} disabled={ownAddressState.saving}
-          onCheckedChange={value => ownAddress.set({ownAddressEnabled: value})}/></label>
-      {ownAddressState.loadError !== undefined && <p className={styles.error} role="alert">{t('next.remoteStatus.failed')}</p>}
-      {ownAddressState.dirty && <Button size="compact" variant="primary" loading={ownAddressState.saving} onClick={() => {void ownAddress.save().catch(() => {});}}>{t('next.remoteStatus.saveOwnAddress')}</Button>}
-    </section>}
+
     {account && <section className={styles.controls}>
       <h3 className={styles.subtitle}>{t('web.general.accountConnection')}</h3>
       <p className={styles.note}>{account.signIn === 'portico'
