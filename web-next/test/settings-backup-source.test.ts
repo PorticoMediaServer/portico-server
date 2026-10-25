@@ -119,7 +119,7 @@ test('an owner refusal clears retained facts and closes all later commands immed
 });
 
 test('restore uses only the issued inspected candidate and keeps the passphrase top-level and request-local', async () => {
-  let posted = false;
+  let posted = false, stagedRead = false;
   const staged = {staged: true, restartRequired: true, validation: {schemaVersion: 1, integrity: 'ok'}};
   const f = fixture(async (path, method, body) => {
     if (path.endsWith('/settings')) return envelope(settings);
@@ -129,7 +129,10 @@ test('restore uses only the issued inspected candidate and keeps the passphrase 
       assert.deepEqual(sent.source, {backupId: 'listed'});assert.equal(sent.passphrase, 'request-local phrase');assert.ok(sent.operationId);
       posted = true;return envelope({jobId: 'restore-job'});
     }
-    return envelope(posted ? {backups: [backup], restore: {jobId: 'restore-job', phase: 'staged', bytesDone: 1, bytesTotal: 1, result: staged}} : {backups: [backup]});
+    if (!posted) return envelope({backups: [backup]});
+    // The accepted job stages, then the post-restart GET reports that same job.
+    if (!stagedRead) {stagedRead = true;return envelope({backups: [backup], restore: {jobId: 'restore-job', phase: 'staged', bytesDone: 1, bytesTotal: 1, result: staged}});}
+    return envelope({backups: [backup], lastRestore: {jobId: 'restore-job', at: '2026-10-23T12:01:00Z', outcome: 'restored', reason: '', schemaVersion: 1}});
   });
   try {
     await f.source.load();const dialog = new AbortController(), selection = await f.source.prepareRestore({backupId: 'listed'}, dialog.signal);
@@ -137,7 +140,9 @@ test('restore uses only the issued inspected candidate and keeps the passphrase 
     await assert.rejects(f.source.restore({...selection}, 'request-local phrase', dialog.signal), {name: 'AbortError'});
     assert.equal(posted, false);
     assert.deepEqual(await f.source.restore(selection, 'request-local phrase', dialog.signal), staged);
-    assert.deepEqual(f.source.getSnapshot().staged, staged);
+    assert.equal(f.source.getSnapshot().document?.lastRestore?.jobId, 'restore-job');
+    assert.equal(f.source.getSnapshot().document?.lastRestore?.outcome, 'restored');
+    assert.equal(f.source.getSnapshot().staged, undefined);assert.equal(f.source.getSnapshot().restorePhase, undefined);assert.equal(f.source.getSnapshot().busy, false);
     assert.doesNotMatch(JSON.stringify(f.source.getSnapshot()), /request-local phrase|"passphrase":/);
   } finally {f.source.dispose();}
 });
