@@ -220,6 +220,7 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 			return nil, storage.ErrRemoteChanged
 		}
 	}
+	s.noteSourceContact(b.ID, b.MountID, o.generation, time.Now(), nil)
 	good = true
 	return o, nil
 }

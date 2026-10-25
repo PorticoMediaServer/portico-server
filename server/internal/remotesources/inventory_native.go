@@ -190,6 +190,11 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 			}
 		})
 		p.err = s.buildListing(life, b, relative, id, generation, owner, retire)
+		// Capture whether the listing's own custody ended before this routine
+		// cancels it for cleanup. This is the one real provider completion: the
+		// cached ready/failed replay in ListPage records nothing.
+		retired := life.Err() != nil
+		s.health(!retired, b, generation, p.err)
 		cancel()
 		<-watchDone
 		if p.err != nil {
@@ -197,7 +202,6 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 			code := ErrorCode(p.err)
 			_, _ = dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_native_listings SET state='failed',error_code=?,updated_at=? WHERE listing_id=? AND owner=? AND state='running'`, code, time.Now().UnixMilli(), id, owner)
 			done()
-			s.health(b, generation, p.err)
 		}
 		close(p.done)
 		// Do not release ownership/cancel hooks or clear partial work before the

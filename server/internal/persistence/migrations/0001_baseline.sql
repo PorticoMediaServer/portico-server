@@ -3761,6 +3761,15 @@ CREATE TABLE remote_source_webdav_tests(
  range_support TEXT NOT NULL CHECK(range_support IN('unknown','conditional','unsupported')),
  observed_ms INTEGER NOT NULL CHECK(observed_ms>0),PRIMARY KEY(source_id,leaf_remote),
  CHECK(range_support!='conditional' OR (object_path!='' AND object_size>0))) STRICT;
+CREATE TABLE remote_source_contacts(
+ source_id TEXT PRIMARY KEY REFERENCES remote_sources(id) ON DELETE CASCADE,
+ mount_id TEXT NOT NULL DEFAULT '' CHECK(length(mount_id)<=256),
+ source_generation TEXT NOT NULL CHECK(length(source_generation)>0),
+ last_success_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_success_ms>=0),
+ last_failure_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_failure_ms>=0),
+ last_error_code TEXT NOT NULL DEFAULT '',
+ CHECK(last_failure_ms=0 OR last_error_code IN('offline','credentials_required','rate_limited','quota_exceeded')),
+ CHECK(last_failure_ms>0 OR last_error_code='')) STRICT;
 CREATE TABLE remote_source_operations(operation_id TEXT PRIMARY KEY,actor TEXT NOT NULL,fingerprint TEXT NOT NULL,response TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;
 CREATE TABLE remote_listing_sessions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,source_id TEXT NOT NULL,generation TEXT NOT NULL,directory TEXT NOT NULL,ready INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(job_id,directory)) STRICT;
 CREATE TABLE remote_native_listings(listing_id TEXT PRIMARY KEY REFERENCES remote_listing_sessions(id) ON DELETE CASCADE,owner TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('running','complete','failed')),error_code TEXT NOT NULL DEFAULT '',entries INTEGER NOT NULL DEFAULT 0,bytes INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL) STRICT;

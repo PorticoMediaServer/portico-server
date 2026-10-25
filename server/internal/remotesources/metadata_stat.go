@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 )
 
@@ -70,14 +71,17 @@ func (s *Service) statSourceMetadata(ctx context.Context, b binding, object stri
 	if err != nil {
 		return value, err
 	}
+	var process *rcloneprogram.ServeProcess
 	defer func() {
 		err = mapError(err)
-		s.health(b, captured.generation, err)
+		// The process lease is the original custody: a retired process proves
+		// no provider answer, so neither state nor contact is recorded.
+		s.health(process != nil && process.CheckLocal(ctx) == nil, b, captured.generation, err)
 		if err != nil {
 			value = storage.Snapshot{}
 		}
 	}()
-	process, err := s.ensureSourceServe(ctx, SourceReadBinding{Root: b.Root, Profile: captured.profile, Observation: ObservationRef{SourceID: b.ID, Generation: captured.generation}}, "")
+	process, err = s.ensureSourceServe(ctx, SourceReadBinding{Root: b.Root, Profile: captured.profile, Observation: ObservationRef{SourceID: b.ID, Generation: captured.generation}}, "")
 	if err != nil {
 		return value, err
 	}

@@ -93,6 +93,16 @@ type SourceStatus struct {
 	// Health is the folder health when every enabled folder of this source
 	// agrees on it; a mixed source is omitted rather than summed or guessed.
 	Health string `json:"health,omitempty"`
+	// LastConnectedAt is the latest real completed provider contact for the
+	// source's current generation, coalesced from saved-source operations. It is
+	// distinct from LastCheckedAt (the last saved test observation) and is absent
+	// until a real contact is recorded.
+	LastConnectedAt string `json:"lastConnectedAt,omitempty"`
+	// LastErrorAt and LastErrorCode are the latest real provider failure for the
+	// current generation, with a closed code. Cancellation, retirement, capacity
+	// and local configuration outcomes are never recorded.
+	LastErrorAt   string `json:"lastErrorAt,omitempty"`
+	LastErrorCode string `json:"lastErrorCode,omitempty"`
 	// LastCompleteAt is the completed-scan time only when every enabled folder
 	// agrees on one stored value; a mixed source is omitted.
 	LastCompleteAt string `json:"lastCompleteAt,omitempty"`
@@ -156,6 +166,22 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	}
 	if observed > 0 {
 		out.LastCheckedAt = time.UnixMilli(observed).UTC().Format(time.RFC3339)
+	}
+	var successMs, failureMs int64
+	var lastError string
+	contactErr := snapshot.Tx().QueryRowContext(ctx, `SELECT last_success_ms,last_failure_ms,last_error_code FROM remote_source_contacts WHERE source_id=? AND mount_id=? AND source_generation=?`, row.ID, row.MountID, out.Generation).Scan(&successMs, &failureMs, &lastError)
+	if contactErr == nil {
+		if at := contactTime(successMs); at != "" {
+			out.LastConnectedAt = at
+		}
+		if failureMs > 0 && contactErrorCodes[lastError] {
+			if at := contactTime(failureMs); at != "" {
+				out.LastErrorAt = at
+				out.LastErrorCode = lastError
+			}
+		}
+	} else if !errors.Is(contactErr, sql.ErrNoRows) {
+		return SourceStatus{}, contactErr
 	}
 	// Ten drawn libraries are plenty for the page; the count stays bounded so a
 	// constant-cost read never grows with the owner's library list. Only enabled
@@ -243,6 +269,24 @@ func scanFactsBounded(generation, policy, processed, discovered, analyzed, warni
 	return generation >= 0 && generation <= maxCount && policy >= 0 && policy <= maxCount &&
 		processed >= 0 && processed <= maxCount && discovered >= 0 && discovered <= maxCount &&
 		analyzed >= 0 && analyzed <= maxCount && warnings >= 0 && warnings <= maxCount
+}
+
+var (
+	contactTimeMin = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	contactTimeMax = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+)
+
+// contactTime publishes only a stored millisecond that formats as the closed
+// RFC3339 value the wire already uses, and only inside a plausible range.
+func contactTime(ms int64) string {
+	if ms < contactTimeMin || ms >= contactTimeMax {
+		return ""
+	}
+	value := time.UnixMilli(ms).UTC().Format(time.RFC3339)
+	if _, err := time.Parse(time.RFC3339, value); err != nil {
+		return ""
+	}
+	return value
 }
 
 // scanTime keeps only a valid stored timestamp; anything else reads as absent.

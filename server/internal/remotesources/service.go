@@ -76,6 +76,12 @@ type Service struct {
 	opsGates            map[string]*sourceOpsGate
 	inventory, playback chan struct{}
 	resolver            remotemedia.Resolver
+	// contacts coalesces provider contact evidence between worker wakes; it
+	// never opens the database per read, chunk or file.
+	contactsMu       sync.Mutex
+	contacts         map[contactKey]sourceContact
+	contactsReserved int
+	contactSeq       uint64
 }
 type activeRead struct {
 	cancel context.CancelFunc
@@ -83,6 +89,7 @@ type activeRead struct {
 }
 type binding struct {
 	ID, Kind, Root string
+	MountID        string
 	Removed        bool
 }
 
@@ -146,7 +153,7 @@ func (s *Service) RefreshMounts(ctx context.Context) error {
 	return s.refreshBindings(ctx)
 }
 func (s *Service) refreshBindings(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,kind,root,removed FROM remote_sources`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,kind,root,mount_id,removed FROM remote_sources`)
 	if err != nil {
 		return err
 	}
@@ -154,7 +161,7 @@ func (s *Service) refreshBindings(ctx context.Context) error {
 	out := []binding{}
 	for rows.Next() {
 		var b binding
-		if err = rows.Scan(&b.ID, &b.Kind, &b.Root, &b.Removed); err != nil {
+		if err = rows.Scan(&b.ID, &b.Kind, &b.Root, &b.MountID, &b.Removed); err != nil {
 			return err
 		}
 		out = append(out, b)
@@ -318,10 +325,16 @@ func ErrorCode(err error) string {
 		return "offline"
 	}
 }
-func (s *Service) health(b binding, generation string, err error) {
+func (s *Service) health(live bool, b binding, generation string, err error) {
 	// Scheduling/capacity contention is not an asynchronous provider report.
 	// Leave the last actual source health intact instead of claiming throttling.
 	if errors.Is(err, storage.ErrBusy) || errors.Is(err, remotemedia.ErrBusy) {
+		return
+	}
+	// live is the original permit/process custody captured before its own
+	// cleanup. A retired custody means no provider answer, so neither source
+	// state nor contact evidence may be recorded from this outcome.
+	if !live {
 		return
 	}
 	code, state := "", "healthy"
@@ -332,8 +345,15 @@ func (s *Service) health(b binding, generation string, err error) {
 			state = code
 		}
 	}
-	if errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, rcloneprogram.ErrServeStopped) {
 		return
+	}
+	// Contact history is coalesced in memory here and written by the worker
+	// wake, never once per read or file. An unknown or non-provider error is
+	// ignored by the recorder, and a stopping serve runtime is retirement, not
+	// a provider failure.
+	if !b.Removed && !s.serveStopping() {
+		s.noteSourceContact(b.ID, b.MountID, generation, time.Now(), err)
 	}
 	_, _ = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_sources SET state=?,error_code=? WHERE id=? AND CASE WHEN kind IN('rclone','sftp','smb') THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END=? AND removed=0`, state, code, b.ID, generation)
 }
@@ -695,6 +715,10 @@ func (s *Service) Run(ctx context.Context) {
 		// Idle serve processes are retired from the same bounded wake; active
 		// readers, permits and tests keep their process.
 		s.retireIdleServes(time.Now())
+		// Provider contact evidence is coalesced in memory and written here in
+		// bounded batches; a read or file never writes per operation. If a batch
+		// remains, wake promptly instead of waiting for the full safety tick.
+		contactPending := s.flushSourceContacts(ctx)
 		// One bounded page per wake, resumable until every row has been checked.
 		s.reconcileSourceCachePage(ctx)
 		// Completed/failed old scan listings are disposable adapter cache; current
@@ -702,6 +726,9 @@ func (s *Service) Run(ctx context.Context) {
 		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_listing_sessions WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM jobs j WHERE (j.id=remote_listing_sessions.job_id OR EXISTS(SELECT 1 FROM remote_inventory_checks c WHERE c.check_job=remote_listing_sessions.job_id AND c.job_id=j.id)) AND j.status IN ('queued','running','paused'))`, time.Now().Add(-24*time.Hour).Unix())
 		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_inventory_checks WHERE NOT EXISTS(SELECT 1 FROM remote_listing_sessions l WHERE l.id=remote_inventory_checks.listing_id)`)
 		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_scan_cursors WHERE NOT EXISTS(SELECT 1 FROM remote_listing_sessions s WHERE s.id=remote_scan_cursors.listing_id)`)
+		if contactPending {
+			return time.Second
+		}
 		return 0
 	})
 }

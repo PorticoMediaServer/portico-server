@@ -99,7 +99,7 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	if err != nil {
 		return empty, err
 	}
-	b := binding{ID: row.ID, Kind: string(row.Kind), Root: row.RootPath}
+	b := binding{ID: row.ID, Kind: string(row.Kind), Root: row.RootPath, MountID: row.MountID}
 	generation := strconv.FormatInt(row.Generation, 10)
 	bindingRow := row
 	var listing folderListing
@@ -160,7 +160,8 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, generation, relative string, showHidden bool, ops *sourceOpsGate) (folderListing, error) {
 	d, current, err := s.dav(ctx, row.ID)
 	if err != nil {
-		s.health(b, generation, err)
+		// No provider permit existed for this failure.
+		s.health(false, b, generation, err)
 		return folderListing{}, mapError(err)
 	}
 	if current != generation {
@@ -177,12 +178,15 @@ func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, gen
 		return folderListing{}, sourceOpsError(ctx, waitErr)
 	}
 	page, err := d.List(gated, relative)
+	// Capture the original permit's retirement before releasing it; the outer
+	// request context is not the provider operation's custody.
+	live := gated.Err() == nil
 	grelease()
 	if err != nil {
-		s.health(b, generation, err)
+		s.health(live, b, generation, err)
 		return folderListing{}, mapError(err)
 	}
-	s.health(b, generation, nil)
+	s.health(live, b, generation, nil)
 	out := folderListing{entries: make([]SourceFolder, 0, 32)}
 	for _, entry := range page.Entries {
 		if !entry.Directory || entry.Relative == relative || entry.Relative == "" && relative == "" {

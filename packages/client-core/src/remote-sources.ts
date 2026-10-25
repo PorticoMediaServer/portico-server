@@ -49,6 +49,8 @@ export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;
 /** A source's folder health, published only when every enabled folder agrees
  * on the same stored code. Absence is not a healthy or idle claim. */
 export type RemoteSourceHealth='ready'|'healthy'|'degraded'|'inventory_running'|'cancelled'|'offline'|'root_changed'|'removing';
+/** A real completed provider failure the contact history may carry. */
+export type RemoteContactErrorCode='offline'|'credentials_required'|'rate_limited'|'quota_exceeded';
 /** One source folder's real active scan: closed state/mode/phase codes and
  * stored counters/timestamps. sourceGeneration/runPolicyRevision are the values
  * the run captured, not proof of the current source or policy. queuedAt is the
@@ -61,7 +63,7 @@ export type RemoteScanPhase='inventory'|'legacy_inventory'|'basic_pending'|'basi
 export type RemoteScanState=Readonly<{state:RemoteScanStateCode;mode?:RemoteScanMode;phase?:RemoteScanPhase;sourceGeneration:number;runPolicyRevision:number;processed:number;discovered:number;analyzed:number;warnings:number;queuedAt?:string;completedAt?:string;finishedAt?:string}>;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
-export type RemoteSourceStatus=Readonly<{assignmentFenceSupported?:boolean;sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;health?:RemoteSourceHealth;lastCompleteAt?:string;scan?:RemoteScanState;program?:string;programVersion?:string;programRevision?:number;programIncluded?:boolean;remote?:string;backgroundSpeed?:string}>;
+export type RemoteSourceStatus=Readonly<{assignmentFenceSupported?:boolean;sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean;health?:RemoteSourceHealth;lastConnectedAt?:string;lastErrorAt?:string;lastErrorCode?:RemoteContactErrorCode;lastCompleteAt?:string;scan?:RemoteScanState;program?:string;programVersion?:string;programRevision?:number;programIncluded?:boolean;remote?:string;backgroundSpeed?:string}>;
 /** The drawn Advanced page: how a source's folders are checked, the disk its
  * read cache may use, and which analysis stages run for files found through it. */
 export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean;introsMode:'off'|'inherit'|'sound'|'picture';doubleCheckFolders:boolean;dirCacheSeconds:number;readBufferBytes:number;connectTimeoutSeconds:number;idleTimeoutSeconds:number;retries:number;lowLevelRetries:number}>;
@@ -249,6 +251,7 @@ function scanTimestamp(value:unknown):string|undefined{
 }
 const scanBounded=(value:unknown):value is number=>integer(value)&&value<=2**40;
 const sourceHealths:readonly RemoteSourceHealth[]=['ready','healthy','degraded','inventory_running','cancelled','offline','root_changed','removing'];
+const contactCodes:readonly RemoteContactErrorCode[]=['offline','credentials_required','rate_limited','quota_exceeded'];
 function remoteScan(raw:unknown):RemoteScanState|undefined{
  if(!record(raw)||!scanStates.includes(raw.state as RemoteScanStateCode)||!scanBounded(raw.sourceGeneration)||!scanBounded(raw.runPolicyRevision)||!scanBounded(raw.processed)||!scanBounded(raw.discovered)||!scanBounded(raw.analyzed)||!scanBounded(raw.warnings))return undefined;
  const queued=scanTimestamp(raw.queuedAt),completed=scanTimestamp(raw.completedAt),finished=scanTimestamp(raw.finishedAt);
@@ -257,12 +260,12 @@ function remoteScan(raw:unknown):RemoteScanState|undefined{
 function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>10||typeof raw.librariesTruncated!=='boolean')invalid();
  if(raw.errorCode!==undefined&&!text(raw.errorCode,100))invalid();
- const scan=remoteScan(raw.scan),health=sourceHealths.includes(raw.health as RemoteSourceHealth)?raw.health as RemoteSourceHealth:undefined,lastComplete=scanTimestamp(raw.lastCompleteAt);
+ const scan=remoteScan(raw.scan),health=sourceHealths.includes(raw.health as RemoteSourceHealth)?raw.health as RemoteSourceHealth:undefined,lastComplete=scanTimestamp(raw.lastCompleteAt),connected=scanTimestamp(raw.lastConnectedAt),errorAt=scanTimestamp(raw.lastErrorAt),errorCode=contactCodes.includes(raw.lastErrorCode as RemoteContactErrorCode)?raw.lastErrorCode as RemoteContactErrorCode:undefined;
  return Object.freeze({sourceId:id,generation:raw.generation,state:raw.state,...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as string}),rangeSupport:raw.rangeSupport,lastCheckedAt:raw.lastCheckedAt,connectionsInUse:raw.connectionsInUse,playbackReads:raw.playbackReads,analysisReads:raw.analysisReads,scanIntervalSeconds:raw.scanIntervalSeconds,libraries:Object.freeze(raw.libraries.map(sourceLibraryUse)),librariesTruncated:raw.librariesTruncated,
   ...(text(raw.program,8192)&&raw.program?{program:raw.program}:{}),...(text(raw.programVersion,256)&&raw.programVersion?{programVersion:raw.programVersion}:{}),
   ...(integer(raw.programRevision)&&raw.programRevision>0?{programRevision:raw.programRevision}:{}),
   ...(typeof raw.programIncluded==='boolean'?{programIncluded:raw.programIncluded}:{}),
-  ...(health?{health}:{}),...(lastComplete?{lastCompleteAt:lastComplete}:{}),
+  ...(health?{health}:{}),...(lastComplete?{lastCompleteAt:lastComplete}:{}),...(connected?{lastConnectedAt:connected}:{}),...(errorAt&&errorCode?{lastErrorAt:errorAt,lastErrorCode:errorCode}:{}),
   ...(scan?{scan}:{}),
   ...(text(raw.remote,8192)&&raw.remote?{remote:raw.remote}:{}),...(text(raw.backgroundSpeed,64)&&raw.backgroundSpeed?{backgroundSpeed:raw.backgroundSpeed}:{})});
 }

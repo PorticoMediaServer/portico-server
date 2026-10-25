@@ -82,7 +82,9 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 	if !ready {
 		err = s.startNativeListing(ctx, b, relative, c.ID, generation)
 		if err != nil {
-			s.health(b, generation, err)
+			// startNativeListing reports cached or persisted listing outcomes
+			// without contacting the provider; the completion path records the
+			// real evidence once. Do not replay it here.
 			return storage.RemotePage{}, mapError(err)
 		}
 		if err = s.db.QueryRowContext(ctx, `SELECT ready FROM remote_listing_sessions WHERE id=?`, c.ID).Scan(&ready); err != nil {
@@ -91,7 +93,6 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 		if !ready {
 			return storage.RemotePage{ID: c.ID, SourceID: b.ID, Directory: directory, Generation: generation, Cursor: after, Next: cursor(continuation{c.ID, ""}), Entries: []storage.Snapshot{}, Pending: true}, nil
 		}
-		s.health(b, generation, nil)
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT snapshot FROM remote_listing_entries WHERE listing_id=? AND name>? ORDER BY name LIMIT 129`, c.ID, c.After)
 	if err != nil {
